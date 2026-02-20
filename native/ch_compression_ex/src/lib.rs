@@ -16,8 +16,10 @@ mod atoms {
 fn hash128<'a>(env: Env<'a>, data: Binary) -> Binary<'a> {
     let hash: u128 = cityhash_102_128(data.as_slice());
 
-    let lo: u64 = hash as u64;
-    let hi: u64 = (hash >> 64) as u64;
+    // cityhash-rs packs (first, second) with first in the high bits of u128.
+    // ClickHouse writes first (low64) at offset 0, second (high64) at offset 8.
+    let lo: u64 = (hash >> 64) as u64;
+    let hi: u64 = hash as u64;
 
     let mut output = NewBinary::new(env, 16);
     output.as_mut_slice()[..8].copy_from_slice(&lo.to_le_bytes());

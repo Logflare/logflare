@@ -11,12 +11,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
 
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncoder
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Compression
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Protocol
 
   @default_port 9_000
   @default_connect_timeout 5_000
   @default_recv_timeout 30_000
   @drain_timeout 100
+  @compressed_header_size 9
 
   @type server_info :: %{
           name: String.t(),
@@ -35,7 +38,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
           username: String.t(),
           password: String.t(),
           transport: :gen_tcp | :ssl,
-          connect_timeout: non_neg_integer()
+          connect_timeout: non_neg_integer(),
+          compression: :none | :lz4
         ]
 
   @type column_info :: [{name :: String.t(), type :: String.t()}]
@@ -69,6 +73,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     * `:port` - TCP port (default: `9000`)
     * `:transport` - `:gen_tcp` for plaintext or `:ssl` for TLS (default: `:gen_tcp`)
     * `:connect_timeout` - timeout in milliseconds for the TCP connect (default: `5000`)
+    * `:compression` - `:none` or `:lz4` for LZ4-compressed data blocks (default: `:none`)
   """
   @spec connect(connect_opts()) :: {:ok, t()} | {:error, term()}
   def connect(opts) when is_list(opts) do
@@ -79,6 +84,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     password = Keyword.fetch!(opts, :password)
     transport = Keyword.get(opts, :transport, :gen_tcp)
     connect_timeout = Keyword.get(opts, :connect_timeout, @default_connect_timeout)
+    compression = Keyword.get(opts, :compression, :none)
 
     unless transport in [:gen_tcp, :ssl] do
       raise ArgumentError,
@@ -90,12 +96,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
             "expected :connect_timeout to be a positive integer, got: #{inspect(connect_timeout)}"
     end
 
+    unless compression in [:none, :lz4] do
+      raise ArgumentError,
+            "expected :compression to be :none or :lz4, got: #{inspect(compression)}"
+    end
+
     conn = %__MODULE__{
       host: host,
       port: port,
       database: database,
       username: username,
-      transport: transport
+      transport: transport,
+      compression: compression
     }
 
     tcp_opts = [:binary, {:packet, :raw}, {:active, false}, {:nodelay, true}]
@@ -158,23 +170,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     query_id = Keyword.get(opts, :query_id, Ecto.UUID.generate())
     settings = Keyword.get(opts, :settings, [])
     query_packet = encode_query_packet(conn, sql, query_id, settings)
-    empty_block = IO.iodata_to_binary(encode_empty_data_block(conn))
 
-    with :ok <- send_data(conn, [query_packet, empty_block]),
+    with :ok <- send_data(conn, query_packet),
+         :ok <- send_data_block(conn, BlockEncoder.encode_empty_block_body()),
          {:ok, column_info, conn} <- read_query_response(conn) do
       {:ok, column_info, conn}
     end
   end
 
   @doc """
-  Sends pre-encoded block data (from `BlockEncoder`) over the socket.
+  Sends a block body over the socket, handling compression if enabled.
 
-  Accepts any iodata — typically the output of `BlockEncoder.encode_data_block/2`
-  or `BlockEncoder.encode_empty_block/1`.
+  When compression is `:none`, sends the body as a plain Data packet.
+  When compression is `:lz4`, the block body is compressed and wrapped
+  in a compressed envelope while the packet prefix stays uncompressed.
+
+  Accepts iodata — typically the output of `BlockEncoder.encode_block_body/2`
+  or `BlockEncoder.encode_empty_block_body/0`.
   """
   @spec send_data_block(t(), iodata()) :: :ok | {:error, term()}
-  def send_data_block(%__MODULE__{} = conn, block_iodata) do
-    send_data(conn, block_iodata)
+  def send_data_block(%__MODULE__{compression: :none} = conn, block_body) do
+    send_data(conn, [BlockEncoder.data_packet_prefix(), block_body])
+  end
+
+  def send_data_block(%__MODULE__{compression: :lz4} = conn, block_body) do
+    compressed = Compression.compress(block_body)
+    send_data(conn, [BlockEncoder.data_packet_prefix(), compressed])
   end
 
   @doc """
@@ -442,6 +463,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
 
   @spec encode_query_packet(t(), String.t(), String.t(), keyword()) :: binary()
   defp encode_query_packet(%__MODULE__{negotiated_rev: rev} = conn, sql, query_id, extra_settings) do
+    compression_flag = if conn.compression == :none, do: 0, else: 1
+
     [
       Protocol.encode_varuint(Protocol.client_query()),
       Protocol.encode_string(query_id),
@@ -450,7 +473,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
       encode_extra_roles(rev),
       encode_interserver_secret(rev),
       Protocol.encode_varuint(2),
-      Protocol.encode_varuint(0),
+      Protocol.encode_varuint(compression_flag),
       Protocol.encode_string(sql),
       encode_parameters(rev)
     ]
@@ -581,30 +604,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     IO.iodata_to_binary(encoded ++ [Protocol.encode_string("")])
   end
 
-  @spec encode_empty_data_block(t()) :: iodata()
-  defp encode_empty_data_block(%__MODULE__{negotiated_rev: rev}) do
-    block_info =
-      if rev >= 51_903 do
-        [
-          Protocol.encode_varuint(1),
-          Protocol.encode_uint8(0),
-          Protocol.encode_varuint(2),
-          Protocol.encode_int32(-1),
-          Protocol.encode_varuint(0)
-        ]
-      else
-        []
-      end
-
-    [
-      Protocol.encode_varuint(Protocol.client_data()),
-      Protocol.encode_string(""),
-      block_info,
-      Protocol.encode_varuint(0),
-      Protocol.encode_varuint(0)
-    ]
-  end
-
   @spec encode_extra_roles(non_neg_integer()) :: binary()
   defp encode_extra_roles(rev) when rev >= 54_472, do: Protocol.encode_string("")
   defp encode_extra_roles(_rev), do: <<>>
@@ -635,7 +634,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   @spec read_query_response_loop(t(), column_info() | nil) ::
           {:ok, column_info(), t()} | {:error, term()}
   defp read_query_response_loop(%__MODULE__{} = conn, column_info) do
-    with {:ok, packet_type, conn} <- read_varuint(conn) do
+    with {:ok, packet_type, conn} <- read_varuint(conn),
+         {:ok, conn} <- maybe_decompress_server_payload(conn, packet_type) do
       case packet_type do
         1 ->
           with {:ok, new_column_info, conn} <- read_data_block(conn) do
@@ -685,11 +685,60 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   @spec read_data_block(t()) :: {:ok, column_info(), t()} | {:error, term()}
   defp read_data_block(%__MODULE__{} = conn) do
     with {:ok, _temp_table, conn} <- read_string(conn),
+         {:ok, conn} <- maybe_decompress_block_body(conn),
          {:ok, conn} <- read_block_info(conn),
          {:ok, num_columns, conn} <- read_varuint(conn),
          {:ok, num_rows, conn} <- read_varuint(conn),
          {:ok, column_info, conn} <- read_columns(conn, num_columns, num_rows, []) do
       {:ok, column_info, conn}
+    end
+  end
+
+  @spec maybe_decompress_block_body(t()) :: {:ok, t()} | {:error, term()}
+  defp maybe_decompress_block_body(%__MODULE__{compression: :none} = conn), do: {:ok, conn}
+
+  defp maybe_decompress_block_body(%__MODULE__{compression: :lz4} = conn) do
+    read_and_decompress_envelope(conn)
+  end
+
+  # Server packet types whose entire payloads (after packet type) are compressed.
+  # TableColumns (11) has its full payload compressed.
+  # Data (1), Log (10), ProfileEvents (14) have temp_table_name uncompressed,
+  # then the block body compressed — handled separately in read_data_block.
+  @fully_compressed_server_types [11]
+
+  @spec maybe_decompress_server_payload(t(), non_neg_integer()) :: {:ok, t()} | {:error, term()}
+  defp maybe_decompress_server_payload(%__MODULE__{compression: :none} = conn, _packet_type),
+    do: {:ok, conn}
+
+  defp maybe_decompress_server_payload(%__MODULE__{compression: :lz4} = conn, packet_type)
+       when packet_type in @fully_compressed_server_types do
+    read_and_decompress_envelope(conn)
+  end
+
+  defp maybe_decompress_server_payload(conn, _packet_type), do: {:ok, conn}
+
+  @spec read_and_decompress_envelope(t()) :: {:ok, t()} | {:error, term()}
+  defp read_and_decompress_envelope(%__MODULE__{} = conn) do
+    with {:ok, checksum, conn} <- read_bytes(conn, 16),
+         {:ok, <<method::8>>, conn} <- read_bytes(conn, 1),
+         {:ok, <<compressed_size::little-unsigned-32>>, conn} <- read_bytes(conn, 4),
+         {:ok, <<uncompressed_size::little-unsigned-32>>, conn} <- read_bytes(conn, 4) do
+      data_size = compressed_size - @compressed_header_size
+
+      with {:ok, compressed_data, conn} <- read_bytes(conn, data_size) do
+        envelope =
+          <<checksum::binary, method::8, compressed_size::little-unsigned-32,
+            uncompressed_size::little-unsigned-32, compressed_data::binary>>
+
+        case Compression.decompress(envelope) do
+          {:ok, decompressed} ->
+            {:ok, %{conn | buffer: decompressed <> conn.buffer}}
+
+          {:error, reason} ->
+            {:error, {:decompression_error, reason}}
+        end
+      end
     end
   end
 
@@ -871,7 +920,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
 
   @spec read_insert_response_loop(t()) :: {:ok, t()} | {:error, term()}
   defp read_insert_response_loop(%__MODULE__{} = conn) do
-    with {:ok, packet_type, conn} <- read_varuint(conn) do
+    with {:ok, packet_type, conn} <- read_varuint(conn),
+         {:ok, conn} <- maybe_decompress_server_payload(conn, packet_type) do
       case packet_type do
         5 ->
           drain_trailing_packets(conn)
@@ -897,7 +947,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   @spec drain_trailing_packets(t()) :: {:ok, t()}
   defp drain_trailing_packets(%__MODULE__{buffer: buffer} = conn)
        when byte_size(buffer) > 0 do
-    with {:ok, packet_type, conn} <- read_varuint(conn) do
+    with {:ok, packet_type, conn} <- read_varuint(conn),
+         {:ok, conn} <- maybe_decompress_server_payload(conn, packet_type) do
       case packet_type do
         14 ->
           with {:ok, conn} <- skip_data_block(conn), do: drain_trailing_packets(conn)

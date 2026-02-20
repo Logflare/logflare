@@ -22,13 +22,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
   """
   @spec encode_data_block([column()], non_neg_integer()) :: iodata()
   def encode_data_block(columns, negotiated_rev) do
+    [data_packet_prefix(), encode_block_body(columns, negotiated_rev)]
+  end
+
+  @doc """
+  Encodes an empty block (end-of-data signal) as a complete client Data packet.
+  """
+  @spec encode_empty_block(non_neg_integer()) :: iodata()
+  def encode_empty_block(_negotiated_rev) do
+    [data_packet_prefix(), encode_empty_block_body()]
+  end
+
+  @doc """
+  Encodes just the block body (BlockInfo + columns + data) without the packet
+  type prefix or temp_table_name. Used by `Connection` when compression is
+  enabled — the body gets compressed while the prefix stays uncompressed.
+  """
+  @spec encode_block_body([column()], non_neg_integer()) :: iodata()
+  def encode_block_body(columns, negotiated_rev) do
     num_columns = length(columns)
     num_rows = columns |> List.first() |> elem(2) |> length()
     include_custom_serialization? = negotiated_rev >= 54_454 and num_rows > 0
 
     [
-      Protocol.encode_varuint(Protocol.client_data()),
-      Protocol.encode_string(""),
       encode_block_info(),
       Protocol.encode_varuint(num_columns),
       Protocol.encode_varuint(num_rows),
@@ -44,16 +60,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
   end
 
   @doc """
-  Encodes an empty block (end-of-data signal) as a complete client Data packet.
+  Encodes just the empty block body (BlockInfo + 0 columns + 0 rows).
   """
-  @spec encode_empty_block(non_neg_integer()) :: iodata()
-  def encode_empty_block(_negotiated_rev) do
+  @spec encode_empty_block_body() :: iodata()
+  def encode_empty_block_body do
     [
-      Protocol.encode_varuint(Protocol.client_data()),
-      Protocol.encode_string(""),
       encode_block_info(),
       Protocol.encode_varuint(0),
       Protocol.encode_varuint(0)
+    ]
+  end
+
+  @doc """
+  Returns the Data packet prefix: packet type (VarUInt 2) + empty temp_table_name.
+  """
+  @spec data_packet_prefix() :: iodata()
+  def data_packet_prefix do
+    [
+      Protocol.encode_varuint(Protocol.client_data()),
+      Protocol.encode_string("")
     ]
   end
 

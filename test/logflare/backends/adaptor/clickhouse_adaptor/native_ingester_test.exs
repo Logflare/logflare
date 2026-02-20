@@ -16,6 +16,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     password: "logflare"
   ]
 
+  @connect_opts_lz4 @connect_opts ++ [compression: :lz4]
+
   @test_tables [
     "native_insert_basic",
     "native_insert_types",
@@ -23,7 +25,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     "native_insert_reuse",
     "native_otel_logs",
     "native_otel_metrics",
-    "native_otel_traces"
+    "native_otel_traces",
+    "native_lz4_basic",
+    "native_lz4_large",
+    "native_lz4_reuse"
   ]
 
   setup do
@@ -483,6 +488,117 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       ts_row = Enum.at(ts_rows, 0)
       assert ts_row["t"] == ts_ns
       assert ts_row["start_time_unix"] == nil
+
+      assert :ok = Connection.close(conn)
+    end
+  end
+
+  describe "LZ4 compressed insert" do
+    test "inserts basic types with compression enabled", %{backend: backend} do
+      {:ok, _} =
+        ClickHouseAdaptor.execute_ch_query(backend, """
+        CREATE TABLE IF NOT EXISTS native_lz4_basic (
+          id UInt64,
+          name String,
+          value Float64,
+          active Bool
+        ) ENGINE = MergeTree() ORDER BY id
+        """)
+
+      {:ok, conn} = Connection.connect(@connect_opts_lz4)
+      assert conn.compression == :lz4
+
+      columns = [
+        {"id", "UInt64", [1, 2, 3]},
+        {"name", "String", ["alice", "bob", "charlie"]},
+        {"value", "Float64", [1.5, 2.7, 3.14]},
+        {"active", "Bool", [true, false, true]}
+      ]
+
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_basic", columns)
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT id, name, value, active FROM native_lz4_basic ORDER BY id"
+        )
+
+      assert length(rows) == 3
+      assert Enum.at(rows, 0)["id"] == 1
+      assert Enum.at(rows, 0)["name"] == "alice"
+      assert_in_delta Enum.at(rows, 0)["value"], 1.5, 0.001
+      assert Enum.at(rows, 2)["id"] == 3
+      assert Enum.at(rows, 2)["name"] == "charlie"
+
+      assert :ok = Connection.close(conn)
+    end
+
+    test "inserts large batch with compression and sub-block splitting", %{backend: backend} do
+      {:ok, _} =
+        ClickHouseAdaptor.execute_ch_query(backend, """
+        CREATE TABLE IF NOT EXISTS native_lz4_large (
+          id UInt64,
+          name String,
+          value Float64
+        ) ENGINE = MergeTree() ORDER BY id
+        """)
+
+      {:ok, conn} = Connection.connect(@connect_opts_lz4)
+
+      num_rows = 25_000
+
+      columns = [
+        {"id", "UInt64", Enum.to_list(1..num_rows)},
+        {"name", "String", Enum.map(1..num_rows, &"row_#{&1}")},
+        {"value", "Float64", Enum.map(1..num_rows, &(&1 * 0.1))}
+      ]
+
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_large", columns)
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT count() as cnt FROM native_lz4_large"
+        )
+
+      assert Enum.at(rows, 0)["cnt"] == num_rows
+
+      assert :ok = Connection.close(conn)
+    end
+
+    test "supports multiple compressed inserts on the same connection", %{backend: backend} do
+      {:ok, _} =
+        ClickHouseAdaptor.execute_ch_query(backend, """
+        CREATE TABLE IF NOT EXISTS native_lz4_reuse (
+          id UInt64,
+          name String
+        ) ENGINE = MergeTree() ORDER BY id
+        """)
+
+      {:ok, conn} = Connection.connect(@connect_opts_lz4)
+
+      columns1 = [
+        {"id", "UInt64", [1, 2]},
+        {"name", "String", ["first", "second"]}
+      ]
+
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_reuse", columns1)
+
+      columns2 = [
+        {"id", "UInt64", [3, 4]},
+        {"name", "String", ["third", "fourth"]}
+      ]
+
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_reuse", columns2)
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT id, name FROM native_lz4_reuse ORDER BY id"
+        )
+
+      assert length(rows) == 4
+      assert Enum.map(rows, & &1["id"]) == [1, 2, 3, 4]
 
       assert :ok = Connection.close(conn)
     end

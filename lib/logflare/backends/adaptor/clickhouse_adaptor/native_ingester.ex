@@ -142,15 +142,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
 
     result =
       if num_rows <= @sub_block_size do
-        block = BlockEncoder.encode_data_block(columns, conn.negotiated_rev)
-        Connection.send_data_block(conn, block)
+        body = BlockEncoder.encode_block_body(columns, conn.negotiated_rev)
+        Connection.send_data_block(conn, body)
       else
         send_sub_blocks(conn, columns)
       end
 
     case result do
       :ok ->
-        empty = BlockEncoder.encode_empty_block(conn.negotiated_rev)
+        empty = BlockEncoder.encode_empty_block_body()
 
         case Connection.send_data_block(conn, empty) do
           :ok -> {:ok, conn}
@@ -181,9 +181,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
           {name, type, values}
         end)
 
-      block = BlockEncoder.encode_data_block(sub_columns, conn.negotiated_rev)
+      body = BlockEncoder.encode_block_body(sub_columns, conn.negotiated_rev)
 
-      case Connection.send_data_block(conn, block) do
+      case Connection.send_data_block(conn, body) do
         :ok -> {:cont, :ok}
         error -> {:halt, error}
       end

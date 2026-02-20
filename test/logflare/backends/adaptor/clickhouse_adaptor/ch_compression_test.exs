@@ -44,12 +44,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ChCompressionTest do
     end
 
     test "regression vectors" do
-      assert ChCompression.hash128("") == Base.decode16!("291EE592C340B53C2B9AC064FC9DF03D")
-      assert ChCompression.hash128("a") == Base.decode16!("F66CC8E4E28E7EFDD01AE0AFA13971D2")
-      assert ChCompression.hash128("test") == Base.decode16!("49F73450774CD69289F6AED8A064CFF9")
+      assert ChCompression.hash128("") == Base.decode16!("2B9AC064FC9DF03D291EE592C340B53C")
+      assert ChCompression.hash128("a") == Base.decode16!("D01AE0AFA13971D2F66CC8E4E28E7EFD")
+      assert ChCompression.hash128("test") == Base.decode16!("89F6AED8A064CFF949F73450774CD692")
 
       assert ChCompression.hash128("ClickHouse") ==
-               Base.decode16!("0214F9BAC43AD47612B60BC081CC0437")
+               Base.decode16!("12B60BC081CC04370214F9BAC43AD476")
     end
   end
 
