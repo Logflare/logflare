@@ -225,9 +225,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     with :ok <- ensure_query_connection_manager_started(backend) do
       pool_via = connection_pool_via(backend)
 
-      case Ch.query(pool_via, statement, params, opts) do
+      case Ch.query(pool_via, statement, params, Keyword.put(opts, :decode, false)) do
         {:ok, %Ch.Result{} = result} ->
-          {:ok, convert_ch_result_to_rows(result)}
+          {:ok, decode_ch_result(result)}
 
         {:error, %Ch.Error{message: error_msg}} when is_non_empty_binary(error_msg) ->
           Logger.warning(
@@ -386,34 +386,86 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  @spec convert_ch_result_to_rows(Ch.Result.t()) :: [map()]
-  defp convert_ch_result_to_rows(%Ch.Result{} = result) do
-    case {result.columns, result.rows} do
-      {nil, nil} ->
-        []
+  @spec decode_ch_result(Ch.Result.t()) :: [map()]
+  defp decode_ch_result(%Ch.Result{} = result) do
+    format = get_response_header(result.headers, "x-clickhouse-format")
 
-      {nil, rows} when is_list(rows) ->
-        convert_uuids(rows)
+    case format do
+      "RowBinaryWithNamesAndTypes" ->
+        data = IO.iodata_to_binary(result.data)
 
-      {_columns, nil} ->
-        []
+        {_names, types, _rest} = parse_row_binary_header(data)
+        [names | rows] = Ch.RowBinary.decode_names_and_rows(data)
 
-      {columns, rows} when is_list(columns) and is_list(rows) ->
-        for row <- rows do
-          columns
-          |> Enum.zip(row)
-          |> Map.new()
-        end
-        |> convert_uuids()
+        uuid_indices = uuid_column_indices(types)
+        rows = convert_uuid_values(rows, uuid_indices)
 
-      {columns, rows} ->
-        Logger.warning(
-          "Unexpected ClickHouse result format: columns=#{inspect(columns)}, rows=#{inspect(rows)}"
-        )
+        Enum.map(rows, fn row ->
+          names |> Enum.zip(row) |> Map.new()
+        end)
 
+      _ ->
         []
     end
   end
+
+  @spec get_response_header([{String.t(), String.t()}], String.t()) :: String.t() | nil
+  defp get_response_header(headers, name) when is_list(headers) do
+    Enum.find_value(headers, fn {k, v} -> if k == name, do: v end)
+  end
+
+  @spec parse_row_binary_header(binary()) :: {[String.t()], [String.t()], binary()}
+  defp parse_row_binary_header(data) do
+    {num_cols, rest} = decode_varuint(data)
+    {names, rest} = decode_n_strings(rest, num_cols, [])
+    {types, rest} = decode_n_strings(rest, num_cols, [])
+    {names, types, rest}
+  end
+
+  defp decode_n_strings(data, 0, acc), do: {Enum.reverse(acc), data}
+
+  defp decode_n_strings(data, n, acc) do
+    {string, rest} = decode_lp_string(data)
+    decode_n_strings(rest, n - 1, [string | acc])
+  end
+
+  defp decode_varuint(<<0::1, byte::7, rest::bytes>>), do: {byte, rest}
+
+  defp decode_varuint(<<1::1, byte::7, rest::bytes>>) do
+    {value, rest} = decode_varuint(rest)
+    {byte + Bitwise.bsl(value, 7), rest}
+  end
+
+  defp decode_lp_string(data) do
+    {len, rest} = decode_varuint(data)
+    <<string::binary-size(len), rest::bytes>> = rest
+    {string, rest}
+  end
+
+  @spec uuid_column_indices([String.t()]) :: MapSet.t(non_neg_integer())
+  defp uuid_column_indices(type_strings) do
+    type_strings
+    |> Enum.with_index()
+    |> Enum.filter(fn {type, _idx} -> String.contains?(type, "UUID") end)
+    |> Enum.map(fn {_type, idx} -> idx end)
+    |> MapSet.new()
+  end
+
+  defp convert_uuid_values(rows, uuid_indices) when map_size(uuid_indices) == 0, do: rows
+  defp convert_uuid_values(rows, uuid_indices), do: Enum.map(rows, &convert_row_uuids(&1, uuid_indices))
+
+  defp convert_row_uuids(row, uuid_indices) do
+    row
+    |> Enum.with_index()
+    |> Enum.map(fn {value, idx} ->
+      if MapSet.member?(uuid_indices, idx), do: cast_uuid_value(value), else: value
+    end)
+  end
+
+  defp cast_uuid_value(nil), do: nil
+  defp cast_uuid_value(values) when is_list(values), do: Enum.map(values, &cast_uuid_value/1)
+  defp cast_uuid_value(<<_::128>> = bin), do: Ecto.UUID.cast!(bin)
+  defp cast_uuid_value(other), do: other
 
   @spec execute_query_with_params(
           Backend.t(),
@@ -451,23 +503,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       end
     end)
   end
-
-  @spec convert_uuids(data :: any()) :: any()
-  defp convert_uuids(data) when is_struct(data), do: data
-
-  defp convert_uuids(data) when is_map(data) do
-    Map.new(data, fn {k, v} -> {k, convert_uuids(v)} end)
-  end
-
-  defp convert_uuids(data) when is_list(data) do
-    Enum.map(data, &convert_uuids/1)
-  end
-
-  defp convert_uuids(data) when is_non_empty_binary(data) and byte_size(data) == 16 do
-    Ecto.UUID.cast!(data)
-  end
-
-  defp convert_uuids(data), do: data
 
   @spec ensure_query_connection_manager_started(Backend.t()) :: :ok | {:error, term()}
   defp ensure_query_connection_manager_started(%Backend{id: backend_id} = backend) do
