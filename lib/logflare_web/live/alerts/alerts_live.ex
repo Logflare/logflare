@@ -206,6 +206,38 @@ defmodule LogflareWeb.AlertsLive do
 
   def handle_event(
         "run-query",
+        %{"run" => %{"query" => query}},
+        %{assigns: %{alert: %_{} = alert}} = socket
+      )
+      when is_binary(query) and query != "" do
+    test_alert = %{alert | query: query}
+
+    with {:ok, result} <- Alerting.execute_alert_query(test_alert, use_query_cache: false) do
+      {:noreply,
+       socket
+       |> assign(:query_result_rows, result.rows)
+       |> assign(:total_bytes_processed, result.total_bytes_processed)
+       |> put_flash(:info, "Query executed successfully.")}
+    else
+      {:error, :no_results} ->
+        {:noreply,
+         socket
+         |> assign(:query_result_rows, [])
+         |> assign(:total_bytes_processed, nil)
+         |> put_flash(:info, "No results from query.")}
+
+      {:error, err} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "Error when running query: #{inspect(err)}"
+         )}
+    end
+  end
+
+  def handle_event(
+        "run-query",
         _params,
         %{assigns: %{alert: %_{} = alert}} = socket
       ) do

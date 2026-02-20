@@ -1,11 +1,16 @@
-<div class="tw-flex tw-w-full tw-my-10 tw-gap-2">
-  <.form :let={f} for={@changeset} as={:alert} id="alert" phx-submit="save" class="tw-w-full">
+<div class="tw-flex tw-my-10 tw-gap-2">
+  <.form :let={f} for={@changeset} as={:alert} id="alert" phx-submit="save" class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600">
     {hidden_input(f, :language)}
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
       <button :if={@alert} data-confirm="Are you sure? This cannot be undone" phx-click="delete" phx-value-alert_id={@alert.id} class="btn btn-outline-danger" type="button">
         <i class="fas fa-trash"></i> Delete
       </button>
-      {submit("Save changes", class: "btn btn-primary")}
+      <div class="tw-flex tw-gap-2">
+        <.team_link :if={@alert} team={@team} patch={~p"/alerts/#{@alert.id}"} class="btn btn-outline-secondary">
+          Cancel
+        </.team_link>
+        {submit("Save changes", class: "btn btn-primary")}
+      </div>
     </div>
 
     <.header_with_anchor text="Alert Name" />
@@ -63,4 +68,11 @@
       </div>
     </section>
   </.form>
+  <aside class="tw-w-1/2">
+    <.form :let={f} for={@params_form} phx-submit="run-query" class="tw-min-h-[80px]">
+      {hidden_input(f, :query)}
+      {submit("Test query", class: "btn btn-secondary")}
+    </.form>
+    <.run_query_result {assigns} />
+  </aside>
 </div>
