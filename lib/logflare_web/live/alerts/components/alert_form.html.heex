@@ -87,7 +87,7 @@
   </.form>
   <aside class="tw-w-1/2">
     <.form :let={f} for={to_form(%{"query" => @query_string})} phx-submit="run-query" class="tw-min-h-[80px]">
-      {hidden_input(f, :query)}
+      {hidden_input(f, :query, id: "run-query-input")}
       {submit("Test query", class: "btn btn-secondary")}
     </.form>
     <.run_query_result {assigns} />
