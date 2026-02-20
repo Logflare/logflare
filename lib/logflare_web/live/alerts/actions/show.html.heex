@@ -2,13 +2,17 @@
   <:path>
     ~/<.subheader_path_link live_patch to={~p"/alerts"} team={@team}>alerts</.subheader_path_link>/{@alert.name}
   </:path>
-  <.subheader_link team={@team} to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
   <.subheader_link team={@team} live_patch to={~p"/alerts/#{@alert.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
-  <h2>
-    {@alert.name}
-  </h2>
+  <div class="tw-flex tw-items-center tw-gap-2">
+    <h2>
+      {@alert.name}
+    </h2>
+    <span class={if @alert.enabled, do: "badge badge-success", else: "badge badge-secondary"}>
+      {if @alert.enabled, do: "Enabled", else: "Disabled"}
+    </span>
+  </div>
   <div>
     id: {@alert.token}
   </div>
@@ -23,14 +27,15 @@
         :lql -> "Logflare Query Language"
       end}
     </span>
-    <code class="tw-whitespace-pre-wrap tw-text-sm tw-text-white">
-      {@alert.query}
-    </code>
+    <code class="tw-whitespace-pre-wrap tw-text-sm tw-text-white">{@alert.query}</code>
   </div>
 
   <div>
     <button class="btn btn-secondary" phx-click="run-query">Run query</button>
-    <button class="btn btn-secondary" phx-click="manual-trigger">Manual trigger</button>
+    <button class="btn btn-primary" phx-click="trigger-now" disabled={@triggering_alert}>
+      <i :if={@triggering_alert} class="fa fa-refresh fa-spin"></i>
+      {if @triggering_alert, do: "Running...", else: "Trigger now"}
+    </button>
   </div>
 
   <div>
@@ -98,4 +103,141 @@
   </div>
 
   <.run_query_result {assigns} />
+
+  <div :if={@future_jobs != [] or (@past_jobs_page && @past_jobs_page.total_entries > 0)}>
+    <div class="tw-flex tw-items-center tw-gap-2">
+      <h3 class="tw-m-0">Execution History</h3>
+
+      <button phx-click="refresh-execution-history" class="btn btn-sm btn-outline-secondary">
+        <i class="fa fa-refresh"></i> Refresh
+      </button>
+      <button :if={@future_jobs != []} phx-click="toggle-execution-history" class="btn btn-sm btn-outline-secondary">
+        {if @show_execution_history, do: "Hide scheduled jobs", else: "Show scheduled jobs"}
+      </button>
+    </div>
+
+    <div :if={@future_jobs != []} class="tw-mb-4 tw-mt-2">
+      <div class="tw-flex tw-items-center tw-gap-2"></div>
+      <div :if={@show_execution_history}>
+        <h5 class="tw-m-0">Upcoming Jobs</h5>
+        <table class="table table-sm tw-text-white">
+          <thead>
+            <tr>
+              <th>Scheduled At</th>
+              <th>State</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={job <- @future_jobs}>
+              <td>{Calendar.strftime(job.scheduled_at, "%Y-%m-%d %H:%M:%S UTC")}</td>
+              <td><span class={"badge badge-#{job_state_badge_class(job.state)}"}>{job.state}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div :if={@past_jobs_page && @past_jobs_page.total_entries > 0}>
+      <h5>Past Executions ({@past_jobs_page.total_entries})</h5>
+      <table class="table table-sm tw-text-white">
+        <thead>
+          <tr>
+            <th>Completed At</th>
+            <th>State</th>
+            <th>Rows</th>
+            <th>Bytes Scanned</th>
+            <th>Results</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={job <- @past_jobs_page.entries}>
+            <td>
+              <%= if job.completed_at do %>
+                <span>{Calendar.strftime(job.completed_at, "%Y-%m-%d %H:%M:%S UTC")}</span>
+                <span class="tw-text-gray-500 tw-text-xs tw-ml-2">{time_ago(job.completed_at)}</span>
+              <% else %>
+                -
+              <% end %>
+            </td>
+            <td>
+              <span :if={job.state != "completed"} class={"badge badge-#{job_state_badge_class(job.state)}"}>{job.state}</span>
+              <%= case get_in(job.meta, ["result", "fired"]) do %>
+                <% true -> %>
+                  <span class="badge badge-success">Fired</span>
+                <% false -> %>
+                  <span class="badge badge-secondary">Not Fired</span>
+                <% nil -> %>
+                  <span :if={job.state == "completed"} class="badge badge-success">completed</span>
+              <% end %>
+              <% reason = job.meta["reason"] %>
+              <%= if (job.state == "discarded" or get_in(job.meta, ["result", "fired"]) == false) and is_binary(reason) and reason != "" do %>
+                <%= if byte_size(reason) > 80 do %>
+                  <span class="tw-text-red-400 tw-text-xs tw-ml-1 tw-cursor-pointer" data-toggle="popover" data-trigger="click" data-placement="top" data-content={reason}>
+                    {truncate_reason(reason)}
+                  </span>
+                <% else %>
+                  <span class="tw-text-red-400 tw-text-xs tw-ml-1">{reason}</span>
+                <% end %>
+              <% end %>
+            </td>
+            <td>{get_in(job.meta, ["result", "total_rows"])}</td>
+            <td>{format_bytes(get_in(job.meta, ["result", "total_bytes_processed"]))}</td>
+            <td>
+              <% rows = get_in(job.meta, ["result", "rows"]) %>
+              <button :if={is_list(rows) and rows != []} phx-click="view-results" phx-value-job_id={job.id} class="btn btn-sm btn-outline-primary">
+                View Results
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <LogflareWeb.PaginationComponents.pagination_links :if={@past_jobs_page.total_pages > 1} page={@past_jobs_page} path={~p"/alerts/#{@alert.id}"} params={if @team, do: [t: Phoenix.Param.to_param(@team)], else: []} patch={true} />
+    </div>
+  </div>
+
+  <div :if={@modal_results != nil} id="results-modal" class="modal fade show" phx-hook="LiveModal" phx-click-away="close-results-modal" phx-window-keydown="close-results-modal" phx-key="escape" style="display: block;">
+    <div class="modal-dialog modal-xl" role="document">
+      <div class="modal-content">
+        <div class="modal-header lf-modal-header">
+          <h5 class="modal-title">
+            Execution Results
+          </h5>
+          <span>
+            <a href="#" class="phx-modal-close" phx-click="close-results-modal">&times;</a>
+          </span>
+        </div>
+        <div class="modal-body">
+          <div class="container">
+            <div :if={@modal_results == []} class="tw-text-gray-400">
+              No rows returned from query.
+            </div>
+
+            <div :if={@modal_results != []} class="tw-overflow-auto" style="max-height: 60vh;">
+              <table class="table table-sm tw-text-white tw-font-mono tw-text-xs">
+                <thead>
+                  <tr>
+                    <th :for={col <- Map.keys(hd(@modal_results))}>{col}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={row <- @modal_results}>
+                    <td :for={col <- Map.keys(hd(@modal_results))}>
+                      <% val = Map.get(row, col) %>
+                      <%= if is_map(val) or is_list(val) do %>
+                        <code class="tw-text-xs">{Jason.encode!(val)}</code>
+                      <% else %>
+                        {val}
+                      <% end %>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- footer -->
+            <div :if={@modal_node} class="tw-text-gray-400 tw-text-sm tw-mt-2">Executing node: {@modal_node}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </section>

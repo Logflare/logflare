@@ -110,18 +110,6 @@ config :logflare,
        |> filter_nil_kv_pairs.()
 
 config :logflare,
-       Logflare.Alerting,
-       [
-         min_cluster_size:
-           if(System.get_env("LOGFLARE_ALERTS_MIN_CLUSTER_SIZE") != nil,
-             do: String.to_integer(System.get_env("LOGFLARE_ALERTS_MIN_CLUSTER_SIZE")),
-             else: nil
-           ),
-         enabled: System.get_env("LOGFLARE_ALERTS_ENABLED", "true") == "true"
-       ]
-       |> filter_nil_kv_pairs.()
-
-config :logflare,
        LogflareWeb.Endpoint,
        filter_nil_kv_pairs.(
          http:
@@ -465,5 +453,32 @@ syn_endpoints_partitions =
   for n <- 0..System.schedulers_online(), do: "endpoints_#{n}" |> String.to_atom()
 
 config :syn,
-  scopes: [:core, :ui, :alerting] ++ syn_endpoints_partitions,
+  scopes: [:core, :ui] ++ syn_endpoints_partitions,
   event_handler: Logflare.SynEventHandler
+
+if System.get_env("LOGFLARE_ALERTS_ENABLED", "true") == "true" do
+  config :logflare, Oban,
+    queues: [default: 10, alerts: 5],
+    plugins: [
+      {Oban.Plugins.Pruner, max_age: 86_400},
+      {Oban.Plugins.Cron,
+       crontab: [
+         {"* * * * *", Logflare.Alerting.AlertSchedulerWorker},
+         {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker}
+       ]}
+    ]
+
+  config :logflare, Logflare.Alerting, enabled: true
+else
+  config :logflare, Oban,
+    queues: [default: 10],
+    plugins: [
+      {Oban.Plugins.Pruner, max_age: 86_400},
+      {Oban.Plugins.Cron,
+       crontab: [
+         {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker}
+       ]}
+    ]
+
+  config :logflare, Logflare.Alerting, enabled: false
+end
