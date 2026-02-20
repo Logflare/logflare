@@ -403,8 +403,8 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   # converts "m.user_id" to "s:m.user_id@user_id"
-  # strips trailing "!" which marks required keys in suggested_keys config
   defp recommended_field_to_lql_query(field) when is_binary(field) do
+    field = Sources.Source.query_field_name(field)
     field_name = field |> String.split(".") |> List.last()
 
     "s:#{field}@#{field_name}"

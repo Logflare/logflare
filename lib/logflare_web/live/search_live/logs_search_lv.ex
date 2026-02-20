@@ -332,17 +332,26 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search",
-        %{"search" => %{"querystring" => qs}} = _params,
+        %{"search" => %{"querystring" => qs}} = params,
         %{assigns: prev_assigns} = socket
       ) do
+    bq_table_schema = get_bigquery_schema(socket.assigns.source)
+
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
+
+    qs =
+      append_recommended_field_rules(
+        qs,
+        Map.get(params, "recommended_fields", %{}),
+        bq_table_schema
+      )
 
     socket =
       assign_new_search_with_qs(
         socket,
         %{querystring: qs, tailing?: prev_assigns.tailing?},
-        get_bigquery_schema(socket.assigns.source)
+        bq_table_schema
       )
 
     {:noreply, socket}
@@ -550,6 +559,21 @@ defmodule LogflareWeb.Source.SearchLV do
       |> LogflareWeb.Utils.with_team_param(assigns[:team])
 
     {:noreply, push_navigate(socket, to: destination)}
+  end
+
+  defp append_recommended_field_rules(qs, recommended_fields, schema) do
+    with {:ok, lql_rules} <- Lql.decode(qs, schema) do
+      recommended_filter_rules =
+        recommended_fields
+        |> Enum.reject(fn {_path, value} -> is_nil(value) or String.trim(value) == "" end)
+        |> Enum.map(fn {path, value} ->
+          Lql.Rules.FilterRule.build(path: path, operator: :=, value: value)
+        end)
+
+      Lql.encode!(lql_rules ++ recommended_filter_rules)
+    else
+      _ -> qs
+    end
   end
 
   def handle_info(:soft_pause = ev, socket) do

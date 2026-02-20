@@ -60,7 +60,10 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
         ]
       )
 
-    required_fields = Source.recommended_query_fields(source)
+    required_fields =
+      source
+      |> Source.recommended_query_fields()
+      |> Enum.map(&Source.query_field_name/1)
 
     lql_rules
     |> Logflare.Lql.Rules.get_filter_rules()

@@ -8,6 +8,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   use Phoenix.Component
 
   alias Logflare.Lql.Rules
+  alias Logflare.Sources.Source
   alias LogflareWeb.Utils
 
   attr :form, Phoenix.HTML.Form, required: true
@@ -73,6 +74,61 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     """
   end
 
+  attr :fields, :list, required: true
+  attr :id_prefix, :string, default: "recommended-field"
+
+  def recommended_field_inputs(assigns) do
+    assigns =
+      assigns
+      |> assign(:fields, format_recommended_fields(assigns.fields))
+
+    ~H"""
+    <div :if={Enum.any?(@fields)} class="form-text">
+      <div class="d-flex flex-wrap">
+        <div :for={field <- @fields} class="pr-2 pt-1 pb-1">
+          <div class="tw-flex tw-justify-between tw-items-baseline">
+            <label for={"#{@id_prefix}-#{field.name}"} class="tw-mb-0 tw-text-xs tw-text-gray-300 tw-block">{field.name}</label>
+            <span :if={field.required?} class="required-field-indicator tw-text-gray-500 tw-block tw-text-right tw-text-xs">
+              required
+            </span>
+          </div>
+          <input id={"#{@id_prefix}[#{field.name}]"} name={input_name(:recommended_fields, field.name)} class="form-control form-control-sm tw-text-xs " type="text" />
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp format_recommended_fields(fields) do
+    fields
+    |> Enum.reduce({[], %{}}, fn field, {order, by_name} ->
+      name = Source.query_field_name(field)
+      required? = Source.required_query_field?(field)
+
+      cond do
+        name == "" ->
+          {order, by_name}
+
+        Map.has_key?(by_name, name) ->
+          updated =
+            by_name
+            |> Map.update!(name, fn existing ->
+              %{existing | required?: existing.required? || required?}
+            end)
+
+          {order, updated}
+
+        true ->
+          {[name | order], Map.put(by_name, name, %{name: name, required?: required?})}
+      end
+    end)
+    |> then(fn {order, by_name} ->
+      order
+      |> Enum.reverse()
+      |> Enum.map(&Map.fetch!(by_name, &1))
+    end)
+  end
+
   attr :search_form, :any, required: true
   attr :querystring, :string, required: true
   attr :search_history, :list, required: true
@@ -90,14 +146,16 @@ defmodule LogflareWeb.SearchLive.FormComponents do
 
   def search_controls(assigns) do
     ~H"""
-    <div class="search-control" id="source-logs-search-control" phx-hook="SourceLogsSearch">
+    <div class="search-control tw-mt-1" id="source-logs-search-control" phx-hook="SourceLogsSearch">
       <.form :let={f} for={@search_form} action="#" phx-submit="start_search" phx-change="form_update" class="form-group">
+        <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
+
         <div class="form-group form-text">
           {text_input(f, :querystring,
             phx_focus: :form_focus,
             phx_blur: :form_blur,
             value: @querystring,
-            class: "form-control form-control-margin",
+            class: "form-control form-control-margin tw-mt-1",
             list: "matches"
           )}
           {text_input(f, :search_timezone,
