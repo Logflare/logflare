@@ -17,7 +17,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   require Logger
 
-  @default_dataset_location "US"
+  @default_dataset_location "EU"
   @table_ttl 604_800_000
 
   @doc """
