@@ -51,6 +51,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Protocol do
   @min_protocol_version_with_parameters 54_459
   @min_protocol_version_with_password_complexity_rules 54_461
   @min_revision_with_interserver_secret_v2 54_462
+  @min_revision_with_server_query_time_in_progress 54_463
   @min_protocol_version_with_chunked_packets 54_470
   @min_revision_with_versioned_parallel_replicas_protocol 54_471
   @min_revision_with_server_settings 54_474
@@ -181,6 +182,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Protocol do
 
   @spec min_revision_with_interserver_secret_v2() :: pos_integer()
   def min_revision_with_interserver_secret_v2, do: @min_revision_with_interserver_secret_v2
+
+  @spec min_revision_with_server_query_time_in_progress() :: pos_integer()
+  def min_revision_with_server_query_time_in_progress,
+    do: @min_revision_with_server_query_time_in_progress
 
   @spec min_protocol_version_with_chunked_packets() :: pos_integer()
   def min_protocol_version_with_chunked_packets, do: @min_protocol_version_with_chunked_packets

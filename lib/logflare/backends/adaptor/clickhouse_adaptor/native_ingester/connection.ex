@@ -37,6 +37,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
           connect_timeout: non_neg_integer()
         ]
 
+  @type column_info :: [{name :: String.t(), type :: String.t()}]
+
   typedstruct do
     field :socket, :gen_tcp.socket() | :ssl.sslsocket()
     field :transport, :gen_tcp | :ssl
@@ -130,6 +132,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     case ping(conn) do
       {:ok, _conn} -> true
       {:error, _reason} -> false
+    end
+  end
+
+  @doc """
+  Sends an INSERT query and reads the server's response (column schema).
+
+  Returns `{:ok, column_info, conn}` where `column_info` is a list of
+  `{name, type}` tuples describing the expected columns. After this returns
+  successfully, the connection expects Data blocks to be sent.
+
+  ## Options
+
+    * `:query_id` - optional query identifier (default: auto-generated UUID)
+  """
+  @spec send_query(t(), String.t(), keyword()) :: {:ok, column_info(), t()} | {:error, term()}
+  def send_query(%__MODULE__{} = conn, sql, opts \\ []) do
+    query_id = Keyword.get(opts, :query_id, Ecto.UUID.generate())
+    query_packet = encode_query_packet(conn, sql, query_id)
+    empty_block = IO.iodata_to_binary(encode_empty_data_block(conn))
+
+    with :ok <- send_data(conn, [query_packet, empty_block]),
+         {:ok, column_info, conn} <- read_query_response(conn) do
+      {:ok, column_info, conn}
     end
   end
 
@@ -376,6 +401,420 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
         2 -> read_exception(conn)
         other -> {:error, {:unexpected_packet_type, other}}
       end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Query packet encoding
+  # ---------------------------------------------------------------------------
+
+  @spec encode_query_packet(t(), String.t(), String.t()) :: binary()
+  defp encode_query_packet(%__MODULE__{negotiated_rev: rev} = conn, sql, query_id) do
+    [
+      Protocol.encode_varuint(Protocol.client_query()),
+      Protocol.encode_string(query_id),
+      encode_client_info(conn, rev),
+      encode_settings(rev),
+      encode_extra_roles(rev),
+      encode_interserver_secret(rev),
+      Protocol.encode_varuint(2),
+      Protocol.encode_varuint(0),
+      Protocol.encode_string(sql),
+      encode_parameters(rev)
+    ]
+    |> IO.iodata_to_binary()
+  end
+
+  @spec encode_client_info(t(), non_neg_integer()) :: binary()
+  defp encode_client_info(%__MODULE__{} = _conn, rev) when rev < 54_032, do: <<>>
+
+  defp encode_client_info(%__MODULE__{} = _conn, rev) do
+    hostname = get_hostname()
+
+    parts = [
+      Protocol.encode_uint8(1),
+      Protocol.encode_string(""),
+      Protocol.encode_string(""),
+      Protocol.encode_string("[::ffff:127.0.0.1]:0")
+    ]
+
+    parts =
+      if rev >= 54_449 do
+        parts ++ [Protocol.encode_int64(0)]
+      else
+        parts
+      end
+
+    parts =
+      parts ++
+        [
+          Protocol.encode_uint8(1),
+          Protocol.encode_string(""),
+          Protocol.encode_string(hostname),
+          Protocol.encode_string(Protocol.client_name()),
+          Protocol.encode_varuint(Protocol.client_version_major()),
+          Protocol.encode_varuint(Protocol.client_version_minor()),
+          Protocol.encode_varuint(Protocol.dbms_tcp_protocol_version())
+        ]
+
+    # quota_key (empty)
+    parts =
+      if rev >= 54_060 do
+        parts ++ [Protocol.encode_string("")]
+      else
+        parts
+      end
+
+    # distributed_depth
+    parts =
+      if rev >= 54_448 do
+        parts ++ [Protocol.encode_varuint(0)]
+      else
+        parts
+      end
+
+    # client_version_patch
+    parts =
+      if rev >= 54_401 do
+        parts ++ [Protocol.encode_varuint(0)]
+      else
+        parts
+      end
+
+    # OpenTelemetry trace flag (no trace)
+    parts =
+      if rev >= 54_442 do
+        parts ++ [Protocol.encode_uint8(0)]
+      else
+        parts
+      end
+
+    # parallel replicas: collaborate_with_initiator, count, number_of_current
+    parts =
+      if rev >= 54_453 do
+        parts ++
+          [
+            Protocol.encode_varuint(0),
+            Protocol.encode_varuint(0),
+            Protocol.encode_varuint(0)
+          ]
+      else
+        parts
+      end
+
+    # script query/line numbers
+    parts =
+      if rev >= 54_475 do
+        parts ++ [Protocol.encode_varuint(0), Protocol.encode_varuint(0)]
+      else
+        parts
+      end
+
+    # JWT flag (no JWT)
+    parts =
+      if rev >= 54_476 do
+        parts ++ [Protocol.encode_uint8(0)]
+      else
+        parts
+      end
+
+    IO.iodata_to_binary(parts)
+  end
+
+  @spec encode_settings(non_neg_integer()) :: binary()
+  defp encode_settings(rev) when rev < 54_429, do: <<>>
+
+  defp encode_settings(_rev) do
+    IO.iodata_to_binary([
+      Protocol.encode_string("low_cardinality_allow_in_native_format"),
+      Protocol.encode_varuint(1),
+      Protocol.encode_string("0"),
+      Protocol.encode_string("input_format_binary_read_json_as_string"),
+      Protocol.encode_varuint(0),
+      Protocol.encode_string("1"),
+      Protocol.encode_string("")
+    ])
+  end
+
+  @spec encode_empty_data_block(t()) :: iodata()
+  defp encode_empty_data_block(%__MODULE__{negotiated_rev: rev}) do
+    block_info =
+      if rev >= 51_903 do
+        [
+          Protocol.encode_varuint(1),
+          Protocol.encode_uint8(0),
+          Protocol.encode_varuint(2),
+          Protocol.encode_int32(-1),
+          Protocol.encode_varuint(0)
+        ]
+      else
+        []
+      end
+
+    [
+      Protocol.encode_varuint(Protocol.client_data()),
+      Protocol.encode_string(""),
+      block_info,
+      Protocol.encode_varuint(0),
+      Protocol.encode_varuint(0)
+    ]
+  end
+
+  @spec encode_extra_roles(non_neg_integer()) :: binary()
+  defp encode_extra_roles(rev) when rev >= 54_472, do: Protocol.encode_string("")
+  defp encode_extra_roles(_rev), do: <<>>
+
+  @spec encode_interserver_secret(non_neg_integer()) :: binary()
+  defp encode_interserver_secret(rev) when rev >= 54_441, do: Protocol.encode_string("")
+  defp encode_interserver_secret(_rev), do: <<>>
+
+  @spec encode_parameters(non_neg_integer()) :: binary()
+  defp encode_parameters(rev) when rev >= 54_459, do: Protocol.encode_string("")
+  defp encode_parameters(_rev), do: <<>>
+
+  @spec get_hostname() :: String.t()
+  defp get_hostname do
+    {:ok, hostname} = :inet.gethostname()
+    List.to_string(hostname)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Query response parsing
+  # ---------------------------------------------------------------------------
+
+  @spec read_query_response(t()) :: {:ok, column_info(), t()} | {:error, term()}
+  defp read_query_response(%__MODULE__{} = conn) do
+    read_query_response_loop(conn, nil)
+  end
+
+  @spec read_query_response_loop(t(), column_info() | nil) ::
+          {:ok, column_info(), t()} | {:error, term()}
+  defp read_query_response_loop(%__MODULE__{} = conn, column_info) do
+    with {:ok, packet_type, conn} <- read_varuint(conn) do
+      case packet_type do
+        1 ->
+          with {:ok, new_column_info, conn} <- read_data_block(conn) do
+            if new_column_info != [] do
+              {:ok, new_column_info, conn}
+            else
+              read_query_response_loop(conn, column_info)
+            end
+          end
+
+        2 ->
+          read_exception(conn)
+
+        3 ->
+          with {:ok, conn} <- skip_progress(conn) do
+            read_query_response_loop(conn, column_info)
+          end
+
+        5 ->
+          if column_info do
+            {:ok, column_info, conn}
+          else
+            {:error, :no_column_info}
+          end
+
+        10 ->
+          with {:ok, conn} <- skip_data_block(conn) do
+            read_query_response_loop(conn, column_info)
+          end
+
+        11 ->
+          with {:ok, conn} <- skip_table_columns(conn) do
+            read_query_response_loop(conn, column_info)
+          end
+
+        14 ->
+          with {:ok, conn} <- skip_data_block(conn) do
+            read_query_response_loop(conn, column_info)
+          end
+
+        other ->
+          {:error, {:unexpected_packet_type, other}}
+      end
+    end
+  end
+
+  @spec read_data_block(t()) :: {:ok, column_info(), t()} | {:error, term()}
+  defp read_data_block(%__MODULE__{} = conn) do
+    with {:ok, _temp_table, conn} <- read_string(conn),
+         {:ok, conn} <- read_block_info(conn),
+         {:ok, num_columns, conn} <- read_varuint(conn),
+         {:ok, num_rows, conn} <- read_varuint(conn),
+         {:ok, column_info, conn} <- read_columns(conn, num_columns, num_rows, []) do
+      {:ok, column_info, conn}
+    end
+  end
+
+  @spec skip_data_block(t()) :: {:ok, t()} | {:error, term()}
+  defp skip_data_block(%__MODULE__{} = conn) do
+    with {:ok, _column_info, conn} <- read_data_block(conn), do: {:ok, conn}
+  end
+
+  @spec maybe_skip_column_custom_serialization(t()) :: {:ok, t()} | {:error, term()}
+  defp maybe_skip_column_custom_serialization(%__MODULE__{negotiated_rev: rev} = conn)
+       when rev >= 54_454 do
+    with {:ok, has_custom, conn} <- read_uint8(conn) do
+      if has_custom == 1 do
+        skip_serialization_kind_stack(conn)
+      else
+        {:ok, conn}
+      end
+    end
+  end
+
+  defp maybe_skip_column_custom_serialization(conn), do: {:ok, conn}
+
+  @spec skip_serialization_kind_stack(t()) :: {:ok, t()} | {:error, term()}
+  defp skip_serialization_kind_stack(conn) do
+    with {:ok, kind, conn} <- read_uint8(conn) do
+      case kind do
+        0 -> {:ok, conn}
+        _ -> skip_serialization_kind_stack(conn)
+      end
+    end
+  end
+
+  @spec read_block_info(t()) :: {:ok, t()} | {:error, term()}
+  defp read_block_info(%__MODULE__{negotiated_rev: rev} = conn) when rev >= 51_903 do
+    read_block_info_loop(conn)
+  end
+
+  defp read_block_info(conn), do: {:ok, conn}
+
+  @spec read_block_info_loop(t()) :: {:ok, t()} | {:error, term()}
+  defp read_block_info_loop(conn) do
+    with {:ok, field_num, conn} <- read_varuint(conn) do
+      case field_num do
+        0 ->
+          {:ok, conn}
+
+        1 ->
+          with {:ok, _is_overflows, conn} <- read_uint8(conn), do: read_block_info_loop(conn)
+
+        2 ->
+          with {:ok, _bucket_num, conn} <- read_int32(conn), do: read_block_info_loop(conn)
+
+        3 ->
+          with {:ok, conn} <- skip_int32_vector(conn), do: read_block_info_loop(conn)
+
+        _other ->
+          read_block_info_loop(conn)
+      end
+    end
+  end
+
+  @spec skip_int32_vector(t()) :: {:ok, t()} | {:error, term()}
+  defp skip_int32_vector(conn) do
+    with {:ok, count, conn} <- read_varuint(conn) do
+      if count == 0, do: {:ok, conn}, else: read_bytes(conn, count * 4) |> skip_data_result()
+    end
+  end
+
+  @spec skip_data_result({:ok, binary(), t()} | {:error, term()}) :: {:ok, t()} | {:error, term()}
+  defp skip_data_result({:ok, _data, conn}), do: {:ok, conn}
+  defp skip_data_result({:error, _} = error), do: error
+
+  @spec read_columns(t(), non_neg_integer(), non_neg_integer(), column_info()) ::
+          {:ok, column_info(), t()} | {:error, term()}
+  defp read_columns(conn, 0, _num_rows, acc), do: {:ok, Enum.reverse(acc), conn}
+
+  defp read_columns(conn, remaining, num_rows, acc) do
+    with {:ok, name, conn} <- read_string(conn),
+         {:ok, type, conn} <- read_string(conn),
+         {:ok, conn} <- maybe_skip_column_custom_serialization(conn),
+         {:ok, conn} <- skip_column_data(conn, type, num_rows) do
+      read_columns(conn, remaining - 1, num_rows, [{name, type} | acc])
+    end
+  end
+
+  @spec skip_column_data(t(), String.t(), non_neg_integer()) :: {:ok, t()} | {:error, term()}
+  defp skip_column_data(conn, _type, 0), do: {:ok, conn}
+
+  defp skip_column_data(conn, type, num_rows) do
+    case fixed_type_byte_size(type) do
+      {:ok, size} ->
+        with {:ok, _data, conn} <- read_bytes(conn, size * num_rows), do: {:ok, conn}
+
+      :variable ->
+        skip_string_values(conn, num_rows)
+
+      :unsupported ->
+        {:error, {:unsupported_column_type, type}}
+    end
+  end
+
+  @spec fixed_type_byte_size(String.t()) :: {:ok, pos_integer()} | :variable | :unsupported
+  defp fixed_type_byte_size("UInt8"), do: {:ok, 1}
+  defp fixed_type_byte_size("Int8"), do: {:ok, 1}
+  defp fixed_type_byte_size("UInt16"), do: {:ok, 2}
+  defp fixed_type_byte_size("Int16"), do: {:ok, 2}
+  defp fixed_type_byte_size("Date"), do: {:ok, 2}
+  defp fixed_type_byte_size("UInt32"), do: {:ok, 4}
+  defp fixed_type_byte_size("Int32"), do: {:ok, 4}
+  defp fixed_type_byte_size("Float32"), do: {:ok, 4}
+  defp fixed_type_byte_size("DateTime"), do: {:ok, 4}
+  defp fixed_type_byte_size("UInt64"), do: {:ok, 8}
+  defp fixed_type_byte_size("Int64"), do: {:ok, 8}
+  defp fixed_type_byte_size("Float64"), do: {:ok, 8}
+  defp fixed_type_byte_size("DateTime64" <> _), do: {:ok, 8}
+  defp fixed_type_byte_size("Enum8" <> _), do: {:ok, 1}
+  defp fixed_type_byte_size("Enum16" <> _), do: {:ok, 2}
+  defp fixed_type_byte_size("String"), do: :variable
+  defp fixed_type_byte_size(_), do: :unsupported
+
+  @spec skip_string_values(t(), non_neg_integer()) :: {:ok, t()} | {:error, term()}
+  defp skip_string_values(conn, 0), do: {:ok, conn}
+
+  defp skip_string_values(conn, remaining) do
+    with {:ok, _value, conn} <- read_string(conn) do
+      skip_string_values(conn, remaining - 1)
+    end
+  end
+
+  @spec skip_progress(t()) :: {:ok, t()} | {:error, term()}
+  defp skip_progress(%__MODULE__{negotiated_rev: rev} = conn) do
+    with {:ok, _rows, conn} <- read_varuint(conn),
+         {:ok, _bytes, conn} <- read_varuint(conn),
+         {:ok, _total_rows, conn} <- read_varuint(conn),
+         {:ok, conn} <- maybe_skip_write_progress(conn, rev),
+         {:ok, conn} <- maybe_skip_elapsed_ns(conn, rev),
+         {:ok, conn} <- maybe_skip_total_bytes(conn, rev) do
+      {:ok, conn}
+    end
+  end
+
+  @spec maybe_skip_write_progress(t(), non_neg_integer()) :: {:ok, t()} | {:error, term()}
+  defp maybe_skip_write_progress(conn, rev) when rev >= 54_420 do
+    with {:ok, _written_rows, conn} <- read_varuint(conn),
+         {:ok, _written_bytes, conn} <- read_varuint(conn) do
+      {:ok, conn}
+    end
+  end
+
+  defp maybe_skip_write_progress(conn, _rev), do: {:ok, conn}
+
+  @spec maybe_skip_elapsed_ns(t(), non_neg_integer()) :: {:ok, t()} | {:error, term()}
+  defp maybe_skip_elapsed_ns(conn, rev) when rev >= 54_460 do
+    with {:ok, _elapsed_ns, conn} <- read_varuint(conn), do: {:ok, conn}
+  end
+
+  defp maybe_skip_elapsed_ns(conn, _rev), do: {:ok, conn}
+
+  @spec maybe_skip_total_bytes(t(), non_neg_integer()) :: {:ok, t()} | {:error, term()}
+  defp maybe_skip_total_bytes(conn, rev) when rev >= 54_463 do
+    with {:ok, _total_bytes, conn} <- read_varuint(conn), do: {:ok, conn}
+  end
+
+  defp maybe_skip_total_bytes(conn, _rev), do: {:ok, conn}
+
+  @spec skip_table_columns(t()) :: {:ok, t()} | {:error, term()}
+  defp skip_table_columns(conn) do
+    with {:ok, _external_table_name, conn} <- read_string(conn),
+         {:ok, _columns_description, conn} <- read_string(conn) do
+      {:ok, conn}
     end
   end
 

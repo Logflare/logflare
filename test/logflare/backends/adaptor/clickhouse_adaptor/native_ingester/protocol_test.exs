@@ -396,6 +396,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ProtocolTes
         Protocol.min_protocol_version_with_parameters(),
         Protocol.min_protocol_version_with_password_complexity_rules(),
         Protocol.min_revision_with_interserver_secret_v2(),
+        Protocol.min_revision_with_server_query_time_in_progress(),
         Protocol.min_protocol_version_with_chunked_packets(),
         Protocol.min_revision_with_versioned_parallel_replicas_protocol(),
         Protocol.min_revision_with_server_settings(),
