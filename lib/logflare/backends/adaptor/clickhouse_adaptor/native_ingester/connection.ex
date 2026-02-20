@@ -15,7 +15,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
 
   @default_port 9_000
   @default_connect_timeout 5_000
-  @recv_timeout 30_000
+  @default_recv_timeout 30_000
+  @drain_timeout 100
 
   @type server_info :: %{
           name: String.t(),
@@ -50,6 +51,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     field :negotiated_rev, non_neg_integer()
     field :compression, :none | :lz4 | :zstd, default: :none
     field :buffer, binary(), default: <<>>
+    field :recv_timeout, non_neg_integer(), default: 30_000
   end
 
   @doc """
@@ -156,6 +158,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
          {:ok, column_info, conn} <- read_query_response(conn) do
       {:ok, column_info, conn}
     end
+  end
+
+  @doc """
+  Sends pre-encoded block data (from `BlockEncoder`) over the socket.
+
+  Accepts any iodata — typically the output of `BlockEncoder.encode_data_block/2`
+  or `BlockEncoder.encode_empty_block/1`.
+  """
+  @spec send_data_block(t(), iodata()) :: :ok | {:error, term()}
+  def send_data_block(%__MODULE__{} = conn, block_iodata) do
+    send_data(conn, block_iodata)
+  end
+
+  @doc """
+  Reads the server's response after sending data blocks for an INSERT.
+
+  Expects `EndOfStream` (success) or `Exception` (error). Handles unsolicited
+  `Progress`, `Log`, and `ProfileEvents` packets that may arrive during or
+  after the insert. Drains trailing `ProfileEvents` packets (sent by CH 25.12+
+  after `EndOfStream`) so the connection is clean for reuse.
+  """
+  @spec read_insert_response(t()) :: {:ok, t()} | {:error, term()}
+  def read_insert_response(%__MODULE__{} = conn) do
+    read_insert_response_loop(conn)
   end
 
   # ---------------------------------------------------------------------------
@@ -819,6 +845,74 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   end
 
   # ---------------------------------------------------------------------------
+  # INSERT response parsing
+  # ---------------------------------------------------------------------------
+
+  @spec read_insert_response_loop(t()) :: {:ok, t()} | {:error, term()}
+  defp read_insert_response_loop(%__MODULE__{} = conn) do
+    with {:ok, packet_type, conn} <- read_varuint(conn) do
+      case packet_type do
+        5 ->
+          drain_trailing_packets(conn)
+
+        2 ->
+          read_exception(conn)
+
+        3 ->
+          with {:ok, conn} <- skip_progress(conn), do: read_insert_response_loop(conn)
+
+        10 ->
+          with {:ok, conn} <- skip_data_block(conn), do: read_insert_response_loop(conn)
+
+        14 ->
+          with {:ok, conn} <- skip_data_block(conn), do: read_insert_response_loop(conn)
+
+        other ->
+          {:error, {:unexpected_packet_type, other}}
+      end
+    end
+  end
+
+  @spec drain_trailing_packets(t()) :: {:ok, t()}
+  defp drain_trailing_packets(%__MODULE__{buffer: buffer} = conn)
+       when byte_size(buffer) > 0 do
+    with {:ok, packet_type, conn} <- read_varuint(conn) do
+      case packet_type do
+        14 ->
+          with {:ok, conn} <- skip_data_block(conn), do: drain_trailing_packets(conn)
+
+        3 ->
+          with {:ok, conn} <- skip_progress(conn), do: drain_trailing_packets(conn)
+
+        10 ->
+          with {:ok, conn} <- skip_data_block(conn), do: drain_trailing_packets(conn)
+
+        _ ->
+          {:ok, conn}
+      end
+    else
+      _ -> {:ok, conn}
+    end
+  end
+
+  defp drain_trailing_packets(%__MODULE__{} = conn) do
+    short_timeout_conn = %{conn | recv_timeout: @drain_timeout}
+
+    case recv(short_timeout_conn) do
+      {:ok, data} ->
+        updated = %{short_timeout_conn | buffer: short_timeout_conn.buffer <> data}
+        {:ok, drained} = drain_trailing_packets(updated)
+        {:ok, %{drained | recv_timeout: @default_recv_timeout}}
+
+      {:error, :timeout} ->
+        {:ok, %{conn | recv_timeout: @default_recv_timeout}}
+
+      {:error, _} ->
+        {:ok, %{conn | recv_timeout: @default_recv_timeout}}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Exception parsing
   # ---------------------------------------------------------------------------
 
@@ -851,8 +945,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   end
 
   @spec recv(t()) :: {:ok, binary()} | {:error, term()}
-  defp recv(%__MODULE__{socket: socket, transport: transport}) do
-    transport.recv(socket, 0, @recv_timeout)
+  defp recv(%__MODULE__{socket: socket, transport: transport, recv_timeout: timeout}) do
+    transport.recv(socket, 0, timeout)
   end
 
   @spec read_bytes(t(), non_neg_integer()) :: {:ok, binary(), t()} | {:error, term()}
