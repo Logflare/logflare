@@ -4,6 +4,7 @@ defmodule LogflareWeb.Api.BackendController do
   use OpenApiSpex.ControllerSpecs
 
   alias Logflare.Backends
+  alias LogflareWeb.OpenApi
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
@@ -45,15 +46,18 @@ defmodule LogflareWeb.Api.BackendController do
     end
   end
 
-  operation(:create,
-    summary: "Create backend",
-    request_body: BackendApiParams.params(),
-    responses: %{
-      201 => Created.response(BackendApiSchema),
-      401 => Unauthorized.response(),
-      404 => NotFound.response(),
-      422 => UnprocessableEntity.response()
-    }
+  operation(
+    :create,
+    OpenApi.private_admin_scope(
+      summary: "Create backend",
+      request_body: BackendApiParams.params(),
+      responses: %{
+        201 => Created.response(BackendApiSchema),
+        401 => Unauthorized.response(),
+        404 => NotFound.response(),
+        422 => UnprocessableEntity.response()
+      }
+    )
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
@@ -64,17 +68,20 @@ defmodule LogflareWeb.Api.BackendController do
     end
   end
 
-  operation(:update,
-    summary: "Update backend",
-    parameters: [token: [in: :path, description: "Backend Token", type: :string]],
-    request_body: BackendApiParams.params(),
-    responses: %{
-      204 => Accepted.response(),
-      200 => Accepted.response(BackendApiSchema),
-      401 => Unauthorized.response(),
-      404 => NotFound.response(),
-      422 => UnprocessableEntity.response()
-    }
+  operation(
+    :update,
+    OpenApi.private_admin_scope(
+      summary: "Update backend",
+      parameters: [token: [in: :path, description: "Backend Token", type: :string]],
+      request_body: BackendApiParams.params(),
+      responses: %{
+        204 => Accepted.response(),
+        200 => Accepted.response(BackendApiSchema),
+        401 => Unauthorized.response(),
+        404 => NotFound.response(),
+        422 => UnprocessableEntity.response()
+      }
+    )
   )
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
@@ -93,14 +100,17 @@ defmodule LogflareWeb.Api.BackendController do
     end
   end
 
-  operation(:delete,
-    summary: "Delete backend",
-    parameters: [token: [in: :path, description: "Backend Token", type: :string]],
-    responses: %{
-      204 => Accepted.response(),
-      401 => Unauthorized.response(),
-      404 => NotFound.response()
-    }
+  operation(
+    :delete,
+    OpenApi.private_admin_scope(
+      summary: "Delete backend",
+      parameters: [token: [in: :path, description: "Backend Token", type: :string]],
+      responses: %{
+        204 => Accepted.response(),
+        401 => Unauthorized.response(),
+        404 => NotFound.response()
+      }
+    )
   )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
@@ -112,14 +122,17 @@ defmodule LogflareWeb.Api.BackendController do
     end
   end
 
-  operation(:test_connection,
-    summary: "Test backend connection",
-    parameters: [token: [in: :path, description: "Backend Token", type: :string]],
-    responses: %{
-      200 => BackendConnectionTest.response(),
-      401 => Unauthorized.response(),
-      404 => NotFound.response()
-    }
+  operation(
+    :test_connection,
+    OpenApi.private_admin_scope(
+      summary: "Test backend connection",
+      parameters: [token: [in: :path, description: "Backend Token", type: :string]],
+      responses: %{
+        200 => BackendConnectionTest.response(),
+        401 => Unauthorized.response(),
+        404 => NotFound.response()
+      }
+    )
   )
 
   def test_connection(%{assigns: %{user: user}} = conn, %{"token" => token}) do

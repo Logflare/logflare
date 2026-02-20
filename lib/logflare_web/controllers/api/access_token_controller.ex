@@ -18,7 +18,7 @@ defmodule LogflareWeb.Api.AccessTokenController do
 
   operation(:index,
     summary: "List access tokens",
-    responses: %{200 => List.response(AccessToken)}
+    responses: %{200 => List.response(AccessToken), 401 => Unauthorized.response()}
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do

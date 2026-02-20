@@ -17,9 +17,6 @@ defmodule Logflare.Auth do
   @max_age_default 86_400
   @admin_scope "private:admin"
 
-  @spec admin_scope() :: String.t()
-  def admin_scope, do: @admin_scope
-
   @email_token_salt "logflare email auth token"
   @user_socket_salt "logflare user socket auth"
   @public_source_salt "logflare public source token"
@@ -27,6 +24,9 @@ defmodule Logflare.Auth do
   @scopes_main_allowed ~w(public ingest query private) ++ [@admin_scope]
   @scopes_ingest_pattern ~r/^ingest:(?:source|collection):\d+$/
   @scopes_query_pattern ~r/^query:endpoint:\d+$/
+
+  @spec admin_scope() :: String.t()
+  def admin_scope, do: @admin_scope
 
   defp env_oauth_config, do: Application.get_env(:logflare, ExOauth2Provider)
   defp env_partner_oauth_config, do: Application.get_env(:logflare, ExOauth2ProviderPartner)
@@ -135,9 +135,8 @@ defmodule Logflare.Auth do
   end
 
   @doc """
-  Creates a user Oauth access token with context authorization for requested scopes.
+  Creates a user Oauth access token with verification `context` is authorized for requested scopes.
 
-  Verifies `context` is authorized to create a token with the requested scopes.
   """
   @typep create_attr_value :: String.t() | nil
   @typep create_attrs :: %{optional(atom() | String.t()) => create_attr_value()}
@@ -150,10 +149,9 @@ defmodule Logflare.Auth do
   end
 
   @doc """
-  Creates an Oauth access token from trusted server-side callers.
+  Creates an Oauth access token but without checking authorization.
 
-  Request handlers accepting user-selected scopes should call
-  `create_access_token/3` with the current authorization context.
+  Handlers that accept user-selected scopes should call `create_access_token/3`.
   """
   @spec create_access_token(User.t() | Partner.t(), create_attrs()) ::
           {:ok, OauthAccessToken.t() | PartnerOauthAccessToken.t()} | {:error, Changeset.t()}
@@ -195,8 +193,11 @@ defmodule Logflare.Auth do
     end)
   end
 
+  defp verify_create_scopes(context, %{scopes: scopes}),
+    do: verify_create_scopes(context, %{"scopes" => scopes})
+
   defp verify_create_scopes(context, attrs) do
-    with scopes when is_binary(scopes) <- Map.get(attrs, "scopes", Map.get(attrs, :scopes, "")),
+    with scopes when is_binary(scopes) <- Map.get(attrs, "scopes", nil),
          true <- @admin_scope in String.split(scopes),
          false <- can_create_admin_token?(context) do
       {:error, :unauthorized}
@@ -357,17 +358,7 @@ defmodule Logflare.Auth do
     end
   end
 
-  @doc """
-  Checks if a user can create access tokens with the admin scope.
-
-  ## API Context (with OauthAccessToken)
-  Token must have the `private:admin` scope.
-
-  ## LiveView Context (with TeamContext)
-  User must be signed in as team owner or team_user with role 'admin'.
-  """
-  @spec can_create_admin_token?(OauthAccessToken.t() | TeamContext.t()) ::
-          boolean()
+  @spec can_create_admin_token?(OauthAccessToken.t() | TeamContext.t()) :: boolean()
   def can_create_admin_token?(%TeamContext{} = team_context),
     do: TeamContext.team_admin?(team_context)
 
