@@ -464,10 +464,24 @@ defmodule Logflare.Alerting do
             other -> other
           end
 
+        Logger.error("Alert query execution failed with bad response",
+          user_id: alert_query.user_id,
+          alert_query_id: alert_query.id,
+          alert_name: alert_query.name,
+          error_string: inspect(error)
+        )
+
         {:error, error}
 
-      err ->
-        err
+      {:error, error} ->
+        Logger.error("Alert query execution failed with an unknown error",
+          user_id: alert_query.user_id,
+          alert_query_id: alert_query.id,
+          alert_name: alert_query.name,
+          error_string: inspect(error)
+        )
+
+        {:error, error}
     end
   end
 
