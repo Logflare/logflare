@@ -131,6 +131,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ProtocolTes
   end
 
   # ---------------------------------------------------------------------------
+  # Enum8 (signed Int8 alias)
+  # ---------------------------------------------------------------------------
+
+  describe "enum8 encode" do
+    test "encodes as signed Int8" do
+      for value <- [-128, -1, 0, 1, 127] do
+        assert Protocol.encode_enum8(value) == Protocol.encode_int8(value)
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # UInt16 / Int16
   # ---------------------------------------------------------------------------
 
