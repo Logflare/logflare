@@ -58,7 +58,7 @@ defmodule Logflare.Factory do
       provider: "google",
       email: email,
       provider_uid: "provider_uid_#{TestUtils.random_string()}",
-      team_role: %{role: :user}
+      role: :user
     }
   end
 

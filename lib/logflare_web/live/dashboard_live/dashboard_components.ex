@@ -157,7 +157,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
       |> assign(
         :description,
         [
-          if(team_user.team_role.role == :admin, do: "admin"),
+          if(team_user.role == :admin, do: "admin"),
           if(current && current.provider_uid == team_user.provider_uid, do: "you")
         ]
         |> Enum.filter(& &1)
@@ -165,30 +165,6 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
 
     ~H"""
     <small :if={Enum.any?(@description)}>{Enum.join(@description, ", ")}</small>
-    """
-  end
-
-  attr :saved_searches, :list, required: true
-  attr :team, Logflare.Teams.Team, required: true
-
-  def saved_searches(assigns) do
-    ~H"""
-    <div>
-      <h5 class="header-margin">Saved Searches</h5>
-      <div :if={Enum.empty?(@saved_searches)}>
-        Your saved searches will show up here. Save some searches!
-      </div>
-      <ul class="list-unstyled">
-        <li :for={saved_search <- @saved_searches}>
-          <.team_link team={@team} href={~p"/sources/#{saved_search.source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"} class="tw-text-white">
-            {saved_search.source.name}:{saved_search.querystring}
-          </.team_link>
-          <span phx-click="delete_saved_search" phx-value-id={saved_search.id} data-confirm="Delete saved search?" class="tw-text-xs tw-ml-1.5 tw-text-white tw-cursor-pointer">
-            <i class="fa fa-trash"></i>
-          </span>
-        </li>
-      </ul>
-    </div>
     """
   end
 end
