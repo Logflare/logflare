@@ -8,6 +8,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
   Uses `Protocol` primitives for all low-level encoding so no new wire format logic is introduced in this module.
   """
 
+  import Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodingUtils, only: [sanitize_for_json: 1]
+
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Protocol
 
   @type column :: {name :: String.t(), type :: String.t(), values :: [term()]}
@@ -182,26 +184,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
   defp default_value_for_type("Float32"), do: 0.0
   defp default_value_for_type("Float64"), do: 0.0
   defp default_value_for_type(_), do: 0
-
-  @spec sanitize_for_json(term()) :: Jason.Encoder.t()
-  defp sanitize_for_json(value) when is_map(value) do
-    Map.new(value, fn {k, v} -> {k, sanitize_for_json(v)} end)
-  end
-
-  defp sanitize_for_json(value) when is_list(value) do
-    Enum.map(value, &sanitize_for_json/1)
-  end
-
-  defp sanitize_for_json(value) when is_tuple(value) do
-    value |> Tuple.to_list() |> Enum.map(&sanitize_for_json/1)
-  end
-
-  defp sanitize_for_json(value)
-       when is_port(value) or is_pid(value) or is_reference(value) or is_function(value) do
-    inspect(value)
-  end
-
-  defp sanitize_for_json(value), do: value
 
   @spec build_array_offsets_and_data([list()]) :: {[non_neg_integer()], [term()]}
   defp build_array_offsets_and_data(arrays) do
