@@ -43,7 +43,19 @@
         <p>
           This alert will execute this query periodically. If a non-zero number of rows are returned from this query, the notification will be triggered.
         </p>
-        <.live_component module={LogflareWeb.MonacoEditorComponent} id="alert_query_editor" field={f[:query]} endpoints={@endpoints} alerts={@alerts} sources={@sources} />
+        <.live_component
+          module={LogflareWeb.MonacoEditorComponent}
+          id="alert_query_editor"
+          field={f[:query]}
+          endpoints={@endpoints}
+          alerts={@alerts}
+          sources={@sources}
+          on_query_change={
+            fn query_string ->
+              send(self(), {:query_string_updated, query_string})
+            end
+          }
+        />
       </div>
 
       <.header_with_anchor text="Query Schedule" />
@@ -60,7 +72,7 @@
       </div>
     </section>
 
-    <.header_with_anchor text="Webhook Notifications" />
+    <.header_with_anchor text="Webhook Notifications (Deprecated)" />
     <section class="tw-flex tw-flex-col tw-gap-2 tw-w-full">
       <p>
         Query results will be sent together with the notification.<br />
@@ -74,7 +86,7 @@
     </section>
   </.form>
   <aside class="tw-w-1/2">
-    <.form :let={f} for={@params_form} phx-submit="run-query" class="tw-min-h-[80px]">
+    <.form :let={f} for={to_form(%{"query" => @query_string})} phx-submit="run-query" class="tw-min-h-[80px]">
       {hidden_input(f, :query)}
       {submit("Test query", class: "btn btn-secondary")}
     </.form>

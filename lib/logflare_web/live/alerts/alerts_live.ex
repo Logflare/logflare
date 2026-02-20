@@ -61,8 +61,6 @@ defmodule LogflareWeb.AlertsLive do
       |> assign(:base_url, LogflareWeb.Endpoint.url())
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
-      |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
-      |> assign(:declared_params, %{})
       |> assign(:show_add_backend_form, false)
       |> assign(:show_execution_history, false)
       |> assign(:triggering_alert, false)
@@ -206,25 +204,25 @@ defmodule LogflareWeb.AlertsLive do
 
   def handle_event(
         "run-query",
-        %{"run" => %{"query" => query}},
+        params,
         %{assigns: %{alert: %_{} = alert}} = socket
-      )
-      when is_binary(query) and query != "" do
-    test_alert = %{alert | query: query}
+      ) do
+    test_alert = %{alert | query: socket.assigns.query_string || alert.query}
 
-    with {:ok, result} <- Alerting.execute_alert_query(test_alert, use_query_cache: false) do
+    with {:ok, %{rows: [_ | _] = rows} = result} <-
+           Alerting.execute_alert_query(test_alert, use_query_cache: false) do
       {:noreply,
        socket
        |> assign(:query_result_rows, result.rows)
        |> assign(:total_bytes_processed, result.total_bytes_processed)
-       |> put_flash(:info, "Query executed successfully.")}
+       |> put_flash(:info, "Query executed successfully. Alert will fire.")}
     else
-      {:error, :no_results} ->
+      {:error, %{rows: []}} ->
         {:noreply,
          socket
          |> assign(:query_result_rows, [])
          |> assign(:total_bytes_processed, nil)
-         |> put_flash(:info, "No results from query.")}
+         |> put_flash(:info, "No results from query. Alert will not fire.")}
 
       {:error, err} ->
         {:noreply,
@@ -398,6 +396,10 @@ defmodule LogflareWeb.AlertsLive do
      |> assign(:modal_results, nil)
      |> assign(:modal_job_id, nil)
      |> assign(:modal_node, nil)}
+  end
+
+  def handle_info({:query_string_updated, query_string}, socket) do
+    {:noreply, assign(socket, :query_string, query_string)}
   end
 
   def handle_info({:poll_job, job_id, attempt}, %{assigns: %{alert: alert}} = socket)

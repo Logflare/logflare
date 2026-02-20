@@ -2,7 +2,6 @@
   <:path>
     ~/<.subheader_path_link live_patch to={~p"/alerts"} team={@team}>alerts</.subheader_path_link>/{@alert.name}
   </:path>
-  <.subheader_link team={@team} to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
   <.subheader_link team={@team} live_patch to={~p"/alerts/#{@alert.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
