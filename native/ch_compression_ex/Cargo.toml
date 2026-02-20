@@ -1,0 +1,13 @@
+[package]
+name = "ch_compression_ex"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ch_compression_ex"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.36.2"
+cityhash-rs = "1.0"
+lz4_flex = { version = "0.11", default-features = false, features = ["safe-encode", "safe-decode"] }

@@ -85,6 +85,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert {:error, _} = result
     end
+
+    test "preserves 16-byte strings while converting UUID columns", %{backend: backend} do
+      # A 16-byte string that could be mistaken for a UUID binary
+      sixteen_byte_str = "exactly16bytesXX"
+      assert byte_size(sixteen_byte_str) == 16
+
+      uuid_hex = "550e8400-e29b-41d4-a716-446655440000"
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT toFixedString('exactly16bytesXX', 16) AS fixed_str, toUUID('#{uuid_hex}') AS uuid_col"
+        )
+
+      assert [%{"fixed_str" => ^sixteen_byte_str, "uuid_col" => ^uuid_hex}] = rows
+    end
+
+    test "handles Nullable(UUID) values", %{backend: backend} do
+      uuid_hex = "660e8400-e29b-41d4-a716-446655440001"
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT NULL::Nullable(UUID) AS null_uuid, toUUID('#{uuid_hex}')::Nullable(UUID) AS present_uuid"
+        )
+
+      assert [%{"null_uuid" => nil, "present_uuid" => ^uuid_hex}] = rows
+    end
   end
 
   describe "redact_config/1" do
