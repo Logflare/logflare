@@ -5,12 +5,14 @@
   <.subheader_link team={@team} live_patch to={~p"/alerts/#{@alert.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+ <div class="tw-flex tw-items-center tw-gap-2">
   <h2>
     {@alert.name}
-    <span class={if @alert.enabled, do: "badge badge-success", else: "badge badge-secondary"}>
-      {if @alert.enabled, do: "Enabled", else: "Disabled"}
-    </span>
   </h2>
+  <span class={(if @alert.enabled, do: "badge badge-success", else: "badge badge-secondary")}>
+    {if @alert.enabled, do: "Enabled", else: "Disabled"}
+  </span>
+ </div>
   <div>
     id: {@alert.token}
   </div>
