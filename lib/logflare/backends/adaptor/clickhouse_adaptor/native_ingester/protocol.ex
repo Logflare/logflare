@@ -49,7 +49,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Protocol do
   @min_revision_with_custom_serialization 54_454
   @min_protocol_version_with_addendum 54_458
   @min_protocol_version_with_parameters 54_459
+  @min_protocol_version_with_password_complexity_rules 54_461
+  @min_revision_with_interserver_secret_v2 54_462
   @min_protocol_version_with_chunked_packets 54_470
+  @min_revision_with_versioned_parallel_replicas_protocol 54_471
+  @min_revision_with_server_settings 54_474
+  @min_revision_with_query_plan_serialization 54_477
+  @min_revision_with_versioned_cluster_function_protocol 54_479
 
   # Client identity (sent in Hello packet)
   @client_name "logflare-native"
@@ -169,8 +175,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Protocol do
   @spec min_protocol_version_with_parameters() :: pos_integer()
   def min_protocol_version_with_parameters, do: @min_protocol_version_with_parameters
 
+  @spec min_protocol_version_with_password_complexity_rules() :: pos_integer()
+  def min_protocol_version_with_password_complexity_rules,
+    do: @min_protocol_version_with_password_complexity_rules
+
+  @spec min_revision_with_interserver_secret_v2() :: pos_integer()
+  def min_revision_with_interserver_secret_v2, do: @min_revision_with_interserver_secret_v2
+
   @spec min_protocol_version_with_chunked_packets() :: pos_integer()
   def min_protocol_version_with_chunked_packets, do: @min_protocol_version_with_chunked_packets
+
+  @spec min_revision_with_versioned_parallel_replicas_protocol() :: pos_integer()
+  def min_revision_with_versioned_parallel_replicas_protocol,
+    do: @min_revision_with_versioned_parallel_replicas_protocol
+
+  @spec min_revision_with_server_settings() :: pos_integer()
+  def min_revision_with_server_settings, do: @min_revision_with_server_settings
+
+  @spec min_revision_with_query_plan_serialization() :: pos_integer()
+  def min_revision_with_query_plan_serialization, do: @min_revision_with_query_plan_serialization
+
+  @spec min_revision_with_versioned_cluster_function_protocol() :: pos_integer()
+  def min_revision_with_versioned_cluster_function_protocol,
+    do: @min_revision_with_versioned_cluster_function_protocol
 
   # ---------------------------------------------------------------------------
   # Client identity accessors

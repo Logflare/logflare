@@ -394,7 +394,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ProtocolTes
         Protocol.min_revision_with_custom_serialization(),
         Protocol.min_protocol_version_with_addendum(),
         Protocol.min_protocol_version_with_parameters(),
-        Protocol.min_protocol_version_with_chunked_packets()
+        Protocol.min_protocol_version_with_password_complexity_rules(),
+        Protocol.min_revision_with_interserver_secret_v2(),
+        Protocol.min_protocol_version_with_chunked_packets(),
+        Protocol.min_revision_with_versioned_parallel_replicas_protocol(),
+        Protocol.min_revision_with_server_settings(),
+        Protocol.min_revision_with_query_plan_serialization(),
+        Protocol.min_revision_with_versioned_cluster_function_protocol()
       ]
 
       sorted = Enum.sort(revisions)
