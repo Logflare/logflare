@@ -126,5 +126,6 @@ window.addEventListener("phx:page-loading-stop", (_info) => {
   // enable all tooltips
   $(function () {
     $('[data-toggle="tooltip"]').tooltip({ delay: { show: 100, hide: 200 } });
+    $('[data-toggle="popover"]').popover();
   });
 });

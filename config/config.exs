@@ -19,7 +19,7 @@ config :logflare,
   encryption_key_fallback: hardcoded_encryption_key,
   encryption_key_default: hardcoded_encryption_key
 
-config :logflare, Logflare.Alerting, min_cluster_size: 1, enabled: true
+config :logflare, Logflare.Alerting, enabled: true
 
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
@@ -152,16 +152,7 @@ config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
 config :logflare, Oban,
   engine: Oban.Engines.Basic,
-  queues: [default: 10, alerts: 5],
-  repo: Logflare.Repo,
-  plugins: [
-    {Oban.Plugins.Pruner, max_age: 86_400},
-    {Oban.Plugins.Cron,
-     crontab: [
-       {"* * * * *", Logflare.Alerting.AlertSchedulerWorker},
-       {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker}
-     ]}
-  ]
+  repo: Logflare.Repo
 
 config :opentelemetry,
   sdk_disabled: true,

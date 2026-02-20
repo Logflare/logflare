@@ -9,8 +9,28 @@
   </div>
 </div>
 
-<div :if={@query_result_rows}>
-  <code class="tw-whitespace-pre tw-block tw-text-white tw-bg-zinc-800 tw-rounded tw-p-2 tw-text-xs">{Jason.encode!(@query_result_rows) |> Jason.Formatter.pretty_print()}</code>
+<div :if={@query_result_rows != nil and @query_result_rows != []}>
+  <div class="tw-overflow-auto tw-mt-2 tw-bg-zinc-800 tw-rounded tw-p-2" style="max-height: 60vh;">
+    <table class="table table-sm tw-text-white tw-font-mono tw-text-xs">
+      <thead>
+        <tr>
+          <th :for={col <- Map.keys(hd(@query_result_rows))}>{col}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={row <- @query_result_rows}>
+          <td :for={col <- Map.keys(hd(@query_result_rows))}>
+            <% val = Map.get(row, col) %>
+            <%= if is_map(val) or is_list(val) do %>
+              <code class="tw-text-xs">{Jason.encode!(val)}</code>
+            <% else %>
+              {val}
+            <% end %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <div :if={@query_result_rows == []}>

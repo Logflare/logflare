@@ -28,7 +28,7 @@ defmodule Logflare.Alerting.AlertSchedulerWorker do
 
         cron_expr
         |> Scheduler.get_next_run_dates(now)
-        |> Enum.take(10)
+        |> Enum.take(5)
         |> Enum.each(fn run_date ->
           scheduled_at = DateTime.from_naive!(run_date, "Etc/UTC")
 
@@ -38,9 +38,7 @@ defmodule Logflare.Alerting.AlertSchedulerWorker do
         end)
 
       {:error, reason} ->
-        Logger.warning(
-          "Invalid cron expression for alert #{alert_query.id}: #{inspect(reason)}"
-        )
+        Logger.warning("Invalid cron expression for alert #{alert_query.id}: #{inspect(reason)}")
     end
   end
 end

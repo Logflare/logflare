@@ -254,7 +254,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       :ok
     end
 
-    test "manual alert trigger - notification sent", %{conn: conn, alert_query: alert_query} do
+    test "run query - results returned", %{conn: conn, alert_query: alert_query} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
@@ -263,11 +263,11 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
 
       assert view
-             |> element("button", "Manual trigger")
+             |> element("button", "Run query")
              |> render_click() =~ "Alert has been triggered. Notifications sent!"
     end
 
-    test "manual alert trigger - notification not sent", %{conn: conn, alert_query: alert_query} do
+    test "run query - no results", %{conn: conn, alert_query: alert_query} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([])}
@@ -275,13 +275,15 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
 
-      assert view
-             |> element("button", "Manual trigger")
-             |> render_click() =~
-               "Alert has been triggered. No results from query, notifications not sent!"
+      html =
+        view
+        |> element("button", "Run query")
+        |> render_click()
+
+      assert html =~ "No rows returned from query"
     end
 
-    test "errors from BQ are dispalyed", %{conn: conn, alert_query: alert_query} do
+    test "errors from BQ are displayed", %{conn: conn, alert_query: alert_query} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:error, TestUtils.gen_bq_error("some error")}
@@ -290,7 +292,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
 
       assert view
-             |> element("button", "Manual trigger")
+             |> element("button", "Run query")
              |> render_click() =~ "some error"
     end
   end
@@ -338,6 +340,165 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert view
              |> element("button", "Run query")
              |> render_click() =~ "No rows returned"
+    end
+  end
+
+  describe "execution history" do
+    setup [:create_alert_query]
+
+    defp insert_oban_job(alert_query, attrs) do
+      now = DateTime.utc_now()
+
+      defaults = %{
+        state: "completed",
+        queue: "alerts",
+        worker: "Logflare.Alerting.AlertWorker",
+        args: %{"alert_query_id" => alert_query.id, "scheduled_at" => DateTime.to_iso8601(now)},
+        meta: %{},
+        attempted_at: now,
+        completed_at: now,
+        scheduled_at: now,
+        attempted_by: ["test_node"],
+        max_attempts: 1
+      }
+
+      merged = Map.merge(defaults, attrs)
+
+      %Oban.Job{}
+      |> Ecto.Changeset.change(merged)
+      |> Logflare.Repo.insert!()
+    end
+
+    test "displays past executions with results", %{conn: conn, alert_query: alert_query} do
+      _job =
+        insert_oban_job(alert_query, %{
+          meta: %{
+            "result" => %{
+              "fired"=> true,
+              "rows"=>  [%{"col_a" => "val1", "col_b" => "val2"}],
+              "total_bytes_processed" => 1_073_741_824,
+              "total_rows" => 1,
+            },
+          }
+        })
+
+      {:ok, view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+
+      assert html =~ "Past Executions"
+      assert html =~ "Fired"
+      assert html =~ "1"
+      assert html =~ "1.00 GB"
+
+      # Click View Results to open modal
+      view
+      |> element("button", "View Results")
+      |> render_click()
+
+      html = render(view)
+      assert html =~ "Execution Results"
+      assert html =~ "col_a"
+      assert html =~ "col_b"
+      assert html =~ "val1"
+      assert html =~ "val2"
+      # show oban job attempted by node name
+      assert html =~ "test_node"
+    end
+
+    test "displays not fired status", %{conn: conn, alert_query: alert_query} do
+      insert_oban_job(alert_query, %{
+        meta: %{"result" => %{ "fired" => false, "rows" => [] }}
+      })
+
+      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+
+      assert html =~ "Not Fired"
+    end
+
+    test "displays scheduled (future) jobs", %{conn: conn, alert_query: alert_query} do
+      future_time = DateTime.add(DateTime.utc_now(), 3600, :second)
+
+      insert_oban_job(alert_query, %{
+        state: "scheduled",
+        scheduled_at: future_time,
+        completed_at: nil,
+        attempted_at: nil,
+        attempted_by: nil
+      })
+
+      {:ok, view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+
+      assert html =~ "Execution History"
+
+      # Toggle to show scheduled jobs
+      view
+      |> element("button", "Show scheduled jobs")
+      |> render_click()
+
+      html = render(view)
+      assert html =~ "Upcoming Jobs"
+      assert html =~ "scheduled"
+    end
+
+    test "displays error reason for failed jobs", %{conn: conn, alert_query: alert_query} do
+      insert_oban_job(alert_query, %{
+        state: "discarded",
+        meta: %{"reason" => "BigQuery error: table not found"}
+      })
+
+      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+
+      assert html =~ "BigQuery error: table not found"
+    end
+
+    test "truncates long error reason with popover", %{conn: conn, alert_query: alert_query} do
+      long_reason = String.duplicate("a", 120)
+
+      insert_oban_job(alert_query, %{
+        state: "discarded",
+        meta: %{"reason" => long_reason}
+      })
+
+      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+
+      # Should show truncated text
+      assert html =~ String.slice(long_reason, 0, 80) <> "..."
+      # Full reason should be in data-content for popover
+      assert html =~ "data-content=\"#{long_reason}\""
+    end
+
+    test "pagination works for past executions", %{
+      conn: conn,
+      alert_query: alert_query,
+      team: team
+    } do
+      # Insert 25 completed jobs (page size is 20, so 2 pages)
+      for i <- 1..25 do
+        scheduled_at = DateTime.add(DateTime.utc_now(), -i * 60, :second)
+
+        insert_oban_job(alert_query, %{
+          args: %{
+            "alert_query_id" => alert_query.id,
+            "scheduled_at" => DateTime.to_iso8601(scheduled_at)
+          },
+          scheduled_at: scheduled_at,
+          completed_at: DateTime.add(scheduled_at, 5, :second),
+          attempted_at: scheduled_at,
+          meta: %{"result" => %{"fired" => false, "rows" => [], "total_rows" => 0}}
+        })
+      end
+
+      {:ok, view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+
+      # Should show pagination and 25 total entries
+      assert html =~ "Past Executions (25)"
+      # Should have pagination links
+      assert html =~ "page-item"
+
+       view
+       |> element("a.page-link", "2")
+       |> render_click()
+      # Navigate to page 2 via live_patch
+      assert_patch(view, ~p"/alerts/#{alert_query.id}?t=#{team.id}&page=2")
     end
   end
 
