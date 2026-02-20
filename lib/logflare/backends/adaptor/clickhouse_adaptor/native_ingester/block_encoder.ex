@@ -84,6 +84,49 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
     Enum.map(values, &Protocol.encode_fixed_string(&1, n))
   end
 
+  def encode_column_values("LowCardinality(" <> rest, values) do
+    inner_type = extract_inner_type(rest)
+    encode_column_values(inner_type, values)
+  end
+
+  def encode_column_values("Nullable(" <> rest, values) do
+    inner_type = extract_inner_type(rest)
+    default = default_value_for_type(inner_type)
+
+    null_mask =
+      Enum.map(values, fn
+        nil -> Protocol.encode_uint8(1)
+        _ -> Protocol.encode_uint8(0)
+      end)
+
+    filled_values =
+      Enum.map(values, fn
+        nil -> default
+        v -> v
+      end)
+
+    [null_mask, encode_column_values(inner_type, filled_values)]
+  end
+
+  def encode_column_values("Enum8(" <> _rest, values) do
+    Enum.map(values, &Protocol.encode_enum8/1)
+  end
+
+  def encode_column_values("JSON" <> _rest, values) do
+    json_strings = Enum.map(values, &(sanitize_for_json(&1) |> Jason.encode!()))
+    encode_column_values("String", json_strings)
+  end
+
+  def encode_column_values("Array(" <> rest, values) do
+    inner_type = extract_inner_type(rest)
+    {offsets, flat} = build_array_offsets_and_data(values)
+
+    [
+      Enum.map(offsets, &Protocol.encode_uint64/1),
+      encode_column_values(inner_type, flat)
+    ]
+  end
+
   @spec encode_block_info() :: iodata()
   defp encode_block_info do
     [
@@ -102,5 +145,78 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
     |> List.first()
     |> String.trim()
     |> String.to_integer()
+  end
+
+  @doc """
+  Extracts the inner type from a wrapper type string.
+
+  Handles balanced parentheses for nested types like `"Nullable(DateTime64(9))"`.
+  Input is the string after the outer `(`, e.g. `"DateTime64(9))"`.
+  """
+  @spec extract_inner_type(String.t()) :: String.t()
+  def extract_inner_type(rest) do
+    extract_inner_type_walk(rest, 0, [])
+  end
+
+  @spec extract_inner_type_walk(String.t(), non_neg_integer(), [char()]) :: String.t()
+  defp extract_inner_type_walk(<<")"::utf8, _rest::binary>>, 0, acc) do
+    acc |> Enum.reverse() |> IO.iodata_to_binary()
+  end
+
+  defp extract_inner_type_walk(<<")"::utf8, rest::binary>>, depth, acc) do
+    extract_inner_type_walk(rest, depth - 1, [?) | acc])
+  end
+
+  defp extract_inner_type_walk(<<"("::utf8, rest::binary>>, depth, acc) do
+    extract_inner_type_walk(rest, depth + 1, [?( | acc])
+  end
+
+  defp extract_inner_type_walk(<<char::utf8, rest::binary>>, depth, acc) do
+    extract_inner_type_walk(rest, depth, [char | acc])
+  end
+
+  @spec default_value_for_type(String.t()) :: term()
+  defp default_value_for_type("String"), do: ""
+  defp default_value_for_type("Bool"), do: false
+  defp default_value_for_type("UUID"), do: <<0::128>>
+  defp default_value_for_type("Float32"), do: 0.0
+  defp default_value_for_type("Float64"), do: 0.0
+  defp default_value_for_type(_), do: 0
+
+  @spec sanitize_for_json(term()) :: Jason.Encoder.t()
+  defp sanitize_for_json(value) when is_map(value) do
+    Map.new(value, fn {k, v} -> {k, sanitize_for_json(v)} end)
+  end
+
+  defp sanitize_for_json(value) when is_list(value) do
+    Enum.map(value, &sanitize_for_json/1)
+  end
+
+  defp sanitize_for_json(value) when is_tuple(value) do
+    value |> Tuple.to_list() |> Enum.map(&sanitize_for_json/1)
+  end
+
+  defp sanitize_for_json(value)
+       when is_port(value) or is_pid(value) or is_reference(value) or is_function(value) do
+    inspect(value)
+  end
+
+  defp sanitize_for_json(value), do: value
+
+  @spec build_array_offsets_and_data([list()]) :: {[non_neg_integer()], [term()]}
+  defp build_array_offsets_and_data(arrays) do
+    {offsets_rev, flat_rev} =
+      Enum.reduce(arrays, {[], []}, fn arr, {offsets, flat} ->
+        prev =
+          case offsets do
+            [last | _] -> last
+            [] -> 0
+          end
+
+        new_offset = prev + length(arr)
+        {[new_offset | offsets], Enum.reverse(arr) ++ flat}
+      end)
+
+    {Enum.reverse(offsets_rev), Enum.reverse(flat_rev)}
   end
 end

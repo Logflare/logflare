@@ -462,6 +462,264 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
   end
 
   # ---------------------------------------------------------------------------
+  # extract_inner_type/1
+  # ---------------------------------------------------------------------------
+
+  describe "extract_inner_type/1" do
+    test "simple type" do
+      assert BlockEncoder.extract_inner_type("Int64)") == "Int64"
+    end
+
+    test "nested type with parens" do
+      assert BlockEncoder.extract_inner_type("DateTime64(9))") == "DateTime64(9)"
+    end
+
+    test "deeply nested type" do
+      assert BlockEncoder.extract_inner_type("JSON(max_dynamic_paths=0, max_dynamic_types=1))") ==
+               "JSON(max_dynamic_paths=0, max_dynamic_types=1)"
+    end
+
+    test "LowCardinality(String)" do
+      assert BlockEncoder.extract_inner_type("String)") == "String"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Nullable column
+  # ---------------------------------------------------------------------------
+
+  describe "Nullable column" do
+    test "Nullable(Int64) with nils" do
+      encoded =
+        BlockEncoder.encode_column_values("Nullable(Int64)", [nil, 42, nil])
+        |> IO.iodata_to_binary()
+
+      # Null mask: 3 UInt8 bytes
+      {1, rest} = Protocol.decode_uint8(encoded)
+      {0, rest} = Protocol.decode_uint8(rest)
+      {1, rest} = Protocol.decode_uint8(rest)
+
+      # Values: 3 Int64 (null positions get default 0)
+      {0, rest} = Protocol.decode_int64(rest)
+      {42, rest} = Protocol.decode_int64(rest)
+      {0, <<>>} = Protocol.decode_int64(rest)
+    end
+
+    test "Nullable(DateTime64(9)) with nils" do
+      ts = 1_700_000_000_123_456_789
+
+      encoded =
+        BlockEncoder.encode_column_values("Nullable(DateTime64(9))", [nil, ts])
+        |> IO.iodata_to_binary()
+
+      # Null mask
+      {1, rest} = Protocol.decode_uint8(encoded)
+      {0, rest} = Protocol.decode_uint8(rest)
+
+      # Values
+      {0, rest} = Protocol.decode_datetime64(rest)
+      {^ts, <<>>} = Protocol.decode_datetime64(rest)
+    end
+
+    test "Nullable(String) with nils" do
+      encoded =
+        BlockEncoder.encode_column_values("Nullable(String)", [nil, "hello", nil])
+        |> IO.iodata_to_binary()
+
+      # Null mask
+      {1, rest} = Protocol.decode_uint8(encoded)
+      {0, rest} = Protocol.decode_uint8(rest)
+      {1, rest} = Protocol.decode_uint8(rest)
+
+      # Values
+      {"", rest} = Protocol.decode_string(rest)
+      {"hello", rest} = Protocol.decode_string(rest)
+      {"", <<>>} = Protocol.decode_string(rest)
+    end
+
+    test "Nullable with no nils" do
+      encoded =
+        BlockEncoder.encode_column_values("Nullable(Int64)", [10, 20])
+        |> IO.iodata_to_binary()
+
+      {0, rest} = Protocol.decode_uint8(encoded)
+      {0, rest} = Protocol.decode_uint8(rest)
+      {10, rest} = Protocol.decode_int64(rest)
+      {20, <<>>} = Protocol.decode_int64(rest)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Enum8 column
+  # ---------------------------------------------------------------------------
+
+  describe "Enum8 column" do
+    test "encodes signed Int8 values" do
+      encoded =
+        BlockEncoder.encode_column_values(
+          "Enum8('gauge' = 1, 'sum' = 2, 'histogram' = 3, 'exponential_histogram' = 4, 'summary' = 5)",
+          [1, 3, 5]
+        )
+        |> IO.iodata_to_binary()
+
+      assert byte_size(encoded) == 3
+      {1, rest} = Protocol.decode_int8(encoded)
+      {3, rest} = Protocol.decode_int8(rest)
+      {5, <<>>} = Protocol.decode_int8(rest)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # JSON column
+  # ---------------------------------------------------------------------------
+
+  describe "JSON column" do
+    test "encodes maps as JSON strings" do
+      encoded =
+        BlockEncoder.encode_column_values(
+          "JSON(max_dynamic_paths=0, max_dynamic_types=1)",
+          [%{"key" => "value"}, %{}]
+        )
+        |> IO.iodata_to_binary()
+
+      {json1, rest} = Protocol.decode_string(encoded)
+      {json2, <<>>} = Protocol.decode_string(rest)
+
+      assert Jason.decode!(json1) == %{"key" => "value"}
+      assert Jason.decode!(json2) == %{}
+    end
+
+    test "sanitizes non-JSON-safe values" do
+      encoded =
+        BlockEncoder.encode_column_values(
+          "JSON(max_dynamic_paths=0, max_dynamic_types=1)",
+          [%{"tuple" => {1, 2}}]
+        )
+        |> IO.iodata_to_binary()
+
+      {json, <<>>} = Protocol.decode_string(encoded)
+      assert Jason.decode!(json) == %{"tuple" => [1, 2]}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Array columns
+  # ---------------------------------------------------------------------------
+
+  describe "Array column" do
+    test "Array(UInt64) with mixed arrays" do
+      encoded =
+        BlockEncoder.encode_column_values("Array(UInt64)", [[1, 2], [3], []])
+        |> IO.iodata_to_binary()
+
+      # Offsets: [2, 3, 3]
+      {2, rest} = Protocol.decode_uint64(encoded)
+      {3, rest} = Protocol.decode_uint64(rest)
+      {3, rest} = Protocol.decode_uint64(rest)
+
+      # Data: [1, 2, 3]
+      {1, rest} = Protocol.decode_uint64(rest)
+      {2, rest} = Protocol.decode_uint64(rest)
+      {3, <<>>} = Protocol.decode_uint64(rest)
+    end
+
+    test "Array(Float64) values" do
+      encoded =
+        BlockEncoder.encode_column_values("Array(Float64)", [[1.0], [2.0, 3.0]])
+        |> IO.iodata_to_binary()
+
+      # Offsets: [1, 3]
+      {1, rest} = Protocol.decode_uint64(encoded)
+      {3, rest} = Protocol.decode_uint64(rest)
+
+      # Data: [1.0, 2.0, 3.0]
+      {1.0, rest} = Protocol.decode_float64(rest)
+      {2.0, rest} = Protocol.decode_float64(rest)
+      {3.0, <<>>} = Protocol.decode_float64(rest)
+    end
+
+    test "Array(String) values" do
+      encoded =
+        BlockEncoder.encode_column_values("Array(String)", [["a", "b"], ["c"]])
+        |> IO.iodata_to_binary()
+
+      # Offsets: [2, 3]
+      {2, rest} = Protocol.decode_uint64(encoded)
+      {3, rest} = Protocol.decode_uint64(rest)
+
+      # Data: ["a", "b", "c"]
+      {"a", rest} = Protocol.decode_string(rest)
+      {"b", rest} = Protocol.decode_string(rest)
+      {"c", <<>>} = Protocol.decode_string(rest)
+    end
+
+    test "Array(DateTime64(9)) values" do
+      ts1 = 1_700_000_000_000_000_000
+      ts2 = 1_700_000_001_000_000_000
+      ts3 = 1_700_000_002_000_000_000
+
+      encoded =
+        BlockEncoder.encode_column_values("Array(DateTime64(9))", [[ts1], [ts2, ts3]])
+        |> IO.iodata_to_binary()
+
+      # Offsets: [1, 3]
+      {1, rest} = Protocol.decode_uint64(encoded)
+      {3, rest} = Protocol.decode_uint64(rest)
+
+      # Data
+      {^ts1, rest} = Protocol.decode_datetime64(rest)
+      {^ts2, rest} = Protocol.decode_datetime64(rest)
+      {^ts3, <<>>} = Protocol.decode_datetime64(rest)
+    end
+
+    test "Array(JSON(...)) values" do
+      encoded =
+        BlockEncoder.encode_column_values(
+          "Array(JSON(max_dynamic_paths=0, max_dynamic_types=1))",
+          [[%{}, %{"a" => 1}], []]
+        )
+        |> IO.iodata_to_binary()
+
+      # Offsets: [2, 2]
+      {2, rest} = Protocol.decode_uint64(encoded)
+      {2, rest} = Protocol.decode_uint64(rest)
+
+      # Data: two JSON strings
+      {json1, rest} = Protocol.decode_string(rest)
+      {json2, <<>>} = Protocol.decode_string(rest)
+
+      assert Jason.decode!(json1) == %{}
+      assert Jason.decode!(json2) == %{"a" => 1}
+    end
+
+    test "all empty arrays" do
+      encoded =
+        BlockEncoder.encode_column_values("Array(UInt64)", [[], [], []])
+        |> IO.iodata_to_binary()
+
+      # Offsets: [0, 0, 0]
+      {0, rest} = Protocol.decode_uint64(encoded)
+      {0, rest} = Protocol.decode_uint64(rest)
+      {0, <<>>} = Protocol.decode_uint64(rest)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # LowCardinality column (treated as inner type with setting)
+  # ---------------------------------------------------------------------------
+
+  describe "LowCardinality column" do
+    test "encodes as inner String type" do
+      encoded =
+        BlockEncoder.encode_column_values("LowCardinality(String)", ["a", "b"])
+        |> IO.iodata_to_binary()
+
+      {"a", rest} = Protocol.decode_string(encoded)
+      {"b", <<>>} = Protocol.decode_string(rest)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Custom serialization flag behavior
   # ---------------------------------------------------------------------------
 
