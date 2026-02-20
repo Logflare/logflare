@@ -63,17 +63,7 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   @impl ContextCache
-  def bust_by(kw) do
-    entries = bust_entries(kw)
-
-    Cachex.execute(__MODULE__, fn worker ->
-      Enum.reduce(entries, 0, fn k, acc ->
-        acc + delete_and_count(worker, k)
-      end)
-    end)
-  end
-
-  defp bust_entries(kw) do
+  def keys_to_bust(kw) do
     user_id = Keyword.get(kw, :user_id)
     key = Keyword.get(kw, :key)
 
@@ -94,12 +84,5 @@ defmodule Logflare.KeyValues.Cache do
       {:lookup, [^user_id, ^key | _]} -> true
       _ -> false
     end)
-  end
-
-  defp delete_and_count(cache, key) do
-    case Cachex.take(cache, key) do
-      {:ok, nil} -> 0
-      {:ok, _value} -> 1
-    end
   end
 end

@@ -20,7 +20,8 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
     {PartitionSupervisor, child_spec: __MODULE__, name: @supervisor_name}
   end
 
-  @spec cast_to_bust([{context, args}]) :: :ok when context: module(), args: term()
+  @spec cast_to_bust([{action, {context, args}}]) :: :ok
+        when action: :bust | :refresh, context: module(), args: term()
   def cast_to_bust(records) do
     GenServer.cast({:via, PartitionSupervisor, {@supervisor_name, records}}, {:to_bust, records})
   end
@@ -35,11 +36,14 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
   end
 
   @impl true
-  def handle_cast({:to_bust, context_pkeys}, state) do
-    ContextCache.bust_keys(context_pkeys)
+  def handle_cast({:to_bust, records}, state) do
+    grouped = Enum.group_by(records, &elem(&1, 0), &elem(&1, 1))
 
-    for record <- context_pkeys do
-      maybe_do_cross_cluster_syncing(record)
+    ContextCache.bust_keys(Map.get(grouped, :bust, []))
+    ContextCache.refresh_keys(Map.get(grouped, :refresh, []))
+
+    for {_action, ctx_key} <- records do
+      maybe_do_cross_cluster_syncing(ctx_key)
     end
 
     {:noreply, state}
