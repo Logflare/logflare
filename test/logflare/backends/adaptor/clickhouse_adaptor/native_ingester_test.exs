@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
 
   @connect_opts [
     host: "localhost",
@@ -19,7 +20,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     "native_insert_basic",
     "native_insert_types",
     "native_insert_large",
-    "native_insert_reuse"
+    "native_insert_reuse",
+    "native_otel_logs",
+    "native_otel_metrics",
+    "native_otel_traces"
   ]
 
   setup do
@@ -328,6 +332,230 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       assert length(rows) == 5
       assert Enum.map(rows, & &1["id"]) == [1, 2, 3, 4, 5]
       assert Enum.map(rows, & &1["name"]) == ["first", "second", "third", "fourth", "fifth"]
+
+      assert :ok = Connection.close(conn)
+    end
+  end
+
+  describe "OTEL logs table insert" do
+    test "inserts all column types used in the logs DDL", %{backend: backend} do
+      ddl = QueryTemplates.create_table_statement("native_otel_logs", :log, ttl_days: 0)
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, ddl)
+
+      {:ok, conn} = Connection.connect(@connect_opts)
+
+      {:ok, id_raw} = Ecto.UUID.dump(Ecto.UUID.generate())
+      {:ok, mapping_id_raw} = Ecto.UUID.dump(Ecto.UUID.generate())
+      ts_ns = 1_700_000_000_123_456_789
+
+      columns = [
+        {"id", "UUID", [id_raw]},
+        {"source_uuid", "LowCardinality(String)", ["src-uuid-1"]},
+        {"source_name", "LowCardinality(String)", ["my_source"]},
+        {"project", "String", ["my_project"]},
+        {"trace_id", "String", ["abc123"]},
+        {"span_id", "String", ["span456"]},
+        {"trace_flags", "UInt8", [1]},
+        {"severity_text", "LowCardinality(String)", ["INFO"]},
+        {"severity_number", "UInt8", [9]},
+        {"service_name", "LowCardinality(String)", ["my_service"]},
+        {"event_message", "String", ["test log msg"]},
+        {"scope_name", "String", ["my_scope"]},
+        {"scope_version", "LowCardinality(String)", ["1.0.0"]},
+        {"scope_schema_url", "LowCardinality(String)", [""]},
+        {"resource_schema_url", "LowCardinality(String)", [""]},
+        {"resource_attributes", "JSON(max_dynamic_types=1, max_dynamic_paths=0)",
+         [%{"host" => "localhost"}]},
+        {"scope_attributes", "JSON(max_dynamic_types=1, max_dynamic_paths=0)", [%{}]},
+        {"log_attributes", "JSON(max_dynamic_types=1, max_dynamic_paths=0)",
+         [%{"level" => "info"}]},
+        {"mapping_config_id", "UUID", [mapping_id_raw]},
+        {"timestamp", "DateTime64(9)", [ts_ns]}
+      ]
+
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_otel_logs", columns)
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT project, event_message, severity_number, trace_id FROM native_otel_logs"
+        )
+
+      assert length(rows) == 1
+      row = Enum.at(rows, 0)
+      assert row["project"] == "my_project"
+      assert row["event_message"] == "test log msg"
+      assert row["severity_number"] == 9
+      assert row["trace_id"] == "abc123"
+
+      assert :ok = Connection.close(conn)
+    end
+  end
+
+  describe "OTEL metrics table insert" do
+    test "inserts all column types used in the metrics DDL", %{backend: backend} do
+      ddl = QueryTemplates.create_table_statement("native_otel_metrics", :metric, ttl_days: 0)
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, ddl)
+
+      {:ok, conn} = Connection.connect(@connect_opts)
+
+      {:ok, id_raw} = Ecto.UUID.dump(Ecto.UUID.generate())
+      {:ok, mapping_id_raw} = Ecto.UUID.dump(Ecto.UUID.generate())
+      ts_ns = 1_700_000_000_123_456_789
+      exemplar_ts = 1_700_000_000_500_000_000
+
+      columns = [
+        {"id", "UUID", [id_raw]},
+        {"source_uuid", "LowCardinality(String)", ["src-uuid-1"]},
+        {"source_name", "LowCardinality(String)", ["my_source"]},
+        {"project", "String", ["my_project"]},
+        {"time_unix", "Nullable(DateTime64(9))", [ts_ns]},
+        {"start_time_unix", "Nullable(DateTime64(9))", [nil]},
+        {"metric_name", "LowCardinality(String)", ["http.request.duration"]},
+        {"metric_description", "String", ["Duration of HTTP requests"]},
+        {"metric_unit", "LowCardinality(String)", ["ms"]},
+        {"metric_type",
+         "Enum8('gauge' = 1, 'sum' = 2, 'histogram' = 3, 'exponential_histogram' = 4, 'summary' = 5)",
+         [3]},
+        {"service_name", "LowCardinality(String)", ["my_service"]},
+        {"event_message", "String", [""]},
+        {"scope_name", "String", ["otel_scope"]},
+        {"scope_version", "LowCardinality(String)", ["1.0.0"]},
+        {"scope_schema_url", "LowCardinality(String)", [""]},
+        {"resource_schema_url", "LowCardinality(String)", [""]},
+        {"resource_attributes", "JSON(max_dynamic_types=1, max_dynamic_paths=0)",
+         [%{"host" => "localhost"}]},
+        {"scope_attributes", "JSON(max_dynamic_types=1, max_dynamic_paths=0)", [%{}]},
+        {"attributes", "JSON(max_dynamic_types=1, max_dynamic_paths=0)",
+         [%{"http.method" => "GET"}]},
+        {"aggregation_temporality", "LowCardinality(String)", ["cumulative"]},
+        {"is_monotonic", "Bool", [true]},
+        {"flags", "UInt32", [0]},
+        {"value", "Float64", [0.0]},
+        {"count", "UInt64", [10]},
+        {"sum", "Float64", [150.5]},
+        {"bucket_counts", "Array(UInt64)", [[1, 3, 4, 2]]},
+        {"explicit_bounds", "Array(Float64)", [[10.0, 50.0, 100.0]]},
+        {"min", "Float64", [5.0]},
+        {"max", "Float64", [95.0]},
+        {"scale", "Int32", [0]},
+        {"zero_count", "UInt64", [0]},
+        {"positive_offset", "Int32", [0]},
+        {"positive_bucket_counts", "Array(UInt64)", [[]]},
+        {"negative_offset", "Int32", [0]},
+        {"negative_bucket_counts", "Array(UInt64)", [[]]},
+        {"quantile_values", "Array(Float64)", [[]]},
+        {"quantiles", "Array(Float64)", [[]]},
+        {"exemplars.filtered_attributes", "Array(JSON(max_dynamic_paths=0, max_dynamic_types=1))",
+         [[%{"status" => "ok"}]]},
+        {"exemplars.time_unix", "Array(DateTime64(9))", [[exemplar_ts]]},
+        {"exemplars.value", "Array(Float64)", [[42.5]]},
+        {"exemplars.span_id", "Array(String)", [["span123"]]},
+        {"exemplars.trace_id", "Array(String)", [["trace456"]]},
+        {"mapping_config_id", "UUID", [mapping_id_raw]},
+        {"timestamp", "DateTime64(9)", [ts_ns]}
+      ]
+
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_otel_metrics", columns)
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT metric_name, count, sum, bucket_counts, explicit_bounds, is_monotonic FROM native_otel_metrics"
+        )
+
+      assert length(rows) == 1
+      row = Enum.at(rows, 0)
+      assert row["metric_name"] == "http.request.duration"
+      assert row["count"] == 10
+      assert_in_delta row["sum"], 150.5, 0.001
+      assert row["bucket_counts"] == [1, 3, 4, 2]
+      assert row["explicit_bounds"] == [10.0, 50.0, 100.0]
+      assert row["is_monotonic"] == true
+
+      # Verify Nullable DateTime64
+      {:ok, ts_rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT toUnixTimestamp64Nano(time_unix) as t, start_time_unix FROM native_otel_metrics"
+        )
+
+      ts_row = Enum.at(ts_rows, 0)
+      assert ts_row["t"] == ts_ns
+      assert ts_row["start_time_unix"] == nil
+
+      assert :ok = Connection.close(conn)
+    end
+  end
+
+  describe "OTEL traces table insert" do
+    test "inserts all column types used in the traces DDL", %{backend: backend} do
+      ddl = QueryTemplates.create_table_statement("native_otel_traces", :trace, ttl_days: 0)
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, ddl)
+
+      {:ok, conn} = Connection.connect(@connect_opts)
+
+      {:ok, id_raw} = Ecto.UUID.dump(Ecto.UUID.generate())
+      {:ok, mapping_id_raw} = Ecto.UUID.dump(Ecto.UUID.generate())
+      ts_ns = 1_700_000_000_123_456_789
+      event_ts1 = 1_700_000_000_200_000_000
+      event_ts2 = 1_700_000_000_300_000_000
+
+      columns = [
+        {"id", "UUID", [id_raw]},
+        {"source_uuid", "LowCardinality(String)", ["src-uuid-1"]},
+        {"source_name", "LowCardinality(String)", ["my_source"]},
+        {"project", "String", ["my_project"]},
+        {"trace_id", "String", ["trace-abc"]},
+        {"span_id", "String", ["span-def"]},
+        {"parent_span_id", "String", ["span-parent"]},
+        {"trace_state", "String", [""]},
+        {"span_name", "LowCardinality(String)", ["GET /api/users"]},
+        {"span_kind", "LowCardinality(String)", ["SERVER"]},
+        {"service_name", "LowCardinality(String)", ["my_service"]},
+        {"event_message", "String", [""]},
+        {"duration", "UInt64", [1_500_000]},
+        {"status_code", "LowCardinality(String)", ["OK"]},
+        {"status_message", "String", [""]},
+        {"scope_name", "String", ["otel_scope"]},
+        {"scope_version", "String", ["1.0.0"]},
+        {"resource_attributes", "JSON(max_dynamic_types=1, max_dynamic_paths=0)",
+         [%{"host" => "localhost"}]},
+        {"span_attributes", "JSON(max_dynamic_types=1, max_dynamic_paths=0)",
+         [%{"http.method" => "GET", "http.url" => "/api/users"}]},
+        {"events.timestamp", "Array(DateTime64(9))", [[event_ts1, event_ts2]]},
+        {"events.name", "Array(LowCardinality(String))", [["exception", "retry"]]},
+        {"events.attributes", "Array(JSON(max_dynamic_paths=0, max_dynamic_types=1))",
+         [[%{"error" => "timeout"}, %{"attempt" => 2}]]},
+        {"links.trace_id", "Array(String)", [["linked-trace-1"]]},
+        {"links.span_id", "Array(String)", [["linked-span-1"]]},
+        {"links.trace_state", "Array(String)", [[""]]},
+        {"links.attributes", "Array(JSON(max_dynamic_paths=0, max_dynamic_types=1))",
+         [[%{"link_key" => "link_value"}]]},
+        {"mapping_config_id", "UUID", [mapping_id_raw]},
+        {"timestamp", "DateTime64(9)", [ts_ns]}
+      ]
+
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_otel_traces", columns)
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          """
+          SELECT span_name, duration, status_code, trace_id,
+                 `events.name`, `links.trace_id`
+          FROM native_otel_traces
+          """
+        )
+
+      assert length(rows) == 1
+      row = Enum.at(rows, 0)
+      assert row["span_name"] == "GET /api/users"
+      assert row["duration"] == 1_500_000
+      assert row["status_code"] == "OK"
+      assert row["trace_id"] == "trace-abc"
+      assert row["events.name"] == ["exception", "retry"]
+      assert row["links.trace_id"] == ["linked-trace-1"]
 
       assert :ok = Connection.close(conn)
     end

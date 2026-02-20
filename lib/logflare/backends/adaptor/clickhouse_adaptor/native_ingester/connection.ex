@@ -147,11 +147,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   ## Options
 
     * `:query_id` - optional query identifier (default: auto-generated UUID)
+    * `:settings` - keyword list of ClickHouse settings to include with the query
+      (e.g. `[async_insert: 1, wait_for_async_insert: 1]`). These are merged
+      after the two base settings (`low_cardinality_allow_in_native_format=0`
+      and `input_format_native_allow_types_conversion=1`). Each setting is
+      sent with flags=0 (default priority).
   """
   @spec send_query(t(), String.t(), keyword()) :: {:ok, column_info(), t()} | {:error, term()}
   def send_query(%__MODULE__{} = conn, sql, opts \\ []) do
     query_id = Keyword.get(opts, :query_id, Ecto.UUID.generate())
-    query_packet = encode_query_packet(conn, sql, query_id)
+    settings = Keyword.get(opts, :settings, [])
+    query_packet = encode_query_packet(conn, sql, query_id, settings)
     empty_block = IO.iodata_to_binary(encode_empty_data_block(conn))
 
     with :ok <- send_data(conn, [query_packet, empty_block]),
@@ -434,13 +440,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   # Query packet encoding
   # ---------------------------------------------------------------------------
 
-  @spec encode_query_packet(t(), String.t(), String.t()) :: binary()
-  defp encode_query_packet(%__MODULE__{negotiated_rev: rev} = conn, sql, query_id) do
+  @spec encode_query_packet(t(), String.t(), String.t(), keyword()) :: binary()
+  defp encode_query_packet(%__MODULE__{negotiated_rev: rev} = conn, sql, query_id, extra_settings) do
     [
       Protocol.encode_varuint(Protocol.client_query()),
       Protocol.encode_string(query_id),
       encode_client_info(conn, rev),
-      encode_settings(rev),
+      encode_settings(rev, extra_settings),
       encode_extra_roles(rev),
       encode_interserver_secret(rev),
       Protocol.encode_varuint(2),
@@ -547,19 +553,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     IO.iodata_to_binary(parts)
   end
 
-  @spec encode_settings(non_neg_integer()) :: binary()
-  defp encode_settings(rev) when rev < 54_429, do: <<>>
+  @spec encode_settings(non_neg_integer(), keyword()) :: binary()
+  defp encode_settings(rev, _extra_settings) when rev < 54_429, do: <<>>
 
-  defp encode_settings(_rev) do
-    IO.iodata_to_binary([
-      Protocol.encode_string("low_cardinality_allow_in_native_format"),
-      Protocol.encode_varuint(1),
-      Protocol.encode_string("0"),
-      Protocol.encode_string("input_format_binary_read_json_as_string"),
-      Protocol.encode_varuint(0),
-      Protocol.encode_string("1"),
-      Protocol.encode_string("")
-    ])
+  defp encode_settings(_rev, extra_settings) do
+    base = [
+      {"low_cardinality_allow_in_native_format", 1, "0"},
+      {"input_format_native_allow_types_conversion", 1, "1"}
+    ]
+
+    extra =
+      Enum.map(extra_settings, fn {name, value} ->
+        {to_string(name), 0, to_string(value)}
+      end)
+
+    all_settings = base ++ extra
+
+    encoded =
+      Enum.flat_map(all_settings, fn {name, flags, value} ->
+        [
+          Protocol.encode_string(name),
+          Protocol.encode_varuint(flags),
+          Protocol.encode_string(value)
+        ]
+      end)
+
+    IO.iodata_to_binary(encoded ++ [Protocol.encode_string("")])
   end
 
   @spec encode_empty_data_block(t()) :: iodata()
@@ -786,6 +805,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   defp fixed_type_byte_size("Int64"), do: {:ok, 8}
   defp fixed_type_byte_size("Float64"), do: {:ok, 8}
   defp fixed_type_byte_size("DateTime64" <> _), do: {:ok, 8}
+  defp fixed_type_byte_size("UUID"), do: {:ok, 16}
+  defp fixed_type_byte_size("Bool"), do: {:ok, 1}
   defp fixed_type_byte_size("Enum8" <> _), do: {:ok, 1}
   defp fixed_type_byte_size("Enum16" <> _), do: {:ok, 2}
   defp fixed_type_byte_size("String"), do: :variable

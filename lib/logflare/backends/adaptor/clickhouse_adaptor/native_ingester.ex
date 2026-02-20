@@ -13,6 +13,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncoder
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection
 
+  @low_cardinality_prefix "LowCardinality("
+
   @sub_block_size 10_000
 
   @doc """
@@ -29,16 +31,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   ## Options
 
     * `:query_id` - optional query identifier (default: auto-generated UUID)
+    * `:settings` - keyword list of ClickHouse settings sent with the query
+      (e.g. `[async_insert: 1, wait_for_async_insert: 1]`)
   """
   @spec insert(Connection.t(), String.t(), [BlockEncoder.column()], keyword()) ::
           {:ok, Connection.t()} | {:error, term()}
-  def insert(%Connection{} = conn, table, columns, opts \\ []) when is_list(columns) do
+  def insert(%Connection{} = conn, table, columns, opts \\ [])
+      when is_list(columns) and is_list(opts) do
     column_names = Enum.map(columns, &elem(&1, 0))
     sql = build_insert_sql(conn.database, table, column_names)
 
+    normalized_columns = normalize_columns(columns)
+
     with {:ok, server_columns, conn} <- Connection.send_query(conn, sql, opts),
-         :ok <- validate_columns(columns, server_columns),
-         {:ok, conn} <- send_data_blocks(conn, columns),
+         :ok <- validate_columns(normalized_columns, server_columns),
+         {:ok, conn} <- send_data_blocks(conn, normalized_columns),
          {:ok, conn} <- Connection.read_insert_response(conn) do
       {:ok, conn}
     end
@@ -55,12 +62,78 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   defp validate_columns(columns, server_columns) do
     client_columns = Enum.map(columns, fn {name, type, _values} -> {name, type} end)
 
-    if client_columns == server_columns do
+    normalized_server =
+      Enum.map(server_columns, fn {name, type} -> {name, normalize_type(type)} end)
+
+    if client_columns == normalized_server do
       :ok
     else
-      {:error, {:column_mismatch, expected: server_columns, got: client_columns}}
+      {:error, {:column_mismatch, expected: normalized_server, got: client_columns}}
     end
   end
+
+  @spec normalize_columns([BlockEncoder.column()]) :: [BlockEncoder.column()]
+  defp normalize_columns(columns) do
+    Enum.map(columns, &normalize_column/1)
+  end
+
+  @spec normalize_column(BlockEncoder.column()) :: BlockEncoder.column()
+  defp normalize_column({name, type, values}) do
+    {normalized_type, normalized_values} = normalize_type_and_values(type, values)
+    {name, normalized_type, normalized_values}
+  end
+
+  @spec normalize_type_and_values(String.t(), [term()]) :: {String.t(), [term()]}
+  defp normalize_type_and_values(@low_cardinality_prefix <> rest, values) do
+    normalize_type_and_values(BlockEncoder.extract_inner_type(rest), values)
+  end
+
+  defp normalize_type_and_values("JSON" <> _, values) do
+    {"String", Enum.map(values, &Jason.encode!/1)}
+  end
+
+  defp normalize_type_and_values("Array(" <> rest, values) do
+    inner = BlockEncoder.extract_inner_type(rest)
+
+    case inner do
+      "JSON" <> _ ->
+        converted = Enum.map(values, fn arr -> Enum.map(arr, &Jason.encode!/1) end)
+        {"Array(String)", converted}
+
+      "LowCardinality(" <> lc_rest ->
+        actual_inner = BlockEncoder.extract_inner_type(lc_rest)
+        {"Array(#{actual_inner})", values}
+
+      _ ->
+        {"Array(#{inner})", values}
+    end
+  end
+
+  defp normalize_type_and_values("Nullable(" <> rest, values) do
+    inner = BlockEncoder.extract_inner_type(rest)
+    {"Nullable(#{inner})", values}
+  end
+
+  defp normalize_type_and_values(type, values), do: {type, values}
+
+  @spec normalize_type(String.t()) :: String.t()
+  defp normalize_type(@low_cardinality_prefix <> rest) do
+    normalize_type(BlockEncoder.extract_inner_type(rest))
+  end
+
+  defp normalize_type("Array(" <> rest) do
+    inner = BlockEncoder.extract_inner_type(rest)
+    "Array(#{normalize_type(inner)})"
+  end
+
+  defp normalize_type("Nullable(" <> rest) do
+    inner = BlockEncoder.extract_inner_type(rest)
+    "Nullable(#{normalize_type(inner)})"
+  end
+
+  defp normalize_type("JSON" <> _), do: "String"
+
+  defp normalize_type(type), do: type
 
   @spec send_data_blocks(Connection.t(), [BlockEncoder.column()]) ::
           {:ok, Connection.t()} | {:error, term()}
