@@ -8,6 +8,9 @@
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
   <h2>
     {@alert.name}
+    <span class={if @alert.enabled, do: "badge badge-success", else: "badge badge-secondary"}>
+      {if @alert.enabled, do: "Enabled", else: "Disabled"}
+    </span>
   </h2>
   <div>
     id: {@alert.token}
@@ -105,10 +108,9 @@
       <h3 class="tw-m-0">Execution History</h3>
 
       <button phx-click="refresh-execution-history" class="btn btn-sm btn-outline-secondary">
-        <i class="fa fa-refresh"></i>
-        Refresh
+        <i class="fa fa-refresh"></i> Refresh
       </button>
-      <button phx-click="toggle-execution-history" class="btn btn-sm btn-outline-secondary">
+      <button :if={@future_jobs != []} phx-click="toggle-execution-history" class="btn btn-sm btn-outline-secondary">
         {if @show_execution_history, do: "Hide scheduled jobs", else: "Show scheduled jobs"}
       </button>
     </div>
@@ -197,7 +199,7 @@
       <div class="modal-content">
         <div class="modal-header lf-modal-header">
           <h5 class="modal-title">
-            Execution Results 
+            Execution Results
           </h5>
           <span>
             <a href="#" class="phx-modal-close" phx-click="close-results-modal">&times;</a>
@@ -205,7 +207,6 @@
         </div>
         <div class="modal-body">
           <div class="container">
-            
             <div :if={@modal_results == []} class="tw-text-gray-400">
               No rows returned from query.
             </div>
@@ -230,8 +231,6 @@
                   </tr>
                 </tbody>
               </table>
-
-              
             </div>
             <!-- footer -->
             <div :if={@modal_node} class="tw-text-gray-400 tw-text-sm tw-mt-2">Executing node: {@modal_node}</div>

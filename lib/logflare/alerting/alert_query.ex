@@ -16,7 +16,8 @@ defmodule Logflare.Alerting.AlertQuery do
              :language,
              :query,
              :webhook_notification_url,
-             :slack_hook_url
+             :slack_hook_url,
+             :enabled
            ]}
   typed_schema "alert_queries" do
     field :name, :string
@@ -28,6 +29,7 @@ defmodule Logflare.Alerting.AlertQuery do
     field :token, Ecto.UUID, autogenerate: true
     field :slack_hook_url, :string
     field :webhook_notification_url, :string
+    field :enabled, :boolean, default: true
 
     belongs_to :user, Logflare.User
 
@@ -48,7 +50,8 @@ defmodule Logflare.Alerting.AlertQuery do
       :query,
       :cron,
       :slack_hook_url,
-      :webhook_notification_url
+      :webhook_notification_url,
+      :enabled
     ])
     |> validate_required([:name, :query, :cron, :language])
     |> validate_change(:cron, fn :cron, cron ->

@@ -67,6 +67,18 @@ defmodule Logflare.AlertingTest do
       assert length(Alerting.list_all_alert_queries()) >= 2
     end
 
+    test "list_all_alert_queries/0 excludes disabled alerts", %{user: user} do
+      enabled_alert = alert_query_fixture(user)
+      disabled_alert = alert_query_fixture(user, %{name: "disabled alert"})
+      Alerting.update_alert_query(disabled_alert, %{enabled: false})
+
+      results = Alerting.list_all_alert_queries()
+      result_ids = Enum.map(results, & &1.id)
+
+      assert enabled_alert.id in result_ids
+      refute disabled_alert.id in result_ids
+    end
+
     test "list_alert_queries_user_access" do
       user = insert(:user)
       team_user = insert(:team_user, email: user.email)
@@ -416,6 +428,62 @@ defmodule Logflare.AlertingTest do
     %Oban.Job{}
     |> Ecto.Changeset.change(merged)
     |> Repo.insert!()
+  end
+
+  describe "enabled field" do
+    setup do
+      start_supervised!({Oban, Application.fetch_env!(:logflare, Oban)})
+      :ok
+    end
+
+    test "disabling deletes future jobs, keeps past jobs, ignores other alerts", %{user: user} do
+      alert = insert(:alert, user: user)
+      other_alert = insert(:alert, user: user, name: "other alert")
+
+      for state <- ~w(scheduled available executing), do: insert_oban_job(alert, %{state: state})
+      for state <- ~w(completed discarded), do: insert_oban_job(alert, %{state: state})
+      insert_oban_job(other_alert, %{state: "scheduled"})
+
+      assert length(Alerting.list_future_jobs(alert.id)) == 3
+
+      assert {:ok, %{enabled: false} = updated} =
+               Alerting.update_alert_query(alert, %{enabled: false})
+
+      assert Alerting.list_future_jobs(alert.id) == []
+      past_states = Alerting.list_execution_history(alert.id) |> Enum.map(& &1.state)
+      assert "completed" in past_states
+      assert "discarded" in past_states
+      assert length(Alerting.list_future_jobs(other_alert.id)) == 1
+    end
+
+    test "enabling schedules 5 future jobs with correct args", %{user: user} do
+      alert = insert(:alert, user: user, cron: "0 0 * * *", enabled: false)
+      assert Alerting.list_future_jobs(alert.id) == []
+
+      {:ok, %{enabled: true} = updated} = Alerting.update_alert_query(alert, %{enabled: true})
+      future_jobs = Alerting.list_future_jobs(alert.id)
+      assert length(future_jobs) == 5
+      now = DateTime.utc_now()
+
+      for job <- future_jobs do
+        assert job.args["alert_query_id"] == alert.id
+        assert DateTime.compare(job.scheduled_at, now) == :gt
+      end
+    end
+
+    test "unrelated update does not affect jobs", %{user: user} do
+      alert = insert(:alert, user: user)
+      insert_oban_job(alert, %{state: "scheduled"})
+
+      assert {:ok, %{name: "renamed"}} = Alerting.update_alert_query(alert, %{name: "renamed"})
+      assert length(Alerting.list_future_jobs(alert.id)) == 1
+    end
+
+    test "schedule_alert/1 handles invalid cron gracefully", %{user: user} do
+      alert = insert(:alert, user: user)
+      assert :ok = Alerting.schedule_alert(%{alert | cron: "invalid"})
+      assert Alerting.list_future_jobs(alert.id) == []
+    end
   end
 
   describe "partition_jobs_by_time/1" do

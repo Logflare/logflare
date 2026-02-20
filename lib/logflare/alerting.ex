@@ -25,7 +25,6 @@ defmodule Logflare.Alerting do
 
   @future_job_states ~w(available scheduled executing)
 
-
   @doc """
   Returns the list of alert_queries.
 
@@ -51,7 +50,8 @@ defmodule Logflare.Alerting do
   """
   @spec list_all_alert_queries() :: [AlertQuery.t()]
   def list_all_alert_queries do
-    Repo.all(AlertQuery)
+    from(q in AlertQuery, where: q.enabled == true)
+    |> Repo.all()
   end
 
   @doc """
@@ -152,7 +152,22 @@ defmodule Logflare.Alerting do
         changeset
     end)
     |> Repo.update()
+    |> handle_enabled_change(alert_query)
   end
+
+  defp handle_enabled_change({:ok, %AlertQuery{} = updated} = result, previous) do
+    if updated.enabled != previous.enabled do
+      if updated.enabled do
+        schedule_alert(updated)
+      else
+        delete_future_alert_jobs(updated.id)
+      end
+    end
+
+    result
+  end
+
+  defp handle_enabled_change(error, _previous), do: error
 
   @doc """
   Deletes a alert_query.
@@ -178,6 +193,47 @@ defmodule Logflare.Alerting do
       where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id))
     )
     |> Repo.delete_all()
+  end
+
+  @doc """
+  Deletes future (available/scheduled/executing) jobs for an alert query.
+  """
+  @spec delete_future_alert_jobs(integer()) :: {non_neg_integer(), nil | [term()]}
+  def delete_future_alert_jobs(alert_query_id) do
+    from(j in Oban.Job,
+      where: j.worker == "Logflare.Alerting.AlertWorker",
+      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+      where: j.state in @future_job_states
+    )
+    |> Repo.delete_all()
+  end
+
+  @doc """
+  Schedules the next 5 runs for an alert query based on its cron expression.
+  Inserts AlertWorker jobs into Oban.
+  """
+  @spec schedule_alert(AlertQuery.t()) :: :ok
+  def schedule_alert(%AlertQuery{} = alert_query) do
+    case Crontab.CronExpression.Parser.parse(alert_query.cron) do
+      {:ok, cron_expr} ->
+        now = NaiveDateTime.utc_now()
+
+        cron_expr
+        |> Crontab.Scheduler.get_next_run_dates(now)
+        |> Enum.take(5)
+        |> Enum.each(fn run_date ->
+          scheduled_at = DateTime.from_naive!(run_date, "Etc/UTC")
+
+          %{alert_query_id: alert_query.id, scheduled_at: DateTime.to_iso8601(scheduled_at)}
+          |> AlertWorker.new(scheduled_at: scheduled_at)
+          |> Oban.insert()
+        end)
+
+      {:error, reason} ->
+        Logger.warning("Invalid cron expression for alert #{alert_query.id}: #{inspect(reason)}")
+    end
+
+    :ok
   end
 
   @doc """
@@ -252,7 +308,7 @@ defmodule Logflare.Alerting do
 
         {:ok, Map.put(result, :fired, true)}
 
-      {:ok, %{rows: rows} = result} when rows == [] or rows == nil->
+      {:ok, %{rows: rows} = result} when rows == [] or rows == nil ->
         {:ok, Map.put(result, :fired, false)}
 
       other ->
@@ -293,7 +349,6 @@ defmodule Logflare.Alerting do
     |> AlertWorker.new()
     |> Oban.insert()
   end
-
 
   @doc """
   Lists recent execution history for an alert query from Oban jobs.
