@@ -415,10 +415,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Protocol do
     {str, rest}
   end
 
-  # ---------------------------------------------------------------------------
-  # Private helpers
-  # ---------------------------------------------------------------------------
-
   @spec parse_uuid_string(String.t()) :: {:ok, binary()} | :error
   defp parse_uuid_string(
          <<a::binary-size(8), ?-, b::binary-size(4), ?-, c::binary-size(4), ?-, d::binary-size(4),
