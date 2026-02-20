@@ -123,7 +123,7 @@ defmodule Logflare.Teams.TeamContext do
 
   defp team_owner?(team, email), do: team.user.email == email
 
-  defp team_user_admin?(%__MODULE__{team_user: %{team_role: %{role: :admin}}}), do: true
+  defp team_user_admin?(%__MODULE__{team_user: %{role: :admin}}), do: true
   defp team_user_admin?(%__MODULE__{}), do: false
 
   defp fetch_team_user(team, email) do

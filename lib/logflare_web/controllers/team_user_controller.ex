@@ -51,7 +51,7 @@ defmodule LogflareWeb.TeamUserController do
         end
 
       case TeamUsers.update_team_role(target_team_user, %{role: role}) do
-        {:ok, _team_role} ->
+        {:ok, _team_user} ->
           conn
           |> put_flash(:info, "#{target_team_user.email} role updated.")
           |> redirect(to: redirect_path)

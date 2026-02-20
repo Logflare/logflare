@@ -157,7 +157,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
       |> assign(
         :description,
         [
-          if(team_user.team_role.role == :admin, do: "admin"),
+          if(team_user.role == :admin, do: "admin"),
           if(current && current.provider_uid == team_user.provider_uid, do: "you")
         ]
         |> Enum.filter(& &1)

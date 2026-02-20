@@ -48,7 +48,7 @@
                 ],
                 fn f -> %>
                 <%= checkbox f, :is_admin,
-                  checked: member.team_role.role == :admin,
+                  checked: member.role == :admin,
                   onchange: "confirmSubmit(this)",
                   class: "",
                   data_self_admin: is_current_team_user
