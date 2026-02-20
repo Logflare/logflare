@@ -26,13 +26,14 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
 
   def set_team_context(conn, team_id, email) do
     case TeamContext.resolve(team_id, email) do
-      {:ok, %{user: user, team: team, team_user: team_user}} ->
+      {:ok, %TeamContext{user: user, team: team, team_user: team_user} = team_context} ->
         teams = Logflare.Teams.list_teams_by_user_access(team_user || user)
 
         conn
         |> assign(:user, user)
         |> assign(:team, team)
         |> assign(:teams, teams)
+        |> assign(:team_context, team_context)
         |> maybe_assign_team_user(team_user)
 
       {:error, :team_not_found} ->

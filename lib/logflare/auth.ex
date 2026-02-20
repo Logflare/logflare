@@ -10,11 +10,16 @@ defmodule Logflare.Auth do
   alias Logflare.Partners.Partner
   alias Logflare.Repo
   alias Logflare.Teams.Team
+  alias Logflare.Teams.TeamContext
   alias Logflare.User
   alias Logflare.Users
   alias Phoenix.Token
 
   @max_age_default 86_400
+  @admin_scope "private:admin"
+
+  @spec admin_scope() :: String.t()
+  def admin_scope, do: @admin_scope
 
   defp env_salt, do: Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   defp env_oauth_config, do: Application.get_env(:logflare, ExOauth2Provider)
@@ -178,8 +183,12 @@ defmodule Logflare.Auth do
   @doc """
   Checks that an access token contains any scopes that are provided in a given required scopes list.
 
-  Private scope will allways return `:ok`
+  Private scope will always return `:ok`
   iex> check_scopes(access_token, ["private"])
+
+  Admin scope (`private:admin`) implies private scope access:
+  iex> check_scopes(%OauthAccessToken{scopes: "private:admin"}, ["private"])
+  :ok
 
   iex> check_scopes(%OauthAccessToken{scopes: "ingest:source:1"}, ["ingest:source:1"])
   If multiple scopes are provided, each scope must be in the access token's scope string
@@ -195,9 +204,13 @@ defmodule Logflare.Auth do
   """
   def check_scopes(%_{} = access_token, required_scopes) when is_list(required_scopes) do
     token_scopes = String.split(access_token.scopes || "")
+    requires_admin = @admin_scope in required_scopes
 
     cond do
-      "private" in token_scopes ->
+      @admin_scope in token_scopes ->
+        :ok
+
+      "private" in token_scopes and not requires_admin ->
         :ok
 
       Enum.empty?(required_scopes) ->
@@ -234,4 +247,24 @@ defmodule Logflare.Auth do
       :ok
     end
   end
+
+  @doc """
+  Checks if a user can create access tokens with the admin scope.
+
+  ## API Context (with OauthAccessToken)
+  Token must have the `private:admin` scope.
+
+  ## LiveView Context (with TeamContext)
+  User must be signed in as team owner or team_user with role 'admin'.
+  """
+  @spec can_create_admin_token?(OauthAccessToken.t() | TeamContext.t()) ::
+          boolean()
+  def can_create_admin_token?(%TeamContext{} = team_context),
+    do: TeamContext.team_admin?(team_context)
+
+  def can_create_admin_token?(%OauthAccessToken{scopes: scopes}) when is_binary(scopes) do
+    @admin_scope in String.split(scopes)
+  end
+
+  def can_create_admin_token?(_), do: false
 end

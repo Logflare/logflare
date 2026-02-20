@@ -3,7 +3,7 @@ defmodule LogflareWeb.UserController do
 
   use PhoenixHTMLHelpers
 
-  plug LogflareWeb.Plugs.AuthMustBeOwner
+  plug LogflareWeb.Plugs.AuthMustBeTeamAdmin
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Billing.Stripe
