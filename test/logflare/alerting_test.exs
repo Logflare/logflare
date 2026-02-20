@@ -184,6 +184,29 @@ defmodule Logflare.AlertingTest do
       assert_raise Ecto.NoResultsError, fn -> Alerting.get_alert_query!(alert_query.id) end
     end
 
+    test "delete_alert_query/1 deletes associated Oban jobs", %{user: user} do
+      alert_query = alert_query_fixture(user)
+      other_alert = alert_query_fixture(user)
+
+      # Insert jobs for the alert being deleted
+      for state <- ~w(scheduled available completed) do
+        insert_oban_job(alert_query, %{state: state})
+      end
+
+      # Insert jobs for another alert (should not be affected)
+      for state <- ~w(scheduled available completed) do
+        insert_oban_job(other_alert, %{state: state})
+      end
+
+      assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
+
+      # All jobs for the deleted alert should be gone
+      assert Alerting.list_execution_history(alert_query.id) == []
+
+      # Jobs for the other alert should remain
+      assert length(Alerting.list_execution_history(other_alert.id)) == 3
+    end
+
     test "change_alert_query/1 returns a alert_query changeset", %{user: user} do
       alert_query = alert_query_fixture(user)
       assert %Ecto.Changeset{} = Alerting.change_alert_query(alert_query)
@@ -267,7 +290,7 @@ defmodule Logflare.AlertingTest do
         {:ok, %Tesla.Env{}}
       end)
 
-      assert :ok = Alerting.run_alert(alert_query)
+      assert {:ok, [%{"testing" => "123"}]} = Alerting.run_alert(alert_query)
     end
 
     test "run_alert_query/1 does not send notifications if no results", %{user: user} do
@@ -285,27 +308,6 @@ defmodule Logflare.AlertingTest do
       |> reject(:send, 2)
 
       assert {:error, :no_results} = Alerting.run_alert(alert_query)
-    end
-
-    test "run_alert/2, performs pre-run configuration checks", %{user: user} do
-      alert_query = insert(:alert, user: user)
-
-      reject(&GoogleApi.BigQuery.V2.Api.Jobs.bigquery_jobs_query/3)
-      reject(&Logflare.Backends.Adaptor.WebhookAdaptor.Client.send/1)
-      reject(&Logflare.Backends.Adaptor.SlackAdaptor.Client.send/2)
-      Application.get_env(:logflare, Logflare.Alerting)
-      cfg = Application.get_env(:logflare, Logflare.Alerting)
-
-      on_exit(fn ->
-        Application.put_env(:logflare, Logflare.Alerting, cfg)
-      end)
-
-      # min_cluster_size
-      Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 4, enabled: true)
-      assert {:error, :below_min_cluster_size} = Alerting.run_alert(alert_query, :scheduled)
-      # enabled flag
-      Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 1, enabled: false)
-      assert {:error, :not_enabled} = Alerting.run_alert(alert_query, :scheduled)
     end
   end
 
@@ -332,7 +334,7 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      assert :ok = Alerting.run_alert(alert.id, :scheduled)
+      assert {:ok, [%{"testing" => "123"}]} = Alerting.run_alert(alert.id, :scheduled)
     end
 
     test "run_alert/1 no-ops if alert is missing", %{user: user} do
@@ -373,6 +375,29 @@ defmodule Logflare.AlertingTest do
       alert = insert(:alert, user: user)
       assert [] = Alerting.list_execution_history(alert.id)
     end
+  end
+
+  defp insert_oban_job(alert_query, attrs) do
+    now = DateTime.utc_now()
+
+    defaults = %{
+      state: "completed",
+      queue: "alerts",
+      worker: "Logflare.Alerting.AlertWorker",
+      args: %{"alert_query_id" => alert_query.id, "scheduled_at" => DateTime.to_iso8601(now)},
+      meta: %{},
+      attempted_at: now,
+      completed_at: now,
+      scheduled_at: now,
+      attempted_by: ["test_node"],
+      max_attempts: 1
+    }
+
+    merged = Map.merge(defaults, attrs)
+
+    %Oban.Job{}
+    |> Ecto.Changeset.change(merged)
+    |> Repo.insert!()
   end
 
   describe "partition_jobs_by_time/1" do

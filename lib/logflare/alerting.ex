@@ -23,6 +23,9 @@ defmodule Logflare.Alerting do
   require Logger
   require OpenTelemetry.Tracer
 
+  @future_job_states ~w(available scheduled executing)
+
+
   @doc """
   Returns the list of alert_queries.
 
@@ -164,8 +167,17 @@ defmodule Logflare.Alerting do
 
   """
   @spec delete_alert_query(AlertQuery.t()) :: {:ok, AlertQuery.t()} | {:error, Ecto.Changeset.t()}
-  def delete_alert_query(%AlertQuery{} = alert_query) do
+  def delete_alert_query(%AlertQuery{id: id} = alert_query) do
+    delete_alert_jobs(id)
     Repo.delete(alert_query)
+  end
+
+  defp delete_alert_jobs(alert_query_id) do
+    from(j in Oban.Job,
+      where: j.worker == "Logflare.Alerting.AlertWorker",
+      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id))
+    )
+    |> Repo.delete_all()
   end
 
   @doc """
@@ -188,7 +200,7 @@ defmodule Logflare.Alerting do
   Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
   """
   @spec run_alert(AlertQuery.t() | integer(), :scheduled) ::
-          :ok | {:error, :not_enabled | :not_found | :no_results | :below_min_cluster_size | any}
+          {:ok, map()} | {:error, :not_found | :no_results | any}
   def run_alert(alert_id, :scheduled) when is_integer(alert_id) do
     if alert_query = get_alert_query_by(id: alert_id) do
       run_alert(alert_query, :scheduled)
@@ -198,35 +210,24 @@ defmodule Logflare.Alerting do
   end
 
   def run_alert(%AlertQuery{} = alert_query, :scheduled) do
-    # perform pre-run checks
-    cfg = Application.get_env(:logflare, Logflare.Alerting)
     cluster_size = Cluster.Utils.actual_cluster_size()
 
-    cond do
-      cfg[:enabled] == false ->
-        {:error, :not_enabled}
-
-      cfg[:min_cluster_size] >= cluster_size ->
-        {:error, :below_min_cluster_size}
-
-      true ->
-        OpenTelemetry.Tracer.with_span "alerting.run_alert", %{
-          "alert.id" => alert_query.id,
-          "alert.name" => alert_query.name,
-          "alert.user_id" => alert_query.user_id,
-          "system.cluster_size" => cluster_size
-        } do
-          run_alert(alert_query)
-        end
+    OpenTelemetry.Tracer.with_span "alerting.run_alert", %{
+      "alert.id" => alert_query.id,
+      "alert.name" => alert_query.name,
+      "alert.user_id" => alert_query.user_id,
+      "system.cluster_size" => cluster_size
+    } do
+      run_alert(alert_query)
     end
   end
 
-  @spec run_alert(AlertQuery.t()) :: :ok | {:error, :no_results} | {:error, any()}
+  @spec run_alert(AlertQuery.t()) :: {:ok, map()} | {:error, :no_results} | {:error, any()}
   def run_alert(%AlertQuery{} = alert_query) do
     alert_query = alert_query |> preload_alert_query()
 
     case execute_alert_query(alert_query) do
-      {:ok, %{rows: [_ | _] = results}} ->
+      {:ok, %{rows: [_ | _] = results} = result} ->
         if alert_query.webhook_notification_url do
           send_webhook_notification(alert_query, results)
         end
@@ -249,13 +250,10 @@ defmodule Logflare.Alerting do
           )
         end
 
-        :ok
+        {:ok, Map.put(result, :fired, true)}
 
-      {:ok, %{rows: []}} ->
-        {:error, :no_results}
-
-      {:ok, %{rows: nil}} ->
-        {:error, :no_results}
+      {:ok, %{rows: rows} = result} when rows == [] or rows == nil->
+        {:ok, Map.put(result, :fired, false)}
 
       other ->
         other
@@ -296,6 +294,7 @@ defmodule Logflare.Alerting do
     |> Oban.insert()
   end
 
+
   @doc """
   Lists recent execution history for an alert query from Oban jobs.
   """
@@ -311,15 +310,40 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
+  Lists future (upcoming) jobs for an alert query.
+  """
+  @spec list_future_jobs(integer()) :: [Oban.Job.t()]
+  def list_future_jobs(alert_query_id) do
+    from(j in Oban.Job,
+      where: j.worker == "Logflare.Alerting.AlertWorker",
+      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+      where: j.state in @future_job_states,
+      order_by: [asc: j.scheduled_at]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns a query for past (completed/failed/cancelled/discarded) jobs for an alert query.
+  """
+  @spec past_jobs_query(integer()) :: Ecto.Query.t()
+  def past_jobs_query(alert_query_id) do
+    from(j in Oban.Job,
+      where: j.worker == "Logflare.Alerting.AlertWorker",
+      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+      where: j.state not in @future_job_states,
+      order_by: [desc: j.scheduled_at]
+    )
+  end
+
+  @doc """
   Partitions jobs into future (upcoming) and past (completed/failed) lists.
   """
   @spec partition_jobs_by_time([Oban.Job.t()]) :: %{future: [Oban.Job.t()], past: [Oban.Job.t()]}
   def partition_jobs_by_time(jobs) do
-    future_states = ~w(available scheduled executing)
-
     {future, past} =
       Enum.split_with(jobs, fn job ->
-        to_string(job.state) in future_states
+        to_string(job.state) in @future_job_states
       end)
 
     %{future: future, past: past}

@@ -49,18 +49,4 @@ defmodule Logflare.Alerting.AlertWorkerTest do
   test "perform/1 returns :ok when alert not found (deleted)" do
     assert :ok = perform_job(AlertWorker, %{alert_query_id: -1})
   end
-
-  test "perform/1 returns :ok when alerting disabled", %{user: user} do
-    alert = insert(:alert, user: user)
-    Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 0, enabled: false)
-
-    assert :ok = perform_job(AlertWorker, %{alert_query_id: alert.id})
-  end
-
-  test "perform/1 returns :ok when below min_cluster_size", %{user: user} do
-    alert = insert(:alert, user: user)
-    Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 100, enabled: true)
-
-    assert :ok = perform_job(AlertWorker, %{alert_query_id: alert.id})
-  end
 end
