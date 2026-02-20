@@ -48,10 +48,10 @@
                 ],
                 fn f -> %>
                 <%= checkbox f, :is_admin,
-                  checked: member.team_role.role == :admin,
-                  onchange: "confirmSubmit(this)",
+                  checked: member.role == :admin,
+                  onchange: "this.form.submit()",
                   class: "",
-                  data_self_admin: is_current_team_user
+                  data_confirm: if(is_current_team_user, do: "Remove your own admin role?")
                 %>
                <%= label f, :is_admin, "admin", class: "tw-hidden" %>
               <% end %>
@@ -70,20 +70,3 @@
     </tbody>
   </table>
 </div>
-
-<script>
-  function confirmSubmit(checkbox) {
-    if (!checkbox) {
-      return;
-    }
-
-    if (checkbox.hasAttribute("data-self-admin")) {
-      if (!confirm("Remove your own admin role?")) {
-        checkbox.checked = true;
-        return;
-      }
-    }
-
-    checkbox.form.submit();
-  }
-</script>

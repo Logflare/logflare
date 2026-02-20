@@ -377,7 +377,7 @@ defmodule LogflareWeb.UserControllerTest do
       team: team,
       team_user: team_user
     } do
-      assert team_user.team_role.role == :user
+      assert team_user.role == :user
 
       conn
       |> login_user(owner)
@@ -392,13 +392,13 @@ defmodule LogflareWeb.UserControllerTest do
       end)
 
       team_user = Logflare.TeamUsers.get_team_user_and_preload(team_user.id)
-      assert team_user.team_role.role == :admin
+      assert team_user.role == :admin
     end
 
     test "owner can demote admin to user", %{conn: conn, owner: owner, team: team} do
-      team_user = insert(:team_user, team: team, team_role: %{role: :admin})
+      team_user = insert(:team_user, team: team, role: :admin)
 
-      assert team_user.team_role.role == :admin
+      assert team_user.role == :admin
 
       conn
       |> login_user(owner)
@@ -413,7 +413,7 @@ defmodule LogflareWeb.UserControllerTest do
       end)
 
       team_user = Logflare.TeamUsers.get_team_user_and_preload(team_user.id)
-      assert team_user.team_role.role == :user
+      assert team_user.role == :user
     end
 
     test "owner cannot update role for team member from another team", %{conn: conn} do
@@ -437,7 +437,7 @@ defmodule LogflareWeb.UserControllerTest do
                "Not authorized to update this team member's role"
 
       victim_team_user = Logflare.TeamUsers.get_team_user_and_preload(victim_team_user.id)
-      assert victim_team_user.team_role.role == :user
+      assert victim_team_user.role == :user
     end
   end
 end

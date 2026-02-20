@@ -511,7 +511,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       backend = insert(:backend, user: team_user.team.user)
 
       assert conn
-             |> add_access_token(member, "private")
+             |> add_access_token(member, "private:admin")
              |> patch("/api/backends/#{backend.token}", %{name: "updated"})
              |> response(404)
     end
@@ -681,13 +681,14 @@ defmodule LogflareWeb.Api.BackendControllerTest do
              |> delete("/api/backends/#{backend.token}")
              |> response(404)
     end
+
     test "team member cannot delete a team-owned backend", %{conn: conn} do
       member = insert(:user)
       team_user = insert(:team_user, email: member.email)
       backend = insert(:backend, user: team_user.team.user)
 
       assert conn
-             |> add_access_token(member, "private")
+             |> add_access_token(member, "private:admin")
              |> delete("/api/backends/#{backend.token}")
              |> response(404)
     end
@@ -754,7 +755,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       backend = insert(:backend, user: team_user.team.user)
 
       assert conn
-             |> add_access_token(member, "private")
+             |> add_access_token(member, "private:admin")
              |> post("/api/backends/#{backend.token}/test")
              |> response(404)
     end

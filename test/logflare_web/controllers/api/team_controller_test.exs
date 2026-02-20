@@ -132,8 +132,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       assert conn
              |> add_access_token(user, "private")
              |> post(~p"/api/teams", %{name: TestUtils.random_string()})
-             |> response(401)
-             |> assert_schema("Unauthorized") == ~s|{"error":"Unauthorized"}|
+             |> json_response(401) == %{"error" => "Unauthorized"}
     end
   end
 
@@ -188,8 +187,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       assert conn
              |> add_access_token(user, "private")
              |> patch(~p"/api/teams/#{main_team.token}", %{name: TestUtils.random_string()})
-             |> response(401)
-             |> assert_schema("Unauthorized") == ~s|{"error":"Unauthorized"}|
+             |> json_response(401) == %{"error" => "Unauthorized"}
     end
   end
 
@@ -218,8 +216,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       assert conn
              |> add_access_token(user, "private")
              |> delete(~p"/api/teams/#{main_team.token}")
-             |> response(401)
-             |> assert_schema("Unauthorized") == ~s|{"error":"Unauthorized"}|
+             |> json_response(401) == %{"error" => "Unauthorized"}
     end
   end
 end
