@@ -23,6 +23,11 @@
       {error_tag(f, :name)}
     </div>
 
+    <div class="form-group form-check">
+      {checkbox(f, :enabled, id: "enabled-checkbox", class: "form-check-input")}
+      {label(f, :enabled, "Enabled", for: "enabled-checkbox", class: "form-check-label")}
+    </div>
+
     <.header_with_anchor text="Description" />
     <div class="form-group">
       <p>What is this alert used for?</p>

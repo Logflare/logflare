@@ -398,11 +398,11 @@ defmodule LogflareWeb.AlertsLiveTest do
         insert_oban_job(alert_query, %{
           meta: %{
             "result" => %{
-              "fired"=> true,
-              "rows"=>  [%{"col_a" => "val1", "col_b" => "val2"}],
+              "fired" => true,
+              "rows" => [%{"col_a" => "val1", "col_b" => "val2"}],
               "total_bytes_processed" => 1_073_741_824,
-              "total_rows" => 1,
-            },
+              "total_rows" => 1
+            }
           }
         })
 
@@ -430,12 +430,28 @@ defmodule LogflareWeb.AlertsLiveTest do
 
     test "displays not fired status", %{conn: conn, alert_query: alert_query} do
       insert_oban_job(alert_query, %{
-        meta: %{"result" => %{ "fired" => false, "rows" => [] }}
+        meta: %{"result" => %{"fired" => false, "rows" => []}}
       })
 
       {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
 
       assert html =~ "Not Fired"
+    end
+
+    test "hides scheduled jobs toggle when no future jobs exist", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
+      # Only insert a past job, no future jobs
+      insert_oban_job(alert_query, %{
+        state: "completed",
+        meta: %{"result" => %{"fired" => false, "rows" => []}}
+      })
+
+      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+
+      assert html =~ "Past Executions"
+      refute html =~ "Show scheduled jobs"
     end
 
     test "displays scheduled (future) jobs", %{conn: conn, alert_query: alert_query} do
@@ -518,11 +534,34 @@ defmodule LogflareWeb.AlertsLiveTest do
       # Should have pagination links
       assert html =~ "page-item"
 
-       view
-       |> element("a.page-link", "2")
-       |> render_click()
+      view
+      |> element("a.page-link", "2")
+      |> render_click()
+
       # Navigate to page 2 via live_patch
       assert_patch(view, ~p"/alerts/#{alert_query.id}?t=#{team.id}&page=2")
+    end
+  end
+
+  describe "enabled field" do
+    setup [:create_alert_query]
+
+    test "edit form shows enabled checkbox", %{conn: conn, alert_query: alert_query} do
+      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}/edit")
+      assert html =~ "enabled-checkbox"
+      assert html =~ "Enabled"
+    end
+
+    test "show page displays Enabled badge", %{conn: conn, alert_query: alert_query} do
+      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      assert html =~ "Enabled"
+    end
+
+    test "index shows Disabled badge for disabled alert", %{conn: conn, user: user} do
+      _disabled_alert = insert(:alert, user_id: user.id, enabled: false, name: "Disabled Alert")
+      {:ok, _view, html} = live(conn, ~p"/alerts")
+      assert html =~ "Disabled Alert"
+      assert html =~ "Disabled"
     end
   end
 
