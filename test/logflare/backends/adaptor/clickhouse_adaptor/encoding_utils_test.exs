@@ -48,12 +48,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodingUtilsTest do
     end
 
     test "converts ports to strings" do
-      port = Port.open({:spawn, "echo"}, [:binary])
+      port = Port.open({:spawn, "cat"}, [:binary])
       result = EncodingUtils.sanitize_for_json(port)
-      Port.close(port)
 
       assert is_binary(result)
       assert result == inspect(port)
+
+      Port.close(port)
     end
 
     test "converts references to strings" do
