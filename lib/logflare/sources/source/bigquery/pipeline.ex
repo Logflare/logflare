@@ -361,6 +361,14 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       bigquery_processed_bytes_limit: 10_000_000_000
     }
 
+    Logger.warning("user audit: BigQuery backend auto-disconnect triggered",
+      action: "user.bq_auto_disconnect",
+      user_id: user.id,
+      user_email: user.email,
+      source_token: source_id,
+      reason: message
+    )
+
     case Users.update_user_allowed(user, defaults) do
       {:ok, user} ->
         Supervisor.reset_all_user_sources(user)
@@ -369,11 +377,22 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         |> AccountEmail.backend_disconnected(message)
         |> Mailer.deliver()
 
-        Logger.warning("Backend disconnected for: #{user.email}", tesla_response: message)
+        Logger.warning("user audit: BigQuery backend auto-disconnected",
+          action: "user.bq_auto_disconnected",
+          user_id: user.id,
+          user_email: user.email,
+          source_token: source_id,
+          reason: message
+        )
 
       {:error, changeset} ->
-        Logger.error("Failed to reset backend for user: #{user.email}",
-          changeset: inspect(changeset)
+        Logger.error("user audit: BigQuery backend auto-disconnect failed",
+          action: "user.bq_auto_disconnect_failed",
+          user_id: user.id,
+          user_email: user.email,
+          source_token: source_id,
+          reason: message,
+          errors: inspect(changeset.errors)
         )
     end
   end
