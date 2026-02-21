@@ -1,8 +1,13 @@
 defmodule Logflare.BigQuery.PipelineTest do
   @moduledoc false
   use Logflare.DataCase
+
+  import ExUnit.CaptureLog
+
+  alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.LogEvent
+  alias Logflare.User
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.IngestEventQueue
@@ -140,6 +145,127 @@ defmodule Logflare.BigQuery.PipelineTest do
         refute match?(%DateTime{}, json["start_time"])
         refute match?(%DateTime{}, json["end_time"])
       end
+    end
+  end
+
+  describe "disconnect_backend_and_email" do
+    setup do
+      insert(:plan)
+
+      user =
+        insert(:user,
+          bigquery_project_id: "my-byob-project",
+          bigquery_dataset_id: "my_dataset",
+          bigquery_dataset_location: "US"
+        )
+
+      source = insert(:source, user_id: user.id)
+
+      {:ok, user: user, source: source}
+    end
+
+    test "resets BQ settings on free tier streaming error", %{user: user, source: source} do
+      error_body =
+        Jason.encode!(%{
+          "error" => %{
+            "message" =>
+              "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier"
+          }
+        })
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _context, _rows ->
+        {:error, %Tesla.Env{body: error_body}}
+      end)
+
+      expect(Logflare.Sources.Source.Supervisor, :reset_all_user_sources, fn _user -> :ok end)
+      expect(Logflare.Mailer, :deliver, fn _email -> {:ok, %{}} end)
+
+      context = %{
+        source_token: source.token,
+        user_id: user.id,
+        system_source: false,
+        bigquery_project_id: user.bigquery_project_id,
+        bigquery_dataset_id: user.bigquery_dataset_id
+      }
+
+      log =
+        capture_log([level: :warning], fn ->
+          Pipeline.stream_batch(context, [])
+        end)
+
+      assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
+      assert log =~ "user audit: BigQuery backend auto-disconnected"
+
+      updated_user = Repo.get!(User, user.id)
+      assert is_nil(updated_user.bigquery_project_id)
+      assert is_nil(updated_user.bigquery_dataset_id)
+      assert is_nil(updated_user.bigquery_dataset_location)
+      assert updated_user.bigquery_processed_bytes_limit == 10_000_000_000
+    end
+
+    test "resets BQ settings on project not enabled error", %{user: user, source: source} do
+      error_body =
+        Jason.encode!(%{
+          "error" => %{
+            "message" => "The project my-byob-project has not enabled BigQuery."
+          }
+        })
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _context, _rows ->
+        {:error, %Tesla.Env{body: error_body}}
+      end)
+
+      expect(Logflare.Sources.Source.Supervisor, :reset_all_user_sources, fn _user -> :ok end)
+      expect(Logflare.Mailer, :deliver, fn _email -> {:ok, %{}} end)
+
+      context = %{
+        source_token: source.token,
+        user_id: user.id,
+        system_source: false,
+        bigquery_project_id: user.bigquery_project_id,
+        bigquery_dataset_id: user.bigquery_dataset_id
+      }
+
+      log =
+        capture_log([level: :warning], fn ->
+          Pipeline.stream_batch(context, [])
+        end)
+
+      assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
+      assert log =~ "user audit: BigQuery backend auto-disconnected"
+
+      updated_user = Repo.get!(User, user.id)
+      assert is_nil(updated_user.bigquery_project_id)
+      assert is_nil(updated_user.bigquery_dataset_id)
+      assert is_nil(updated_user.bigquery_dataset_location)
+    end
+
+    test "does not reset BQ settings on other errors", %{user: user, source: source} do
+      error_body =
+        Jason.encode!(%{
+          "error" => %{"message" => "Some transient error"}
+        })
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _context, _rows ->
+        {:error, %Tesla.Env{body: error_body}}
+      end)
+
+      context = %{
+        source_token: source.token,
+        user_id: user.id,
+        system_source: false,
+        bigquery_project_id: user.bigquery_project_id,
+        bigquery_dataset_id: user.bigquery_dataset_id
+      }
+
+      capture_log([level: :warning], fn ->
+        Pipeline.stream_batch(context, [])
+      end)
+
+      updated_user = Repo.get!(User, user.id)
+      assert updated_user.bigquery_project_id == "my-byob-project"
+      assert updated_user.bigquery_dataset_id == "my_dataset"
+      assert updated_user.bigquery_dataset_location == "US"
     end
   end
 
