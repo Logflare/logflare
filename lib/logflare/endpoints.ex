@@ -27,7 +27,7 @@ defmodule Logflare.Endpoints do
   @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
 
   @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
-  @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
+  @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, term()}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
