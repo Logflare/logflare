@@ -16,6 +16,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   alias __MODULE__.ConnectionManager
   alias __MODULE__.Ingester
+  alias __MODULE__.NativeIngester
+  alias __MODULE__.NativePoolSup
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
   alias __MODULE__.QueryTemplates
@@ -120,7 +122,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        port: :integer,
        pool_size: :integer,
        async_insert: :boolean,
-       read_only_url: :string
+       read_only_url: :string,
+       native_insert_protocol: :boolean,
+       native_port: :integer,
+       native_pool_size: :integer
      }}
     |> Changeset.cast(params, [
       :url,
@@ -130,9 +135,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :port,
       :pool_size,
       :async_insert,
-      :read_only_url
+      :read_only_url,
+      :native_insert_protocol,
+      :native_port,
+      :native_pool_size
     ])
     |> Logflare.Utils.default_field_value(:async_insert, false)
+    |> Logflare.Utils.default_field_value(:native_insert_protocol, false)
   end
 
   @doc false
@@ -140,11 +149,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def validate_config(%Changeset{} = changeset) do
     import Ecto.Changeset
 
+    {min_pool, max_pool} = NativeIngester.Pool.pool_size_range()
+
     changeset
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> validate_read_only_url()
     |> validate_user_pass()
+    |> validate_number(:pool_size,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: max_pool
+    )
+    |> validate_number(:native_pool_size,
+      greater_than_or_equal_to: min_pool,
+      less_than_or_equal_to: max_pool
+    )
   end
 
   @doc """
@@ -258,18 +277,48 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           :ok | {:error, String.t()}
   def insert_log_events(%Backend{}, [], _event_type), do: :ok
 
+  def insert_log_events(
+        %Backend{config: %{native_insert_protocol: true}} = backend,
+        [%LogEvent{} | _] = events,
+        event_type
+      )
+      when is_event_type(event_type) do
+    with :ok <- NativePoolSup.ensure_started(backend) do
+      do_insert_log_events(backend, events, event_type, :native)
+    end
+  end
+
   def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
       when is_event_type(event_type) do
+    do_insert_log_events(backend, events, event_type, :http)
+  end
+
+  @spec do_insert_log_events(
+          Backend.t(),
+          [LogEvent.t()],
+          TypeDetection.event_type(),
+          :http | :native
+        ) :: :ok | {:error, String.t()}
+  defp do_insert_log_events(backend, events, event_type, protocol) do
     Logger.metadata(backend_id: backend.id)
 
     table_name = clickhouse_ingest_table_name(backend, event_type)
 
-    case Ingester.insert(backend, table_name, events, event_type) do
+    result =
+      if protocol == :native do
+        NativeIngester.insert(backend, table_name, events, event_type)
+      else
+        Ingester.insert(backend, table_name, events, event_type)
+      end
+
+    case result do
       :ok ->
         :ok
 
       {:error, reason} ->
-        Logger.error("ClickHouse insert errors.", error_string: inspect(reason))
+        Logger.error("ClickHouse #{protocol} insert error.",
+          error_string: inspect(reason)
+        )
 
         {:error, reason}
     end

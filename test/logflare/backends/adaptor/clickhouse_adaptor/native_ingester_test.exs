@@ -68,7 +68,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"active", "Bool", [true, false, true]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_basic", columns)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_basic", columns, [])
 
       # Verify data via HTTP read
       {:ok, rows} =
@@ -130,7 +130,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"ts_precise", "DateTime64(9)", [ts64_1, ts64_2]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_types", columns)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_types", columns, [])
 
       {:ok, rows} =
         ClickHouseAdaptor.execute_ch_query(
@@ -184,7 +184,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       ]
 
       assert {:error, {:exception, _code, message}} =
-               NativeIngester.insert(conn, "native_insert_basic", columns)
+               NativeIngester.insert(conn, "native_insert_basic", columns, [])
 
       assert message =~ "wrong_name"
 
@@ -213,7 +213,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       ]
 
       assert {:error, {:column_mismatch, opts}} =
-               NativeIngester.insert(conn, "native_insert_basic", columns)
+               NativeIngester.insert(conn, "native_insert_basic", columns, [])
 
       assert Keyword.get(opts, :got) == [
                {"id", "UInt64"},
@@ -246,7 +246,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"value", "Float64", Enum.map(1..num_rows, &(&1 * 0.1))}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_large", columns)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_large", columns, [])
 
       # Verify row count via HTTP
       {:ok, rows} =
@@ -285,7 +285,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       columns = [{"id", "UInt64", [1]}]
 
       assert {:error, {:exception, _code, message}} =
-               NativeIngester.insert(conn, "non_existent_table_xyz", columns)
+               NativeIngester.insert(conn, "non_existent_table_xyz", columns, [])
 
       assert message =~ "non_existent_table_xyz"
 
@@ -309,7 +309,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"name", "String", ["first", "second"]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_reuse", columns1)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_reuse", columns1, [])
 
       # Second insert on the same connection
       columns2 = [
@@ -317,7 +317,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"name", "String", ["third", "fourth"]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_reuse", columns2)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_reuse", columns2, [])
 
       # Third insert
       columns3 = [
@@ -325,7 +325,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"name", "String", ["fifth"]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_reuse", columns3)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_insert_reuse", columns3, [])
 
       # Verify all 5 rows landed
       {:ok, rows} =
@@ -378,7 +378,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"timestamp", "DateTime64(9)", [ts_ns]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_otel_logs", columns)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_otel_logs", columns, [])
 
       {:ok, rows} =
         ClickHouseAdaptor.execute_ch_query(
@@ -461,7 +461,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"timestamp", "DateTime64(9)", [ts_ns]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_otel_metrics", columns)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_otel_metrics", columns, [])
 
       {:ok, rows} =
         ClickHouseAdaptor.execute_ch_query(
@@ -515,7 +515,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"active", "Bool", [true, false, true]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_basic", columns)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_basic", columns, [])
 
       {:ok, rows} =
         ClickHouseAdaptor.execute_ch_query(
@@ -553,7 +553,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"value", "Float64", Enum.map(1..num_rows, &(&1 * 0.1))}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_large", columns)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_large", columns, [])
 
       {:ok, rows} =
         ClickHouseAdaptor.execute_ch_query(
@@ -582,14 +582,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"name", "String", ["first", "second"]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_reuse", columns1)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_reuse", columns1, [])
 
       columns2 = [
         {"id", "UInt64", [3, 4]},
         {"name", "String", ["third", "fourth"]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_reuse", columns2)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_lz4_reuse", columns2, [])
 
       {:ok, rows} =
         ClickHouseAdaptor.execute_ch_query(
@@ -652,7 +652,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
         {"timestamp", "DateTime64(9)", [ts_ns]}
       ]
 
-      assert {:ok, conn} = NativeIngester.insert(conn, "native_otel_traces", columns)
+      assert {:ok, conn} = NativeIngester.insert(conn, "native_otel_traces", columns, [])
 
       {:ok, rows} =
         ClickHouseAdaptor.execute_ch_query(

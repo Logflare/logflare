@@ -156,19 +156,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   `{name, type}` tuples describing the expected columns. After this returns
   successfully, the connection expects Data blocks to be sent.
 
+  The `settings` parameter is a keyword list of ClickHouse settings to include
+  with the query (e.g. `[async_insert: 1, wait_for_async_insert: 1]`). These
+  are merged after the two base settings (`low_cardinality_allow_in_native_format=0`
+  and `input_format_native_allow_types_conversion=1`). Each setting is sent
+  with flags=0 (default priority).
+
   ## Options
 
     * `:query_id` - optional query identifier (default: auto-generated UUID)
-    * `:settings` - keyword list of ClickHouse settings to include with the query
-      (e.g. `[async_insert: 1, wait_for_async_insert: 1]`). These are merged
-      after the two base settings (`low_cardinality_allow_in_native_format=0`
-      and `input_format_native_allow_types_conversion=1`). Each setting is
-      sent with flags=0 (default priority).
   """
-  @spec send_query(t(), String.t(), keyword()) :: {:ok, column_info(), t()} | {:error, term()}
-  def send_query(%__MODULE__{} = conn, sql, opts \\ []) do
+  @spec send_query(t(), String.t(), keyword(), keyword()) ::
+          {:ok, column_info(), t()} | {:error, term()}
+  def send_query(%__MODULE__{} = conn, sql, settings \\ [], opts \\ [])
+      when is_list(settings) and is_list(opts) do
     query_id = Keyword.get(opts, :query_id, Ecto.UUID.generate())
-    settings = Keyword.get(opts, :settings, [])
     query_packet = encode_query_packet(conn, sql, query_id, settings)
 
     with :ok <- send_data(conn, query_packet),

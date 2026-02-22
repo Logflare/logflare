@@ -110,7 +110,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ConnectionT
     end
   end
 
-  describe "send_query/3" do
+  describe "send_query/4" do
     setup do
       insert(:plan, name: "Free")
       {_source, backend, cleanup_fn} = setup_clickhouse_test()

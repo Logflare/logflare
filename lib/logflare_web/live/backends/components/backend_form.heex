@@ -224,7 +224,7 @@
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :port, "Connection pool size")}
+            {label(f_config, :pool_size, "Connection Pool Size")}
             {text_input(f_config, :pool_size, class: "form-control", value: 1)}
           </div>
           <div class="form-group">
@@ -237,6 +237,21 @@
             <small class="form-text text-muted">
               Separate endpoint for read queries, for example: <code>https://read-warehouse.clickhouse.cloud:8443</code>
             </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :native_insert_protocol, "Native Insert Protocol")}
+            {checkbox(f_config, :native_insert_protocol, id: "native_insert_protocol")}
+            <small class="form-text text-muted">
+              Use the ClickHouse native TCP protocol for inserts instead of HTTP.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :native_port, "Native Port")}
+            {text_input(f_config, :native_port, class: "form-control", value: 9000)}
+          </div>
+          <div class="form-group">
+            {label(f_config, :native_pool_size, "Native Pool Size")}
+            {text_input(f_config, :native_pool_size, class: "form-control", value: 10)}
           </div>
         <% "incidentio" -> %>
           <div class="form-group">

@@ -29,7 +29,8 @@ config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 
 
 config :logflare, :clickhouse_backend_adaptor,
   engine: "MergeTree",
-  pool_size: 3
+  pool_size: 3,
+  native_pool_size: 10
 
 config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
 

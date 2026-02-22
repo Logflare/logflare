@@ -9,7 +9,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativePoolSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
 
@@ -340,6 +343,44 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "handles empty event list", %{backend: backend} do
       result = ClickHouseAdaptor.insert_log_events(backend, [], :log)
       assert :ok = result
+    end
+
+    test "insert_log_events/3 routes through native pool when enabled", %{
+      source: source,
+      backend: query_backend
+    } do
+      {_source, native_backend, cleanup_fn} =
+        setup_clickhouse_test(
+          source: source,
+          config: %{native_insert_protocol: true, native_port: 9000}
+        )
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(native_backend, :log)
+
+      ddl = QueryTemplates.create_table_statement(table_name, :log, ttl_days: 0)
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
+
+      log_event = build_mapped_log_event(source: source, message: "native route test")
+
+      assert :ok = ClickHouseAdaptor.insert_log_events(native_backend, [log_event], :log)
+
+      pool_pid = GenServer.whereis(NativeIngester.Pool.via(native_backend))
+      assert is_pid(pool_pid)
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          query_backend,
+          "SELECT event_message FROM #{table_name}"
+        )
+
+      assert length(rows) == 1
+      assert Enum.at(rows, 0)["event_message"] == "native route test"
+
+      on_exit(fn ->
+        NativePoolSup.stop_pool(native_backend)
+        ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
+        cleanup_fn.()
+      end)
     end
 
     test "insert_log_events/3 inserts into type-specific table", %{
