@@ -1,24 +1,10 @@
 name: Integration Tests with Supabase
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'config/**'
-      - 'assets/**'
-      - 'lib/**'
-      - 'priv/**'
-      - 'mix.exs'
-      - 'mix.lock'
-      - 'Dockerfile'
-      - 'run.sh'
-      - 'test/e2e/supabase/**'
-      - '.github/workflows/integration-supabase.yml'
   pull_request:
     branches:
       - main
-    paths:
+    paths: &watched_paths
       - 'config/**'
       - 'assets/**'
       - 'lib/**'
@@ -29,6 +15,11 @@ on:
       - 'run.sh'
       - 'test/e2e/supabase/**'
       - '.github/workflows/integration-supabase.yml'
+  # TODO: turn on when all browsers job take less than 15 minutes to run
+  # push:
+  #   branches:
+  #     - main
+  #   paths: *watched_paths
 
 # Cancel old builds on new commit for same workflow + branch/PR
 concurrency:
@@ -91,12 +82,21 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps
+    # TODO: Find a way to make it take less than 15 minutes to reactive it on main
+    # - name: Install Playwright Browsers
+    #   if: ${{ github.event_name != 'pull_request' }}
+    #   run: npx playwright install chromium --with-deps
+    # - name: Run Playwright tests (all browsers)
+    #   if: ${{ github.event_name != 'pull_request' }}
+    #   run: npx playwright test
 
-    - name: Run Playwright tests (all browsers)
-      if: ${{ github.event_name != 'pull_request' }}
-      run: npx playwright test
+    - name: Install Playwright Chromium Browser
+      if: ${{ github.event_name == 'pull_request' }}
+      run: npx playwright install chromium --with-deps
+
+    - name: Run Playwright tests (only Chromium)
+      if: ${{ github.event_name == 'pull_request' }}
+      run: npx playwright test --project chromium
 
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}

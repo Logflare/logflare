@@ -221,18 +221,14 @@ defmodule Logflare.Auth do
   end
 
   @doc "Revokes a given access token."
-  @spec revoke_access_token(User.t() | Partner.t(), OauthAccessToken.t() | binary()) ::
-          :ok | {:error, term()}
-  def revoke_access_token(user, token) when is_binary(token) do
-    get_access_token(user, token)
+  @spec revoke_access_token(User.t() | Partner.t(), binary()) :: :ok | {:error, term()}
+  def revoke_access_token(user_or_partner, token) when is_binary(token) do
+    user_or_partner
+    |> get_access_token(token)
     |> revoke_access_token()
   end
 
-  def revoke_access_token(partner, token) when is_binary(token) do
-    get_access_token(partner, token)
-    |> revoke_access_token()
-  end
-
+  @spec revoke_access_token(OauthAccessToken.t()) :: :ok | {:error, term()}
   def revoke_access_token(%OauthAccessToken{} = token) do
     with {:ok, _token} <- ExOauth2Provider.AccessTokens.revoke(token, env_oauth_config()) do
       :ok
