@@ -352,7 +352,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {_source, native_backend, cleanup_fn} =
         setup_clickhouse_test(
           source: source,
-          config: %{native_insert_protocol: true, native_port: 9000}
+          config: %{insert_protocol: "native", native_port: 9000}
         )
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(native_backend, :log)

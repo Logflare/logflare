@@ -113,7 +113,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Logflare.Backends.Adaptor
   def cast_config(%{} = params) do
-    {%{},
+    {%{insert_protocol: "http"},
      %{
        url: :string,
        username: :string,
@@ -123,7 +123,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        pool_size: :integer,
        async_insert: :boolean,
        read_only_url: :string,
-       native_insert_protocol: :boolean,
+       insert_protocol: :string,
        native_port: :integer,
        native_pool_size: :integer
      }}
@@ -136,12 +136,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :pool_size,
       :async_insert,
       :read_only_url,
-      :native_insert_protocol,
+      :insert_protocol,
       :native_port,
       :native_pool_size
     ])
     |> Logflare.Utils.default_field_value(:async_insert, false)
-    |> Logflare.Utils.default_field_value(:native_insert_protocol, false)
   end
 
   @doc false
@@ -156,6 +155,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> validate_read_only_url()
     |> validate_user_pass()
+    |> validate_inclusion(:insert_protocol, ["http", "native"])
     |> validate_number(:pool_size,
       greater_than_or_equal_to: 1,
       less_than_or_equal_to: max_pool
@@ -278,7 +278,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def insert_log_events(%Backend{}, [], _event_type), do: :ok
 
   def insert_log_events(
-        %Backend{config: %{native_insert_protocol: true}} = backend,
+        %Backend{config: %{insert_protocol: "native"}} = backend,
         [%LogEvent{} | _] = events,
         event_type
       )
