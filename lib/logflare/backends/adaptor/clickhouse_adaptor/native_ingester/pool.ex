@@ -18,6 +18,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
   @checkout_timeout 10_000
   @worker_idle_timeout 30_000
 
+  @default_native_port 9000
+  @secure_native_port 9440
+
   @doc """
   Returns the via tuple for a pool registered under a given backend.
   """
@@ -61,6 +64,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
   """
   @spec pool_size_range() :: {pos_integer(), pos_integer()}
   def pool_size_range, do: {min_pool_size(), @max_pool_size}
+
+  @doc """
+  Tests connectivity for a backend without starting the pool.
+
+  Builds connection options from the backend config and performs a
+  connect → ping → close cycle. Useful for verifying configuration from IEx.
+
+  ## Example
+
+      iex> backend = Logflare.Backends.get_backend(123)
+      iex> Pool.test_connection(backend)
+      :ok
+
+  """
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    backend
+    |> build_connect_opts()
+    |> Connection.test_connection()
+  end
 
   @doc """
   Checks out a connection, passes it to `fun`, and returns it to the pool.
@@ -142,25 +165,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
     |> min(@max_pool_size)
   end
 
+  @doc false
   @spec build_connect_opts(Backend.t()) :: Connection.connect_opts()
-  defp build_connect_opts(%Backend{config: config}) do
+  def build_connect_opts(%Backend{config: config}) do
     url = Map.fetch!(config, :url)
     uri = URI.parse(url)
     host = uri.host
 
+    native_port =
+      config |> Map.get(:native_port, @default_native_port) |> to_integer()
+
     base_opts = [
       host: host,
-      port: Map.get(config, :native_port) || 9000,
+      port: native_port,
       database: Map.fetch!(config, :database),
       username: Map.fetch!(config, :username),
       password: Map.fetch!(config, :password),
       compression: :lz4
     ]
 
-    if uri.scheme == "https" do
+    if native_port == @secure_native_port do
       Keyword.put(base_opts, :transport, :ssl)
     else
       base_opts
     end
   end
+
+  @spec to_integer(integer() | String.t()) :: integer()
+  defp to_integer(val) when is_integer(val), do: val
+  defp to_integer(val) when is_binary(val), do: String.to_integer(val)
 end

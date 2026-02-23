@@ -111,14 +111,63 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     }
 
     tcp_opts = [:binary, {:packet, :raw}, {:active, false}, {:nodelay, true}]
+
+    connect_opts =
+      if transport == :ssl do
+        tcp_opts ++ ssl_opts(host)
+      else
+        tcp_opts
+      end
+
     host_charlist = String.to_charlist(host)
 
-    with {:ok, socket} <- transport.connect(host_charlist, port, tcp_opts, connect_timeout),
+    with {:ok, socket} <- transport.connect(host_charlist, port, connect_opts, connect_timeout),
          conn = %{conn | socket: socket},
          {:ok, conn} <- send_client_hello(conn, password),
          {:ok, conn} <- read_server_hello(conn),
          {:ok, conn} <- maybe_send_addendum(conn) do
       {:ok, %{conn | connected_at: System.monotonic_time(:millisecond)}}
+    end
+  end
+
+  @spec ssl_opts(String.t()) :: [:ssl.tls_client_option()]
+  defp ssl_opts(host) do
+    cacerts =
+      CAStore.file_path()
+      |> File.read!()
+      |> :public_key.pem_decode()
+      |> Enum.map(fn {_, der, _} -> der end)
+
+    [
+      verify: :verify_peer,
+      cacerts: cacerts,
+      server_name_indication: String.to_charlist(host),
+      customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
+    ]
+  end
+
+  @doc """
+  Tests connectivity by performing a connect → ping → close cycle.
+  """
+  @spec test_connection(connect_opts()) :: :ok | {:error, term()}
+  def test_connection(opts) do
+    case connect(opts) do
+      {:ok, conn} ->
+        result =
+          case ping(conn) do
+            {:ok, conn} ->
+              close(conn)
+              :ok
+
+            {:error, reason} ->
+              close(conn)
+              {:error, {:ping_failed, reason}}
+          end
+
+        result
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
