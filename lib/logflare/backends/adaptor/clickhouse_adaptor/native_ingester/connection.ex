@@ -56,6 +56,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     field :compression, :none | :lz4 | :zstd, default: :none
     field :buffer, binary(), default: <<>>
     field :recv_timeout, non_neg_integer(), default: 30_000
+    field :connected_at, integer()
   end
 
   @doc """
@@ -118,7 +119,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
          {:ok, conn} <- send_client_hello(conn, password),
          {:ok, conn} <- read_server_hello(conn),
          {:ok, conn} <- maybe_send_addendum(conn) do
-      {:ok, conn}
+      {:ok, %{conn | connected_at: System.monotonic_time(:millisecond)}}
     end
   end
 

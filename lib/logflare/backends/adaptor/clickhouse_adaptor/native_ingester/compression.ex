@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Compression
   `ChCompression` NIF into the envelope format expected by ClickHouse.
   """
 
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ChCompression
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ChCompression
 
   @lz4_method 0x82
   @header_size 9

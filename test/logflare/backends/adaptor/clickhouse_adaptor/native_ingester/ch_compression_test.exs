@@ -1,7 +1,7 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ChCompressionTest do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ChCompressionTest do
   use ExUnit.Case, async: true
 
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ChCompression
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ChCompression
 
   describe "hash128/1" do
     test "returns a 16-byte binary" do

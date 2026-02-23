@@ -4,7 +4,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncoder
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool
 
@@ -106,12 +106,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
           assert %Connection{} = conn
           assert Connection.alive?(conn)
 
-          columns = [
-            {"id", "UInt64", [1]},
-            {"name", "String", ["after_recycle"]}
-          ]
-
-          case NativeIngester.insert(conn, "pool_basic", columns, []) do
+          case do_insert(conn, "pool_basic", [
+                 {"id", "UInt64", [1]},
+                 {"name", "String", ["after_recycle"]}
+               ]) do
             {:ok, updated_conn} -> {:ok, updated_conn}
             {:error, _} = error -> {error, :remove}
           end
@@ -153,12 +151,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
 
       result =
         NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
-          columns = [
-            {"id", "UInt64", [1, 2]},
-            {"name", "String", ["alice", "bob"]}
-          ]
-
-          case NativeIngester.insert(conn, "pool_insert", columns, []) do
+          case do_insert(conn, "pool_insert", [
+                 {"id", "UInt64", [1, 2]},
+                 {"name", "String", ["alice", "bob"]}
+               ]) do
             {:ok, updated_conn} -> {:ok, updated_conn}
             {:error, _} = error -> {error, :remove}
           end
@@ -175,6 +171,75 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
       assert length(rows) == 2
       assert Enum.at(rows, 0)["name"] == "alice"
       assert Enum.at(rows, 1)["name"] == "bob"
+
+      GenServer.stop(pid)
+    end
+  end
+
+  describe "handle_ping" do
+    test "removes stale connections when socket is closed" do
+      pool_name = :"pool_ping_stale_#{System.unique_integer([:positive])}"
+
+      {:ok, pid} =
+        NimblePool.start_link(
+          worker: {Pool, @pool_connect_opts},
+          pool_size: 1,
+          lazy: false,
+          worker_idle_timeout: 100,
+          name: pool_name
+        )
+
+      # Check out the connection, close the socket, then check it back in
+      NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
+        Connection.close(conn)
+        {:ok, conn}
+      end)
+
+      # Wait for the idle timeout + ping cycle to fire and remove the stale worker
+      Process.sleep(300)
+
+      # Next checkout should get a fresh, healthy connection
+      result =
+        NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
+          assert %Connection{} = conn
+          assert Connection.alive?(conn)
+          {:ok, conn}
+        end)
+
+      assert result == :ok
+
+      GenServer.stop(pid)
+    end
+
+    test "keeps healthy connections alive across ping cycles" do
+      pool_name = :"pool_ping_healthy_#{System.unique_integer([:positive])}"
+
+      {:ok, pid} =
+        NimblePool.start_link(
+          worker: {Pool, @pool_connect_opts},
+          pool_size: 1,
+          lazy: false,
+          worker_idle_timeout: 100,
+          name: pool_name
+        )
+
+      # Get the initial connection's connected_at
+      initial_connected_at =
+        NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
+          {conn.connected_at, conn}
+        end)
+
+      # Let several ping cycles pass
+      Process.sleep(350)
+
+      # Connection should still be the same (not replaced)
+      final_connected_at =
+        NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
+          assert Connection.alive?(conn)
+          {conn.connected_at, conn}
+        end)
+
+      assert initial_connected_at == final_connected_at
 
       GenServer.stop(pid)
     end
@@ -202,12 +267,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
       for i <- 1..3 do
         result =
           NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
-            columns = [
-              {"id", "UInt64", [i]},
-              {"name", "String", ["batch_#{i}"]}
-            ]
-
-            case NativeIngester.insert(conn, "pool_reuse", columns, []) do
+            case do_insert(conn, "pool_reuse", [
+                   {"id", "UInt64", [i]},
+                   {"name", "String", ["batch_#{i}"]}
+                 ]) do
               {:ok, updated_conn} -> {:ok, updated_conn}
               {:error, _} = error -> {error, :remove}
             end
@@ -226,6 +289,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
       assert Enum.map(rows, & &1["name"]) == ["batch_1", "batch_2", "batch_3"]
 
       GenServer.stop(pid)
+    end
+  end
+
+  defp do_insert(conn, table, columns) do
+    column_names = Enum.map(columns, &elem(&1, 0))
+    cols = Enum.join(column_names, ", ")
+    sql = "INSERT INTO #{conn.database}.#{table} (#{cols}) VALUES"
+
+    with {:ok, _server_columns, conn} <- Connection.send_query(conn, sql, []) do
+      body = BlockEncoder.encode_block_body(columns, conn.negotiated_rev)
+
+      with :ok <- Connection.send_data_block(conn, body),
+           :ok <- Connection.send_data_block(conn, BlockEncoder.encode_empty_block_body()),
+           {:ok, conn} <- Connection.read_insert_response(conn) do
+        {:ok, conn}
+      end
     end
   end
 end

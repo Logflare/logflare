@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativePoolSup
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup, as: NativePoolSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend

@@ -12,6 +12,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   reduce peak memory usage.
   """
 
+  require Logger
+
+  import Logflare.Utils.Guards
+
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncoder
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool
@@ -19,40 +23,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
 
-  @low_cardinality_prefix "LowCardinality("
   @sub_block_size 10_000
+  @max_retries 1
+  @retry_delay 500
+  @retryable_exception_codes [159, 164, 202, 241, 252]
 
   @doc """
-  Inserts data into ClickHouse via the native TCP protocol.
+  Inserts log events into ClickHouse via the native TCP protocol.
 
-  When called with a `Connection` and pre-built columns, performs a low-level
-  INSERT: sends the query, validates columns against the server's schema,
-  encodes and sends data blocks, then reads the server's confirmation.
-
-  When called with a `Backend` and `LogEvent` structs, checks out a pooled
-  connection, obtains column types from the server during the INSERT handshake,
-  builds column data from the events' bodies, and sends the data.
+  Checks out a pooled connection, obtains column types from the server during
+  the INSERT handshake, builds column data from the events' bodies, and sends
+  the data. Retries on transient errors with a fresh connection.
   """
-  @spec insert(Connection.t(), String.t(), [BlockEncoder.column()], keyword()) ::
-          {:ok, Connection.t()} | {:error, term()}
-  def insert(%Connection{} = conn, table, columns, settings)
-      when is_list(columns) and is_list(settings) do
-    column_names = Enum.map(columns, &elem(&1, 0))
-    sql = build_insert_sql(conn.database, table, column_names)
-
-    normalized_columns = normalize_columns(columns)
-
-    with {:ok, server_columns, conn} <- Connection.send_query(conn, sql, settings),
-         :ok <- validate_columns(normalized_columns, server_columns),
-         {:ok, conn} <- send_data_blocks(conn, normalized_columns),
-         {:ok, conn} <- Connection.read_insert_response(conn) do
-      {:ok, conn}
-    end
-  end
-
-  @spec insert(Backend.t(), String.t(), [LogEvent.t()], atom()) ::
+  @spec insert(Backend.t(), String.t(), [LogEvent.t()], LogEvent.TypeDetection.event_type()) ::
           :ok | {:error, term()}
-  def insert(%Backend{config: config} = backend, table, [%LogEvent{} | _] = events, event_type) do
+  def insert(%Backend{config: config} = backend, table, [%LogEvent{} | _] = events, event_type)
+      when is_event_type(event_type) do
     column_names = QueryTemplates.columns_for_type(event_type)
 
     settings =
@@ -60,6 +46,47 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
         do: [async_insert: 1, wait_for_async_insert: 1],
         else: []
 
+    do_insert_with_retry(backend, table, events, column_names, settings, @max_retries)
+  end
+
+  @spec build_insert_sql(String.t(), String.t(), [String.t()]) :: String.t()
+  defp build_insert_sql(database, table, column_names) do
+    cols = Enum.join(column_names, ", ")
+    "INSERT INTO #{database}.#{table} (#{cols}) VALUES"
+  end
+
+  @spec do_insert_with_retry(
+          Backend.t(),
+          table :: String.t(),
+          [LogEvent.t()],
+          column_names :: [String.t()],
+          settings :: keyword(),
+          retries_left :: non_neg_integer()
+        ) ::
+          :ok | {:error, term()}
+  defp do_insert_with_retry(backend, table, events, column_names, settings, retries_left) do
+    case do_pooled_insert(backend, table, events, column_names, settings) do
+      :ok ->
+        :ok
+
+      {:error, reason} = error ->
+        if retries_left > 0 and retryable?(reason) do
+          Logger.warning(
+            "ClickHouse NativeIngester: retryable error #{inspect(reason)}, " <>
+              "retrying in #{@retry_delay}ms (#{retries_left} retries left)"
+          )
+
+          Process.sleep(@retry_delay)
+          do_insert_with_retry(backend, table, events, column_names, settings, retries_left - 1)
+        else
+          error
+        end
+    end
+  end
+
+  @spec do_pooled_insert(Backend.t(), String.t(), [LogEvent.t()], [String.t()], keyword()) ::
+          :ok | {:error, term()}
+  defp do_pooled_insert(backend, table, events, column_names, settings) do
     Pool.checkout(backend, fn conn ->
       sql = build_insert_sql(conn.database, table, column_names)
 
@@ -85,28 +112,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
           {error, :remove}
       end
     end)
+  catch
+    :exit, {:timeout, _} ->
+      {:error, :checkout_timeout}
   end
 
-  @spec build_insert_sql(String.t(), String.t(), [String.t()]) :: String.t()
-  defp build_insert_sql(database, table, column_names) do
-    cols = Enum.join(column_names, ", ")
-    "INSERT INTO #{database}.#{table} (#{cols}) VALUES"
-  end
-
-  @spec validate_columns([BlockEncoder.column()], Connection.column_info()) ::
-          :ok | {:error, term()}
-  defp validate_columns(columns, server_columns) do
-    client_columns = Enum.map(columns, fn {name, type, _values} -> {name, type} end)
-
-    normalized_server =
-      Enum.map(server_columns, fn {name, type} -> {name, normalize_type(type)} end)
-
-    if client_columns == normalized_server do
-      :ok
-    else
-      {:error, {:column_mismatch, expected: normalized_server, got: client_columns}}
-    end
-  end
+  @spec retryable?(term()) :: boolean()
+  defp retryable?(:closed), do: true
+  defp retryable?(:timeout), do: true
+  defp retryable?(:econnrefused), do: true
+  defp retryable?(:econnreset), do: true
+  defp retryable?(:checkout_timeout), do: true
+  defp retryable?({:exception, code, _}) when code in @retryable_exception_codes, do: true
+  defp retryable?(_), do: false
 
   @spec build_columns_from_schema([LogEvent.t()], Connection.column_info()) ::
           [BlockEncoder.column()]
@@ -152,7 +170,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   defp default_for_type("Nullable(" <> _), do: nil
   defp default_for_type("Array(" <> _), do: []
 
-  defp default_for_type(@low_cardinality_prefix <> rest),
+  defp default_for_type("LowCardinality(" <> rest),
     do: default_for_type(BlockEncoder.extract_inner_type(rest))
 
   defp default_for_type("JSON" <> _), do: %{}
@@ -170,7 +188,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   end
 
   @spec normalize_type_and_values(String.t(), [term()]) :: {String.t(), [term()]}
-  defp normalize_type_and_values(@low_cardinality_prefix <> rest, values) do
+  defp normalize_type_and_values("LowCardinality(" <> rest, values) do
     normalize_type_and_values(BlockEncoder.extract_inner_type(rest), values)
   end
 
@@ -201,24 +219,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   end
 
   defp normalize_type_and_values(type, values), do: {type, values}
-
-  @spec normalize_type(String.t()) :: String.t()
-  defp normalize_type(@low_cardinality_prefix <> rest) do
-    normalize_type(BlockEncoder.extract_inner_type(rest))
-  end
-
-  defp normalize_type("Array(" <> rest) do
-    inner = BlockEncoder.extract_inner_type(rest)
-    "Array(#{normalize_type(inner)})"
-  end
-
-  defp normalize_type("Nullable(" <> rest) do
-    inner = BlockEncoder.extract_inner_type(rest)
-    "Nullable(#{normalize_type(inner)})"
-  end
-
-  defp normalize_type("JSON" <> _), do: "String"
-  defp normalize_type(type), do: type
 
   @spec send_data_and_confirm(Connection.t(), [BlockEncoder.column()]) ::
           {:ok, Connection.t()} | {:error, term()}

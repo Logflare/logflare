@@ -65,4 +65,4 @@ fn lz4_decompress<'a>(env: Env<'a>, data: Binary, uncompressed_size: usize) -> (
     }
 }
 
-rustler::init!("Elixir.Logflare.Backends.Adaptor.ClickHouseAdaptor.ChCompression");
+rustler::init!("Elixir.Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ChCompression");

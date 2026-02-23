@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativePoolSup do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup do
   @moduledoc """
   Supervises `NativeIngester.Pool` instances for ClickHouse backends that have
   the native TCP insert protocol enabled.
@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativePoolSup do
 
   ```
   Logflare.Backends.Supervisor
-  └── NativePoolSup (this module)
+  └── NativeIngester.PoolSup (this module)
       └── DynamicSupervisor
           └── NativeIngester.Pool (one per backend, lazily started)
   ```

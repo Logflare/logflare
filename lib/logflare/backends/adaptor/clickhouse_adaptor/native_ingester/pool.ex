@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
 
   @max_pool_size 100
   @checkout_timeout 10_000
+  @worker_idle_timeout 30_000
 
   @doc """
   Returns the via tuple for a pool registered under a given backend.
@@ -49,6 +50,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
     NimblePool.start_link(
       worker: {__MODULE__, connect_opts},
       pool_size: pool_size,
+      lazy: true,
+      worker_idle_timeout: @worker_idle_timeout,
       name: via(backend)
     )
   end
@@ -105,6 +108,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
 
   def handle_checkin(%Connection{} = conn, _from, _old_conn, pool_state) do
     {:ok, conn, pool_state}
+  end
+
+  @impl NimblePool
+  def handle_ping(%Connection{} = conn, _pool_state) do
+    if Connection.alive?(conn) do
+      {:ok, conn}
+    else
+      {:remove, :idle_stale}
+    end
   end
 
   @impl NimblePool

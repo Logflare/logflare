@@ -17,7 +17,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.ConnectionManager
   alias __MODULE__.Ingester
   alias __MODULE__.NativeIngester
-  alias __MODULE__.NativePoolSup
+  alias __MODULE__.NativeIngester.PoolSup, as: NativePoolSup
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
   alias __MODULE__.QueryTemplates

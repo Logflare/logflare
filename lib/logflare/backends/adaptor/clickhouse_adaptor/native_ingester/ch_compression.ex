@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ChCompression do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ChCompression do
   @moduledoc """
   Rust NIF wrapper for ClickHouse native protocol compression primitives.
 

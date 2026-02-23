@@ -1,7 +1,7 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.CompressionTest do
   use ExUnit.Case, async: true
 
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ChCompression
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ChCompression
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Compression
 
   @lz4_method 0x82
