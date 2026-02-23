@@ -98,22 +98,43 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
           {:ok, updated_conn} ->
             {:ok, updated_conn}
 
-          {:error, {:exception, _, _}} = error ->
+          {:error, {:exception, code, message}} = error ->
+            Logger.warning(
+              "NativeIngester: ClickHouse exception during insert into #{table}, " <>
+                "code=#{code} message=#{inspect(message)}"
+            )
+
             {error, conn}
 
-          {:error, {:column_mismatch, _}} = error ->
+          {:error, {:column_mismatch, _} = detail} = error ->
+            Logger.warning(
+              "NativeIngester: column mismatch during insert into #{table}, " <>
+                "detail=#{inspect(detail)}"
+            )
+
             {error, conn}
 
-          {:error, _} = error ->
+          {:error, reason} = error ->
+            Logger.warning(
+              "NativeIngester: error during insert into #{table}, " <>
+                "reason=#{inspect(reason)}, removing connection"
+            )
+
             {error, :remove}
         end
       else
-        {:error, _} = error ->
+        {:error, reason} = error ->
+          Logger.warning(
+            "NativeIngester: query failed for insert into #{table}, " <>
+              "reason=#{inspect(reason)}, removing connection"
+          )
+
           {error, :remove}
       end
     end)
   catch
     :exit, {:timeout, _} ->
+      Logger.warning("NativeIngester: pool checkout timeout for insert into #{table}")
       {:error, :checkout_timeout}
   end
 
