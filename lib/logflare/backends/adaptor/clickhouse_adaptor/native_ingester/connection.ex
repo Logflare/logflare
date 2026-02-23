@@ -18,7 +18,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   @default_port 9_000
   @default_connect_timeout 5_000
   @default_recv_timeout 30_000
-  @drain_timeout 100
   @compressed_header_size 9
 
   @type server_info :: %{
@@ -971,11 +970,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   end
 
   defp drain_trailing_packets(%__MODULE__{} = conn) do
-    short_timeout_conn = %{conn | recv_timeout: @drain_timeout}
+    zero_timeout_conn = %{conn | recv_timeout: 0}
 
-    case recv(short_timeout_conn) do
+    case recv(zero_timeout_conn) do
       {:ok, data} ->
-        updated = %{short_timeout_conn | buffer: short_timeout_conn.buffer <> data}
+        updated = %{zero_timeout_conn | buffer: zero_timeout_conn.buffer <> data}
         {:ok, drained} = drain_trailing_packets(updated)
         {:ok, %{drained | recv_timeout: @default_recv_timeout}}
 
