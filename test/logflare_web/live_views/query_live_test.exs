@@ -195,14 +195,8 @@ defmodule LogflareWeb.QueryLiveTest do
     alias Logflare.Backends.AdaptorSupervisor
 
     setup %{conn: conn} do
-      initial_single_tenant = Application.get_env(:logflare, :single_tenant)
-      initial_postgres_backend_adapter = Application.get_env(:logflare, :postgres_backend_adapter)
-
       cfg = Application.get_env(:logflare, Logflare.Repo)
       url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
-
-      Application.put_env(:logflare, :single_tenant, true)
-      Application.put_env(:logflare, :postgres_backend_adapter, url: url, pool_size: 2)
 
       user = insert(:user)
       source = insert(:source, user: user)
@@ -215,17 +209,11 @@ defmodule LogflareWeb.QueryLiveTest do
           sources: [source]
         )
 
+      stub(Logflare.Backends, :get_default_backend, fn _user -> backend end)
+
       start_supervised!({AdaptorSupervisor, {source, backend}})
 
       on_exit(fn ->
-        Application.put_env(:logflare, :single_tenant, initial_single_tenant)
-
-        Application.put_env(
-          :logflare,
-          :postgres_backend_adapter,
-          initial_postgres_backend_adapter
-        )
-
         PostgresAdaptor.destroy_instance({source, backend})
       end)
 
