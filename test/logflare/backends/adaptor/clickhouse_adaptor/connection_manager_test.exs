@@ -4,6 +4,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
 
+  @resolve_interval :timer.seconds(1)
+  @timeout_interval @resolve_interval * 2
+
   setup do
     insert(:plan, name: "Free")
 
@@ -99,6 +102,57 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
 
     test "`notify_activity` updates activity timestamp", %{backend: backend} do
       assert :ok == ConnectionManager.notify_activity(backend)
+    end
+  end
+
+  describe "connection pool lifecycle resolution" do
+    setup context do
+      config = Application.get_env(:logflare, ConnectionManager)
+      Application.put_env(:logflare, ConnectionManager, resolve_interval: @resolve_interval)
+
+      {:ok, _manager_pid} = ConnectionManager.start_link(context.backend)
+
+      on_exit(fn -> Application.put_env(:logflare, ConnectionManager, config) end)
+
+      context
+    end
+
+    test "updates activity timestamp when notified", %{backend: backend} do
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+
+      activity_before = ConnectionManager.get_last_activity(backend)
+
+      Process.sleep(@timeout_interval)
+
+      assert :ok == ConnectionManager.notify_activity(backend)
+
+      activity_after = ConnectionManager.get_last_activity(backend)
+      assert activity_after > activity_before
+      assert ConnectionManager.pool_active?(backend)
+    end
+
+    test "initializes activity timestamp on resolve when not previously set", %{backend: backend} do
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      assert ConnectionManager.pool_active?(backend)
+
+      assert :ok == ConnectionManager.set_last_activity(backend, nil)
+
+      Process.sleep(@timeout_interval)
+
+      assert is_integer(ConnectionManager.get_last_activity(backend))
+      assert ConnectionManager.pool_active?(backend)
+    end
+
+    test "stops pool after exceeding inactivity timeout", %{backend: backend} do
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      assert ConnectionManager.pool_active?(backend)
+
+      old_timestamp = System.system_time(:millisecond) - :timer.minutes(10)
+      assert :ok == ConnectionManager.set_last_activity(backend, old_timestamp)
+
+      Process.sleep(@timeout_interval)
+
+      refute ConnectionManager.pool_active?(backend)
     end
   end
 
