@@ -1,0 +1,170 @@
+<.subheader>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/backends"} team={@team}>backends</.subheader_path_link>/{@backend.name}
+  </:path>
+  <.subheader_link live_patch to={~p"/backends/#{@backend.id}/edit"} text="edit" fa_icon="edit" />
+</.subheader>
+<section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h2>{@backend.name}</h2>
+  <div>
+    uuid: {@backend.token}
+  </div>
+
+  <p :if={@backend.description} class="text-muted tw-whitespace-pre-wrap tw-text-sm">{@backend.description}</p>
+  <div>
+    <ul class="list-group tw-text-sm">
+      <li class="list-group-item"><strong>type:</strong> {@backend.type}</li>
+      <li class="list-group-item">
+        <strong>config:</strong>
+        <pre>
+          <%= Jason.encode!(LogflareWeb.Live.DisplayHelpers.sanitize_backend_config(@backend.config), pretty: true) %>
+        </pre>
+      </li>
+      <li :if={@backend.metadata} class="list-group-item tw-flex-col tw-gap-2 ">
+        <strong>metadata:</strong>
+        <span :for={{k, v} when is_binary(v) <- @backend.metadata || %{}} :if={@backend.metadata} class="tw-block tw-ml-4">{k}: {v}</span>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section :if={@flag_multibackend == true and Logflare.Backends.Adaptor.supports_default_ingest?(@backend)} class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h4>Default Ingest Sources</h4>
+  <p>
+    Sources configured to use this backend as a default ingest destination.
+  </p>
+
+  <div :if={not Enum.empty?(@available_sources || [])}>
+    <.button phx-click="toggle_default_ingest_form" variant="secondary">
+      <%= if @show_default_ingest_form? do %>
+        Cancel
+      <% else %>
+        Add a Source
+      <% end %>
+    </.button>
+    <.button :if={@backend.default_ingest? and not @show_default_ingest_form?} phx-click="add_all_default_ingest" variant="secondary" data-confirm={"Add all #{length(@available_sources)} sources as default ingest?"}>
+      Add All Sources
+    </.button>
+  </div>
+
+  <.form :let={f} :if={@show_default_ingest_form?} id="default_ingest" for={%{}} as={:default_ingest} action="#" phx-submit="save_default_ingest">
+    <div class="form-group">
+      {label(f, :source_id, "Source")}
+      {select(f, :source_id, Enum.map(@available_sources || [], fn s -> {s.name, s.id} end),
+        class: "form-control",
+        prompt: [key: "Choose a source"]
+      )}
+      <small id="source_id" class="form-text text-muted">This source will use this backend as its default ingest destination. Only sources with default ingest backend support enabled are shown.</small>
+    </div>
+
+    {hidden_input(f, :backend_id, value: @backend.id)}
+    {submit("Save", class: "btn btn-primary")}
+  </.form>
+
+  <p :if={Enum.empty?(@default_ingest_sources || [])}>No sources configured for default ingest</p>
+  <ul :for={source <- @default_ingest_sources || []} class="tw-flex tw-flex-row tw-gap-4">
+    <li class="list-group-item tw-pointer-none tw-w-full tw-flex tw-flex-row tw-justify-between">
+      <span>
+        Source <code>{source.name}</code> uses this backend as default ingest
+      </span>
+
+      <.button phx-click="remove_default_ingest" phx-value-source_id={source.id} variant="danger">
+        Remove
+      </.button>
+    </li>
+  </ul>
+  <div :if={length(@default_ingest_sources || []) > 1}>
+    <.button phx-click="remove_all_default_ingest" variant="danger" data-confirm={"Remove all #{length(@default_ingest_sources)} sources from default ingest?"}>
+      Remove All Sources
+    </.button>
+  </div>
+</section>
+
+<section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h4>Drain Rules</h4>
+  <p>
+    Drain rules will forward events from a given source to this backend destination.
+  </p>
+  <div>
+    <.button phx-click="toggle_rule_form" variant="secondary">
+      Add a drain rule
+    </.button>
+  </div>
+
+  <.form :let={f} :if={@show_rule_form?} id="rule" for={%{}} as={:rule} action="#" phx-submit="save_rule">
+    <div class="form-group">
+      {label(f, :source_id, "Source")}
+      {select(f, :source_id, Enum.map(@sources, fn s -> {s.name, s.id} end), class: "form-control", prompt: [key: "Choose a source"])}
+      <small id="source_id" class="form-text text-muted">Events that are ingested into this source will get forwarded</small>
+    </div>
+
+    <div class="form-group">
+      {label(f, :lql_string, "LQL")}
+      {text_input(f, :lql_string, class: "form-control")}
+      <small id="lql_string" class="form-text text-muted">Only events that match this LQL filter will get forwarded.</small>
+    </div>
+
+    {hidden_input(f, :backend_id, value: @backend.id)}
+    {submit("Save", class: "btn btn-primary")}
+  </.form>
+
+  <p :if={Enum.empty?(@backend.rules)}>No rules yet</p>
+  <ul :for={rule <- @backend.rules} class="tw-flex tw-flex-row tw-gap-4">
+    <li class="list-group-item tw-pointer-none tw-w-full tw-flex tw-flex-row tw-justify-between">
+      <span>
+        Events from <code>{rule.source.name}</code> matching <code>{rule.lql_string}</code> will route to <code>this backend</code>
+      </span>
+
+      <.button phx-click="delete_rule" phx-value-rule_id={rule.id} variant="danger">
+        Delete rule
+      </.button>
+    </li>
+  </ul>
+
+  <div :if={@backend.type in [:incidentio]}>
+    <h4>Alert Queries</h4>
+    <p>
+      Alert queries that use this backend as a destination.
+    </p>
+
+    <p :if={Enum.empty?(@backend.alert_queries)}>No alert queries configured</p>
+    <div>
+      <.button phx-click="toggle_alert_form" variant="secondary">
+        <%= if @show_alert_form? do %>
+          Cancel
+        <% else %>
+          Add an alert
+        <% end %>
+      </.button>
+    </div>
+
+    <.form :let={f} :if={@show_alert_form?} id="alert" for={%{}} as={:alert} action="#" phx-submit="add_alert">
+      <div class="form-group">
+        {label(f, :alert_id, "Alert")}
+        {select(f, :alert_id, @alert_options, class: "form-control", prompt: [key: "Choose an alert"])}
+        <small id="alert_id" class="form-text text-muted">Select an alert query to add to this backend</small>
+      </div>
+
+      {hidden_input(f, :backend_id, value: @backend.id)}
+      {submit("Add Alert", class: "btn btn-primary")}
+    </.form>
+
+    <ul :for={alert_query <- @backend.alert_queries} class="tw-flex tw-flex-row tw-gap-4">
+      <li class="list-group-item tw-pointer-none tw-w-full tw-flex tw-flex-row tw-justify-between">
+        <div class="tw-flex tw-flex-col tw-gap-1">
+          <div class="tw-flex tw-items-center tw-gap-2">
+            <.link patch={~p"/alerts/#{alert_query.id}"} class="text-primary">
+              {alert_query.name}
+            </.link>
+            <span class="badge badge-secondary">{alert_query.cron}</span>
+          </div>
+          <small class="text-muted">{alert_query.description}</small>
+        </div>
+
+        <.button phx-click="remove_alert" phx-value-alert_id={alert_query.id} variant="danger">
+          Remove alert
+        </.button>
+      </li>
+    </ul>
+  </div>
+</section>

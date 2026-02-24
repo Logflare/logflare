@@ -1,0 +1,43 @@
+steps:
+  # create instance template
+  - name: gcr.io/cloud-builders/gcloud
+    allowExitCodes: [1]
+    args:
+      - compute
+      - instance-templates
+      - create-with-container
+      - $_TEMPLATE_NAME
+      - --boot-disk-size=10GB
+      - --boot-disk-type=pd-balanced
+      - --machine-type=c2d-highcpu-32
+      - --project=logflare-232118
+      - --network-interface=network=global,network-tier=PREMIUM,no-address
+      - --maintenance-policy=TERMINATE
+      - --service-account=compute-engine-2022@logflare-232118.iam.gserviceaccount.com
+      - --scopes=https://www.googleapis.com/auth/cloud-platform
+      - --tags=phoenix-http,https-server
+      - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh
+      # needed for enabling node-problem-detector, explicitly enable logging
+      - --metadata=google-monitoring-enabled=true,google-logging-enabled=true
+      - --container-image=${_CONTAINER_IMAGE}
+      - --container-privileged
+      - --container-restart-policy=always
+      - --container-env=LOGFLARE_GRPC_PORT=50051,LOGFLARE_MIN_CLUSTER_SIZE=2,RELEASE_COOKIE=${_COOKIE},LOGFLARE_PUBSUB_POOL_SIZE=32,LOGFLARE_METADATA_CLUSTER=${_CLUSTER},LOGFLARE_ALERTS_ENABLED=${_LOGFLARE_ALERTS_ENABLED}
+      - --no-shielded-secure-boot
+      - --shielded-vtpm
+      - --shielded-integrity-monitoring
+      - --image=cos-stable-109-17800-147-54
+      - --image-project=cos-cloud
+
+
+substitutions:
+  _CLUSTER: canary
+  _COOKIE: default-${_CLUSTER}
+  _IMAGE_TAG: $SHORT_SHA
+  _TEMPLATE_NAME: logflare-prod-${_NORMALIZED_IMAGE_TAG}-${_CLUSTER}
+  _CONTAINER_IMAGE: gcr.io/logflare-232118/logflare_app:${_IMAGE_TAG}
+  _LOGFLARE_ALERTS_ENABLED: "false"
+timeout: 1800s
+options:
+  dynamicSubstitutions: true
+  substitutionOption: "ALLOW_LOOSE"

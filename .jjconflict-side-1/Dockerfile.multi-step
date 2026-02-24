@@ -1,0 +1,27 @@
+FROM supabase/logflare:base AS builder
+
+ENV MIX_ENV=prod
+
+WORKDIR /app
+
+# release
+RUN mix release  && \
+    npm run --prefix assets deploy && \
+    mix phx.digest
+
+FROM supabase/logflare:runner
+
+# Copy required files from builder step
+COPY --from=builder /app/_build/prod /opt/app
+COPY --from=builder /app/VERSION /opt/app/VERSION
+COPY --from=builder /app/priv/static /opt/app/rel/logflare/bin/priv/static
+
+# Move files to the correct folder taking into consideration the VERSION
+RUN cp -r /opt/app/rel/logflare/bin/priv/static /opt/app/rel/logflare/lib/logflare-$(cat /opt/app/VERSION)/priv/static
+
+# Cleanup static assets not in use
+RUN rm -r /opt/app/rel/logflare/bin/priv
+
+WORKDIR /opt/app/rel/logflare/bin
+COPY run.sh ./run.sh
+CMD ["sh", "run.sh"]

@@ -1,0 +1,66 @@
+@import "named_variables";
+
+#logs-list-container {
+  min-height: 47.75vh;
+}
+
+#logs-list-stream-container {
+  min-height: 63vh;
+}
+
+.v-align-icon-button {
+  vertical-align: text-top;
+}
+
+.source-logs-search-container {
+  & .search-control {
+    & .source-name {
+      text-align: left;
+    }
+  }
+
+  & .alert {
+    margin: 10px 10px 0 0;
+  }
+
+  & #logs-list {
+    display: flex;
+    flex-direction: column-reverse;
+    flex-grow: 1;
+
+    will-change: all;
+    transform: translateZ(0);
+    transition: 0.2s filter linear;
+  }
+
+  & .blurred {
+    will-change: all;
+    transform: translateZ(0);
+    transition: 0.2s filter linear;
+    filter: blur(2px) contrast(0.8);
+  }
+}
+
+.source-logs-search-modals {
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
+  word-break: normal;
+  overflow-wrap: normal;
+
+  & kbd {
+    white-space: nowrap;
+  }
+
+  & .show-source-schema {
+    & .fas.fa-copy {
+      color: $brand-brighter-green;
+    }
+  }
+}
+
+.message {
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
+}
+
+.source-logs-search-modals .modal {
+  overflow-y: scroll;
+}

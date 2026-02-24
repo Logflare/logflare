@@ -1,0 +1,151 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: logflare_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./priv/setup.sql:/docker-entrypoint-initdb.d/setup.sql
+      - pg-data:/var/lib/postgresql/data
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    ports:
+      - "12111:12111"
+  base:
+    build:
+      dockerfile: ./Dockerfile.base
+      tags:
+        - "supabase/logflare:base"
+
+  runner:
+    build:
+      dockerfile: ./Dockerfile.runner
+      tags:
+        - "supabase/logflare:runner"
+  logflare:
+    build:
+      dockerfile: ./Dockerfile
+      # to use the multi-step images
+      # dockerfile: ./Dockerfile.multi-step
+      tags:
+        - "supabase/logflare:latest"
+        - "supabase/logflare:1.0.0"
+    ports:
+      - "4000:4000"
+      # for OTLP ingestion
+      - "50051:50051"
+    hostname: 127.0.0.1
+    volumes:
+      - type: bind
+        source: ${PWD}/.single_tenant_bq.env
+        target: /tmp/.secrets.env
+        read_only: true
+      - type: bind
+        source: ${PWD}/gcloud.json
+        target: /opt/app/rel/logflare/bin/gcloud.json
+        read_only: true
+      # uncomment if you want to add a startup script
+      # - type: bind
+      #   source: ${PWD}/cloudbuild/startup.sh
+      #   target: /opt/app/rel/logflare/bin/startup.sh
+      #   read_only: true
+    depends_on:
+      - db
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.13.3-arm64
+    # https://github.com/docker/swarmkit/issues/1951
+    # Need to override user so we can access the log files, and docker.sock
+    # user: root
+    ports:
+      - "8000:8000"
+    # networks:
+    #   - elastic
+    volumes:
+      - ./test/filebeat.yml:/usr/share/filebeat/filebeat.yml
+      # - filebeat:/usr/share/filebeat/data
+      # - /var/log/audit/:/var/log/audit/:ro
+    # environment:
+      # - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-node1}
+      # - KIBANA_HOST=${KIBANA_HOST:-node1}
+      # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
+      # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-changeme}
+      # disable strict permission checks
+    command: [ "--strict.perms=false" ]
+  loki:
+    image: grafana/loki:3.1.0
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./test/loki.yml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml -log.level=debug
+
+  grafana:
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /etc/grafana/provisioning/datasources
+        cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
+        apiVersion: 1
+        datasources:
+        - name: Loki
+          type: loki
+          access: proxy
+          orgId: 1
+          url: http://loki:3100
+          basicAuth: false
+          isDefault: true
+          version: 1
+          editable: false
+        EOF
+        /run.sh
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.118.0
+    volumes:
+      - ./examples/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - 13133:13133 # health_check extension
+      - 4317:4317 # OTLP gRPC receiver
+      - 4318:4318 # OTLP http receiver
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.12
+    ports:
+      - "8123:8123" # HTTP interface
+      - "9000:9000" # Native client interface
+    volumes:
+      # Only mount config files, no data persistence
+      - ./priv/clickhouse/clickhouse-config.xml:/etc/clickhouse-server/config.d/memory-settings.xml:ro
+      - ./priv/clickhouse/clickhouse-users.xml:/etc/clickhouse-server/users.d/memory-profiles.xml:ro
+    tmpfs:
+      # Use tmpfs (RAM) for data - automatically cleaned on container restart
+      - /var/lib/clickhouse:size=1G
+      - /var/log/clickhouse-server:size=100M
+    environment:
+      CLICKHOUSE_DB: logflare_test
+      CLICKHOUSE_USER: logflare
+      CLICKHOUSE_PASSWORD: logflare
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    deploy:
+      resources:
+        limits:
+          memory: 1500M
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+    shm_size: 256M
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+volumes:
+  pg-data:
