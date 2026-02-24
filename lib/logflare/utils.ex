@@ -4,6 +4,7 @@ defmodule Logflare.Utils do
   """
 
   alias Logflare.User
+  alias Logflare.LogEvent
   import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
@@ -16,7 +17,7 @@ defmodule Logflare.Utils do
     iex> flag("my-feature")
     true
   """
-  def flag(feature, user \\ nil) when is_binary(feature) do
+  def flag(feature, identifer \\ nil) when is_binary(feature) do
     config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
     env = Application.get_env(:logflare, :env)
     overrides = Application.get_env(:logflare, :feature_flag_override, %{})
@@ -26,11 +27,15 @@ defmodule Logflare.Utils do
         true
 
       config_cat_key != nil ->
-        case user do
+        case identifer do
           nil ->
             ConfigCat.get_value(feature, false)
 
-          %User{} ->
+          %LogEvent{source_uuid: source_uuid, id: log_event_id} ->
+            user_obj = ConfigCat.User.new("source:#{source_uuid}:log_event:#{log_event_id}")
+            ConfigCat.get_value(feature, false, user_obj)
+
+          %User{} = user ->
             user_obj = ConfigCat.User.new(user.email)
             ConfigCat.get_value(feature, false, user_obj)
         end
@@ -39,7 +44,6 @@ defmodule Logflare.Utils do
         Map.get(overrides, feature, "false") == "true"
     end
   end
-
 
   @original_to_string String.Chars.impl_for(%Tesla.Env{})
   def tesla_env_to_string(), do: @original_to_string

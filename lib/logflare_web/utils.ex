@@ -1,8 +1,6 @@
 defmodule LogflareWeb.Utils do
   @moduledoc false
 
-  alias Logflare.User
-
   @doc """
   Converts changeset errors to a human-readable string format. There's an optional prefix message you can provide as the second argument.
 

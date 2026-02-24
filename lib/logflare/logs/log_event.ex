@@ -160,7 +160,8 @@ defmodule Logflare.LogEvent do
   defp transform(%LE{valid: true} = le, %Source{} = source) do
     with {:ok, le} <- bigquery_spec(le),
          {:ok, le} <- copy_fields(le, source),
-         {:ok, le} <- kv_enrich(le, source) do
+         {:ok, le} <-
+           if(Logflare.Utils.flag("key_values", le), do: kv_enrich(le, source), else: {:ok, le}) do
       le
     else
       {:error, message} ->
