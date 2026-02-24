@@ -2,18 +2,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   @moduledoc """
   Orchestrates INSERT operations over the ClickHouse native TCP protocol.
 
-  Composes `Connection` (wire-level socket I/O) and `BlockEncoder` (column-oriented
-  data encoding) to perform end-to-end inserts. Handles SQL construction, column
-  normalization, and sub-block splitting for large batches.
-
-  Column types are cached per-connection after the first INSERT handshake. On
-  subsequent inserts to the same table, blocks are pre-encoded using the cached
-  schema *before* sending the INSERT query, moving encoding work outside of
-  ClickHouse's server-side query measurement window. If the server schema has
-  changed, we back to re-encoding with the new schema and update the cache.
-
-  Batches larger than 10k rows are automatically split into sub-blocks to
-  reduce peak memory usage.
+  Uses cached column schemas from `SchemaCache` to pre-encode data blocks
+  before sending the INSERT query, minimizing work inside ClickHouse's
+  server-side query measurement window.
   """
 
   require Logger
