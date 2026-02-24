@@ -66,7 +66,8 @@ defmodule Logflare.Application do
          child_spec: DynamicSupervisor, name: Logflare.Endpoints.ResultsCache.PartitionSupervisor},
         LogflareWeb.Endpoint,
         {Logflare.ActiveUserTracker,
-         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
+         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]},
+        {Oban, Application.fetch_env!(:logflare, Oban)}
       ]
   end
 
@@ -87,6 +88,7 @@ defmodule Logflare.Application do
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
         Logflare.Vault,
+        {Oban, Application.fetch_env!(:logflare, Oban)},
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
         ContextCache.Supervisor,
         Logs.LogEvents.Cache,
@@ -109,7 +111,6 @@ defmodule Logflare.Application do
         # For Logflare Endpoints
         {PartitionSupervisor,
          child_spec: DynamicSupervisor, name: Logflare.Endpoints.ResultsCache.PartitionSupervisor},
-        {Oban, Application.fetch_env!(:logflare, Oban)},
         # Startup tasks after v2 pipeline started
         {Task, fn -> startup_tasks() end},
         # active users tracking for UserMetricsPoller

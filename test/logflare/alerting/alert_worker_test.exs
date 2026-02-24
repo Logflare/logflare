@@ -46,7 +46,7 @@ defmodule Logflare.Alerting.AlertWorkerTest do
     assert :ok = perform_job(AlertWorker, %{alert_query_id: alert.id})
   end
 
-  test "perform/1 returns :ok when alert not found (deleted)" do
-    assert :ok = perform_job(AlertWorker, %{alert_query_id: -1})
+  test "perform/1 returns :error when alert not found (deleted)" do
+    assert {:error, :not_found} = perform_job(AlertWorker, %{alert_query_id: -1})
   end
 end
