@@ -436,7 +436,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       saved_search = insert(:saved_search, %{source: source})
 
-      _ = Logflare.SavedSearches.Cache.bust_by(source_id: saved_search.source_id)
+      _ =
+        Logflare.ContextCache.bust_keys([
+          {Logflare.SavedSearches, [source_id: saved_search.source_id]}
+        ])
+
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
 
       assert view
