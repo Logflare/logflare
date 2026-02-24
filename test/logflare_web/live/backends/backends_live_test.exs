@@ -656,6 +656,88 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute html =~ "Add a Source"
     end
 
+    test "can add all available sources at once", %{conn: conn, user: user, source: source} do
+      {:ok, source1} =
+        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      source3 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123}
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      # Add first source individually to enable default_ingest? on the backend
+      view |> element("button", "Add a Source") |> render_click()
+
+      view
+      |> element("form#default_ingest")
+      |> render_submit(%{
+        default_ingest: %{source_id: source1.id, backend_id: backend.id}
+      })
+
+      html = render(view)
+      assert html =~ "Add All Sources"
+
+      # Now add all remaining sources at once
+      html =
+        view
+        |> element("button", "Add All Sources")
+        |> render_click()
+
+      assert html =~ "Successfully added all available sources as default ingest"
+      assert html =~ source1.name
+      assert html =~ source2.name
+      assert html =~ source3.name
+      assert html =~ "uses this backend as default ingest"
+
+      # All sources added, buttons should be hidden
+      refute html =~ "Add a Source"
+      refute html =~ "Add All Sources"
+    end
+
+    test "Add All Sources button only shows when backend is default_ingest", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, source} =
+        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      _source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123}
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      html = render(view)
+      # Backend not yet default_ingest?, button should not show
+      assert html =~ "Add a Source"
+      refute html =~ "Add All Sources"
+
+      # Add a source to enable default_ingest? on the backend
+      view |> element("button", "Add a Source") |> render_click()
+
+      view
+      |> element("form#default_ingest")
+      |> render_submit(%{
+        default_ingest: %{source_id: source.id, backend_id: backend.id}
+      })
+
+      html = render(view)
+      assert html =~ "Add All Sources"
+    end
+
     test "button disappears when all available sources are added", %{
       conn: conn,
       user: user,
@@ -688,6 +770,70 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute html =~ "Add a Source"
       assert html =~ source.name
       assert html =~ "uses this backend as default ingest"
+    end
+
+    test "can remove all default ingest sources at once", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, source1} =
+        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123},
+          default_ingest?: true
+        )
+
+      {:ok, _} = Logflare.Backends.update_source_backends(source1, [backend])
+      {:ok, _} = Logflare.Backends.update_source_backends(source2, [backend])
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      html = render(view)
+      assert html =~ source1.name
+      assert html =~ source2.name
+      assert html =~ "Remove All Sources"
+
+      html =
+        view
+        |> element("button", "Remove All Sources")
+        |> render_click()
+
+      assert html =~ "Successfully removed all default ingest sources"
+      refute html =~ "uses this backend as default ingest"
+      refute html =~ "Remove All Sources"
+    end
+
+    test "Remove All Sources button only shows when more than 1 source is associated", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, source} =
+        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123},
+          default_ingest?: true
+        )
+
+      {:ok, _} = Logflare.Backends.update_source_backends(source, [backend])
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      html = render(view)
+      assert html =~ source.name
+      assert html =~ "uses this backend as default ingest"
+      refute html =~ "Remove All Sources"
     end
   end
 

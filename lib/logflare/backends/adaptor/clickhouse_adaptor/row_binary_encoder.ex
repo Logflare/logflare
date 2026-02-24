@@ -11,6 +11,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
 
   import Bitwise
 
+  import Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodingUtils, only: [sanitize_for_json: 1]
   import Logflare.Utils.Guards
 
   @epoch_date ~D[1970-01-01]
@@ -301,7 +302,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
 
   @spec json(term()) :: iodata()
   def json(value) do
-    string(Jason.encode_to_iodata!(value))
+    string(Jason.encode_to_iodata!(sanitize_for_json(value)))
   end
 
   # =============================================================================

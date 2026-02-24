@@ -771,6 +771,84 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
       <<_length, json_string::binary>> = binary
       assert Jason.decode!(json_string) == value
     end
+
+    test "sanitizes port values to strings" do
+      port = Port.open({:spawn, "cat"}, [:binary])
+      value = %{"port" => port}
+      encoded = RowBinaryEncoder.json(value)
+
+      binary = IO.iodata_to_binary(encoded)
+      <<_length, json_string::binary>> = binary
+      decoded = Jason.decode!(json_string)
+      assert is_binary(decoded["port"])
+      assert String.starts_with?(decoded["port"], "#Port<")
+      Port.close(port)
+    end
+
+    test "sanitizes pid values to strings" do
+      value = %{"pid" => self()}
+      encoded = RowBinaryEncoder.json(value)
+
+      binary = IO.iodata_to_binary(encoded)
+      <<_length, json_string::binary>> = binary
+      decoded = Jason.decode!(json_string)
+      assert is_binary(decoded["pid"])
+      assert String.starts_with?(decoded["pid"], "#PID<")
+    end
+
+    test "sanitizes reference values to strings" do
+      ref = make_ref()
+      value = %{"ref" => ref}
+      encoded = RowBinaryEncoder.json(value)
+
+      binary = IO.iodata_to_binary(encoded)
+      <<_length, json_string::binary>> = binary
+      decoded = Jason.decode!(json_string)
+      assert is_binary(decoded["ref"])
+      assert String.starts_with?(decoded["ref"], "#Reference<")
+    end
+
+    test "sanitizes function values to strings" do
+      value = %{"fun" => &String.length/1}
+      encoded = RowBinaryEncoder.json(value)
+
+      binary = IO.iodata_to_binary(encoded)
+      <<_length, json_string::binary>> = binary
+      decoded = Jason.decode!(json_string)
+      assert is_binary(decoded["fun"])
+      assert String.starts_with?(decoded["fun"], "&")
+    end
+
+    test "sanitizes nested non-serializable values" do
+      port = Port.open({:spawn, "cat"}, [:binary])
+
+      value = %{
+        "outer" => %{
+          "inner" => [1, port, %{"deep" => self()}]
+        }
+      }
+
+      encoded = RowBinaryEncoder.json(value)
+
+      binary = IO.iodata_to_binary(encoded)
+      <<_length, json_string::binary>> = binary
+      decoded = Jason.decode!(json_string)
+      inner = decoded["outer"]["inner"]
+      assert Enum.at(inner, 0) == 1
+      assert is_binary(Enum.at(inner, 1))
+      assert is_binary(Enum.at(inner, 2)["deep"])
+      Port.close(port)
+    end
+
+    test "converts tuples to lists" do
+      value = %{"tuple" => {1, "two", 3}}
+      encoded = RowBinaryEncoder.json(value)
+
+      binary = IO.iodata_to_binary(encoded)
+      <<_length, json_string::binary>> = binary
+      decoded = Jason.decode!(json_string)
+      assert decoded["tuple"] == [1, "two", 3]
+    end
   end
 
   describe "nullable/2" do

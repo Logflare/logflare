@@ -355,7 +355,7 @@
     <%= submit if(@source.disable_tailing, do: "Enable search tailing", else: "Disable search tailing"), class: "btn btn-primary form-button" %>
   <% end %>
 
-  <%= if LogflareWeb.Utils.flag("multibackend", @user) == true do %>
+  <%= if Logflare.Utils.flag("multibackend", @user) == true do %>
      <%= section_header("Storage Write API Ingestion") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
       <div class="form-group">
@@ -382,7 +382,7 @@
 
       <%= submit "Save", class: "btn btn-primary form-button" %>
     <% end %>
-    <%= if LogflareWeb.Utils.flag("multibackend", @user) do %>
+    <%= if Logflare.Utils.flag("multibackend", @user) do %>
       <%= live_render(@conn, LogflareWeb.SourceBackendsLive, session: %{"source_id"=> @source.id})%>
     <% end %>
 

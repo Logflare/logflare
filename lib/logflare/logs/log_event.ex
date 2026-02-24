@@ -23,11 +23,11 @@ defmodule Logflare.LogEvent do
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
     field :ingested_at, :utc_datetime_usec
-    field :origin_source_uuid, Ecto.UUID.Atom
-    field :origin_source_name, :string
+    field :source_uuid, Ecto.UUID.Atom
+    field :source_name, :string
     field :via_rule_id, :id
     field :retries, :integer, default: 0
-    field :log_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
+    field :event_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
 
     field :source_id, :integer, default: nil
 
@@ -77,12 +77,12 @@ defmodule Logflare.LogEvent do
       Map.merge(changeset.changes, %{
         pipeline_error: pipeline_error,
         source_id: source.id,
-        origin_source_uuid: source.token,
-        origin_source_name: source.name,
+        source_uuid: source.token,
+        source_name: source.name,
         valid: changeset.valid?,
         ingested_at: NaiveDateTime.utc_now(),
         id: changeset.changes.body["id"],
-        log_type: TypeDetection.detect(params)
+        event_type: TypeDetection.detect(params)
       })
 
     Logflare.LogEvent
@@ -239,8 +239,10 @@ defmodule Logflare.LogEvent do
     accessor_path = Map.get(instruction, :accessor_path)
 
     with raw when not is_nil(raw) <- get_in(body, from_path),
+         raw_string <- to_string(raw),
+         true <- Logflare.Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-
-           KeyValues.Cache.lookup(user_id, to_string(raw), accessor_path) do
+           KeyValues.Cache.lookup(user_id, raw_string, accessor_path) do
       put_in(body, Enum.map(to_path, &Access.key(&1, %{})), value)
     else
       _ -> body

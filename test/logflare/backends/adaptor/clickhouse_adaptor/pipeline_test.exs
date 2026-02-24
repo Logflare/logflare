@@ -53,7 +53,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   end
 
   describe "handle_message/3" do
-    test "routes all messages to :ch batcher with `log_type` as batch_key", %{context: context} do
+    test "routes all messages to :ch batcher with `event_type` as batch_key", %{context: context} do
       log_event = build(:log_event)
 
       message = %Message{
@@ -68,7 +68,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     end
 
     test "sets batch_key to `:metric` for metric events", %{context: context} do
-      log_event = build(:log_event) |> Map.put(:log_type, :metric)
+      log_event = build(:log_event) |> Map.put(:event_type, :metric)
 
       message = %Message{
         data: log_event,
@@ -81,7 +81,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     end
 
     test "sets batch_key to `:trace` for trace events", %{context: context} do
-      log_event = build(:log_event) |> Map.put(:log_type, :trace)
+      log_event = build(:log_event) |> Map.put(:event_type, :trace)
 
       message = %Message{
         data: log_event,
@@ -93,11 +93,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert %Message{batcher: :ch, batch_key: :trace} = result
     end
 
-    test "crashes when log_type is nil", %{context: context} do
-      log_event = build(:log_event) |> Map.put(:log_type, nil)
+    test "crashes when event_type is nil", %{context: context} do
+      event = build(:log_event) |> Map.put(:event_type, nil)
 
       message = %Message{
-        data: log_event,
+        data: event,
         acknowledger: {Pipeline, :ack_id, :ack_data}
       }
 
@@ -247,7 +247,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       backend: backend
     } do
       event =
-        build(:log_event, source: source, message: "Metric event") |> Map.put(:log_type, :metric)
+        build(:log_event, source: source, message: "Metric event")
+        |> Map.put(:event_type, :metric)
 
       messages = [
         %Message{data: event, acknowledger: {Pipeline, :ack_id, context}}
@@ -277,7 +278,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       backend: backend
     } do
       event =
-        build(:log_event, source: source, message: "Trace event") |> Map.put(:log_type, :trace)
+        build(:log_event, source: source, message: "Trace event") |> Map.put(:event_type, :trace)
 
       messages = [
         %Message{data: event, acknowledger: {Pipeline, :ack_id, context}}
@@ -368,7 +369,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
             "value" => 42.5
           }
         )
-        |> Map.put(:log_type, :metric)
+        |> Map.put(:event_type, :metric)
 
       messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
       batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :metric, size: 1, trigger: :flush}
@@ -417,7 +418,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           source: source,
           message: "Trace full field test"
         )
-        |> Map.put(:log_type, :trace)
+        |> Map.put(:event_type, :trace)
 
       messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
       batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
@@ -660,7 +661,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         }
       ]
 
-      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn _backend, _events, _log_type ->
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn _backend, _events, _event_type ->
         {:error, "Connection timeout"}
       end)
 

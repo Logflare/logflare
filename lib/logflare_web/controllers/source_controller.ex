@@ -463,7 +463,7 @@ defmodule LogflareWeb.SourceController do
 
   defp get_and_encode_logs(%Source{} = source) do
     for le <- Backends.list_recent_logs(source) do
-      Map.take(le, [:body, :via_rule_id, :origin_source_uuid])
+      Map.take(le, [:body, :via_rule_id, :source_uuid])
     end
   end
 

@@ -29,7 +29,7 @@ defmodule Logflare.Sources.Source.ChannelTopics do
     maybe_broadcast("source:#{source.token}", "source:#{source.token}:new", %{
       body: body,
       via_rule_id: le.via_rule_id,
-      origin_source_uuid: le.origin_source_uuid
+      source_uuid: le.source_uuid
     })
   end
 
