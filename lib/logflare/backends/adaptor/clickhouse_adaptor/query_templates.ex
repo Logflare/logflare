@@ -10,6 +10,36 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   @default_table_engine Application.compile_env(:logflare, :clickhouse_backend_adaptor)[:engine]
   @default_ttl_days 90
 
+  @log_columns ~w(id source_uuid source_name project trace_id span_id trace_flags
+    severity_text severity_number service_name event_message scope_name scope_version
+    scope_schema_url resource_schema_url resource_attributes scope_attributes
+    log_attributes mapping_config_id timestamp)
+
+  @metric_columns ~w(id source_uuid source_name project time_unix start_time_unix
+    metric_name metric_description metric_unit metric_type service_name event_message
+    scope_name scope_version scope_schema_url resource_schema_url resource_attributes
+    scope_attributes attributes aggregation_temporality is_monotonic flags value count
+    sum min max scale zero_count positive_offset negative_offset
+    bucket_counts explicit_bounds positive_bucket_counts negative_bucket_counts
+    quantile_values quantiles exemplars.filtered_attributes exemplars.time_unix
+    exemplars.value exemplars.span_id exemplars.trace_id
+    mapping_config_id timestamp)
+
+  @trace_columns ~w(id source_uuid source_name project trace_id span_id
+    parent_span_id trace_state span_name span_kind service_name event_message duration
+    status_code status_message scope_name scope_version resource_attributes span_attributes
+    events.timestamp events.name events.attributes
+    links.trace_id links.span_id links.trace_state links.attributes
+    mapping_config_id timestamp)
+
+  @doc """
+  Returns the column names for a given event type.
+  """
+  @spec columns_for_type(TypeDetection.event_type()) :: [String.t()]
+  def columns_for_type(:log), do: @log_columns
+  def columns_for_type(:metric), do: @metric_columns
+  def columns_for_type(:trace), do: @trace_columns
+
   @doc """
   Generates a ClickHouse query statement to check that the user GRANTs include the needed permissions.
 

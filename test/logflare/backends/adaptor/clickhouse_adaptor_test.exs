@@ -9,7 +9,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup, as: NativePoolSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
 
@@ -84,6 +87,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         ClickHouseAdaptor.execute_ch_query(backend, "INVALID SQL QUERY")
 
       assert {:error, _} = result
+    end
+
+    test "preserves 16-byte strings while converting UUID columns", %{backend: backend} do
+      # A 16-byte string that could be mistaken for a UUID binary
+      sixteen_byte_str = "exactly16bytesXX"
+      assert byte_size(sixteen_byte_str) == 16
+
+      uuid_hex = "550e8400-e29b-41d4-a716-446655440000"
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT toFixedString('exactly16bytesXX', 16) AS fixed_str, toUUID('#{uuid_hex}') AS uuid_col"
+        )
+
+      assert [%{"fixed_str" => ^sixteen_byte_str, "uuid_col" => ^uuid_hex}] = rows
+    end
+
+    test "handles Nullable(UUID) values", %{backend: backend} do
+      uuid_hex = "660e8400-e29b-41d4-a716-446655440001"
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT NULL::Nullable(UUID) AS null_uuid, toUUID('#{uuid_hex}')::Nullable(UUID) AS present_uuid"
+        )
+
+      assert [%{"null_uuid" => nil, "present_uuid" => ^uuid_hex}] = rows
     end
   end
 
@@ -312,6 +343,44 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "handles empty event list", %{backend: backend} do
       result = ClickHouseAdaptor.insert_log_events(backend, [], :log)
       assert :ok = result
+    end
+
+    test "insert_log_events/3 routes through native pool when enabled", %{
+      source: source,
+      backend: query_backend
+    } do
+      {_source, native_backend, cleanup_fn} =
+        setup_clickhouse_test(
+          source: source,
+          config: %{insert_protocol: "native", native_port: 9000}
+        )
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(native_backend, :log)
+
+      ddl = QueryTemplates.create_table_statement(table_name, :log, ttl_days: 0)
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
+
+      log_event = build_mapped_log_event(source: source, message: "native route test")
+
+      assert :ok = ClickHouseAdaptor.insert_log_events(native_backend, [log_event], :log)
+
+      pool_pid = GenServer.whereis(NativeIngester.Pool.via(native_backend))
+      assert is_pid(pool_pid)
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          query_backend,
+          "SELECT event_message FROM #{table_name}"
+        )
+
+      assert length(rows) == 1
+      assert Enum.at(rows, 0)["event_message"] == "native route test"
+
+      on_exit(fn ->
+        NativePoolSup.stop_pool(native_backend)
+        ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
+        cleanup_fn.()
+      end)
     end
 
     test "insert_log_events/3 inserts into type-specific table", %{
