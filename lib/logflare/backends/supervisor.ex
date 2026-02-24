@@ -21,6 +21,7 @@ defmodule Logflare.Backends.Supervisor do
       Backends.IngestEventQueue.MapperJanitor,
       Backends.Adaptor.PostgresAdaptor.Supervisor,
       Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore,
+      Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup,
       Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup,
       Backends.ConsolidatedSup,
       {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},

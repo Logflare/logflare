@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   consolidated queue and inserting them into the backend's type-specific
   ingest tables (otel_logs, otel_metrics, otel_traces).
 
-  Events are partitioned by `log_type` using batch keys, and multiple
+  Events are partitioned by `event_type` using batch keys, and multiple
   sources are processed together in a single pipeline.
   """
 
@@ -87,13 +87,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           Message.t()
   def handle_message(
         _processor_name,
-        %Message{data: %LogEvent{log_type: log_type}} = message,
+        %Message{data: %LogEvent{event_type: event_type}} = message,
         _context
       )
-      when is_log_type(log_type) do
+      when is_event_type(event_type) do
     message
     |> Message.put_batcher(:ch)
-    |> Message.put_batch_key(log_type)
+    |> Message.put_batch_key(event_type)
   end
 
   @spec handle_batch(
@@ -102,12 +102,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           batch_info :: Broadway.BatchInfo.t(),
           context :: map()
         ) :: [Message.t()]
-  def handle_batch(:ch, messages, %{batch_key: log_type} = batch_info, %{backend_id: backend_id})
-      when is_log_type(log_type) do
+  def handle_batch(:ch, messages, %{batch_key: event_type} = batch_info, %{backend_id: backend_id})
+      when is_event_type(event_type) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
-      %{backend_type: :clickhouse, backend_id: backend_id, log_type: log_type}
+      %{backend_type: :clickhouse, backend_id: backend_id, event_type: event_type}
     )
 
     result =
@@ -116,25 +116,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           backend_id: backend_id,
           ingest_batch_size: batch_info.size,
           ingest_batch_trigger: batch_info.trigger,
-          log_type: log_type
+          event_type: event_type
         }
       } do
         backend = Backends.Cache.get_backend(backend_id)
 
-        with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(log_type) do
+        with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(event_type) do
           events =
             Enum.map(messages, fn %{data: %LogEvent{} = event} ->
               mapped_body =
                 event.body
                 |> Mapper.map(compiled)
                 |> Map.put("mapping_config_id", config_id)
-                |> maybe_compute_duration(log_type)
-                |> resolve_severity_number(log_type)
+                |> maybe_compute_duration(event_type)
+                |> resolve_severity_number(event_type)
 
               %{event | body: mapped_body}
             end)
 
-          ClickHouseAdaptor.insert_log_events(backend, events, log_type)
+          ClickHouseAdaptor.insert_log_events(backend, events, event_type)
         end
       end
 
@@ -203,7 +203,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     IngestEventQueue.add_to_table({:consolidated, backend_id}, events)
   end
 
-  @spec maybe_compute_duration(map(), TypeDetection.log_type()) :: map()
+  @spec maybe_compute_duration(map(), TypeDetection.event_type()) :: map()
   defp maybe_compute_duration(
          %{"start_time" => start_time, "end_time" => end_time, "duration" => 0} = body,
          :trace
@@ -212,9 +212,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     %{body | "duration" => end_time - start_time}
   end
 
-  defp maybe_compute_duration(body, _log_type), do: body
+  defp maybe_compute_duration(body, _event_type), do: body
 
-  @spec resolve_severity_number(map(), TypeDetection.log_type()) :: map()
+  @spec resolve_severity_number(map(), TypeDetection.event_type()) :: map()
   defp resolve_severity_number(
          %{"severity_number_alt" => alt} = body,
          :log
@@ -223,5 +223,5 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     %{body | "severity_number" => alt}
   end
 
-  defp resolve_severity_number(body, _log_type), do: body
+  defp resolve_severity_number(body, _event_type), do: body
 end

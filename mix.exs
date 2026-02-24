@@ -177,6 +177,7 @@ defmodule Logflare.Mixfile do
 
       # ClickHouse
       {:ch, "~> 0.5"},
+      {:nimble_pool, "~> 1.0"},
 
       # DataFrames
       {:explorer, "~> 0.11.1"},

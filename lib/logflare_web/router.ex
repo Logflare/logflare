@@ -247,6 +247,12 @@ defmodule LogflareWeb.Router do
     get("/public/:public_token", SourceController, :public)
   end
 
+  scope "/teams", LogflareWeb do
+    pipe_through([:browser, :require_auth])
+
+    get("/switch", TeamController, :switch)
+  end
+
   scope "/sources", LogflareWeb do
     pipe_through([:browser, :require_auth])
 

@@ -40,8 +40,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
-      for log_type <- [:log, :metric, :trace] do
-        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, log_type)
+      for event_type <- [:log, :metric, :trace] do
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
         {:ok, result} =
           ClickHouseAdaptor.execute_ch_query(
@@ -59,8 +59,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
-      for log_type <- [:log, :metric, :trace] do
-        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, log_type)
+      for event_type <- [:log, :metric, :trace] do
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
         {:ok, exists} =
           ClickHouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{table_name}")
@@ -104,8 +104,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       ref2 = Process.monitor(pid2)
       assert_receive {:DOWN, ^ref2, :process, ^pid2, :normal}, 5_000
 
-      for log_type <- [:log, :metric, :trace] do
-        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, log_type)
+      for event_type <- [:log, :metric, :trace] do
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
         {:ok, result} =
           ClickHouseAdaptor.execute_ch_query(
