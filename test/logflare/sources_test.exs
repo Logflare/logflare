@@ -27,6 +27,29 @@ defmodule Logflare.SourcesTest do
     end
   end
 
+  describe "recommended_query_fields/1" do
+    test "preserves required marker in suggested keys" do
+      source =
+        build(:source,
+          bigquery_clustering_fields: "session_id",
+          suggested_keys: "metadata.level!,m.user_id"
+        )
+
+      assert Source.recommended_query_fields(source) == [
+               "session_id",
+               "metadata.level!",
+               "m.user_id"
+             ]
+    end
+
+    test "query_field_name/1 and required_query_field?/1 normalize correctly" do
+      assert Source.query_field_name("metadata.level!") == "metadata.level"
+      assert Source.query_field_name("metadata.level") == "metadata.level"
+      assert Source.required_query_field?("metadata.level!")
+      refute Source.required_query_field?("metadata.level")
+    end
+  end
+
   describe "create_source/2" do
     setup do
       user = insert(:user)

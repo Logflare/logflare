@@ -22,7 +22,7 @@ RUN apt-get update -y && apt-get install -y curl bash build-essential git gcc ma
     apt-get clean && rm -f /var/lib/apt/lists/*_*
 # app dependencies
 COPY ./VERSION mix.exs mix.lock ./
-RUN mix do local.rebar --force, local.hex --force, deps.get, deps.compile
+RUN mix do local.rebar --force + local.hex --force + deps.get + deps.compile
 
 COPY assets/package.json assets/package-lock.json assets/
 RUN npm --prefix assets ci
