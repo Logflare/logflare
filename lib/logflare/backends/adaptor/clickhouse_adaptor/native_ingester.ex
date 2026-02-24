@@ -150,18 +150,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
           keyword()
         ) :: {:ok, Connection.t()} | {:error, term()}
   defp do_cached_insert(conn, sql, events, cached_schema, backend_id, cache_key, settings) do
-    # Pre-encode blocks using cached schema BEFORE sending the INSERT query.
-    # This moves encoding work outside of ClickHouse's query measurement window.
     columns = build_columns_from_schema(events, cached_schema)
     normalized = normalize_columns(columns)
-    encoded_blocks = pre_encode_blocks(normalized, conn.negotiated_rev)
+    encoded_block = BlockEncoder.encode_block_body(normalized, conn.negotiated_rev)
 
     with {:ok, server_columns, conn} <- Connection.send_query(conn, sql, settings) do
       if server_columns == cached_schema do
-        # Schema match: send pre-encoded blocks immediately
-        send_pre_encoded_and_confirm(conn, encoded_blocks)
+        send_pre_encoded_and_confirm(conn, encoded_block)
       else
-        # Schema changed: discard pre-encoded blocks, re-encode with new schema
         Logger.info(
           "ClickHouse NativeIngester: schema cache mismatch for #{cache_key}, re-encoding"
         )
@@ -310,57 +306,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
     end
   end
 
-  @spec pre_encode_blocks([BlockEncoder.column()], non_neg_integer()) :: [iodata()]
-  defp pre_encode_blocks(columns, negotiated_rev) do
-    num_rows = columns |> List.first() |> elem(2) |> length()
-
-    if num_rows <= @sub_block_size do
-      [BlockEncoder.encode_block_body(columns, negotiated_rev)]
-    else
-      pre_encode_sub_blocks(columns, negotiated_rev)
-    end
-  end
-
-  @spec pre_encode_sub_blocks([BlockEncoder.column()], non_neg_integer()) :: [iodata()]
-  defp pre_encode_sub_blocks(columns, negotiated_rev) do
-    chunked_values =
-      Enum.map(columns, fn {_name, _type, values} ->
-        Enum.chunk_every(values, @sub_block_size)
-      end)
-
-    column_meta = Enum.map(columns, fn {name, type, _values} -> {name, type} end)
-
-    chunked_values
-    |> Enum.zip()
-    |> Enum.map(fn chunk_tuple ->
-      chunks = Tuple.to_list(chunk_tuple)
-
-      sub_columns =
-        Enum.zip_with(column_meta, chunks, fn {name, type}, values ->
-          {name, type, values}
-        end)
-
-      BlockEncoder.encode_block_body(sub_columns, negotiated_rev)
-    end)
-  end
-
-  @spec send_pre_encoded_and_confirm(Connection.t(), [iodata()]) ::
+  @spec send_pre_encoded_and_confirm(Connection.t(), iodata()) ::
           {:ok, Connection.t()} | {:error, term()}
-  defp send_pre_encoded_and_confirm(conn, encoded_blocks) do
-    with :ok <- send_encoded_blocks(conn, encoded_blocks),
+  defp send_pre_encoded_and_confirm(conn, encoded_block) do
+    with :ok <- Connection.send_data_block(conn, encoded_block),
          :ok <- Connection.send_data_block(conn, BlockEncoder.encode_empty_block_body()),
          {:ok, conn} <- Connection.read_insert_response(conn) do
       {:ok, conn}
-    end
-  end
-
-  @spec send_encoded_blocks(Connection.t(), [iodata()]) :: :ok | {:error, term()}
-  defp send_encoded_blocks(_conn, []), do: :ok
-
-  defp send_encoded_blocks(conn, [block_body | rest]) do
-    case Connection.send_data_block(conn, block_body) do
-      :ok -> send_encoded_blocks(conn, rest)
-      error -> error
     end
   end
 
