@@ -189,4 +189,65 @@ defmodule LogflareWeb.QueryLiveTest do
              "Expected error 'can't find source nonexistent_source' after running query. Got: #{String.slice(html, 0, 2000)}"
     end
   end
+
+  describe "postgres backend" do
+    alias Logflare.Backends.Adaptor.PostgresAdaptor
+    alias Logflare.Backends.AdaptorSupervisor
+
+    setup %{conn: conn} do
+      initial_single_tenant = Application.get_env(:logflare, :single_tenant)
+      initial_postgres_backend_adapter = Application.get_env(:logflare, :postgres_backend_adapter)
+
+      cfg = Application.get_env(:logflare, Logflare.Repo)
+      url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
+
+      Application.put_env(:logflare, :single_tenant, true)
+      Application.put_env(:logflare, :postgres_backend_adapter, url: url, pool_size: 2)
+
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :postgres,
+          config: %{url: url},
+          user: user,
+          sources: [source]
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}})
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :single_tenant, initial_single_tenant)
+
+        Application.put_env(
+          :logflare,
+          :postgres_backend_adapter,
+          initial_postgres_backend_adapter
+        )
+
+        PostgresAdaptor.destroy_instance({source, backend})
+      end)
+
+      conn = login_user(conn, user)
+      {:ok, user: user, conn: conn, source: source, backend: backend}
+    end
+
+    test "run a query against postgres", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/query")
+
+      view
+      |> render_hook("parse-query", %{
+        value: "SELECT 1 as result;"
+      })
+
+      assert view
+             |> element("form")
+             |> render_submit(%{}) =~ "Ran query successfully"
+
+      assert render(view) =~ "0 bytes processed"
+      assert render(view) =~ "result"
+      assert render(view) =~ "1"
+    end
+  end
 end
