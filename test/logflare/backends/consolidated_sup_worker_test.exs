@@ -24,9 +24,10 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
       refute ConsolidatedSup.pipeline_running?(backend)
 
       send(Process.whereis(ConsolidatedSupWorker), :check)
-      Process.sleep(100)
 
-      assert ConsolidatedSup.pipeline_running?(backend)
+      TestUtils.retry_assert([sleep: 100], fn ->
+        assert ConsolidatedSup.pipeline_running?(backend)
+      end)
     end
 
     test "does not start duplicate pipelines", %{backend: backend} do
@@ -39,9 +40,10 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
       initial_count = ConsolidatedSup.count_pipelines()
 
       send(Process.whereis(ConsolidatedSupWorker), :check)
-      Process.sleep(100)
 
-      assert ConsolidatedSup.count_pipelines() == initial_count
+      TestUtils.retry_assert([sleep: 100], fn ->
+        assert ConsolidatedSup.count_pipelines() == initial_count
+      end)
     end
   end
 
