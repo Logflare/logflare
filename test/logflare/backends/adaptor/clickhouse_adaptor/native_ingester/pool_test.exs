@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncoder
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.SchemaCache
 
   @pool_connect_opts [
     host: "localhost",
@@ -265,6 +266,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
           name: pool_name
         )
 
+      cache_key = "logflare_test.pool_reuse"
+      assert SchemaCache.get(backend.id, cache_key) == nil
+
       for i <- 1..3 do
         result =
           NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
@@ -272,13 +276,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
                    {"id", "UInt64", [i]},
                    {"name", "String", ["batch_#{i}"]}
                  ]) do
-              {:ok, updated_conn} -> {:ok, updated_conn}
-              {:error, _} = error -> {error, :remove}
+              {:ok, updated_conn} ->
+                # Simulate what NativeIngester does: cache the schema after insert
+                SchemaCache.put(backend.id, cache_key, [{"id", "UInt64"}, {"name", "String"}])
+                {:ok, updated_conn}
+
+              {:error, _} = error ->
+                {error, :remove}
             end
           end)
 
         assert result == :ok
       end
+
+      # Verify schema cache is populated and persists across inserts
+      assert SchemaCache.get(backend.id, cache_key) == [{"id", "UInt64"}, {"name", "String"}]
 
       {:ok, rows} =
         ClickHouseAdaptor.execute_ch_query(
