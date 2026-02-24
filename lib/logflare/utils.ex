@@ -31,6 +31,10 @@ defmodule Logflare.Utils do
           nil ->
             ConfigCat.get_value(feature, false)
 
+          identifier when is_binary(identifier) ->
+            user_obj = ConfigCat.User.new("custom_value:#{feature}:#{identifier}")
+            ConfigCat.get_value(feature, false, user_obj)
+
           %LogEvent{source_uuid: source_uuid, id: log_event_id} ->
             user_obj = ConfigCat.User.new("source:#{source_uuid}:log_event:#{log_event_id}")
             ConfigCat.get_value(feature, false, user_obj)

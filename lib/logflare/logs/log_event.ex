@@ -160,8 +160,7 @@ defmodule Logflare.LogEvent do
   defp transform(%LE{valid: true} = le, %Source{} = source) do
     with {:ok, le} <- bigquery_spec(le),
          {:ok, le} <- copy_fields(le, source),
-         {:ok, le} <-
-           if(Logflare.Utils.flag("key_values", le), do: kv_enrich(le, source), else: {:ok, le}) do
+         {:ok, le} <- kv_enrich(le, source) do
       le
     else
       {:error, message} ->
@@ -240,8 +239,10 @@ defmodule Logflare.LogEvent do
     accessor_path = Map.get(instruction, :accessor_path)
 
     with raw when not is_nil(raw) <- get_in(body, from_path),
+         raw_string <- to_string(raw),
+         true <- Logflare.Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-
-           KeyValues.Cache.lookup(user_id, to_string(raw), accessor_path) do
+           KeyValues.Cache.lookup(user_id, raw_string, accessor_path) do
       put_in(body, Enum.map(to_path, &Access.key(&1, %{})), value)
     else
       _ -> body
