@@ -118,7 +118,7 @@ defmodule Logflare.ContextCache do
     end)
   end
 
-  @spec refresh_keys(list()) :: {:ok, non_neg_integer()}
+  @spec refresh_keys(list()) :: :ok
   def refresh_keys(values) when is_list(values) do
     for {context, primary_key} <- values do
       refresh_key(context, primary_key)
