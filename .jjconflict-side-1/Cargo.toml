@@ -1,9 +1,0 @@
-[workspace]
-resolver = "2"
-
-members = ["native/arrowipc_ex", "native/ch_compression_ex", "native/sqlparser_ex", "native/mapper_ex"]
-
-[profile.release]
-opt-level = 3
-lto = "thin"
-codegen-units = 1

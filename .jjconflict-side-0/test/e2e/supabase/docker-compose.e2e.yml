@@ -1,9 +1,0 @@
-services:
-  analytics:
-    image: supabase/logflare:local
-    build:
-      context: ../../../../..
-      dockerfile: ./Dockerfile
-      tags:
-        - "supabase/logflare:local"
-    pull_policy: never
