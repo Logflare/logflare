@@ -34,7 +34,7 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:form_type, nil)
       |> assign(:show_default_ingest_form?, false)
       |> assign(:default_ingest_sources, [])
-      |> assign(:flag_multibackend, LogflareWeb.Utils.flag("multibackend", user))
+      |> assign(:flag_multibackend, Logflare.Utils.flag("multibackend", user))
       |> assign_backend_types()
       |> refresh_backends()
       |> refresh_backend(params["id"])
