@@ -58,6 +58,8 @@ defmodule LogflareWeb.PlansLive do
                   </.link>
                 </li>
                 <li class="p-2">Rate burst</li>
+                <hr />
+                <li class="p-2">Key-value pairs</li>
               </ul>
             </div>
           </div>
@@ -81,6 +83,8 @@ defmodule LogflareWeb.PlansLive do
                 <hr />
                 <li class="p-2">5 per second</li>
                 <li class="p-2">300</li>
+                <hr />
+                <li class="p-2">None</li>
               </ul>
               <div class="py-4">
                 <h2 class="text-white mb-1">$<span class="price">0</span></h2>
@@ -111,6 +115,8 @@ defmodule LogflareWeb.PlansLive do
                 <hr />
                 <li class="p-2">Unlimited</li>
                 <li class="p-2">Unlimited</li>
+                <hr />
+                <li class="p-2">Up to 10M</li>
               </ul>
               <div class="py-4">
                 <h2 class="text-white">
@@ -154,6 +160,8 @@ defmodule LogflareWeb.PlansLive do
                 <hr />
                 <li class="p-2">Unlimited</li>
                 <li class="p-2">Unlimited</li>
+                <hr />
+                <li class="p-2">Up to 10M</li>
               </ul>
               <div class="py-4">
                 <h2 class="text-white">

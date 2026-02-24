@@ -1,9 +1,9 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   @moduledoc """
-  Default OTEL-aligned mapping configurations for ClickHouse log types.
+  Default OTEL-aligned mapping configurations for ClickHouse event types.
 
   Defines how raw log event bodies are transformed into structured schemas
-  before RowBinary encoding. Each log type (log, metric, trace) has its own
+  before RowBinary encoding. Each event type (log, metric, trace) has its own
   field mapping with coalesced path resolution, defaults, and transforms.
   """
 
@@ -17,12 +17,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   @metric_config_id "00000000-0000-0000-0002-000000000002"
   @trace_config_id "00000000-0000-0000-0003-000000000002"
 
-  @spec config_id(TypeDetection.log_type()) :: String.t()
+  @spec config_id(TypeDetection.event_type()) :: String.t()
   def config_id(:log), do: @log_config_id
   def config_id(:metric), do: @metric_config_id
   def config_id(:trace), do: @trace_config_id
 
-  @spec for_type(TypeDetection.log_type()) :: MappingConfig.t()
+  @spec for_type(TypeDetection.event_type()) :: MappingConfig.t()
   def for_type(:log), do: for_log()
   def for_type(:metric), do: for_metric()
   def for_type(:trace), do: for_trace()

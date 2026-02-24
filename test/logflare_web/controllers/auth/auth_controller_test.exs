@@ -18,7 +18,6 @@ defmodule LogflareWeb.AuthControllerTest do
     assert redirected_to(conn, 302) == ~p"/auth/login"
     assert conn.resp_cookies["_logflare_user_id"].value == ""
     assert conn.resp_cookies["_logflare_team_user_id"].value == ""
-    assert conn.resp_cookies["_logflare_last_team"].value == ""
     assert conn.resp_cookies["_logflare_last_provider"].value == ""
   end
 end

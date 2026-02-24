@@ -160,4 +160,4 @@ end
 
 **Log processing**: Broadway pipelines handle log ingestion. `Logflare.Backends.DynamicPipeline` scales pipelines dynamically based on load. Incoming events are classified as `:log`, `:metric`, or `:trace` by `Logflare.Logs.LogEvent.TypeDetection`, which determines routing and table selection in backend adaptors. OpenTelemetry protobuf payloads are converted into `LogEvent` structs via modules in `lib/logflare/logs/`.
 
-**ClickHouse consolidated pipeline**: The ClickHouse adaptor uses a single Broadway pipeline per backend. Messages are partitioned by `log_type` via `put_batch_key`, routing to type-specific OTEL tables (`otel_logs_*`, `otel_metrics_*`, `otel_traces_*`). See `lib/logflare/backends/adaptor/clickhouse_adaptor/` for internals.
+**ClickHouse consolidated pipeline**: The ClickHouse adaptor uses a single Broadway pipeline per backend. Messages are partitioned by `event_type` via `put_batch_key`, routing to type-specific OTEL tables (`otel_logs_*`, `otel_metrics_*`, `otel_traces_*`). See `lib/logflare/backends/adaptor/clickhouse_adaptor/` for internals.

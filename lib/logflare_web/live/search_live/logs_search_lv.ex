@@ -136,9 +136,12 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_params(%{"querystring" => qs} = params, uri, socket) do
     source = socket.assigns.source
 
+    tailing? = Map.get(params, "tailing?", "true") != "false" and socket.assigns.tailing?
+
     socket =
       socket
       |> assign(:show_modal, false)
+      |> assign(:tailing?, tailing?)
       |> assign(uri: URI.parse(uri))
       |> assign(uri_params: params)
 
@@ -238,6 +241,7 @@ defmodule LogflareWeb.Source.SearchLV do
     </.subheader>
     <div class="container source-logs-search-container console-text">
       <div id="logs-list-container">
+        <LogEventComponents.empty_result_list :if={not @loading} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
         <LogEventComponents.results_list search_op={@search_op} search_op_log_events={@search_op_log_events} last_query_completed_at={@last_query_completed_at} search_timezone={@search_timezone} loading={@loading} tailing?={@tailing?} querystring={@querystring} />
       </div>
       <div>

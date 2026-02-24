@@ -6,7 +6,16 @@ module.exports = {
     "../lib/logflare_web/**/*.{eex,leex,heex,ex}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        "json-tree-key": "#6286db",
+        "json-tree-string": "#63ff99",
+        "json-tree-number": "#c7a1ff",
+        "json-tree-boolean": "#fff86c",
+        "json-tree-null": "#eec97d",
+        "json-tree-label": "#9ca3af",
+      },
+    },
   },
   plugins: [],
   prefix: "tw-",

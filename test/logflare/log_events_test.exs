@@ -65,4 +65,12 @@ defmodule Logflare.LogEventsTest do
     assert query =~ "_PARTITIONTIME"
     assert query =~ ".id ="
   end
+
+  test "get_event_with_fallback/3 requires second precision timestamp" do
+    timestamp = DateTime.from_naive!(~N[2026-01-01 00:00:00.123456], "Etc/UTC")
+
+    assert_raise ArgumentError, "timestamp must be second precision", fn ->
+      LogEvents.get_event_with_fallback(:source_token, "log_id", timestamp: timestamp)
+    end
+  end
 end

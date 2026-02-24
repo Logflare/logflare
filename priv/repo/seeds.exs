@@ -36,6 +36,7 @@ plans = [
     limit_team_users_limit: 2,
     limit_source_fields_limit: 500,
     limit_source_ttl: 604_800_000,
+    limit_key_values: 10_000_000,
     type: "standard"
   },
   %{
@@ -50,6 +51,7 @@ plans = [
     limit_team_users_limit: 2,
     limit_source_fields_limit: 500,
     limit_source_ttl: 604_800_000,
+    limit_key_values: 10_000_000,
     type: "standard"
   },
   %{
@@ -64,6 +66,7 @@ plans = [
     limit_team_users_limit: 2,
     limit_source_fields_limit: 500,
     limit_source_ttl: 2_592_000_000,
+    limit_key_values: 10_000_000,
     type: "standard"
   },
   %{
@@ -78,6 +81,7 @@ plans = [
     limit_team_users_limit: 2,
     limit_source_fields_limit: 500,
     limit_source_ttl: 2_592_000_000,
+    limit_key_values: 10_000_000,
     type: "standard"
   },
   %{
@@ -92,6 +96,7 @@ plans = [
     limit_team_users_limit: 2,
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
+    limit_key_values: 10_000_000,
     type: "standard"
   },
   %{
@@ -106,6 +111,7 @@ plans = [
     limit_team_users_limit: 2,
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
+    limit_key_values: 10_000_000,
     type: "standard"
   },
   %{
@@ -120,6 +126,7 @@ plans = [
     limit_team_users_limit: 2,
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
+    limit_key_values: 10_000_000,
     type: "standard"
   },
   %{
@@ -134,6 +141,7 @@ plans = [
     limit_team_users_limit: 2,
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
+    limit_key_values: 10_000_000,
     type: "standard"
   },
   %{
@@ -148,6 +156,7 @@ plans = [
     limit_team_users_limit: 9,
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
+    limit_key_values: 10_000_000,
     type: "standard"
   },
   %{
@@ -162,6 +171,7 @@ plans = [
     limit_team_users_limit: 10,
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
+    limit_key_values: 10_000_000,
     type: "metered"
   },
   %{
@@ -176,6 +186,7 @@ plans = [
     limit_team_users_limit: 10,
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
+    limit_key_values: 10_000_000,
     type: "metered"
   },
   %{
@@ -190,6 +201,7 @@ plans = [
     limit_team_users_limit: 10,
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
+    limit_key_values: 10_000_000,
     type: "metered"
   },
   %{
@@ -204,6 +216,7 @@ plans = [
     limit_team_users_limit: 10,
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
+    limit_key_values: 10_000_000,
     type: "metered"
   }
 ]
