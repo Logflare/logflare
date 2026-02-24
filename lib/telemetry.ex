@@ -262,7 +262,7 @@ defmodule Logflare.Telemetry do
   end
 
   def cachex_metrics do
-    Enum.each(@caches, fn {cache, metric} ->
+    Enum.each(@caches, fn {cache, cache_name} ->
       {:ok, stats} = Cachex.stats(cache)
 
       {:total_heap_size, total_heap_size} =
@@ -271,19 +271,19 @@ defmodule Logflare.Telemetry do
         |> Process.info(:total_heap_size)
 
       metrics = %{
-        purge: Map.get(stats, :purge),
-        stats: Map.get(stats, :stats),
-        evictions: Map.get(stats, :evictions),
-        expirations: Map.get(stats, :expirations),
-        operations: Map.get(stats, :operations),
-        hits: Map.get(stats, :hits),
-        misses: Map.get(stats, :misses),
-        hit_rate: Map.get(stats, :hit_rate),
-        miss_rate: Map.get(stats, :miss_rate),
+        purge: Map.get(stats, :purge, 0),
+        stats: Map.get(stats, :stats, 0),
+        evictions: Map.get(stats, :evictions, 0),
+        expirations: Map.get(stats, :expirations, 0),
+        operations: Map.get(stats, :operations, 0),
+        hits: Map.get(stats, :hits, 0),
+        misses: Map.get(stats, :misses, 0),
+        hit_rate: Map.get(stats, :hit_rate, 0),
+        miss_rate: Map.get(stats, :miss_rate, 0),
         total_heap_size: total_heap_size
       }
 
-      :telemetry.execute([:cachex, metric], metrics)
+      :telemetry.execute([:cachex, cache_name], metrics)
     end)
   end
 

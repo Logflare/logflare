@@ -169,18 +169,22 @@ defmodule Logflare.TelemetryTest do
       Telemetry.cachex_metrics()
       assert_receive {^event, ^ref, measurements, _metadata}
 
-      assert Map.keys(measurements) == [
-               :total_heap_size,
-               :purge,
-               :stats,
-               :operations,
-               :hits,
+      assert measurements |> Map.keys() |> Enum.sort() == [
                :evictions,
                :expirations,
-               :misses,
                :hit_rate,
-               :miss_rate
+               :hits,
+               :miss_rate,
+               :misses,
+               :operations,
+               :purge,
+               :stats,
+               :total_heap_size
              ]
+
+      for {key, value} <- measurements do
+        assert is_number(value), "expected #{key} to be numeric, got: #{inspect(value)}"
+      end
     end
   end
 end
