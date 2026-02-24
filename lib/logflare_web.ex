@@ -20,8 +20,8 @@ defmodule LogflareWeb do
   def controller do
     quote do
       use Phoenix.Controller, namespace: LogflareWeb
+      use Gettext, backend: LogflareWeb.Gettext
 
-      import LogflareWeb.Gettext
       import Plug.Conn
       import Phoenix.LiveView.Controller
 
@@ -136,6 +136,7 @@ defmodule LogflareWeb do
 
   defp view_helpers do
     quote do
+      use Gettext, backend: LogflareWeb.Gettext
       import Phoenix.LiveView.Helpers
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
       import Phoenix.View
@@ -143,7 +144,6 @@ defmodule LogflareWeb do
       import LogflareWeb.CoreComponents
 
       import LogflareWeb.ErrorHelpers
-      import LogflareWeb.Gettext
 
       alias LogflareWeb.LqlHelpers
 
@@ -164,7 +164,8 @@ defmodule LogflareWeb do
   def channel do
     quote do
       use Phoenix.Channel, log_join: false, log_handle_in: false
-      import LogflareWeb.Gettext
+
+      use Gettext, backend: LogflareWeb.Gettext
     end
   end
 

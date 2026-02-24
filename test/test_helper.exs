@@ -84,4 +84,8 @@ ExUnit.configure(
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
 
+if System.get_env("E2E", "false") in ["true", "1"] do
+  {:ok, _} = PhoenixTest.Playwright.Supervisor.start_link()
+end
+
 Application.put_env(:phoenix_test, :base_url, LogflareWeb.Endpoint.url())
