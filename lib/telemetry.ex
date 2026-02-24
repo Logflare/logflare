@@ -6,18 +6,13 @@ defmodule Logflare.Telemetry do
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
-  context_caches =
-    Logflare.ContextCache.Supervisor.list_caches()
-    |> Enum.map(fn cache ->
-      ["Logflare", context, "Cache"] = Module.split(cache)
-      {cache, context |> Macro.underscore() |> String.to_atom()}
-    end)
+  context_caches_with_metrics = Logflare.ContextCache.Supervisor.list_caches_with_metrics()
 
   @caches [
             {Logflare.Logs.LogEvents.Cache, :log_events},
             {Logflare.Logs.RejectedLogEvents, :rejected_log_events},
             {Logflare.PubSubRates.Cache, :pub_sub_rates}
-          ] ++ context_caches
+          ] ++ context_caches_with_metrics
 
   @process_metrics %{
     memory: %{
@@ -262,7 +257,7 @@ defmodule Logflare.Telemetry do
   end
 
   def cachex_metrics do
-    Enum.each(@caches, fn {cache, cache_name} ->
+    Enum.each(@caches, fn {cache, metric} ->
       {:ok, stats} = Cachex.stats(cache)
 
       {:total_heap_size, total_heap_size} =
@@ -283,7 +278,7 @@ defmodule Logflare.Telemetry do
         total_heap_size: total_heap_size
       }
 
-      :telemetry.execute([:cachex, cache_name], metrics)
+      :telemetry.execute([:cachex, metric], metrics)
     end)
   end
 

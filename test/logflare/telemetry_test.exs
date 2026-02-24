@@ -160,31 +160,56 @@ defmodule Logflare.TelemetryTest do
 
   describe "cachex_metrics/0" do
     test "retrieves and emits stats for caches with all metrics" do
-      # test for one of the caches
-      event = [:cachex, :sources]
-      ref = :telemetry_test.attach_event_handlers(self(), [event])
+      caches = [
+        :log_events,
+        :rejected_log_events,
+        :pub_sub_rates,
+        :team_users,
+        :partners,
+        :users,
+        :backends,
+        :sources,
+        :billing,
+        :source_schemas,
+        :auth,
+        :endpoints,
+        :rules,
+        :key_values,
+        :saved_searches
+      ]
+
+      events = Enum.map(caches, fn cache -> [:cachex, cache] end)
+      ref = :telemetry_test.attach_event_handlers(self(), events)
       on_exit(fn -> :telemetry.detach(ref) end)
 
       # simulates telemetry_poller tick
       Telemetry.cachex_metrics()
-      assert_receive {^event, ^ref, measurements, _metadata}
 
-      assert measurements |> Map.keys() |> Enum.sort() == [
-               :evictions,
-               :expirations,
-               :hit_rate,
-               :hits,
-               :miss_rate,
-               :misses,
-               :operations,
-               :purge,
-               :stats,
-               :total_heap_size
-             ]
+      for event <- events do
+        assert_receive {^event, ^ref, measurements, metadata}
 
-      for {key, value} <- measurements do
-        assert is_number(value), "expected #{key} to be numeric, got: #{inspect(value)}"
+        assert measurements |> Map.keys() |> Enum.sort() == [
+                 :evictions,
+                 :expirations,
+                 :hit_rate,
+                 :hits,
+                 :miss_rate,
+                 :misses,
+                 :operations,
+                 :purge,
+                 :stats,
+                 :total_heap_size
+               ]
+
+        for {key, value} <- measurements do
+          assert is_number(value),
+                 "expected #{key} for #{inspect(event)} to be numeric, got: #{inspect(value)}"
+        end
+
+        assert metadata == %{}
       end
+
+      refute_received _anything_else
     end
   end
 end
