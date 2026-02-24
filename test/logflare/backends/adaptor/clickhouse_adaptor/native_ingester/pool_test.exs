@@ -20,7 +20,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
   @test_tables [
     "pool_basic",
     "pool_insert",
-    "pool_reuse"
+    "pool_reuse",
+    "pool_checkout_ping"
   ]
 
   setup do
@@ -287,6 +288,101 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
 
       assert length(rows) == 3
       assert Enum.map(rows, & &1["name"]) == ["batch_1", "batch_2", "batch_3"]
+
+      GenServer.stop(pid)
+    end
+  end
+
+  describe "time-based checkout ping" do
+    test "skips ping for recently-used connections", %{backend: backend} do
+      {:ok, _} =
+        ClickHouseAdaptor.execute_ch_query(backend, """
+        CREATE TABLE IF NOT EXISTS pool_checkout_ping (
+          id UInt64,
+          name String
+        ) ENGINE = MergeTree() ORDER BY id
+        """)
+
+      pool_name = :"pool_checkout_ping_test_#{System.unique_integer([:positive])}"
+
+      {:ok, pid} =
+        NimblePool.start_link(
+          worker: {Pool, @pool_connect_opts},
+          pool_size: 1,
+          name: pool_name
+        )
+
+      # First checkout + insert sets last_used_at on checkin
+      result =
+        NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
+          case do_insert(conn, "pool_checkout_ping", [
+                 {"id", "UInt64", [1]},
+                 {"name", "String", ["first"]}
+               ]) do
+            {:ok, updated_conn} -> {:ok, updated_conn}
+            {:error, _} = error -> {error, :remove}
+          end
+        end)
+
+      assert result == :ok
+
+      # Immediate second checkout should skip ping (connection is fresh)
+      # and still work correctly for an insert
+      result =
+        NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
+          # Verify last_used_at was set by the previous checkin
+          assert conn.last_used_at != nil
+
+          case do_insert(conn, "pool_checkout_ping", [
+                 {"id", "UInt64", [2]},
+                 {"name", "String", ["second"]}
+               ]) do
+            {:ok, updated_conn} -> {:ok, updated_conn}
+            {:error, _} = error -> {error, :remove}
+          end
+        end)
+
+      assert result == :ok
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT id, name FROM pool_checkout_ping ORDER BY id"
+        )
+
+      assert length(rows) == 2
+      assert Enum.at(rows, 0)["name"] == "first"
+      assert Enum.at(rows, 1)["name"] == "second"
+
+      GenServer.stop(pid)
+    end
+
+    test "pings stale connections on checkout" do
+      pool_name = :"pool_checkout_stale_test_#{System.unique_integer([:positive])}"
+
+      {:ok, pid} =
+        NimblePool.start_link(
+          worker: {Pool, @pool_connect_opts},
+          pool_size: 1,
+          name: pool_name
+        )
+
+      # First checkout to initialize the connection
+      NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
+        # Force last_used_at far in the past to simulate a stale connection
+        old_conn = %{conn | last_used_at: System.monotonic_time(:millisecond) - 10_000}
+        {:ok, old_conn}
+      end)
+
+      # Next checkout should trigger a ping because last_used_at is old.
+      # The connection is still alive so it should pass the ping check.
+      result =
+        NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
+          assert %Connection{} = conn
+          {:ok, conn}
+        end)
+
+      assert result == :ok
 
       GenServer.stop(pid)
     end
