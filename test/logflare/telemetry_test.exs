@@ -160,7 +160,7 @@ defmodule Logflare.TelemetryTest do
 
   describe "cachex_metrics/0" do
     test "retrieves and emits stats for caches with all metrics" do
-      caches = [
+      expected_metrics = [
         :log_events,
         :rejected_log_events,
         :pub_sub_rates,
@@ -178,7 +178,7 @@ defmodule Logflare.TelemetryTest do
         :saved_searches
       ]
 
-      events = Enum.map(caches, fn cache -> [:cachex, cache] end)
+      events = Enum.map(expected_metrics, fn metric -> [:cachex, metric] end)
       ref = :telemetry_test.attach_event_handlers(self(), events)
       on_exit(fn -> :telemetry.detach(ref) end)
 
