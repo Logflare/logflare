@@ -89,5 +89,32 @@ defmodule LogflareWeb.AdminControllerTest do
       refute html =~ admin.name
       refute html =~ admin_team.name
     end
+
+    test "bug: become account clears last_switched_team_id from session", %{
+      conn: conn,
+      admin: admin
+    } do
+      user = insert(:user, provider_uid: "google-456")
+      user_team = insert(:team, user: user)
+
+      # admin has their own team
+      admin_team = insert(:team, user: admin)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> Plug.Test.init_test_session(%{last_switched_team_id: admin_team.id})
+        |> get(~p"/admin/accounts/#{user.id}/become")
+
+      assert redir_path = redirected_to(conn)
+      assert ~p"/dashboard" == redir_path
+      refute get_session(conn, :last_switched_team_id)
+      conn = get(recycle(conn), redir_path)
+      assert html = html_response(conn, 200)
+      assert html =~ user.email
+      assert html =~ user.name
+      assert html =~ user_team.name
+      refute html =~ admin_team.name
+    end
   end
 end
