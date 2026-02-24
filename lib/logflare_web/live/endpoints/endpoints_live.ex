@@ -9,7 +9,8 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Backends.Adaptor
   alias Logflare.Endpoints
   alias Logflare.Endpoints.PiiRedactor
-  alias LogflareWeb.{QueryComponents, Utils}
+  alias LogflareWeb.QueryComponents
+  alias Logflare.Utils
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -176,7 +177,7 @@ defmodule LogflareWeb.EndpointsLive do
         {:noreply,
          socket
          |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
-         |> push_patch(to: Utils.with_team_param(~p"/endpoints/#{endpoint.id}", team))
+         |> push_patch(to: LogflareWeb.Utils.with_team_param(~p"/endpoints/#{endpoint.id}", team))
          |> assign(:show_endpoint, endpoint)
          |> assign(:query_result_rows, nil)
          |> assign(:total_bytes_processed, nil)}

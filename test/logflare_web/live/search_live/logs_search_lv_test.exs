@@ -1426,6 +1426,106 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
+  describe "recommended field inputs" do
+    setup do
+      plan = insert(:plan)
+      user = insert(:user)
+
+      source =
+        insert(:source,
+          user: user,
+          suggested_keys: "metadata.level!,m.user_id",
+          bigquery_clustering_fields: "session_id"
+        )
+
+      source_without_recommendations = insert(:source, user: user)
+
+      %{
+        user: user,
+        plan: plan,
+        source: source,
+        source_without_recommendations: source_without_recommendations
+      }
+    end
+
+    setup [:setup_user_session]
+
+    test "renders inputs for suggested and cluster fields", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      assert has_element?(view, "label", "session_id")
+      assert has_element?(view, "label", "metadata.level")
+      assert has_element?(view, "label", "m.user_id")
+      assert has_element?(view, ".required-field-indicator", "required")
+    end
+
+    test "does not render inputs when no fields are configured", %{
+      conn: conn,
+      source_without_recommendations: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      refute has_element?(view, "input[id^='search-field-']")
+    end
+
+    # Search initiated from SourceController.show
+    test "search with field params are appended", %{
+      conn: conn,
+      source: source
+    } do
+      query_params = [
+        {"fields[metadata.level]", "error"},
+        {"fields[metadata.user_id]", "123"},
+        {"fields[event_message]", "api-timeout"},
+        {"fields[metadata.request_id]", ""},
+        querystring: "c:count(*) c:group_by(t::minute)"
+      ]
+
+      path = ~p"/sources/#{source.id}/search?#{query_params}"
+
+      {:error, {:live_redirect, %{to: to}}} =
+        live(conn, path)
+
+      refute to =~ "fields%5B"
+
+      {:ok, view, _html} = live(conn, to)
+
+      qs = render(view) |> find_querystring()
+
+      assert qs =~ "api-timeout"
+      assert qs =~ "m.level:error"
+      assert qs =~ "m.user_id:123"
+      refute qs =~ "m.request_id:"
+    end
+
+    test "start_search upserts filters by path and ignores empty fields", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      render_change(view, :start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "event_message:timeout c:count(*) c:group_by(t::minute)"
+        },
+        "fields" => %{
+          "event_message" => "api-timeout",
+          "metadata.request_id" => ""
+        }
+      })
+
+      qs = render(view) |> find_querystring()
+
+      assert qs =~ "api-timeout"
+      refute qs =~ "event_message:timeout"
+      refute qs =~ "m.request_id:"
+    end
+  end
+
   describe "source disable tailing" do
     setup do
       user = insert(:user)
