@@ -7,7 +7,6 @@ defmodule Logflare.Alerting.AlertSchedulerWorkerTest do
 
   setup do
     insert(:plan, name: "Free")
-    start_supervised!({Oban, Application.fetch_env!(:logflare, Oban)})
     {:ok, user: insert(:user)}
   end
 

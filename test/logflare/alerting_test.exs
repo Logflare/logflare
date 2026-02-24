@@ -388,10 +388,6 @@ defmodule Logflare.AlertingTest do
   end
 
   describe "trigger_alert_now/1" do
-    setup do
-      start_supervised!({Oban, Application.fetch_env!(:logflare, Oban)})
-      :ok
-    end
 
     test "enqueues an immediate AlertWorker job", %{user: user} do
       alert = insert(:alert, user: user)
@@ -431,10 +427,6 @@ defmodule Logflare.AlertingTest do
   end
 
   describe "enabled field" do
-    setup do
-      start_supervised!({Oban, Application.fetch_env!(:logflare, Oban)})
-      :ok
-    end
 
     test "disabling deletes future jobs, keeps past jobs, ignores other alerts", %{user: user} do
       alert = insert(:alert, user: user)
