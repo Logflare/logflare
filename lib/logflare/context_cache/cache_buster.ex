@@ -13,6 +13,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Backends
   alias Logflare.Billing
   alias Logflare.Endpoints
+  alias Logflare.KeyValues
   alias Logflare.PubSub
   alias Logflare.Rules
   alias Logflare.SavedSearches
@@ -331,6 +332,30 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"source_id" => source_id}
        }) do
     {SavedSearches, [source_id: String.to_integer(source_id)]}
+  end
+
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "key_values"},
+         record: %{"user_id" => uid, "key" => key}
+       })
+       when is_binary(uid) and is_binary(key) do
+    {KeyValues, [user_id: String.to_integer(uid), key: key]}
+  end
+
+  defp handle_record(%NewRecord{
+         relation: {_schema, "key_values"},
+         record: %{"user_id" => uid, "key" => key}
+       })
+       when is_binary(uid) and is_binary(key) do
+    {KeyValues, [user_id: String.to_integer(uid), key: key]}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "key_values"},
+         old_record: %{"user_id" => uid, "key" => key}
+       })
+       when is_binary(uid) and is_binary(key) do
+    {KeyValues, [user_id: String.to_integer(uid), key: key]}
   end
 
   defp handle_record(_record) do

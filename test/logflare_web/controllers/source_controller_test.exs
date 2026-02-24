@@ -128,7 +128,7 @@ defmodule LogflareWeb.SourceControllerTest do
       team = insert(:team, user: user)
       source = insert(:source, user: user)
       user = Repo.preload(user, :sources)
-      [source: source, team: team, conn: login_user(conn, user)]
+      [user: user, source: source, team: team, conn: login_user(conn, user)]
     end
 
     test "show source", %{conn: conn, source: source} do
@@ -151,6 +151,28 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_has("pre > code",
         text: Logflare.JSON.encode!(le.body["event_message"], pretty: true)
       )
+    end
+
+    test "renders inputs for recommended query fields", %{
+      conn: conn,
+      user: user
+    } do
+      source =
+        insert(:source,
+          user: user,
+          suggested_keys: "metadata.level!,m.user_id",
+          bigquery_clustering_fields: "session_id"
+        )
+
+      conn
+      |> visit(~p"/sources/#{source}")
+      |> assert_has("label", text: "session_id")
+      |> assert_has("label", text: "metadata.level")
+      |> assert_has("label", text: "m.user_id")
+      |> assert_has(".required-field-indicator", text: "required")
+      |> assert_has("input.form-control-sm[id='recent-logs-field-session_id']")
+      |> assert_has("input.form-control-sm[id='recent-logs-field-metadata.level']")
+      |> assert_has("input.form-control-sm[id='recent-logs-field-m.user_id']")
     end
 
     test "invalid source", %{conn: conn, source: source} do

@@ -143,5 +143,5 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   defp maybe_put_timestamp(opts, nil) when is_list(opts), do: opts
 
   defp maybe_put_timestamp(opts, timestamp) when is_list(opts),
-    do: Keyword.put(opts, :timestamp, timestamp)
+    do: Keyword.put(opts, :timestamp, DateTime.truncate(timestamp, :second))
 end

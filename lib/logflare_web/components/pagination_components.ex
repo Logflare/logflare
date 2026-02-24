@@ -25,12 +25,16 @@ defmodule LogflareWeb.PaginationComponents do
   attr :next, :string, default: ">>", doc: "Text for next button"
   attr :previous, :string, default: "<<", doc: "Text for previous button"
 
+  attr :patch, :boolean,
+    default: false,
+    doc: "Use patch navigation instead of href (for LiveView)"
+
   def pagination_links(assigns) do
     ~H"""
     <nav>
       <ul class="pagination">
         <%= for item <- Numerator.build(@page, num_pages_shown: @distance, show_first: @first, show_last: @last) do %>
-          <.pagination_link_item href={build_url(@path, @params, item)} item={item} previous={@previous} next={@next} />
+          <.pagination_link_item href={build_url(@path, @params, item)} item={item} previous={@previous} next={@next} patch={@patch} />
         <% end %>
       </ul>
     </nav>
@@ -43,6 +47,7 @@ defmodule LogflareWeb.PaginationComponents do
   attr :active, :any, default: false
   attr :href, :string
   attr :rel, :string
+  attr :patch, :boolean, default: false
   slot :inner_block
 
   defp pagination_link_item(%{item: %{type: :ellipsis}} = assigns) do
@@ -53,25 +58,31 @@ defmodule LogflareWeb.PaginationComponents do
 
   defp pagination_link_item(%{item: %{type: :prev}} = assigns) do
     ~H"""
-    <.pagination_link_item rel="prev" href={@href}>{@previous}</.pagination_link_item>
+    <.pagination_link_item rel="prev" href={@href} patch={@patch}>{@previous}</.pagination_link_item>
     """
   end
 
   defp pagination_link_item(%{item: %{type: :next}} = assigns) do
     ~H"""
-    <.pagination_link_item rel="next" href={@href}>{@next}</.pagination_link_item>
+    <.pagination_link_item rel="next" href={@href} patch={@patch}>{@next}</.pagination_link_item>
     """
   end
 
   defp pagination_link_item(%{item: %{type: :page}} = assigns) do
     ~H"""
-    <.pagination_link_item rel="canonical" href={@href}>{@item.page}</.pagination_link_item>
+    <.pagination_link_item rel="canonical" href={@href} patch={@patch}>{@item.page}</.pagination_link_item>
     """
   end
 
   defp pagination_link_item(%{item: %{type: :current}} = assigns) do
     ~H"""
-    <.pagination_link_item active="active" rel="canonical" href={@href}>{@item.page}</.pagination_link_item>
+    <.pagination_link_item active="active" rel="canonical" href={@href} patch={@patch}>{@item.page}</.pagination_link_item>
+    """
+  end
+
+  defp pagination_link_item(%{patch: true} = assigns) do
+    ~H"""
+    <li class={["page-item", @active]}><.link class="page-link" patch={@href} rel={@rel}>{render_slot(@inner_block)}</.link></li>
     """
   end
 

@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
   use Logflare.DataCase, async: false
 
+  import Logflare.ClickHouseMappedEvents
+
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner
 
@@ -38,8 +40,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
-      for log_type <- [:log, :metric, :trace] do
-        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, log_type)
+      for event_type <- [:log, :metric, :trace] do
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
         {:ok, result} =
           ClickHouseAdaptor.execute_ch_query(
@@ -57,8 +59,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
-      for log_type <- [:log, :metric, :trace] do
-        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, log_type)
+      for event_type <- [:log, :metric, :trace] do
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
         {:ok, exists} =
           ClickHouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{table_name}")
@@ -102,8 +104,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       ref2 = Process.monitor(pid2)
       assert_receive {:DOWN, ^ref2, :process, ^pid2, :normal}, 5_000
 
-      for log_type <- [:log, :metric, :trace] do
-        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, log_type)
+      for event_type <- [:log, :metric, :trace] do
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
         {:ok, result} =
           ClickHouseAdaptor.execute_ch_query(
@@ -129,7 +131,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       ref = Process.monitor(pid)
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
-      log_event = build(:log_event, source: source, message: "Test after provisioning")
+      log_event = build_mapped_log_event(source: source, message: "Test after provisioning")
       :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
 
       Process.sleep(100)
@@ -205,7 +207,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       assert "timestamp" in column_names
 
       time_unix_col = Enum.find(columns, &(&1["name"] == "time_unix"))
-      assert %{"type" => "DateTime64(9)"} = time_unix_col
+      assert %{"type" => "Nullable(DateTime64(9))"} = time_unix_col
 
       timestamp_col = Enum.find(columns, &(&1["name"] == "timestamp"))
       assert %{"type" => "DateTime64(9)"} = timestamp_col

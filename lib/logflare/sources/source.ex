@@ -28,6 +28,7 @@ defmodule Logflare.Sources.Source do
              :backends,
              :retention_days,
              :transform_copy_fields,
+             :transform_key_values,
              :bigquery_clustering_fields,
              :default_ingest_backend_enabled?
            ]}
@@ -136,6 +137,8 @@ defmodule Logflare.Sources.Source do
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
     field :transform_copy_fields, :string
+    field :transform_key_values, :string
+    field :transform_key_values_parsed, {:array, :map}, virtual: true
     field :bigquery_clustering_fields, :string
     field :system_source, :boolean, default: false
     field :system_source_type, Ecto.Enum, values: @system_source_types
@@ -196,6 +199,7 @@ defmodule Logflare.Sources.Source do
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
+      :transform_key_values,
       :disable_tailing,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,
@@ -228,6 +232,7 @@ defmodule Logflare.Sources.Source do
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
+      :transform_key_values,
       :disable_tailing,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,
@@ -342,6 +347,51 @@ defmodule Logflare.Sources.Source do
     |> String.replace("-", "_")
   end
 
+  @spec parse_key_values_config(%__MODULE__{}) :: %__MODULE__{}
+  def parse_key_values_config(%__MODULE__{transform_key_values: nil} = source) do
+    %{source | transform_key_values_parsed: nil}
+  end
+
+  def parse_key_values_config(%__MODULE__{transform_key_values: config} = source) do
+    parsed =
+      config
+      |> String.split(~r/\n/, trim: true)
+      |> Enum.flat_map(fn instruction ->
+        instruction = String.trim(instruction)
+
+        case String.split(instruction, ":", parts: 3) do
+          [lookup_key, dest_key, accessor_path] ->
+            lookup_key = String.replace_prefix(lookup_key, "m.", "metadata.")
+            dest_key = String.replace_prefix(dest_key, "m.", "metadata.")
+
+            [
+              %{
+                from_path: String.split(lookup_key, "."),
+                to_path: String.split(dest_key, "."),
+                accessor_path: String.trim(accessor_path)
+              }
+            ]
+
+          [lookup_key, dest_key] ->
+            lookup_key = String.replace_prefix(lookup_key, "m.", "metadata.")
+            dest_key = String.replace_prefix(dest_key, "m.", "metadata.")
+
+            [
+              %{
+                from_path: String.split(lookup_key, "."),
+                to_path: String.split(dest_key, "."),
+                accessor_path: nil
+              }
+            ]
+
+          _ ->
+            []
+        end
+      end)
+
+    %{source | transform_key_values_parsed: parsed}
+  end
+
   def system_source_types, do: @system_source_types
 
   @doc """
@@ -359,7 +409,7 @@ defmodule Logflare.Sources.Source do
 
       iex> source = %Source{bigquery_clustering_fields: "id,timestamp", suggested_keys: "m.user_id!,status"}
       iex> recommended_query_fields(source)
-      ["id", "timestamp", "m.user_id", "status"]
+      ["id", "timestamp", "m.user_id!", "status"]
 
 
       iex> source = %Source{bigquery_clustering_fields: nil, suggested_keys: ""}
@@ -375,8 +425,22 @@ defmodule Logflare.Sources.Source do
     suggested_keys =
       (source.suggested_keys || "")
       |> String.split(",", trim: true)
-      |> Enum.map(fn key -> key |> String.trim() |> String.trim_trailing("!") end)
+      |> Enum.map(&String.trim/1)
 
     clustering_fields ++ suggested_keys
+  end
+
+  @spec required_query_field?(String.t()) :: boolean()
+  def required_query_field?(field) when is_binary(field) do
+    field
+    |> String.trim()
+    |> String.ends_with?("!")
+  end
+
+  @spec query_field_name(String.t()) :: String.t()
+  def query_field_name(field) when is_binary(field) do
+    field
+    |> String.trim()
+    |> String.trim_trailing("!")
   end
 end

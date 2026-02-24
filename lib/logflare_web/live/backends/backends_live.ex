@@ -34,7 +34,7 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:form_type, nil)
       |> assign(:show_default_ingest_form?, false)
       |> assign(:default_ingest_sources, [])
-      |> assign(:flag_multibackend, LogflareWeb.Utils.flag("multibackend", user))
+      |> assign(:flag_multibackend, Logflare.Utils.flag("multibackend", user))
       |> assign_backend_types()
       |> refresh_backends()
       |> refresh_backend(params["id"])
@@ -162,6 +162,32 @@ defmodule LogflareWeb.BackendsLive do
           message = stringify_changeset_errors(changeset)
           put_flash(socket, :error, "Error setting default ingest:\n#{message}")
       end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("add_all_default_ingest", _params, socket) do
+    backend = socket.assigns.backend
+    available_sources = socket.assigns.available_sources
+    {:ok, _backend} = Backends.add_all_default_ingest_sources(backend, available_sources)
+
+    socket =
+      socket
+      |> refresh_backend(backend.id)
+      |> assign(:show_default_ingest_form?, false)
+      |> put_flash(:info, "Successfully added all available sources as default ingest")
+
+    {:noreply, socket}
+  end
+
+  def handle_event("remove_all_default_ingest", _params, socket) do
+    backend = socket.assigns.backend
+    {:ok, _backend} = Backends.remove_all_default_ingest_sources(backend)
+
+    socket =
+      socket
+      |> refresh_backend(backend.id)
+      |> put_flash(:info, "Successfully removed all default ingest sources")
 
     {:noreply, socket}
   end

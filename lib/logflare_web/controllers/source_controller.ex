@@ -466,7 +466,7 @@ defmodule LogflareWeb.SourceController do
 
     for le <- log_events, le do
       le
-      |> Map.take([:body, :via_rule, :origin_source_uuid])
+      |> Map.take([:body, :via_rule, :source_uuid])
       |> case do
         %{body: %{"metadata" => %{"level" => level}}}
         when level in ~W(debug info warning error alert critical notice emergency) ->

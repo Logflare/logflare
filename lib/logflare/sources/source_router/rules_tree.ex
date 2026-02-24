@@ -95,10 +95,12 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
         le_value >= lvalue and le_value <= rvalue
 
       :list_includes ->
-        expected in le_value
+        expected in List.wrap(le_value)
 
       :list_includes_regexp ->
-        stringify(le_value) =~ ~r/#{expected}/u
+        le_value
+        |> List.wrap()
+        |> Enum.any?(&(stringify(&1) =~ expected))
 
       :string_contains ->
         String.contains?(stringify(le_value), stringify(expected))
@@ -107,7 +109,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
         le_value == expected
 
       :"~" ->
-        stringify(le_value) =~ ~r/#{expected}/u
+        stringify(le_value) =~ expected
 
       op when op in [:<=, :<, :>=, :>] ->
         apply(Kernel, operator, [le_value, expected])
@@ -199,6 +201,11 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
   defp to_operator(%FilterRule{operator: :range, values: [l_val, r_val]}) do
     {:range, {l_val, r_val}}
+  end
+
+  defp to_operator(%FilterRule{operator: op, value: value})
+       when op in [:"~", :list_includes_regex] do
+    {op, Regex.compile!(value, "u")}
   end
 
   defp to_operator(%FilterRule{operator: op, value: value}) do

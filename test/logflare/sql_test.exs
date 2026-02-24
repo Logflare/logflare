@@ -3,6 +3,8 @@ defmodule Logflare.SqlTest do
 
   import ExUnit.CaptureLog
 
+  import Logflare.ClickHouseMappedEvents
+
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
@@ -538,15 +540,15 @@ defmodule Logflare.SqlTest do
       assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
       log_events = [
-        build(:log_event,
+        build_mapped_log_event(
           source: source,
           message: "Test message 1",
-          metadata: %{"value" => 10}
+          body: %{"metadata" => %{"value" => 10}}
         ),
-        build(:log_event,
+        build_mapped_log_event(
           source: source,
           message: "Test message 2",
-          metadata: %{"value" => 20}
+          body: %{"metadata" => %{"value" => 20}}
         )
       ]
 

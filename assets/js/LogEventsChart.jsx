@@ -17,6 +17,9 @@ const brandGray = "#9a9a9a";
 const brandGreen = "#5eeb8f";
 const chartGridLineColor = "rgba(255,255,255,0.08)";
 const chartHorizontalPoints = [20, 33, 45, 58, 70, 83, 95, 108, 120];
+const minBarHeight = 2;
+const highlightMinValue = 1;
+const highlightFill = "rgba(154,154,154,0.1)";
 
 const warnColor = "#f1ba58";
 const criticalColor = "#bd1550";
@@ -168,6 +171,14 @@ const chartSettings = (type) => {
   }
 };
 
+const minPointSizeForValue = (value) => {
+  if (Number(value) <= 0) return 0;
+  return minBarHeight;
+};
+
+const barTotal = (entry, keys) =>
+  keys.reduce((sum, key) => sum + Math.max(Number(entry?.[key]) || 0, 0), 0);
+
 const periods = ["day", "hour", "minute", "second"];
 
 const LogEventsChart = ({
@@ -213,8 +224,69 @@ const LogEventsChart = ({
     triggerTimeSearch(utcDatetime);
   };
 
+  const handleChartClick = (state) => {
+    const activePoint = state?.activePayload?.[0]?.payload;
+    const utcDatetime =
+      activePoint?.datetime || activePoint?.timestamp || state?.activeLabel;
+    triggerTimeSearch(utcDatetime);
+  };
+
   const TooltipContent = tooltipFactory(chartDataShapeId);
   const settings = chartSettings(chartDataShapeId);
+  const topStackKey = settings.keys[settings.keys.length - 1];
+  const useMinPointSize = settings.keys.length === 1;
+  const chartData = React.useMemo(
+    () =>
+      data.map((entry) => {
+        const total = barTotal(entry, settings.keys);
+
+        return {
+          ...entry,
+          hasHighlight: total >= highlightMinValue,
+        };
+      }),
+    [data, settings.keys],
+  );
+
+  const renderBarWithHighlight = ({
+    x,
+    y,
+    width,
+    height,
+    fill,
+    background,
+    payload,
+  }) => {
+    const top = background?.y ?? 0;
+    const highlightHeight = y - top;
+    const showHighlight =
+      payload?.hasHighlight &&
+      Number.isFinite(highlightHeight) &&
+      highlightHeight > 0;
+
+    return (
+      <g>
+        {showHighlight && (
+          <rect
+            x={x}
+            y={top}
+            width={width}
+            height={highlightHeight}
+            fill={highlightFill}
+            onClick={() => handleBarClick({ payload })}
+          />
+        )}
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={fill}
+          onClick={() => handleBarClick({ payload })}
+        />
+      </g>
+    );
+  };
 
   return (
     <div
@@ -239,9 +311,10 @@ const LogEventsChart = ({
       ) : (
         <ResponsiveContainer width="100%" height={100}>
           <BarChart
-            data={data}
+            data={chartData}
             margin={{ top: 20, right: 0, bottom: 0, left: 0 }}
             style={{ cursor: "pointer" }}
+            onClick={handleChartClick}
           >
             <CartesianGrid
               stroke={chartGridLineColor}
@@ -264,6 +337,8 @@ const LogEventsChart = ({
                 stackId="stack"
                 fill={settings.colors[key]}
                 isAnimationActive={false}
+                minPointSize={useMinPointSize ? minPointSizeForValue : undefined}
+                shape={key === topStackKey ? renderBarWithHighlight : undefined}
                 onClick={handleBarClick}
               />
             ))}
