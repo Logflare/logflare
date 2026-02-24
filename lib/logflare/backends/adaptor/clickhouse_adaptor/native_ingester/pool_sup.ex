@@ -1,27 +1,30 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup do
   @moduledoc """
-  Supervises `NativeIngester.Pool` instances for ClickHouse backends that have
-  the native TCP insert protocol enabled.
+  Supervises `NativeIngester.Pool` and `NativeIngester.PoolManager` instances
+  for ClickHouse backends that have the native TCP insert protocol enabled.
 
-  Pools are started lazily on the first native insert and persist until the
-  backend config changes or the pool is explicitly stopped.
+  Pools are started lazily on the first native insert. Each pool has a
+  `PoolManager` that tracks activity and stops the pool after 5 minutes
+  of inactivity.
 
   ## Supervision Hierarchy
 
   ```
   Logflare.Backends.Supervisor
   └── NativeIngester.PoolSup (this module)
-      └── DynamicSupervisor
-          └── NativeIngester.Pool (one per backend, lazily started)
+      ├── PoolDynamicSupervisor       (manages Pool instances)
+      └── ManagerDynamicSupervisor    (manages PoolManager instances)
   ```
   """
 
   use Supervisor
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolManager
   alias Logflare.Backends.Backend
 
-  @dynamic_sup_name __MODULE__.DynamicSupervisor
+  @pool_sup_name __MODULE__.PoolDynamicSupervisor
+  @manager_sup_name __MODULE__.ManagerDynamicSupervisor
 
   def start_link(args) do
     Supervisor.start_link(__MODULE__, args, name: __MODULE__)
@@ -30,7 +33,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup do
   @impl true
   def init(_args) do
     children = [
-      {DynamicSupervisor, strategy: :one_for_one, name: @dynamic_sup_name}
+      {DynamicSupervisor, strategy: :one_for_one, name: @pool_sup_name},
+      {DynamicSupervisor, strategy: :one_for_one, name: @manager_sup_name}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -38,12 +42,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup do
 
   @doc """
   Ensures a native connection pool is running for the given backend.
+
+  Starts a `PoolManager` if one is not already running, then delegates to
+  `PoolManager.ensure_pool_started/1` which starts the pool and records activity.
   """
   @spec ensure_started(Backend.t()) :: :ok | {:error, term()}
   def ensure_started(%Backend{} = backend) do
-    case GenServer.whereis(Pool.via(backend)) do
-      nil -> start_pool(backend)
-      _pid -> :ok
+    with :ok <- ensure_manager_started(backend) do
+      PoolManager.ensure_pool_started(backend)
     end
   end
 
@@ -52,7 +58,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup do
   """
   @spec start_pool(Backend.t()) :: :ok | {:error, term()}
   def start_pool(%Backend{} = backend) do
-    case DynamicSupervisor.start_child(@dynamic_sup_name, Pool.child_spec(backend)) do
+    case DynamicSupervisor.start_child(@pool_sup_name, Pool.child_spec(backend)) do
       {:ok, _pid} -> :ok
       {:error, {:already_started, _pid}} -> :ok
       {:error, reason} -> {:error, reason}
@@ -69,7 +75,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup do
         :ok
 
       pid ->
-        DynamicSupervisor.terminate_child(@dynamic_sup_name, pid)
+        DynamicSupervisor.terminate_child(@pool_sup_name, pid)
+        :ok
+    end
+  end
+
+  @doc """
+  Stops the pool manager for the given backend, if running.
+  """
+  @spec stop_manager(Backend.t()) :: :ok
+  def stop_manager(%Backend{} = backend) do
+    via = Logflare.Backends.via_backend(backend, PoolManager)
+
+    case GenServer.whereis(via) do
+      nil ->
+        :ok
+
+      pid ->
+        DynamicSupervisor.terminate_child(@manager_sup_name, pid)
         :ok
     end
   end
@@ -79,8 +102,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup do
   """
   @spec count_pools() :: non_neg_integer()
   def count_pools do
-    @dynamic_sup_name
+    @pool_sup_name
     |> DynamicSupervisor.which_children()
     |> length()
+  end
+
+  @spec ensure_manager_started(Backend.t()) :: :ok | {:error, term()}
+  defp ensure_manager_started(%Backend{} = backend) do
+    via = Logflare.Backends.via_backend(backend, PoolManager)
+
+    case GenServer.whereis(via) do
+      nil ->
+        case DynamicSupervisor.start_child(@manager_sup_name, PoolManager.child_spec(backend)) do
+          {:ok, _pid} -> :ok
+          {:error, {:already_started, _pid}} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      _pid ->
+        :ok
+    end
   end
 end
