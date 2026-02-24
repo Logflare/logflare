@@ -191,7 +191,6 @@ defmodule LogflareWeb.QueryLiveTest do
   end
 
   describe "postgres backend" do
-    alias Logflare.Backends.Adaptor.PostgresAdaptor
     alias Logflare.Backends.AdaptorSupervisor
 
     setup %{conn: conn, user: user} do
@@ -210,7 +209,6 @@ defmodule LogflareWeb.QueryLiveTest do
 
       stub(Logflare.Backends, :get_default_backend, fn _user -> backend end)
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      on_exit(fn -> PostgresAdaptor.destroy_instance({source, backend}) end)
 
       {:ok, user: user, conn: conn, source: source, backend: backend}
     end
