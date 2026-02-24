@@ -15,11 +15,10 @@ on:
       - 'run.sh'
       - 'test/e2e/supabase/**'
       - '.github/workflows/integration-supabase.yml'
-  # TODO: turn on when all browsers job take less than 15 minutes to run
-  # push:
-  #   branches:
-  #     - main
-  #   paths: *watched_paths
+  push:
+    branches:
+      - main
+    paths: *watched_paths
 
 # Cancel old builds on new commit for same workflow + branch/PR
 concurrency:
@@ -32,9 +31,20 @@ defaults:
 
 jobs:
   test:
-    timeout-minutes: 15
-
+    name: Playwright Tests
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        browsers:
+          - name: Chrome
+            project: chromium
+          - name: Firefox
+            project: firefox
+          - name: Safari
+            project: webkit
+
+    timeout-minutes: 20
 
     steps:
     - uses: actions/checkout@v4
@@ -82,21 +92,11 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    # TODO: Find a way to make it take less than 15 minutes to reactive it on main
-    # - name: Install Playwright Browsers
-    #   if: ${{ github.event_name != 'pull_request' }}
-    #   run: npx playwright install chromium --with-deps
-    # - name: Run Playwright tests (all browsers)
-    #   if: ${{ github.event_name != 'pull_request' }}
-    #   run: npx playwright test
+    - name: Install Playwright ${{ matrix.browsers.name }} Browser
+      run: npx playwright install ${{ matrix.browsers.project }} --with-deps
 
-    - name: Install Playwright Chromium Browser
-      if: ${{ github.event_name == 'pull_request' }}
-      run: npx playwright install chromium --with-deps
-
-    - name: Run Playwright tests (only Chromium)
-      if: ${{ github.event_name == 'pull_request' }}
-      run: npx playwright test --project chromium
+    - name: Run Playwright tests (only ${{ matrix.browsers.name }})
+      run: npx playwright test --project ${{ matrix.browsers.project }}
 
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}

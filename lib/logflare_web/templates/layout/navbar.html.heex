@@ -28,7 +28,7 @@
         <li class="nav-item">
           <.team_link href={Routes.endpoints_path(@conn, :index)} team={assigns[:team]} class="nav-link">Endpoints</.team_link>
         </li>
-        <%= if LogflareWeb.Utils.flag("alerts", assigns[:user]) do %>
+        <%= if Logflare.Utils.flag("alerts", assigns[:user]) do %>
           <li class="nav-item">
             <.team_link href={Routes.alerts_path(@conn, :index)} team={assigns[:team]} class="nav-link">Alerts</.team_link>
           </li>

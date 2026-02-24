@@ -9,10 +9,13 @@ defmodule LogflareWeb.Plugs.FetchResource do
 
   The resource to be fetched should be set on the route's assigns option in the router.
   """
+
   import Plug.Conn
+
   alias Logflare.Sources
   alias Logflare.Endpoints
   alias Logflare.Utils
+
   def init(_opts), do: nil
 
   # ingest by source name
@@ -101,14 +104,13 @@ defmodule LogflareWeb.Plugs.FetchResource do
     end
   end
 
-  defp uuid?(_), do: false
+  defp get_source_from_headers(conn) do
+    get_first_header(conn, ["x-source", "x-collection"])
+  end
 
-  def get_source_from_headers(conn) do
-    (Plug.Conn.get_req_header(conn, "x-source") ||
-       Plug.Conn.get_req_header(conn, "x-collection"))
-    |> case do
-      [value] -> value
-      _ -> nil
-    end
+  defp get_first_header(conn, headers) do
+    Enum.find_value(headers, fn header ->
+      conn |> Plug.Conn.get_req_header(header) |> List.first()
+    end)
   end
 end

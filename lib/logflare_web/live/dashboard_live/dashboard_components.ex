@@ -12,8 +12,8 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   def subhead(assigns) do
     assigns =
       assigns
-      |> assign(:flag_multibackend, LogflareWeb.Utils.flag("multibackend", assigns.user))
-      |> assign(:flag_key_values, LogflareWeb.Utils.flag("key_values", assigns.user))
+      |> assign(:flag_multibackend, Logflare.Utils.flag("multibackend", assigns.user))
+      |> assign(:flag_key_values, Logflare.Utils.flag("key_values", assigns.user))
 
     ~H"""
     <div class="subhead ">

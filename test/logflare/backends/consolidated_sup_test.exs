@@ -133,7 +133,7 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
         try do
           ConsolidatedSup.stop_pipeline(backend.id)
         catch
-          value -> value
+          _kind, value -> value
         end
       end)
 

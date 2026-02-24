@@ -329,6 +329,52 @@ defmodule Logflare.Lql.RulesTest do
     end
   end
 
+  describe "upsert_filter_rule_by_path/2" do
+    test "replaces existing filter rule at same path and keeps first index" do
+      level_filter = %FilterRule{path: "metadata.level", operator: :=, value: "info"}
+      chart_rule = %ChartRule{aggregate: :count, path: "timestamp", period: :minute}
+      message_filter = %FilterRule{path: "event_message", operator: :=, value: "timeout"}
+      replacement_filter = %FilterRule{path: "metadata.level", operator: :=, value: "error"}
+
+      lql_rules = [message_filter, level_filter, chart_rule]
+
+      result = Rules.upsert_filter_rule_by_path(lql_rules, replacement_filter)
+
+      assert Enum.at(result, 1) == replacement_filter
+      refute Enum.any?(result, &(&1 == level_filter))
+      assert message_filter in result
+      assert chart_rule in result
+    end
+
+    test "appends filter rule when no filter exists for path" do
+      message_filter = %FilterRule{path: "event_message", operator: :=, value: "timeout"}
+      chart_rule = %ChartRule{aggregate: :count, path: "timestamp", period: :minute}
+      level_filter = %FilterRule{path: "metadata.level", operator: :=, value: "error"}
+
+      lql_rules = [message_filter, chart_rule]
+
+      result = Rules.upsert_filter_rule_by_path(lql_rules, level_filter)
+
+      assert result == [message_filter, chart_rule, level_filter]
+    end
+
+    test "dedupes multiple existing filters with same path" do
+      old_filter_1 = %FilterRule{path: "metadata.level", operator: :=, value: "info"}
+      message_filter = %FilterRule{path: "event_message", operator: :=, value: "timeout"}
+      old_filter_2 = %FilterRule{path: "metadata.level", operator: :=, value: "warn"}
+      replacement_filter = %FilterRule{path: "metadata.level", operator: :=, value: "error"}
+
+      lql_rules = [old_filter_1, message_filter, old_filter_2]
+
+      result = Rules.upsert_filter_rule_by_path(lql_rules, replacement_filter)
+
+      assert Enum.at(result, 0) == replacement_filter
+      assert message_filter in result
+
+      assert length(Enum.filter(result, &match?(%FilterRule{path: "metadata.level"}, &1))) == 1
+    end
+  end
+
   describe "get_from_rule/1" do
     test "returns FromRule when present" do
       from_rule = %FromRule{table: "my_table", table_type: :cte}
