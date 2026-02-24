@@ -142,7 +142,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
     test "show source's recent logs", %{conn: conn, source: source} do
       start_supervised!({SourceSup, source})
-      le = LogEvent.make(%{"level" => "debug", "event_message" => "Log!"}, %{source: source})
+      le = build(:log_event, level: "debug", source: source)
       Backends.ingest_logs([le], source)
 
       conn
