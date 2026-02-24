@@ -26,22 +26,9 @@ defmodule LogflareWeb.Plugs.FetchResourceTest do
       assert_plug_call_works_for_source(conn, id)
     end
 
-    test "fetches a source by collection name", %{source: %Source{id: id, name: name}, user: user} do
-      conn =
-        build_conn(:post, "/logs", %{"collection_name" => name})
-        |> assign(:user, user)
-
-      assert_plug_call_works_for_source(conn, id)
-    end
-
     test "fetches a source from source param", %{source: %Source{id: id, token: token}} do
       conn = build_conn(:post, "/logs", %{"source" => Atom.to_string(token)})
 
-      assert_plug_call_works_for_source(conn, id)
-    end
-
-    test "fetches a source from collection param", %{source: %Source{id: id, token: token}} do
-      conn = build_conn(:post, "/logs", %{"collection" => Atom.to_string(token)})
       assert_plug_call_works_for_source(conn, id)
     end
 
@@ -49,14 +36,6 @@ defmodule LogflareWeb.Plugs.FetchResourceTest do
       conn =
         build_conn(:post, "/logs", %{})
         |> put_req_header("x-source", Atom.to_string(token))
-
-      assert_plug_call_works_for_source(conn, id)
-    end
-
-    test "fetches a source from x-collection header", %{source: %Source{id: id, token: token}} do
-      conn =
-        build_conn(:post, "/logs", %{})
-        |> put_req_header("x-collection", Atom.to_string(token))
 
       assert_plug_call_works_for_source(conn, id)
     end

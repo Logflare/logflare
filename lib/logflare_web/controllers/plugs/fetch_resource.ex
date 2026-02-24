@@ -19,13 +19,9 @@ defmodule LogflareWeb.Plugs.FetchResource do
   def init(_opts), do: nil
 
   # ingest by source name
-  def call(
-        %{assigns: %{user: user, resource_type: :source}, params: params} =
-          conn,
-        _opts
-      )
-      when is_map_key(params, "source_name") or is_map_key(params, "collection_name") do
-    name = params["source_name"] || params["collection_name"]
+  def call(%{assigns: %{user: user, resource_type: :source}, params: params} = conn, _opts)
+      when is_map_key(params, "source_name") do
+    name = params["source_name"]
 
     source =
       Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
@@ -36,9 +32,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
 
   # ingest by source token
   def call(%{assigns: %{resource_type: :source}, params: params} = conn, _opts) do
-    token =
-      Utils.Map.get(params, :source) || Utils.Map.get(params, :collection) ||
-        get_source_from_headers(conn)
+    token = Utils.Map.get(params, :source) || get_source_from_headers(conn)
 
     source =
       case uuid?(token) do
@@ -107,7 +101,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
   defp uuid?(_), do: false
 
   defp get_source_from_headers(conn) do
-    get_first_header(conn, ["x-source", "x-collection"])
+    get_first_header(conn, ["x-source"])
   end
 
   defp get_first_header(conn, headers) do
