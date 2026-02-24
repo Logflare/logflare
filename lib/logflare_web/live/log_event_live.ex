@@ -58,5 +58,7 @@ defmodule LogflareWeb.LogEventLive do
 
   @spec maybe_put_timestamp(Keyword.t(), DateTime.t() | nil) :: Keyword.t()
   defp maybe_put_timestamp(opts, nil), do: opts
-  defp maybe_put_timestamp(opts, timestamp), do: Keyword.put(opts, :timestamp, timestamp)
+
+  defp maybe_put_timestamp(opts, timestamp),
+    do: Keyword.put(opts, :timestamp, DateTime.truncate(timestamp, :second))
 end

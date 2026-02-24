@@ -15,7 +15,7 @@ defmodule LogflareWeb.Live.DisplayHelpers do
   """
   def sanitize_backend_config(config) when is_map(config) do
     allowed_keys =
-      ~w(async_insert batch_timeout database hostname pool_size port project_id read_only_url region s3_bucket schema storage_region table url)a
+      ~w(async_insert batch_timeout database hostname insert_protocol native_pool_size native_port pool_size port project_id read_only_url region s3_bucket schema storage_region table url)a
 
     config
     |> Enum.map(fn {key, value} ->

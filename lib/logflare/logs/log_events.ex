@@ -144,7 +144,7 @@ defmodule Logflare.Logs.LogEvents do
   defp calculate_partition_range(opts) when is_list(opts) do
     cond do
       timestamp = Keyword.get(opts, :timestamp) ->
-        [Timex.shift(timestamp, hours: -1), Timex.shift(timestamp, hours: 1)]
+        calculate_partition_range_from_timestamp(timestamp)
 
       source = Keyword.get(opts, :source) ->
         user = Keyword.get(opts, :user)
@@ -157,5 +157,14 @@ defmodule Logflare.Logs.LogEvents do
       true ->
         raise ArgumentError, "Either :timestamp or both :source and :user must be provided"
     end
+  end
+
+  @spec calculate_partition_range_from_timestamp(DateTime.t()) :: [DateTime.t()]
+  defp calculate_partition_range_from_timestamp(timestamp) when is_second_precision(timestamp) do
+    [Timex.shift(timestamp, hours: -1), Timex.shift(timestamp, hours: 1)]
+  end
+
+  defp calculate_partition_range_from_timestamp(%DateTime{}) do
+    raise ArgumentError, "timestamp must be second precision"
   end
 end

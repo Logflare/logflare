@@ -101,7 +101,7 @@
             <%= label f_config, :pool_size do %>
               Connection pool size
             <% end %>
-            {text_input(f_config, :pool_size, class: "form-control", value: 1)}
+            {text_input(f_config, :pool_size, class: "form-control", value: input_value(f_config, "pool_size") || 1)}
           </div>
           <div class="form-group">
             <%= label f_config, :schema do %>
@@ -217,19 +217,37 @@
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :port, "Port")}
-            {text_input(f_config, :port, class: "form-control", value: 8443)}
+            {label(f_config, :insert_protocol, "Insert Protocol")}
+            {select(f_config, :insert_protocol, [{"HTTP", "http"}, {"Native (TCP)", "native"}],
+              class: "form-control form-control-margin",
+              id: "insert_protocol"
+            )}
+            <small class="form-text text-muted">
+              Protocol used for inserting data into ClickHouse.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :async_insert, "Async Inserts")}
+            {checkbox(f_config, :async_insert, id: "async_insert")}
+          </div>
+          <div class="form-group">
+            {label(f_config, :port, "HTTP Port")}
+            {text_input(f_config, :port, class: "form-control", value: input_value(f_config, "port") || 8443)}
             <small class="form-text text-muted">
               The port number for the ClickHouse server.
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :port, "Connection pool size")}
-            {text_input(f_config, :pool_size, class: "form-control", value: 1)}
+            {label(f_config, :native_port, "Native Port")}
+            {text_input(f_config, :native_port, class: "form-control", value: input_value(f_config, "native_port") || 9440)}
           </div>
           <div class="form-group">
-            {label(f_config, :async_insert, "Async Inserts")}
-            {checkbox(f_config, :async_insert, id: "async_insert")}
+            {label(f_config, :pool_size, "HTTP Pool Size")}
+            {text_input(f_config, :pool_size, class: "form-control", value: input_value(f_config, "pool_size") || 20)}
+          </div>
+          <div class="form-group">
+            {label(f_config, :native_pool_size, "Native Pool Size")}
+            {text_input(f_config, :native_pool_size, class: "form-control", value: input_value(f_config, "native_pool_size") || 20)}
           </div>
           <div class="form-group">
             {label(f_config, :read_only_url, "Read-Only URL (Optional)")}
