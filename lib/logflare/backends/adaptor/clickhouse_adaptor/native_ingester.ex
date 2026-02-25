@@ -2,14 +2,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   @moduledoc """
   Orchestrates INSERT operations over the ClickHouse native TCP protocol.
 
-  Composes `Connection` (wire-level socket I/O) and `BlockEncoder` (column-oriented
-  data encoding) to perform end-to-end inserts. Handles SQL construction, column
-  normalization, and sub-block splitting for large batches.
-
-  Column types are obtained from the server during the INSERT handshake.
-
-  Batches larger than 10k rows are automatically split into sub-blocks to
-  reduce peak memory usage.
+  Uses cached column schemas from `SchemaCache` to pre-encode data blocks
+  before sending the INSERT query, minimizing work inside ClickHouse's
+  server-side query measurement window.
   """
 
   require Logger
@@ -19,6 +14,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncoder
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.SchemaCache
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
@@ -87,45 +83,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   @spec do_pooled_insert(Backend.t(), String.t(), [LogEvent.t()], [String.t()], keyword()) ::
           :ok | {:error, term()}
   defp do_pooled_insert(backend, table, events, column_names, settings) do
+    cache_key = "#{backend.config.database}.#{table}"
+    cached_schema = SchemaCache.get(backend.id, cache_key)
+
     Pool.checkout(backend, fn conn ->
       sql = build_insert_sql(conn.database, table, column_names)
 
-      with {:ok, server_columns, conn} <- Connection.send_query(conn, sql, settings) do
-        columns = build_columns_from_schema(events, server_columns)
-        normalized = normalize_columns(columns)
-
-        case send_data_and_confirm(conn, normalized) do
-          {:ok, updated_conn} ->
-            {:ok, updated_conn}
-
-          {:error, {:exception, code, message}} = error ->
-            Logger.error(
-              "ClickHouse NativeIngester: exception during insert into #{table}, " <>
-                "code=#{code} message=#{inspect(message)}, removing connection"
-            )
-
-            {error, :remove}
-
-          {:error, {:column_mismatch, _} = detail} = error ->
-            Logger.error(
-              "ClickHouse NativeIngester: column mismatch during insert into #{table}, " <>
-                "detail=#{inspect(detail)}, removing connection"
-            )
-
-            {error, :remove}
-
-          {:error, reason} = error ->
-            Logger.error(
-              "ClickHouse NativeIngester: error during insert into #{table}, " <>
-                "reason=#{inspect(reason)}, removing connection"
-            )
-
-            {error, :remove}
+      result =
+        if cached_schema do
+          do_cached_insert(conn, sql, events, cached_schema, backend.id, cache_key, settings)
+        else
+          do_uncached_insert(conn, sql, events, backend.id, cache_key, settings)
         end
-      else
+
+      case result do
+        {:ok, updated_conn} ->
+          {:ok, updated_conn}
+
+        {:error, {:exception, code, message}} = error ->
+          Logger.error(
+            "ClickHouse NativeIngester: exception during insert into #{table}, " <>
+              "code=#{code} message=#{inspect(message)}, removing connection"
+          )
+
+          {error, :remove}
+
+        {:error, {:column_mismatch, _} = detail} = error ->
+          Logger.error(
+            "ClickHouse NativeIngester: column mismatch during insert into #{table}, " <>
+              "detail=#{inspect(detail)}, removing connection"
+          )
+
+          {error, :remove}
+
         {:error, reason} = error ->
           Logger.error(
-            "ClickHouse NativeIngester: query failed for insert into #{table}, " <>
+            "ClickHouse NativeIngester: error during insert into #{table}, " <>
               "reason=#{inspect(reason)}, removing connection"
           )
 
@@ -136,6 +129,60 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
     :exit, {:timeout, _} ->
       Logger.error("ClickHouse NativeIngester: pool checkout timeout for insert into #{table}")
       {:error, :checkout_timeout}
+  end
+
+  @spec do_cached_insert(
+          Connection.t(),
+          String.t(),
+          [LogEvent.t()],
+          Connection.column_info(),
+          term(),
+          String.t(),
+          keyword()
+        ) :: {:ok, Connection.t()} | {:error, term()}
+  defp do_cached_insert(conn, sql, events, cached_schema, backend_id, cache_key, settings) do
+    columns = build_columns_from_schema(events, cached_schema)
+    normalized = normalize_columns(columns)
+    encoded_block = BlockEncoder.encode_block_body(normalized, conn.negotiated_rev)
+
+    with {:ok, server_columns, conn} <- Connection.send_query(conn, sql, settings) do
+      if server_columns == cached_schema do
+        send_pre_encoded_and_confirm(conn, encoded_block)
+      else
+        Logger.info(
+          "ClickHouse NativeIngester: schema cache mismatch for #{cache_key}, re-encoding"
+        )
+
+        SchemaCache.put(backend_id, cache_key, server_columns)
+        columns = build_columns_from_schema(events, server_columns)
+        normalized = normalize_columns(columns)
+        send_data_and_confirm(conn, normalized)
+      end
+    end
+  end
+
+  @spec do_uncached_insert(
+          Connection.t(),
+          String.t(),
+          [LogEvent.t()],
+          term(),
+          String.t(),
+          keyword()
+        ) :: {:ok, Connection.t()} | {:error, term()}
+  defp do_uncached_insert(conn, sql, events, backend_id, cache_key, settings) do
+    with {:ok, server_columns, conn} <- Connection.send_query(conn, sql, settings) do
+      columns = build_columns_from_schema(events, server_columns)
+      normalized = normalize_columns(columns)
+
+      case send_data_and_confirm(conn, normalized) do
+        {:ok, conn} ->
+          SchemaCache.put(backend_id, cache_key, server_columns)
+          {:ok, conn}
+
+        error ->
+          error
+      end
+    end
   end
 
   @spec retryable?(term()) :: boolean()
@@ -250,6 +297,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
     end
   end
 
+  @spec send_pre_encoded_and_confirm(Connection.t(), iodata()) ::
+          {:ok, Connection.t()} | {:error, term()}
+  defp send_pre_encoded_and_confirm(conn, encoded_block) do
+    with :ok <- Connection.send_data_block(conn, encoded_block),
+         :ok <- Connection.send_data_block(conn, BlockEncoder.encode_empty_block_body()),
+         {:ok, conn} <- Connection.read_insert_response(conn) do
+      {:ok, conn}
+    end
+  end
+
   @spec send_data_blocks(Connection.t(), [BlockEncoder.column()]) ::
           {:ok, Connection.t()} | {:error, term()}
   defp send_data_blocks(%Connection{} = conn, columns) do
@@ -309,7 +366,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   defp uuid_to_raw(nil), do: <<0::128>>
   defp uuid_to_raw(<<_::128>> = raw), do: raw
 
-  defp uuid_to_raw(uuid_string) when is_binary(uuid_string) do
+  defp uuid_to_raw(uuid_string) when is_non_empty_binary(uuid_string) do
     case Ecto.UUID.dump(uuid_string) do
       {:ok, raw} -> raw
       :error -> <<0::128>>
