@@ -47,10 +47,11 @@ defmodule Logflare.Utils do
   # uses a 100 discrete identifiers for % based flagging, to minimize cardinality in keys stored.
   defp cached_flag_value_pct_of_identifiers(feature, identifier) do
     hash = :erlang.phash2(identifier, 100)
-    identifier = "#{feature}:#{hash}"
+    cache_key = "#{feature}:#{hash}"
+    user = ConfigCat.User.new(cache_key)
 
-    case ConfigCatCache.fetch(identifier, fn ->
-           {:commit, ConfigCat.get_value(feature, false, identifier)}
+    case ConfigCatCache.fetch(cache_key, fn ->
+           {:commit, ConfigCat.get_value(feature, false, user)}
          end) do
       {:ok, value} -> value
       {:commit, value} -> value
