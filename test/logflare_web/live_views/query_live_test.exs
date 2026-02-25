@@ -191,27 +191,7 @@ defmodule LogflareWeb.QueryLiveTest do
   end
 
   describe "postgres backend" do
-    alias Logflare.Backends.AdaptorSupervisor
-
-    setup %{conn: conn, user: user} do
-      cfg = Application.get_env(:logflare, Logflare.Repo)
-      url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
-
-      source = insert(:source, user: user)
-
-      backend =
-        insert(:backend,
-          type: :postgres,
-          config: %{url: url},
-          user: user,
-          sources: [source]
-        )
-
-      stub(Logflare.Backends, :get_default_backend, fn _user -> backend end)
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-
-      {:ok, user: user, conn: conn, source: source, backend: backend}
-    end
+    TestUtils.setup_single_tenant(backend_type: :postgres)
 
     test "run a query against postgres", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/query")
