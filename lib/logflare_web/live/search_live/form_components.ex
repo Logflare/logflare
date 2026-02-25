@@ -8,8 +8,8 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   use Phoenix.Component
 
   alias Logflare.Lql.Rules
+  alias Logflare.Utils
   alias Logflare.Sources.Source
-  alias LogflareWeb.Utils
 
   attr :form, Phoenix.HTML.Form, required: true
   attr :lql_rules, :list, required: true

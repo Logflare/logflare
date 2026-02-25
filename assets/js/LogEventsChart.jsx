@@ -127,6 +127,7 @@ const chartSettings = (type) => {
           level_alert: alertColor,
           level_emergency: emergencyColor,
           other: brandGray,
+          value: brandGray,
         },
         keys: [
           "level_info",
@@ -138,6 +139,7 @@ const chartSettings = (type) => {
           "level_error",
           "level_warn",
           "other",
+          "value",
         ],
       };
 
@@ -152,6 +154,7 @@ const chartSettings = (type) => {
           status_2xx: infoColor,
           status_1xx: debugColor,
           other: brandGray,
+          value: brandGray,
         },
         keys: [
           "status_2xx",
@@ -160,6 +163,7 @@ const chartSettings = (type) => {
           "status_4xx",
           "status_5xx",
           "other",
+          "value",
         ],
       };
 
