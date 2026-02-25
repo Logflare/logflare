@@ -54,6 +54,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
                "otel_traces_#{stringified_backend_token}"
     end
+
+    test "generates simple_otel-prefixed table names per log type",
+         %{backend: backend, stringified_backend_token: stringified_backend_token} do
+      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :log) ==
+               "simple_otel_logs_#{stringified_backend_token}"
+
+      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :metric) ==
+               "simple_otel_metrics_#{stringified_backend_token}"
+
+      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :trace) ==
+               "simple_otel_traces_#{stringified_backend_token}"
+    end
   end
 
   describe "connection and basic functionality" do

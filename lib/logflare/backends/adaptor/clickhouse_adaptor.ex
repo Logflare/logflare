@@ -125,7 +125,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_url: :string,
        insert_protocol: :string,
        native_port: :integer,
-       native_pool_size: :integer
+       native_pool_size: :integer,
+       use_simple_schemas: :boolean
      }}
     |> Changeset.cast(params, [
       :url,
@@ -138,9 +139,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_url,
       :insert_protocol,
       :native_port,
-      :native_pool_size
+      :native_pool_size,
+      :use_simple_schemas
     ])
     |> Logflare.Utils.default_field_value(:async_insert, false)
+    |> Logflare.Utils.default_field_value(:use_simple_schemas, false)
   end
 
   @doc false
@@ -212,6 +215,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def clickhouse_ingest_table_name(%Backend{} = backend, :trace),
     do: build_otel_table_name(backend, "otel_traces")
+
+  @doc """
+  Produces a type-specific simple ingest table name for ClickHouse.
+
+  - `:log`    -> `simple_otel_logs_<token>`
+  - `:metric` -> `simple_otel_metrics_<token>`
+  - `:trace`  -> `simple_otel_traces_<token>`
+  """
+  @spec simple_clickhouse_ingest_table_name(Backend.t(), TypeDetection.event_type()) :: String.t()
+  def simple_clickhouse_ingest_table_name(%Backend{} = backend, :log),
+    do: build_otel_table_name(backend, "simple_otel_logs")
+
+  def simple_clickhouse_ingest_table_name(%Backend{} = backend, :metric),
+    do: build_otel_table_name(backend, "simple_otel_metrics")
+
+  def simple_clickhouse_ingest_table_name(%Backend{} = backend, :trace),
+    do: build_otel_table_name(backend, "simple_otel_traces")
 
   @spec build_otel_table_name(Backend.t(), String.t()) :: String.t()
   defp build_otel_table_name(%Backend{token: token}, prefix) do
