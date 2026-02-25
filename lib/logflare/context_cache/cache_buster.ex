@@ -1,17 +1,25 @@
 defmodule Logflare.ContextCache.CacheBuster do
   @moduledoc """
-    Monitors our Postgres replication log and busts the cache accordingly.
+  Monitors our Postgres replication log and busts/updates the cache accordingly.
+
+  TransactionBroadcaster calls `broadcast_cache_updates/1` with raw WAL changes.
+  This module classifies them, pre-fetches fresh structs for integer-pkey updates (one DB query
+  per record), and broadcasts the results cluster-wide via PubSub. Each node's CacheBuster
+  GenServer receives the broadcast and applies updates to local caches without further DB queries.
+
+  For keyword-based entries (Rules, SavedSearches, KeyValues) and `:not_found`, falls back to
+  bust (delete cache entries, lazy refetch on demand).
   """
   use GenServer
 
-  alias Logflare.ContextCache.CacheBusterWorker
   alias Cainophile.Changes.DeletedRecord
   alias Cainophile.Changes.NewRecord
-  alias Cainophile.Changes.Transaction
   alias Cainophile.Changes.UpdatedRecord
   alias Logflare.Auth
   alias Logflare.Backends
   alias Logflare.Billing
+  alias Logflare.ContextCache
+  alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.Endpoints
   alias Logflare.KeyValues
   alias Logflare.PubSub
@@ -21,21 +29,22 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Sources
   alias Logflare.TeamUsers
   alias Logflare.Users
-  alias Logflare.ContextCache.CacheBusterWorker
 
   require Logger
+
+  @pubsub_topic "cache_updates"
+
+  def subscribe_updates do
+    Phoenix.PubSub.subscribe(PubSub, @pubsub_topic)
+  end
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
   def init(_state) do
-    subscribe_to_transactions()
+    subscribe_updates()
     {:ok, %{}}
-  end
-
-  def subscribe_to_transactions do
-    Phoenix.PubSub.subscribe(PubSub, "wal_transactions")
   end
 
   @doc """
@@ -57,26 +66,60 @@ defmodule Logflare.ContextCache.CacheBuster do
     {:reply, :ok, state}
   end
 
-  def handle_info(%Transaction{changes: changes} = transaction, state) do
-    Logger.debug("WAL record received from pubsub: #{inspect(transaction)}")
+  @doc """
+  Classifies WAL changes, pre-fetches fresh structs for integer-pkey updates, and broadcasts
+  the results cluster-wide.
+  """
+  @spec broadcast_cache_updates([Cainophile.Changes.change()]) :: :ok
+  def broadcast_cache_updates(changes) do
+    results =
+      changes
+      |> classify_changes()
+      |> Enum.map(&fetch_or_bust/1)
 
+    if results != [] do
+      :telemetry.execute([:logflare, :cache_buster, :to_bust], %{count: length(results)})
+
+      Phoenix.PubSub.broadcast(
+        PubSub,
+        @pubsub_topic,
+        {:cache_updates, results}
+      )
+    end
+
+    :ok
+  end
+
+  def handle_info({:cache_updates, results}, state) do
+    CacheBusterWorker.cast_apply(results)
+    {:noreply, state}
+  end
+
+  defp classify_changes(changes) do
     for record <- changes,
         record = handle_record(record),
         record != :noop do
       record
     end
-    |> tap(fn
-      [] ->
-        nil
-
-      records ->
-        :telemetry.execute([:logflare, :cache_buster, :to_bust], %{count: length(records)})
-
-        CacheBusterWorker.cast_to_bust(records)
-    end)
-
-    {:noreply, state}
   end
+
+  defp fetch_or_bust({:refresh, {context, pkey}}) when is_integer(pkey) do
+    cache_module = ContextCache.cache_name(context)
+
+    if function_exported?(cache_module, :fetch_by_id, 1) do
+      case cache_module.fetch_by_id(pkey) do
+        nil -> {:bust, {context, pkey}}
+        struct -> {:fetched, {context, pkey, struct}}
+      end
+    else
+      {:bust, {context, pkey}}
+    end
+  end
+
+  defp fetch_or_bust({:refresh, {context, key}}), do: {:bust, {context, key}}
+  defp fetch_or_bust({:bust, {context, key}}), do: {:bust, {context, key}}
+
+  # WAL record classification
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "sources"},
@@ -204,7 +247,6 @@ defmodule Logflare.ContextCache.CacheBuster do
        when is_binary(user_id) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
     {:refresh, {Sources, :not_found}}
-    # {:bust, {Users, String.to_integer(user_id)}}
   end
 
   defp handle_record(%NewRecord{
@@ -314,7 +356,6 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
     {:bust, {TeamUsers, String.to_integer(id)}}
   end
 
@@ -323,7 +364,6 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
     {:bust, {Auth, String.to_integer(id)}}
   end
 
@@ -339,7 +379,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"user_id" => uid, "key" => key}
        })
        when is_binary(uid) and is_binary(key) do
-    {KeyValues, [user_id: String.to_integer(uid), key: key]}
+    {:bust, {KeyValues, [user_id: String.to_integer(uid), key: key]}}
   end
 
   defp handle_record(%NewRecord{
@@ -347,7 +387,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"user_id" => uid, "key" => key}
        })
        when is_binary(uid) and is_binary(key) do
-    {KeyValues, [user_id: String.to_integer(uid), key: key]}
+    {:bust, {KeyValues, [user_id: String.to_integer(uid), key: key]}}
   end
 
   defp handle_record(%DeletedRecord{
@@ -355,7 +395,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"user_id" => uid, "key" => key}
        })
        when is_binary(uid) and is_binary(key) do
-    {KeyValues, [user_id: String.to_integer(uid), key: key]}
+    {:bust, {KeyValues, [user_id: String.to_integer(uid), key: key]}}
   end
 
   defp handle_record(_record) do

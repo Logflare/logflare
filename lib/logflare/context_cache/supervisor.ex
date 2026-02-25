@@ -53,7 +53,7 @@ defmodule Logflare.ContextCache.Supervisor do
   def buster_specs do
     [
       CacheBusterWorker.supervisor_spec(),
-      ContextCache.CacheBuster
+      CacheBuster
     ]
   end
 

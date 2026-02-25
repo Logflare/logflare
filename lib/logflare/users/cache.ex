@@ -32,6 +32,11 @@ defmodule Logflare.Users.Cache do
     }
   end
 
+  @behaviour Logflare.ContextCache
+
+  @impl Logflare.ContextCache
+  def fetch_by_id(id) when is_integer(id), do: Users.get(id)
+
   def update(user),
     do: Logflare.ContextCache.update(Users, :get, [user.id], user)
 

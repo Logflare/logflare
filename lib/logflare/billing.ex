@@ -38,6 +38,10 @@ defmodule Logflare.Billing do
   @spec get_billing_account_by(keyword()) :: BillingAccount.t() | nil
   def get_billing_account_by(kv), do: Repo.get_by(BillingAccount, kv)
 
+  @doc "Gets a single billing_account by id."
+  @spec get_billing_account(number()) :: BillingAccount.t() | nil
+  def get_billing_account(id), do: Repo.get(BillingAccount, id)
+
   @doc "Gets a single billing_account. Raises `Ecto.NoResultsError` if the Billing account does not exist."
   @spec get_billing_account!(String.t() | number()) :: BillingAccount.t()
   def get_billing_account!(id), do: Repo.get!(BillingAccount, id)

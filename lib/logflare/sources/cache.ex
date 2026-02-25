@@ -58,6 +58,11 @@ defmodule Logflare.Sources.Cache do
   def get_by_id_and_preload(arg) when is_integer(arg), do: get_by_and_preload(id: arg)
   def get_by_id_and_preload(arg) when is_atom(arg), do: get_by_and_preload(token: arg)
 
+  @behaviour Logflare.ContextCache
+
+  @impl Logflare.ContextCache
+  def fetch_by_id(id) when is_integer(id), do: Sources.get(id)
+
   def get_by(kv), do: apply_repo_fun(__ENV__.function, [kv])
   def get_by_id(arg) when is_integer(arg), do: get_by(id: arg)
   def get_by_id(arg) when is_atom(arg), do: get_by(token: arg)

@@ -88,6 +88,16 @@ defmodule Logflare.ContextCacheTest do
       assert {:cached, [%Backend{name: ^new_name}]} = Cachex.get!(Backends.Cache, cache_key)
     end
 
+    test "refresh_keys/1 with struct does in-place update", %{source: source} do
+      Sources.Cache.get_by(token: source.token)
+      cache_key = {:get_by, [[token: source.token]]}
+      assert {:cached, %Source{}} = Cachex.get!(Sources.Cache, cache_key)
+
+      fresh = %{source | name: "InPlace"}
+      assert :ok = ContextCache.refresh_keys([{Sources, source.id, fresh}])
+      assert {:cached, %Source{name: "InPlace"}} = Cachex.get!(Sources.Cache, cache_key)
+    end
+
     test "refresh_keys/1 via keys_to_bust callback", %{source: source, user: user} do
       backend = insert(:backend, user: user)
       rule = insert(:rule, source: source, backend: backend)
@@ -133,8 +143,8 @@ defmodule Logflare.ContextCacheTest do
       :ok
     end
 
-    test "TransactionBroadcaster subscribes to wal and broadcasts transactions" do
-      ContextCache.CacheBuster.subscribe_to_transactions()
+    test "TransactionBroadcaster subscribes to wal and broadcasts cache_updates" do
+      ContextCache.CacheBuster.subscribe_updates()
       start_supervised!({ContextCache.TransactionBroadcaster, interval: 100})
       :timer.sleep(200)
 
@@ -143,7 +153,7 @@ defmodule Logflare.ContextCacheTest do
       end)
 
       :timer.sleep(500)
-      assert_received %Cainophile.Changes.Transaction{}
+      assert_received {:cache_updates, _results}
     end
   end
 end

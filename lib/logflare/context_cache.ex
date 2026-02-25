@@ -38,6 +38,14 @@ defmodule Logflare.ContextCache do
   """
   @callback keys_to_bust(keyword()) :: [{fun :: atom(), args :: list()}]
 
+  @doc """
+  Fetches a record by its integer primary key directly from the database (bypassing cache).
+  Used by CacheBuster to pre-fetch fresh data before broadcasting to the cluster.
+  """
+  @callback fetch_by_id(id :: integer()) :: struct() | nil
+
+  @optional_callbacks [keys_to_bust: 1, fetch_by_id: 1]
+
   @spec cache_name(atom()) :: atom()
   def cache_name(context) do
     Module.concat(context, Cache)
@@ -120,8 +128,11 @@ defmodule Logflare.ContextCache do
 
   @spec refresh_keys(list()) :: :ok
   def refresh_keys(values) when is_list(values) do
-    for {context, primary_key} <- values do
-      refresh_key(context, primary_key)
+    for value <- values do
+      case value do
+        {context, pkey, struct} -> refresh_key(context, pkey, struct)
+        {context, primary_key} -> refresh_key(context, primary_key)
+      end
     end
 
     :ok
@@ -145,6 +156,18 @@ defmodule Logflare.ContextCache do
     end)
   end
 
+  defp refresh_key(context, pkey, fresh_struct) when is_integer(pkey) do
+    cache = cache_name(context)
+
+    Cachex.execute!(cache, fn ets_cache ->
+      keys_with_id_and_values(ets_cache, pkey)
+      |> Enum.each(fn {key, cached_value} ->
+        new_value = replace_in_cached(cached_value, pkey, fresh_struct)
+        Cachex.update(cache, key, new_value)
+      end)
+    end)
+  end
+
   defp refresh_entries(entries, context, cache) do
     Enum.each(entries, fn {fun, args} = key ->
       case Cachex.take(cache, key) do
@@ -154,7 +177,29 @@ defmodule Logflare.ContextCache do
     end)
   end
 
+
+  defp replace_in_cached({:cached, %{id: _}}, _pkey, fresh), do: {:cached, fresh}
+  defp replace_in_cached({:cached, {:ok, %{id: _}}}, _pkey, fresh), do: {:cached, {:ok, fresh}}
+
+  defp replace_in_cached({:cached, list}, pkey, fresh) when is_list(list) do
+    {:cached,
+     Enum.map(list, fn
+       %{id: ^pkey} -> fresh
+       other -> other
+     end)}
+  end
+
   defp keys_with_id(cache, id) do
+    keys_with_id_stream(cache, id)
+    |> Stream.map(&elem(&1, 0))
+  end
+
+  defp keys_with_id_and_values(cache, id) do
+    keys_with_id_stream(cache, id)
+    |> Enum.to_list()
+  end
+
+  defp keys_with_id_stream(cache, id) do
     # match {_cached, %{id: ^pkey}}
     direct_filter =
       {:andalso, {:is_map, {:element, 2, :value}},
@@ -183,6 +228,5 @@ defmodule Logflare.ContextCache do
       {_k, _v} ->
         true
     end)
-    |> Stream.map(&elem(&1, 0))
   end
 end

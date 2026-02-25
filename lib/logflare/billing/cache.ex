@@ -28,6 +28,11 @@ defmodule Logflare.Billing.Cache do
     }
   end
 
+  @behaviour Logflare.ContextCache
+
+  @impl Logflare.ContextCache
+  def fetch_by_id(id) when is_integer(id), do: Billing.get_billing_account(id)
+
   def get_billing_account_by(keyword) do
     apply_fun(__ENV__.function, [keyword])
   end
