@@ -216,18 +216,20 @@ defmodule LogflareWeb.QueryLiveTest do
     test "run a query against postgres", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/query")
 
-      view
-      |> render_hook("parse-query", %{
-        value: "SELECT 1 as result;"
+      render_hook(view, "parse-query", %{
+        value: "select 42 as answer, 'and some other expected string'"
       })
 
-      assert view
-             |> element("form")
-             |> render_submit(%{}) =~ "Ran query successfully"
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{})
 
-      assert render(view) =~ "0 bytes processed"
-      assert render(view) =~ "result"
-      assert render(view) =~ "1"
+      assert html =~ "Ran query successfully"
+      assert html =~ "0 bytes processed"
+      assert html =~ "answer"
+      assert html =~ "42"
+      assert html =~ "and some other expected string"
     end
   end
 end
