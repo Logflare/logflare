@@ -56,6 +56,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     field :buffer, binary(), default: <<>>
     field :recv_timeout, non_neg_integer(), default: 30_000
     field :connected_at, integer()
+    field :last_used_at, integer()
   end
 
   @doc """
