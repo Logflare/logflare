@@ -351,9 +351,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   """
   @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, Exception.t()}
   def provision_ingest_tables(%Backend{} = backend) do
+    with :ok <- provision_standard_tables(backend) do
+      provision_simple_tables(backend)
+    end
+  end
+
+  @spec provision_standard_tables(Backend.t()) :: :ok | {:error, Exception.t()}
+  defp provision_standard_tables(backend) do
     Enum.reduce_while([:log, :metric, :trace], :ok, fn event_type, :ok ->
       table_name = clickhouse_ingest_table_name(backend, event_type)
       statement = QueryTemplates.create_table_statement(table_name, event_type, [])
+
+      case execute_ch_query(backend, statement) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  @spec provision_simple_tables(Backend.t()) :: :ok | {:error, Exception.t()}
+  defp provision_simple_tables(backend) do
+    Enum.reduce_while([:log, :metric, :trace], :ok, fn event_type, :ok ->
+      table_name = simple_clickhouse_ingest_table_name(backend, event_type)
+      statement = QueryTemplates.create_simple_table_statement(table_name, event_type, [])
 
       case execute_ch_query(backend, statement) do
         {:ok, _} -> {:cont, :ok}

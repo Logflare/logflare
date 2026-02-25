@@ -181,8 +181,11 @@ defmodule Logflare.DataCase do
   """
   def cleanup_clickhouse_tables(backend) do
     tables =
-      Enum.map([:log, :metric, :trace], fn type ->
-        ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
+      Enum.flat_map([:log, :metric, :trace], fn type ->
+        [
+          ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type),
+          ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, type)
+        ]
       end)
 
     for table_name <- tables do
