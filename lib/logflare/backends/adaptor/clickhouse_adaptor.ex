@@ -330,14 +330,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       when is_event_type(event_type) do
     with :ok <- NativePoolSup.ensure_started(backend) do
       table_name = simple_clickhouse_ingest_table_name(backend, event_type)
-      do_insert_log_events(backend, events, event_type, :native, table_name)
+      do_insert_log_events(backend, events, event_type, :native, table_name, :simple)
     end
   end
 
   def insert_simple_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
       when is_event_type(event_type) do
     table_name = simple_clickhouse_ingest_table_name(backend, event_type)
-    do_insert_log_events(backend, events, event_type, :http, table_name)
+    do_insert_log_events(backend, events, event_type, :http, table_name, :simple)
   end
 
   @spec do_insert_log_events(
@@ -345,16 +345,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           [LogEvent.t()],
           TypeDetection.event_type(),
           :http | :native,
-          String.t()
+          String.t(),
+          :simple | nil
         ) :: :ok | {:error, String.t()}
-  defp do_insert_log_events(backend, events, event_type, protocol, table_name) do
+  defp do_insert_log_events(backend, events, event_type, protocol, table_name, variant \\ nil) do
     Logger.metadata(backend_id: backend.id)
 
     result =
-      if protocol == :native do
-        NativeIngester.insert(backend, table_name, events, event_type)
-      else
-        Ingester.insert(backend, table_name, events, event_type)
+      case {protocol, variant} do
+        {:native, _} ->
+          NativeIngester.insert(backend, table_name, events, event_type)
+
+        {:http, :simple} ->
+          Ingester.insert_simple(backend, table_name, events, event_type)
+
+        {:http, _} ->
+          Ingester.insert(backend, table_name, events, event_type)
       end
 
     case result do

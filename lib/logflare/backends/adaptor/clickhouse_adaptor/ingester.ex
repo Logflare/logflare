@@ -48,9 +48,49 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         event_type
       )
       when is_list(connection_opts) and is_non_empty_binary(table) and is_event_type(event_type) do
+    request_body = log_events |> encode_batch(event_type) |> :zlib.gzip()
+    do_insert(connection_opts, table, event_type, request_body)
+  end
+
+  @doc """
+  Inserts a list of `LogEvent` structs into a simple ClickHouse table.
+
+  Uses `map_string_string` encoding for attribute columns instead of JSON.
+  """
+  @spec insert_simple(
+          Backend.t() | Keyword.t(),
+          table :: String.t(),
+          log_events :: [LogEvent.t()],
+          TypeDetection.event_type()
+        ) ::
+          :ok | {:error, String.t()}
+  def insert_simple(_backend_or_conn_opts, _table, [], _event_type), do: :ok
+
+  def insert_simple(%Backend{} = backend, table, log_events, event_type)
+      when is_list(log_events) and is_event_type(event_type) do
+    with {:ok, connection_opts} <- build_connection_opts(backend) do
+      insert_simple(connection_opts, table, log_events, event_type)
+    end
+  end
+
+  def insert_simple(
+        connection_opts,
+        table,
+        [%LogEvent{event_type: event_type} | _] = log_events,
+        event_type
+      )
+      when is_list(connection_opts) and is_non_empty_binary(table) and is_event_type(event_type) do
+    request_body =
+      log_events |> Enum.map(&encode_simple_row(&1, event_type)) |> :zlib.gzip()
+
+    do_insert(connection_opts, table, event_type, request_body)
+  end
+
+  @spec do_insert(Keyword.t(), String.t(), TypeDetection.event_type(), iodata()) ::
+          :ok | {:error, String.t()}
+  defp do_insert(connection_opts, table, event_type, request_body) do
     client = build_client(connection_opts)
     url = build_request_url(connection_opts, table, event_type)
-    request_body = log_events |> encode_batch(event_type) |> :zlib.gzip()
 
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
@@ -104,6 +144,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   def encode_row(%LogEvent{} = event, :log), do: encode_log_row(event)
   def encode_row(%LogEvent{} = event, :metric), do: encode_metric_row(event)
   def encode_row(%LogEvent{} = event, :trace), do: encode_trace_row(event)
+
+  @doc false
+  @spec encode_simple_row(LogEvent.t(), TypeDetection.event_type()) :: iodata()
+  def encode_simple_row(%LogEvent{} = event, :log), do: encode_simple_log_row(event)
+  def encode_simple_row(%LogEvent{} = event, :metric), do: encode_simple_metric_row(event)
+  def encode_simple_row(%LogEvent{} = event, :trace), do: encode_simple_trace_row(event)
 
   @doc false
   @spec encode_batch([LogEvent.t()], TypeDetection.event_type()) :: iodata()
@@ -240,6 +286,146 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       RowBinaryEncoder.array_string(body["links.span_id"] || []),
       RowBinaryEncoder.array_string(body["links.trace_state"] || []),
       RowBinaryEncoder.array_json(body["links.attributes"] || []),
+      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      RowBinaryEncoder.int64(body["timestamp"])
+    ]
+  end
+
+  @spec encode_simple_log_row(LogEvent.t()) :: iodata()
+  defp encode_simple_log_row(%LogEvent{
+         id: id,
+         body: body,
+         source_uuid: source_uuid,
+         source_name: source_name
+       }) do
+    source_uuid_str = Atom.to_string(source_uuid)
+
+    [
+      RowBinaryEncoder.uuid(id),
+      RowBinaryEncoder.string(source_uuid_str),
+      RowBinaryEncoder.string(source_name || ""),
+      RowBinaryEncoder.string(body["project"] || ""),
+      RowBinaryEncoder.string(body["trace_id"] || ""),
+      RowBinaryEncoder.string(body["span_id"] || ""),
+      RowBinaryEncoder.uint8(body["trace_flags"] || 0),
+      RowBinaryEncoder.string(body["severity_text"] || ""),
+      RowBinaryEncoder.uint8(body["severity_number"] || 0),
+      RowBinaryEncoder.string(body["service_name"] || ""),
+      RowBinaryEncoder.string(body["event_message"] || ""),
+      RowBinaryEncoder.string(body["scope_name"] || ""),
+      RowBinaryEncoder.string(body["scope_version"] || ""),
+      RowBinaryEncoder.string(body["scope_schema_url"] || ""),
+      RowBinaryEncoder.string(body["resource_schema_url"] || ""),
+      RowBinaryEncoder.map_string_string(body["resource_attributes"] || %{}),
+      RowBinaryEncoder.map_string_string(body["scope_attributes"] || %{}),
+      RowBinaryEncoder.map_string_string(body["log_attributes"] || %{}),
+      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      RowBinaryEncoder.int64(body["timestamp"])
+    ]
+  end
+
+  @spec encode_simple_metric_row(LogEvent.t()) :: iodata()
+  defp encode_simple_metric_row(%LogEvent{
+         id: id,
+         body: body,
+         source_uuid: source_uuid,
+         source_name: source_name
+       }) do
+    source_uuid_str = Atom.to_string(source_uuid)
+
+    [
+      RowBinaryEncoder.uuid(id),
+      RowBinaryEncoder.string(source_uuid_str),
+      RowBinaryEncoder.string(source_name || ""),
+      RowBinaryEncoder.string(body["project"] || ""),
+      RowBinaryEncoder.nullable(body["time_unix"], &RowBinaryEncoder.int64/1),
+      RowBinaryEncoder.nullable(body["start_time_unix"], &RowBinaryEncoder.int64/1),
+      RowBinaryEncoder.string(body["metric_name"] || ""),
+      RowBinaryEncoder.string(body["metric_description"] || ""),
+      RowBinaryEncoder.string(body["metric_unit"] || ""),
+      RowBinaryEncoder.enum8(body["metric_type"] || 1),
+      RowBinaryEncoder.string(body["service_name"] || ""),
+      RowBinaryEncoder.string(body["event_message"] || ""),
+      RowBinaryEncoder.string(body["scope_name"] || ""),
+      RowBinaryEncoder.string(body["scope_version"] || ""),
+      RowBinaryEncoder.string(body["scope_schema_url"] || ""),
+      RowBinaryEncoder.string(body["resource_schema_url"] || ""),
+      RowBinaryEncoder.map_string_string(body["resource_attributes"] || %{}),
+      RowBinaryEncoder.map_string_string(body["scope_attributes"] || %{}),
+      RowBinaryEncoder.map_string_string(body["attributes"] || %{}),
+      RowBinaryEncoder.string(body["aggregation_temporality"] || ""),
+      RowBinaryEncoder.bool(body["is_monotonic"] || false),
+      RowBinaryEncoder.uint32(body["flags"] || 0),
+      RowBinaryEncoder.float64(body["value"] || 0),
+      RowBinaryEncoder.uint64(body["count"] || 0),
+      RowBinaryEncoder.float64(body["sum"] || 0),
+      RowBinaryEncoder.float64(body["min"] || 0),
+      RowBinaryEncoder.float64(body["max"] || 0),
+      RowBinaryEncoder.int32(body["scale"] || 0),
+      RowBinaryEncoder.uint64(body["zero_count"] || 0),
+      RowBinaryEncoder.int32(body["positive_offset"] || 0),
+      RowBinaryEncoder.int32(body["negative_offset"] || 0),
+      RowBinaryEncoder.array_uint64(body["bucket_counts"] || []),
+      RowBinaryEncoder.array_float64(body["explicit_bounds"] || []),
+      RowBinaryEncoder.array_uint64(body["positive_bucket_counts"] || []),
+      RowBinaryEncoder.array_uint64(body["negative_bucket_counts"] || []),
+      RowBinaryEncoder.array_float64(body["quantile_values"] || []),
+      RowBinaryEncoder.array_float64(body["quantiles"] || []),
+      RowBinaryEncoder.array(
+        body["exemplars.filtered_attributes"] || [],
+        &RowBinaryEncoder.map_string_string/1
+      ),
+      RowBinaryEncoder.array(body["exemplars.time_unix"] || [], &RowBinaryEncoder.int64/1),
+      RowBinaryEncoder.array_float64(body["exemplars.value"] || []),
+      RowBinaryEncoder.array_string(body["exemplars.span_id"] || []),
+      RowBinaryEncoder.array_string(body["exemplars.trace_id"] || []),
+      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      RowBinaryEncoder.int64(body["timestamp"])
+    ]
+  end
+
+  @spec encode_simple_trace_row(LogEvent.t()) :: iodata()
+  defp encode_simple_trace_row(%LogEvent{
+         id: id,
+         body: body,
+         source_uuid: source_uuid,
+         source_name: source_name
+       }) do
+    source_uuid_str = Atom.to_string(source_uuid)
+
+    [
+      RowBinaryEncoder.uuid(id),
+      RowBinaryEncoder.string(source_uuid_str),
+      RowBinaryEncoder.string(source_name || ""),
+      RowBinaryEncoder.string(body["project"] || ""),
+      RowBinaryEncoder.string(body["trace_id"] || ""),
+      RowBinaryEncoder.string(body["span_id"] || ""),
+      RowBinaryEncoder.string(body["parent_span_id"] || ""),
+      RowBinaryEncoder.string(body["trace_state"] || ""),
+      RowBinaryEncoder.string(body["span_name"] || ""),
+      RowBinaryEncoder.string(body["span_kind"] || ""),
+      RowBinaryEncoder.string(body["service_name"] || ""),
+      RowBinaryEncoder.string(body["event_message"] || ""),
+      RowBinaryEncoder.uint64(body["duration"] || 0),
+      RowBinaryEncoder.string(body["status_code"] || ""),
+      RowBinaryEncoder.string(body["status_message"] || ""),
+      RowBinaryEncoder.string(body["scope_name"] || ""),
+      RowBinaryEncoder.string(body["scope_version"] || ""),
+      RowBinaryEncoder.map_string_string(body["resource_attributes"] || %{}),
+      RowBinaryEncoder.map_string_string(body["span_attributes"] || %{}),
+      RowBinaryEncoder.array(body["events.timestamp"] || [], &RowBinaryEncoder.int64/1),
+      RowBinaryEncoder.array_string(body["events.name"] || []),
+      RowBinaryEncoder.array(
+        body["events.attributes"] || [],
+        &RowBinaryEncoder.map_string_string/1
+      ),
+      RowBinaryEncoder.array_string(body["links.trace_id"] || []),
+      RowBinaryEncoder.array_string(body["links.span_id"] || []),
+      RowBinaryEncoder.array_string(body["links.trace_state"] || []),
+      RowBinaryEncoder.array(
+        body["links.attributes"] || [],
+        &RowBinaryEncoder.map_string_string/1
+      ),
       RowBinaryEncoder.uuid(body["mapping_config_id"]),
       RowBinaryEncoder.int64(body["timestamp"])
     ]
