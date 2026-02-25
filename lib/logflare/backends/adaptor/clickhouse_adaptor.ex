@@ -304,25 +304,51 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       )
       when is_event_type(event_type) do
     with :ok <- NativePoolSup.ensure_started(backend) do
-      do_insert_log_events(backend, events, event_type, :native)
+      table_name = clickhouse_ingest_table_name(backend, event_type)
+      do_insert_log_events(backend, events, event_type, :native, table_name)
     end
   end
 
   def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
       when is_event_type(event_type) do
-    do_insert_log_events(backend, events, event_type, :http)
+    table_name = clickhouse_ingest_table_name(backend, event_type)
+    do_insert_log_events(backend, events, event_type, :http, table_name)
+  end
+
+  @doc """
+  Inserts a list of `LogEvent` structs into a simple type-specific ingest table.
+  """
+  @spec insert_simple_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type()) ::
+          :ok | {:error, String.t()}
+  def insert_simple_log_events(%Backend{}, [], _event_type), do: :ok
+
+  def insert_simple_log_events(
+        %Backend{config: %{insert_protocol: "native"}} = backend,
+        [%LogEvent{} | _] = events,
+        event_type
+      )
+      when is_event_type(event_type) do
+    with :ok <- NativePoolSup.ensure_started(backend) do
+      table_name = simple_clickhouse_ingest_table_name(backend, event_type)
+      do_insert_log_events(backend, events, event_type, :native, table_name)
+    end
+  end
+
+  def insert_simple_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
+      when is_event_type(event_type) do
+    table_name = simple_clickhouse_ingest_table_name(backend, event_type)
+    do_insert_log_events(backend, events, event_type, :http, table_name)
   end
 
   @spec do_insert_log_events(
           Backend.t(),
           [LogEvent.t()],
           TypeDetection.event_type(),
-          :http | :native
+          :http | :native,
+          String.t()
         ) :: :ok | {:error, String.t()}
-  defp do_insert_log_events(backend, events, event_type, protocol) do
+  defp do_insert_log_events(backend, events, event_type, protocol, table_name) do
     Logger.metadata(backend_id: backend.id)
-
-    table_name = clickhouse_ingest_table_name(backend, event_type)
 
     result =
       if protocol == :native do
