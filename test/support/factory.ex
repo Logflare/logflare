@@ -23,6 +23,7 @@ defmodule Logflare.Factory do
   alias Logflare.User
   alias Logflare.Users.UserPreferences
   alias Logflare.Alerting.AlertQuery
+  alias Logflare.KeyValues.KeyValue
 
   def user_factory do
     email = "#{TestUtils.random_string(8)}@#{TestUtils.random_string()}.com"
@@ -380,6 +381,14 @@ defmodule Logflare.Factory do
       source_mapping: %{},
       webhook_notification_url: "some webhook_notification_url",
       language: :bq_sql
+    }
+  end
+
+  def key_value_factory do
+    %KeyValue{
+      user: build(:user),
+      key: TestUtils.random_string(),
+      value: %{"value" => TestUtils.random_string()}
     }
   end
 

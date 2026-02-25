@@ -2,13 +2,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   use Logflare.DataCase, async: false
 
   import Ecto.Query
+  import Logflare.ClickHouseMappedEvents
   import Logflare.Utils.Guards
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup, as: NativePoolSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
 
@@ -28,21 +32,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       [source: source, backend: backend, stringified_backend_token: stringified_backend_token]
     end
 
-    test "`clickhouse_ingest_table_name/1` generates a unique log ingest table name based on the backend token",
-         %{backend: backend, stringified_backend_token: stringified_backend_token} do
-      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend) ==
-               "consolidated_ingest_#{stringified_backend_token}"
-    end
-
-    test "`clickhouse_ingest_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
+    test "raises when table name is equal to or exceeds 200 chars",
          %{backend: backend} do
       assert_raise RuntimeError,
-                   ~r/^The dynamically generated ClickHouse resource name starting with `consolidated_ingest_/,
+                   ~r/must be less than 200 characters/,
                    fn ->
                      backend
                      |> modify_backend_with_long_token()
-                     |> ClickHouseAdaptor.clickhouse_ingest_table_name()
+                     |> ClickHouseAdaptor.clickhouse_ingest_table_name(:log)
                    end
+    end
+
+    test "generates otel-prefixed table names per log type",
+         %{backend: backend, stringified_backend_token: stringified_backend_token} do
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log) ==
+               "otel_logs_#{stringified_backend_token}"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric) ==
+               "otel_metrics_#{stringified_backend_token}"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
+               "otel_traces_#{stringified_backend_token}"
     end
   end
 
@@ -77,6 +87,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         ClickHouseAdaptor.execute_ch_query(backend, "INVALID SQL QUERY")
 
       assert {:error, _} = result
+    end
+
+    test "preserves 16-byte strings while converting UUID columns", %{backend: backend} do
+      # A 16-byte string that could be mistaken for a UUID binary
+      sixteen_byte_str = "exactly16bytesXX"
+      assert byte_size(sixteen_byte_str) == 16
+
+      uuid_hex = "550e8400-e29b-41d4-a716-446655440000"
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT toFixedString('exactly16bytesXX', 16) AS fixed_str, toUUID('#{uuid_hex}') AS uuid_col"
+        )
+
+      assert [%{"fixed_str" => ^sixteen_byte_str, "uuid_col" => ^uuid_hex}] = rows
+    end
+
+    test "handles Nullable(UUID) values", %{backend: backend} do
+      uuid_hex = "660e8400-e29b-41d4-a716-446655440001"
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT NULL::Nullable(UUID) AS null_uuid, toUUID('#{uuid_hex}')::Nullable(UUID) AS present_uuid"
+        )
+
+      assert [%{"null_uuid" => nil, "present_uuid" => ^uuid_hex}] = rows
     end
   end
 
@@ -204,7 +242,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       on_exit(cleanup_fn)
 
       start_supervised!({ClickHouseAdaptor, backend})
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
       [source: source, backend: backend]
     end
@@ -212,21 +250,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "can insert log events with async_insert enabled", %{source: source, backend: backend} do
       backend_with_async = %{backend | config: Map.put(backend.config, :async_insert, true)}
 
-      log_events = [
-        build(:log_event,
-          id: "660e8400-e29b-41d4-a716-446655440001",
-          source: source,
-          message: "Async test message",
-          metadata: %{"level" => "info"}
-        )
-      ]
+      log_event =
+        build_mapped_log_event(source: source, message: "Async test message")
+        |> Map.put(:id, "660e8400-e29b-41d4-a716-446655440001")
 
-      result = ClickHouseAdaptor.insert_log_events(backend_with_async, log_events)
+      result = ClickHouseAdaptor.insert_log_events(backend_with_async, [log_event], :log)
       assert :ok = result
 
       Process.sleep(500)
 
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       query_result =
         ClickHouseAdaptor.execute_ch_query(
@@ -241,56 +274,54 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
     test "can insert and retrieve log events", %{source: source, backend: backend} do
       log_events = [
-        build(:log_event,
-          id: "550e8400-e29b-41d4-a716-446655440000",
+        build_mapped_log_event(
           source: source,
           message: "Test message 1",
-          metadata: %{"level" => "info", "user_id" => 123}
-        ),
-        build(:log_event,
-          id: "9bc07845-9859-4163-bfe5-a74c1a1443a2",
+          body: %{"metadata" => %{"level" => "info", "user_id" => 123}}
+        )
+        |> Map.put(:id, "550e8400-e29b-41d4-a716-446655440000"),
+        build_mapped_log_event(
           source: source,
           message: "Test message 2",
-          metadata: %{"level" => "error", "user_id" => 456}
+          body: %{"metadata" => %{"level" => "error", "user_id" => 456}}
         )
+        |> Map.put(:id, "9bc07845-9859-4163-bfe5-a74c1a1443a2")
       ]
 
-      result = ClickHouseAdaptor.insert_log_events(backend, log_events)
+      result = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
       assert :ok = result
 
       Process.sleep(100)
 
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       query_result =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT id, source_uuid, source_name, body, ingested_at, timestamp FROM #{table_name} ORDER BY timestamp"
+          "SELECT id, source_uuid, source_name, event_message, log_attributes, timestamp FROM #{table_name} ORDER BY timestamp"
         )
 
       assert {:ok, rows} = query_result
       assert length(rows) == 2
-
-      row_payloads = Enum.map(rows, fn row -> Map.update!(row, "body", &Jason.decode!/1) end)
 
       assert [
                %{
                  "id" => "550e8400-e29b-41d4-a716-446655440000",
                  "source_uuid" => source_uuid1,
                  "source_name" => source_name1,
-                 "body" => %{"event_message" => "Test message 1"},
-                 "ingested_at" => _,
+                 "event_message" => "Test message 1",
+                 "log_attributes" => log_attributes1,
                  "timestamp" => _
                },
                %{
                  "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2",
                  "source_uuid" => source_uuid2,
                  "source_name" => source_name2,
-                 "body" => %{"event_message" => "Test message 2"},
-                 "ingested_at" => _,
+                 "event_message" => "Test message 2",
+                 "log_attributes" => log_attributes2,
                  "timestamp" => _
                }
-             ] = row_payloads
+             ] = rows
 
       expected_source_uuid = Atom.to_string(source.token)
       assert source_uuid1 == expected_source_uuid
@@ -298,11 +329,86 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert source_name1 == source.name
       assert source_name2 == source.name
+
+      # mapper elevates metadata keys and excludes event_message from log_attributes
+      assert log_attributes1["level"] == "info"
+      assert log_attributes1["user_id"] == 123
+      refute Map.has_key?(log_attributes1, "event_message")
+
+      assert log_attributes2["level"] == "error"
+      assert log_attributes2["user_id"] == 456
+      refute Map.has_key?(log_attributes2, "event_message")
     end
 
     test "handles empty event list", %{backend: backend} do
-      result = ClickHouseAdaptor.insert_log_events(backend, [])
+      result = ClickHouseAdaptor.insert_log_events(backend, [], :log)
       assert :ok = result
+    end
+
+    test "insert_log_events/3 routes through native pool when enabled", %{
+      source: source,
+      backend: query_backend
+    } do
+      {_source, native_backend, cleanup_fn} =
+        setup_clickhouse_test(
+          source: source,
+          config: %{insert_protocol: "native", native_port: 9000}
+        )
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(native_backend, :log)
+
+      ddl = QueryTemplates.create_table_statement(table_name, :log, ttl_days: 0)
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
+
+      log_event = build_mapped_log_event(source: source, message: "native route test")
+
+      assert :ok = ClickHouseAdaptor.insert_log_events(native_backend, [log_event], :log)
+
+      pool_pid = GenServer.whereis(NativeIngester.Pool.via(native_backend))
+      assert is_pid(pool_pid)
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          query_backend,
+          "SELECT event_message FROM #{table_name}"
+        )
+
+      assert length(rows) == 1
+      assert Enum.at(rows, 0)["event_message"] == "native route test"
+
+      on_exit(fn ->
+        NativePoolSup.stop_pool(native_backend)
+        ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
+        cleanup_fn.()
+      end)
+    end
+
+    test "insert_log_events/3 inserts into type-specific table", %{
+      source: source,
+      backend: backend
+    } do
+      for event_type <- [:log, :metric, :trace] do
+        log_event =
+          case event_type do
+            :log -> build_mapped_log_event(source: source, message: "Typed insert test")
+            :metric -> build_mapped_metric_event(source: source, message: "Typed insert test")
+            :trace -> build_mapped_trace_event(source: source, message: "Typed insert test")
+          end
+
+        :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], event_type)
+
+        Process.sleep(100)
+
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
+
+        {:ok, query_result} =
+          ClickHouseAdaptor.execute_ch_query(
+            backend,
+            "SELECT count(*) as count FROM #{table_name}"
+          )
+
+        assert [%{"count" => 1}] = query_result
+      end
     end
   end
 

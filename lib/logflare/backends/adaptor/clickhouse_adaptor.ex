@@ -16,16 +16,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   alias __MODULE__.ConnectionManager
   alias __MODULE__.Ingester
+  alias __MODULE__.NativeIngester
+  alias __MODULE__.NativeIngester.PoolSup, as: NativePoolSup
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
+  alias Logflare.Ecto.ClickHouse, as: EctoClickHouse
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
+  alias Logflare.LogEvent.TypeDetection
 
   @min_pipelines 1
   @resolve_interval 10_000
@@ -53,7 +57,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def ecto_to_sql(%Ecto.Query{} = query, opts) do
-    case Logflare.Ecto.ClickHouse.to_sql(query, opts) do
+    case EctoClickHouse.to_sql(query, opts) do
       {:ok, {ch_sql, ch_params}} ->
         ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
         {:ok, {ch_sql, ch_params}}
@@ -109,7 +113,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Logflare.Backends.Adaptor
   def cast_config(%{} = params) do
-    {%{},
+    {%{insert_protocol: "http"},
      %{
        url: :string,
        username: :string,
@@ -118,7 +122,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        port: :integer,
        pool_size: :integer,
        async_insert: :boolean,
-       read_only_url: :string
+       read_only_url: :string,
+       insert_protocol: :string,
+       native_port: :integer,
+       native_pool_size: :integer
      }}
     |> Changeset.cast(params, [
       :url,
@@ -128,7 +135,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :port,
       :pool_size,
       :async_insert,
-      :read_only_url
+      :read_only_url,
+      :insert_protocol,
+      :native_port,
+      :native_pool_size
     ])
     |> Logflare.Utils.default_field_value(:async_insert, false)
   end
@@ -138,11 +148,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def validate_config(%Changeset{} = changeset) do
     import Ecto.Changeset
 
+    {min_pool, max_pool} = NativeIngester.Pool.pool_size_range()
+
     changeset
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> validate_read_only_url()
     |> validate_user_pass()
+    |> validate_inclusion(:insert_protocol, ["http", "native"])
+    |> validate_number(:pool_size,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: max_pool
+    )
+    |> validate_number(:native_pool_size,
+      greater_than_or_equal_to: min_pool,
+      less_than_or_equal_to: max_pool
+    )
   end
 
   @doc """
@@ -176,17 +197,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Produces a unique ingest table name for ClickHouse based on a provided `Backend` struct.
+  Produces a type-specific ingest table name for ClickHouse.
 
-  This table holds events from ALL sources using this backend.
+  - `:log`    -> `otel_logs_<token>`
+  - `:metric` -> `otel_metrics_<token>`
+  - `:trace`  -> `otel_traces_<token>`
   """
-  @spec clickhouse_ingest_table_name(Backend.t()) :: String.t()
-  def clickhouse_ingest_table_name(%Backend{token: token}) do
+  @spec clickhouse_ingest_table_name(Backend.t(), TypeDetection.event_type()) :: String.t()
+  def clickhouse_ingest_table_name(%Backend{} = backend, :log),
+    do: build_otel_table_name(backend, "otel_logs")
+
+  def clickhouse_ingest_table_name(%Backend{} = backend, :metric),
+    do: build_otel_table_name(backend, "otel_metrics")
+
+  def clickhouse_ingest_table_name(%Backend{} = backend, :trace),
+    do: build_otel_table_name(backend, "otel_traces")
+
+  @spec build_otel_table_name(Backend.t(), String.t()) :: String.t()
+  defp build_otel_table_name(%Backend{token: token}, prefix) do
     token_str = String.replace(token, "-", "_")
-    table_name = "#{QueryTemplates.default_table_name_prefix()}_#{token_str}"
+    table_name = "#{prefix}_#{token_str}"
 
     if String.length(table_name) >= 200 do
-      raise "The dynamically generated ClickHouse resource name starting with `consolidated_ingest_` " <>
+      raise "The dynamically generated ClickHouse resource name starting with `#{prefix}_` " <>
               "must be less than 200 characters. Got: #{String.length(table_name)}"
     end
 
@@ -211,9 +244,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     with :ok <- ensure_query_connection_manager_started(backend) do
       pool_via = connection_pool_via(backend)
 
-      case Ch.query(pool_via, statement, params, opts) do
+      case Ch.query(pool_via, statement, params, Keyword.put(opts, :decode, false)) do
         {:ok, %Ch.Result{} = result} ->
-          {:ok, convert_ch_result_to_rows(result)}
+          {:ok, decode_ch_result(result)}
 
         {:error, %Ch.Error{message: error_msg}} when is_non_empty_binary(error_msg) ->
           Logger.warning(
@@ -238,35 +271,75 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Inserts a list of `LogEvent` structs into the backend's ingest table.
+  Inserts a list of `LogEvent` structs into a type-specific ingest table.
   """
-  @spec insert_log_events(Backend.t(), [LogEvent.t()]) :: :ok | {:error, String.t()}
-  def insert_log_events(%Backend{}, []), do: :ok
+  @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type()) ::
+          :ok | {:error, String.t()}
+  def insert_log_events(%Backend{}, [], _event_type), do: :ok
 
-  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events) do
+  def insert_log_events(
+        %Backend{config: %{insert_protocol: "native"}} = backend,
+        [%LogEvent{} | _] = events,
+        event_type
+      )
+      when is_event_type(event_type) do
+    with :ok <- NativePoolSup.ensure_started(backend) do
+      do_insert_log_events(backend, events, event_type, :native)
+    end
+  end
+
+  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
+      when is_event_type(event_type) do
+    do_insert_log_events(backend, events, event_type, :http)
+  end
+
+  @spec do_insert_log_events(
+          Backend.t(),
+          [LogEvent.t()],
+          TypeDetection.event_type(),
+          :http | :native
+        ) :: :ok | {:error, String.t()}
+  defp do_insert_log_events(backend, events, event_type, protocol) do
     Logger.metadata(backend_id: backend.id)
 
-    table_name = clickhouse_ingest_table_name(backend)
+    table_name = clickhouse_ingest_table_name(backend, event_type)
 
-    case Ingester.insert(backend, table_name, events) do
+    result =
+      if protocol == :native do
+        NativeIngester.insert(backend, table_name, events, event_type)
+      else
+        Ingester.insert(backend, table_name, events, event_type)
+      end
+
+    case result do
       :ok ->
         :ok
 
       {:error, reason} ->
-        Logger.warning("ClickHouse insert errors.", error_string: inspect(reason))
+        Logger.error("ClickHouse #{protocol} insert error.",
+          error_string: inspect(reason)
+        )
 
         {:error, reason}
     end
   end
 
   @doc """
-  Provisions a new ingest table for the backend, if it does not already exist.
+  Provisions all type-specific ingest tables for the backend, if they do not already exist.
+
+  Creates one table per log type: `_logs`, `_metrics`, and `_traces`.
   """
-  @spec provision_ingest_table(Backend.t()) :: {:ok, [map()]} | {:error, Exception.t()}
-  def provision_ingest_table(%Backend{} = backend) do
-    table_name = clickhouse_ingest_table_name(backend)
-    statement = QueryTemplates.create_ingest_table_statement(table_name)
-    execute_ch_query(backend, statement)
+  @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, Exception.t()}
+  def provision_ingest_tables(%Backend{} = backend) do
+    Enum.reduce_while([:log, :metric, :trace], :ok, fn event_type, :ok ->
+      table_name = clickhouse_ingest_table_name(backend, event_type)
+      statement = QueryTemplates.create_table_statement(table_name, event_type, [])
+
+      case execute_ch_query(backend, statement) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
   end
 
   @doc false
@@ -362,34 +435,88 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  @spec convert_ch_result_to_rows(Ch.Result.t()) :: [map()]
-  defp convert_ch_result_to_rows(%Ch.Result{} = result) do
-    case {result.columns, result.rows} do
-      {nil, nil} ->
-        []
+  @spec decode_ch_result(Ch.Result.t()) :: [map()]
+  defp decode_ch_result(%Ch.Result{} = result) do
+    format = get_response_header(result.headers, "x-clickhouse-format")
 
-      {nil, rows} when is_list(rows) ->
-        convert_uuids(rows)
+    case format do
+      "RowBinaryWithNamesAndTypes" ->
+        data = IO.iodata_to_binary(result.data)
 
-      {_columns, nil} ->
-        []
+        {_names, types, _rest} = parse_row_binary_header(data)
+        [names | rows] = Ch.RowBinary.decode_names_and_rows(data)
 
-      {columns, rows} when is_list(columns) and is_list(rows) ->
-        for row <- rows do
-          columns
-          |> Enum.zip(row)
-          |> Map.new()
-        end
-        |> convert_uuids()
+        uuid_indices = uuid_column_indices(types)
+        rows = convert_uuid_values(rows, uuid_indices)
 
-      {columns, rows} ->
-        Logger.warning(
-          "Unexpected ClickHouse result format: columns=#{inspect(columns)}, rows=#{inspect(rows)}"
-        )
+        Enum.map(rows, fn row ->
+          names |> Enum.zip(row) |> Map.new()
+        end)
 
+      _ ->
         []
     end
   end
+
+  @spec get_response_header([{String.t(), String.t()}], String.t()) :: String.t() | nil
+  defp get_response_header(headers, name) when is_list(headers) do
+    Enum.find_value(headers, fn {k, v} -> if k == name, do: v end)
+  end
+
+  @spec parse_row_binary_header(binary()) :: {[String.t()], [String.t()], binary()}
+  defp parse_row_binary_header(data) do
+    {num_cols, rest} = decode_varuint(data)
+    {names, rest} = decode_n_strings(rest, num_cols, [])
+    {types, rest} = decode_n_strings(rest, num_cols, [])
+    {names, types, rest}
+  end
+
+  defp decode_n_strings(data, 0, acc), do: {Enum.reverse(acc), data}
+
+  defp decode_n_strings(data, n, acc) do
+    {string, rest} = decode_lp_string(data)
+    decode_n_strings(rest, n - 1, [string | acc])
+  end
+
+  defp decode_varuint(<<0::1, byte::7, rest::bytes>>), do: {byte, rest}
+
+  defp decode_varuint(<<1::1, byte::7, rest::bytes>>) do
+    {value, rest} = decode_varuint(rest)
+    {byte + Bitwise.bsl(value, 7), rest}
+  end
+
+  defp decode_lp_string(data) do
+    {len, rest} = decode_varuint(data)
+    <<string::binary-size(len), rest::bytes>> = rest
+    {string, rest}
+  end
+
+  @spec uuid_column_indices([String.t()]) :: MapSet.t(non_neg_integer())
+  defp uuid_column_indices(type_strings) do
+    type_strings
+    |> Enum.with_index()
+    |> Enum.filter(fn {type, _idx} -> String.contains?(type, "UUID") end)
+    |> Enum.map(fn {_type, idx} -> idx end)
+    |> MapSet.new()
+  end
+
+  defp convert_uuid_values(rows, uuid_indices) when map_size(uuid_indices) == 0, do: rows
+
+  defp convert_uuid_values(rows, uuid_indices),
+    do: Enum.map(rows, &convert_row_uuids(&1, uuid_indices))
+
+  defp convert_row_uuids(row, uuid_indices) do
+    row
+    |> Enum.with_index()
+    |> Enum.map(fn {value, idx} ->
+      if MapSet.member?(uuid_indices, idx), do: cast_uuid_value(value), else: value
+    end)
+  end
+
+  defp cast_uuid_value(nil), do: nil
+  defp cast_uuid_value(values) when is_list(values), do: Enum.map(values, &cast_uuid_value/1)
+  defp cast_uuid_value(<<_::128>> = bin), do: Ecto.UUID.cast!(bin)
+  defp cast_uuid_value(other), do: other
 
   @spec execute_query_with_params(
           Backend.t(),
@@ -427,23 +554,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       end
     end)
   end
-
-  @spec convert_uuids(data :: any()) :: any()
-  defp convert_uuids(data) when is_struct(data), do: data
-
-  defp convert_uuids(data) when is_map(data) do
-    Map.new(data, fn {k, v} -> {k, convert_uuids(v)} end)
-  end
-
-  defp convert_uuids(data) when is_list(data) do
-    Enum.map(data, &convert_uuids/1)
-  end
-
-  defp convert_uuids(data) when is_non_empty_binary(data) and byte_size(data) == 16 do
-    Ecto.UUID.cast!(data)
-  end
-
-  defp convert_uuids(data), do: data
 
   @spec ensure_query_connection_manager_started(Backend.t()) :: :ok | {:error, term()}
   defp ensure_query_connection_manager_started(%Backend{id: backend_id} = backend) do

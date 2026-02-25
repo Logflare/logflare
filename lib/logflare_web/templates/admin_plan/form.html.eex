@@ -36,6 +36,9 @@
   <%= label f, :limit_source_ttl, "Source TTL", class: "label-padding" %>
   <%= text_input f, :limit_source_ttl, placeholder: "", class: "form-control form-control-margin" %>
   <%= error_tag f, :limit_source_ttl %>
+  <%= label f, :limit_key_values, "Key Values", class: "label-padding" %>
+  <%= text_input f, :limit_key_values, placeholder: "0", class: "form-control form-control-margin" %>
+  <%= error_tag f, :limit_key_values %>
   <%= hidden_input f, :id %>
 </div>
 <%= submit "Submit", class: "btn btn-primary form-button" %>

@@ -38,6 +38,7 @@ Mimic.copy(Logflare.Cluster.Utils)
 Mimic.copy(Logflare.ContextCache)
 Mimic.copy(Logflare.Backends.Adaptor.ClickHouseAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager)
+Mimic.copy(Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool)
 Mimic.copy(Logflare.Backends.Adaptor.HttpBased.Client)
 Mimic.copy(Logflare.Backends.Adaptor.SlackAdaptor.Client)
 Mimic.copy(Logflare.Backends.Adaptor.WebhookAdaptor)
@@ -82,5 +83,9 @@ ExUnit.configure(
 )
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
+
+if System.get_env("E2E", "false") in ["true", "1"] do
+  {:ok, _} = PhoenixTest.Playwright.Supervisor.start_link()
+end
 
 Application.put_env(:phoenix_test, :base_url, LogflareWeb.Endpoint.url())

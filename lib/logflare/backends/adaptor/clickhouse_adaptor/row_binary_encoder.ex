@@ -11,9 +11,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
 
   import Bitwise
 
+  import Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodingUtils, only: [sanitize_for_json: 1]
   import Logflare.Utils.Guards
 
   @epoch_date ~D[1970-01-01]
+  @unix_unit_scales %{
+    second: 0,
+    millisecond: 3,
+    microsecond: 6,
+    nanosecond: 9
+  }
   @precision_scales %{
     0 => 1,
     1 => 10,
@@ -265,13 +272,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
     <<timestamp_scaled::little-signed-64>>
   end
 
+  @spec datetime64_from_unix(
+          integer(),
+          :second | :millisecond | :microsecond | :nanosecond,
+          precision()
+        ) :: binary()
+  def datetime64_from_unix(value, unit, precision)
+      when is_integer(value) and is_integer(precision) and precision >= 0 and precision <= 9 do
+    source_decimals = Map.fetch!(@unix_unit_scales, unit)
+
+    scaled =
+      cond do
+        source_decimals == precision ->
+          value
+
+        source_decimals < precision ->
+          value * Map.fetch!(@precision_scales, precision - source_decimals)
+
+        source_decimals > precision ->
+          div(value, Map.fetch!(@precision_scales, source_decimals - precision))
+      end
+
+    <<scaled::little-signed-64>>
+  end
+
   # =============================================================================
   # JSON (encoded as String)
   # =============================================================================
 
   @spec json(term()) :: iodata()
   def json(value) do
-    string(Jason.encode_to_iodata!(value))
+    string(Jason.encode_to_iodata!(sanitize_for_json(value)))
   end
 
   # =============================================================================

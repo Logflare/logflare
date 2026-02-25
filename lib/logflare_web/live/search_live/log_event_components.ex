@@ -8,8 +8,9 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   import LogflareWeb.ModalLiveHelpers
 
   alias Logflare.DateTimeUtils
-  alias Logflare.Sources.Source
   alias Logflare.Lql
+  alias Logflare.Lql.Rules
+  alias Logflare.Sources.Source
   alias Phoenix.LiveView.JS
 
   @log_levels ~W(debug info warning error alert critical notice emergency)
@@ -86,7 +87,11 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   @spec lql_with_recommended_fields(Lql.Rules.lql_rules(), Logflare.LogEvent.t(), Source.t()) ::
           String.t()
   def lql_with_recommended_fields(lql_rules, event, source) do
-    fields = Source.recommended_query_fields(source)
+    fields =
+      source
+      |> Source.recommended_query_fields()
+      |> Enum.map(&Source.query_field_name/1)
+      |> Enum.uniq()
 
     existing_filter_paths =
       lql_rules
@@ -110,8 +115,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     |> Lql.encode!()
   end
 
-  defp strip_meta("metadata." <> k), do: k
-  defp strip_meta(k), do: k
+  defp strip_meta(field), do: field |> Source.query_field_name() |> strip_metadata_prefix()
+
+  defp strip_metadata_prefix("metadata." <> key), do: key
+  defp strip_metadata_prefix(key), do: key
 
   def formatted_for_clipboard(log, search_op) do
     select_fields =
@@ -247,4 +254,81 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       display
     end
   end
+
+  attr :search_op_log_aggregates, :map, default: nil
+  attr :search_op_log_events, :map, default: nil
+
+  def empty_result_list(assigns) do
+    assigns =
+      assigns
+      |> assign(
+        :earlier_result_dt,
+        first_date_with_results(assigns.search_op_log_aggregates)
+      )
+
+    ~H"""
+    <div :if={show_empty_results?(@search_op_log_events)} class="tw-mt-4 tw-px-4 tw-py-3 tw-text-center tw-font-sans">
+      <h2 class="tw-text-lg tw-font-semibold tw-text-gray-400">
+        No events matching your query
+      </h2>
+      <div :if={@earlier_result_dt}>
+        <p>
+          Hint: results were found in
+          <span class="tw-text-sm tw-font-mono tw-select-all">
+            {extended_search_lql(@earlier_result_dt) |> Lql.encode!()}
+          </span>
+        </p>
+        <.link class="btn btn-primary tw-mt-2" patch={extended_search_url(@search_op_log_events, @earlier_result_dt)}>
+          <i class="fas fa-search"></i><span class="fas-in-button hide-on-mobile">Extend search</span>
+        </.link>
+      </div>
+    </div>
+    """
+  end
+
+  defp show_empty_results?(%{rows: rows})
+       when is_list(rows), do: Enum.empty?(rows)
+
+  defp show_empty_results?(_), do: false
+
+  def extended_search_lql(datetime) do
+    new_rule =
+      Lql.Rules.FilterRule.build(
+        modifiers: %{},
+        operator: :>=,
+        path: "timestamp",
+        shorthand: nil,
+        value: DateTime.truncate(datetime, :second)
+      )
+
+    [new_rule]
+  end
+
+  def extended_search_url(search_op, datetime) do
+    new_rule = extended_search_lql(datetime)
+
+    query =
+      search_op.lql_rules
+      |> Rules.update_timestamp_rules(new_rule)
+      |> Lql.encode!()
+
+    ~p"/sources/#{search_op.source}/search?#{[querystring: query, tailing?: false]}"
+  end
+
+  defp first_date_with_results(%{rows: rows}) when is_list(rows) do
+    Enum.find(
+      rows,
+      fn
+        %{"value" => value} -> value > 0
+        %{"total" => total} -> total > 0
+        _ -> false
+      end
+    )
+    |> case do
+      %{"datetime" => datetime} -> datetime
+      _ -> nil
+    end
+  end
+
+  defp first_date_with_results(_), do: nil
 end

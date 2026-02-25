@@ -9,6 +9,7 @@ defmodule Logflare.LogEvent do
   alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Logs.IngestTransformers
   alias Logflare.Logs.Validators.BigQuerySchemaChange
+  alias Logflare.KeyValues
   alias Logflare.Sources.Source
 
   require Logger
@@ -22,11 +23,11 @@ defmodule Logflare.LogEvent do
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
     field :ingested_at, :utc_datetime_usec
-    field :origin_source_uuid, Ecto.UUID.Atom
-    field :origin_source_name, :string
+    field :source_uuid, Ecto.UUID.Atom
+    field :source_name, :string
     field :via_rule, :map
     field :retries, :integer, default: 0
-    field :log_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
+    field :event_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
 
     field :source_id, :integer, default: nil
 
@@ -76,12 +77,12 @@ defmodule Logflare.LogEvent do
       Map.merge(changeset.changes, %{
         pipeline_error: pipeline_error,
         source_id: source.id,
-        origin_source_uuid: source.token,
-        origin_source_name: source.name,
+        source_uuid: source.token,
+        source_name: source.name,
         valid: changeset.valid?,
         ingested_at: NaiveDateTime.utc_now(),
         id: changeset.changes.body["id"],
-        log_type: TypeDetection.detect(params)
+        event_type: TypeDetection.detect(params)
       })
 
     Logflare.LogEvent
@@ -158,7 +159,8 @@ defmodule Logflare.LogEvent do
 
   defp transform(%LE{valid: true} = le, %Source{} = source) do
     with {:ok, le} <- bigquery_spec(le),
-         {:ok, le} <- copy_fields(le, source) do
+         {:ok, le} <- copy_fields(le, source),
+         {:ok, le} <- kv_enrich(le, source) do
       le
     else
       {:error, message} ->
@@ -207,6 +209,44 @@ defmodule Logflare.LogEvent do
       end
 
     {:ok, Map.put(le, :body, new_body)}
+  end
+
+  defp kv_enrich(%LE{} = le, %Source{transform_key_values: nil, transform_key_values_parsed: nil}),
+       do: {:ok, le}
+
+  defp kv_enrich(%LE{} = le, %Source{transform_key_values_parsed: []}), do: {:ok, le}
+
+  defp kv_enrich(%LE{} = le, %Source{transform_key_values_parsed: parsed, user_id: user_id})
+       when is_list(parsed) do
+    new_body =
+      Enum.reduce(parsed, le.body, fn instruction, acc ->
+        apply_kv_instruction(acc, instruction, user_id)
+      end)
+
+    {:ok, Map.put(le, :body, new_body)}
+  end
+
+  # Fallback: parse at ingestion time when parsed field is not populated
+  defp kv_enrich(%LE{} = le, %Source{} = source) do
+    kv_enrich(le, Source.parse_key_values_config(source))
+  end
+
+  defp apply_kv_instruction(
+         body,
+         %{from_path: from_path, to_path: to_path} = instruction,
+         user_id
+       ) do
+    accessor_path = Map.get(instruction, :accessor_path)
+
+    with raw when not is_nil(raw) <- get_in(body, from_path),
+         raw_string <- to_string(raw),
+         true <- Logflare.Utils.flag("key_values", raw_string),
+         value when not is_nil(value) <-
+           KeyValues.Cache.lookup(user_id, raw_string, accessor_path) do
+      put_in(body, Enum.map(to_path, &Access.key(&1, %{})), value)
+    else
+      _ -> body
+    end
   end
 
   @doc """

@@ -42,6 +42,11 @@ defmodule Logflare.Utils.Guards do
   defguard is_datetime(value) when is_struct(value, DateTime)
 
   @doc """
+  Guard that indicates if the value is a `DateTime` struct with second precision.
+  """
+  defguard is_second_precision(value) when is_datetime(value) and value.microsecond == {0, 0}
+
+  @doc """
   Guard that indicates if the value is a `NaiveDateTime` struct.
   """
   defguard is_naive_datetime(value) when is_struct(value, NaiveDateTime)
@@ -55,4 +60,9 @@ defmodule Logflare.Utils.Guards do
   Guard that indicates if the value is a list or map.
   """
   defguard is_list_or_map(value) when is_list(value) or is_map(value)
+
+  @doc """
+  Guard that indicates if the value is a valid event type.
+  """
+  defguard is_event_type(value) when is_atom_value(value) and value in [:log, :metric, :trace]
 end

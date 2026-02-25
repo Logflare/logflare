@@ -12,7 +12,8 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   def subhead(assigns) do
     assigns =
       assigns
-      |> assign(:flag_multibackend, LogflareWeb.Utils.flag("multibackend", assigns.user))
+      |> assign(:flag_multibackend, Logflare.Utils.flag("multibackend", assigns.user))
+      |> assign(:flag_key_values, Logflare.Utils.flag("key_values", assigns.user))
 
     ~H"""
     <div class="subhead ">
@@ -37,6 +38,11 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
             <li :if={@flag_multibackend}>
               <.team_link team={@team} href={~p"/backends"}>
                 <i class="fas fa-database"></i><span class="hide-on-mobile"> backends</span>
+              </.team_link>
+            </li>
+            <li :if={@flag_key_values}>
+              <.team_link team={@team} href={~p"/key-values"}>
+                <i class="fas fa-th-list"></i><span class="hide-on-mobile"> key values</span>
               </.team_link>
             </li>
             <li>
