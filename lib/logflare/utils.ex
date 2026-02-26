@@ -4,7 +4,7 @@ defmodule Logflare.Utils do
   """
 
   alias Logflare.User
-  alias Logflare.LogEvent
+  alias Logflare.ConfigCatCache
   import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
@@ -32,12 +32,7 @@ defmodule Logflare.Utils do
             ConfigCat.get_value(feature, false)
 
           identifier when is_binary(identifier) ->
-            user_obj = ConfigCat.User.new("custom_value:#{feature}:#{identifier}")
-            ConfigCat.get_value(feature, false, user_obj)
-
-          %LogEvent{source_uuid: source_uuid, id: log_event_id} ->
-            user_obj = ConfigCat.User.new("source:#{source_uuid}:log_event:#{log_event_id}")
-            ConfigCat.get_value(feature, false, user_obj)
+            cached_flag_value_pct_of_identifiers(feature, identifier)
 
           %User{} = user ->
             user_obj = ConfigCat.User.new(user.email)
@@ -46,6 +41,21 @@ defmodule Logflare.Utils do
 
       true ->
         Map.get(overrides, feature, "false") == "true"
+    end
+  end
+
+  # uses a 100 discrete identifiers for % based flagging, to minimize cardinality in keys stored.
+  defp cached_flag_value_pct_of_identifiers(feature, identifier) do
+    hash = :erlang.phash2(identifier, 100)
+    cache_key = "#{feature}:#{hash}"
+    user = ConfigCat.User.new(cache_key)
+
+    case ConfigCatCache.fetch(cache_key, fn ->
+           {:commit, ConfigCat.get_value(feature, false, user)}
+         end) do
+      {:ok, value} -> value
+      {:commit, value} -> value
+      {:error, _} -> false
     end
   end
 
