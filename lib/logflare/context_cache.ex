@@ -31,7 +31,6 @@ defmodule Logflare.ContextCache do
   """
 
   require Logger
-  require Ex2ms
 
   @doc """
   Optional callback providing keys to bust based on a keyword defined in `Logflare.ContextCache.CacheBuster`
@@ -170,16 +169,19 @@ defmodule Logflare.ContextCache do
 
   defp refresh_entries(entries, context, cache) do
     Enum.each(entries, fn {fun, args} = key ->
-      case Cachex.take(cache, key) do
-        {:ok, nil} -> :ok
-        {:ok, _} -> apply_fun(context, fun, args)
-      end
+      Cachex.get_and_update(cache, key, fn
+        nil -> {:ignore, :ok}
+        {:cached, _val} -> {:commit, {:cached, apply(context, fun, args)}}
+      end)
     end)
   end
 
-
   defp replace_in_cached({:cached, %{id: _}}, _pkey, fresh), do: {:cached, fresh}
-  defp replace_in_cached({:cached, {:ok, %{id: _}}}, _pkey, fresh), do: {:cached, {:ok, fresh}}
+
+  defp replace_in_cached({:cached, tuple}, _pkey, fresh)
+       when is_tuple(tuple) and elem(tuple, 0) == :ok do
+    {:cached, put_elem(tuple, 1, fresh)}
+  end
 
   defp replace_in_cached({:cached, list}, pkey, fresh) when is_list(list) do
     {:cached,
@@ -205,7 +207,7 @@ defmodule Logflare.ContextCache do
       {:andalso, {:is_map, {:element, 2, :value}},
        {:==, {:map_get, :id, {:element, 2, :value}}, id}}
 
-    # match {_cached, {:ok, %{id: ^pkey}}}
+    # match {_cached, {:ok, %{id: ^pkey}}} and larger ok-tuples
     tuple_filter =
       {:andalso, {:is_tuple, {:element, 2, :value}},
        {:andalso, {:==, {:element, 1, {:element, 2, :value}}, :ok},

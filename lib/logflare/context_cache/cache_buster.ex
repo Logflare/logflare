@@ -66,11 +66,17 @@ defmodule Logflare.ContextCache.CacheBuster do
     {:reply, :ok, state}
   end
 
+  @type cainophile_change ::
+          %NewRecord{}
+          | %UpdatedRecord{}
+          | %DeletedRecord{}
+          | %Cainophile.Changes.TruncatedRelation{}
+
   @doc """
   Classifies WAL changes, pre-fetches fresh structs for integer-pkey updates, and broadcasts
   the results cluster-wide.
   """
-  @spec broadcast_cache_updates([Cainophile.Changes.change()]) :: :ok
+  @spec broadcast_cache_updates([cainophile_change()]) :: :ok
   def broadcast_cache_updates(changes) do
     results =
       changes

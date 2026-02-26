@@ -98,6 +98,19 @@ defmodule Logflare.ContextCacheTest do
       assert {:cached, %Source{name: "InPlace"}} = Cachex.get!(Sources.Cache, cache_key)
     end
 
+    test "refresh_keys/1 with struct does in-place update for :ok tuple", %{user: user} do
+      {:ok, key} = Auth.create_access_token(user)
+      {:ok, token, _user} = Auth.Cache.verify_access_token(key.token)
+      cache_key = {:verify_access_token, [key.token]}
+      assert {:cached, {:ok, %_{id: _}, %_{id: _}}} = Cachex.get!(Auth.Cache, cache_key)
+
+      fresh = %{token | description: "InPlace"}
+      assert :ok = ContextCache.refresh_keys([{Auth, token.id, fresh}])
+
+      assert {:cached, {:ok, %_{description: "InPlace"}, %_{id: _}}} =
+               Cachex.get!(Auth.Cache, cache_key)
+    end
+
     test "refresh_keys/1 via keys_to_bust callback", %{source: source, user: user} do
       backend = insert(:backend, user: user)
       rule = insert(:rule, source: source, backend: backend)
