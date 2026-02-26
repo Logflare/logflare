@@ -388,7 +388,6 @@ defmodule Logflare.AlertingTest do
   end
 
   describe "trigger_alert_now/1" do
-
     test "enqueues an immediate AlertWorker job", %{user: user} do
       alert = insert(:alert, user: user)
       assert {:ok, %Oban.Job{}} = Alerting.trigger_alert_now(alert)
@@ -427,7 +426,6 @@ defmodule Logflare.AlertingTest do
   end
 
   describe "enabled field" do
-
     test "disabling deletes future jobs, keeps past jobs, ignores other alerts", %{user: user} do
       alert = insert(:alert, user: user)
       other_alert = insert(:alert, user: user, name: "other alert")
