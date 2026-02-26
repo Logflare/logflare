@@ -152,8 +152,7 @@ defmodule Logflare.ContextCacheTest do
         insert(:user)
       end)
 
-      :timer.sleep(500)
-      assert_received {:cache_updates, _results}
+      assert_receive {:cache_updates, _results}, 500
     end
   end
 end
