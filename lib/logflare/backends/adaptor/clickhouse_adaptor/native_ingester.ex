@@ -3,7 +3,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   Orchestrates INSERT operations over the ClickHouse native TCP protocol.
 
   Uses cached column schemas from `SchemaCache` to pre-encode data blocks
-  before sending the INSERT query, minimizing work inside ClickHouse's
+  before sending the insert query, minimizing work inside ClickHouse's
   server-side query measurement window.
   """
 
