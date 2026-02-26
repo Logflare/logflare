@@ -8,5 +8,5 @@ name = "mapper_ex"
 crate-type = ["cdylib"]
 
 [dependencies]
-rustler = "0.36.2"
+rustler = "0.37.2"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
