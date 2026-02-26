@@ -214,7 +214,7 @@ defmodule Logflare.Mixfile do
 
       # Code quality
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
-      {:sobelow, "~> 0.11", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
 
       # Charting
