@@ -492,6 +492,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
         "metric_name" => "http_requests_total",
         "value" => 42.5,
         "project" => "proj",
+        "scope" => %{"name" => "my-scope", "attributes" => %{"lib" => "otel"}},
         "metadata" => %{"region" => "us-east-1", "level" => "info"},
         "timestamp" => 1_700_000_000_000_000
       }
@@ -514,6 +515,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert is_map(res_attrs)
 
       for {_k, v} <- res_attrs do
+        assert is_binary(v), "Expected string value, got: #{inspect(v)}"
+      end
+
+      # scope_attributes should be flat
+      scope_attrs = result["scope_attributes"]
+      assert is_map(scope_attrs)
+
+      for {_k, v} <- scope_attrs do
         assert is_binary(v), "Expected string value, got: #{inspect(v)}"
       end
     end
