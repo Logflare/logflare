@@ -144,6 +144,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
     encode_column_values("String", json_strings)
   end
 
+  def encode_column_values("Map(" <> rest, values) do
+    {key_type, value_type} = parse_map_types(rest)
+    {offsets, flat_keys, flat_values} = build_map_offsets_and_data(values)
+
+    [
+      Enum.map(offsets, &Protocol.encode_uint64/1),
+      encode_column_values(key_type, flat_keys),
+      encode_column_values(value_type, flat_values)
+    ]
+  end
+
   def encode_column_values("Array(" <> rest, values) do
     inner_type = extract_inner_type(rest)
     {offsets, flat} = build_array_offsets_and_data(values)
@@ -225,5 +236,57 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
       end)
 
     {Enum.reverse(offsets_rev), Enum.reverse(flat_rev)}
+  end
+
+  @spec build_map_offsets_and_data([map()]) :: {[non_neg_integer()], [term()], [term()]}
+  defp build_map_offsets_and_data(maps) do
+    {offsets_rev, keys_rev, values_rev} =
+      Enum.reduce(maps, {[], [], []}, fn map, {offsets, keys, vals} ->
+        prev =
+          case offsets do
+            [last | _] -> last
+            [] -> 0
+          end
+
+        pairs = if is_map(map), do: Map.to_list(map), else: []
+        {ks, vs} = Enum.unzip(pairs)
+        new_offset = prev + length(pairs)
+        {[new_offset | offsets], Enum.reverse(ks) ++ keys, Enum.reverse(vs) ++ vals}
+      end)
+
+    {Enum.reverse(offsets_rev), Enum.reverse(keys_rev), Enum.reverse(values_rev)}
+  end
+
+  @spec parse_map_types(String.t()) :: {String.t(), String.t()}
+  @spec parse_map_types(String.t()) :: {String.t(), String.t()}
+  def parse_map_types(rest) do
+    {key_type, remainder} = extract_balanced_type(rest)
+    value_type = remainder |> String.trim_leading() |> String.trim_trailing(")")
+    {key_type, value_type}
+  end
+
+  @spec extract_balanced_type(String.t()) :: {String.t(), String.t()}
+  defp extract_balanced_type(str), do: extract_balanced_type_walk(str, 0, [])
+
+  @spec extract_balanced_type_walk(String.t(), non_neg_integer(), [char()]) ::
+          {String.t(), String.t()}
+  defp extract_balanced_type_walk(<<","::utf8, rest::binary>>, 0, acc) do
+    {acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
+  end
+
+  defp extract_balanced_type_walk(<<")"::utf8, rest::binary>>, 0, acc) do
+    {acc |> Enum.reverse() |> IO.iodata_to_binary(), ")" <> rest}
+  end
+
+  defp extract_balanced_type_walk(<<")"::utf8, rest::binary>>, depth, acc) do
+    extract_balanced_type_walk(rest, depth - 1, [?) | acc])
+  end
+
+  defp extract_balanced_type_walk(<<"("::utf8, rest::binary>>, depth, acc) do
+    extract_balanced_type_walk(rest, depth + 1, [?( | acc])
+  end
+
+  defp extract_balanced_type_walk(<<char::utf8, rest::binary>>, depth, acc) do
+    extract_balanced_type_walk(rest, depth, [char | acc])
   end
 end

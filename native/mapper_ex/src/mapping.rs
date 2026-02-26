@@ -27,6 +27,7 @@ pub struct CompiledField {
     pub pick: Vec<PickEntry>,
     pub enum8_data: Option<Enum8Data>,
     pub filter_nil: bool,
+    pub flat_map_value_type: FlatMapValueType,
 }
 
 #[derive(Debug)]
@@ -64,6 +65,13 @@ pub enum FieldType {
     },
     ArrayJson,
     ArrayMap,
+    FlatMap,
+    ArrayFlatMap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FlatMapValueType {
+    String,
 }
 
 #[derive(Debug, Clone)]
@@ -202,6 +210,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     };
 
     let filter_nil = decode_filter_nil(env, field);
+    let flat_map_value_type = decode_flat_map_value_type(env, field)?;
 
     Ok(CompiledField {
         name,
@@ -216,6 +225,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         pick,
         enum8_data,
         filter_nil,
+        flat_map_value_type,
     })
 }
 
@@ -243,6 +253,8 @@ fn parse_field_type<'a>(env: Env<'a>, field: Term<'a>, s: &str) -> Result<FieldT
         }
         "array_json" => Ok(FieldType::ArrayJson),
         "array_map" => Ok(FieldType::ArrayMap),
+        "flat_map" => Ok(FieldType::FlatMap),
+        "array_flat_map" => Ok(FieldType::ArrayFlatMap),
         other => Err(format!("unknown field type: {}", other)),
     }
 }
@@ -256,13 +268,14 @@ fn decode_default<'a>(
         Some(t) => t,
         None => {
             return Ok(match field_type {
-                FieldType::Json => DefaultValue::EmptyMap,
+                FieldType::Json | FieldType::FlatMap => DefaultValue::EmptyMap,
                 FieldType::ArrayString
                 | FieldType::ArrayUInt64
                 | FieldType::ArrayFloat64
                 | FieldType::ArrayDateTime64 { .. }
                 | FieldType::ArrayJson
-                | FieldType::ArrayMap => DefaultValue::EmptyList,
+                | FieldType::ArrayMap
+                | FieldType::ArrayFlatMap => DefaultValue::EmptyList,
                 _ => DefaultValue::Nil,
             });
         }
@@ -443,6 +456,22 @@ fn decode_filter_nil<'a>(env: Env<'a>, field: Term<'a>) -> bool {
     match get_term_key(env, field, "filter_nil") {
         Some(t) => t.decode::<bool>().unwrap_or(false),
         None => false,
+    }
+}
+
+fn decode_flat_map_value_type<'a>(
+    env: Env<'a>,
+    field: Term<'a>,
+) -> Result<FlatMapValueType, String> {
+    match get_string_key(env, field, "value_type")? {
+        None => Ok(FlatMapValueType::String),
+        Some(s) => match s.to_lowercase().as_str() {
+            "string" => Ok(FlatMapValueType::String),
+            other => Err(format!(
+                "unsupported value_type: '{}' (supported: string)",
+                other
+            )),
+        },
     }
 }
 

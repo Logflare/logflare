@@ -54,6 +54,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
                "otel_traces_#{stringified_backend_token}"
     end
+
+    test "generates simple_otel-prefixed table names per log type",
+         %{backend: backend, stringified_backend_token: stringified_backend_token} do
+      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :log) ==
+               "simple_otel_logs_#{stringified_backend_token}"
+
+      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :metric) ==
+               "simple_otel_metrics_#{stringified_backend_token}"
+
+      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :trace) ==
+               "simple_otel_traces_#{stringified_backend_token}"
+    end
   end
 
   describe "connection and basic functionality" do
@@ -238,7 +250,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
+      {source, backend, cleanup_fn} =
+        setup_clickhouse_test(config: %{use_simple_schemas: true})
+
       on_exit(cleanup_fn)
 
       start_supervised!({ClickHouseAdaptor, backend})
@@ -381,6 +395,139 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
         cleanup_fn.()
       end)
+    end
+
+    test "insert_simple_log_events/3 routes through native pool with Map attributes", %{
+      source: source,
+      backend: query_backend
+    } do
+      {_source, native_backend, cleanup_fn} =
+        setup_clickhouse_test(
+          source: source,
+          config: %{insert_protocol: "native", native_port: 9000}
+        )
+
+      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(native_backend, :log)
+
+      ddl = QueryTemplates.create_simple_table_statement(table_name, :log, ttl_days: 0)
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
+
+      log_event =
+        build_mapped_log_event(
+          source: source,
+          message: "native simple test",
+          body: %{"metadata" => %{"level" => "error", "host" => "web-1"}},
+          mapping_variant: :simple
+        )
+
+      assert :ok = ClickHouseAdaptor.insert_simple_log_events(native_backend, [log_event], :log)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          query_backend,
+          "SELECT event_message, log_attributes, resource_attributes FROM #{table_name}"
+        )
+
+      assert row["event_message"] == "native simple test"
+      assert is_map(row["log_attributes"])
+      assert row["log_attributes"]["level"] == "error"
+      assert row["log_attributes"]["host"] == "web-1"
+      assert is_map(row["resource_attributes"])
+
+      on_exit(fn ->
+        NativePoolSup.stop_pool(native_backend)
+        ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
+        cleanup_fn.()
+      end)
+    end
+
+    test "insert_simple_log_events/3 inserts logs into simple table with Map attributes", %{
+      source: source,
+      backend: backend
+    } do
+      log_event =
+        build_mapped_log_event(
+          source: source,
+          message: "Simple log insert",
+          body: %{"metadata" => %{"level" => "warn", "region" => "us-west-2"}},
+          mapping_variant: :simple
+        )
+
+      :ok = ClickHouseAdaptor.insert_simple_log_events(backend, [log_event], :log)
+
+      Process.sleep(100)
+
+      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :log)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT event_message, resource_attributes, scope_attributes, log_attributes FROM #{table_name}"
+        )
+
+      assert row["event_message"] == "Simple log insert"
+      assert is_map(row["resource_attributes"])
+      assert is_map(row["scope_attributes"])
+      assert is_map(row["log_attributes"])
+      assert row["log_attributes"]["level"] == "warn"
+      assert row["log_attributes"]["region"] == "us-west-2"
+    end
+
+    test "insert_simple_log_events/3 inserts metrics into simple table with Map attributes", %{
+      source: source,
+      backend: backend
+    } do
+      metric_event =
+        build_mapped_metric_event(
+          source: source,
+          message: "Simple metric insert",
+          mapping_variant: :simple
+        )
+
+      :ok = ClickHouseAdaptor.insert_simple_log_events(backend, [metric_event], :metric)
+
+      Process.sleep(100)
+
+      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :metric)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT event_message, resource_attributes, scope_attributes, attributes FROM #{table_name}"
+        )
+
+      assert row["event_message"] == "Simple metric insert"
+      assert is_map(row["resource_attributes"])
+      assert is_map(row["scope_attributes"])
+      assert is_map(row["attributes"])
+    end
+
+    test "insert_simple_log_events/3 inserts traces into simple table with Map attributes", %{
+      source: source,
+      backend: backend
+    } do
+      trace_event =
+        build_mapped_trace_event(
+          source: source,
+          message: "Simple trace insert",
+          mapping_variant: :simple
+        )
+
+      :ok = ClickHouseAdaptor.insert_simple_log_events(backend, [trace_event], :trace)
+
+      Process.sleep(100)
+
+      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :trace)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT event_message, resource_attributes, span_attributes FROM #{table_name}"
+        )
+
+      assert row["event_message"] == "Simple trace insert"
+      assert is_map(row["resource_attributes"])
+      assert is_map(row["span_attributes"])
     end
 
     test "insert_log_events/3 inserts into type-specific table", %{

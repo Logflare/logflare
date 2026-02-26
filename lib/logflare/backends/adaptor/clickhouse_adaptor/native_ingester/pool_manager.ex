@@ -18,6 +18,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolManager
 
   @inactivity_timeout :timer.minutes(5)
   @resolve_interval :timer.seconds(30)
+  @warm_up_count System.schedulers_online()
 
   typedstruct do
     field :backend_id, pos_integer(), enforce: true
@@ -163,7 +164,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolManager
   defp do_start_pool(%Backend{} = backend, %__MODULE__{backend_id: backend_id} = state) do
     case PoolSup.start_pool(backend) do
       :ok ->
-        monitor_pool(backend, state)
+        case monitor_pool(backend, state) do
+          {:ok, new_state} ->
+            schedule_warm_up(backend)
+            {:ok, new_state}
+
+          error ->
+            error
+        end
 
       {:error, reason} ->
         Logger.error("Failed to start ClickHouse native TCP pool",
@@ -173,6 +181,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolManager
 
         {{:error, reason}, state}
     end
+  end
+
+  @spec schedule_warm_up(Backend.t()) :: :ok
+  defp schedule_warm_up(%Backend{} = backend) do
+    Task.start(fn ->
+      Pool.warm_pool(backend, @warm_up_count)
+    end)
+
+    :ok
   end
 
   @spec monitor_pool(Backend.t(), __MODULE__.t()) ::

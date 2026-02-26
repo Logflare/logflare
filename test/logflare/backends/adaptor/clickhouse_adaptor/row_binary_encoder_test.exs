@@ -1052,12 +1052,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
         )
 
       binary = IO.iodata_to_binary(encoded)
-      # Preserves order for list input
-      # count(2) + string("x") + string("y") + uint8(10) + uint8(20)
-      assert binary == <<2, 1, "x", 1, "y", 10, 20>>
+      # Preserves order for list input, interleaved key-value pairs
+      # count(2) + (string("x") + uint8(10)) + (string("y") + uint8(20))
+      assert binary == <<2, 1, "x", 10, 1, "y", 20>>
     end
 
-    test "encodes keys before values" do
+    test "encodes as interleaved key-value pairs" do
       encoded =
         RowBinaryEncoder.map(
           [{"key1", "val1"}, {"key2", "val2"}],
@@ -1066,18 +1066,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
         )
 
       binary = IO.iodata_to_binary(encoded)
-      # count + all keys + all values
-      assert binary == <<2, 4, "key1", 4, "key2", 4, "val1", 4, "val2">>
+      # count + key1 + val1 + key2 + val2
+      assert binary == <<2, 4, "key1", 4, "val1", 4, "key2", 4, "val2">>
     end
   end
 
   describe "map_string_string/1" do
-    test "encodes Map(String, String)" do
+    test "encodes Map(String, String) as interleaved key-value pairs" do
       encoded = RowBinaryEncoder.map_string_string([{"name", "alice"}, {"city", "boston"}])
 
       binary = IO.iodata_to_binary(encoded)
-      # count(2) + string("name") + string("city") + string("alice") + string("boston")
-      assert binary == <<2, 4, "name", 4, "city", 5, "alice", 6, "boston">>
+      # RowBinary Map = Array(Tuple(K,V)): count(2) + key1 + val1 + key2 + val2
+      assert binary == <<2, 4, "name", 5, "alice", 4, "city", 6, "boston">>
     end
 
     test "handles empty map" do
@@ -1102,10 +1102,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
       encoded = RowBinaryEncoder.map_string_uint64([{"count", 100}, {"total", 500}])
 
       binary = IO.iodata_to_binary(encoded)
-      # count(2) + string("count") + string("total") + uint64(100) + uint64(500)
+      # count(2) + (string("count") + uint64(100)) + (string("total") + uint64(500))
       <<count, rest::binary>> = binary
       assert count == 2
-      # 2 strings (6 + 6 bytes) + 2 uint64 (16 bytes) = 28 bytes
+      # 2 × (string + uint64) = (6 + 8) + (6 + 8) = 28 bytes
       assert byte_size(rest) == 28
     end
 
@@ -1121,7 +1121,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
       binary = IO.iodata_to_binary(encoded)
       <<count, rest::binary>> = binary
       assert count == 2
-      # 2 strings (2 + 2 bytes) + 2 int32 (8 bytes) = 12 bytes
+      # 2 × (string + int32) = (2 + 4) + (2 + 4) = 12 bytes
       assert byte_size(rest) == 12
     end
 
@@ -1152,12 +1152,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
   end
 
   describe "map_string_bool/1" do
-    test "encodes Map(String, Bool)" do
+    test "encodes Map(String, Bool) as interleaved key-value pairs" do
       encoded = RowBinaryEncoder.map_string_bool([{"enabled", true}, {"visible", false}])
 
       binary = IO.iodata_to_binary(encoded)
-      # count(2) + string("enabled") + string("visible") + bool(true) + bool(false)
-      assert binary == <<2, 7, "enabled", 7, "visible", 1, 0>>
+      # RowBinary Map = Array(Tuple(K,V)): count(2) + key1 + val1 + key2 + val2
+      assert binary == <<2, 7, "enabled", 1, 7, "visible", 0>>
     end
 
     test "handles empty map" do
