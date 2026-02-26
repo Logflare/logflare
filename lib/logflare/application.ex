@@ -146,8 +146,14 @@ defmodule Logflare.Application do
     # only add in config cat to multi-tenant prod
     config_cat =
       case Application.get_env(:logflare, :config_cat_sdk_key) do
-        nil -> []
-        config_cat_key -> [{ConfigCat, [sdk_key: config_cat_key]}]
+        nil ->
+          []
+
+        config_cat_key ->
+          [
+            Logflare.ConfigCatCache,
+            {ConfigCat, [sdk_key: config_cat_key]}
+          ]
       end
 
     goth ++ config_cat
