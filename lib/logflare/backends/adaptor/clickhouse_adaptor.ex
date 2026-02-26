@@ -200,6 +200,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
+  Determines if a backend is hosted on ClickHouse Cloud
+  by checking if the URL hostname ends with `.clickhouse.cloud`.
+
+  Note: _There may be edge cases where this will not be picked up_
+  """
+  @spec clickhouse_cloud?(Backend.t()) :: boolean()
+  def clickhouse_cloud?(%Backend{config: %{url: url}}) when is_non_empty_binary(url) do
+    clickhouse_cloud_url?(url)
+  end
+
+  def clickhouse_cloud?(%Backend{}), do: false
+
+  @spec clickhouse_cloud_url?(String.t()) :: boolean()
+  def clickhouse_cloud_url?(url) when is_non_empty_binary(url) do
+    case URI.new(url) do
+      {:ok, %URI{host: host}} when is_binary(host) ->
+        String.ends_with?(host, ".clickhouse.cloud")
+
+      _ ->
+        false
+    end
+  end
+
+  def clickhouse_cloud_url?(_url), do: false
+
+  @doc """
   Produces a type-specific ingest table name for ClickHouse.
 
   - `:log`    -> `otel_logs_<token>`
@@ -396,9 +422,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec provision_standard_tables(Backend.t()) :: :ok | {:error, Exception.t()}
   defp provision_standard_tables(backend) do
+    cloud? = clickhouse_cloud?(backend)
+
     Enum.reduce_while([:log, :metric, :trace], :ok, fn event_type, :ok ->
       table_name = clickhouse_ingest_table_name(backend, event_type)
-      statement = QueryTemplates.create_table_statement(table_name, event_type, [])
+      ddl_opts = build_ddl_opts(event_type, cloud?)
+      statement = QueryTemplates.create_table_statement(table_name, event_type, ddl_opts)
 
       case execute_ch_query(backend, statement) do
         {:ok, _} -> {:cont, :ok}
@@ -409,15 +438,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec provision_simple_tables(Backend.t()) :: :ok | {:error, Exception.t()}
   defp provision_simple_tables(backend) do
+    cloud? = clickhouse_cloud?(backend)
+
     Enum.reduce_while([:log, :metric, :trace], :ok, fn event_type, :ok ->
       table_name = simple_clickhouse_ingest_table_name(backend, event_type)
-      statement = QueryTemplates.create_simple_table_statement(table_name, event_type, [])
+      ddl_opts = build_ddl_opts(event_type, cloud?)
+      statement = QueryTemplates.create_simple_table_statement(table_name, event_type, ddl_opts)
 
       case execute_ch_query(backend, statement) do
         {:ok, _} -> {:cont, :ok}
         {:error, _} = error -> {:halt, error}
       end
     end)
+  end
+
+  @spec build_ddl_opts(TypeDetection.event_type(), boolean()) :: Keyword.t()
+  defp build_ddl_opts(event_type, cloud?) do
+    optimized? =
+      event_type == :log or QueryTemplates.apply_optimized_settings_to_all_tables?()
+
+    [optimized_settings: optimized?, clickhouse_cloud: cloud?]
   end
 
   @doc false

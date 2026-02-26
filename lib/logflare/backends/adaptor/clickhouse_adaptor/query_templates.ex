@@ -10,6 +10,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   @default_table_engine Application.compile_env(:logflare, :clickhouse_backend_adaptor)[:engine]
   @default_ttl_days 90
 
+  # When true, applies optimized settings to all table types (logs, metrics, traces).
+  # When false, only applies to *otel_logs* tables (standard + simple).
+  @apply_optimized_settings_to_all_tables false
+
+  @base_settings "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
+
+  @optimized_settings [
+    "max_parts_in_total = 20000",
+    "parts_to_delay_insert = 5000",
+    "parts_to_throw_insert = 10000",
+    "min_bytes_for_wide_part = 0",
+    "max_parts_to_merge_at_once = 25"
+  ]
+
+  @cloud_settings [
+    "shared_merge_tree_max_replicas_to_merge_parts_for_each_parts_range = 0",
+    "shared_merge_tree_activate_coordinated_merges_tasks = 1",
+    "shared_merge_tree_enable_coordinated_merges = 1",
+    "shared_merge_tree_enable_keeper_parts_extra_data = 1",
+    "shared_merge_tree_merge_coordinator_merges_prepare_count = 1200",
+    "shared_merge_tree_merge_coordinator_max_merge_request_size = 500",
+    "shared_merge_tree_merge_coordinator_fetch_fresh_metadata_period_ms = 5000",
+    "shared_merge_tree_merge_coordinator_max_period_ms = 5000",
+    "min_bytes_for_full_part_storage = 2147483648"
+  ]
+
   @log_columns ~w(id source_uuid source_name project trace_id span_id trace_flags
     severity_text severity_number service_name event_message scope_name scope_version
     scope_schema_url resource_schema_url resource_attributes scope_attributes
@@ -125,7 +151,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
       end,
-      "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
+      build_settings_string(opts)
     ])
     |> String.trim_trailing("\n")
   end
@@ -193,7 +219,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
       end,
-      "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
+      build_settings_string(opts)
     ])
     |> String.trim_trailing("\n")
   end
@@ -247,7 +273,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
       end,
-      "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
+      build_settings_string(opts)
     ])
     |> String.trim_trailing("\n")
   end
@@ -309,7 +335,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
       end,
-      "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
+      build_settings_string(opts)
     ])
     |> String.trim_trailing("\n")
   end
@@ -375,7 +401,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
       end,
-      "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
+      build_settings_string(opts)
     ])
     |> String.trim_trailing("\n")
   end
@@ -427,13 +453,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
       end,
-      "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
+      build_settings_string(opts)
     ])
     |> String.trim_trailing("\n")
   end
 
+  @spec apply_optimized_settings_to_all_tables?() :: boolean()
+  def apply_optimized_settings_to_all_tables?, do: @apply_optimized_settings_to_all_tables
+
   @spec extract_opts(String.t(), Keyword.t()) :: {String.t(), String.t(), pos_integer() | nil}
-  defp extract_opts(table, opts) do
+  defp extract_opts(table, opts) when is_non_empty_binary(table) and is_list(opts) do
     database = Keyword.get(opts, :database)
     engine = Keyword.get(opts, :engine, @default_table_engine)
     ttl_days_temp = Keyword.get(opts, :ttl_days, @default_ttl_days)
@@ -451,5 +480,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       end
 
     {db_table, engine, ttl_days}
+  end
+
+  @spec build_settings_string(Keyword.t()) :: String.t()
+  defp build_settings_string(opts) when is_list(opts) do
+    optimized? = Keyword.get(opts, :optimized_settings, false)
+    cloud? = Keyword.get(opts, :clickhouse_cloud, false)
+
+    extras =
+      case {optimized?, cloud?} do
+        {true, true} -> @optimized_settings ++ @cloud_settings
+        {true, false} -> @optimized_settings
+        _ -> []
+      end
+
+    case extras do
+      [] -> @base_settings
+      list -> @base_settings <> ", " <> Enum.join(list, ", ")
+    end
   end
 end
