@@ -18,6 +18,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
   @checkout_timeout 10_000
   @worker_idle_timeout 30_000
 
+  @min_checkout_age 5_000
+
   @default_native_port 9000
   @secure_native_port 9440
 
@@ -117,10 +119,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
 
   @impl NimblePool
   def handle_checkout(:checkout, _from, %Connection{} = conn, pool_state) do
-    if Connection.alive?(conn) do
-      {:ok, conn, conn, pool_state}
+    now = System.monotonic_time(:millisecond)
+    last_use = conn.last_used_at || conn.connected_at || 0
+
+    if now - last_use > @min_checkout_age do
+      if Connection.alive?(conn) do
+        {:ok, conn, conn, pool_state}
+      else
+        {:remove, :disconnected, pool_state}
+      end
     else
-      {:remove, :disconnected, pool_state}
+      {:ok, conn, conn, pool_state}
     end
   end
 
@@ -130,7 +139,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
   end
 
   def handle_checkin(%Connection{} = conn, _from, _old_conn, pool_state) do
-    {:ok, conn, pool_state}
+    {:ok, %{conn | last_used_at: System.monotonic_time(:millisecond)}, pool_state}
   end
 
   @impl NimblePool

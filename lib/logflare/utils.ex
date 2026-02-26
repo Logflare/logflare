@@ -2,8 +2,62 @@ defmodule Logflare.Utils do
   @moduledoc """
   Context-only utilities. Should not be used outside of `lib/logflare/*`.
   """
+
+  alias Logflare.User
+  alias Logflare.ConfigCatCache
   import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
+
+  @doc """
+  Checks if a feature flag is enabled.
+  If SDK key is not set, will always return false.
+  In test mode, will always return true.
+
+  ### Example
+    iex> flag("my-feature")
+    true
+  """
+  def flag(feature, identifer \\ nil) when is_binary(feature) do
+    config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
+    env = Application.get_env(:logflare, :env)
+    overrides = Application.get_env(:logflare, :feature_flag_override, %{})
+
+    cond do
+      env == :test ->
+        true
+
+      config_cat_key != nil ->
+        case identifer do
+          nil ->
+            ConfigCat.get_value(feature, false)
+
+          identifier when is_binary(identifier) ->
+            cached_flag_value_pct_of_identifiers(feature, identifier)
+
+          %User{} = user ->
+            user_obj = ConfigCat.User.new(user.email)
+            ConfigCat.get_value(feature, false, user_obj)
+        end
+
+      true ->
+        Map.get(overrides, feature, "false") == "true"
+    end
+  end
+
+  # uses a 100 discrete identifiers for % based flagging, to minimize cardinality in keys stored.
+  defp cached_flag_value_pct_of_identifiers(feature, identifier) do
+    hash = :erlang.phash2(identifier, 100)
+    cache_key = "#{feature}:#{hash}"
+    user = ConfigCat.User.new(cache_key)
+
+    case ConfigCatCache.fetch(cache_key, fn ->
+           {:commit, ConfigCat.get_value(feature, false, user)}
+         end) do
+      {:ok, value} -> value
+      {:commit, value} -> value
+      {:error, _} -> false
+    end
+  end
 
   @original_to_string String.Chars.impl_for(%Tesla.Env{})
   def tesla_env_to_string(), do: @original_to_string

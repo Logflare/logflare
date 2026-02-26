@@ -154,7 +154,7 @@ defmodule Logflare.Mixfile do
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:phoenix_test, "~> 0.9.1", only: :test, runtime: false},
-      {:phoenix_test_playwright, "~> 0.9.1", only: :test, runtime: false},
+      {:phoenix_test_playwright, "~> 0.11.1", only: :test, runtime: false},
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 
