@@ -122,7 +122,7 @@ defmodule Logflare.ContextCache.CacheBuster do
     end
   end
 
-  defp fetch_or_bust({:refresh, {context, key}}), do: {:bust, {context, key}}
+  defp fetch_or_bust({:refresh, {context, keyword}}), do: {:bust, {context, keyword}}
   defp fetch_or_bust({:bust, {context, key}}), do: {:bust, {context, key}}
 
   # WAL record classification

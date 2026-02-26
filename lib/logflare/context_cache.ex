@@ -125,34 +125,13 @@ defmodule Logflare.ContextCache do
     end)
   end
 
-  @spec refresh_keys(list()) :: :ok
+  @spec refresh_keys([{module(), integer(), struct()}]) :: :ok
   def refresh_keys(values) when is_list(values) do
-    for value <- values do
-      case value do
-        {context, pkey, struct} -> refresh_key(context, pkey, struct)
-        {context, primary_key} -> refresh_key(context, primary_key)
-      end
-    end
+    Enum.each(values, fn {context, pkey, struct} ->
+      refresh_key(context, pkey, struct)
+    end)
 
     :ok
-  end
-
-  defp refresh_key(context, kw) when is_list(kw) do
-    context_cache = cache_name(context)
-
-    Cachex.execute!(context_cache, fn cache ->
-      context_cache.keys_to_bust(kw)
-      |> refresh_entries(context, cache)
-    end)
-  end
-
-  defp refresh_key(context, pkey) do
-    context_cache = cache_name(context)
-
-    Cachex.execute!(context_cache, fn cache ->
-      keys_with_id(cache, pkey)
-      |> refresh_entries(context, cache)
-    end)
   end
 
   defp refresh_key(context, pkey, fresh_struct) when is_integer(pkey) do
@@ -163,15 +142,6 @@ defmodule Logflare.ContextCache do
       |> Enum.each(fn {key, cached_value} ->
         new_value = replace_in_cached(cached_value, pkey, fresh_struct)
         Cachex.update(cache, key, new_value)
-      end)
-    end)
-  end
-
-  defp refresh_entries(entries, context, cache) do
-    Enum.each(entries, fn {fun, args} = key ->
-      Cachex.get_and_update(cache, key, fn
-        nil -> {:ignore, :ok}
-        {:cached, _val} -> {:commit, {:cached, apply(context, fun, args)}}
       end)
     end)
   end
