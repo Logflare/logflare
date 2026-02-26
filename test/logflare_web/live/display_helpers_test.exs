@@ -21,7 +21,8 @@ defmodule LogflareWeb.Live.DisplayHelpersTest do
         schema: "public",
         storage_region: "eu-west-1",
         table: "log_events",
-        url: "https://api.example.com"
+        url: "https://api.example.com",
+        use_simple_schemas: true
       }
 
       check all key <- atom(:alphanumeric), key not in Map.keys(config) do
@@ -41,7 +42,8 @@ defmodule LogflareWeb.Live.DisplayHelpersTest do
                  schema: "public",
                  storage_region: "eu-west-1",
                  table: "log_events",
-                 url: "https://api.example.com"
+                 url: "https://api.example.com",
+                 use_simple_schemas: true
                }
       end
     end
