@@ -380,12 +380,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   Provisions all type-specific ingest tables for the backend, if they do not already exist.
 
   Creates one table per log type: `_logs`, `_metrics`, and `_traces`.
+  Simple schema tables (`_simple_logs`, etc.) are only provisioned when `use_simple_schemas: true`
+  is set in the backend config.
   """
   @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, Exception.t()}
-  def provision_ingest_tables(%Backend{} = backend) do
+  def provision_ingest_tables(%Backend{config: %{use_simple_schemas: true}} = backend) do
     with :ok <- provision_standard_tables(backend) do
       provision_simple_tables(backend)
     end
+  end
+
+  def provision_ingest_tables(%Backend{} = backend) do
+    provision_standard_tables(backend)
   end
 
   @spec provision_standard_tables(Backend.t()) :: :ok | {:error, Exception.t()}

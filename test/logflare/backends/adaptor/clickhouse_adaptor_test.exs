@@ -250,7 +250,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
+      {source, backend, cleanup_fn} =
+        setup_clickhouse_test(config: %{use_simple_schemas: true})
+
       on_exit(cleanup_fn)
 
       start_supervised!({ClickHouseAdaptor, backend})

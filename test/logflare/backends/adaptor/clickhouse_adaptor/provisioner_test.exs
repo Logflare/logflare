@@ -69,7 +69,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       end
     end
 
-    test "provisions both standard and simple tables", %{backend: backend} do
+    test "provisions both standard and simple tables when use_simple_schemas is set to true" do
+      {_source, backend, cleanup_fn} =
+        setup_clickhouse_test(config: %{use_simple_schemas: true})
+
+      on_exit(cleanup_fn)
+
+      {:ok, supervisor_pid} = ClickHouseAdaptor.start_link(backend)
+
+      on_exit(fn ->
+        if Process.alive?(supervisor_pid), do: Process.exit(supervisor_pid, :shutdown)
+      end)
+
       {:ok, pid} = Provisioner.start_link(backend)
       ref = Process.monitor(pid)
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
