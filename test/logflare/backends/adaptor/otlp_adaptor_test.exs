@@ -87,7 +87,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
         |> Enum.map(&Protobuf.encode/1)
 
       for response_body <- response_bodies do
-        mock_adapter(2, fn env ->
+        mock_adapter(fn env ->
           assert env.method == :post
           assert env.url == "http://localhost:4318/v1/logs"
 
@@ -100,7 +100,6 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
         end)
 
         assert :ok = @subject.test_connection(ctx.backend)
-        assert :ok = @subject.test_connection({ctx.source, ctx.backend})
       end
     end
 

@@ -22,7 +22,7 @@ steps:
       - --metadata=google-monitoring-enabled=true,google-logging-enabled=true
       - --container-privileged
       - --container-restart-policy=always
-      - --container-env=LOGFLARE_GRPC_PORT=50051,RELEASE_COOKIE=${_COOKIE},LOGFLARE_METADATA_CLUSTER=${_CLUSTER},LOGFLARE_ALERTS_MIN_CLUSTER_SIZE=3
+      - --container-env=LOGFLARE_GRPC_PORT=50051,RELEASE_COOKIE=${_COOKIE},LOGFLARE_METADATA_CLUSTER=${_CLUSTER}
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring

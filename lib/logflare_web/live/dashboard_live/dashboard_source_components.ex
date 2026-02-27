@@ -52,6 +52,9 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   def source_metadata(assigns) do
     ~H"""
     <div class="tw-ml-8">
+      <div :if={@source.description} class="tw-py-1 tw-text-sm">
+        {@source.description}
+      </div>
       <div>
         <small class="source-details">
           id:
