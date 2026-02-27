@@ -7,8 +7,6 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   use GenServer
 
-  require Logger
-
   alias Logflare.Backends
   alias Logflare.ContextCache
   alias Logflare.Rules
@@ -52,7 +50,6 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
     {:noreply, state}
   end
-
 
   defp maybe_do_cross_cluster_syncing({Backends, backend_id})
        when is_integer(backend_id) do
