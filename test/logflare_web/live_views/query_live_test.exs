@@ -210,7 +210,7 @@ defmodule LogflareWeb.QueryLiveTest do
       assert html =~ "42"
       assert html =~ "and some other expected string"
 
-      refute html =~ "0 bytes processed"
+      refute html =~ "bytes processed"
     end
   end
 end
