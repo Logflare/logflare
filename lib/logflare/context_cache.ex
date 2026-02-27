@@ -166,7 +166,7 @@ defmodule Logflare.ContextCache do
 
   defp maybe_broadcast_cached(cache, cache_key, value) do
     Logflare.Utils.Tasks.start_child(fn ->
-      configs = Application.get_env(:logflare, :cache_broadcast)
+      configs = Application.get_env(:logflare, :cache_broadcast, %{})
 
       if config = Map.get(config, cache) do
         %{ratio: ratio, max_nodes: max_nodes} = config
