@@ -61,17 +61,20 @@ jobs:
         with:
           version-file: .tool-versions
           version-type: strict
+      - name: Read Rust version from .tool-versions
+        id: rust-version
+        run: echo "version=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
       - name: Install Rust
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ steps.rust-version.outputs.version }}
       - name: Restore dependencies cache
         uses: actions/cache@v3
         with:
           path: |
             deps
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
+          key: ${{ runner.os }}-mix-rust${{ steps.rust-version.outputs.version }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-rust${{ steps.rust-version.outputs.version }}-
       - name: Install dependencies
         run: mix deps.get
       - name: Migrate
