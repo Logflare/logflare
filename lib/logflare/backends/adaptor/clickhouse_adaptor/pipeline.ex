@@ -120,8 +120,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         }
       } do
         backend = Backends.Cache.get_backend(backend_id)
+        use_simple = Map.get(backend.config, :use_simple_schemas, false)
+        mapping_variant = if use_simple, do: :simple, else: nil
 
-        with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(event_type) do
+        with {:ok, compiled, config_id} <-
+               MappingConfigStore.get_compiled(event_type, mapping_variant) do
           events =
             Enum.map(messages, fn %{data: %LogEvent{} = event} ->
               mapped_body =
@@ -134,7 +137,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
               %{event | body: mapped_body}
             end)
 
-          ClickHouseAdaptor.insert_log_events(backend, events, event_type)
+          if use_simple do
+            ClickHouseAdaptor.insert_simple_log_events(backend, events, event_type)
+          else
+            ClickHouseAdaptor.insert_log_events(backend, events, event_type)
+          end
         end
       end
 

@@ -189,4 +189,27 @@ defmodule LogflareWeb.QueryLiveTest do
              "Expected error 'can't find source nonexistent_source' after running query. Got: #{String.slice(html, 0, 2000)}"
     end
   end
+
+  describe "postgres backend" do
+    TestUtils.setup_single_tenant(backend_type: :postgres)
+
+    test "run a query against postgres", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/query")
+
+      render_hook(view, "parse-query", %{
+        value: "select 42 as answer, 'and some other expected string'"
+      })
+
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{})
+
+      assert html =~ "Ran query successfully"
+      assert html =~ "0 bytes processed"
+      assert html =~ "answer"
+      assert html =~ "42"
+      assert html =~ "and some other expected string"
+    end
+  end
 end

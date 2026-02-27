@@ -347,14 +347,37 @@ defmodule LogflareWeb.SourceControllerTest do
   describe "update" do
     setup [:create_plan, :old_setup]
 
+    test "source details form includes current description value", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [s1, _s2 | _]
+    } do
+      description = "Current source description"
+      source = Repo.update!(Ecto.Changeset.change(s1, description: description))
+
+      html =
+        conn
+        |> login_user(u1)
+        |> get(~p"/sources/#{source}/edit")
+        |> html_response(200)
+        |> Floki.parse_document!()
+
+      assert [{_tag, attrs, _children}] =
+               Floki.find(html, "input[name='source[description]']")
+
+      assert attrs |> Enum.into(%{}) |> Map.fetch!("value") == description
+    end
+
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = TestUtils.random_string()
+      new_description = TestUtils.random_string()
 
       params = %{
         "id" => s1.id,
         "source" => %{
           "favorite" => true,
-          "name" => new_name
+          "name" => new_name,
+          "description" => new_description
         }
       }
 
@@ -368,6 +391,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 302) =~ "redirected"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
       assert s1_new.name == new_name
+      assert s1_new.description == new_description
       assert s1_new.favorite == true
 
       conn =
@@ -377,6 +401,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> get(~p"/sources/#{s1}")
 
       assert conn.assigns.source.name == new_name
+      assert conn.assigns.source.description == new_description
     end
 
     test "able to update labels", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
@@ -424,6 +449,54 @@ defmodule LogflareWeb.SourceControllerTest do
       assert s1_new.name != new_name
       assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Something went wrong!"
       assert html_response(conn, 406) =~ "Source Name"
+    end
+
+    test "updates description when valid", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [s1, _s2 | _]
+    } do
+      new_description = "  valid description  "
+
+      conn =
+        conn
+        |> login_user(u1)
+        |> patch(~p"/sources/#{s1}", %{
+          "id" => s1.id,
+          "source" => %{
+            "description" => new_description
+          }
+        })
+
+      s1_new = Sources.get_by(id: s1.id)
+
+      assert html_response(conn, 302) =~ "redirected"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+      assert s1_new.description == "valid description"
+    end
+
+    test "returns validation error when description is too long", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [s1, _s2 | _]
+    } do
+      too_long_description = String.duplicate("a", 281)
+
+      conn =
+        conn
+        |> login_user(u1)
+        |> patch(~p"/sources/#{s1}", %{
+          "id" => s1.id,
+          "source" => %{
+            "description" => too_long_description
+          }
+        })
+
+      s1_new = Sources.get_by(id: s1.id)
+      assert s1_new.description != too_long_description
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Something went wrong!"
+      assert html_response(conn, 406) =~ "should be at most 280 character(s)"
     end
 
     test "returns 200 but doesn't change restricted params", %{

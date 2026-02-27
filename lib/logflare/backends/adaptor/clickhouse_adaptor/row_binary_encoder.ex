@@ -368,8 +368,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
   end
 
   defp encode_map_pairs(pairs, key_encoder, value_encoder) do
-    {keys, values} = Enum.unzip(pairs)
-    [varint(length(pairs)), Enum.map(keys, key_encoder), Enum.map(values, value_encoder)]
+    [
+      varint(length(pairs))
+      | Enum.flat_map(pairs, fn {k, v} -> [key_encoder.(k), value_encoder.(v)] end)
+    ]
   end
 
   @spec map_string_string(map() | [{String.t(), String.t()}]) :: iodata()

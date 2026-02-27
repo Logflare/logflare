@@ -45,7 +45,7 @@ defmodule Logflare.ClickHouseMappedEvents do
       }
       |> deep_merge_opts(opts[:body] || %{})
 
-    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:log)
+    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:log, opts[:mapping_variant])
 
     mapped_body =
       input_body
@@ -85,7 +85,7 @@ defmodule Logflare.ClickHouseMappedEvents do
       }
       |> deep_merge_opts(opts[:body] || %{})
 
-    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:metric)
+    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:metric, opts[:mapping_variant])
 
     mapped_body =
       input_body
@@ -126,7 +126,7 @@ defmodule Logflare.ClickHouseMappedEvents do
       }
       |> deep_merge_opts(opts[:body] || %{})
 
-    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:trace)
+    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:trace, opts[:mapping_variant])
 
     mapped_body =
       input_body

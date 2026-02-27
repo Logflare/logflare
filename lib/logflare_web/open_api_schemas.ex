@@ -99,6 +99,7 @@ defmodule LogflareWeb.OpenApiSchemas do
   defmodule Source do
     @properties %{
       name: %Schema{type: :string},
+      description: %Schema{type: :string, nullable: true},
       token: %Schema{type: :string},
       id: %Schema{type: :integer},
       favorite: %Schema{type: :boolean},
@@ -163,6 +164,15 @@ defmodule LogflareWeb.OpenApiSchemas do
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name]
+  end
+
+  defmodule BackendConnectionTest do
+    @properties %{
+      connected?: %Schema{type: :boolean},
+      reason: %Schema{type: :string}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:connected?]
   end
 
   defmodule User do

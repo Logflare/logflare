@@ -2,4 +2,4 @@ elixir 1.19.5-otp-27
 erlang 27.3.4.6
 nodejs 22.9.0
 protoc 28.0
-rust 1.84.1
+rust 1.93.1
