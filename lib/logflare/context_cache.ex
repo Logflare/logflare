@@ -28,6 +28,12 @@ defmodule Logflare.ContextCache do
 
   In the case functions don't return a response with a primary key, or something else we can
   bust the cache on, it will get reverse indexed with `select_key/1` as `:unknown`.
+
+  ## Broadcasts
+
+  Cache misses are optionally multicast to peer nodes via `:erpc` to warm the cluster.
+  To prevent race conditions  from delayed broadcasts, WAL invalidations write short-lived
+  tombstones that filter out stale incoming broadcasts.
   """
 
   @doc """
@@ -134,6 +140,7 @@ defmodule Logflare.ContextCache do
            {:commit, {:cached, getter_fn.()}}
          end) do
       {:commit, {:cached, value}} ->
+        maybe_broadcast(cache, cache_key, value)
         value
 
       {:ok, {:cached, value}} ->
@@ -159,4 +166,105 @@ defmodule Logflare.ContextCache do
       end)
     end)
   end
+
+  require Cachex.Spec
+
+  # Negative lookups (`nil` or `[]`) are not broadcasted. If Node A caches `nil`,
+  # and the record is immediately created, a delayed `nil` broadcast to Node B
+  # would cause phantom "not found" lookups while the record actually exists in the database.
+  defp maybe_broadcast(_cache, _key, nil), do: :ok
+  defp maybe_broadcast(_cache, _key, []), do: :ok
+
+  # Explicitly ignore high-volume/ephemeral caches
+  defp maybe_broadcast(Logflare.Logs.LogEvents.Cache, _key, _value), do: :ok
+  defp maybe_broadcast(Logflare.Logs.RejectedLogEvents, _key, _value), do: :ok
+  defp maybe_broadcast(Logflare.PubSubRates.Cache, _key, _value), do: :ok
+
+  defp maybe_broadcast(Cachex.Spec.cache(name: cache), key, value) do
+    maybe_broadcast(cache, key, value)
+  end
+
+  defp maybe_broadcast(cache, key, value) when is_atom(cache) do
+    meta = %{cache: cache}
+
+    :telemetry.span([:logflare, :context_cache, :broadcast], meta, fn ->
+      %{enabled: enabled, ratio: ratio, max_nodes: max_nodes} =
+        config =
+        :logflare
+        |> Application.fetch_env!(:cache_broadcasts)
+        |> Map.fetch!(cache)
+
+      if enabled do
+        peers = Logflare.Cluster.Utils.peer_list_partial(ratio, max_nodes)
+        :erpc.multicast(peers, __MODULE__, :receive_broadcast, [cache, key, value])
+      end
+
+      {:ok, Map.merge(config, meta)}
+    end)
+  end
+
+  @wal_tombstones :wal_tombstones
+
+  @doc false
+  def wal_tombstones_cache_name, do: @wal_tombstones
+
+  @doc false
+  def receive_broadcast(cache, key, value) do
+    meta = %{cache: cache}
+
+    :telemetry.span([:logflare, :context_cache, :receive_broadcast], meta, fn ->
+      action =
+        cond do
+          # do nothing if the node already has this cache key
+          Cachex.exists?(cache, key) == {:ok, true} ->
+            :dropped_exists
+
+          # do nothing if the WAL recently busted this specific record
+          is_tombstoned?(cache, value) ->
+            :dropped_stale
+
+          true ->
+            Cachex.put(cache, key, {:cached, value})
+            :cached
+        end
+
+      {:ok, Map.put(meta, :action, action)}
+    end)
+  end
+
+  @doc false
+  def record_tombstones(values) when is_list(values) do
+    # Writes a short-lived marker for a primary key indicating it was recently updated or deleted.
+    # Incoming cache broadcasts check this tombstone cache to determine if their payload could be stale.
+    Enum.each(values, fn value ->
+      case value do
+        {context, id} when is_integer(id) or is_binary(id) ->
+          Cachex.put(@wal_tombstones, {cache_name(context), id}, true)
+
+        {context, info} when is_list(info) ->
+          if id = Keyword.get(info, :id) do
+            Cachex.put(@wal_tombstones, {cache_name(context), id}, true)
+          end
+
+        _other ->
+          :ignore
+      end
+    end)
+  end
+
+  defp is_tombstoned?(cache, value) do
+    pkeys = extract_pkeys(value)
+
+    Enum.any?(pkeys, fn pkey ->
+      Cachex.exists?(@wal_tombstones, {cache, pkey}) == {:ok, true}
+    end)
+  end
+
+  defp extract_pkeys(values) when is_list(values) do
+    Enum.flat_map(values, &extract_pkeys/1)
+  end
+
+  defp extract_pkeys({:ok, value}), do: extract_pkeys(value)
+  defp extract_pkeys(%{id: id}), do: [id]
+  defp extract_pkeys(_), do: []
 end

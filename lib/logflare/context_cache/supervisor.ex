@@ -33,19 +33,19 @@ defmodule Logflare.ContextCache.Supervisor do
     |> Supervisor.init(strategy: :one_for_one)
   end
 
-  defp get_children(:test),
-    do:
-      list_caches() ++
-        [
-          {GenSingleton, child_spec: cainophile_child_spec()}
-        ]
+  defp get_children(:test) do
+    list_caches() ++
+      [
+        {GenSingleton, child_spec: cainophile_child_spec()}
+      ] ++ wal_tombstone_specs()
+  end
 
   defp get_children(_env) do
     list_caches() ++
       [
         ContextCache.TransactionBroadcaster,
         {GenSingleton, child_spec: cainophile_child_spec()}
-      ] ++ buster_specs()
+      ] ++ buster_specs() ++ wal_tombstone_specs()
   end
 
   def buster_specs do
@@ -74,6 +74,33 @@ defmodule Logflare.ContextCache.Supervisor do
 
   def list_caches do
     Enum.map(list_caches_with_metrics(), fn {cache, _} -> cache end)
+  end
+
+  defp wal_tombstone_specs do
+    require Cachex.Spec
+
+    name = Logflare.ContextCache.wal_tombstones_cache_name()
+
+    expiration =
+      Cachex.Spec.expiration(
+        interval: to_timeout(second: 30),
+        default: to_timeout(minute: 1),
+        lazy: true
+      )
+
+    hooks =
+      if Application.get_env(:logflare, :cache_stats, false) do
+        [Cachex.Spec.hook(module: Cachex.Stats)]
+      end
+
+    options = [
+      expiration: expiration,
+      hooks: List.wrap(hooks)
+    ]
+
+    [
+      Supervisor.child_spec({Cachex, [name, options]}, id: name)
+    ]
   end
 
   @doc """
