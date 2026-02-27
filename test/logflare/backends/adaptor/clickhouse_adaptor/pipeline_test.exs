@@ -460,6 +460,133 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     end
   end
 
+  describe "handle_batch/4 inferred timestamp replacement" do
+    test "replaces timestamp with start_time for trace events when timestamp was inferred", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      start_time_ns = System.system_time(:nanosecond) - 3_600_000_000_000
+
+      event =
+        build(:log_event,
+          source: source,
+          message: "Trace with inferred timestamp",
+          start_time: start_time_ns,
+          end_time: start_time_ns + 1_000_000
+        )
+        |> Map.put(:event_type, :trace)
+        |> Map.put(:timestamp_inferred, true)
+
+      messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      assert result == messages
+
+      Process.sleep(200)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT toUnixTimestamp64Nano(timestamp) as ts_nano FROM #{table_name} LIMIT 1"
+        )
+
+      assert row["ts_nano"] == start_time_ns
+    end
+
+    test "preserves timestamp for trace events when timestamp was not inferred", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      start_time_ns = System.system_time(:nanosecond) - 3_600_000_000_000
+
+      event =
+        build(:log_event,
+          source: source,
+          message: "Trace with explicit timestamp",
+          start_time: start_time_ns,
+          end_time: start_time_ns + 1_000_000
+        )
+        |> Map.put(:event_type, :trace)
+        |> Map.put(:timestamp_inferred, false)
+
+      messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      assert result == messages
+
+      Process.sleep(200)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT toUnixTimestamp64Nano(timestamp) as ts_nano FROM #{table_name} LIMIT 1"
+        )
+
+      refute row["ts_nano"] == start_time_ns
+    end
+
+    test "preserves timestamp for trace events when timestamp inferred but no start_time", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      event =
+        build(:log_event,
+          source: source,
+          message: "Trace without start_time"
+        )
+        |> Map.put(:event_type, :trace)
+        |> Map.put(:timestamp_inferred, true)
+
+      messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      assert result == messages
+
+      Process.sleep(200)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT timestamp FROM #{table_name} LIMIT 1"
+        )
+
+      assert row["timestamp"] != nil
+    end
+
+    test "does not replace timestamp for non-trace events even when timestamp was inferred", %{
+      context: context,
+      source: source
+    } do
+      start_time_ns = System.system_time(:nanosecond) - 3_600_000_000_000
+
+      event =
+        build(:log_event,
+          source: source,
+          message: "Log with inferred timestamp",
+          start_time: start_time_ns
+        )
+        |> Map.put(:timestamp_inferred, true)
+
+      messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 1, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      assert result == messages
+    end
+  end
+
   describe "transform/2" do
     test "transforms event into Broadway message with correct acknowledger", %{backend: backend} do
       event = build(:log_event, message: "Test message")
