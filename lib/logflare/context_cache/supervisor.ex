@@ -57,21 +57,25 @@ defmodule Logflare.ContextCache.Supervisor do
     ]
   end
 
-  def list_caches do
+  def list_caches_with_metrics do
     [
-      TeamUsers.Cache,
-      Partners.Cache,
-      Users.Cache,
-      Backends.Cache,
-      Sources.Cache,
-      Billing.Cache,
-      SourceSchemas.Cache,
-      Auth.Cache,
-      Endpoints.Cache,
-      Rules.Cache,
-      KeyValues.Cache,
-      SavedSearches.Cache
+      {TeamUsers.Cache, :team_users},
+      {Partners.Cache, :partners},
+      {Users.Cache, :users},
+      {Backends.Cache, :backends},
+      {Sources.Cache, :sources},
+      {Billing.Cache, :billing},
+      {SourceSchemas.Cache, :source_schemas},
+      {Auth.Cache, :auth},
+      {Endpoints.Cache, :endpoints},
+      {Rules.Cache, :rules},
+      {KeyValues.Cache, :key_values},
+      {SavedSearches.Cache, :saved_searches}
     ]
+  end
+
+  def list_caches do
+    Enum.map(list_caches_with_metrics(), fn {cache, _} -> cache end)
   end
 
   @doc """
