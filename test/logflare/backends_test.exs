@@ -30,14 +30,14 @@ defmodule Logflare.BackendsTest do
 
   describe "encryption" do
     test "backend config is encrypted to the :config_encrypted field" do
-      insert(:backend, config_encrypted: %{some_value: "testing"})
+      %{id: backend_id} = insert(:backend, config_encrypted: %{some_value: "testing"})
 
-      assert [
-               %{
-                 config: nil,
-                 config_encrypted: encrypted
-               }
-             ] = Repo.all(from b in "backends", select: [:config, :config_encrypted])
+      assert %{config: nil, config_encrypted: encrypted} =
+               Repo.one(
+                 from b in "backends",
+                   where: [id: ^backend_id],
+                   select: [:config, :config_encrypted]
+               )
 
       assert is_binary(encrypted)
     end
