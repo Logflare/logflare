@@ -19,7 +19,7 @@ config :logflare,
   encryption_key_fallback: hardcoded_encryption_key,
   encryption_key_default: hardcoded_encryption_key
 
-config :logflare, Logflare.Alerting, min_cluster_size: 1, enabled: true
+config :logflare, Logflare.Alerting, enabled: true
 
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
@@ -151,31 +151,9 @@ config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-# global scheduler, only 1 per cluster
-config :logflare, Logflare.Alerting.AlertsScheduler,
-  init_task: {Logflare.Alerting, :init_alert_jobs, []}
-
-# global scheduler, only 1 per cluster
-config :logflare, Logflare.Scheduler,
-  include_task_supervisor: false,
-  task_supervisor_name: Logflare.Scheduler.TaskSupervisor,
-  jobs: [
-    # source_cleanup: [
-    #   run_strategy: {Quantum.RunStrategy.All, :cluster},
-    #   schedule: "*/30 * * * *",
-    #   task: {Logflare.Sources, :shutdown_idle_sources, []}
-    # ],
-    recent_events_touch: [
-      run_strategy: Quantum.RunStrategy.Local,
-      schedule: "*/15 * * * *",
-      task: {Logflare.Sources, :recent_events_touch, []}
-    ],
-    alerts_scheduler_sync: [
-      run_strategy: Quantum.RunStrategy.Local,
-      schedule: "0 * * * *",
-      task: {Logflare.Alerting, :sync_alert_jobs, []}
-    ]
-  ]
+config :logflare, Oban,
+  engine: Oban.Engines.Basic,
+  repo: Logflare.Repo
 
 config :opentelemetry,
   sdk_disabled: true,

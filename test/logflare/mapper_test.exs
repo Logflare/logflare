@@ -1786,4 +1786,248 @@ defmodule Logflare.MapperTest do
       assert attrs["level"] == "info"
     end
   end
+
+  # ── FlatMap type ───────────────────────────────────────────────────────
+
+  describe "flat_map type" do
+    test "flattens a nested map to dot-notation keys with string values" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{"attributes" => %{"a" => %{"b" => %{"c" => 1}}}}
+        )
+
+      assert result["attrs"] == %{"a.b.c" => "1"}
+    end
+
+    test "coerces scalar values to strings" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{
+            "attributes" => %{
+              "int_val" => 42,
+              "float_val" => 3.14,
+              "bool_true" => true,
+              "bool_false" => false,
+              "string_val" => "hello"
+            }
+          }
+        )
+
+      attrs = result["attrs"]
+      assert attrs["int_val"] == "42"
+      assert attrs["float_val"] == "3.14"
+      assert attrs["bool_true"] == "true"
+      assert attrs["bool_false"] == "false"
+      assert attrs["string_val"] == "hello"
+    end
+
+    test "JSON-encodes list values" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{"attributes" => %{"tags" => [1, 2, 3]}}
+        )
+
+      assert result["attrs"]["tags"] == "[1,2,3]"
+    end
+
+    test "omits nil values" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{"attributes" => %{"present" => "yes", "absent" => nil}}
+        )
+
+      assert result["attrs"] == %{"present" => "yes"}
+    end
+
+    test "returns empty map for nil input" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{}
+        )
+
+      assert result["attrs"] == %{}
+    end
+
+    test "returns empty map for non-map input" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.value")],
+          %{"value" => "just a string"}
+        )
+
+      assert result["attrs"] == %{}
+    end
+
+    test "flattens deeply nested structures" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{
+            "attributes" => %{
+              "level1" => %{
+                "level2" => %{
+                  "level3" => "deep"
+                }
+              }
+            }
+          }
+        )
+
+      assert result["attrs"] == %{"level1.level2.level3" => "deep"}
+    end
+
+    test "handles mixed nested and flat keys" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{
+            "attributes" => %{
+              "simple" => "val",
+              "nested" => %{"key" => "val2"}
+            }
+          }
+        )
+
+      attrs = result["attrs"]
+      assert attrs["simple"] == "val"
+      assert attrs["nested.key"] == "val2"
+    end
+
+    test "handles empty nested map" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{"attributes" => %{"empty_map" => %{}}}
+        )
+
+      assert result["attrs"] == %{"empty_map" => "{}"}
+    end
+
+    test "supports pick entries" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("resource_attributes",
+              paths: ["$.resource"],
+              pick: [
+                {"service_name", ["$.resource.service.name", "$.service_name"]},
+                {"region", ["$.metadata.region"]}
+              ]
+            )
+          ],
+          %{
+            "service_name" => "my-service",
+            "metadata" => %{"region" => "us-east-1"}
+          }
+        )
+
+      attrs = result["resource_attributes"]
+      assert attrs["service_name"] == "my-service"
+      assert attrs["region"] == "us-east-1"
+    end
+
+    test "supports exclude_keys" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              path: "$",
+              exclude_keys: ["id", "timestamp"]
+            )
+          ],
+          %{"id" => "123", "timestamp" => 999, "name" => "test"}
+        )
+
+      attrs = result["attrs"]
+      refute Map.has_key?(attrs, "id")
+      refute Map.has_key?(attrs, "timestamp")
+      assert attrs["name"] == "test"
+    end
+
+    test "supports elevate_keys" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              path: "$",
+              exclude_keys: ["id"],
+              elevate_keys: ["metadata"]
+            )
+          ],
+          %{"id" => "123", "metadata" => %{"level" => "info"}, "extra" => "val"}
+        )
+
+      attrs = result["attrs"]
+      refute Map.has_key?(attrs, "id")
+      assert attrs["level"] == "info"
+      assert attrs["extra"] == "val"
+    end
+
+    test "JSON-encodes list of mixed types" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{"attributes" => %{"mixed" => ["a", 1, true, nil]}}
+        )
+
+      assert result["attrs"]["mixed"] == ~s(["a",1,true,null])
+    end
+  end
+
+  # ── ArrayFlatMap type ──────────────────────────────────────────────────
+
+  describe "array_flat_map type" do
+    test "flattens each map element in an array" do
+      result =
+        compile_and_map(
+          [Field.array_flat_map("event_attrs", path: "$.events[*].attributes")],
+          %{
+            "events" => [
+              %{"attributes" => %{"key1" => "val1", "nested" => %{"a" => 1}}},
+              %{"attributes" => %{"key2" => "val2"}}
+            ]
+          }
+        )
+
+      assert result["event_attrs"] == [
+               %{"key1" => "val1", "nested.a" => "1"},
+               %{"key2" => "val2"}
+             ]
+    end
+
+    test "filters out non-map elements" do
+      result =
+        compile_and_map(
+          [Field.array_flat_map("attrs", path: "$.items")],
+          %{"items" => [%{"a" => "1"}, "not a map", 42, %{"b" => "2"}]}
+        )
+
+      assert result["attrs"] == [%{"a" => "1"}, %{"b" => "2"}]
+    end
+
+    test "defaults to empty list when path is nil" do
+      result =
+        compile_and_map(
+          [Field.array_flat_map("attrs", path: "$.missing")],
+          %{}
+        )
+
+      assert result["attrs"] == []
+    end
+
+    test "handles empty array" do
+      result =
+        compile_and_map(
+          [Field.array_flat_map("attrs", path: "$.items")],
+          %{"items" => []}
+        )
+
+      assert result["attrs"] == []
+    end
+  end
 end

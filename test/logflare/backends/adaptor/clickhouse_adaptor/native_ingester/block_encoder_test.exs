@@ -705,6 +705,135 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
   end
 
   # ---------------------------------------------------------------------------
+  # Map column
+  # ---------------------------------------------------------------------------
+
+  describe "Map column" do
+    test "Map(String, String) with two rows" do
+      encoded =
+        BlockEncoder.encode_column_values(
+          "Map(String, String)",
+          [%{"a" => "1", "b" => "2"}, %{"c" => "3"}]
+        )
+        |> IO.iodata_to_binary()
+
+      # Offsets: [2, 3]
+      {2, rest} = Protocol.decode_uint64(encoded)
+      {3, rest} = Protocol.decode_uint64(rest)
+
+      # Keys column (3 strings): "a", "b", "c"
+      {k1, rest} = Protocol.decode_string(rest)
+      {k2, rest} = Protocol.decode_string(rest)
+      {k3, rest} = Protocol.decode_string(rest)
+      assert MapSet.new([k1, k2, k3]) == MapSet.new(["a", "b", "c"])
+
+      # Values column (3 strings): matching values for the keys
+      {v1, rest} = Protocol.decode_string(rest)
+      {v2, rest} = Protocol.decode_string(rest)
+      {v3, <<>>} = Protocol.decode_string(rest)
+
+      pairs = MapSet.new([{k1, v1}, {k2, v2}, {k3, v3}])
+      assert {"a", "1"} in pairs
+      assert {"b", "2"} in pairs
+      assert {"c", "3"} in pairs
+    end
+
+    test "Map(String, String) with empty maps" do
+      encoded =
+        BlockEncoder.encode_column_values(
+          "Map(String, String)",
+          [%{}, %{"x" => "y"}, %{}]
+        )
+        |> IO.iodata_to_binary()
+
+      # Offsets: [0, 1, 1]
+      {0, rest} = Protocol.decode_uint64(encoded)
+      {1, rest} = Protocol.decode_uint64(rest)
+      {1, rest} = Protocol.decode_uint64(rest)
+
+      # Keys column (1 string)
+      {"x", rest} = Protocol.decode_string(rest)
+
+      # Values column (1 string)
+      {"y", <<>>} = Protocol.decode_string(rest)
+    end
+
+    test "Map(String, String) with all empty maps" do
+      encoded =
+        BlockEncoder.encode_column_values(
+          "Map(String, String)",
+          [%{}, %{}]
+        )
+        |> IO.iodata_to_binary()
+
+      # Offsets: [0, 0] — no keys or values follow
+      {0, rest} = Protocol.decode_uint64(encoded)
+      {0, <<>>} = Protocol.decode_uint64(rest)
+    end
+
+    test "Map(LowCardinality(String), String) strips LowCardinality from keys" do
+      encoded =
+        BlockEncoder.encode_column_values(
+          "Map(LowCardinality(String), String)",
+          [%{"svc" => "web"}]
+        )
+        |> IO.iodata_to_binary()
+
+      # Offsets: [1]
+      {1, rest} = Protocol.decode_uint64(encoded)
+
+      # Keys column (LowCardinality stripped, encoded as String)
+      {"svc", rest} = Protocol.decode_string(rest)
+
+      # Values column
+      {"web", <<>>} = Protocol.decode_string(rest)
+    end
+
+    test "Array(Map(String, String)) encodes nested maps" do
+      encoded =
+        BlockEncoder.encode_column_values(
+          "Array(Map(String, String))",
+          [[%{"k1" => "v1"}, %{"k2" => "v2"}], []]
+        )
+        |> IO.iodata_to_binary()
+
+      # Array offsets: [2, 2]
+      {2, rest} = Protocol.decode_uint64(encoded)
+      {2, rest} = Protocol.decode_uint64(rest)
+
+      # Map offsets for 2 maps: [1, 2]
+      {1, rest} = Protocol.decode_uint64(rest)
+      {2, rest} = Protocol.decode_uint64(rest)
+
+      # Keys column (2 strings)
+      {"k1", rest} = Protocol.decode_string(rest)
+      {"k2", rest} = Protocol.decode_string(rest)
+
+      # Values column (2 strings)
+      {"v1", rest} = Protocol.decode_string(rest)
+      {"v2", <<>>} = Protocol.decode_string(rest)
+    end
+
+    test "Map(String, UInt64) encodes values as UInt64" do
+      encoded =
+        BlockEncoder.encode_column_values(
+          "Map(String, UInt64)",
+          [%{"count" => 42}]
+        )
+        |> IO.iodata_to_binary()
+
+      # Offsets: [1]
+      {1, rest} = Protocol.decode_uint64(encoded)
+
+      # Keys column
+      {"count", rest} = Protocol.decode_string(rest)
+
+      # Values column
+      {42, <<>>} = Protocol.decode_uint64(rest)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # LowCardinality column (treated as inner type with setting)
   # ---------------------------------------------------------------------------
 

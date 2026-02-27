@@ -4,6 +4,7 @@ defmodule Logflare.Application do
 
   require Logger
 
+  alias Logflare.Alerting.AlertSchedulerWorker
   alias Logflare.Networking
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.UserMonitoring
@@ -15,7 +16,6 @@ defmodule Logflare.Application do
   alias Logflare.Sources.RateCounters
   alias Logflare.PubSubRates
   alias Logflare.Utils
-  alias Logflare.GenSingleton
 
   def start(_type, _args) do
     # set inspect function to redact sensitive information
@@ -66,7 +66,8 @@ defmodule Logflare.Application do
          child_spec: DynamicSupervisor, name: Logflare.Endpoints.ResultsCache.PartitionSupervisor},
         LogflareWeb.Endpoint,
         {Logflare.ActiveUserTracker,
-         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
+         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]},
+        {Oban, Application.fetch_env!(:logflare, Oban)}
       ]
   end
 
@@ -87,6 +88,7 @@ defmodule Logflare.Application do
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
         Logflare.Vault,
+        {Oban, Application.fetch_env!(:logflare, Oban)},
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
         ContextCache.Supervisor,
         Logs.LogEvents.Cache,
@@ -109,13 +111,8 @@ defmodule Logflare.Application do
         # For Logflare Endpoints
         {PartitionSupervisor,
          child_spec: DynamicSupervisor, name: Logflare.Endpoints.ResultsCache.PartitionSupervisor},
-
         # Startup tasks after v2 pipeline started
         {Task, fn -> startup_tasks() end},
-        Logflare.Alerting.Supervisor,
-        {Task.Supervisor, name: Logflare.Scheduler.TaskSupervisor},
-        {GenSingleton,
-         child_spec: {Logflare.Scheduler, name: Logflare.Scheduler.scheduler_name()}},
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
          [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
@@ -165,7 +162,6 @@ defmodule Logflare.Application do
   end
 
   def startup_tasks do
-    # if single tenant, insert enterprise user
     Logger.info("Executing startup tasks")
 
     if !SingleTenant.postgres_backend?() do
@@ -192,6 +188,11 @@ defmodule Logflare.Application do
 
         SingleTenant.update_supabase_source_schemas()
       end
+    end
+
+    # Schedule all alerts immediately on startup
+    if Application.get_env(:logflare, Logflare.Alerting)[:enabled] do
+      AlertSchedulerWorker.new(%{}) |> Oban.insert()
     end
   end
 end

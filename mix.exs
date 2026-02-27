@@ -193,7 +193,7 @@ defmodule Logflare.Mixfile do
       {:floki, "~> 0.38.0", only: [:test]},
 
       # Rust NIFs
-      {:rustler, "~> 0.36.2", override: true},
+      {:rustler, "~> 0.37.3", runtime: false, override: true},
 
       # Frontend
       {:phoenix_live_react, "~> 0.6"},
@@ -234,7 +234,7 @@ defmodule Logflare.Mixfile do
       {:plug_cowboy, "~> 2.0"},
 
       # alerts feature
-      {:quantum, github: "Logflare/quantum-core", ref: "5882e82"},
+      {:oban, "~> 2.19"},
       {:crontab, "~> 1.2"},
 
       # benchmarking

@@ -8,6 +8,8 @@ use crate::mapping::{
 };
 use crate::query;
 
+use serde_json::Value as JsonValue;
+
 mod atoms {
     rustler::atoms! {
         nil,
@@ -24,6 +26,7 @@ fn is_array_type(field_type: &FieldType) -> bool {
             | FieldType::ArrayDateTime64 { .. }
             | FieldType::ArrayJson
             | FieldType::ArrayMap
+            | FieldType::ArrayFlatMap
     )
 }
 
@@ -97,15 +100,24 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
             value
         };
 
-        // For Json fields, apply exclude/elevate/pick
-        let value = if field.field_type == FieldType::Json {
+        // For Json and FlatMap fields, apply exclude/elevate/pick
+        let value = if field.field_type == FieldType::Json || field.field_type == FieldType::FlatMap
+        {
             apply_json_operations(env, body, field, value, nil)
         } else {
             value
         };
 
-        // Apply type coercion (skip for Json pass-through)
-        let value = if field.field_type == FieldType::Json {
+        // For FlatMap fields, flatten and stringify the resolved map
+        let value = if field.field_type == FieldType::FlatMap {
+            flatten_and_stringify(env, value, nil)
+        } else {
+            value
+        };
+
+        // Apply type coercion (skip for Json and FlatMap pass-through)
+        let value = if field.field_type == FieldType::Json || field.field_type == FieldType::FlatMap
+        {
             value
         } else {
             coerce::coerce(env, value, &field.field_type, nil)
@@ -547,4 +559,207 @@ fn matches_predicate_value(term: Term, expected: &PredicateValue) -> bool {
             }
         }
     }
+}
+
+// ── FlatMap: flatten nested maps to dot-notation keys with string values ─────
+
+/// Flatten a potentially nested map into `%{String.t() => String.t()}`.
+///
+/// - Nested maps: `%{"a" => %{"b" => 1}}` → `%{"a.b" => "1"}`
+/// - Lists: `%{"a" => [1, 2]}` → `%{"a" => "[1,2]"}`
+/// - Scalars: coerced to string (`integer.to_string()`, `"true"`, etc.)
+/// - nil values: omitted from output
+/// - Empty/nil input: returns `%{}`
+pub fn flatten_and_stringify<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -> Term<'a> {
+    if value == nil || !value.is_map() {
+        return Term::map_new(env);
+    }
+
+    let mut keys: Vec<Term<'a>> = Vec::new();
+    let mut values: Vec<Term<'a>> = Vec::new();
+    flatten_map_recursive(env, value, "", &mut keys, &mut values, nil);
+
+    if keys.is_empty() {
+        Term::map_new(env)
+    } else {
+        // Use map_put to handle potential duplicate keys (last-write-wins)
+        let mut result = Term::map_new(env);
+        for (k, v) in keys.into_iter().zip(values.into_iter()) {
+            result = result.map_put(k, v).unwrap_or(result);
+        }
+        result
+    }
+}
+
+fn flatten_map_recursive<'a>(
+    env: Env<'a>,
+    map: Term<'a>,
+    prefix: &str,
+    keys: &mut Vec<Term<'a>>,
+    values: &mut Vec<Term<'a>>,
+    nil: Term<'a>,
+) {
+    let iter = match MapIterator::new(map) {
+        Some(it) => it,
+        None => return,
+    };
+
+    for (k, v) in iter {
+        // Get the key as a string
+        let key_str = if let Ok(s) = k.decode::<String>() {
+            s
+        } else if let Ok(b) = k.decode::<Binary>() {
+            match std::str::from_utf8(b.as_slice()) {
+                Ok(s) => s.to_string(),
+                Err(_) => continue,
+            }
+        } else {
+            continue;
+        };
+
+        let full_key = if prefix.is_empty() {
+            key_str
+        } else {
+            format!("{}.{}", prefix, key_str)
+        };
+
+        // Skip nil values
+        if v == nil {
+            continue;
+        }
+
+        // If value is a nested map, recurse
+        if v.is_map() {
+            // Check if the map is empty
+            if let Some(iter) = MapIterator::new(v) {
+                if iter.count() == 0 {
+                    // Empty map → encode as "{}"
+                    keys.push(full_key.encode(env));
+                    values.push("{}".encode(env));
+                } else {
+                    flatten_map_recursive(env, v, &full_key, keys, values, nil);
+                }
+            }
+            continue;
+        }
+
+        // If value is a list, JSON-encode it
+        if v.is_list() {
+            let json_val = term_to_json(env, v, nil);
+            let json_str = serde_json::to_string(&json_val).unwrap_or_else(|_| "[]".to_string());
+            keys.push(full_key.encode(env));
+            values.push(json_str.encode(env));
+            continue;
+        }
+
+        // Scalar coercion to string
+        let str_val = term_to_string(env, v);
+        keys.push(full_key.encode(env));
+        values.push(str_val.encode(env));
+    }
+}
+
+/// Convert a BEAM term to a string representation.
+fn term_to_string<'a>(env: Env<'a>, value: Term<'a>) -> String {
+    if value.is_binary() {
+        if let Ok(s) = value.decode::<String>() {
+            return s;
+        }
+    }
+
+    if let Ok(i) = value.decode::<i64>() {
+        return i.to_string();
+    }
+
+    if let Ok(f) = value.decode::<f64>() {
+        return f.to_string();
+    }
+
+    if let Ok(b) = value.decode::<bool>() {
+        return if b { "true" } else { "false" }.to_string();
+    }
+
+    if value.is_atom() {
+        if let Ok(s) = value.atom_to_string() {
+            return s;
+        }
+    }
+
+    // For maps, JSON-encode
+    if value.is_map() {
+        let json_val = term_to_json(env, value, atoms::nil().encode(env));
+        return serde_json::to_string(&json_val).unwrap_or_else(|_| "{}".to_string());
+    }
+
+    // For lists, JSON-encode
+    if value.is_list() {
+        let json_val = term_to_json(env, value, atoms::nil().encode(env));
+        return serde_json::to_string(&json_val).unwrap_or_else(|_| "[]".to_string());
+    }
+
+    "".to_string()
+}
+
+/// Convert a BEAM term to a serde_json::Value for JSON serialization.
+#[allow(clippy::only_used_in_recursion)]
+fn term_to_json<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -> JsonValue {
+    if value == nil {
+        return JsonValue::Null;
+    }
+
+    // Try boolean before integer (booleans are atoms in Erlang)
+    if let Ok(b) = value.decode::<bool>() {
+        return JsonValue::Bool(b);
+    }
+
+    if let Ok(i) = value.decode::<i64>() {
+        return JsonValue::Number(serde_json::Number::from(i));
+    }
+
+    if let Ok(f) = value.decode::<f64>() {
+        return serde_json::Number::from_f64(f)
+            .map(JsonValue::Number)
+            .unwrap_or(JsonValue::Null);
+    }
+
+    if value.is_binary() {
+        if let Ok(s) = value.decode::<String>() {
+            return JsonValue::String(s);
+        }
+    }
+
+    if value.is_atom() {
+        if let Ok(s) = value.atom_to_string() {
+            return JsonValue::String(s);
+        }
+    }
+
+    if value.is_list() {
+        if let Ok(iter) = value.decode::<ListIterator>() {
+            let arr: Vec<JsonValue> = iter.map(|elem| term_to_json(env, elem, nil)).collect();
+            return JsonValue::Array(arr);
+        }
+    }
+
+    if value.is_map() {
+        if let Some(iter) = MapIterator::new(value) {
+            let mut map = serde_json::Map::new();
+            for (k, v) in iter {
+                let key_str = if let Ok(s) = k.decode::<String>() {
+                    s
+                } else if let Ok(b) = k.decode::<Binary>() {
+                    match std::str::from_utf8(b.as_slice()) {
+                        Ok(s) => s.to_string(),
+                        Err(_) => continue,
+                    }
+                } else {
+                    continue;
+                };
+                map.insert(key_str, term_to_json(env, v, nil));
+            }
+            return JsonValue::Object(map);
+        }
+    }
+
+    JsonValue::Null
 }
