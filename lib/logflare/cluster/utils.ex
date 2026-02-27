@@ -9,14 +9,14 @@ defmodule Logflare.Cluster.Utils do
   end
 
   @spec peer_list_partial(float, pos_integer) :: [Node.t()]
-  def peer_list_partial(ratio, max_nodex) do
+  def peer_list_partial(ratio, max_nodes) do
     peers = Node.list()
     peer_count = length(peers)
 
     if peer_count == 0 do
       []
     else
-      target_count = ceil(peer_count * ratio) |> min(max_nodes) |> min(peer_count)
+      target_count = min(ceil(peer_count * ratio), max_nodes)
       Enum.take_random(peers, target_count)
     end
   end

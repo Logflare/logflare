@@ -168,13 +168,13 @@ defmodule Logflare.ContextCache do
     Logflare.Utils.Tasks.start_child(fn ->
       configs = Application.get_env(:logflare, :cache_broadcast, %{})
 
-      if config = Map.get(config, cache) do
+      if config = Map.get(configs, cache) do
         %{ratio: ratio, max_nodes: max_nodes} = config
-        peers = Logflare.Utils.Cluster.peer_list_partial(ratio, max_nodes)
-        :erpc.multicast(peers, Cachex, :put_new, [cache, value])
-      else
-        :ignore
+        peers = Logflare.Cluster.Utils.peer_list_partial(ratio, max_nodes)
+        :erpc.multicast(peers, Cachex, :put_new, [cache, cache_key, value])
       end
     end)
+
+    :ok
   end
 end
