@@ -7,6 +7,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
 
+  @one_hour_ns 3_600_000_000_000
+
   setup do
     insert(:plan, name: "Free")
 
@@ -466,7 +468,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       source: source,
       backend: backend
     } do
-      start_time_ns = System.system_time(:nanosecond) - 3_600_000_000_000
+      start_time_ns = System.system_time(:nanosecond) - @one_hour_ns
 
       event =
         build(:log_event,
@@ -502,7 +504,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       source: source,
       backend: backend
     } do
-      start_time_ns = System.system_time(:nanosecond) - 3_600_000_000_000
+      start_time_ns = System.system_time(:nanosecond) - @one_hour_ns
 
       event =
         build(:log_event,
@@ -546,6 +548,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:event_type, :trace)
         |> Map.put(:timestamp_inferred, true)
 
+      # Event body timestamp is in microseconds; mapper converts to nanoseconds
+      expected_ts_nano = event.body["timestamp"] * 1_000
+
       messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
       batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
       result = Pipeline.handle_batch(:ch, messages, batch_info, context)
@@ -559,17 +564,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       {:ok, [row]} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT timestamp FROM #{table_name} LIMIT 1"
+          "SELECT toUnixTimestamp64Nano(timestamp) as ts_nano FROM #{table_name} LIMIT 1"
         )
 
-      assert row["timestamp"] != nil
+      assert row["ts_nano"] == expected_ts_nano
     end
 
     test "does not replace timestamp for non-trace events even when timestamp was inferred", %{
       context: context,
       source: source
     } do
-      start_time_ns = System.system_time(:nanosecond) - 3_600_000_000_000
+      start_time_ns = System.system_time(:nanosecond) - @one_hour_ns
 
       event =
         build(:log_event,
