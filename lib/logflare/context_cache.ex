@@ -137,6 +137,7 @@ defmodule Logflare.ContextCache do
            {:commit, {:cached, getter_fn.()}}
          end) do
       {:commit, {:cached, value}} ->
+        maybe_broadcast_cached(cache, cache_key, value)
         value
 
       {:ok, {:cached, value}} ->
@@ -160,6 +161,20 @@ defmodule Logflare.ContextCache do
         Cachex.del(worker, k)
         acc + 1
       end)
+    end)
+  end
+
+  defp maybe_broadcast_cached(cache, cache_key, value) do
+    Logflare.Utils.Tasks.start_child(fn ->
+      configs = Application.get_env(:logflare, :cache_broadcast)
+
+      if config = Map.get(config, cache) do
+        %{ratio: ratio, max_nodes: max_nodes} = config
+        peers = Logflare.Utils.Cluster.peer_list_partial(ratio, max_nodes)
+        :erpc.multicast(peers, Cachex, :put_new, [cache, value])
+      else
+        :ignore
+      end
     end)
   end
 end
