@@ -8,6 +8,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
 
   @one_hour_ns 3_600_000_000_000
+  @trace_batch_info %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
+  @log_batch_info %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 1, trigger: :flush}
 
   setup do
     insert(:plan, name: "Free")
@@ -481,8 +483,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:timestamp_inferred, true)
 
       messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, @trace_batch_info, context)
 
       assert result == messages
 
@@ -517,8 +518,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:timestamp_inferred, false)
 
       messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, @trace_batch_info, context)
 
       assert result == messages
 
@@ -552,8 +552,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       expected_ts_nano = event.body["timestamp"] * 1_000
 
       messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, @trace_batch_info, context)
 
       assert result == messages
 
@@ -585,8 +584,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:timestamp_inferred, true)
 
       messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 1, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, @log_batch_info, context)
 
       assert result == messages
     end
