@@ -44,9 +44,10 @@ defmodule Logflare.Utils do
     end
   end
 
+  def flag_percent_hash_limit, do: 100
   # uses a 100 discrete identifiers for % based flagging, to minimize cardinality in keys stored.
   defp cached_flag_value_pct_of_identifiers(feature, identifier) do
-    hash = :erlang.phash2(identifier, 100)
+    hash = :erlang.phash2(identifier, flag_percent_hash_limit())
     cache_key = "#{feature}:#{hash}"
     user = ConfigCat.User.new(cache_key)
 

@@ -11,6 +11,7 @@ defmodule Logflare.LogEvent do
   alias Logflare.Logs.Validators.BigQuerySchemaChange
   alias Logflare.KeyValues
   alias Logflare.Sources.Source
+  alias Logflare.ConfigCatCache
 
   require Logger
 
@@ -226,11 +227,6 @@ defmodule Logflare.LogEvent do
     {:ok, Map.put(le, :body, new_body)}
   end
 
-  # Fallback: parse at ingestion time when parsed field is not populated
-  defp kv_enrich(%LE{} = le, %Source{} = source) do
-    kv_enrich(le, Source.parse_key_values_config(source))
-  end
-
   defp apply_kv_instruction(
          body,
          %{from_path: from_path, to_path: to_path} = instruction,
@@ -239,6 +235,7 @@ defmodule Logflare.LogEvent do
     accessor_path = Map.get(instruction, :accessor_path)
 
     with raw when not is_nil(raw) <- get_in(body, from_path),
+         true <- ConfigCatCache.get("key_values", to_string(raw)),
          raw_string <- to_string(raw),
          #  true <- Logflare.Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-

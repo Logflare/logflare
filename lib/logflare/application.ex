@@ -151,8 +151,8 @@ defmodule Logflare.Application do
 
         config_cat_key ->
           [
-            Logflare.ConfigCatCache,
-            {ConfigCat, [sdk_key: config_cat_key]}
+            {ConfigCat, [sdk_key: config_cat_key]},
+            Logflare.ConfigCatCache
           ]
       end
 
