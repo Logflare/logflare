@@ -49,7 +49,7 @@
       <div class="collapse metadata" id={"metadata-#{inx}"}>
         <pre class="pre-metadata"><code><%= JSON.encode!(log.body, pretty: true) %></code></pre>
       </div>
-      <%= if log.via_rule_id do %>
+      <%= if log[:via_rule_id] do %>
         <span data-toggle="tooltip" data-placement="top" title={"Routed from #{ log.source_uuid }"} style="color: #5eeb8f;">
           <i class="fa fa-code-branch" style="font-size: 1em;"></i>
         </span>
