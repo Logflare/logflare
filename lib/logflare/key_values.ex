@@ -116,7 +116,7 @@ defmodule Logflare.KeyValues do
       end)
 
     Repo.insert_all(KeyValue, rows,
-      on_conflict: {:replace, [:value]},
+      on_conflict: {:replace, [:value, :updated_at]},
       conflict_target: [:user_id, :key]
     )
   end
