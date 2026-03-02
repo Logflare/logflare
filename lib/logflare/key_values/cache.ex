@@ -20,6 +20,7 @@ defmodule Logflare.KeyValues.Cache do
         [
           __MODULE__,
           [
+            compressed: true,
             warmers: [
               warmer(
                 required: false,
@@ -31,7 +32,7 @@ defmodule Logflare.KeyValues.Cache do
             hooks:
               [
                 if(stats, do: Utils.cache_stats()),
-                Utils.cache_limit(500_000)
+                Utils.cache_limit(10_000_000)
               ]
               |> Enum.filter(& &1),
             expiration: Utils.cache_expiration_min(1440, 60)
