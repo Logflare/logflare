@@ -2,6 +2,8 @@ defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase, async: false
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources
@@ -684,7 +686,30 @@ defmodule LogflareWeb.EndpointsControllerTest do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
       SingleTenant.ensure_supabase_sources_started()
-      %{user: SingleTenant.get_default_user()}
+      user = SingleTenant.get_default_user()
+
+      # Wait for PostgresAdaptor to finish creating all tables asynchronously.
+      # The adaptor GenServer creates tables in init/1, which races with test execution.
+      backend = Backends.get_default_backend(user)
+
+      for source <- Sources.list_sources_by_user(user) do
+        table = PgRepo.table_name(source)
+        schema = backend.config.schema || "public"
+
+        TestUtils.retry_assert([duration: 5_000, sleep: 100], fn ->
+          result =
+            SharedRepo.with_repo(backend, fn ->
+              SharedRepo.query(
+                "SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = $2",
+                [schema, table]
+              )
+            end)
+
+          assert {:ok, %{num_rows: 1}} = result
+        end)
+      end
+
+      %{user: user}
     end
 
     test "GET a basic sandboxed query", %{conn: conn, user: user} do
