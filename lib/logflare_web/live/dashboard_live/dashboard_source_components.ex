@@ -8,6 +8,8 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   alias LogflareWeb.SearchLive.SavedSearchesModalComponent
   alias Phoenix.LiveView.JS
 
+  @description_truncate_at 280
+
   attr :source, Source, required: true
   attr :metrics, Source.Metrics, required: true
   attr :plan, :map, required: true
@@ -52,9 +54,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   def source_metadata(assigns) do
     ~H"""
     <div class="tw-ml-8">
-      <div :if={@source.description} class="tw-py-1 tw-text-sm">
-        {@source.description}
-      </div>
+      <.source_description source={@source} />
       <div>
         <small class="source-details">
           id:
@@ -73,6 +73,28 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
       <div>
         <.source_metrics source={@source} metrics={@metrics} rate_limit={@plan.limit_source_rate_limit} fields_limit={@plan.limit_source_fields_limit} team={@team} />
       </div>
+    </div>
+    """
+  end
+
+  attr :source, Logflare.Sources.Source, required: true
+
+  def source_description(assigns) do
+    description = assigns.source.description
+
+    assigns =
+      assigns
+      |> assign(:description, description)
+      |> assign(:truncate_description?, truncate_description?(description))
+
+    ~H"""
+    <div :if={@description} class="tw-py-1 tw-text-sm">
+      <span :if={not @truncate_description?}>
+        {@description}
+      </span>
+      <.tooltip :if={@truncate_description?} id={"source-#{@source.token}-description"} title={@description} tooltip_class="max-w-640" class="tw-inline">
+        {truncate_description(@description)}&hellip;
+      </.tooltip>
     </div>
     """
   end
@@ -167,12 +189,13 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   attr :id, :string, required: true
   attr :placement, :string, default: "top"
   attr :class, :string, default: ""
+  attr :tooltip_class, :string, default: ""
   attr :rest, :global
   slot :inner_block
 
   def tooltip(assigns) do
     ~H"""
-    <span class={["logflare-tooltip", @class]} id={@id} data-placement={@placement} title={@title} data-toggle="tooltip">
+    <span class={["logflare-tooltip", @class]} id={@id} data-placement={@placement} title={@title} data-toggle="tooltip" data-custom-class={@tooltip_class}>
       {render_slot(@inner_block)}
     </span>
     """
@@ -192,4 +215,20 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   defp metric_id(source, key), do: [to_string(source.token), "-", key]
   defp rate_limit_warning?(source, limit), do: source.metrics.avg >= 0.80 * limit
   defp fields_limit_warning?(source, limit), do: source.metrics.fields > limit
+
+  defp truncate_description?(description) when is_binary(description) do
+    String.length(description) > @description_truncate_at
+  end
+
+  defp truncate_description?(_), do: false
+
+  defp truncate_description(description) when is_binary(description) do
+    if truncate_description?(description) do
+      description
+      |> String.slice(0, @description_truncate_at)
+      |> String.trim_trailing()
+    else
+      description
+    end
+  end
 end
