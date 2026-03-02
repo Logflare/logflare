@@ -384,10 +384,12 @@ defmodule LogflareWeb.SourceControllerTest do
         |> html_response(200)
         |> Floki.parse_document!()
 
-      assert [{_tag, attrs, _children}] =
-               Floki.find(html, "input[name='source[description]']")
+      assert [_textarea] = Floki.find(html, "textarea[name='source[description]']")
 
-      assert attrs |> Enum.into(%{}) |> Map.fetch!("value") == description
+      assert html
+             |> Floki.find("textarea[name='source[description]']")
+             |> Floki.text()
+             |> String.trim() == description
     end
 
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
@@ -495,30 +497,6 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 302) =~ "redirected"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
       assert s1_new.description == "valid description"
-    end
-
-    test "returns validation error when description is too long", %{
-      conn: conn,
-      users: [u1, _u2],
-      sources: [s1, _s2 | _]
-    } do
-      too_long_description = String.duplicate("a", 281)
-
-      conn =
-        conn
-        |> login_user(u1)
-        |> patch(~p"/sources/#{s1}", %{
-          "id" => s1.id,
-          "source" => %{
-            "description" => too_long_description
-          }
-        })
-
-      s1_new = Sources.get_by(id: s1.id)
-      assert s1_new.description != too_long_description
-
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Something went wrong!"
-      assert html_response(conn, 406) =~ "should be at most 280 character(s)"
     end
 
     test "returns 200 but doesn't change restricted params", %{

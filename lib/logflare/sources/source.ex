@@ -250,7 +250,6 @@ defmodule Logflare.Sources.Source do
     changeset
     |> normalize_description()
     |> validate_required([:name])
-    |> validate_length(:description, max: 280)
     |> unique_constraint(:name, name: :sources_name_index)
     |> unique_constraint(:token)
     |> unique_constraint(:public_token)
