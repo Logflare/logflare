@@ -5,6 +5,8 @@ defmodule Logflare.KeyValues.Cache do
   alias Logflare.KeyValues
   alias Logflare.Utils
 
+  import Cachex.Spec
+
   @behaviour ContextCache
 
   def child_spec(_) do
@@ -18,6 +20,14 @@ defmodule Logflare.KeyValues.Cache do
         [
           __MODULE__,
           [
+            warmers: [
+              warmer(
+                required: false,
+                module: KeyValues.CacheWarmer,
+                name: KeyValues.CacheWarmer,
+                interval: :timer.hours(1)
+              )
+            ],
             hooks:
               [
                 if(stats, do: Utils.cache_stats()),
