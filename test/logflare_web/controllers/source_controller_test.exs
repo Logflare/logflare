@@ -6,7 +6,6 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Repo
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends
-  alias Logflare.LogEvent
   alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
