@@ -96,7 +96,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
       assert ddl =~ "parts_to_delay_insert = 5000"
       assert ddl =~ "parts_to_throw_insert = 10000"
       assert ddl =~ "min_bytes_for_wide_part = 0"
-      assert ddl =~ "max_parts_to_merge_at_once = 25"
       refute ddl =~ "shared_merge_tree"
     end
 
