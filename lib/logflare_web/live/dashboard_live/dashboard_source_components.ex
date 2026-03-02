@@ -58,14 +58,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
       <div>
         <small class="source-details">
           id:
-          <span
-            class="pointer-cursor copy-token logflare-tooltip copy-tooltip"
-            phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @source.token})}
-            data-toggle="tooltip"
-            data-placement="top"
-            title="Copy this"
-            id={String.replace(Atom.to_string(@source.token), ~r/[0-9]|-/, "")}
-          >
+          <span class="pointer-cursor copy-token logflare-tooltip copy-tooltip" phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @source.token})} data-placement="top" data-title="Copy this" id={String.replace(Atom.to_string(@source.token), ~r/[0-9]|-/, "")}>
             {@source.token}
           </span>
         </small>
@@ -195,7 +188,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
   def tooltip(assigns) do
     ~H"""
-    <span class={["logflare-tooltip", @class]} id={@id} data-placement={@placement} title={@title} data-toggle="tooltip" data-custom-class={@tooltip_class}>
+    <span class={["logflare-tooltip", @class]} id={@id} data-placement={@placement} data-title={@title} data-custom-class={@tooltip_class} {@rest}>
       {render_slot(@inner_block)}
     </span>
     """

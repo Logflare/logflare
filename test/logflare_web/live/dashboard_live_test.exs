@@ -59,7 +59,7 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       assert rendered
              |> Floki.find("#source-#{source.token}-description")
-             |> Floki.attribute("title") == [description]
+             |> Floki.attribute("data-title") == [description]
     end
 
     test "sources have a saved searches modal", %{conn: conn, source: source} do
@@ -227,7 +227,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert view |> has_element?("span[id=#{source.token}-max-rate]", "0")
       assert view |> has_element?("span[id=#{source.token}-rejected]", "0")
 
-      assert view |> element("li[id=source-#{source.token}] [title^=Pipelines]") |> render =~
+      assert view |> element("li[id=source-#{source.token}] [data-title^=Pipelines]") |> render =~
                "0"
 
       assert view |> element("li[id=source-#{source.token}]") |> render =~ "ttl: 3 days"
@@ -268,7 +268,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       # wait for broadcast
       Process.sleep(100)
 
-      assert view |> element("li[id=source-#{source.token}] [title^=Pipelines]") |> render =~
+      assert view |> element("li[id=source-#{source.token}] [data-title^=Pipelines]") |> render =~
                to_string(buffer)
 
       assert view |> has_element?("span[id=#{source.token}-rate]", "#{last_rate}/s")
