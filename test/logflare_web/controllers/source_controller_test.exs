@@ -153,6 +153,28 @@ defmodule LogflareWeb.SourceControllerTest do
       )
     end
 
+    test "show source's recent logs when log is a plain map without :via_rule_id", %{
+      conn: conn,
+      source: source
+    } do
+      le = build(:log_event, source: source)
+
+      plain_map_log =
+        le
+        |> Map.from_struct()
+        |> Map.drop([:via_rule_id])
+
+      Backends
+      |> expect(:list_recent_logs, fn _source -> [plain_map_log] end)
+
+      html =
+        conn
+        |> get(~p"/sources/#{source}")
+        |> html_response(200)
+
+      assert html =~ le.body["event_message"]
+    end
+
     test "renders inputs for recommended query fields", %{
       conn: conn,
       user: user
