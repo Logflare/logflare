@@ -5,6 +5,7 @@ defmodule Logflare.Utils do
 
   alias Logflare.User
   alias Logflare.ConfigCatCache
+  alias Logflare.Backends.Backend
   import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
@@ -359,17 +360,28 @@ defmodule Logflare.Utils do
   Does nothing if it is not a Tesla.Env or Tesla.Client.
   """
   def inspect_fun(prev_fun, value, opts)
-      when is_struct(value, Tesla.Env) or is_struct(value, Tesla.Client) do
+      when is_struct(value, Tesla.Env) or is_struct(value, Tesla.Client) or
+             is_struct(value, Backend) do
     if Application.get_env(:logflare, :env) in [:test, :dev] do
       prev_fun.(value, opts)
     else
-      value = Logflare.Utils.redact_sensitive_headers(value)
+      value = redact_struct_for_inspect(value)
       prev_fun.(value, opts)
     end
   end
 
   def inspect_fun(prev_fun, value, opts) do
     prev_fun.(value, opts)
+  end
+
+  defp redact_struct_for_inspect(%Backend{} = backend) do
+    backend
+    |> Map.put(:config, nil)
+    |> Map.put(:config_encrypted, nil)
+  end
+
+  defp redact_struct_for_inspect(value) do
+    redact_sensitive_headers(value)
   end
 
   # helper function for custom String.Chars defimpl
