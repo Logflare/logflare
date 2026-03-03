@@ -95,17 +95,16 @@ defmodule LogflareWeb.PaginationComponents do
   defp build_url(path, params, %{page: page}) when is_integer(page) do
     query_params =
       if page > 1 do
-        params
-        |> Keyword.put(:page, page)
+        params ++ [page: page]
       else
         params
       end
       |> URI.encode_query()
 
     if query_params == "" do
-      %URI{path: path}
+      path
     else
-      %URI{path: path, query: query_params}
+      path <> "?" <> query_params
     end
   end
 

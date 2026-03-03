@@ -57,4 +57,6 @@ config :logger,
 
 config :tesla, Logflare.Backends.Adaptor.WebhookAdaptor.Client, adapter: Tesla.Mock
 
+config :logflare, Oban, testing: :manual
+
 config :phoenix_test, otp_app: :logflare, endpoint: LogflareWeb.Endpoint

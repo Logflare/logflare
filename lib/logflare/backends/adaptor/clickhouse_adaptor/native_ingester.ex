@@ -3,7 +3,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   Orchestrates INSERT operations over the ClickHouse native TCP protocol.
 
   Uses cached column schemas from `SchemaCache` to pre-encode data blocks
-  before sending the INSERT query, minimizing work inside ClickHouse's
+  before sending the insert query, minimizing work inside ClickHouse's
   server-side query measurement window.
   """
 
@@ -237,6 +237,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   defp default_for_type("Enum8" <> _), do: 1
   defp default_for_type("Nullable(" <> _), do: nil
   defp default_for_type("Array(" <> _), do: []
+  defp default_for_type("Map(" <> _), do: %{}
 
   defp default_for_type("LowCardinality(" <> rest),
     do: default_for_type(BlockEncoder.extract_inner_type(rest))
@@ -279,6 +280,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
       _ ->
         {"Array(#{inner})", values}
     end
+  end
+
+  defp normalize_type_and_values("Map(" <> rest, values) do
+    {key_type, value_type} = BlockEncoder.parse_map_types(rest)
+    {norm_key, _} = normalize_type_and_values(key_type, [])
+    {norm_val, _} = normalize_type_and_values(value_type, [])
+    {"Map(#{norm_key}, #{norm_val})", values}
   end
 
   defp normalize_type_and_values("Nullable(" <> rest, values) do

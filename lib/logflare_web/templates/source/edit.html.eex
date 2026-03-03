@@ -25,7 +25,14 @@
     <%= text_input a, :name, placeholder: "YourApp.SourceName", class: "form-control form-control-margin" %>
     <%= error_tag a, :name %>
   </div>
-  <%= submit "Update name", class: "btn btn-primary form-button" %>
+
+  <div class="form-group">
+    <p>Source description. Optional, but can help team members understand what this source is for. </p>
+    <%= label a, :description, "Description", class: "hidden" %>
+    <%= text_input a, :description, placeholder: "A short description", class: "form-control form-control-margin" %>
+    <%= error_tag a, :description %>
+  </div>
+  <%= submit "Update source", class: "btn btn-primary form-button" %>
   <% end %>
 
   <%= section_header("Service Group") %>

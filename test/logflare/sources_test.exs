@@ -13,8 +13,11 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Backends.SourceSup
 
   describe "changesets" do
+    setup do
+      [plan: insert(:plan)]
+    end
+
     test "update_by_user_changeset" do
-      insert(:plan)
       source = insert(:source, user: insert(:user), labels: "initial=label")
 
       assert %Ecto.Changeset{changes: changes} = Source.update_by_user_changeset(source, %{})
@@ -24,6 +27,32 @@ defmodule Logflare.SourcesTest do
                Source.update_by_user_changeset(source, %{labels: "test=some_label"})
 
       assert changes == %{labels: "test=some_label"}
+    end
+
+    test "update_by_user_changeset trims description and turns blank into nil" do
+      source = insert(:source, user: insert(:user), description: "existing description")
+
+      assert %Ecto.Changeset{changes: %{description: "trimmed description"}} =
+               Source.update_by_user_changeset(source, %{description: "  trimmed description  "})
+
+      assert %Ecto.Changeset{changes: %{description: nil}} =
+               Source.update_by_user_changeset(source, %{description: "   "})
+    end
+
+    test "update_by_user_changeset enforces description max length" do
+      source = insert(:source, user: insert(:user))
+
+      valid_description = String.duplicate("a", 280)
+      too_long_description = String.duplicate("a", 281)
+
+      assert %Ecto.Changeset{valid?: true} =
+               Source.update_by_user_changeset(source, %{description: valid_description})
+
+      assert %Ecto.Changeset{valid?: false} =
+               changeset =
+               Source.update_by_user_changeset(source, %{description: too_long_description})
+
+      assert "should be at most 280 character(s)" in errors_on(changeset).description
     end
   end
 

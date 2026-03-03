@@ -6,10 +6,18 @@ defmodule Logflare.Mapper.MappingConfig do
   extract and coerce a single output field from an input document. Build configs
   using the `FieldConfig` constructor functions, then compile via `Mapper.compile!/1`.
 
-  Supports 10 scalar types (`string`, `uint8`, `uint32`, `uint64`, `int32`,
-  `float64`, `bool`, `enum8`, `datetime64`, `json`) and 6 array types
-  (`array_string`, `array_uint64`, `array_float64`, `array_datetime64`,
-  `array_json`, `array_map`). See `FieldConfig` for full documentation.
+  Supports 11 scalar types (`string`, `uint8`, `uint32`, `uint64`, `int32`,
+  `float64`, `bool`, `enum8`, `datetime64`, `json`, `flat_map`) and 7 array
+  types (`array_string`, `array_uint64`, `array_float64`, `array_datetime64`,
+  `array_json`, `array_map`, `array_flat_map`).
+
+  The `flat_map` and `array_flat_map` types accept a `:value_type` option
+  (default `"string"`) that controls how map values are coerced. Currently
+  only `"string"` is supported, targeting `Map(String, String)` columns.
+  Future value types (`"integer"`, `"float"`) will target `Map(String, Int64)`,
+  `Map(String, Float64)`, etc.
+
+  See `FieldConfig` for full documentation.
 
   Every field reads from the **original input document** — operations like
   `exclude_keys` and `elevate_keys` only transform that field's own output value.
@@ -111,13 +119,14 @@ defmodule Logflare.Mapper.MappingConfig do
     |> maybe_add("enum_values", f.enum_values)
     |> maybe_add("exclude_keys", f.exclude_keys)
     |> maybe_add("elevate_keys", f.elevate_keys)
+    |> maybe_add("value_type", f.value_type)
     |> maybe_add_filter_nil(f.filter_nil)
     |> maybe_add_pick(f.pick)
     |> maybe_add_infer(f.infer)
   end
 
   @spec encode_nif_default(FieldConfig.t()) :: term()
-  @array_types ~w(array_string array_uint64 array_float64 array_datetime64 array_json array_map)
+  @array_types ~w(array_string array_uint64 array_float64 array_datetime64 array_json array_map array_flat_map)
 
   defp encode_nif_default(%FieldConfig{default: nil, type: type}) when type in @array_types,
     do: []
@@ -132,6 +141,7 @@ defmodule Logflare.Mapper.MappingConfig do
   defp encode_nif_default(%FieldConfig{default: "true", type: "bool"}), do: true
   defp encode_nif_default(%FieldConfig{default: "false", type: "bool"}), do: false
   defp encode_nif_default(%FieldConfig{default: "{}", type: "json"}), do: %{}
+  defp encode_nif_default(%FieldConfig{default: "{}", type: "flat_map"}), do: %{}
   defp encode_nif_default(%FieldConfig{default: "[]"}), do: []
   defp encode_nif_default(%FieldConfig{default: val}), do: val
 

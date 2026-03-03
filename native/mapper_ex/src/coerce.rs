@@ -61,14 +61,15 @@ pub fn coerce<'a>(
         FieldType::Bool => coerce_bool(env, value),
         FieldType::Enum8 { .. } => coerce_enum8(env, value),
         FieldType::DateTime64 { precision } => coerce_datetime64(env, value, *precision),
-        FieldType::Json => value, // pass-through
+        FieldType::Json | FieldType::FlatMap => value, // pass-through
         // Array types are handled by coerce_array, not coerce
         FieldType::ArrayString
         | FieldType::ArrayUInt64
         | FieldType::ArrayFloat64
         | FieldType::ArrayDateTime64 { .. }
         | FieldType::ArrayJson
-        | FieldType::ArrayMap => Vec::<Term>::new().encode(env),
+        | FieldType::ArrayMap
+        | FieldType::ArrayFlatMap => Vec::<Term>::new().encode(env),
     }
 }
 
@@ -163,6 +164,13 @@ pub fn coerce_array<'a>(
         }
 
         match field_type {
+            FieldType::ArrayFlatMap => {
+                // ArrayFlatMap: flatten each map element, skip non-maps
+                if elem.is_map() {
+                    result.push(crate::mapper::flatten_and_stringify(env, elem, nil));
+                }
+                // Non-map elements are always filtered out
+            }
             FieldType::ArrayMap => {
                 // ArrayMap: only include elements that are maps, skip non-maps
                 if elem.is_map() {
@@ -210,6 +218,7 @@ fn array_nil_value<'a>(env: Env<'a>, field_type: &FieldType) -> Term<'a> {
         FieldType::ArrayDateTime64 { .. } => 0i64.encode(env),
         FieldType::ArrayJson => Term::map_new(env),
         FieldType::ArrayMap => Term::map_new(env),
+        FieldType::ArrayFlatMap => Term::map_new(env),
         _ => 0u64.encode(env),
     }
 }

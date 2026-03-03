@@ -1,20 +1,46 @@
 defmodule Logflare.Sources.SourceRouterTest do
   use Logflare.DataCase
 
-  alias Logflare.Sources.SourceRouter
+  alias Logflare.Backends.SourceSup
   alias Logflare.LogEvent
   alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules.Rule
+  alias Logflare.Sources.SourceRouter
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   @routers [SourceRouter.Sequential, SourceRouter.RulesTree]
 
   setup do
-    [user: insert(:user)]
+    start_supervised!(AllLogsLogged)
+    insert(:plan)
+    user = insert(:user)
+    [user: user, backend: insert(:backend, user: user)]
   end
 
   for router <- @routers do
     describe "#{inspect(router)} handles" do
+      test "SourceRouter LE handling", %{user: user, backend: backend} do
+        rule = build(:rule, backend: backend, lql_string: "testing")
+        source = insert(:source, user: user, rules: [rule])
+
+        start_supervised!({SourceSup, source})
+
+        %LogEvent{} = le = build(:log_event, source: source, message: "testing123")
+
+        assert SourceRouter.route_to_sinks_and_ingest(le, source, unquote(router)) == %LogEvent{
+                 le
+                 | via_rule_id: rule.id
+               }
+
+        assert SourceRouter.route_to_sinks_and_ingest([le], source, unquote(router)) == [
+                 %LogEvent{
+                   le
+                   | via_rule_id: rule.id
+                 }
+               ]
+      end
+
       test "list_includes operator", %{user: user} do
         build_data = fn metadata_val, filter_val ->
           rule = %Rule{

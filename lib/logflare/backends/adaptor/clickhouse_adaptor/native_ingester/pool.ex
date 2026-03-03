@@ -9,16 +9,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
 
   @behaviour NimblePool
 
+  import Logflare.Utils.Guards
+
   require Logger
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection
   alias Logflare.Backends.Backend
 
   @max_pool_size 100
-  @checkout_timeout 10_000
+  @checkout_timeout 15_000
   @worker_idle_timeout 30_000
-
-  @min_checkout_age 5_000
 
   @default_native_port 9000
   @secure_native_port 9440
@@ -105,32 +105,63 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
     )
   end
 
+  @doc """
+  Spawns concurrent checkouts to pre-create connections.
+
+  With async `init_worker`, concurrent checkouts trigger parallel connection
+  tasks inside NimblePool, warming up the pool quickly at startup.
+  """
+  @spec warm_pool(Backend.t(), pos_integer()) :: :ok
+  def warm_pool(%Backend{} = backend, count) when is_pos_integer(count) do
+    1..count
+    |> Task.async_stream(
+      fn _ ->
+        try do
+          checkout(backend, fn conn -> {:ok, conn} end)
+        catch
+          :exit, _ -> :error
+        end
+      end,
+      max_concurrency: count,
+      timeout: @checkout_timeout + 5_000,
+      on_timeout: :kill_task
+    )
+    |> Stream.run()
+  end
+
   @impl NimblePool
   def init_worker(connect_opts) do
-    case Connection.connect(connect_opts) do
-      {:ok, conn} ->
-        {:ok, conn, connect_opts}
+    pool_pid = self()
+
+    {:async,
+     fn ->
+       case Connection.connect(connect_opts) do
+         {:ok, conn} ->
+           transfer_or_close!(conn, pool_pid)
+
+         {:error, reason} ->
+           Logger.warning("ClickHouse NativeIngester.Pool: failed to connect: #{inspect(reason)}")
+
+           exit({:connect_failed, reason})
+       end
+     end, connect_opts}
+  end
+
+  @spec transfer_or_close!(Connection.t(), pid()) :: Connection.t()
+  defp transfer_or_close!(%Connection{} = conn, pool_pid) do
+    case Connection.transfer_ownership(conn, pool_pid) do
+      :ok ->
+        conn
 
       {:error, reason} ->
-        Logger.warning("ClickHouse NativeIngester.Pool: failed to connect: #{inspect(reason)}")
-        {:error, reason}
+        Connection.close(conn)
+        exit({:transfer_failed, reason})
     end
   end
 
   @impl NimblePool
   def handle_checkout(:checkout, _from, %Connection{} = conn, pool_state) do
-    now = System.monotonic_time(:millisecond)
-    last_use = conn.last_used_at || conn.connected_at || 0
-
-    if now - last_use > @min_checkout_age do
-      if Connection.alive?(conn) do
-        {:ok, conn, conn, pool_state}
-      else
-        {:remove, :disconnected, pool_state}
-      end
-    else
-      {:ok, conn, conn, pool_state}
-    end
+    {:ok, conn, conn, pool_state}
   end
 
   @impl NimblePool

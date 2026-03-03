@@ -65,10 +65,6 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
   end
 
   @impl Adaptor
-  def test_connection({_source, backend}) do
-    test_connection(backend)
-  end
-
   def test_connection(%Backend{} = backend) do
     case HttpBased.Client.send_events(__MODULE__, [], backend) do
       {:ok, %Tesla.Env{status: 200}} -> :ok

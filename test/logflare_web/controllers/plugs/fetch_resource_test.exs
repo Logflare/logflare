@@ -74,6 +74,19 @@ defmodule LogflareWeb.Plugs.FetchResourceTest do
       refute conn.halted
     end
 
+    test "returns nil when no source param is provided" do
+      conn = build_conn(:post, "/logs", %{"source_id" => "some-value"})
+      refute Map.get(conn.assigns, :source)
+
+      conn =
+        conn
+        |> assign(:resource_type, :source)
+        |> FetchResource.call(%{})
+
+      refute Map.get(conn.assigns, :source)
+      refute conn.halted
+    end
+
     defp assert_plug_call_works_for_source(conn, source_id) do
       refute Map.get(conn.assigns, :source)
 

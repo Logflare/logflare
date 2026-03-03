@@ -3,7 +3,6 @@
     ~/<.subheader_path_link live_patch to={~p"/alerts"} team={@team}>alerts</.subheader_path_link>
   </:path>
   <.render_docs_link {assigns} />
-  <.render_access_tokens_link {assigns} />
 </.subheader>
 
 <div class="tw-p-4 lg:tw-max-w-[50%] tw-mx-auto">
@@ -27,6 +26,7 @@
   <ul :for={alert <- Enum.sort_by(@alerts, & &1.name)} class="list-group">
     <li class="list-group-item">
       <.team_link team={@team} patch={~p"/alerts/#{alert.id}"} class="tw-text-white">{alert.name}</.team_link>
+      <span :if={!alert.enabled} class="badge badge-secondary tw-ml-2">Disabled</span>
       <span class="tw-block tw-text-sm">uuid: {alert.token}</span>
       <p :if={alert.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
         {alert.description}

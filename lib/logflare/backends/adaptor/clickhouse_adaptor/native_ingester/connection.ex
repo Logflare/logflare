@@ -179,6 +179,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     transport.close(socket)
   end
 
+  @spec transfer_ownership(t(), pid()) :: :ok | {:error, term()}
+  def transfer_ownership(%__MODULE__{socket: socket, transport: transport}, new_owner)
+      when is_pid(new_owner) do
+    transport.controlling_process(socket, new_owner)
+  end
+
   @spec ping(t()) :: {:ok, t()} | {:error, term()}
   def ping(%__MODULE__{} = conn) do
     packet = Protocol.encode_varuint(Protocol.client_ping())

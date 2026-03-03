@@ -16,16 +16,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   @log_config_id "00000000-0000-0000-0001-000000000002"
   @metric_config_id "00000000-0000-0000-0002-000000000002"
   @trace_config_id "00000000-0000-0000-0003-000000000002"
+  @simple_log_config_id "00000000-0000-0000-0001-000000000003"
+  @simple_metric_config_id "00000000-0000-0000-0002-000000000003"
+  @simple_trace_config_id "00000000-0000-0000-0003-000000000003"
 
   @spec config_id(TypeDetection.event_type()) :: String.t()
   def config_id(:log), do: @log_config_id
   def config_id(:metric), do: @metric_config_id
   def config_id(:trace), do: @trace_config_id
 
+  @spec config_id_simple(TypeDetection.event_type()) :: String.t()
+  def config_id_simple(:log), do: @simple_log_config_id
+  def config_id_simple(:metric), do: @simple_metric_config_id
+  def config_id_simple(:trace), do: @simple_trace_config_id
+
   @spec for_type(TypeDetection.event_type()) :: MappingConfig.t()
   def for_type(:log), do: for_log()
   def for_type(:metric), do: for_metric()
   def for_type(:trace), do: for_trace()
+
+  @spec for_type_simple(TypeDetection.event_type()) :: MappingConfig.t()
+  def for_type_simple(:log), do: for_log_simple()
+  def for_type_simple(:metric), do: for_metric_simple()
+  def for_type_simple(:trace), do: for_trace_simple()
 
   @spec for_log() :: MappingConfig.t()
   def for_log do
@@ -573,5 +586,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ])
+  end
+
+  @spec for_log_simple() :: MappingConfig.t()
+  def for_log_simple, do: for_log() |> convert_json_to_flat_map()
+
+  @spec for_metric_simple() :: MappingConfig.t()
+  def for_metric_simple, do: for_metric() |> convert_json_to_flat_map()
+
+  @spec for_trace_simple() :: MappingConfig.t()
+  def for_trace_simple, do: for_trace() |> convert_json_to_flat_map()
+
+  @spec convert_json_to_flat_map(MappingConfig.t()) :: MappingConfig.t()
+  defp convert_json_to_flat_map(%MappingConfig{fields: fields} = config) do
+    updated_fields =
+      Enum.map(fields, fn
+        %Field{type: "json"} = f -> %{f | type: "flat_map", value_type: "string"}
+        %Field{type: "array_json"} = f -> %{f | type: "array_flat_map", value_type: "string"}
+        f -> f
+      end)
+
+    %{config | fields: updated_fields}
   end
 end

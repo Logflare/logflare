@@ -5,12 +5,13 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.TestUtils
 
   setup do
     start_supervised!(AllLogsLogged)
     insert(:plan, name: "Free")
     user = insert(:user)
-    sources = insert_list(2, :source, user_id: user.id)
+    sources = insert_list(2, :source, user_id: user.id, description: TestUtils.random_string())
 
     {:ok, user: user, sources: sources}
   end
@@ -39,6 +40,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         |> json_response(200)
 
       assert response["id"] == source.id
+      assert response["description"] == source.description
     end
 
     test "backend postgres secrets are redacted", %{conn: conn, user: user, sources: [source | _]} do
@@ -72,14 +74,16 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   describe "create/2" do
     test "creates a new source for an authenticated user", %{conn: conn, user: user} do
       name = TestUtils.random_string()
+      description = "My new source"
 
       response =
         conn
         |> add_access_token(user, "private")
-        |> post("/api/sources", %{name: name})
+        |> post("/api/sources", %{name: name, description: description})
         |> json_response(201)
 
       assert response["name"] == name
+      assert response["description"] == description
     end
 
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
@@ -140,15 +144,17 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       sources: [source | _]
     } do
       name = TestUtils.random_string()
+      description = TestUtils.random_string()
 
       response =
         conn
         |> add_access_token(user, "private")
-        |> put("/api/sources/#{source.token}", %{name: name})
+        |> put("/api/sources/#{source.token}", %{name: name, description: description})
         |> json_response(200)
 
       assert response["id"] == source.id
       assert response["name"] == name
+      assert response["description"] == description
     end
 
     test "PATCH updates an existing source from a user", %{

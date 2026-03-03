@@ -231,6 +231,10 @@
             {checkbox(f_config, :async_insert, id: "async_insert")}
           </div>
           <div class="form-group">
+            {label(f_config, :use_simple_schemas, "Use Simple Schemas (Experimental)")}
+            {checkbox(f_config, :use_simple_schemas, id: "use_simple_schemas")}
+          </div>
+          <div class="form-group">
             {label(f_config, :port, "HTTP Port")}
             {text_input(f_config, :port, class: "form-control", value: input_value(f_config, "port") || 8443)}
             <small class="form-text text-muted">
