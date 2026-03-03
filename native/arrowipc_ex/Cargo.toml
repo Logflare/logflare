@@ -10,4 +10,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 arrow = { version = "56.2.0", features = ["ipc", "json"] }
-rustler = "0.37.0"
+rustler = "0.37.2"

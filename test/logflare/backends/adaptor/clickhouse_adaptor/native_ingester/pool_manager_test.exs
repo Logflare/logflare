@@ -158,6 +158,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolManager
     end
   end
 
+  describe "pool warm-up" do
+    test "ensure_pool_started triggers warm-up and connections are available", %{
+      backend: backend
+    } do
+      {:ok, _manager_pid} = PoolManager.start_link(backend)
+      assert :ok == PoolManager.ensure_pool_started(backend)
+
+      # Allow warm-up tasks to complete
+      Process.sleep(500)
+
+      # Verify pool is active and a checkout succeeds immediately
+      assert PoolManager.pool_active?(backend)
+
+      result = Pool.checkout(backend, fn conn -> {:ok, conn} end)
+      assert result == :ok
+    end
+  end
+
   describe "pool crash recovery" do
     setup context do
       {:ok, _manager_pid} = PoolManager.start_link(context.backend)

@@ -120,21 +120,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         }
       } do
         backend = Backends.Cache.get_backend(backend_id)
+        use_simple = Map.get(backend.config, :use_simple_schemas, false)
+        mapping_variant = if use_simple, do: :simple, else: nil
 
-        with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(event_type) do
+        with {:ok, compiled, config_id} <-
+               MappingConfigStore.get_compiled(event_type, mapping_variant) do
           events =
             Enum.map(messages, fn %{data: %LogEvent{} = event} ->
               mapped_body =
                 event.body
                 |> Mapper.map(compiled)
                 |> Map.put("mapping_config_id", config_id)
+                |> maybe_replace_inferred_timestamp(event, event_type)
                 |> maybe_compute_duration(event_type)
                 |> resolve_severity_number(event_type)
 
               %{event | body: mapped_body}
             end)
 
-          ClickHouseAdaptor.insert_log_events(backend, events, event_type)
+          if use_simple do
+            ClickHouseAdaptor.insert_simple_log_events(backend, events, event_type)
+          else
+            ClickHouseAdaptor.insert_log_events(backend, events, event_type)
+          end
         end
       end
 
@@ -202,6 +210,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     IngestEventQueue.delete_batch({:consolidated, backend_id}, events)
     IngestEventQueue.add_to_table({:consolidated, backend_id}, events)
   end
+
+  @spec maybe_replace_inferred_timestamp(map(), LogEvent.t(), TypeDetection.event_type()) ::
+          map()
+  defp maybe_replace_inferred_timestamp(
+         %{"start_time" => start_time} = body,
+         %LogEvent{timestamp_inferred: true},
+         :trace
+       )
+       when is_pos_integer(start_time) do
+    %{body | "timestamp" => start_time}
+  end
+
+  defp maybe_replace_inferred_timestamp(body, _event, _event_type), do: body
 
   @spec maybe_compute_duration(map(), TypeDetection.event_type()) :: map()
   defp maybe_compute_duration(

@@ -11,6 +11,7 @@ defmodule Logflare.Sources.Source do
   @derive {Jason.Encoder,
            only: [
              :name,
+             :description,
              :service_name,
              :token,
              :id,
@@ -112,6 +113,7 @@ defmodule Logflare.Sources.Source do
 
   typed_schema "sources" do
     field :name, :string
+    field :description, :string, default: nil
     field :service_name, :string
     field :token, Ecto.UUID.Atom, autogenerate: true
     field :public_token, :string
@@ -179,6 +181,7 @@ defmodule Logflare.Sources.Source do
     source
     |> cast(attrs, [
       :name,
+      :description,
       :service_name,
       :token,
       :public_token,
@@ -215,6 +218,7 @@ defmodule Logflare.Sources.Source do
     source
     |> cast(attrs, [
       :name,
+      :description,
       :service_name,
       :token,
       :public_token,
@@ -244,7 +248,9 @@ defmodule Logflare.Sources.Source do
 
   def default_validations(changeset, source) do
     changeset
+    |> normalize_description()
     |> validate_required([:name])
+    |> validate_length(:description, max: 280)
     |> unique_constraint(:name, name: :sources_name_index)
     |> unique_constraint(:token)
     |> unique_constraint(:public_token)
@@ -302,6 +308,16 @@ defmodule Logflare.Sources.Source do
       changeset ->
         changeset
         |> put_change(:labels, normalized |> Enum.reverse() |> Enum.join(","))
+    end)
+  end
+
+  defp normalize_description(changeset) do
+    update_change(changeset, :description, fn
+      description when is_binary(description) ->
+        String.trim(description)
+
+      value ->
+        value
     end)
   end
 

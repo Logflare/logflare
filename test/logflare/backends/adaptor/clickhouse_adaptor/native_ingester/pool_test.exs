@@ -22,7 +22,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
     "pool_basic",
     "pool_insert",
     "pool_reuse",
-    "pool_checkout_ping"
+    "pool_checkout_ping",
+    "pool_concurrent"
   ]
 
   setup do
@@ -305,8 +306,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
     end
   end
 
-  describe "time-based checkout ping" do
-    test "skips ping for recently-used connections", %{backend: backend} do
+  describe "checkout behavior" do
+    test "checkout passes through connection without ping", %{backend: backend} do
       {:ok, _} =
         ClickHouseAdaptor.execute_ch_query(backend, """
         CREATE TABLE IF NOT EXISTS pool_checkout_ping (
@@ -369,32 +370,54 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
       GenServer.stop(pid)
     end
 
-    test "pings stale connections on checkout" do
-      pool_name = :"pool_checkout_stale_test_#{System.unique_integer([:positive])}"
+    test "concurrent checkouts on lazy pool succeed", %{backend: backend} do
+      {:ok, _} =
+        ClickHouseAdaptor.execute_ch_query(backend, """
+        CREATE TABLE IF NOT EXISTS pool_concurrent (
+          id UInt64,
+          name String
+        ) ENGINE = MergeTree() ORDER BY id
+        """)
+
+      pool_name = :"pool_concurrent_test_#{System.unique_integer([:positive])}"
 
       {:ok, pid} =
         NimblePool.start_link(
           worker: {Pool, @pool_connect_opts},
-          pool_size: 1,
+          pool_size: 4,
+          lazy: true,
           name: pool_name
         )
 
-      # First checkout to initialize the connection
-      NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
-        # Force last_used_at far in the past to simulate a stale connection
-        old_conn = %{conn | last_used_at: System.monotonic_time(:millisecond) - 10_000}
-        {:ok, old_conn}
-      end)
+      # Fire 4 concurrent checkouts against a lazy pool — all must succeed
+      results =
+        1..4
+        |> Task.async_stream(
+          fn i ->
+            NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
+              case do_insert(conn, "pool_concurrent", [
+                     {"id", "UInt64", [i]},
+                     {"name", "String", ["worker_#{i}"]}
+                   ]) do
+                {:ok, updated_conn} -> {:ok, updated_conn}
+                {:error, _} = error -> {error, :remove}
+              end
+            end)
+          end,
+          max_concurrency: 4,
+          timeout: 15_000
+        )
+        |> Enum.map(fn {:ok, result} -> result end)
 
-      # Next checkout should trigger a ping because last_used_at is old.
-      # The connection is still alive so it should pass the ping check.
-      result =
-        NimblePool.checkout!(pool_name, :checkout, fn _pool, conn ->
-          assert %Connection{} = conn
-          {:ok, conn}
-        end)
+      assert Enum.all?(results, &(&1 == :ok))
 
-      assert result == :ok
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT id, name FROM pool_concurrent ORDER BY id"
+        )
+
+      assert length(rows) == 4
 
       GenServer.stop(pid)
     end

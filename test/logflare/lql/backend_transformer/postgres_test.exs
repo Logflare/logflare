@@ -1,5 +1,5 @@
 defmodule Logflare.Lql.BackendTransformer.PostgresTest do
-  use ExUnit.Case, async: true
+  use Logflare.DataCase, async: true
 
   import Ecto.Query
 

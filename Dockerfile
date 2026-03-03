@@ -2,11 +2,13 @@ ARG ELIXIR_VERSION=1.19.5
 ARG OTP_VERSION=27.3.4.6
 ARG DEBIAN_VERSION=trixie-20260112-slim
 
+ARG RUST_VERSION=1.93.1
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
 
 FROM ${BUILDER_IMAGE} AS builder
 
+ARG RUST_VERSION
 ENV MIX_ENV prod
 
 WORKDIR /app
@@ -17,7 +19,7 @@ RUN apt-get update -y && apt-get install -y curl bash build-essential git gcc ma
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     # install rust
-    curl https://sh.rustup.rs -sSf | bash -s -- -y && \
+    curl https://sh.rustup.rs -sSf | bash -s -- -y --default-toolchain ${RUST_VERSION} && \
     # cleanup
     apt-get clean && rm -f /var/lib/apt/lists/*_*
 # app dependencies
@@ -32,8 +34,10 @@ COPY config/prod.exs config/
 COPY config/runtime.exs config/
 COPY . ./
 
-# rust bin path
+# rust bin path and release optimizations
 ENV PATH="/root/.cargo/bin:${PATH}"
+ENV CARGO_PROFILE_RELEASE_LTO="thin"
+ENV CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
 
 # check installed correctly
 RUN cargo version

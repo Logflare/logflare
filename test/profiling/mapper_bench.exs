@@ -467,11 +467,35 @@ IO.puts("\n--- Metric (array) scenario ---")
 IO.puts("Output Keys: #{inspect(Map.keys(nif_metric_result) |> Enum.sort())}")
 IO.puts("")
 
+# ── FlatMap scenarios (simple schema equivalents) ─────────────────────
+
+alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
+
+simple_log_compiled = Mapper.compile!(MappingDefaults.for_log_simple())
+simple_log_result = Mapper.map(payload, simple_log_compiled)
+
+simple_metric_compiled = Mapper.compile!(MappingDefaults.for_metric_simple())
+simple_metric_result = Mapper.map(metric_payload, simple_metric_compiled)
+
+# credo:disable-for-lines:8
+IO.puts("\n--- Simple log (flat_map) scenario ---")
+IO.puts("Output Keys: #{inspect(Map.keys(simple_log_result) |> Enum.sort())}")
+IO.puts("resource_attributes type: #{inspect(simple_log_result["resource_attributes"])}")
+IO.puts("")
+IO.puts("\n--- Simple metric (flat_map) scenario ---")
+IO.puts("Output Keys: #{inspect(Map.keys(simple_metric_result) |> Enum.sort())}")
+IO.puts("resource_attributes type: #{inspect(simple_metric_result["resource_attributes"])}")
+IO.puts("")
+
 Benchee.run(
   %{
-    "[log] NIF (pre-compiled mappings)" => fn -> Mapper.map(payload, compiled) end,
-    "[metric] NIF (pre-compiled mappings)" => fn ->
+    "[log] JSON mapping" => fn -> Mapper.map(payload, compiled) end,
+    "[log] FlatMap mapping" => fn -> Mapper.map(payload, simple_log_compiled) end,
+    "[metric] JSON mapping" => fn ->
       Mapper.map(metric_payload, compiled_metric)
+    end,
+    "[metric] FlatMap mapping" => fn ->
+      Mapper.map(metric_payload, simple_metric_compiled)
     end
   },
   time: 5,
