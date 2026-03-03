@@ -133,6 +133,28 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Sources.put_bq_dataset_id()
   end
 
+  def handle_params(%{"fields" => fields, "querystring" => qs} = params, _uri, socket)
+      when is_map(fields) do
+    source = socket.assigns.source
+
+    bq_table_schema =
+      source
+      |> get_bigquery_schema()
+
+    qs = append_fields_rules(qs, fields, bq_table_schema)
+
+    params =
+      params
+      |> Map.delete("fields")
+      |> Map.delete("source_id")
+      |> Map.put("querystring", qs)
+
+    path =
+      Routes.live_path(socket, __MODULE__, source.id, params)
+
+    {:noreply, push_patch(socket, to: path, replace: true)}
+  end
+
   def handle_params(%{"querystring" => qs} = params, uri, socket) do
     source = socket.assigns.source
 
@@ -332,17 +354,26 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search",
-        %{"search" => %{"querystring" => qs}} = _params,
+        %{"search" => %{"querystring" => qs}} = params,
         %{assigns: prev_assigns} = socket
       ) do
+    bq_table_schema = get_bigquery_schema(socket.assigns.source)
+
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
+
+    qs =
+      append_fields_rules(
+        qs,
+        Map.get(params, "fields", %{}),
+        bq_table_schema
+      )
 
     socket =
       assign_new_search_with_qs(
         socket,
         %{querystring: qs, tailing?: prev_assigns.tailing?},
-        get_bigquery_schema(socket.assigns.source)
+        bq_table_schema
       )
 
     {:noreply, socket}
@@ -550,6 +581,27 @@ defmodule LogflareWeb.Source.SearchLV do
       |> LogflareWeb.Utils.with_team_param(assigns[:team])
 
     {:noreply, push_navigate(socket, to: destination)}
+  end
+
+  defp append_fields_rules(qs, recommended_fields, schema) do
+    with true <- is_map(recommended_fields),
+         {:ok, lql_rules} <- Lql.decode(qs, schema) do
+      recommended_filter_rules =
+        recommended_fields
+        |> Enum.reject(fn {_path, value} -> is_nil(value) or String.trim(value) == "" end)
+        |> Enum.map(fn {path, value} ->
+          Lql.Rules.FilterRule.build(path: path, operator: :=, value: value)
+        end)
+
+      lql_rules =
+        Enum.reduce(recommended_filter_rules, lql_rules, fn recommended_filter_rule, rules ->
+          Rules.upsert_filter_rule_by_path(rules, recommended_filter_rule)
+        end)
+
+      Lql.encode!(lql_rules)
+    else
+      _ -> qs
+    end
   end
 
   def handle_info(:soft_pause = ev, socket) do

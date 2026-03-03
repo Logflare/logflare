@@ -25,6 +25,17 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert html =~ source.name
     end
 
+    test "renders source description value", %{conn: conn, source: source} do
+      description = "Production API logs"
+      source = Repo.update!(Ecto.Changeset.change(source, description: description))
+
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert view
+             |> element("#source-#{source.token}")
+             |> render() =~ description
+    end
+
     test "sources have a saved searches modal", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, "/dashboard")
 

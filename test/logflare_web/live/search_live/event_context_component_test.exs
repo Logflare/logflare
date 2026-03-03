@@ -133,6 +133,29 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
                EventContextComponent.prepare_lql_rules(source, "event_message:sign_in", timestamp)
     end
 
+    test "prepare_lql_rules/1 handles required marker in suggested_keys", %{
+      user: user,
+      schema: schema,
+      timestamp: timestamp
+    } do
+      source = insert(:source, user: user, suggested_keys: "event_message!")
+      insert(:source_schema, source: source, bigquery_schema: schema)
+
+      assert [
+               %Logflare.Lql.Rules.FilterRule{
+                 path: "event_message",
+                 operator: :=,
+                 value: "sign_in"
+               },
+               %Logflare.Lql.Rules.FilterRule{
+                 path: "timestamp",
+                 operator: :range,
+                 values: [~U[2025-08-19 02:33:51Z], ~U[2025-08-21 02:33:51Z]]
+               }
+             ] =
+               EventContextComponent.prepare_lql_rules(source, "event_message:sign_in", timestamp)
+    end
+
     test "prepare_lql_rules/1 includes clustering_fields", %{
       user: user,
       schema: schema,

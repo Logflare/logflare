@@ -49,6 +49,7 @@ defmodule LogflareWeb.AdminController do
     conn =
       conn
       |> delete_session(:team_user_id)
+      |> delete_session(:last_switched_team_id)
       |> delete_resp_cookie("_logflare_user_id")
       |> delete_resp_cookie("_logflare_team_user_id")
 

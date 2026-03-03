@@ -15,7 +15,6 @@ defmodule Logflare.SystemMetricsSup do
     children = [
       SystemMetrics.AllLogsLogged,
       SystemMetrics.AllLogsLogged.Poller,
-      SystemMetrics.Cachex.Poller,
       # telemetry poller
       {
         :telemetry_poller,

@@ -120,7 +120,7 @@ defmodule Logflare.Mixfile do
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 4.0"},
       {:ex_machina, "~> 2.3", only: [:dev, :test]},
-      {:iteraptor, "~> 1.10"},
+      {:iteraptor, "~> 1.15"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:libcluster, "~> 3.2"},
@@ -154,7 +154,7 @@ defmodule Logflare.Mixfile do
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:phoenix_test, "~> 0.9.1", only: :test, runtime: false},
-      {:phoenix_test_playwright, "~> 0.9.1", only: :test, runtime: false},
+      {:phoenix_test_playwright, "~> 0.11.1", only: :test, runtime: false},
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 
@@ -177,6 +177,7 @@ defmodule Logflare.Mixfile do
 
       # ClickHouse
       {:ch, "~> 0.5"},
+      {:nimble_pool, "~> 1.0"},
 
       # DataFrames
       {:explorer, "~> 0.11.1"},
@@ -192,7 +193,7 @@ defmodule Logflare.Mixfile do
       {:floki, "~> 0.38.0", only: [:test]},
 
       # Rust NIFs
-      {:rustler, "~> 0.36.2", override: true},
+      {:rustler, "~> 0.37.3", runtime: false, override: true},
 
       # Frontend
       {:phoenix_live_react, "~> 0.6"},
@@ -213,7 +214,7 @@ defmodule Logflare.Mixfile do
 
       # Code quality
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
-      {:sobelow, "~> 0.11", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
 
       # Charting
@@ -233,7 +234,7 @@ defmodule Logflare.Mixfile do
       {:plug_cowboy, "~> 2.0"},
 
       # alerts feature
-      {:quantum, github: "Logflare/quantum-core", ref: "5882e82"},
+      {:oban, "~> 2.19"},
       {:crontab, "~> 1.2"},
 
       # benchmarking

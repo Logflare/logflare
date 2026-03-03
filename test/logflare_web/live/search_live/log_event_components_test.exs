@@ -243,6 +243,33 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
     end
   end
 
+  describe "lql_with_recommended_fields/3" do
+    test "normalizes required marker from suggested keys" do
+      user = insert(:user)
+      source = insert(:source, user: user, suggested_keys: "project!")
+      event = build(:log_event, source: source, project: "my-project")
+
+      lql =
+        LogEventComponents.lql_with_recommended_fields(
+          [],
+          event,
+          source
+        )
+
+      schema =
+        %{"project" => "my-project"}
+        |> Source.BigQuery.SchemaBuilder.build_table_schema(
+          Source.BigQuery.SchemaBuilder.initial_table_schema()
+        )
+
+      {:ok, rules} = Lql.decode(lql, schema)
+      filter_paths = rules |> Lql.Rules.get_filter_rules() |> Enum.map(& &1.path)
+
+      assert "project" in filter_paths
+      refute "project!" in filter_paths
+    end
+  end
+
   describe "formatted_for_clipboard/2" do
     test "formats log event with select fields for clipboard" do
       log_event =

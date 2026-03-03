@@ -1,24 +1,10 @@
 name: Integration Tests with Supabase
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'config/**'
-      - 'assets/**'
-      - 'lib/**'
-      - 'priv/**'
-      - 'mix.exs'
-      - 'mix.lock'
-      - 'Dockerfile'
-      - 'run.sh'
-      - 'test/e2e/supabase/**'
-      - '.github/workflows/integration-supabase.yml'
   pull_request:
     branches:
       - main
-    paths:
+    paths: &watched_paths
       - 'config/**'
       - 'assets/**'
       - 'lib/**'
@@ -29,6 +15,10 @@ on:
       - 'run.sh'
       - 'test/e2e/supabase/**'
       - '.github/workflows/integration-supabase.yml'
+  push:
+    branches:
+      - main
+    paths: *watched_paths
 
 # Cancel old builds on new commit for same workflow + branch/PR
 concurrency:
@@ -41,9 +31,20 @@ defaults:
 
 jobs:
   test:
-    timeout-minutes: 15
-
+    name: Playwright Tests
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        browsers:
+          - name: Chrome
+            project: chromium
+          - name: Firefox
+            project: firefox
+          - name: Safari
+            project: webkit
+
+    timeout-minutes: 20
 
     steps:
     - uses: actions/checkout@v4
@@ -91,12 +92,11 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps
+    - name: Install Playwright ${{ matrix.browsers.name }} Browser
+      run: npx playwright install ${{ matrix.browsers.project }} --with-deps
 
-    - name: Run Playwright tests (all browsers)
-      if: ${{ github.event_name != 'pull_request' }}
-      run: npx playwright test
+    - name: Run Playwright tests (only ${{ matrix.browsers.name }})
+      run: npx playwright test --project ${{ matrix.browsers.project }}
 
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}

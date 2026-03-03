@@ -515,6 +515,20 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Tests the connection for a given backend.
+  """
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    adaptor = Adaptor.get_adaptor(backend)
+
+    if function_exported?(adaptor, :test_connection, 1) do
+      adaptor.test_connection(backend)
+    else
+      {:error, :not_implemented}
+    end
+  end
+
+  @doc """
   Syncs backend across all cluster nodes for v2 pipeline sources.
 
   This ensures that when a backend's configuration changes (e.g., `default_ingest?` flag),

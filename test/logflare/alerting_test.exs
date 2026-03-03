@@ -1,9 +1,10 @@
 defmodule Logflare.AlertingTest do
   use Logflare.DataCase, async: false
+  use Oban.Testing, repo: Logflare.Repo
 
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
-  alias Logflare.Alerting.AlertsScheduler
+  alias Logflare.Alerting.AlertWorker
 
   doctest Logflare.SynEventHandler
 
@@ -15,11 +16,6 @@ defmodule Logflare.AlertingTest do
     end)
 
     {:ok, user: insert(:user)}
-  end
-
-  test "cannot start multiple schedulers" do
-    AlertsScheduler.start_link(name: :test_scheduler)
-    assert {:error, {:already_started, _pid}} = AlertsScheduler.start_link(name: :test_scheduler)
   end
 
   describe "alert_queries" do
@@ -53,14 +49,9 @@ defmodule Logflare.AlertingTest do
       webhook_notification_url: nil
     }
 
-    setup do
-      start_alerting_supervisor!()
-    end
-
     def alert_query_fixture(user, attrs \\ %{}) do
       attrs = Enum.into(attrs, @valid_attrs)
       {:ok, alert_query} = Alerting.create_alert_query(user, attrs)
-      Alerting.sync_alert_jobs()
       alert_query
     end
 
@@ -68,6 +59,24 @@ defmodule Logflare.AlertingTest do
       alert_query_fixture(user)
       alert_query_fixture(insert(:user))
       assert [_] = Alerting.list_alert_queries(user)
+    end
+
+    test "list_all_alert_queries/0 returns all alert queries across users", %{user: user} do
+      alert_query_fixture(user)
+      alert_query_fixture(insert(:user))
+      assert length(Alerting.list_all_alert_queries()) >= 2
+    end
+
+    test "list_all_alert_queries/0 excludes disabled alerts", %{user: user} do
+      enabled_alert = alert_query_fixture(user)
+      disabled_alert = alert_query_fixture(user, %{name: "disabled alert"})
+      Alerting.update_alert_query(disabled_alert, %{enabled: false})
+
+      results = Alerting.list_all_alert_queries()
+      result_ids = Enum.map(results, & &1.id)
+
+      assert enabled_alert.id in result_ids
+      refute disabled_alert.id in result_ids
     end
 
     test "list_alert_queries_user_access" do
@@ -178,11 +187,6 @@ defmodule Logflare.AlertingTest do
                Alerting.update_alert_query(alert_query, @invalid_attrs)
 
       assert alert_query.updated_at == Alerting.get_alert_query!(alert_query.id).updated_at
-
-      TestUtils.retry_assert(fn ->
-        job = Alerting.get_alert_job(alert_query.id)
-        assert job
-      end)
     end
 
     test "delete_alert_query/1 deletes the alert_query", %{user: user} do
@@ -190,7 +194,29 @@ defmodule Logflare.AlertingTest do
       assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
 
       assert_raise Ecto.NoResultsError, fn -> Alerting.get_alert_query!(alert_query.id) end
-      assert nil == Alerting.get_alert_job(alert_query.id)
+    end
+
+    test "delete_alert_query/1 deletes associated Oban jobs", %{user: user} do
+      alert_query = alert_query_fixture(user)
+      other_alert = alert_query_fixture(user)
+
+      # Insert jobs for the alert being deleted
+      for state <- ~w(scheduled available completed) do
+        insert_oban_job(alert_query, %{state: state})
+      end
+
+      # Insert jobs for another alert (should not be affected)
+      for state <- ~w(scheduled available completed) do
+        insert_oban_job(other_alert, %{state: state})
+      end
+
+      assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
+
+      # All jobs for the deleted alert should be gone
+      assert Alerting.list_execution_history(alert_query.id) == []
+
+      # Jobs for the other alert should remain
+      assert length(Alerting.list_execution_history(other_alert.id)) == 3
     end
 
     test "change_alert_query/1 returns a alert_query changeset", %{user: user} do
@@ -276,7 +302,13 @@ defmodule Logflare.AlertingTest do
         {:ok, %Tesla.Env{}}
       end)
 
-      assert :ok = Alerting.run_alert(alert_query)
+      assert {:ok,
+              %{
+                total_rows: 1,
+                total_bytes_processed: _,
+                fired: true,
+                rows: [%{"testing" => "123"}]
+              }} = Alerting.run_alert(alert_query)
     end
 
     test "run_alert_query/1 does not send notifications if no results", %{user: user} do
@@ -293,130 +325,18 @@ defmodule Logflare.AlertingTest do
       Logflare.Backends.Adaptor.SlackAdaptor.Client
       |> reject(:send, 2)
 
-      assert {:error, :no_results} = Alerting.run_alert(alert_query)
-    end
-
-    test "run_alert/2, performs pre-run configuration checks", %{user: user} do
-      alert_query = insert(:alert, user: user)
-
-      reject(&GoogleApi.BigQuery.V2.Api.Jobs.bigquery_jobs_query/3)
-      reject(&Logflare.Backends.Adaptor.WebhookAdaptor.Client.send/1)
-      reject(&Logflare.Backends.Adaptor.SlackAdaptor.Client.send/2)
-      Application.get_env(:logflare, Logflare.Alerting)
-      cfg = Application.get_env(:logflare, Logflare.Alerting)
-
-      on_exit(fn ->
-        Application.put_env(:logflare, Logflare.Alerting, cfg)
-      end)
-
-      # min_cluster_size
-      Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 4, enabled: true)
-      assert {:error, :below_min_cluster_size} = Alerting.run_alert(alert_query, :scheduled)
-      # enabled flag
-      Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 1, enabled: false)
-      assert {:error, :not_enabled} = Alerting.run_alert(alert_query, :scheduled)
-    end
-  end
-
-  describe "quantum integration" do
-    setup do
-      start_alerting_supervisor!()
-    end
-
-    test "upsert_alert_job/1, get_alert_job/1, delete_alert_job/1, count_alert_jobs/0 retrieves alert job",
-         %{user: user} do
-      %{id: alert_id} = alert = insert(:alert, user_id: user.id)
-      {:ok, pid} = Alerting.sync_alert_jobs()
-
-      ref = Process.monitor(pid)
-      assert_receive {:DOWN, ^ref, _, _, _}
-
       assert {:ok,
-              %Quantum.Job{
-                run_strategy: %Quantum.RunStrategy.Local{},
-                task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
-              }} = Alerting.upsert_alert_job(alert)
-
-      assert %Quantum.Job{
-               task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
-             } = Alerting.get_alert_job(alert_id)
-
-      assert {:ok, _} = Alerting.delete_alert_job(alert)
-
-      TestUtils.retry_assert(fn ->
-        assert {:error, :not_found} = Alerting.delete_alert_job(alert.id)
-      end)
-
-      TestUtils.retry_assert(fn -> refute Alerting.get_alert_job(alert_id) end)
-    end
-
-    test "upsert alert job multiple times will ensure only one job is present", %{user: user} do
-      alert = insert(:alert, user_id: user.id)
-      for _ <- 0..10, do: Alerting.upsert_alert_job(alert)
-      assert Alerting.list_alert_jobs() |> length == 1
-    end
-
-    test "upsert job with new values will replace existing job", %{user: user} do
-      alert = insert(:alert, user_id: user.id, cron: "0 0 1 * *")
-      Alerting.upsert_alert_job(alert)
-      original_job = Alerting.get_alert_job(alert.id)
-      assert Alerting.get_alert_job(alert.id)
-      new_alert = %{alert | cron: "0 0 2 * *"}
-      Alerting.upsert_alert_job(new_alert)
-      assert original_job != Alerting.get_alert_job(alert.id)
-    end
-
-    test "init/sync functions will populate scheduler with alerts", %{user: user} do
-      %{id: alert_id} = insert(:alert, user_id: user.id)
-
-      assert [
-               %Quantum.Job{
-                 task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
-               }
-             ] = Alerting.init_alert_jobs()
-
-      refute Alerting.get_alert_job(alert_id)
-      Alerting.sync_alert_jobs()
-
-      TestUtils.retry_assert(fn -> Alerting.get_alert_job(alert_id) end)
-    end
-
-    test "sync specific alert by alert_id when not in scheduler", %{user: user} do
-      %{id: alert_id} = insert(:alert, user_id: user.id)
-
-      refute Alerting.get_alert_job(alert_id)
-      Alerting.sync_alert_job(alert_id)
-      TestUtils.retry_assert(fn -> Alerting.get_alert_job(alert_id) end)
-    end
-
-    test "sync deleted alert when in scheduler", %{user: user} do
-      %{id: alert_id} = insert(:alert, user_id: user.id)
-      Alerting.sync_alert_jobs()
-
-      TestUtils.retry_assert(fn -> Alerting.get_alert_job(alert_id) end)
-      Repo.delete_all(AlertQuery)
-      Alerting.sync_alert_job(alert_id)
-      TestUtils.retry_assert(fn -> refute Alerting.get_alert_job(alert_id) end)
-    end
-
-    test "supervisor startup will populate scheduler with alerts", %{user: user} do
-      %{id: alert_id} = insert(:alert, user_id: user.id)
-      Alerting.sync_alert_jobs()
-
-      TestUtils.retry_assert(fn ->
-        job_name = Alerting.to_job_name(alert_id)
-
-        assert %Quantum.Job{
-                 name: ^job_name,
-                 task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
-               } = Alerting.get_alert_job(alert_id)
-      end)
+              %{
+                total_rows: 0,
+                total_bytes_processed: _,
+                fired: false,
+                rows: []
+              }} = Alerting.run_alert(alert_query)
     end
   end
 
   describe "scheduled run_alert/1" do
     setup do
-      start_alerting_supervisor!()
       old_config = Application.get_env(:logflare, Logflare.Alerting)
       Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 0, enabled: true)
       on_exit(fn -> Application.put_env(:logflare, Logflare.Alerting, old_config) end)
@@ -430,8 +350,6 @@ defmodule Logflare.AlertingTest do
           query: "select 1"
         })
 
-      :ok = Alerting.sync_alert_job(alert.id)
-
       {:ok, _updated_alert} =
         Alerting.update_alert_query(alert, %{query: "select 'unique_fresh_data_check'"})
 
@@ -440,7 +358,13 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      assert :ok = Alerting.run_alert(alert.id, :scheduled)
+      assert {:ok,
+              %{
+                total_rows: 1,
+                total_bytes_processed: _,
+                fired: true,
+                rows: [%{"testing" => "123"}]
+              }} = Alerting.run_alert(alert.id, :scheduled)
     end
 
     test "run_alert/1 no-ops if alert is missing", %{user: user} do
@@ -450,11 +374,6 @@ defmodule Logflare.AlertingTest do
           cron: "0 0 1 * *",
           query: "select 1"
         })
-
-      :ok = Alerting.sync_alert_job(alert.id)
-
-      # verify job exists
-      assert %Quantum.Job{} = Alerting.get_alert_job(alert.id)
 
       # simulate "external" unsynced deletion / stale state
       Repo.delete!(alert)
@@ -468,55 +387,118 @@ defmodule Logflare.AlertingTest do
     end
   end
 
-  describe "sync_alert_jobs/0" do
-    setup do
-      start_alerting_supervisor!()
-    end
-
-    defp await_sync_alert_jobs do
-      {:ok, pid} = Alerting.sync_alert_jobs()
-      ref = Process.monitor(pid)
-      assert_receive {:DOWN, ^ref, :process, _pid, _reason}
-    end
-
-    test "adds missing jobs", %{user: user} do
+  describe "trigger_alert_now/1" do
+    test "enqueues an immediate AlertWorker job", %{user: user} do
       alert = insert(:alert, user: user)
-      Alerting.delete_alert_job(alert.id)
-
-      refute Alerting.get_alert_job(alert.id)
-      await_sync_alert_jobs()
-      assert Alerting.get_alert_job(alert.id)
-    end
-
-    test "removes obsolete jobs", %{user: user} do
-      alert = insert(:alert, user: user)
-      Alerting.sync_alert_job(alert.id)
-      assert Alerting.get_alert_job(alert.id)
-
-      # simulate "external" unsynced deletion / stale state
-      Repo.delete!(alert)
-
-      assert Alerting.get_alert_job(alert.id)
-      await_sync_alert_jobs()
-      refute Alerting.get_alert_job(alert.id)
-    end
-
-    test "updates jobs with changed schedule", %{user: user} do
-      alert = insert(:alert, user: user, cron: "0 0 1 * *")
-      Alerting.sync_alert_job(alert.id)
-      original_job = Alerting.get_alert_job(alert.id)
-
-      {:ok, _} = Alerting.update_alert_query(alert, %{cron: "*/5 * * * *"})
-
-      assert Alerting.get_alert_job(alert.id) == original_job
-      await_sync_alert_jobs()
-      assert Alerting.get_alert_job(alert.id) != original_job
+      assert {:ok, %Oban.Job{}} = Alerting.trigger_alert_now(alert)
+      assert_enqueued(worker: AlertWorker, args: %{alert_query_id: alert.id})
     end
   end
 
-  defp start_alerting_supervisor! do
-    start_supervised!(Logflare.Alerting.Supervisor)
-    # wait for scheduler init to finish
-    :timer.sleep(500)
+  describe "list_execution_history/1" do
+    test "returns empty list when no jobs exist", %{user: user} do
+      alert = insert(:alert, user: user)
+      assert [] = Alerting.list_execution_history(alert.id)
+    end
+  end
+
+  defp insert_oban_job(alert_query, attrs) do
+    now = DateTime.utc_now()
+
+    defaults = %{
+      state: "completed",
+      queue: "alerts",
+      worker: "Logflare.Alerting.AlertWorker",
+      args: %{"alert_query_id" => alert_query.id, "scheduled_at" => DateTime.to_iso8601(now)},
+      meta: %{},
+      attempted_at: now,
+      completed_at: now,
+      scheduled_at: now,
+      attempted_by: ["test_node"],
+      max_attempts: 1
+    }
+
+    merged = Map.merge(defaults, attrs)
+
+    %Oban.Job{}
+    |> Ecto.Changeset.change(merged)
+    |> Repo.insert!()
+  end
+
+  describe "enabled field" do
+    test "disabling deletes future jobs, keeps past jobs, ignores other alerts", %{user: user} do
+      alert = insert(:alert, user: user)
+      other_alert = insert(:alert, user: user, name: "other alert")
+
+      for state <- ~w(scheduled available executing), do: insert_oban_job(alert, %{state: state})
+      for state <- ~w(completed discarded), do: insert_oban_job(alert, %{state: state})
+      insert_oban_job(other_alert, %{state: "scheduled"})
+
+      assert length(Alerting.list_future_jobs(alert.id)) == 3
+
+      assert {:ok, %{enabled: false}} =
+               Alerting.update_alert_query(alert, %{enabled: false})
+
+      assert Alerting.list_future_jobs(alert.id) == []
+      past_states = Alerting.list_execution_history(alert.id) |> Enum.map(& &1.state)
+      assert "completed" in past_states
+      assert "discarded" in past_states
+      assert length(Alerting.list_future_jobs(other_alert.id)) == 1
+    end
+
+    test "enabling schedules 5 future jobs with correct args", %{user: user} do
+      alert = insert(:alert, user: user, cron: "0 0 * * *", enabled: false)
+      assert Alerting.list_future_jobs(alert.id) == []
+
+      {:ok, %{enabled: true}} = Alerting.update_alert_query(alert, %{enabled: true})
+      future_jobs = Alerting.list_future_jobs(alert.id)
+      assert length(future_jobs) == 5
+      now = DateTime.utc_now()
+
+      for job <- future_jobs do
+        assert job.args["alert_query_id"] == alert.id
+        assert DateTime.compare(job.scheduled_at, now) == :gt
+      end
+    end
+
+    test "unrelated update does not affect jobs", %{user: user} do
+      alert = insert(:alert, user: user)
+      insert_oban_job(alert, %{state: "scheduled"})
+
+      assert {:ok, %{name: "renamed"}} = Alerting.update_alert_query(alert, %{name: "renamed"})
+      assert length(Alerting.list_future_jobs(alert.id)) == 1
+    end
+
+    test "schedule_alert/1 handles invalid cron gracefully", %{user: user} do
+      alert = insert(:alert, user: user)
+      assert :ok = Alerting.schedule_alert(%{alert | cron: "invalid"})
+      assert Alerting.list_future_jobs(alert.id) == []
+    end
+  end
+
+  describe "partition_jobs_by_time/1" do
+    test "partitions by state" do
+      now = DateTime.utc_now()
+
+      scheduled_job = %Oban.Job{state: "scheduled", scheduled_at: now}
+      completed_job = %Oban.Job{state: "completed", scheduled_at: now}
+      executing_job = %Oban.Job{state: "executing", scheduled_at: now}
+      discarded_job = %Oban.Job{state: "discarded", scheduled_at: now}
+
+      result =
+        Alerting.partition_jobs_by_time([
+          scheduled_job,
+          completed_job,
+          executing_job,
+          discarded_job
+        ])
+
+      assert length(result.future) == 2
+      assert length(result.past) == 2
+      assert scheduled_job in result.future
+      assert executing_job in result.future
+      assert completed_job in result.past
+      assert discarded_job in result.past
+    end
   end
 end

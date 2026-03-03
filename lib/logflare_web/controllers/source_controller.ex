@@ -462,20 +462,8 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp get_and_encode_logs(%Source{} = source) do
-    log_events = Backends.list_recent_logs(source)
-
-    for le <- log_events, le do
-      le
-      |> Map.take([:body, :via_rule, :source_uuid])
-      |> case do
-        %{body: %{"metadata" => %{"level" => level}}}
-        when level in ~W(debug info warning error alert critical notice emergency) ->
-          body = Map.put(le.body, "level", level)
-          %{le | body: body}
-
-        le ->
-          le
-      end
+    for le <- Backends.list_recent_logs(source) do
+      Map.take(le, [:body, :via_rule_id, :source_uuid])
     end
   end
 

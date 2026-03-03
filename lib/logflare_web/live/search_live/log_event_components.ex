@@ -87,7 +87,11 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   @spec lql_with_recommended_fields(Lql.Rules.lql_rules(), Logflare.LogEvent.t(), Source.t()) ::
           String.t()
   def lql_with_recommended_fields(lql_rules, event, source) do
-    fields = Source.recommended_query_fields(source)
+    fields =
+      source
+      |> Source.recommended_query_fields()
+      |> Enum.map(&Source.query_field_name/1)
+      |> Enum.uniq()
 
     existing_filter_paths =
       lql_rules
@@ -111,8 +115,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     |> Lql.encode!()
   end
 
-  defp strip_meta("metadata." <> k), do: k
-  defp strip_meta(k), do: k
+  defp strip_meta(field), do: field |> Source.query_field_name() |> strip_metadata_prefix()
+
+  defp strip_metadata_prefix("metadata." <> key), do: key
+  defp strip_metadata_prefix(key), do: key
 
   def formatted_for_clipboard(log, search_op) do
     select_fields =

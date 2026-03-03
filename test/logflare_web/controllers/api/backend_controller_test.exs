@@ -414,4 +414,51 @@ defmodule LogflareWeb.Api.BackendControllerTest do
              |> response(404)
     end
   end
+
+  describe "test_connection/2" do
+    test "returns 200 if connection is successful", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, type: :axiom)
+
+      Logflare.Backends.Adaptor.AxiomAdaptor
+      |> Mimic.expect(:test_connection, fn %Logflare.Backends.Backend{id: id} ->
+        assert id == backend.id
+        :ok
+      end)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/backends/#{backend.token}/test")
+        |> json_response(200)
+
+      assert response == %{"connected?" => true}
+    end
+
+    test "returns 400 if connection fails", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user)
+
+      Logflare.Backends
+      |> Mimic.expect(:test_connection, fn _ -> {:error, :some_reason} end)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/backends/#{backend.token}/test")
+        |> json_response(200)
+
+      assert response == %{"connected?" => false, "reason" => "some_reason"}
+    end
+
+    test "returns 404 if backend doesn't exist or doesn't belong to user", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend)
+
+      conn
+      |> add_access_token(user, "private")
+      |> post("/api/backends/#{backend.token}/test")
+      |> response(404)
+    end
+  end
 end

@@ -298,7 +298,9 @@ defmodule LogflareWeb.QueryLive do
            params: %{},
            use_query_cache: false
          ) do
-      {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
+      {:ok, %{rows: rows} = result} ->
+        total_bytes_processed = Map.get(result, :total_bytes_processed, 0)
+
         socket
         |> put_flash(:info, "Ran query successfully")
         |> assign(:query_result_rows, rows)

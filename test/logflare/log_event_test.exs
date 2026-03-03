@@ -25,7 +25,7 @@ defmodule Logflare.LogEventTest do
              source_id: source_id,
              valid: true,
              pipeline_error: nil,
-             via_rule: nil
+             via_rule_id: nil
            } = LogEvent.make(@vallog_event_ids, %{source: source})
 
     assert id == body["id"]
@@ -280,7 +280,7 @@ defmodule Logflare.LogEventTest do
              is_from_stale_query: nil,
              valid: true,
              pipeline_error: nil,
-             via_rule: nil
+             via_rule_id: nil
            } = LogEvent.make(%{"metadata" => "some string"}, %{source: source})
 
     assert id == body["id"]
@@ -340,6 +340,55 @@ defmodule Logflare.LogEventTest do
     assert le.body["event_message"] =~ "value"
     assert le.body["event_message"] =~ "some message"
     assert le.body["message"] == nil
+  end
+
+  describe "timestamp_inferred flag" do
+    test "is true when no timestamp is provided", %{source: source} do
+      le = LogEvent.make(%{"event_message" => "test"}, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is false when a valid ISO 8601 timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", "2024-01-01T00:00:00Z")
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == false
+    end
+
+    test "is true when an unparsable string timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", "not-a-timestamp")
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is false when a valid integer timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", 1_713_268_565_764_892)
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == false
+    end
+
+    test "is false when a valid float timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", 1_713_268_565.5)
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == false
+    end
+
+    test "is true when timestamp is an unsupported type", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", [1, 2, 3])
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is true when timestamp is a negative integer", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", -1)
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is true when timestamp is an empty string", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", "")
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
   end
 
   describe "make_message/2" do

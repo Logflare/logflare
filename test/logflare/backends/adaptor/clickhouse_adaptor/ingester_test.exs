@@ -285,6 +285,71 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
     end
   end
 
+  describe "encode_simple_row/2 for logs" do
+    test "encodes as iodata" do
+      event = build_mapped_log_event(message: "simple test", mapping_variant: :simple)
+
+      encoded = Ingester.encode_simple_row(event, :log)
+      assert is_list(encoded)
+      assert IO.iodata_length(encoded) > 0
+    end
+
+    test "includes event_message in encoded output" do
+      event = build_mapped_log_event(message: "hello simple", mapping_variant: :simple)
+
+      encoded = Ingester.encode_simple_row(event, :log)
+      binary = IO.iodata_to_binary(encoded)
+
+      assert binary =~ "hello simple"
+    end
+  end
+
+  describe "encode_simple_row/2 for metrics" do
+    test "encodes as iodata" do
+      event = build_mapped_metric_event(mapping_variant: :simple)
+
+      encoded = Ingester.encode_simple_row(event, :metric)
+      assert is_list(encoded)
+      assert IO.iodata_length(encoded) > 0
+    end
+
+    test "includes metric fields in encoded output" do
+      event =
+        build_mapped_metric_event(
+          body: %{"metric_name" => "simple_requests"},
+          mapping_variant: :simple
+        )
+
+      encoded = Ingester.encode_simple_row(event, :metric)
+      binary = IO.iodata_to_binary(encoded)
+
+      assert binary =~ "simple_requests"
+    end
+  end
+
+  describe "encode_simple_row/2 for traces" do
+    test "encodes as iodata" do
+      event = build_mapped_trace_event(mapping_variant: :simple)
+
+      encoded = Ingester.encode_simple_row(event, :trace)
+      assert is_list(encoded)
+      assert IO.iodata_length(encoded) > 0
+    end
+
+    test "includes trace fields in encoded output" do
+      event =
+        build_mapped_trace_event(
+          body: %{"span_name" => "GET /simple"},
+          mapping_variant: :simple
+        )
+
+      encoded = Ingester.encode_simple_row(event, :trace)
+      binary = IO.iodata_to_binary(encoded)
+
+      assert binary =~ "GET /simple"
+    end
+  end
+
   describe "insert/4" do
     setup do
       insert(:plan, name: "Free")
