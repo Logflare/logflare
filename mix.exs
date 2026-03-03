@@ -120,7 +120,7 @@ defmodule Logflare.Mixfile do
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 4.0"},
       {:ex_machina, "~> 2.3", only: [:dev, :test]},
-      {:iteraptor, "~> 1.10"},
+      {:iteraptor, "~> 1.15"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:libcluster, "~> 3.2"},
