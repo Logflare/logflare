@@ -144,7 +144,9 @@ defmodule Logflare.UtilsSyncTest do
       for {header, value} <- @auth_headers do
         env = %Tesla.Env{headers: [{header, value}]}
         assert Logflare.Utils.stringify(env) =~ "REDACTED"
+        refute Logflare.Utils.stringify(env) =~ "some token"
         assert inspect(env) =~ "REDACTED"
+        refute inspect(env) =~ "some token"
       end
     end
 
@@ -152,7 +154,10 @@ defmodule Logflare.UtilsSyncTest do
       for {header, value} <- @auth_headers do
         env = %Tesla.Env{opts: [req_headers: [{header, value}]]}
         assert Logflare.Utils.stringify(env) =~ "REDACTED"
+        refute Logflare.Utils.stringify(env) =~ "some token"
         assert inspect(env) =~ "REDACTED"
+        refute inspect(env) =~ "some token"
+
       end
     end
 
@@ -163,7 +168,9 @@ defmodule Logflare.UtilsSyncTest do
         }
 
         assert Logflare.Utils.stringify(client) =~ "REDACTED"
+        refute Logflare.Utils.stringify(client) =~ "some token"
         assert inspect(client) =~ "REDACTED"
+        refute inspect(client) =~ "some token"
       end
     end
   end

@@ -336,7 +336,8 @@ defmodule Logflare.Utils do
   """
   @spec redact_sensitive_headers(map()) :: list(tuple())
   def redact_sensitive_headers(%{} = value) do
-    value
+    # iteraptor does not handle structs as the main Enum, we need to wrap it
+    List.wrap(value)
     |> Iteraptor.map(
       fn
         {[key | _], value}
@@ -350,6 +351,7 @@ defmodule Logflare.Utils do
       keys: :reverse,
       structs: :keep
     )
+    |> List.first()
   end
 
   @doc """
