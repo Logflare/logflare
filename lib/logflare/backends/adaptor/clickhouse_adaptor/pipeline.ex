@@ -131,6 +131,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
                 event.body
                 |> Mapper.map(compiled)
                 |> Map.put("mapping_config_id", config_id)
+                |> maybe_replace_inferred_timestamp(event, event_type)
                 |> maybe_compute_duration(event_type)
                 |> resolve_severity_number(event_type)
 
@@ -209,6 +210,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     IngestEventQueue.delete_batch({:consolidated, backend_id}, events)
     IngestEventQueue.add_to_table({:consolidated, backend_id}, events)
   end
+
+  @spec maybe_replace_inferred_timestamp(map(), LogEvent.t(), TypeDetection.event_type()) ::
+          map()
+  defp maybe_replace_inferred_timestamp(
+         %{"start_time" => start_time} = body,
+         %LogEvent{timestamp_inferred: true},
+         :trace
+       )
+       when is_pos_integer(start_time) do
+    %{body | "timestamp" => start_time}
+  end
+
+  defp maybe_replace_inferred_timestamp(body, _event, _event_type), do: body
 
   @spec maybe_compute_duration(map(), TypeDetection.event_type()) :: map()
   defp maybe_compute_duration(

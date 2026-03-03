@@ -20,8 +20,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
     "max_parts_in_total = 20000",
     "parts_to_delay_insert = 5000",
     "parts_to_throw_insert = 10000",
-    "min_bytes_for_wide_part = 0",
-    "max_parts_to_merge_at_once = 25"
+    "min_bytes_for_wide_part = 0"
   ]
 
   @cloud_settings [

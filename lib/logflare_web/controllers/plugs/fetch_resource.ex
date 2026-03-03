@@ -104,6 +104,8 @@ defmodule LogflareWeb.Plugs.FetchResource do
     end
   end
 
+  defp uuid?(_), do: false
+
   defp get_source_from_headers(conn) do
     get_first_header(conn, ["x-source", "x-collection"])
   end

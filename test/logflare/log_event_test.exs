@@ -342,6 +342,55 @@ defmodule Logflare.LogEventTest do
     assert le.body["message"] == nil
   end
 
+  describe "timestamp_inferred flag" do
+    test "is true when no timestamp is provided", %{source: source} do
+      le = LogEvent.make(%{"event_message" => "test"}, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is false when a valid ISO 8601 timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", "2024-01-01T00:00:00Z")
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == false
+    end
+
+    test "is true when an unparsable string timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", "not-a-timestamp")
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is false when a valid integer timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", 1_713_268_565_764_892)
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == false
+    end
+
+    test "is false when a valid float timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", 1_713_268_565.5)
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == false
+    end
+
+    test "is true when timestamp is an unsupported type", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", [1, 2, 3])
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is true when timestamp is a negative integer", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", -1)
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is true when timestamp is an empty string", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", "")
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+  end
+
   describe "make_message/2" do
     property "if pattern is `nil` then the message is left as is" do
       check all message <- string(:printable) do
