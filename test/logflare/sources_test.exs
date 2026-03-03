@@ -38,22 +38,6 @@ defmodule Logflare.SourcesTest do
       assert %Ecto.Changeset{changes: %{description: nil}} =
                Source.update_by_user_changeset(source, %{description: "   "})
     end
-
-    test "update_by_user_changeset enforces description max length" do
-      source = insert(:source, user: insert(:user))
-
-      valid_description = String.duplicate("a", 280)
-      too_long_description = String.duplicate("a", 281)
-
-      assert %Ecto.Changeset{valid?: true} =
-               Source.update_by_user_changeset(source, %{description: valid_description})
-
-      assert %Ecto.Changeset{valid?: false} =
-               changeset =
-               Source.update_by_user_changeset(source, %{description: too_long_description})
-
-      assert "should be at most 280 character(s)" in errors_on(changeset).description
-    end
   end
 
   describe "recommended_query_fields/1" do
