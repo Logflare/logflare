@@ -453,11 +453,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec build_ddl_opts(TypeDetection.event_type(), boolean()) :: Keyword.t()
-  defp build_ddl_opts(event_type, cloud?) do
-    optimized? =
-      event_type == :log or QueryTemplates.apply_optimized_settings_to_all_tables?()
+  defp build_ddl_opts(:log, cloud?), do: [clickhouse_cloud: cloud?]
 
-    [optimized_settings: optimized?, clickhouse_cloud: cloud?]
+  defp build_ddl_opts(_event_type, cloud?) do
+    [clickhouse_cloud: cloud? and QueryTemplates.apply_cloud_settings_to_all_tables?()]
   end
 
   @doc false
