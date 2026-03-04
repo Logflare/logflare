@@ -2030,4 +2030,409 @@ defmodule Logflare.MapperTest do
       assert result["attrs"] == []
     end
   end
+
+  # ── String filters ────────────────────────────────────────────────────
+
+  describe "string filters" do
+    test "len_eq: exact length match passes" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{len_eq: 20}
+            )
+          ],
+          %{"project" => "abcdefghijklmnopqrst"}
+        )
+
+      assert result["project"] == "abcdefghijklmnopqrst"
+    end
+
+    test "len_eq: rejects shorter string, falls to default" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "fallback",
+              filters: %{len_eq: 20}
+            )
+          ],
+          %{"project" => "short"}
+        )
+
+      assert result["project"] == "fallback"
+    end
+
+    test "len_eq: rejects longer string, falls to default" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{len_eq: 5}
+            )
+          ],
+          %{"project" => "toolong"}
+        )
+
+      assert result["project"] == ""
+    end
+
+    test "len_gt: passes when length exceeds threshold" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "",
+              filters: %{len_gt: 3}
+            )
+          ],
+          %{"val" => "abcd"}
+        )
+
+      assert result["val"] == "abcd"
+    end
+
+    test "len_gt: rejects equal length" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "no",
+              filters: %{len_gt: 4}
+            )
+          ],
+          %{"val" => "abcd"}
+        )
+
+      assert result["val"] == "no"
+    end
+
+    test "len_gte: passes at exact boundary" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "",
+              filters: %{len_gte: 4}
+            )
+          ],
+          %{"val" => "abcd"}
+        )
+
+      assert result["val"] == "abcd"
+    end
+
+    test "len_lt: passes when length is below threshold" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "",
+              filters: %{len_lt: 10}
+            )
+          ],
+          %{"val" => "short"}
+        )
+
+      assert result["val"] == "short"
+    end
+
+    test "len_lt: rejects equal length" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "no",
+              filters: %{len_lt: 5}
+            )
+          ],
+          %{"val" => "abcde"}
+        )
+
+      assert result["val"] == "no"
+    end
+
+    test "len_lte: passes at exact boundary" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "",
+              filters: %{len_lte: 5}
+            )
+          ],
+          %{"val" => "abcde"}
+        )
+
+      assert result["val"] == "abcde"
+    end
+
+    test "char_class alpha: passes alphabetic string" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abcdefghij"}
+        )
+
+      assert result["project"] == "abcdefghij"
+    end
+
+    test "char_class alpha: rejects digits" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "none",
+              filters: %{char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abc123"}
+        )
+
+      assert result["project"] == "none"
+    end
+
+    test "char_class alpha: rejects special chars" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abc-def"}
+        )
+
+      assert result["project"] == ""
+    end
+
+    test "char_class numeric: passes digit-only string" do
+      result =
+        compile_and_map(
+          [
+            Field.string("code",
+              path: "$.code",
+              default: "",
+              filters: %{char_class: "numeric"}
+            )
+          ],
+          %{"code" => "12345"}
+        )
+
+      assert result["code"] == "12345"
+    end
+
+    test "char_class numeric: rejects letters" do
+      result =
+        compile_and_map(
+          [
+            Field.string("code",
+              path: "$.code",
+              default: "0",
+              filters: %{char_class: "numeric"}
+            )
+          ],
+          %{"code" => "123abc"}
+        )
+
+      assert result["code"] == "0"
+    end
+
+    test "char_class alphanumeric: passes mixed letters and digits" do
+      result =
+        compile_and_map(
+          [
+            Field.string("id",
+              path: "$.id",
+              default: "",
+              filters: %{char_class: "alphanumeric"}
+            )
+          ],
+          %{"id" => "abc123"}
+        )
+
+      assert result["id"] == "abc123"
+    end
+
+    test "char_class alphanumeric: rejects special chars" do
+      result =
+        compile_and_map(
+          [
+            Field.string("id",
+              path: "$.id",
+              default: "",
+              filters: %{char_class: "alphanumeric"}
+            )
+          ],
+          %{"id" => "abc-123"}
+        )
+
+      assert result["id"] == ""
+    end
+
+    test "combined filters: len_eq + char_class alpha both must pass" do
+      # Correct: 20 alpha chars
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{len_eq: 20, char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abcdefghijklmnopqrst"}
+        )
+
+      assert result["project"] == "abcdefghijklmnopqrst"
+
+      # Wrong length (19 alpha chars)
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{len_eq: 20, char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abcdefghijklmnopqrs"}
+        )
+
+      assert result["project"] == ""
+
+      # Right length but has digits
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{len_eq: 20, char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abcdefghijklmnopqr12"}
+        )
+
+      assert result["project"] == ""
+    end
+
+    test "coalesce: filters skip non-matching, continue to next path" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              paths: ["$.project", "$.project_ref"],
+              default: "",
+              filters: %{len_eq: 20, char_class: "alpha"}
+            )
+          ],
+          %{
+            "project" => "not-a-valid-project",
+            "project_ref" => "abcdefghijklmnopqrst"
+          }
+        )
+
+      assert result["project"] == "abcdefghijklmnopqrst"
+    end
+
+    test "coalesce: all paths fail filters, falls to default" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              paths: ["$.project", "$.project_ref"],
+              default: "unknown",
+              filters: %{len_eq: 20, char_class: "alpha"}
+            )
+          ],
+          %{
+            "project" => "short",
+            "project_ref" => "also_short"
+          }
+        )
+
+      assert result["project"] == "unknown"
+    end
+
+    test "single path with filters: falls back to default on filter failure" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "default_val",
+              filters: %{len_eq: 10}
+            )
+          ],
+          %{"project" => "wrong_length_string"}
+        )
+
+      assert result["project"] == "default_val"
+    end
+
+    test "no filters configured: existing behavior unchanged" do
+      result =
+        compile_and_map(
+          [Field.string("project", path: "$.project", default: "")],
+          %{"project" => "anything goes here!!!"}
+        )
+
+      assert result["project"] == "anything goes here!!!"
+    end
+
+    test "empty string still skipped before filter check" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              paths: ["$.project", "$.fallback"],
+              default: "default",
+              filters: %{len_eq: 5}
+            )
+          ],
+          %{"project" => "", "fallback" => "hello"}
+        )
+
+      assert result["project"] == "hello"
+    end
+
+    test "non-string values bypass filters" do
+      # Filters only apply to binary/string values
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "default",
+              filters: %{len_eq: 5}
+            )
+          ],
+          %{"val" => 12_345}
+        )
+
+      # Non-binary values are not filtered, they pass through to coercion
+      assert result["val"] == "12345"
+    end
+  end
 end

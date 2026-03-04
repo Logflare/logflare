@@ -7,6 +7,7 @@ use crate::mapping::{
     CompiledField, CompiledMapping, Enum8Data, FieldType, PathSource, Predicate, PredicateValue,
 };
 use crate::query;
+use crate::string_filters;
 
 use serde_json::Value as JsonValue;
 
@@ -143,7 +144,7 @@ fn resolve_value_raw<'a>(
     match &field.path_source {
         PathSource::Root => body,
         PathSource::Single(segments) => query::evaluate(env, body, segments, nil),
-        PathSource::Coalesce(paths) => query::evaluate_first(env, body, paths, false, nil),
+        PathSource::Coalesce(paths) => query::evaluate_first(env, body, paths, false, None, nil),
         PathSource::FromOutput(idx) => {
             let v = output_values[*idx];
             if v != nil {
@@ -177,6 +178,12 @@ fn resolve_value<'a>(
                 if let Ok(b) = v.decode::<Binary>() {
                     if b.is_empty() {
                         coerce::encode_default(env, &field.default, nil)
+                    } else if let Some(ref f) = field.filters {
+                        if !string_filters::passes_filters(b.as_slice(), f) {
+                            coerce::encode_default(env, &field.default, nil)
+                        } else {
+                            v
+                        }
                     } else {
                         v
                     }
@@ -188,7 +195,8 @@ fn resolve_value<'a>(
             }
         }
         PathSource::Coalesce(paths) => {
-            let result = query::evaluate_first(env, body, paths, skip_empty, nil);
+            let string_filters = field.filters.as_ref();
+            let result = query::evaluate_first(env, body, paths, skip_empty, string_filters, nil);
             if result == nil {
                 coerce::encode_default(env, &field.default, nil)
             } else {
@@ -294,7 +302,7 @@ fn build_pick_map<'a>(
     let mut values: Vec<Term<'a>> = Vec::with_capacity(field.pick.len());
 
     for entry in &field.pick {
-        let value = query::evaluate_first(env, body, &entry.paths, false, nil);
+        let value = query::evaluate_first(env, body, &entry.paths, false, None, nil);
         if value != nil {
             keys.push(entry.key.encode(env));
             values.push(value);
