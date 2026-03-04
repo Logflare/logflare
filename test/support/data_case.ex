@@ -188,17 +188,23 @@ defmodule Logflare.DataCase do
         ]
       end)
 
-    for table_name <- tables do
-      try do
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "DROP TABLE IF EXISTS #{table_name}"
-        )
-      rescue
-        _ -> :ok
-      catch
-        :exit, _ -> :ok
-      end
+    drop_query =
+      tables
+      |> Enum.map_join("; ", fn table_name -> "DROP TABLE IF EXISTS #{table_name}" end)
+
+    try do
+      ClickHouseAdaptor.execute_ch_query(
+        backend,
+        drop_query,
+        [],
+        pool_timeout: 1_000
+      )
+
+      ConsolidatedSup.stop_pipeline(backend.id)
+    rescue
+      _ -> :ok
+    catch
+      :exit, _ -> :ok
     end
   end
 end

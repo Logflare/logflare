@@ -394,7 +394,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :ok
 
       {:error, reason} ->
-        Logger.error("ClickHouse #{protocol} insert error.",
+        Logger.warning("ClickHouse #{protocol} insert error.",
           error_string: inspect(reason)
         )
 
@@ -462,24 +462,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
-    children = [
-      Provisioner.child_spec(backend),
-      {
-        DynamicPipeline,
-        name: Backends.via_backend(backend, Pipeline),
-        pipeline: Pipeline,
-        pipeline_args: [backend: backend],
-        min_pipelines: @min_pipelines,
-        max_pipelines: System.schedulers_online(),
-        initial_count: @min_pipelines,
-        resolve_interval: @resolve_interval,
-        resolve_count: fn state ->
-          lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
+    children =
+      if(Application.get_env(:logflare, :env) != :test,
+        do: [Provisioner.child_spec(backend)],
+        else: []
+      ) ++
+        [
+          {
+            DynamicPipeline,
+            name: Backends.via_backend(backend, Pipeline),
+            pipeline: Pipeline,
+            pipeline_args: [backend: backend],
+            min_pipelines: @min_pipelines,
+            max_pipelines: System.schedulers_online(),
+            initial_count: @min_pipelines,
+            resolve_interval: @resolve_interval,
+            resolve_count: fn state ->
+              lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
 
-          resolve_pipeline_count(state, lens)
-        end
-      }
-    ]
+              resolve_pipeline_count(state, lens)
+            end
+          }
+        ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end

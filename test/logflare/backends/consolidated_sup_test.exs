@@ -81,6 +81,14 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
 
       IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
 
+      on_exit(fn ->
+        try do
+          ConsolidatedSup.stop_pipeline(backend.id)
+        catch
+          _kind, _value -> :ok
+        end
+      end)
+
       [source: source, backend: backend]
     end
 
