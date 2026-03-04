@@ -130,7 +130,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
 
   attr :search_form, :any, required: true
   attr :querystring, :string, required: true
-  attr :search_history, :list, required: true
+  attr :lql_schema_fields_json, :string, required: true
   attr :search_timezone, :string, required: true
   attr :loading, :boolean, required: true
   attr :tailing?, :boolean, required: true
@@ -152,26 +152,17 @@ defmodule LogflareWeb.SearchLive.FormComponents do
             <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
 
             <div class="tw-order-2 tw-basis-full tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
-              {text_input(f, :querystring,
-                phx_focus: :form_focus,
-                phx_blur: :form_blur,
-                value: @querystring,
-                class: "form-control tw-mt-0",
-                list: "matches"
-              )}
+              <div id="lql-editor-hook" phx-hook="LqlEditorWrapper" phx-update="ignore" data-schema-fields-json={@lql_schema_fields_json} class="lql-editor-wrapper tw-mt-0">
+                <LiveMonacoEditor.code_editor value={@querystring} path="lql_query" class="tw-w-full tw-h-8" opts={lql_editor_opts()} />
+                {hidden_input(f, :querystring, value: @querystring)}
+              </div>
             </div>
           </div>
-
           {text_input(f, :search_timezone,
             class: "d-none",
             value: @search_timezone,
             id: "search-timezone"
           )}
-          <datalist id="matches">
-            <%= for s <- @search_history do %>
-              <option value={s.querystring}>{s.querystring}</option>
-            <% end %>
-          </datalist>
         </div>
 
         <div class="d-flex flex-wrap align-items-center form-text">
@@ -194,6 +185,44 @@ defmodule LogflareWeb.SearchLive.FormComponents do
       <.query_timing last_query_completed_at={@last_query_completed_at} />
     </div>
     """
+  end
+
+  defp lql_editor_opts do
+    Map.merge(
+      LiveMonacoEditor.default_opts(),
+      %{
+        "language" => "lql",
+        "theme" => "default",
+        "minimap" => %{"enabled" => false},
+        "lineNumbers" => "off",
+        "glyphMargin" => false,
+        "folding" => false,
+        "lineDecorationsWidth" => 0,
+        "lineNumbersMinChars" => 0,
+        "wordWrap" => "off",
+        "scrollBeyondLastLine" => false,
+        "scrollbar" => %{
+          "horizontal" => "hidden",
+          "vertical" => "hidden",
+          "handleMouseWheel" => false
+        },
+        "overviewRulerLanes" => 0,
+        "overviewRulerBorder" => false,
+        "hideCursorInOverviewRuler" => true,
+        "contextmenu" => false,
+        "fixedOverflowWidgets" => true,
+        "suggest" => %{"enabled" => true, "showWords" => false},
+        "parameterHints" => %{"enabled" => false},
+        "quickSuggestions" => true,
+        "renderLineHighlight" => "none",
+        "matchBrackets" => "never",
+        "fontSize" => 14,
+        "fontFamily" =>
+          "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+        "padding" => %{"top" => 5, "bottom" => 5},
+        "automaticLayout" => true
+      }
+    )
   end
 
   defp search_agg_controls_enabled?(lql_rules) do
