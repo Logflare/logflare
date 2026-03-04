@@ -9,8 +9,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
   setup do
     insert(:plan, name: "Free")
 
-    {source, backend, cleanup_fn} = setup_clickhouse_test()
-    on_exit(cleanup_fn)
+    {source, backend} = setup_clickhouse_test()
 
     {:ok, supervisor_pid} = ClickHouseAdaptor.start_link(backend)
 
@@ -70,10 +69,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
     end
 
     test "provisions both standard and simple tables when use_simple_schemas is set to true" do
-      {_source, backend, cleanup_fn} =
+      {_source, backend} =
         setup_clickhouse_test(config: %{use_simple_schemas: true})
-
-      on_exit(cleanup_fn)
 
       {:ok, supervisor_pid} = ClickHouseAdaptor.start_link(backend)
 
@@ -106,7 +103,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
   describe "connection test failure handling" do
     test "fails initialization when ClickHouse is unavailable" do
-      {_source, invalid_backend, cleanup_fn} =
+      {_source, invalid_backend} =
         setup_clickhouse_test(
           config: %{
             url: "http://invalid-host:9999",
@@ -115,8 +112,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
             port: 9999
           }
         )
-
-      on_exit(cleanup_fn)
 
       {:ok, pid} =
         Task.start(fn ->

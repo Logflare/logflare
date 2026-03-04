@@ -190,7 +190,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     )
 
     events = Enum.map(exhausted, fn %{data: %LogEvent{} = event} -> event end)
-    IngestEventQueue.delete_batch({:consolidated, backend_id}, events)
+
+    try do
+      IngestEventQueue.delete_batch({:consolidated, backend_id}, events)
+    rescue
+      ArgumentError -> :ok
+    end
   end
 
   @spec requeue_retriable_messages(retriable :: [Message.t()], backend_id :: pos_integer()) :: :ok
