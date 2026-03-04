@@ -26,6 +26,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
     Process.sleep(200)
 
+    assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
     context = %{backend_id: backend.id}
 
     [
