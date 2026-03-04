@@ -353,8 +353,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
   describe "insert/4" do
     setup do
       insert(:plan, name: "Free")
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test()
 
       {:ok, _supervisor_pid} = ClickHouseAdaptor.start_link(backend)
 

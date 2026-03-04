@@ -7,8 +7,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
   setup do
     insert(:plan, name: "Free")
 
-    {_source, backend, ch_cleanup_fn} = setup_clickhouse_test()
-    on_exit(ch_cleanup_fn)
+    {_source, backend} = setup_clickhouse_test()
 
     [backend: backend]
   end
@@ -104,17 +103,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
 
   describe "query pool error handling" do
     setup do
-      {_source, invalid_backend, cleanup_fn} =
+      {_source, invalid_backend} =
         setup_clickhouse_test(
           config: %{
             url: "http://localhost",
             username: "invalid_user",
             password: "invalid_pass",
-            port: 19999
+            port: 19_999
           }
         )
-
-      on_exit(cleanup_fn)
 
       [invalid_backend: invalid_backend]
     end

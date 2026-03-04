@@ -11,8 +11,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolManager
   setup do
     insert(:plan, name: "Free")
 
-    {_source, backend, ch_cleanup_fn} = setup_clickhouse_test()
-    on_exit(ch_cleanup_fn)
+    {_source, backend} = setup_clickhouse_test()
 
     [backend: backend]
   end

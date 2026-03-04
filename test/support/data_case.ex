@@ -97,7 +97,7 @@ defmodule Logflare.DataCase do
   @doc """
   Sets up a ClickHouse test environment with automatic cleanup.
 
-  Returns `{source, backend, cleanup_fn}` tuple.
+  Returns `{source, backend}` tuple. Registers cleanup via `on_exit/1`.
 
   ## Options
   - `:config` - Custom ClickHouse configuration (merged with defaults)
@@ -139,9 +139,9 @@ defmodule Logflare.DataCase do
         sources: [source]
       )
 
-    cleanup_fn = fn -> cleanup_clickhouse_tables(backend) end
+    on_exit(fn -> cleanup_clickhouse_tables(backend) end)
 
-    {source, backend, cleanup_fn}
+    {source, backend}
   end
 
   @doc """
