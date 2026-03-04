@@ -22,8 +22,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test()
 
       stringified_backend_token =
         backend.token
@@ -72,8 +71,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
 
@@ -282,10 +280,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} =
+      {source, backend} =
         setup_clickhouse_test(config: %{use_simple_schemas: true})
-
-      on_exit(cleanup_fn)
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
@@ -395,7 +391,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       source: source,
       backend: query_backend
     } do
-      {_source, native_backend, cleanup_fn} =
+      {_source, native_backend} =
         setup_clickhouse_test(
           source: source,
           config: %{insert_protocol: "native", native_port: 9000}
@@ -425,7 +421,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       on_exit(fn ->
         NativePoolSup.stop_pool(native_backend)
         ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
-        cleanup_fn.()
       end)
     end
 
@@ -433,7 +428,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       source: source,
       backend: query_backend
     } do
-      {_source, native_backend, cleanup_fn} =
+      {_source, native_backend} =
         setup_clickhouse_test(
           source: source,
           config: %{insert_protocol: "native", native_port: 9000}
@@ -469,7 +464,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       on_exit(fn ->
         NativePoolSup.stop_pool(native_backend)
         ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
-        cleanup_fn.()
       end)
     end
 
@@ -595,8 +589,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
 
@@ -657,14 +650,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       source1 = insert(:source, user: user, default_ingest_backend_enabled?: true)
       source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
 
-      {source1_with_backend, backend, cleanup_fn} =
+      {source1_with_backend, backend} =
         setup_clickhouse_test(
           source: source1,
           user: user,
           default_ingest?: true
         )
 
-      on_exit(cleanup_fn)
       start_supervised!({ClickHouseAdaptor, backend})
 
       [backend: backend, user: user, source1: source1_with_backend, source2: source2]
@@ -776,8 +768,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   describe "read query `ConnectionManager` automatic wake-up" do
     setup do
       insert(:plan, name: "Free")
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
       Process.sleep(100)
@@ -828,8 +819,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       source: source,
       backend: backend1
     } do
-      {_source2, backend2, cleanup_fn2} = setup_clickhouse_test(source: source)
-      on_exit(cleanup_fn2)
+      {_source2, backend2} = setup_clickhouse_test(source: source)
       start_supervised!({ClickHouseAdaptor, backend2}, id: :adaptor2)
 
       {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend2, "SELECT 1")
