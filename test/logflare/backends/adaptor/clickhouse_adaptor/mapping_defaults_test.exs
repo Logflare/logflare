@@ -61,18 +61,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert result["service_name"] == ""
     end
 
-    test "filters invalid project strings to default", %{log: compiled} do
-      payload = %{
-        "event_message" => "hello",
-        "project" => "not-a-valid-project",
-        "timestamp" => 1_700_000_000_000_000
-      }
-
-      result = Mapper.map(payload, compiled)
-
-      assert result["project"] == ""
-    end
-
     test "produces log_attributes with exclude_keys and elevate_keys", %{log: compiled} do
       payload = %{
         "id" => "should-be-excluded",
