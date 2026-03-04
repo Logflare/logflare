@@ -962,6 +962,46 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert query =~ ~r"..\.testing"
     end
 
+    test "log event modal - quick filter button appends filter to search", %{
+      conn: conn,
+      source: source
+    } do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "quick filter test",
+           "user_id" => "abc-123",
+           "id" => "qf-uuid"
+         })}
+      end)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:"abc-123"|}}")
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
+
+      view
+      |> element("li:first-of-type a[phx-value-log-event-id='qf-uuid']", "view")
+      |> render_click()
+
+      TestUtils.retry_assert(fn ->
+        html = render(view)
+        assert html =~ "quick filter test"
+        assert html =~ ~s|title="Append to query"|
+      end)
+
+      view
+      |> element(~s|#log-event-tree-qf-uuid--user_id a[title="Append to query"]|)
+      |> render_click()
+
+      assert_patch(view)
+      assert find_querystring(render(view)) =~ ~s|user_id:"abc-123"|
+    end
+
     test "log event modal - loading from cache", %{conn: conn, user: user} do
       schema = TestUtils.build_bq_schema(%{"testing" => "string"})
       source = insert(:source, user: user)

@@ -22,11 +22,14 @@ defmodule LogflareWeb.LogEventLive do
         dt
       end
 
+    lql = params["lql"] || ""
+    is_tailing = params["tailing?"] == "true"
+
     opts =
       [
         source: source,
         user: socket.assigns.user,
-        lql: params["lql"] || ""
+        lql: lql
       ]
       |> maybe_put_timestamp(timestamp)
 
@@ -42,7 +45,8 @@ defmodule LogflareWeb.LogEventLive do
       |> assign(:log_event, log_event)
       |> assign(:origin, params["origin"])
       |> assign(:log_event_id, params["uuid"])
-      |> assign(:lql, params["lql"])
+      |> assign(:lql, lql)
+      |> assign(:tailing?, is_tailing)
       |> assign(:timestamp, timestamp)
 
     {:ok, socket}
