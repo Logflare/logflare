@@ -101,6 +101,7 @@ defmodule LogflareWeb.Source.SearchLV do
       uri_params: nil,
       uri: nil,
       lql_rules: [],
+      lql_schema_fields_json: schema_fields_json(source),
       querystring: Map.get(params, "querystring", @default_qs),
       force_query: Map.get(params, "force", "false") == "true",
       search_history: [],
@@ -198,7 +199,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:chart_loading, true)
           |> assign(:tailing_initial?, true)
           |> assign(:lql_rules, lql_rules)
-          |> assign(:querystring, qs)
+          |> assign_querystring(qs)
           |> assign(:search_op_log_events, search_op_log_events)
 
         if connected?(socket) do
@@ -215,12 +216,12 @@ defmodule LogflareWeb.Source.SearchLV do
 
         {:error, error} ->
           socket
-          |> assign(:querystring, qs)
+          |> assign_querystring(qs)
           |> error_socket(error)
 
         {:error, :field_not_found = type, suggested_querystring, error} ->
           socket
-          |> assign(:querystring, qs)
+          |> assign_querystring(qs)
           |> error_socket(type, suggested_querystring, error)
       end
 
@@ -289,7 +290,7 @@ defmodule LogflareWeb.Source.SearchLV do
       <FormComponents.search_controls
         search_form={@search_form}
         querystring={@querystring}
-        search_history={@search_history}
+        lql_schema_fields_json={@lql_schema_fields_json}
         search_timezone={@search_timezone}
         loading={@loading}
         tailing?={@tailing?}
@@ -465,7 +466,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
         socket
         |> assign(:search_history, search_history)
-        |> assign(:querystring, qs)
+        |> assign_querystring(qs)
         |> assign(:lql_rules, lql_rules)
         |> assign(:loading, true)
         |> assign(:chart_loading, true)
@@ -503,7 +504,7 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       |> assign(:tailing?, false)
       |> assign(:lql_rules, lql_list)
-      |> assign(:querystring, qs)
+      |> assign_querystring(qs)
       |> push_patch_with_params(%{querystring: qs, tailing?: false})
 
     {:noreply, socket}
@@ -758,7 +759,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:tailing_initial?, true)
         |> clear_flash()
         |> assign(:lql_rules, lql_rules)
-        |> assign(:querystring, qs)
+        |> assign_querystring(qs)
         |> push_patch_with_params(%{querystring: qs, tz: tz, tailing?: tailing?})
 
       {:error, error} ->
@@ -1075,7 +1076,7 @@ defmodule LogflareWeb.Source.SearchLV do
     qs = Lql.encode!(lql_rules)
 
     socket
-    |> assign(:querystring, qs)
+    |> assign_querystring(qs)
     |> assign(:lql_rules, lql_rules)
   end
 
@@ -1182,4 +1183,27 @@ defmodule LogflareWeb.Source.SearchLV do
       class: "tw-block tw-pt-3"
     )
   end
+
+  defp assign_querystring(socket, qs) do
+    socket
+    |> assign(:querystring, qs)
+    |> LiveMonacoEditor.set_value(qs, to: "lql_query")
+  end
+
+  defp schema_fields_json(source), do: source |> lql_schema_fields() |> Jason.encode!()
+
+  defp lql_schema_fields(source) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      %{schema_flat_map: flat_map} when is_map(flat_map) ->
+        Enum.map(flat_map, fn {name, type} ->
+          %{name: name, type: format_schema_type(type)}
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp format_schema_type({type, inner}), do: "#{type}[#{inner}]"
+  defp format_schema_type(type), do: to_string(type)
 end
