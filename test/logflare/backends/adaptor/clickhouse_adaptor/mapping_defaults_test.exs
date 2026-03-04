@@ -32,7 +32,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
     test "resolves scalar fields from OTEL-style payload", %{log: compiled} do
       payload = %{
         "event_message" => "Something happened",
-        "project" => "my-project",
+        "project" => "abcdefghijklmnopqrst",
         "trace_id" => "abc123",
         "span_id" => "def456",
         "metadata" => %{"level" => "error"},
@@ -42,7 +42,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       result = Mapper.map(payload, compiled)
 
       assert result["event_message"] == "Something happened"
-      assert result["project"] == "my-project"
+      assert result["project"] == "abcdefghijklmnopqrst"
       assert result["trace_id"] == "abc123"
       assert result["span_id"] == "def456"
       assert result["severity_text"] == "ERROR"
@@ -59,6 +59,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert result["severity_text"] == "INFO"
       assert result["severity_number"] == 9
       assert result["service_name"] == ""
+    end
+
+    test "filters invalid project strings to default", %{log: compiled} do
+      payload = %{
+        "event_message" => "hello",
+        "project" => "not-a-valid-project",
+        "timestamp" => 1_700_000_000_000_000
+      }
+
+      result = Mapper.map(payload, compiled)
+
+      assert result["project"] == ""
     end
 
     test "produces log_attributes with exclude_keys and elevate_keys", %{log: compiled} do
@@ -116,7 +128,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
         "metric_unit" => "1",
         "value" => 42.5,
         "count" => 100,
-        "project" => "my-proj",
+        "project" => "abcdefghijklmnopqrst",
         "timestamp" => 1_700_000_000_000_000
       }
 
@@ -127,7 +139,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert result["metric_unit"] == "1"
       assert result["value"] == 42.5
       assert result["count"] == 100
-      assert result["project"] == "my-proj"
+      assert result["project"] == "abcdefghijklmnopqrst"
     end
 
     test "infers metric_type from structural cues", %{metric: compiled} do
@@ -266,7 +278,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
         "span_kind" => "server",
         "duration" => 1500,
         "status" => %{"code" => "OK", "message" => "success"},
-        "project" => "my-proj",
+        "project" => "abcdefghijklmnopqrst",
         "timestamp" => 1_700_000_000_000_000
       }
 
@@ -424,7 +436,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
     test "produces flat string-keyed maps for attribute fields", %{simple_log: compiled} do
       payload = %{
         "event_message" => "Something happened",
-        "project" => "my-project",
+        "project" => "abcdefghijklmnopqrst",
         "resource" => %{"service" => %{"name" => "my-svc"}},
         "scope" => %{"name" => "my-scope", "attributes" => %{"lib" => "otel"}},
         "metadata" => %{"level" => "error", "request_id" => "req-1"},
@@ -436,14 +448,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
 
       # Scalar fields should work identically
       assert result["event_message"] == "Something happened"
-      assert result["project"] == "my-project"
+      assert result["project"] == "abcdefghijklmnopqrst"
       assert result["severity_text"] == "ERROR"
       assert result["severity_number"] == 17
 
       # resource_attributes should be flat %{String => String} via pick
       res_attrs = result["resource_attributes"]
       assert is_map(res_attrs)
-      assert res_attrs["project"] == "my-project"
+      assert res_attrs["project"] == "abcdefghijklmnopqrst"
       assert res_attrs["service_name"] == "my-svc"
 
       # All values should be strings

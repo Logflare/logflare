@@ -13,12 +13,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   alias Logflare.Mapper.MappingConfig.InferCondition
   alias Logflare.Mapper.MappingConfig.InferRule
 
-  @log_config_id "00000000-0000-0000-0001-000000000002"
-  @metric_config_id "00000000-0000-0000-0002-000000000002"
-  @trace_config_id "00000000-0000-0000-0003-000000000002"
-  @simple_log_config_id "00000000-0000-0000-0001-000000000003"
-  @simple_metric_config_id "00000000-0000-0000-0002-000000000003"
-  @simple_trace_config_id "00000000-0000-0000-0003-000000000003"
+  @log_config_id "00000000-0000-0000-0001-000000000003"
+  @metric_config_id "00000000-0000-0000-0002-000000000003"
+  @trace_config_id "00000000-0000-0000-0003-000000000003"
+  @simple_log_config_id "00000000-0000-0001-0001-000000000004"
+  @simple_metric_config_id "00000000-0000-0001-0002-000000000004"
+  @simple_trace_config_id "00000000-0000-0001-0003-000000000004"
 
   @spec config_id(TypeDetection.event_type()) :: String.t()
   def config_id(:log), do: @log_config_id
@@ -52,7 +52,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.metadata.tenant",
           "$.metadata.tenantId"
         ],
-        default: ""
+        default: "",
+        filters: %{len_eq: 20, char_class: "alpha"}
       ),
       Field.string("trace_id",
         paths: ["$.trace_id", "$.traceId", "$.otel_trace_id", "$.metadata.otel_trace_id"],
@@ -204,7 +205,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.metadata.tenant",
           "$.metadata.tenantId"
         ],
-        default: ""
+        default: "",
+        filters: %{len_eq: 20, char_class: "alpha"}
       ),
       Field.string("metric_name",
         paths: ["$.metric_name", "$.name", "$.event_message"],
@@ -452,7 +454,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.metadata.tenant",
           "$.metadata.tenantId"
         ],
-        default: ""
+        default: "",
+        filters: %{len_eq: 20, char_class: "alpha"}
       ),
       Field.string("trace_id",
         paths: ["$.trace_id", "$.traceId", "$.otel_trace_id"],
