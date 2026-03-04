@@ -83,9 +83,9 @@ defmodule LogflareWeb.SearchLive.FormComponents do
       |> assign(:fields, format_recommended_fields(assigns.fields))
 
     ~H"""
-    <div :if={Enum.any?(@fields)} class="form-text tw-order-1 tw-basis-auto tw-shrink-0 " id="recommended_fields" phx-update="ignore">
+    <div :if={Enum.any?(@fields)} class="form-text tw-order-1 tw-basis-full sm:tw-basis-auto sm:tw-shrink-0" id="recommended_fields" phx-update="ignore">
       <div class="tw-flex tw-flex-wrap tw-items-end tw--mr-2 tw--mb-[0.3rem]">
-        <div :for={field <- @fields} class="recommended-field-container tw-basis-48 tw-min-w-20 tw-pt-0 tw-pr-2 tw-pb-[0.3rem]">
+        <div :for={field <- @fields} class="recommended-field-container tw-basis-full tw-min-w-0 tw-pt-0 tw-pr-2 tw-pb-[0.3rem] sm:tw-basis-48 sm:tw-min-w-20">
           <div class="tw-flex tw-justify-between tw-items-baseline">
             <label for={"#{@id_prefix}-#{field.name}"} data-toggle="tooltip" title={field.name} class="logflare-tooltip tw-truncate tw-mb-0 tw-text-xs tw-text-gray-300 tw-block">{field.name}</label>
             <span :if={field.required?} class="required-field-indicator tw-text-gray-500 tw-block tw-text-right tw-text-xs">
@@ -151,12 +151,12 @@ defmodule LogflareWeb.SearchLive.FormComponents do
           <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-2">
             <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
 
-            <div class="tw-order-2 tw-min-w-[20rem] tw-basis-0 tw-flex-1">
+            <div class="tw-order-2 tw-basis-full tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
               {text_input(f, :querystring,
                 phx_focus: :form_focus,
                 phx_blur: :form_blur,
                 value: @querystring,
-                class: "form-control tw-mt-0 ",
+                class: "form-control tw-mt-0",
                 list: "matches"
               )}
             </div>
