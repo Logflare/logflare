@@ -121,6 +121,9 @@ defmodule Logflare.UtilsSyncTest do
   use ExUnit.Case, async: false
 
   alias Logflare.Backends.Backend
+  alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.OauthAccessTokens.PartnerOauthAccessToken
+  alias Logflare.User
   import ExUnit.CaptureLog
   require Logger
 
@@ -187,6 +190,78 @@ defmodule Logflare.UtilsSyncTest do
         assert inspect(client) =~ "REDACTED"
         refute inspect(client) =~ "some token"
       end
+    end
+
+    test "nilifies user api_key fields" do
+      user = %User{api_key: "some token", old_api_key: "old token"}
+
+      assert Logflare.Utils.stringify(user) =~ "api_key: nil"
+      assert Logflare.Utils.stringify(user) =~ "old_api_key: nil"
+      refute Logflare.Utils.stringify(user) =~ "some token"
+      refute Logflare.Utils.stringify(user) =~ "old token"
+      assert inspect(user) =~ "api_key: nil"
+      assert inspect(user) =~ "old_api_key: nil"
+      refute inspect(user) =~ "some token"
+      refute inspect(user) =~ "old token"
+
+      log =
+        capture_log(fn ->
+          try do
+            raise RuntimeError, message: inspect(user)
+          rescue
+            error ->
+              Logger.error(error)
+          end
+        end)
+
+      refute log =~ "some token"
+      refute log =~ "old token"
+      assert log =~ "api_key: nil"
+      assert log =~ "old_api_key: nil"
+    end
+
+    test "nilifies oauth access token token field" do
+      oauth_access_token = %OauthAccessToken{token: "some token"}
+
+      assert Logflare.Utils.stringify(oauth_access_token) =~ "token: nil"
+      refute Logflare.Utils.stringify(oauth_access_token) =~ "some token"
+      assert inspect(oauth_access_token) =~ "token: nil"
+      refute inspect(oauth_access_token) =~ "some token"
+
+      log =
+        capture_log(fn ->
+          try do
+            raise RuntimeError, message: inspect(oauth_access_token)
+          rescue
+            error ->
+              Logger.error(error)
+          end
+        end)
+
+      refute log =~ "some token"
+      assert log =~ "token: nil"
+    end
+
+    test "nilifies partner oauth access token token field" do
+      partner_oauth_access_token = %PartnerOauthAccessToken{token: "some token"}
+
+      assert Logflare.Utils.stringify(partner_oauth_access_token) =~ "token: nil"
+      refute Logflare.Utils.stringify(partner_oauth_access_token) =~ "some token"
+      assert inspect(partner_oauth_access_token) =~ "token: nil"
+      refute inspect(partner_oauth_access_token) =~ "some token"
+
+      log =
+        capture_log(fn ->
+          try do
+            raise RuntimeError, message: inspect(partner_oauth_access_token)
+          rescue
+            error ->
+              Logger.error(error)
+          end
+        end)
+
+      refute log =~ "some token"
+      assert log =~ "token: nil"
     end
 
     test "nilifies backend config fields" do
