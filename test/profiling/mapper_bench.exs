@@ -279,7 +279,8 @@ logs_mapping =
   MappingConfig.new([
     Field.string("project",
       paths: ["$.project", "$.project_ref", "$.project_id"],
-      default: ""
+      default: "",
+      filters: %{len_eq: 20, char_class: "alpha"}
     ),
     Field.string("trace_id",
       paths: ["$.trace_id", "$.traceId", "$.otel_trace_id"],
