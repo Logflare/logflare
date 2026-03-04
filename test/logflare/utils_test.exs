@@ -120,6 +120,10 @@ end
 defmodule Logflare.UtilsSyncTest do
   use ExUnit.Case, async: false
 
+  alias Logflare.Backends.Backend
+  import ExUnit.CaptureLog
+  require Logger
+
   @auth_headers [{"authorization", "some token"}, {"x-api-key", "some token"}]
 
   describe "Tesla.Env stringification in test env" do
@@ -129,6 +133,18 @@ defmodule Logflare.UtilsSyncTest do
         refute Logflare.Utils.stringify(env) =~ "REDACTED"
         refute inspect(env) =~ "REDACTED"
       end
+    end
+
+    test "does not nilify backend config fields" do
+      backend = %Backend{
+        config: %{token: "some token"},
+        config_encrypted: %{token: "some token"}
+      }
+
+      assert Logflare.Utils.stringify(backend) =~ "some token"
+      assert inspect(backend) =~ "some token"
+      refute Logflare.Utils.stringify(backend) =~ "config: nil"
+      refute inspect(backend) =~ "config: nil"
     end
   end
 
@@ -144,7 +160,9 @@ defmodule Logflare.UtilsSyncTest do
       for {header, value} <- @auth_headers do
         env = %Tesla.Env{headers: [{header, value}]}
         assert Logflare.Utils.stringify(env) =~ "REDACTED"
+        refute Logflare.Utils.stringify(env) =~ "some token"
         assert inspect(env) =~ "REDACTED"
+        refute inspect(env) =~ "some token"
       end
     end
 
@@ -152,7 +170,9 @@ defmodule Logflare.UtilsSyncTest do
       for {header, value} <- @auth_headers do
         env = %Tesla.Env{opts: [req_headers: [{header, value}]]}
         assert Logflare.Utils.stringify(env) =~ "REDACTED"
+        refute Logflare.Utils.stringify(env) =~ "some token"
         assert inspect(env) =~ "REDACTED"
+        refute inspect(env) =~ "some token"
       end
     end
 
@@ -163,8 +183,38 @@ defmodule Logflare.UtilsSyncTest do
         }
 
         assert Logflare.Utils.stringify(client) =~ "REDACTED"
+        refute Logflare.Utils.stringify(client) =~ "some token"
         assert inspect(client) =~ "REDACTED"
+        refute inspect(client) =~ "some token"
       end
+    end
+
+    test "nilifies backend config fields" do
+      backend = %Backend{
+        config: %{token: "some token"},
+        config_encrypted: %{token: "some token"}
+      }
+
+      assert Logflare.Utils.stringify(backend) =~ "config: nil"
+      assert Logflare.Utils.stringify(backend) =~ "config_encrypted: nil"
+      refute Logflare.Utils.stringify(backend) =~ "some token"
+      assert inspect(backend) =~ "config: nil"
+      assert inspect(backend) =~ "config_encrypted: nil"
+      refute inspect(backend) =~ "some token"
+
+      log =
+        capture_log(fn ->
+          try do
+            raise RuntimeError, message: inspect(backend)
+          rescue
+            error ->
+              Logger.error(error)
+          end
+        end)
+
+      refute log =~ "some token"
+      assert log =~ "config: nil"
+      assert log =~ "config_encrypted: nil"
     end
   end
 end

@@ -10,18 +10,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   @default_table_engine Application.compile_env(:logflare, :clickhouse_backend_adaptor)[:engine]
   @default_ttl_days 90
 
-  # When true, applies optimized settings to all table types (logs, metrics, traces).
+  # When true, applies cloud settings to all table types (logs, metrics, traces).
   # When false, only applies to *otel_logs* tables (standard + simple).
-  @apply_optimized_settings_to_all_tables false
+  @apply_cloud_settings_to_all_tables false
 
   @base_settings "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
-
-  @optimized_settings [
-    "max_parts_in_total = 20000",
-    "parts_to_delay_insert = 5000",
-    "parts_to_throw_insert = 10000",
-    "min_bytes_for_wide_part = 0"
-  ]
 
   @cloud_settings [
     "shared_merge_tree_max_replicas_to_merge_parts_for_each_parts_range = 0",
@@ -457,8 +450,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
     |> String.trim_trailing("\n")
   end
 
-  @spec apply_optimized_settings_to_all_tables?() :: boolean()
-  def apply_optimized_settings_to_all_tables?, do: @apply_optimized_settings_to_all_tables
+  @spec apply_cloud_settings_to_all_tables?() :: boolean()
+  def apply_cloud_settings_to_all_tables?, do: @apply_cloud_settings_to_all_tables
 
   @spec extract_opts(String.t(), Keyword.t()) :: {String.t(), String.t(), pos_integer() | nil}
   defp extract_opts(table, opts) when is_non_empty_binary(table) and is_list(opts) do
@@ -483,19 +476,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
 
   @spec build_settings_string(Keyword.t()) :: String.t()
   defp build_settings_string(opts) when is_list(opts) do
-    optimized? = Keyword.get(opts, :optimized_settings, false)
     cloud? = Keyword.get(opts, :clickhouse_cloud, false)
 
-    extras =
-      case {optimized?, cloud?} do
-        {true, true} -> @optimized_settings ++ @cloud_settings
-        {true, false} -> @optimized_settings
-        _ -> []
-      end
-
-    case extras do
-      [] -> @base_settings
-      list -> @base_settings <> ", " <> Enum.join(list, ", ")
+    if cloud? do
+      @base_settings <> ", " <> Enum.join(@cloud_settings, ", ")
+    else
+      @base_settings
     end
   end
 end
