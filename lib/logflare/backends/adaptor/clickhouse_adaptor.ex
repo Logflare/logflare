@@ -290,7 +290,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     with :ok <- ensure_query_connection_manager_started(backend) do
       pool_via = connection_pool_via(backend)
 
-      case Ch.query(pool_via, statement, params, Keyword.put(opts, :decode, false)) do
+      timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 30_000
+      opts = opts |> Keyword.put(:decode, false) |> Keyword.put(:timeout, timeout)
+
+      case Ch.query(pool_via, statement, params, opts) do
         {:ok, %Ch.Result{} = result} ->
           {:ok, decode_ch_result(result)}
 

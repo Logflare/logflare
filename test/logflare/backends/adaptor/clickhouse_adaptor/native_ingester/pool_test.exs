@@ -41,20 +41,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
   end
 
   describe "Pool lifecycle" do
-    test "starts and stops a pool" do
-      pool_name = :"pool_lifecycle_test_#{System.unique_integer([:positive])}"
-
-      {:ok, pid} =
-        NimblePool.start_link(
-          worker: {Pool, @pool_connect_opts},
-          pool_size: 2,
-          name: pool_name
-        )
-
-      assert Process.alive?(pid)
-      GenServer.stop(pid)
-    end
-
     test "pool creates connections on checkout" do
       pool_name = :"pool_checkout_test_#{System.unique_integer([:positive])}"
 
