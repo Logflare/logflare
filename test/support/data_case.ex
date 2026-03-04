@@ -200,7 +200,7 @@ defmodule Logflare.DataCase do
         pool_timeout: 1_000
       )
 
-      ConsolidatedSup.stop_pipeline(backend.id)
+      Logflare.Backends.ConsolidatedSup.stop_pipeline(backend.id)
     rescue
       _ -> :ok
     catch
