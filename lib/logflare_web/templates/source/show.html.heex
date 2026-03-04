@@ -60,9 +60,13 @@
 <div class="container mx-auto">
   <div>
     <%= form_for @conn, Routes.live_path(@conn, LogflareWeb.Source.SearchLV, @source), [method: :get], fn f -> %>
-      <LogflareWeb.SearchLive.FormComponents.recommended_field_inputs fields={Logflare.Sources.Source.recommended_query_fields(@source)} id_prefix="recent-logs-field" />
       <div class="form-group form-text">
-        {text_input(f, :querystring, placeholder: "404", class: "form-control tw-mt-1", autofocus: true)}
+        <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-2">
+          <LogflareWeb.SearchLive.FormComponents.recommended_field_inputs fields={Logflare.Sources.Source.recommended_query_fields(@source)} id_prefix="recent-logs-field" />
+          <div class="tw-order-2 tw-min-w-[20rem] tw-basis-0 tw-flex-1">
+            {text_input(f, :querystring, placeholder: "404", class: "form-control tw-mt-0 ", autofocus: true)}
+          </div>
+        </div>
         {hidden_input(f, :tailing?, value: "true")}
         <%= if @team do %>
           {hidden_input(f, :t, value: @team.id)}
