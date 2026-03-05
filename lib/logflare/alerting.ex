@@ -152,22 +152,30 @@ defmodule Logflare.Alerting do
         changeset
     end)
     |> Repo.update()
-    |> handle_enabled_change(alert_query)
+    |> handle_schedule_change(alert_query)
   end
 
-  defp handle_enabled_change({:ok, %AlertQuery{} = updated} = result, previous) do
-    if updated.enabled != previous.enabled do
-      if updated.enabled do
-        schedule_alert(updated)
-      else
+  defp handle_schedule_change({:ok, %AlertQuery{} = updated} = result, previous) do
+    cond do
+      updated.enabled != previous.enabled ->
+        if updated.enabled do
+          schedule_alert(updated)
+        else
+          delete_future_alert_jobs(updated.id)
+        end
+
+      updated.enabled and updated.cron != previous.cron ->
         delete_future_alert_jobs(updated.id)
-      end
+        schedule_alert(updated)
+
+      true ->
+        :noop
     end
 
     result
   end
 
-  defp handle_enabled_change(error, _previous), do: error
+  defp handle_schedule_change(error, _previous), do: error
 
   @doc """
   Deletes a alert_query.
