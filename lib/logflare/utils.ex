@@ -397,8 +397,38 @@ defmodule Logflare.Utils do
     Map.put(oauth_access_token, :token, nil)
   end
 
+  defp redact_struct_for_inspect(%Tesla.Client{pre: pre} = client) do
+    redacted_pre =
+      Enum.map(pre, fn
+        {Tesla.Middleware.Headers, :call, [headers]} ->
+          {Tesla.Middleware.Headers, :call, [redact_header_list(headers)]}
+
+        other ->
+          other
+      end)
+
+    client
+    |> Map.put(:pre, redacted_pre)
+    |> redact_sensitive_headers()
+  end
+
+  defp redact_struct_for_inspect(%Tesla.Env{__client__: %Tesla.Client{} = client} = env) do
+    env
+    |> Map.put(:__client__, redact_struct_for_inspect(client))
+    |> redact_sensitive_headers()
+  end
+
   defp redact_struct_for_inspect(value) do
     redact_sensitive_headers(value)
+  end
+
+  @sensitive_header_names ["authorization", "x-api-key", "Authorization", "X-API-Key"]
+
+  defp redact_header_list(headers) do
+    Enum.map(headers, fn
+      {name, _value} when name in @sensitive_header_names -> {name, "REDACTED"}
+      other -> other
+    end)
   end
 
   # helper function for custom String.Chars defimpl

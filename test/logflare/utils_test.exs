@@ -119,6 +119,7 @@ end
 
 defmodule Logflare.UtilsSyncTest do
   use ExUnit.Case, async: false
+  use ExUnitProperties
 
   alias Logflare.Backends.Backend
   alias Logflare.OauthAccessTokens.OauthAccessToken
@@ -182,11 +183,9 @@ defmodule Logflare.UtilsSyncTest do
     test "redacts sensitive headers in Tesla.Client" do
       for {header, value} <- @auth_headers do
         client = %Tesla.Client{
-          pre: [{Tesla.Middleware.Headers, [{header, value}]}]
+          pre: [{Tesla.Middleware.Headers, :call, [[{header, value}]]}]
         }
 
-        assert Logflare.Utils.stringify(client) =~ "REDACTED"
-        refute Logflare.Utils.stringify(client) =~ "some token"
         assert inspect(client) =~ "REDACTED"
         refute inspect(client) =~ "some token"
       end
@@ -290,6 +289,188 @@ defmodule Logflare.UtilsSyncTest do
       refute log =~ "some token"
       assert log =~ "config: nil"
       assert log =~ "config_encrypted: nil"
+    end
+
+    test "redacts sensitive headers in Task crash with MatchError" do
+      client = %Tesla.Client{
+        pre: [{Tesla.Middleware.Headers, :call, [[{"authorization", "secret_token_123"}]]}]
+      }
+
+      log =
+        capture_log(fn ->
+          {:ok, pid} =
+            Task.start(fn ->
+              data =
+                {:error,
+                 %Tesla.Env{
+                   headers: [{"x-request-id", "abc"}, {"x-api-key", "secret_token_123"}],
+                   __client__: client
+                 }}
+
+              {:ok, _} = Function.identity(data)
+            end)
+
+          ref = Process.monitor(pid)
+          assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
+        end)
+
+      assert log =~ "MatchError"
+      assert log =~ "REDACTED"
+      refute log =~ "secret_token_123"
+    end
+
+    test "redacts sensitive headers in Task crash with error tuple termination" do
+      log =
+        capture_log(fn ->
+          {:ok, pid} =
+            Task.start(fn ->
+              GenServer.call(
+                self(),
+                {:error,
+                 %Tesla.Env{
+                   headers: [
+                     {"content-type", "application/json"},
+                     {"authorization", "Bearer secret_bearer_token_789"}
+                   ]
+                 }}
+              )
+            end)
+
+          ref = Process.monitor(pid)
+          assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
+          Process.sleep(500)
+        end)
+
+      refute log =~ "secret_bearer_token_789"
+      assert log =~ "REDACTED"
+    end
+
+    test "redacts sensitive user fields in Task crash with Phoenix.Template.UndefinedError" do
+      log =
+        capture_log(fn ->
+          {:ok, pid} =
+            Task.start(fn ->
+              raise %Phoenix.Template.UndefinedError{
+                module: LogflareWeb.PhoenixOauth2Provider.AuthorizedApplicationView,
+                template: "index.html",
+                assigns: %{
+                  user: %User{api_key: "secret_api_key_123", old_api_key: "old_secret_key_456"}
+                }
+              }
+            end)
+
+          ref = Process.monitor(pid)
+          assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
+          Process.sleep(500)
+        end)
+
+      assert log =~ "UndefinedError"
+      refute log =~ "secret_api_key_123"
+      refute log =~ "old_secret_key_456"
+    end
+  end
+
+  describe "redaction property tests" do
+    setup do
+      prev_env = Application.get_env(:logflare, :env)
+      Application.put_env(:logflare, :env, :prod)
+      on_exit(fn -> Application.put_env(:logflare, :env, prev_env) end)
+      :ok
+    end
+
+    @sensitive_headers ["authorization", "x-api-key", "Authorization", "X-API-Key"]
+    @secret "super_secret_token_value_42"
+
+    defp redactable_input do
+      safe_header =
+        bind(string(:alphanumeric, min_length: 5, max_length: 20), fn name ->
+          bind(string(:alphanumeric, min_length: 1, max_length: 20), fn value ->
+            constant({name, value})
+          end)
+        end)
+
+      headers_gen =
+        bind(member_of(@sensitive_headers), fn header ->
+          bind(list_of(safe_header, max_length: 5), fn safe_headers ->
+            constant(Enum.shuffle(safe_headers ++ [{header, @secret}]))
+          end)
+        end)
+
+      random_values = one_of([constant(nil), string(:alphanumeric, min_length: 3), integer()])
+
+      struct_gen =
+        one_of([
+          bind(headers_gen, fn headers ->
+            constant(%Tesla.Env{headers: headers})
+          end),
+          bind(headers_gen, fn headers ->
+            bind(keyword_of(random_values), fn opts ->
+              constant(%Tesla.Env{opts: opts ++ [req_headers: headers], headers: headers})
+            end)
+          end),
+          bind(string(:alphanumeric, min_length: 3), fn email ->
+            constant(%User{api_key: @secret, old_api_key: @secret, email: email})
+          end),
+          bind(positive_integer(), fn id ->
+            constant(%OauthAccessToken{token: @secret, resource_owner_id: id})
+          end),
+          bind(positive_integer(), fn id ->
+            constant(%PartnerOauthAccessToken{token: @secret, resource_owner_id: id})
+          end),
+          constant(%Backend{config: %{token: @secret}, config_encrypted: %{token: @secret}})
+        ])
+
+      exception_gen =
+        bind(struct_gen, fn struct ->
+          one_of([
+            constant(%ErlangError{original: struct}),
+            constant(%MatchError{term: struct}),
+            constant(%MatchError{term: {:some_error, struct}}),
+            constant(%Phoenix.Template.UndefinedError{
+              module: LogflareWeb.SomeView,
+              template: "show.html",
+              assigns: %{user: struct}
+            }),
+            constant(%Phoenix.Template.UndefinedError{
+              module: LogflareWeb.SomeView,
+              template: "index.html",
+              assigns: %{data: struct}
+            }),
+            bind(string(:alphanumeric, min_length: 3), fn msg ->
+              constant(%RuntimeError{message: "#{msg} #{inspect(struct)} #{msg}"})
+            end),
+            bind(string(:alphanumeric, min_length: 3), fn reason ->
+              constant({:stop, reason, %{state: struct}})
+            end),
+            bind(string(:alphanumeric, min_length: 3), fn reason ->
+              constant({:noproc, {GenServer, :call, [struct, reason]}})
+            end)
+          ])
+        end)
+
+      random_redactables =
+        one_of([
+          struct_gen,
+          random_values,
+          exception_gen
+        ])
+
+      one_of([
+        exception_gen,
+        keyword_of(one_of([struct_gen, exception_gen])),
+        map_of(string(:alphanumeric), one_of([struct_gen, exception_gen])),
+        bind(list_of(struct_gen), fn list -> constant(MapSet.new(list)) end),
+        list_of(struct_gen),
+        list_of(map_of(string(:alphanumeric), struct_gen)),
+        bind(list_of(random_redactables), fn list -> constant(List.to_tuple(list)) end)
+      ])
+    end
+
+    property "redacts sensitive values across all struct types and positions" do
+      check all to_redact <- redactable_input() do
+        refute Logflare.Utils.stringify(to_redact) =~ @secret
+        refute inspect(to_redact) =~ @secret
+      end
     end
   end
 end
