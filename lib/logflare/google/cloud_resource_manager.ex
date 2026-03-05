@@ -228,7 +228,8 @@ defmodule Logflare.Google.CloudResourceManager do
                "roles/cloudbuild.serviceAgent"
              ]},
             {env_api_sa(), ["roles/editor", "roles/cloudbuild.builds.editor"]},
-            {env_grafana_sa(), ["roles/bigquery.dataViewer", "roles/bigquery.jobUser"]}
+            {env_grafana_sa(), ["roles/bigquery.dataViewer", "roles/bigquery.jobUser"]},
+            {env_project_viewer(), ["roles/viewer"]}
           ] ++ managed_service_accounts,
         member,
         role <- roles do
@@ -276,4 +277,7 @@ defmodule Logflare.Google.CloudResourceManager do
 
   defp env_grafana_sa,
     do: Application.get_env(:logflare, Logflare.Google)[:grafana_sa]
+
+  defp env_project_viewer,
+    do: Application.get_env(:logflare, Logflare.Google)[:project_viewer]
 end
