@@ -146,7 +146,9 @@ defmodule Logflare.Endpoints.CacheTest do
       assert Logflare.Repo.update_all(Endpoints.Query, set: [cache_duration_seconds: 0]) ==
                {2, nil}
 
-      assert Logflare.ContextCache.bust_keys([{Logflare.Endpoints, endpoint.id}]) == {:ok, 1}
+      size_before = Cachex.size!(Logflare.Endpoints.Cache)
+      assert :ok = Logflare.ContextCache.bust_keys([{Logflare.Endpoints, endpoint.id}])
+      assert Cachex.size!(Logflare.Endpoints.Cache) == size_before - 1
 
       # Cache should still be alive before cache_duration_seconds
       Process.sleep(endpoint.proactive_requerying_seconds * 1000 * 2)

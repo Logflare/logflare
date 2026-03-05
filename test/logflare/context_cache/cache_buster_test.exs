@@ -2,7 +2,6 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   use Logflare.DataCase
 
   alias Cainophile.Changes.DeletedRecord
-  alias Cainophile.Changes.Transaction
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.Sources
@@ -34,7 +33,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
       send(test_pid, arg)
     end)
 
-    send(CacheBuster, %Transaction{changes: [change]})
+    CacheBuster.broadcast_cache_updates([change])
     assert_receive [{Sources, ^source_id}], 500
     assert Cachex.size!(Sources.Cache) == 0
   end

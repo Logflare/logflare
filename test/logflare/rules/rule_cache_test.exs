@@ -2,6 +2,7 @@ defmodule Logflare.Rules.CacheTest do
   alias Logflare.Rules.Rule
   use Logflare.DataCase
 
+  alias Logflare.ContextCache
   alias Logflare.Rules
   alias Logflare.Sources
 
@@ -93,7 +94,7 @@ defmodule Logflare.Rules.CacheTest do
       assert _ = @subject.rules_tree_by_source_id(source.id)
       assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
 
-      assert {:ok, 2} = @subject.bust_by(source_id: source.id)
+      assert :ok = ContextCache.bust_keys([{Rules, source_id: source.id}])
       assert [_r1, _r2] = @subject.list_rules(source)
       assert %{misses: 3, writes: 3} = Cachex.stats!(@subject)
 
@@ -105,7 +106,7 @@ defmodule Logflare.Rules.CacheTest do
       assert [_r1, _r2] = @subject.list_rules(backend)
       assert %{misses: 1, writes: 1} = Cachex.stats!(@subject)
 
-      assert {:ok, 1} = @subject.bust_by(backend_id: backend.id)
+      assert :ok = ContextCache.bust_keys([{Rules, backend_id: backend.id}])
       assert [_r1, _r2] = @subject.list_rules(backend)
       assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
     end
@@ -114,12 +115,14 @@ defmodule Logflare.Rules.CacheTest do
       assert _r1 = @subject.get_rule(rid1)
       assert %{misses: 1, writes: 1} = Cachex.stats!(@subject)
 
-      assert {:ok, 1} = @subject.bust_by(id: rid1)
+      assert :ok = ContextCache.bust_keys([{Rules, id: rid1}])
       assert _r1 = @subject.get_rule(rid1)
       assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
 
       # Bust missing key
-      assert {:ok, 0} = @subject.bust_by(id: rid2)
+      size_before = Cachex.size!(@subject)
+      assert :ok = ContextCache.bust_keys([{Rules, id: rid2}])
+      assert Cachex.size!(@subject) == size_before
     end
 
     test "cache warming" do
