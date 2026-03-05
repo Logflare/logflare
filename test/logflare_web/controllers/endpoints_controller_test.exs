@@ -696,7 +696,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         table = PgRepo.table_name(source)
         schema = backend.config.schema || "public"
 
-        TestUtils.retry_assert([duration: 5_000, sleep: 100], fn ->
+        TestUtils.retry_assert([duration: 5, sleep: 1], fn ->
           result =
             SharedRepo.with_repo(backend, fn ->
               SharedRepo.query(
