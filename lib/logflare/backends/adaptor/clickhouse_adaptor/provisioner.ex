@@ -43,12 +43,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner do
       {:noreply, backend, {:continue, :provision_tables}}
     else
       {:error, reason} = error ->
-        Logger.error("ClickHouse test connection failed",
+        Logger.warning("ClickHouse test connection failed",
           backend_id: backend.id,
           error_string: inspect(reason)
         )
 
-        {:stop, error, backend}
+        {:stop, {:shutdown, error}, backend}
     end
   end
 
@@ -58,12 +58,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner do
         {:noreply, backend, {:continue, :close_process}}
 
       {:error, reason} = error ->
-        Logger.error("ClickHouse provisioning failed",
+        Logger.warning("ClickHouse provisioning failed",
           backend_id: backend.id,
           error_string: inspect(reason)
         )
 
-        {:stop, error, backend}
+        {:stop, {:shutdown, error}, backend}
     end
   end
 

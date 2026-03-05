@@ -17,7 +17,10 @@ defmodule Logflare.Mapper.MappingConfig do
   Future value types (`"integer"`, `"float"`) will target `Map(String, Int64)`,
   `Map(String, Float64)`, etc.
 
-  See `FieldConfig` for full documentation.
+  String fields support optional `:filters` for validating resolved values
+  during path coalescing. If a resolved string doesn't pass the configured
+  filters, it is skipped and the next coalesce path is tried. See
+  `FieldConfig` for the full list of filter keys.
 
   Every field reads from the **original input document** — operations like
   `exclude_keys` and `elevate_keys` only transform that field's own output value.
@@ -32,6 +35,10 @@ defmodule Logflare.Mapper.MappingConfig do
       alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
 
       config = MappingConfig.new([
+        Field.string("project",
+          paths: ["$.project", "$.project_ref", "$.metadata.project"],
+          default: "",
+          filters: %{len_eq: 20, char_class: "alpha"}),
         Field.string("trace_id", paths: ["$.trace_id", "$.traceId"], default: ""),
         Field.string("severity_text", paths: ["$.level"], transform: "upcase",
           default: "INFO", allowed_values: ~w(INFO WARN ERROR)),
@@ -120,6 +127,7 @@ defmodule Logflare.Mapper.MappingConfig do
     |> maybe_add("exclude_keys", f.exclude_keys)
     |> maybe_add("elevate_keys", f.elevate_keys)
     |> maybe_add("value_type", f.value_type)
+    |> maybe_add_filters(f.filters)
     |> maybe_add_filter_nil(f.filter_nil)
     |> maybe_add_pick(f.pick)
     |> maybe_add_infer(f.infer)
@@ -160,6 +168,38 @@ defmodule Logflare.Mapper.MappingConfig do
   defp maybe_add(map, _key, nil), do: map
   defp maybe_add(map, _key, []), do: map
   defp maybe_add(map, key, value), do: Map.put(map, key, value)
+
+  @spec maybe_add_filters(map(), map() | nil) :: map()
+  defp maybe_add_filters(map, nil), do: map
+  defp maybe_add_filters(map, filters) when filters == %{}, do: map
+
+  defp maybe_add_filters(map, filters) do
+    nif_filters =
+      Enum.reduce(filters, %{}, fn
+        {:len_eq, v}, acc when is_integer(v) ->
+          Map.put(acc, "len_eq", v)
+
+        {:len_gt, v}, acc when is_integer(v) ->
+          Map.put(acc, "len_gt", v)
+
+        {:len_gte, v}, acc when is_integer(v) ->
+          Map.put(acc, "len_gte", v)
+
+        {:len_lt, v}, acc when is_integer(v) ->
+          Map.put(acc, "len_lt", v)
+
+        {:len_lte, v}, acc when is_integer(v) ->
+          Map.put(acc, "len_lte", v)
+
+        {:char_class, v}, acc when v in ~w(alpha numeric alphanumeric) ->
+          Map.put(acc, "char_class", v)
+
+        _, acc ->
+          acc
+      end)
+
+    if nif_filters == %{}, do: map, else: Map.put(map, "filters", nif_filters)
+  end
 
   @spec maybe_add_filter_nil(map(), boolean()) :: map()
   defp maybe_add_filter_nil(map, false), do: map

@@ -2,17 +2,18 @@ defmodule Logflare.LogEvent do
   use TypedEctoSchema
 
   import Ecto.Changeset
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_non_negative_integer: 1]
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
+
+  require Logger
 
   alias __MODULE__, as: LE
   alias __MODULE__.TypeDetection
+  alias Logflare.KeyValues
   alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Logs.IngestTransformers
   alias Logflare.Logs.Validators.BigQuerySchemaChange
-  alias Logflare.KeyValues
   alias Logflare.Sources.Source
-
-  require Logger
 
   @validators [BigQuerySchemaChange]
 
@@ -22,13 +23,13 @@ defmodule Logflare.LogEvent do
     field :valid, :boolean
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
+    field :timestamp_inferred, :boolean, default: false
     field :ingested_at, :utc_datetime_usec
     field :source_uuid, Ecto.UUID.Atom
     field :source_name, :string
     field :via_rule_id, :id
     field :retries, :integer, default: 0
     field :event_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
-
     field :source_id, :integer, default: nil
 
     embeds_one :pipeline_error, PipelineError do
@@ -59,9 +60,11 @@ defmodule Logflare.LogEvent do
   """
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
   def make(params, %{source: source}, _opts \\ []) do
+    mapped = mapper(params)
+
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params), [:body, :valid])
+      |> cast(mapped, [:body, :valid])
       |> validate_required([:body])
 
     pipeline_error =
@@ -82,7 +85,8 @@ defmodule Logflare.LogEvent do
         valid: changeset.valid?,
         ingested_at: NaiveDateTime.utc_now(),
         id: changeset.changes.body["id"],
-        event_type: TypeDetection.detect(params)
+        event_type: TypeDetection.detect(params),
+        timestamp_inferred: mapped["timestamp_inferred"]
       })
 
     Logflare.LogEvent
@@ -91,13 +95,13 @@ defmodule Logflare.LogEvent do
     |> validate(source)
   end
 
-  # Parses input parameters and performs casting.
+  @spec mapper(map()) :: %{String.t() => term}
   defp mapper(params) do
     # TODO: deprecate and remove `message`
     event_message = params["message"] || params["event_message"]
     id = id(params)
 
-    timestamp = determine_timestamp(params)
+    {timestamp, timestamp_inferred} = determine_timestamp(params)
 
     base_merge = %{
       "timestamp" => timestamp,
@@ -125,7 +129,8 @@ defmodule Logflare.LogEvent do
 
     %{
       "body" => body,
-      "id" => id
+      "id" => id,
+      "timestamp_inferred" => timestamp_inferred
     }
   end
 
@@ -176,11 +181,13 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  @spec bigquery_spec(LE.t()) :: {:ok, LE.t()}
   defp bigquery_spec(le) do
     new_body = IngestTransformers.transform(le.body, :to_bigquery_column_spec)
     {:ok, %{le | body: new_body}}
   end
 
+  @spec copy_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
   defp copy_fields(%LE{} = le, %Source{transform_copy_fields: nil}), do: {:ok, le}
 
   defp copy_fields(le, source) do
@@ -211,6 +218,7 @@ defmodule Logflare.LogEvent do
     {:ok, Map.put(le, :body, new_body)}
   end
 
+  @spec kv_enrich(LE.t(), Source.t()) :: {:ok, LE.t()}
   defp kv_enrich(%LE{} = le, %Source{transform_key_values: nil, transform_key_values_parsed: nil}),
        do: {:ok, le}
 
@@ -231,6 +239,7 @@ defmodule Logflare.LogEvent do
     kv_enrich(le, Source.parse_key_values_config(source))
   end
 
+  @spec apply_kv_instruction(map(), map(), integer()) :: map()
   defp apply_kv_instruction(
          body,
          %{from_path: from_path, to_path: to_path} = instruction,
@@ -256,6 +265,7 @@ defmodule Logflare.LogEvent do
 
   Configuration should be comma separated, and it accepts json query syntax.
   """
+  @spec apply_custom_event_message(LE.t(), Source.t()) :: LE.t()
   def apply_custom_event_message(%LE{drop: true} = le, _source), do: le
 
   def apply_custom_event_message(%LE{} = le, %Source{} = source) do
@@ -267,6 +277,7 @@ defmodule Logflare.LogEvent do
   @doc """
   Changeset for pipeline errors.
   """
+  @spec pipeline_error_changeset(LE.PipelineError.t(), map()) :: Ecto.Changeset.t()
   def pipeline_error_changeset(pipeline_error, attrs) do
     pipeline_error
     |> cast(attrs, [
@@ -276,6 +287,7 @@ defmodule Logflare.LogEvent do
     |> validate_required([:stage, :message])
   end
 
+  @spec make_message(LE.t(), Source.t()) :: String.t() | nil
   defp make_message(log_event, source) do
     if keys = source.custom_event_message_keys do
       keys
@@ -286,6 +298,7 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  @spec build_message(String.t(), LE.t()) :: String.t() | nil
   defp build_message(key, log_event) do
     message = get_default_message(log_event)
 
@@ -307,10 +320,12 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  @spec get_default_message(LE.t()) :: String.t() | nil
   defp get_default_message(log_event) do
     log_event.body["message"] || log_event.body["event_message"]
   end
 
+  @spec query_json(map(), String.t()) :: String.t()
   defp query_json(metadata, query) do
     case Warpath.query(metadata, query) do
       {:ok, v} ->
@@ -321,33 +336,36 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  @spec id(map()) :: String.t()
   defp id(params) do
     params["id"] || params[:id] || Ecto.UUID.generate()
   end
 
+  @spec determine_timestamp(map()) :: {integer(), boolean()}
   defp determine_timestamp(params) when not is_map_key(params, "timestamp"),
-    do: default_timestamp()
+    do: {default_timestamp(), true}
 
-  defp determine_timestamp(%{"timestamp" => x}) when is_binary(x) do
+  defp determine_timestamp(%{"timestamp" => x}) when is_non_empty_binary(x) do
     case DateTime.from_iso8601(x) do
       {:ok, udt, _} ->
-        DateTime.to_unix(udt, :microsecond)
+        {DateTime.to_unix(udt, :microsecond), false}
 
       {:error, _} ->
-        default_timestamp()
+        {default_timestamp(), true}
     end
   end
 
-  defp determine_timestamp(%{"timestamp" => x}) when is_integer(x) do
-    Logflare.Utils.to_microseconds(x)
+  defp determine_timestamp(%{"timestamp" => x}) when is_non_negative_integer(x) do
+    {Logflare.Utils.to_microseconds(x), false}
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_float(x) do
     determine_timestamp(%{"timestamp" => round(x)})
   end
 
-  defp determine_timestamp(_), do: default_timestamp()
+  defp determine_timestamp(_), do: {default_timestamp(), true}
 
+  @spec default_timestamp() :: integer()
   defp default_timestamp() do
     System.system_time(:microsecond)
   end

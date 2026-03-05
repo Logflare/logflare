@@ -290,7 +290,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     with :ok <- ensure_query_connection_manager_started(backend) do
       pool_via = connection_pool_via(backend)
 
-      case Ch.query(pool_via, statement, params, Keyword.put(opts, :decode, false)) do
+      timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 30_000
+      opts = opts |> Keyword.put(:decode, false) |> Keyword.put(:timeout, timeout)
+
+      case Ch.query(pool_via, statement, params, opts) do
         {:ok, %Ch.Result{} = result} ->
           {:ok, decode_ch_result(result)}
 
@@ -394,7 +397,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :ok
 
       {:error, reason} ->
-        Logger.error("ClickHouse #{protocol} insert error.",
+        Logger.warning("ClickHouse #{protocol} insert error.",
           error_string: inspect(reason)
         )
 
@@ -453,34 +456,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec build_ddl_opts(TypeDetection.event_type(), boolean()) :: Keyword.t()
-  defp build_ddl_opts(event_type, cloud?) do
-    optimized? =
-      event_type == :log or QueryTemplates.apply_optimized_settings_to_all_tables?()
+  defp build_ddl_opts(:log, cloud?), do: [clickhouse_cloud: cloud?]
 
-    [optimized_settings: optimized?, clickhouse_cloud: cloud?]
+  defp build_ddl_opts(_event_type, cloud?) do
+    [clickhouse_cloud: cloud? and QueryTemplates.apply_cloud_settings_to_all_tables?()]
   end
 
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
-    children = [
-      Provisioner.child_spec(backend),
-      {
-        DynamicPipeline,
-        name: Backends.via_backend(backend, Pipeline),
-        pipeline: Pipeline,
-        pipeline_args: [backend: backend],
-        min_pipelines: @min_pipelines,
-        max_pipelines: System.schedulers_online(),
-        initial_count: @min_pipelines,
-        resolve_interval: @resolve_interval,
-        resolve_count: fn state ->
-          lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
+    children =
+      if(Application.get_env(:logflare, :env) != :test,
+        do: [Provisioner.child_spec(backend)],
+        else: []
+      ) ++
+        [
+          {
+            DynamicPipeline,
+            name: Backends.via_backend(backend, Pipeline),
+            pipeline: Pipeline,
+            pipeline_args: [backend: backend],
+            min_pipelines: @min_pipelines,
+            max_pipelines: System.schedulers_online(),
+            initial_count: @min_pipelines,
+            resolve_interval: @resolve_interval,
+            resolve_count: fn state ->
+              lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
 
-          resolve_pipeline_count(state, lens)
-        end
-      }
-    ]
+              resolve_pipeline_count(state, lens)
+            end
+          }
+        ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
