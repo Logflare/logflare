@@ -45,12 +45,22 @@ defmodule LogflareTest.LogFilters do
   end
 
   def ignore_finch_disconnections(le, _opts), do: le
+
+  def ignore_db_connection_failures(
+        %{meta: %{mfa: {DBConnection.Connection, :handle_event, 4}}},
+        _opts
+      ) do
+    :stop
+  end
+
+  def ignore_db_connection_failures(le, _opts), do: le
 end
 
 config :logger,
   default_handler: [
     filters: [
-      {:finch_silencer, {&LogflareTest.LogFilters.ignore_finch_disconnections/2, []}}
+      {:finch_silencer, {&LogflareTest.LogFilters.ignore_finch_disconnections/2, []}},
+      {:db_conn_silencer, {&LogflareTest.LogFilters.ignore_db_connection_failures/2, []}}
     ],
     level: :error
   ]

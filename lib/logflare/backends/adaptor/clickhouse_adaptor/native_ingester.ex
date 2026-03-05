@@ -127,7 +127,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
     end)
   catch
     :exit, {:timeout, _} ->
-      Logger.error("ClickHouse NativeIngester: pool checkout timeout for insert into #{table}")
+      Logger.warning("ClickHouse NativeIngester: pool checkout timeout for insert into #{table}")
       {:error, :checkout_timeout}
   end
 

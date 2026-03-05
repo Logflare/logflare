@@ -59,7 +59,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
     test "preserves partitioning, ordering, and settings" do
       ddl = QueryTemplates.create_simple_logs_table_statement("simple_otel_logs_test")
       assert ddl =~ "PARTITION BY toDate(timestamp)"
-      assert ddl =~ "ORDER BY (source_name, project, toDate(timestamp))"
+      assert ddl =~ "ORDER BY (source_name, project, timestamp_hour)"
       assert ddl =~ "SETTINGS index_granularity = 8192"
     end
   end
@@ -85,7 +85,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
       assert ddl =~ "`metric_type` Enum8"
       assert ddl =~ "`value` Float64"
       assert ddl =~ "`bucket_counts` Array(UInt64)"
-      assert ddl =~ "ORDER BY (source_name, metric_name, project, toDate(timestamp))"
+      assert ddl =~ "ORDER BY (source_name, metric_name, project, timestamp_hour)"
     end
   end
 
@@ -132,7 +132,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
       assert ddl =~ "`span_name` LowCardinality(String)"
       assert ddl =~ "idx_trace_id"
       assert ddl =~ "idx_duration"
-      assert ddl =~ "ORDER BY (source_name, span_name, project, toDate(timestamp))"
+      assert ddl =~ "ORDER BY (source_name, span_name, project, timestamp_hour)"
     end
   end
 end

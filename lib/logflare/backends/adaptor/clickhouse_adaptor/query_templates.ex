@@ -134,11 +134,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `mapping_config_id` UUID,
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
         `timestamp_time` DateTime DEFAULT toDateTime(timestamp),
+        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, project, toDate(timestamp))
+      ORDER BY (source_name, project, timestamp_hour)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
@@ -202,11 +203,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `exemplars.span_id` Array(String) CODEC(ZSTD(1)),
         `exemplars.trace_id` Array(String) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
-        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1))
+        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp)
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, metric_name, project, toDate(timestamp))
+      ORDER BY (source_name, metric_name, project, timestamp_hour)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
@@ -255,12 +257,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `links.attributes` Array(JSON(max_dynamic_paths=0, max_dynamic_types=1)) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
         INDEX idx_duration duration TYPE minmax GRANULARITY 1
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, span_name, project, toDate(timestamp))
+      ORDER BY (source_name, span_name, project, timestamp_hour)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
@@ -318,11 +321,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `mapping_config_id` UUID,
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
         `timestamp_time` DateTime DEFAULT toDateTime(timestamp),
+        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, project, toDate(timestamp))
+      ORDER BY (source_name, project, timestamp_hour)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
@@ -384,11 +388,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `exemplars.span_id` Array(String) CODEC(ZSTD(1)),
         `exemplars.trace_id` Array(String) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
-        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1))
+        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp)
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, metric_name, project, toDate(timestamp))
+      ORDER BY (source_name, metric_name, project, timestamp_hour)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
@@ -435,12 +440,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `links.attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
         INDEX idx_duration duration TYPE minmax GRANULARITY 1
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, span_name, project, toDate(timestamp))
+      ORDER BY (source_name, span_name, project, timestamp_hour)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"

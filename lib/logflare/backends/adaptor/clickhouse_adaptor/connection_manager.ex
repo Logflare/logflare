@@ -89,9 +89,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     end
   end
 
+  @doc """
+  Gets the last activity timestamp for the connection manager.
+  """
+  @spec get_last_activity(Backend.t()) :: integer() | nil
+  def get_last_activity(%Backend{} = backend) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.call(:get_last_activity)
+  end
+
+  @doc """
+  Sets the last activity timestamp.
+  """
+  @spec set_last_activity(Backend.t(), integer() | nil) :: :ok
+  def set_last_activity(%Backend{} = backend, timestamp) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.cast({:set_last_activity, timestamp})
+  end
+
   @impl true
   def init(backend_id) do
-    resolve_timer_ref = Process.send_after(self(), :resolve_connections, @resolve_interval)
+    resolve_timer_ref = resolve_timer_send_after()
 
     initial_state = %__MODULE__{
       backend_id: backend_id,
@@ -128,7 +148,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   def handle_call(:pool_active, _from, %__MODULE__{} = state), do: {:reply, false, state}
 
   @impl true
+  def handle_call(:get_last_activity, _from, %__MODULE__{last_activity: last_activity} = state) do
+    {:reply, last_activity, state}
+  end
+
+  @impl true
   def handle_cast(:update_activity, %__MODULE__{} = state), do: {:noreply, record_activity(state)}
+
+  @impl true
+  def handle_cast({:set_last_activity, timestamp}, %__MODULE__{} = state) do
+    {:noreply, %{state | last_activity: timestamp}}
+  end
 
   @impl true
   def handle_info(:resolve_connections, %__MODULE__{} = state) do
@@ -136,7 +166,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       Process.cancel_timer(state.resolve_timer_ref)
     end
 
-    new_timer_ref = Process.send_after(self(), :resolve_connections, @resolve_interval)
+    new_timer_ref = resolve_timer_send_after()
 
     new_state =
       %__MODULE__{state | resolve_timer_ref: new_timer_ref}
@@ -304,5 +334,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @spec connection_manager_via(Backend.t()) :: tuple()
   defp connection_manager_via(%Backend{} = backend) do
     Backends.via_backend(backend, __MODULE__)
+  end
+
+  defp resolve_timer_send_after do
+    resolve_interval =
+      Application.get_env(:logflare, __MODULE__)[:resolve_interval] || @resolve_interval
+
+    Process.send_after(self(), :resolve_connections, resolve_interval)
   end
 end

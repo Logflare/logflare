@@ -8,11 +8,12 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
     setup do
       insert(:plan, name: "Free")
 
-      {_source, backend, cleanup_fn} = setup_clickhouse_test()
+      {_source, backend} = setup_clickhouse_test()
+
+      start_supervised!({ConsolidatedSupWorker, [interval: 100]})
 
       on_exit(fn ->
         ConsolidatedSup.stop_pipeline(backend.id)
-        cleanup_fn.()
       end)
 
       ConsolidatedSup.stop_pipeline(backend)
@@ -23,9 +24,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
     test "starts pipeline for consolidated backend on check", %{backend: backend} do
       refute ConsolidatedSup.pipeline_running?(backend)
 
-      send(Process.whereis(ConsolidatedSupWorker), :check)
-
-      TestUtils.retry_assert([sleep: 100], fn ->
+      TestUtils.retry_assert(fn ->
         assert ConsolidatedSup.pipeline_running?(backend)
       end)
     end
@@ -39,9 +38,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
       assert ConsolidatedSup.pipeline_running?(backend)
       initial_count = ConsolidatedSup.count_pipelines()
 
-      send(Process.whereis(ConsolidatedSupWorker), :check)
-
-      TestUtils.retry_assert([sleep: 100], fn ->
+      TestUtils.retry_assert(fn ->
         assert ConsolidatedSup.count_pipelines() == initial_count
       end)
     end

@@ -26,6 +26,24 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     * `:allowed_values` — list of permitted string values. After transform is applied,
       if the value is not in this list it is replaced with the field's default. Useful for
       `LowCardinality(String)` columns where arbitrary strings would pollute the index.
+    * `:filters` — optional map of string validation filters applied during path resolution.
+      If a resolved string doesn't pass all filters, it's treated as "not found" and coalesce
+      continues to the next path (or falls back to the default). All configured filters must
+      pass (AND logic). Supported keys:
+
+      * `:len_eq` — exact byte length match (integer)
+      * `:len_gt` — byte length must exceed threshold (integer)
+      * `:len_gte` — byte length must meet or exceed threshold (integer)
+      * `:len_lt` — byte length must be below threshold (integer)
+      * `:len_lte` — byte length must be at or below threshold (integer)
+      * `:char_class` — `"alpha"` (ASCII letters only), `"numeric"` (ASCII digits only),
+        or `"alphanumeric"` (ASCII letters and digits only)
+
+      Length checks are O(1) and run first, gating the O(n) character class scan.
+      Filters are evaluated inside the NIF with zero additional BEAM reductions.
+
+      Example: `filters: %{len_eq: 20, char_class: "alpha"}` ensures the resolved
+      value is exactly 20 ASCII alphabetic characters.
 
   ### `datetime64/2`
 
@@ -182,6 +200,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     field(:enum_values, :map)
     field(:exclude_keys, {:array, :string})
     field(:elevate_keys, {:array, :string})
+    field(:filters, :map)
     field(:filter_nil, :boolean, default: false)
     field(:value_type, :string)
     embeds_many(:pick, PickEntry)
@@ -207,6 +226,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
         :enum_values,
         :exclude_keys,
         :elevate_keys,
+        :filters,
         :filter_nil,
         :value_type
       ],
@@ -222,7 +242,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
   @spec string(String.t(), keyword()) :: t()
   def string(name, opts \\ []) do
-    build(name, "string", opts, [:transform, :allowed_values])
+    build(name, "string", opts, [:transform, :allowed_values, :filters])
   end
 
   @spec uint8(String.t(), keyword()) :: t()

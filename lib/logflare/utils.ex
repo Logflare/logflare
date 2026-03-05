@@ -6,6 +6,8 @@ defmodule Logflare.Utils do
   alias Logflare.User
   alias Logflare.ConfigCatCache
   alias Logflare.Backends.Backend
+  alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.OauthAccessTokens.PartnerOauthAccessToken
   import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
@@ -361,7 +363,8 @@ defmodule Logflare.Utils do
   """
   def inspect_fun(prev_fun, value, opts)
       when is_struct(value, Tesla.Env) or is_struct(value, Tesla.Client) or
-             is_struct(value, Backend) do
+             is_struct(value, Backend) or is_struct(value, User) or
+             is_struct(value, OauthAccessToken) or is_struct(value, PartnerOauthAccessToken) do
     if Application.get_env(:logflare, :env) in [:test, :dev] do
       prev_fun.(value, opts)
     else
@@ -380,8 +383,52 @@ defmodule Logflare.Utils do
     |> Map.put(:config_encrypted, nil)
   end
 
+  defp redact_struct_for_inspect(%User{} = user) do
+    user
+    |> Map.put(:api_key, nil)
+    |> Map.put(:old_api_key, nil)
+  end
+
+  defp redact_struct_for_inspect(%OauthAccessToken{} = oauth_access_token) do
+    Map.put(oauth_access_token, :token, nil)
+  end
+
+  defp redact_struct_for_inspect(%PartnerOauthAccessToken{} = oauth_access_token) do
+    Map.put(oauth_access_token, :token, nil)
+  end
+
+  defp redact_struct_for_inspect(%Tesla.Client{pre: pre} = client) do
+    redacted_pre =
+      Enum.map(pre, fn
+        {Tesla.Middleware.Headers, :call, [headers]} ->
+          {Tesla.Middleware.Headers, :call, [redact_header_list(headers)]}
+
+        other ->
+          other
+      end)
+
+    client
+    |> Map.put(:pre, redacted_pre)
+    |> redact_sensitive_headers()
+  end
+
+  defp redact_struct_for_inspect(%Tesla.Env{__client__: %Tesla.Client{} = client} = env) do
+    env
+    |> Map.put(:__client__, redact_struct_for_inspect(client))
+    |> redact_sensitive_headers()
+  end
+
   defp redact_struct_for_inspect(value) do
     redact_sensitive_headers(value)
+  end
+
+  @sensitive_header_names ["authorization", "x-api-key", "Authorization", "X-API-Key"]
+
+  defp redact_header_list(headers) do
+    Enum.map(headers, fn
+      {name, _value} when name in @sensitive_header_names -> {name, "REDACTED"}
+      other -> other
+    end)
   end
 
   # helper function for custom String.Chars defimpl
