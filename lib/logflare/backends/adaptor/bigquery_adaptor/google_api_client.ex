@@ -1,14 +1,20 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   @moduledoc false
-  alias Google.Cloud.Bigquery.Storage.V1.BigQueryWrite
+
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest.ArrowData
   alias Google.Cloud.Bigquery.Storage.V1.ArrowRecordBatch
+  alias Google.Cloud.Bigquery.Storage.V1.BigQueryWrite
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC
+  alias Logflare.Networking.GrpcPool
+
   require Logger
   require OpenTelemetry.Tracer
 
   @finch_instance_name Logflare.FinchBQStorageWrite
+
+  @spec connetion_pool_name() :: module()
+  def connetion_pool_name(), do: GrpcPool
 
   @spec encode_ndjson([map()]) :: binary()
   def encode_ndjson(data_frames) do
@@ -42,76 +48,81 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
     end
   end
 
-  def append_rows({:arrow, arrow_rows}, context, table) do
-    partition_count = System.schedulers_online()
-    partition = :erlang.phash2(self(), partition_count)
-
+  def append_rows({:arrow, arrow_rows}, context, table, impl \\ :finch) do
     project = context[:project_id]
     dataset = context[:dataset_id]
 
-    {:ok, goth_token} = Goth.fetch({Logflare.Goth, partition})
+    with {:ok, channel} <- get_channel(impl) do
+      stream = BigQueryWrite.Stub.append_rows(channel)
 
-    {:ok, channel} =
+      stream =
+        Enum.reduce(
+          arrow_rows,
+          stream,
+          fn arrow_data, stream ->
+            request =
+              %AppendRowsRequest{
+                write_stream:
+                  "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
+                rows: {:arrow_rows, arrow_data}
+              }
+
+            GRPC.Stub.send_request(stream, request)
+          end
+        )
+
+      GRPC.Stub.end_stream(stream)
+
+      GRPC.Stub.recv(stream)
+      |> case do
+        {:ok, responses} ->
+          insert_error_count =
+            Enum.reduce(responses, 0, fn
+              {:ok, %{row_errors: errors}}, acc when is_list(errors) -> acc + length(errors)
+              _, acc -> acc
+            end)
+
+          OpenTelemetry.Tracer.set_attribute(:insert_error_count, insert_error_count)
+
+          Enum.each(responses, fn
+            {:error, response} ->
+              Logger.warning("Storage Write API AppendRows response error - #{inspect(response)}")
+
+            {:ok, %{response: {:error, %{message: msg}}}} ->
+              Logger.warning(
+                "Storage Write API AppendRows response with error msg - #{inspect(msg)}"
+              )
+
+              :ok
+
+            _ ->
+              :ok
+          end)
+
+          :ok
+
+        {:error, response} = err ->
+          Logger.warning("Storage Write API AppendRows  error - #{inspect(response)}")
+          err
+      end
+    end
+  end
+
+  defp get_channel(:finch) do
+    partition_count = System.schedulers_online()
+    partition = :erlang.phash2(self(), partition_count)
+
+    with {:ok, goth_token} <- Goth.fetch({Logflare.Goth, partition}) do
       GRPC.Stub.connect("https://bigquerystorage.googleapis.com",
         adapter: GRPC.Client.Adapters.Finch,
         adapter_opts: [instance_name: @finch_instance_name],
-        headers: [
-          {"Authorization", "Bearer #{goth_token.token}"}
-        ]
+        headers: [{"Authorization", "Bearer #{goth_token.token}"}]
       )
-
-    stream = BigQueryWrite.Stub.append_rows(channel)
-
-    stream =
-      Enum.reduce(
-        arrow_rows,
-        stream,
-        fn arrow_data, stream ->
-          request =
-            %AppendRowsRequest{
-              write_stream:
-                "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
-              rows: {:arrow_rows, arrow_data}
-            }
-
-          GRPC.Stub.send_request(stream, request)
-        end
-      )
-
-    GRPC.Stub.end_stream(stream)
-
-    GRPC.Stub.recv(stream)
-    |> case do
-      {:ok, responses} ->
-        insert_error_count =
-          Enum.reduce(responses, 0, fn
-            {:ok, %{row_errors: errors}}, acc when is_list(errors) -> acc + length(errors)
-            _, acc -> acc
-          end)
-
-        OpenTelemetry.Tracer.set_attribute(:insert_error_count, insert_error_count)
-
-        Enum.each(responses, fn
-          {:error, response} ->
-            Logger.warning("Storage Write API AppendRows response error - #{inspect(response)}")
-
-          {:ok, %{response: {:error, %{message: msg}}}} ->
-            Logger.warning(
-              "Storage Write API AppendRows response with error msg - #{inspect(msg)}"
-            )
-
-            :ok
-
-          _ ->
-            :ok
-        end)
-
-        :ok
-
-      {:error, response} = err ->
-        Logger.warning("Storage Write API AppendRows  error - #{inspect(response)}")
-        err
     end
+  end
+
+  defp get_channel(:mint) do
+    GrpcPool.get_channel(connetion_pool_name())
   end
 
   def get_finch_instance_name, do: @finch_instance_name

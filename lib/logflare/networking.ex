@@ -5,7 +5,11 @@ defmodule Logflare.Networking do
   alias Logflare.SingleTenant
 
   def pools do
-    finch_pools(SingleTenant.postgres_backend?())
+    if SingleTenant.postgres_backend?() do
+      finch_pools(true)
+    else
+      finch_pools(false) ++ grpc_pools()
+    end
   end
 
   defp finch_pools(true = _postgres_backend?) do
@@ -147,5 +151,13 @@ defmodule Logflare.Networking do
         start_pool_metrics?: true
       ]
     }
+  end
+
+  defp grpc_pools() do
+    [
+      GRPC.Client.Supervisor,
+      {Logflare.Networking.GrpcPool,
+       name: GoogleApiClient.connetion_pool_name(), url: "https://bigquerystorage.googleapis.com"}
+    ]
   end
 end
