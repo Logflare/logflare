@@ -56,7 +56,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     Broadway.start_link(__MODULE__,
       name: name,
       hibernate_after: 5_000,
-      spawn_opt: [fullsweep_after: 10],
+      spawn_opt: [fullsweep_after: 100],
       producer: [
         module: {BufferProducer, [backend_id: backend.id, consolidated: true]},
         transformer: {__MODULE__, :transform, [backend_id: backend.id]},
