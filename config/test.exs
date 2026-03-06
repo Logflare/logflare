@@ -24,7 +24,8 @@ config :logflare, Logflare.Google,
   grafana_sa: "GOOGLE_GRAFANA_SA",
   api_sa: "GOOGLE_API_SA",
   cloud_build_sa: "GOOGLE_CLOUD_BUILD_SA",
-  cloud_build_trigger_sa: "GOOGLE_CLOUD_BUILD_TRIGGER_SA"
+  cloud_build_trigger_sa: "GOOGLE_CLOUD_BUILD_TRIGGER_SA",
+  project_viewer: "GOOGLE_PROJECT_VIEWER"
 
 config :logflare, Logflare.Repo,
   username: "postgres",
