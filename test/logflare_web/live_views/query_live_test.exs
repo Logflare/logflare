@@ -206,10 +206,11 @@ defmodule LogflareWeb.QueryLiveTest do
         |> render_submit(%{})
 
       assert html =~ "Ran query successfully"
-      assert html =~ "0 bytes processed"
       assert html =~ "answer"
       assert html =~ "42"
       assert html =~ "and some other expected string"
+
+      refute html =~ "bytes processed"
     end
   end
 end
