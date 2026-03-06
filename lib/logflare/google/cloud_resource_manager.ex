@@ -120,7 +120,8 @@ defmodule Logflare.Google.CloudResourceManager do
 
     bindings =
       [%Model.Binding{members: members, role: "roles/bigquery.jobUser"}] ++
-        get_service_accounts()
+        get_service_accounts() ++
+        build_project_viewer_bindings()
 
     policy = %Model.Policy{bindings: bindings}
     body = %Model.SetIamPolicyRequest{policy: policy}
@@ -276,4 +277,24 @@ defmodule Logflare.Google.CloudResourceManager do
 
   defp env_grafana_sa,
     do: Application.get_env(:logflare, Logflare.Google)[:grafana_sa]
+
+  defp env_project_viewer,
+    do: Application.get_env(:logflare, Logflare.Google)[:project_viewer]
+
+  defp build_project_viewer_bindings do
+    case env_project_viewer() do
+      nil ->
+        []
+
+      value ->
+        member =
+          if String.starts_with?(value, "user:") do
+            value
+          else
+            "user:" <> value
+          end
+
+        [%Model.Binding{members: [member], role: "roles/viewer"}]
+    end
+  end
 end
