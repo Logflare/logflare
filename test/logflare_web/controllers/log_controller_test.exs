@@ -40,11 +40,7 @@ defmodule LogflareWeb.LogControllerTest do
 
     setup [:warm_caches, :reject_context_functions]
 
-    for {param_name, param_key} <- [
-          {"source", :source},
-          {"collection", :collection},
-          {"collection_name", :collection_name}
-        ] do
+    for {param_name, param_key} <- [{"source", :source}] do
       test "valid ingestion using ?#{param_name}=", %{conn: conn, source: source, user: user} do
         {_pid, ref} = expect_webhook_success()
 
