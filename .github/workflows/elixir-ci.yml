@@ -22,13 +22,27 @@ on:
 permissions:
   contents: read
 
-env:
-  MIX_ENV: test
-
 jobs:
+  versions:
+    name: Get versions
+    runs-on: ubuntu-latest
+    outputs:
+      elixir:  ${{ steps.v.outputs.elixir }}
+      erlang:  ${{ steps.v.outputs.erlang }}
+      rust:    ${{ steps.v.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Read versions from .tool-versions
+        id: v
+        run: |
+          echo "elixir=$(grep '^elixir '  .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "erlang=$(grep '^erlang '  .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "rust=$(grep   '^rust '    .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
   check:
     name: Checks
     runs-on: ubuntu-latest
+    needs: versions
     strategy:
       matrix:
         commands:
@@ -89,30 +103,52 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       COVERALLS_SERVICE_JOB_ID: ${{ github.sha }}-${{ strategy.job-index }}-${{ github.run_id }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
+
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
           version-file: .tool-versions
           version-type: strict
-      - name: Read Rust version from .tool-versions
-        id: rust-version
-        run: echo "version=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: ${{ steps.rust-version.outputs.version }}
-      - name: Restore dependencies cache
-        uses: actions/cache@v3
+          toolchain: ${{ needs.versions.outputs.rust }}
+
+      - name: Restore Cargo cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo
+          key: cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-
+            cargo-${{ runner.os }}-
+
+      - name: Restore Mix cache
+        uses: actions/cache@v5
         with:
           path: |
             deps
             _build
-            dialyzer
-          key: ${{ runner.os }}-mix-rust${{ steps.rust-version.outputs.version }}-${{ hashFiles('**/mix.lock', '**/Cargo.lock') }}
+          key: mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock') }}
           restore-keys: |
-            ${{ runner.os }}-mix-rust${{ steps.rust-version.outputs.version }}-
+            mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
+            mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+
+      - name: Restore Dialyzer PLT cache
+        if: matrix.commands.name == 'Typing check'
+        uses: actions/cache@v5
+        with:
+          path: dialyzer
+          key: plt-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            plt-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
+            plt-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+
       - name: Install dependencies
-        run: mix do deps.get, deps.compile
+        run: mix do deps.get + deps.compile
+
       - name: Run ${{ matrix.commands.name }}
         run: ${{ matrix.commands.run }}
