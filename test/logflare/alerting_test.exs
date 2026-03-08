@@ -475,8 +475,8 @@ defmodule Logflare.AlertingTest do
       old_jobs = Alerting.list_future_jobs(alert.id)
       assert length(old_jobs) == 5
 
-      {:ok, updated} = Alerting.update_alert_query(alert, %{cron: "*/30 * * * *"})
-      assert updated.cron == "*/30 * * * *"
+      {:ok, updated} = Alerting.update_alert_query(alert, %{cron: "7 */6 * * *"})
+      assert updated.cron == "7 */6 * * *"
 
       new_jobs = Alerting.list_future_jobs(alert.id)
       assert length(new_jobs) == 5
