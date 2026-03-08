@@ -861,15 +861,19 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp adjust_timestamp_rules(timestamp_rules, search_timezone) do
-    tz = Timex.Timezone.get(search_timezone)
+    case Timex.Timezone.get(search_timezone) do
+      {:error, _} -> timestamp_rules
+      tz -> do_adjust_timestamp_rules(timestamp_rules, tz)
+    end
+  end
 
-    Enum.map(timestamp_rules, fn
-      lql_rule ->
-        if Lql.Rules.timestamp_filter_rule_is_shorthand?(lql_rule) do
-          Map.replace!(lql_rule, :values, shift_timestamps(lql_rule.values, tz))
-        else
-          lql_rule
-        end
+  defp do_adjust_timestamp_rules(timestamp_rules, tz) do
+    Enum.map(timestamp_rules, fn lql_rule ->
+      if Lql.Rules.timestamp_filter_rule_is_shorthand?(lql_rule) do
+        Map.replace!(lql_rule, :values, shift_timestamps(lql_rule.values, tz))
+      else
+        lql_rule
+      end
     end)
   end
 
