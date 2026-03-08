@@ -738,6 +738,10 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, put_flash(socket, type, message)}
   end
 
+  def handle_info({:put_flash, type, message}, socket) do
+    {:noreply, put_flash(socket, type, message)}
+  end
+
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
     %{querystring: qs, tailing?: tailing?} = params
 

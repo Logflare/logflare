@@ -48,10 +48,12 @@ defmodule LogflareWeb.Helpers.BqSchema do
   end
 
   def format_timestamp(timestamp, search_timezone) do
-    timestamp
-    |> Timex.from_unix(:microsecond)
-    |> Timex.Timezone.convert(search_timezone)
-    |> Timex.format!(@fmt_string, :strftime)
+    dt = Timex.from_unix(timestamp, :microsecond)
+
+    case Timex.Timezone.convert(dt, search_timezone) do
+      {:error, _} -> Timex.format!(dt, @fmt_string, :strftime)
+      converted -> Timex.format!(converted, @fmt_string, :strftime)
+    end
   end
 
   def encode_metadata(metadata) do
