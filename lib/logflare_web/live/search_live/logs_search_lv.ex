@@ -104,7 +104,6 @@ defmodule LogflareWeb.Source.SearchLV do
       lql_schema_fields_json: schema_fields_json(source),
       querystring: Map.get(params, "querystring", @default_qs),
       force_query: Map.get(params, "force", "false") == "true",
-      search_history: [],
       search_form: to_form(%{}, as: :search)
     )
     |> maybe_assign_user_timezone(team_user, user)
@@ -423,13 +422,15 @@ defmodule LogflareWeb.Source.SearchLV do
     hard_play(ev, socket)
   end
 
-  def handle_event("form_focus", %{"value" => value}, socket) do
+  def handle_event("form_focus", %{"value" => _value}, socket) do
     send(self(), :soft_pause)
 
-    source = socket.assigns.source
-    search_history = search_history(value, source)
+    suggestions =
+      socket.assigns.source.id
+      |> SavedSearches.list_saved_searches_by_source()
+      |> Enum.map(& &1.querystring)
 
-    {:noreply, assign(socket, :search_history, search_history)}
+    {:reply, %{suggestions: suggestions}, socket}
   end
 
   def handle_event("form_blur", %{"value" => _value}, socket) do
@@ -439,14 +440,9 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("form_update" = _ev, %{"search" => search}, %{assigns: prev_assigns} = socket) do
-    source = prev_assigns.source
-
     new_qs = search["querystring"]
     new_chart_agg = String.to_existing_atom(search["chart_aggregate"])
     new_chart_period = String.to_existing_atom(search["chart_period"])
-
-    search_history = search_history(new_qs, source)
-
     socket = assign(socket, :querystring, new_qs)
 
     prev_chart_rule =
@@ -465,7 +461,6 @@ defmodule LogflareWeb.Source.SearchLV do
         qs = Lql.encode!(lql_rules)
 
         socket
-        |> assign(:search_history, search_history)
         |> assign_querystring(qs)
         |> assign(:lql_rules, lql_rules)
         |> assign(:loading, true)
@@ -473,7 +468,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> clear_flash()
         |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
       else
-        assign(socket, :search_history, search_history)
+        socket
       end
 
     {:noreply, socket}
@@ -994,15 +989,6 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(:loading, false)
     |> assign(:chart_loading, false)
     |> put_flash(:error, error)
-  end
-
-  defp search_history(new_qs, source) do
-    search_history = SavedSearches.suggest_saved_searches(new_qs, source.id)
-
-    if Enum.count(search_history) == 1 &&
-         hd(search_history).querystring == new_qs,
-       do: [],
-       else: search_history
   end
 
   defp soft_play(
