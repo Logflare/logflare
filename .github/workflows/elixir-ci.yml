@@ -39,9 +39,7 @@ jobs:
           - name: Compilation Warnings
             run: mix test.compile
           - name: Tests
-            # revert once coveralls is fixed
-            # run: mix do ecto.create + ecto.migrate + test.coverage.ci
-            run: mix do ecto.create + ecto.migrate + test
+            run: mix do ecto.create + ecto.migrate + test.coverage.ci
           # - name: Security - Sobelow Code Scan
           #   run: mix test.security
           - name: Typing check
