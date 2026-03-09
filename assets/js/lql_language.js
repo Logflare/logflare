@@ -281,6 +281,9 @@ function getMetadataSuggestionSegments(fields, typedPath) {
   return suggestions;
 }
 
+const completionKindStub = { Keyword: "keyword", Operator: "operator" };
+const completionItemInsertTextRuleStub = { InsertAsSnippet: "InsertAsSnippet" };
+
 export function hasLqlSuggestions(
   textUntilPosition,
   fullLine,
@@ -310,7 +313,12 @@ export function hasLqlSuggestions(
           .startsWith(currentToken.toLocaleLowerCase()),
       ) ||
       buildKeywordSuggestions(
-        { languages: { CompletionItemKind: { Keyword: "keyword" } } },
+        {
+          languages: {
+            CompletionItemKind: completionKindStub,
+            CompletionItemInsertTextRule: completionItemInsertTextRuleStub,
+          },
+        },
         currentToken,
         null,
       ).length > 0
@@ -319,7 +327,11 @@ export function hasLqlSuggestions(
 
   if (timestampValueMatch) {
     return buildTimestampSuggestions(
-      { languages: { CompletionItemKind: { Keyword: "keyword" } } },
+      {
+        languages: {
+          CompletionItemKind: completionKindStub,
+        },
+      },
       timestampValueMatch[1],
       null,
     ).length > 0;
@@ -327,7 +339,11 @@ export function hasLqlSuggestions(
 
   if (operatorMatch) {
     return buildOperatorSuggestions(
-      { languages: { CompletionItemKind: { Operator: "operator" } } },
+      {
+        languages: {
+          CompletionItemKind: completionKindStub,
+        },
+      },
       `:${operatorMatch[1]}`,
       null,
     ).length > 0;
@@ -348,7 +364,12 @@ export function hasLqlSuggestions(
   if (currentToken) {
     return (
       buildKeywordSuggestions(
-        { languages: { CompletionItemKind: { Keyword: "keyword" } } },
+        {
+          languages: {
+            CompletionItemKind: completionKindStub,
+            CompletionItemInsertTextRule: completionItemInsertTextRuleStub,
+          },
+        },
         currentToken,
         null,
       ).length > 0
