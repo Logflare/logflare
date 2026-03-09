@@ -99,7 +99,12 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
         else: Map.get(assigns.user.preferences || %{}, :timezone, "Etc/UTC")
 
     timestamp = Timex.from_unix(body["timestamp"], :microsecond)
-    local_timestamp = Timex.to_datetime(timestamp, tz)
+
+    local_timestamp =
+      case Timex.to_datetime(timestamp, tz) do
+        {:error, _} -> timestamp
+        dt -> dt
+      end
 
     LogView.render("log_event_body.html",
       source: source,
