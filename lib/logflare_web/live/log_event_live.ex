@@ -5,8 +5,6 @@ defmodule LogflareWeb.LogEventLive do
 
   use LogflareWeb, :live_view
 
-  require Logger
-
   alias Logflare.Logs.LogEvents
   alias Logflare.Sources
 

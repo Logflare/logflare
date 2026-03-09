@@ -4,8 +4,6 @@ defmodule LogflareWeb.Plugs.EnsureSourceStarted do
   """
   use Plug.Builder
 
-  require Logger
-
   alias Logflare.Sources.Source.Supervisor
 
   def call(%{assigns: %{source: source}} = conn, _params) do

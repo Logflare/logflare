@@ -10,8 +10,6 @@ defmodule Logflare.Lql.Parser do
   import Logflare.Lql.Parser.Combinators
   import Logflare.Lql.Parser.Helpers
 
-  require Logger
-
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql.Rules

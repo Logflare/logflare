@@ -7,8 +7,6 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
 
   alias Logflare.JSON
 
-  require Logger
-
   def parse(input) do
     {:ok, [result], _, _, _, _} = do_parse(input)
 

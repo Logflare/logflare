@@ -14,8 +14,6 @@ defmodule LogflareGrpc.Logs.Server do
     compressors: [GRPC.Compressor.Gzip, LogflareGrpc.IdentityCompressor],
     http_transcode: true
 
-  require Logger
-
   def export(%ExportLogsServiceRequest{resource_logs: logs}, stream) do
     Processor.ingest(logs, OtelLog, stream.local.source)
     GRPC.Server.set_trailers(stream, %{"grpc-status" => "0"})

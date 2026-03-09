@@ -19,8 +19,6 @@ defmodule Logflare.Backends.ConsolidatedSup do
 
   use Supervisor
 
-  require Logger
-
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend

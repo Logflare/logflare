@@ -11,8 +11,6 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
   alias LogflareWeb.Plugs.VerifyApiAccess
   alias LogflareWeb.Plugs.VerifyResourceAccess
 
-  require Logger
-
   @behaviour GRPC.Server.Interceptor
 
   def init(options) do

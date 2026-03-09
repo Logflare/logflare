@@ -1,10 +1,11 @@
 defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
   @moduledoc false
-  require Logger
-  alias GoogleApi.BigQuery.V2.Model
-  alias Model.TableFieldSchema, as: TFS
+
   import Logflare.Google.BigQuery.SchemaUtils, only: [deep_sort_by_fields_name: 1]
+
+  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.BigQuery.SchemaTypes
+  alias Model.TableFieldSchema, as: TFS
 
   @doc """
   Builds table schema from event metadata and prev schema.
