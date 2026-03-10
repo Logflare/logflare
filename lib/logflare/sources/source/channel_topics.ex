@@ -7,8 +7,6 @@ defmodule Logflare.Sources.Source.ChannelTopics do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Sources
 
-  require Logger
-
   typedstruct do
     field :source_token, String.t(), enforce: true
     field :log_count, integer(), default: 0

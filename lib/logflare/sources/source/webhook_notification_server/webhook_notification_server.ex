@@ -2,8 +2,6 @@ defmodule Logflare.Sources.Source.WebhookNotificationServer do
   @moduledoc false
   use GenServer
 
-  require Logger
-
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Counters

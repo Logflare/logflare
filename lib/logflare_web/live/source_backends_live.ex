@@ -6,8 +6,6 @@ defmodule LogflareWeb.SourceBackendsLive do
 
   alias Logflare.Backends
 
-  require Logger
-
   def render(assigns) do
     ~H"""
     <div class="my-4">

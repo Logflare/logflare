@@ -5,8 +5,6 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   use GenServer
 
-  require Logger
-
   alias Logflare.Backends
   alias Logflare.ContextCache
   alias Logflare.Rules
