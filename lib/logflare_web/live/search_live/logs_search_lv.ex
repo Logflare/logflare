@@ -435,7 +435,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     suggestions =
       socket.assigns.source.id
-      |> SavedSearches.list_saved_searches_by_source()
+      |> SavedSearches.Cache.list_saved_searches_by_source()
       |> Enum.map(& &1.querystring)
 
     {:reply, %{suggestions: suggestions}, socket}
