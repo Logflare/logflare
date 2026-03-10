@@ -146,11 +146,14 @@ hooks.BigQuerySqlQueryFormatter = {
 }
 
 hooks.SourceLogsSearch = {
-  updated() {
+  configureDateRangePicker() {
     const hook = this
     const $daterangepicker = $("#daterangepicker")
+
     $daterangepicker.daterangepicker(datepickerConfig)
-    $daterangepicker.on("apply.daterangepicker", (e, picker) => {
+    $daterangepicker.off(".sourceLogsSearch")
+
+    $daterangepicker.on("apply.daterangepicker.sourceLogsSearch", (e, picker) => {
       const tsClause = buildTsClause(
         picker.startDate,
         picker.endDate,
@@ -161,43 +164,68 @@ hooks.SourceLogsSearch = {
       })
     })
 
-
-    $daterangepicker.on("cancel.daterangepicker", (e, picker) => {
+    $daterangepicker.on("cancel.daterangepicker.sourceLogsSearch", () => {
       hook.pushEvent("soft_play", {})
     })
+
+    $daterangepicker.on("show.daterangepicker.sourceLogsSearch", () => {
+      hook.pushEvent("soft_pause", {})
+    })
+  },
+  pushChartControlsUpdate() {
+    const chartPeriod = this.el.querySelector("#search_chart_period")?.value
+    const chartAggregate = this.el.querySelector("#search_chart_aggregate")?.value
+
+    if (!chartPeriod || !chartAggregate) {
+      return
+    }
+
+    this.pushEvent("chart_controls_update", {
+      chart_period: chartPeriod,
+      chart_aggregate: chartAggregate,
+    })
+  },
+  updated() {
+    this.configureDateRangePicker()
 
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
     })
     $("#search-uri-query").tooltip()
-
-    $daterangepicker.on("show.daterangepicker", (e, picker) => {
-      hook.pushEvent("soft_pause", {})
-    })
   },
   reconnected() { },
   mounted() {
     const hook = this
-    const $daterangepicker = $("#daterangepicker")
-    $daterangepicker.daterangepicker(datepickerConfig)
-    $daterangepicker.on("apply.daterangepicker", (e, picker) => {
-      const tsClause = buildTsClause(
-        picker.startDate,
-        picker.endDate,
-        picker.chosenLabel
-      )
-      hook.pushEvent("datetime_update", {
-        querystring: tsClause
-      })
-    })
+    this._handleSearchControlChange = (event) => {
+      if (
+        event.target.id === "search_chart_period" ||
+        event.target.id === "search_chart_aggregate"
+      ) {
+        this.pushChartControlsUpdate()
+      }
+    }
+    this._handleSearchControlKeydown = (event) => {
+      if (
+        event.key !== "Enter" ||
+        event.isComposing ||
+        !event.target.matches('#recommended_fields input[name^="fields["]')
+      ) {
+        return
+      }
 
-    $daterangepicker.on("cancel.daterangepicker", (e, picker) => {
-      hook.pushEvent("soft_play", {})
-    })
+      const editorHook = this.el.querySelector("#lql-editor-hook")
 
-    $daterangepicker.on("show.daterangepicker", (e, picker) => {
-      hook.pushEvent("soft_pause", {})
-    })
+      if (!editorHook) {
+        return
+      }
+
+      event.preventDefault()
+      editorHook.dispatchEvent(new CustomEvent("lql:submit"))
+    }
+    this.el.addEventListener("change", this._handleSearchControlChange)
+    this.el.addEventListener("keydown", this._handleSearchControlKeydown)
+
+    this.configureDateRangePicker()
 
     activateClipboardForSelector("#search-uri-query", {
       text: () => location.href,
@@ -225,6 +253,15 @@ hooks.SourceLogsSearch = {
         $("#last-query-completed-at span").text(elapsed.toFixed(1))
       }
     }, 250)
+  },
+  destroyed() {
+    if (this._handleSearchControlChange) {
+      this.el.removeEventListener("change", this._handleSearchControlChange)
+    }
+
+    if (this._handleSearchControlKeydown) {
+      this.el.removeEventListener("keydown", this._handleSearchControlKeydown)
+    }
   },
 };
 
