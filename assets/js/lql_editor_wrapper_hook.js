@@ -9,13 +9,25 @@ const parseSchemaFields = (schemaFieldsJson) => {
   return JSON.parse(schemaFieldsJson);
 };
 
+const parseSuggestedSearches = (suggestedSearchesJson) => {
+  if (!suggestedSearchesJson) return [];
+
+  return JSON.parse(suggestedSearchesJson);
+};
+
 const LqlEditorWrapper = {
   mounted() {
     this._schemaFields = parseSchemaFields(this.el.dataset.schemaFieldsJson);
-    this._suggestedSearches = [];
+    this._suggestedSearches = parseSuggestedSearches(
+      this.el.dataset.suggestedSearchesJson,
+    );
     this._completionDisposable = null;
     this._editor = null;
     this._editorDisposables = [];
+    this._pendingServerValue = null;
+    this.handleEvent("set_lql_value", ({ value }) => {
+      this.handleServerValueEvent(value);
+    });
     this._handleSubmitRequest = () => {
       this.submitSearch();
     };
@@ -29,6 +41,7 @@ const LqlEditorWrapper = {
 
       this.disposeEditorBindings();
       this._editor = standaloneEditor;
+      this.applyPendingEditorValue();
 
       const monaco = window.monaco;
 
@@ -56,24 +69,7 @@ const LqlEditorWrapper = {
           this.pushEvent("querystring_changed", { querystring: value });
         }),
         standaloneEditor.onDidFocusEditorText(() => {
-          this.pushEvent(
-            "form_focus",
-            { value: standaloneEditor.getValue() },
-            ({ suggestions = [] }) => {
-              this._suggestedSearches = Array.isArray(suggestions)
-                ? suggestions
-                : [];
-
-              const editorValue = standaloneEditor.getValue() ?? "";
-
-              if (
-                this._suggestedSearches.length > 0 ||
-                editorValue.trim().length === 0
-              ) {
-                this.refreshSuggestions();
-              }
-            },
-          );
+          this.pushEvent("form_focus", { value: standaloneEditor.getValue() });
         }),
         standaloneEditor.onDidBlurEditorText(() => {
           this.pushEvent("form_blur", { value: standaloneEditor.getValue() });
@@ -87,55 +83,62 @@ const LqlEditorWrapper = {
 
   updated() {
     this._schemaFields = parseSchemaFields(this.el.dataset.schemaFieldsJson);
-    this.restoreCursorToEndIfNeeded();
+    this._suggestedSearches = parseSuggestedSearches(
+      this.el.dataset.suggestedSearchesJson,
+    );
   },
 
-  restoreCursorToEndIfNeeded(attempt = 0) {
-    window.requestAnimationFrame(() => {
-      const serverQuerystring = this.el.dataset.querystring ?? "";
-      const editorValue = this._editor?.getValue?.();
-      const model = this._editor?.getModel?.();
-      const position = this._editor?.getPosition?.();
-      const suggestController = this._editor?.getContribution?.(
-        "editor.contrib.suggestController",
-      );
+  handleServerValueEvent(value) {
+    if (typeof value !== "string") {
+      return;
+    }
 
-      if (!this._editor || !model || !position) {
-        return;
-      }
+    if (!this._editor) {
+      this.setPendingEditorValue(value);
+      return;
+    }
 
-      if (serverQuerystring !== editorValue) {
-        if (attempt < 6) {
-          window.setTimeout(() => {
-            this.restoreCursorToEndIfNeeded(attempt + 1);
-          }, 50);
-        }
+    this.setEditorValue(value);
+  },
 
-        return;
-      }
+  setPendingEditorValue(value) {
+    this._pendingServerValue = value;
+  },
 
-      if (editorValue.length === 0) {
-        return;
-      }
+  applyPendingEditorValue() {
+    if (!this._editor || this._pendingServerValue === null) {
+      return;
+    }
 
+    const value = this._pendingServerValue;
+    this._pendingServerValue = null;
+    this.setEditorValue(value);
+  },
+
+  setEditorValue(value) {
+    const currentValue = this._editor?.getValue?.();
+
+    if (!this._editor || currentValue === value) {
+      return;
+    }
+
+    const hadTextFocus = this._editor.hasTextFocus();
+    const model = this._editor?.getModel?.();
+    const suggestController = this._editor?.getContribution?.(
+      "editor.contrib.suggestController",
+    );
+
+    this._editor.setValue(value);
+
+    if (hadTextFocus && model) {
       const endPosition = {
         lineNumber: model.getLineCount(),
         column: model.getLineMaxColumn(model.getLineCount()),
       };
-      const hasTextFocus = this._editor.hasTextFocus();
 
-      if (hasTextFocus && position.lineNumber === 1 && position.column === 1) {
-        this._editor.setPosition(endPosition);
-        suggestController?.cancelSuggestWidget?.();
-        return;
-      }
-
-      if (!hasTextFocus && attempt < 6) {
-        window.setTimeout(() => {
-          this.restoreCursorToEndIfNeeded(attempt + 1);
-        }, 50);
-      }
-    });
+      this._editor.setPosition(endPosition);
+      suggestController?.cancelSuggestWidget();
+    }
   },
 
   collectRecommendedFields() {
@@ -165,21 +168,6 @@ const LqlEditorWrapper = {
     });
   },
 
-  refreshSuggestions() {
-    const suggestController = this._editor?.getContribution?.(
-      "editor.contrib.suggestController",
-    );
-
-    suggestController?.cancelSuggestWidget?.();
-
-    if (suggestController?.triggerSuggest) {
-      suggestController.triggerSuggest();
-      return;
-    }
-
-    this._editor?.getAction("editor.action.triggerSuggest")?.run();
-  },
-
   disposeEditorBindings() {
     this._editorDisposables.forEach((disposable) => disposable?.dispose?.());
     this._editorDisposables = [];
@@ -191,13 +179,7 @@ const LqlEditorWrapper = {
   },
 
   destroyed() {
-    this.el.removeEventListener("lql:submit", this._handleSubmitRequest);
-    this.el.removeEventListener(
-      "lme:editor_mounted",
-      this._handleEditorMounted,
-    );
     this.disposeEditorBindings();
-    this._editor = null;
   },
 };
 
