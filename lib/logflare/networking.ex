@@ -89,7 +89,6 @@ defmodule Logflare.Networking do
 
   defp base_finch_pools do
     base = System.schedulers_online()
-    http1_count = max(div(base, 4), 1)
 
     [
       {Finch,
@@ -97,9 +96,9 @@ defmodule Logflare.Networking do
        pools: %{
          default: [
            protocols: [:http1],
-           size: min(max(base * 10, 50), 100),
-           count: http1_count,
-           conn_max_idle_time: 9_000,
+           size: min(base * 2, 15),
+           count: min(max(div(base, 2), 1), 4),
+           conn_max_idle_time: 9_500,
            start_pool_metrics?: true
          ]
        }}

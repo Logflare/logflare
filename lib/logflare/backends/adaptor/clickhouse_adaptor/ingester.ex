@@ -13,8 +13,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   @finch_pool Logflare.FinchClickHouseIngest
   @max_retries 1
-  @initial_delay 500
-  @max_delay 4_000
+  @initial_delay 2_500
+  @max_delay 5_000
   @pool_timeout 8_000
   @receive_timeout 20_000
 
