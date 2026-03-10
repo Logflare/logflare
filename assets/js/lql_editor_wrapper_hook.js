@@ -1,5 +1,4 @@
 import {
-  hasLqlSuggestions,
   registerLqlLanguage,
   registerLqlCompletionProvider,
 } from "./lql_language";
@@ -7,11 +6,7 @@ import {
 const parseSchemaFields = (schemaFieldsJson) => {
   if (!schemaFieldsJson) return [];
 
-  try {
-    return JSON.parse(schemaFieldsJson);
-  } catch {
-    return [];
-  }
+  return JSON.parse(schemaFieldsJson);
 };
 
 const LqlEditorWrapper = {
@@ -21,7 +16,6 @@ const LqlEditorWrapper = {
     this._completionDisposable = null;
     this._editor = null;
     this._editorDisposables = [];
-    this._refreshSuggestionsTimer = null;
     this._handleSubmitRequest = () => {
       this.submitSearch();
     };
@@ -60,11 +54,6 @@ const LqlEditorWrapper = {
         standaloneEditor.onDidChangeModelContent(() => {
           const value = standaloneEditor.getValue();
           this.pushEvent("querystring_changed", { querystring: value });
-
-          clearTimeout(this._refreshSuggestionsTimer);
-          this._refreshSuggestionsTimer = window.setTimeout(() => {
-            this.refreshSuggestions();
-          }, 100);
         }),
         standaloneEditor.onDidFocusEditorText(() => {
           this.pushEvent(
@@ -75,7 +64,14 @@ const LqlEditorWrapper = {
                 ? suggestions
                 : [];
 
-              this.refreshSuggestions();
+              const editorValue = standaloneEditor.getValue() ?? "";
+
+              if (
+                this._suggestedSearches.length > 0 ||
+                editorValue.trim().length === 0
+              ) {
+                this.refreshSuggestions();
+              }
             },
           );
         }),
@@ -170,43 +166,18 @@ const LqlEditorWrapper = {
   },
 
   refreshSuggestions() {
-    const model = this._editor?.getModel();
-    const position = this._editor?.getPosition();
     const suggestController = this._editor?.getContribution?.(
       "editor.contrib.suggestController",
     );
 
     suggestController?.cancelSuggestWidget?.();
 
-    if (!model || !position) {
-      return;
-    }
-
-    const textUntilPosition = model.getValueInRange({
-      startLineNumber: position.lineNumber,
-      startColumn: 1,
-      endLineNumber: position.lineNumber,
-      endColumn: position.column,
-    });
-    const fullLine = model.getLineContent(position.lineNumber);
-
-    if (
-      !hasLqlSuggestions(
-        textUntilPosition,
-        fullLine,
-        this._schemaFields,
-        this._suggestedSearches,
-      )
-    ) {
-      return;
-    }
-
     if (suggestController?.triggerSuggest) {
       suggestController.triggerSuggest();
       return;
     }
 
-    this._editor?.getAction("editor.action.triggerSuggest").run();
+    this._editor?.getAction("editor.action.triggerSuggest")?.run();
   },
 
   disposeEditorBindings() {
@@ -220,9 +191,11 @@ const LqlEditorWrapper = {
   },
 
   destroyed() {
-    clearTimeout(this._refreshSuggestionsTimer);
     this.el.removeEventListener("lql:submit", this._handleSubmitRequest);
-    this.el.removeEventListener("lme:editor_mounted", this._handleEditorMounted);
+    this.el.removeEventListener(
+      "lme:editor_mounted",
+      this._handleEditorMounted,
+    );
     this.disposeEditorBindings();
     this._editor = null;
   },
