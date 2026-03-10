@@ -1081,7 +1081,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
 
   @spec read_bytes(t(), non_neg_integer()) :: {:ok, binary(), t()} | {:error, term()}
   defp read_bytes(%__MODULE__{buffer: buffer} = conn, n) when byte_size(buffer) >= n do
-    <<data::binary-size(n), rest::binary>> = buffer
+    <<data::binary-size(^n), rest::binary>> = buffer
     {:ok, data, %{conn | buffer: rest}}
   end
 

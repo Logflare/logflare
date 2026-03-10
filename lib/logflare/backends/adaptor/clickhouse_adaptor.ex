@@ -611,7 +611,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   defp decode_lp_string(data) do
     {len, rest} = decode_varuint(data)
-    <<string::binary-size(len), rest::bytes>> = rest
+    <<string::binary-size(^len), rest::bytes>> = rest
     {string, rest}
   end
 
