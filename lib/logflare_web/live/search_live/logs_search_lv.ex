@@ -97,10 +97,9 @@ defmodule LogflareWeb.Source.SearchLV do
       uri_params: nil,
       uri: nil,
       lql_rules: [],
-      lql_schema_fields_json: schema_fields_json(source),
+      saved_searches: saved_searches(source),
       querystring: Map.get(params, "querystring", @default_qs),
-      force_query: Map.get(params, "force", "false") == "true",
-      search_form: to_form(%{}, as: :search)
+      force_query: Map.get(params, "force", "false") == "true"
     )
     |> maybe_assign_user_timezone(team_user, user)
   end
@@ -284,10 +283,9 @@ defmodule LogflareWeb.Source.SearchLV do
         )}
       </div>
       <FormComponents.search_controls
-        search_form={@search_form}
         querystring={@querystring}
-        lql_schema_fields_json={@lql_schema_fields_json}
-        search_timezone={@search_timezone}
+        lql_schema_fields_json={schema_fields_json(@source)}
+        saved_searches={@saved_searches}
         loading={@loading}
         tailing?={@tailing?}
         uri_params={@uri_params}
@@ -374,14 +372,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event(
-        "start_search",
-        %{"search" => %{"querystring" => qs}} = params,
-        %{assigns: prev_assigns} = socket
-      ) do
-    start_search(socket, qs, Map.get(params, "fields", %{}), prev_assigns.tailing?)
-  end
-
   def handle_event(direction, _, socket) when direction in ["backwards", "forwards"] do
     rules = socket.assigns.lql_rules
 
@@ -429,13 +419,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event("form_focus", %{"value" => _value}, socket) do
     send(self(), :soft_pause)
-
-    suggestions =
-      socket.assigns.source.id
-      |> SavedSearches.Cache.list_saved_searches_by_source()
-      |> Enum.map(& &1.querystring)
-
-    {:reply, %{suggestions: suggestions}, socket}
+    {:noreply, socket}
   end
 
   def handle_event("form_blur", %{"value" => _value}, socket) do
@@ -458,20 +442,6 @@ defmodule LogflareWeb.Source.SearchLV do
         socket,
         String.to_existing_atom(new_chart_agg),
         String.to_existing_atom(new_chart_period)
-      )
-
-    {:noreply, socket}
-  end
-
-  def handle_event("form_update" = _ev, %{"search" => search}, socket) do
-    new_qs = search["querystring"]
-
-    socket =
-      socket
-      |> assign(:querystring, new_qs)
-      |> maybe_update_chart_controls(
-        String.to_existing_atom(search["chart_aggregate"]),
-        String.to_existing_atom(search["chart_period"])
       )
 
     {:noreply, socket}
@@ -522,10 +492,16 @@ defmodule LogflareWeb.Source.SearchLV do
     if SavedSearches.Cache.list_saved_searches_by_source(source.id) |> length() < limit do
       case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do
         {:ok, _saved_search} ->
+          saved_searches =
+            [qs | saved_searches(source)]
+            |> Enum.uniq()
+            |> Enum.sort_by(&String.downcase/1)
+
           socket =
             socket
             |> put_flash(:info, "Search saved!")
             |> assign(:source, Sources.get_source_for_lv_param(source.id))
+            |> assign(:saved_searches, saved_searches)
 
           {:noreply, socket}
 
@@ -1203,7 +1179,7 @@ defmodule LogflareWeb.Source.SearchLV do
   defp assign_querystring(socket, qs) do
     socket
     |> assign(:querystring, qs)
-    |> LiveMonacoEditor.set_value(qs, to: "lql_query")
+    |> push_event("set_lql_value", %{value: qs})
   end
 
   defp get_bigquery_schema(source) do
@@ -1226,6 +1202,12 @@ defmodule LogflareWeb.Source.SearchLV do
       _ ->
         []
     end
+  end
+
+  defp saved_searches(source) do
+    source.id
+    |> SavedSearches.Cache.list_saved_searches_by_source()
+    |> Enum.map(& &1.querystring)
   end
 
   defp format_schema_type({type, inner}), do: "#{type}[#{inner}]"

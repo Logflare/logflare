@@ -9,12 +9,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias LogflareWeb.Source.SearchLV
 
   @endpoint LogflareWeb.Endpoint
-  @default_search_params %{
-    "querystring" => "c:count(*) c:group_by(t::minute)",
-    "chart_period" => "minute",
-    "chart_aggregate" => "count",
-    "tailing?" => "false"
-  }
+  @default_querystring "c:count(*) c:group_by(t::minute)"
 
   defp setup_mocks(_ctx) do
     stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
@@ -640,20 +635,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {:ok, TestUtils.gen_bq_response(%{"event_message" => "some error message"})}
       end)
 
-      render_change(view, :form_update, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
-        }
+      render_change(view, :querystring_changed, %{
+        "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
       })
 
       view
       |> TestUtils.wait_for_render("#logs-list-container li")
 
       render_change(view, :start_search, %{
-        "search" => %{
-          "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
-        }
+        "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
       })
 
       # wait for async search task to complete
@@ -683,12 +673,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
       render_change(view, :start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:countd(event_message) c:group_by(t::hour)",
-            "chart_aggregate" => "countd",
-            "chart_period" => "hour"
-        }
+        "querystring" => "c:countd(event_message) c:group_by(t::hour)"
       })
 
       TestUtils.retry_assert(fn ->
@@ -747,7 +732,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       TestUtils.retry_assert(fn ->
         render_change(view, :start_search, %{
-          "search" => %{@default_search_params | "querystring" => "m.nested:test top:test"}
+          "querystring" => "m.nested:test top:test"
         })
 
         view
@@ -782,7 +767,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> TestUtils.wait_for_render("#logs-list-container li")
 
       render_change(view, :start_search, %{
-        "search" => %{@default_search_params | "chart_period" => "day"}
+        "querystring" => @default_querystring
       })
 
       # wait for async search task to complete
@@ -819,12 +804,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> has_element?("#search_chart_period option[selected]", "second")
 
       # a chart period selected by the user is preserved, and search halted
-      render_change(view, :form_update, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => query,
-            "chart_period" => "day"
-        }
+      render_change(view, :chart_controls_update, %{
+        "chart_aggregate" => "count",
+        "chart_period" => "day"
       })
 
       assert view
@@ -1276,7 +1258,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
 
       render_change(view, :start_search, %{
-        "search" => %{@default_search_params | "querystring" => "somestring"}
+        "querystring" => "somestring"
       })
 
       TestUtils.retry_assert(fn ->
@@ -1316,10 +1298,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute)"
-        }
+        "querystring" => @default_querystring
       })
 
       flash = view |> element(".message .alert") |> render()
@@ -1340,10 +1319,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute) message"
-        }
+        "querystring" => "c:count(*) c:group_by(t::minute) message"
       })
 
       refute view |> element(".message .alert") |> has_element?()
@@ -1360,10 +1336,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert view
              |> render_change(:start_search, %{
-               "search" => %{
-                 @default_search_params
-                 | "querystring" => "c:count(*) c:group_by(t::minute) message"
-               }
+               "querystring" => "c:count(*) c:group_by(t::minute) message"
              })
              |> Floki.parse_document!()
              |> Floki.find("div[role=alert]>span")
@@ -1392,10 +1365,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute)"
-        }
+        "querystring" => @default_querystring
       })
 
       flash = view |> element(".message .alert") |> render()
@@ -1416,10 +1386,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute) metadata.level:error"
-        }
+        "querystring" => "c:count(*) c:group_by(t::minute) metadata.level:error"
       })
 
       refute view |> element(".message .alert", "required") |> has_element?()
@@ -1508,10 +1475,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       render_change(view, :start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "event_message:timeout c:count(*) c:group_by(t::minute)"
-        },
+        "querystring" => "event_message:timeout c:count(*) c:group_by(t::minute)",
         "fields" => %{
           "event_message" => "api-timeout",
           "metadata.request_id" => ""
@@ -1562,11 +1526,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute) message",
-            "tailing?" => "true"
-        }
+        "querystring" => "c:count(*) c:group_by(t::minute) message"
       })
 
       refute get_view_assigns(view).tailing?
