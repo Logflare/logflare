@@ -1823,6 +1823,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   def find_querystring(html) do
-    find_search_form_value(html, "#search_querystring")
+    {:ok, document} = Floki.parse_document(html)
+
+    document
+    |> Floki.find("#lql-editor-hook")
+    |> Floki.attribute("data-querystring")
+    |> hd()
   end
 end

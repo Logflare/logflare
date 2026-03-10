@@ -354,7 +354,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search",
-        %{"search" => %{"querystring" => qs}} = params,
+        %{"querystring" => qs, "fields" => fields} = _params,
         %{assigns: prev_assigns} = socket
       ) do
     bq_table_schema = get_bigquery_schema(socket.assigns.source)
@@ -362,21 +362,24 @@ defmodule LogflareWeb.Source.SearchLV do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
-    qs =
-      append_fields_rules(
-        qs,
-        Map.get(params, "fields", %{}),
-        bq_table_schema
-      )
+    qs = append_fields_rules(qs, fields, bq_table_schema)
 
     socket =
-      assign_new_search_with_qs(
-        socket,
+      socket
+      |> assign_new_search_with_qs(
         %{querystring: qs, tailing?: prev_assigns.tailing?},
         bq_table_schema
       )
 
     {:noreply, socket}
+  end
+
+  def handle_event(
+        "start_search",
+        %{"search" => %{"querystring" => qs}} = params,
+        %{assigns: prev_assigns} = socket
+      ) do
+    start_search(socket, qs, Map.get(params, "fields", %{}), prev_assigns.tailing?)
   end
 
   def handle_event(direction, _, socket) when direction in ["backwards", "forwards"] do
@@ -441,37 +444,35 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("form_update" = _ev, %{"search" => search}, %{assigns: prev_assigns} = socket) do
-    new_qs = search["querystring"]
-    new_chart_agg = String.to_existing_atom(search["chart_aggregate"])
-    new_chart_period = String.to_existing_atom(search["chart_period"])
-    socket = assign(socket, :querystring, new_qs)
+  def handle_event("querystring_changed", %{"querystring" => qs}, socket) do
+    {:noreply, assign(socket, :querystring, qs)}
+  end
 
-    prev_chart_rule =
-      Lql.Rules.get_chart_rule(prev_assigns.lql_rules) || Lql.Rules.default_chart_rule()
+  def handle_event(
+        "chart_controls_update",
+        %{"chart_aggregate" => new_chart_agg, "chart_period" => new_chart_period},
+        socket
+      ) do
+    socket =
+      maybe_update_chart_controls(
+        socket,
+        String.to_existing_atom(new_chart_agg),
+        String.to_existing_atom(new_chart_period)
+      )
+
+    {:noreply, socket}
+  end
+
+  def handle_event("form_update" = _ev, %{"search" => search}, socket) do
+    new_qs = search["querystring"]
 
     socket =
-      if new_chart_agg != prev_chart_rule.aggregate or
-           new_chart_period != prev_chart_rule.period do
-        lql_rules =
-          Lql.Rules.update_chart_rule(
-            prev_assigns.lql_rules,
-            Lql.Rules.default_chart_rule(),
-            %{aggregate: new_chart_agg, period: new_chart_period}
-          )
-
-        qs = Lql.encode!(lql_rules)
-
-        socket
-        |> assign_querystring(qs)
-        |> assign(:lql_rules, lql_rules)
-        |> assign(:loading, true)
-        |> assign(:chart_loading, true)
-        |> clear_flash()
-        |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
-      else
-        socket
-      end
+      socket
+      |> assign(:querystring, new_qs)
+      |> maybe_update_chart_controls(
+        String.to_existing_atom(search["chart_aggregate"]),
+        String.to_existing_atom(search["chart_period"])
+      )
 
     {:noreply, socket}
   end
@@ -597,6 +598,33 @@ defmodule LogflareWeb.Source.SearchLV do
       Lql.encode!(lql_rules)
     else
       _ -> qs
+    end
+  end
+
+  defp maybe_update_chart_controls(socket, new_chart_agg, new_chart_period) do
+    prev_chart_rule =
+      Lql.Rules.get_chart_rule(socket.assigns.lql_rules) || Lql.Rules.default_chart_rule()
+
+    if new_chart_agg != prev_chart_rule.aggregate or
+         new_chart_period != prev_chart_rule.period do
+      lql_rules =
+        Lql.Rules.update_chart_rule(
+          socket.assigns.lql_rules,
+          Lql.Rules.default_chart_rule(),
+          %{aggregate: new_chart_agg, period: new_chart_period}
+        )
+
+      qs = Lql.encode!(lql_rules)
+
+      socket
+      |> assign_querystring(qs)
+      |> assign(:lql_rules, lql_rules)
+      |> assign(:loading, true)
+      |> assign(:chart_loading, true)
+      |> clear_flash()
+      |> push_patch_with_params(%{querystring: qs, tailing?: socket.assigns.tailing?})
+    else
+      socket
     end
   end
 
