@@ -14,17 +14,6 @@ export function registerLqlLanguage(monaco) {
 
     keywords: ["true", "false", "NULL"],
 
-    logLevels: [
-      "emergency",
-      "alert",
-      "critical",
-      "error",
-      "warning",
-      "notice",
-      "info",
-      "debug",
-    ],
-
     functions: [
       "count",
       "countd",
@@ -79,7 +68,7 @@ export function registerLqlLanguage(monaco) {
         [/(?:last|this)@\w+/, "number.date"],
         [/\b(?:today|yesterday|now)\b/, "number.date"],
 
-        // ISO-ish dates: 2024-01-15T00:00:00 or 2024-01-15
+        // dates: 2024-01-15T00:00:00 or 2024-01-15
         [
           /\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?/,
           "number.date",
@@ -102,7 +91,6 @@ export function registerLqlLanguage(monaco) {
           {
             cases: {
               "@keywords": "constant",
-              "@logLevels": "type.loglevel",
               "@default": "identifier",
             },
           },
@@ -227,6 +215,13 @@ function buildKeywordSuggestions(monaco, token, range) {
   }));
 }
 
+function hasSingleExactKeywordSuggestion(token, suggestions) {
+  return (
+    suggestions.length === 1 &&
+    suggestions[0].label.toLocaleLowerCase() === token.toLocaleLowerCase()
+  );
+}
+
 function buildOperatorSuggestions(monaco, operatorPrefix, range) {
   return LQL_FILTER_OPERATORS.filter((operator) =>
     operator.label.startsWith(operatorPrefix),
@@ -298,6 +293,41 @@ export function hasLqlSuggestions(
   );
   const tokenMatch = textUntilPosition.match(/(?:^|\s)(\S+)$/);
   const currentToken = tokenMatch ? tokenMatch[1] : null;
+  const metaMatch = textUntilPosition.match(
+    /(?:^|[\s:])(?:m|metadata)\.([\w.]*?)$/,
+  );
+
+  if (timestampValueMatch) {
+    return (
+      buildTimestampSuggestions(
+        {
+          languages: {
+            CompletionItemKind: completionKindStub,
+          },
+        },
+        timestampValueMatch[1],
+        null,
+      ).length > 0
+    );
+  }
+
+  if (metaMatch) {
+    return getMetadataSuggestionSegments(schemaFields, metaMatch[1]).length > 0;
+  }
+
+  if (operatorMatch) {
+    return (
+      buildOperatorSuggestions(
+        {
+          languages: {
+            CompletionItemKind: completionKindStub,
+          },
+        },
+        `:${operatorMatch[1]}`,
+        null,
+      ).length > 0
+    );
+  }
 
   if (
     currentToken &&
@@ -306,55 +336,28 @@ export function hasLqlSuggestions(
     fullLine === textUntilPosition &&
     !["t:", "timestamp:"].includes(currentToken)
   ) {
-    return (
-      [...new Set(suggestedSearches)].some((querystring) =>
+    const keywordSuggestions = buildKeywordSuggestions(
+      {
+        languages: {
+          CompletionItemKind: completionKindStub,
+          CompletionItemInsertTextRule: completionItemInsertTextRuleStub,
+        },
+      },
+      currentToken,
+      null,
+    );
+    const hasSavedSearchMatches = [...new Set(suggestedSearches)].some(
+      (querystring) =>
         querystring
           .toLocaleLowerCase()
           .startsWith(currentToken.toLocaleLowerCase()),
-      ) ||
-      buildKeywordSuggestions(
-        {
-          languages: {
-            CompletionItemKind: completionKindStub,
-            CompletionItemInsertTextRule: completionItemInsertTextRuleStub,
-          },
-        },
-        currentToken,
-        null,
-      ).length > 0
     );
-  }
 
-  if (timestampValueMatch) {
-    return buildTimestampSuggestions(
-      {
-        languages: {
-          CompletionItemKind: completionKindStub,
-        },
-      },
-      timestampValueMatch[1],
-      null,
-    ).length > 0;
-  }
-
-  if (operatorMatch) {
-    return buildOperatorSuggestions(
-      {
-        languages: {
-          CompletionItemKind: completionKindStub,
-        },
-      },
-      `:${operatorMatch[1]}`,
-      null,
-    ).length > 0;
-  }
-
-  const metaMatch = textUntilPosition.match(
-    /(?:^|[\s:])(?:m|metadata)\.([\w.]*?)$/,
-  );
-
-  if (metaMatch) {
-    return getMetadataSuggestionSegments(schemaFields, metaMatch[1]).length > 0;
+    return (
+      hasSavedSearchMatches ||
+      (keywordSuggestions.length > 0 &&
+        !hasSingleExactKeywordSuggestion(currentToken, keywordSuggestions))
+    );
   }
 
   if (/(?:^|[\s])$/.test(textUntilPosition)) {
@@ -362,17 +365,20 @@ export function hasLqlSuggestions(
   }
 
   if (currentToken) {
-    return (
-      buildKeywordSuggestions(
-        {
-          languages: {
-            CompletionItemKind: completionKindStub,
-            CompletionItemInsertTextRule: completionItemInsertTextRuleStub,
-          },
+    const keywordSuggestions = buildKeywordSuggestions(
+      {
+        languages: {
+          CompletionItemKind: completionKindStub,
+          CompletionItemInsertTextRule: completionItemInsertTextRuleStub,
         },
-        currentToken,
-        null,
-      ).length > 0
+      },
+      currentToken,
+      null,
+    );
+
+    return (
+      keywordSuggestions.length > 0 &&
+      !hasSingleExactKeywordSuggestion(currentToken, keywordSuggestions)
     );
   }
 
@@ -439,52 +445,9 @@ export function registerLqlCompletionProvider(
           kind: monaco.languages.CompletionItemKind.Snippet,
           detail: "saved search",
           insertText: querystring,
-          command: {
-            id: "lql.dismissSavedSearchSuggest",
-            title: "Dismiss saved search suggest",
-          },
           range,
           sortText: `0-${String(index).padStart(3, "0")}`,
         }));
-
-      if (
-        currentToken &&
-        textUntilPosition.length > 0 &&
-        /^\S+$/.test(textUntilPosition) &&
-        fullLine === textUntilPosition &&
-        !["t:", "timestamp:"].includes(currentToken)
-      ) {
-        const matchedSavedSearches = savedSearchQuerystrings.filter((querystring) =>
-          querystring
-            .toLocaleLowerCase()
-            .startsWith(currentToken.toLocaleLowerCase()),
-        );
-        const filteredSavedSearchQuerystrings =
-          matchedSavedSearches.length === 1 &&
-          matchedSavedSearches[0].toLocaleLowerCase() ===
-            currentToken.toLocaleLowerCase()
-            ? []
-            : matchedSavedSearches;
-        const savedSearchSuggestions = buildSavedSearchSuggestions(
-          filteredSavedSearchQuerystrings,
-          lineRange,
-        );
-
-        const keywordSuggestions = buildKeywordSuggestions(
-          monaco,
-          currentToken,
-          lineRange,
-        ).map((suggestion, index) => ({
-          ...suggestion,
-          sortText: `1-${String(index).padStart(3, "0")}`,
-        }));
-
-        const suggestions = [...savedSearchSuggestions, ...keywordSuggestions];
-
-        if (suggestions.length > 0) {
-          return { suggestions };
-        }
-      }
 
       if (timestampValueMatch) {
         const timestampToken = timestampValueMatch[1];
@@ -519,6 +482,58 @@ export function registerLqlCompletionProvider(
         }
       }
 
+      if (
+        currentToken &&
+        textUntilPosition.length > 0 &&
+        /^\S+$/.test(textUntilPosition) &&
+        fullLine === textUntilPosition &&
+        !["t:", "timestamp:"].includes(currentToken)
+      ) {
+        const matchedSavedSearches = savedSearchQuerystrings.filter(
+          (querystring) =>
+            querystring
+              .toLocaleLowerCase()
+              .startsWith(currentToken.toLocaleLowerCase()),
+        );
+        const filteredSavedSearchQuerystrings =
+          matchedSavedSearches.length === 1 &&
+          matchedSavedSearches[0].toLocaleLowerCase() ===
+            currentToken.toLocaleLowerCase()
+            ? []
+            : matchedSavedSearches;
+        const savedSearchSuggestions = buildSavedSearchSuggestions(
+          filteredSavedSearchQuerystrings,
+          lineRange,
+        );
+
+        const keywordSuggestions = buildKeywordSuggestions(
+          monaco,
+          currentToken,
+          lineRange,
+        );
+        const filteredKeywordSuggestions = hasSingleExactKeywordSuggestion(
+          currentToken,
+          keywordSuggestions,
+        )
+          ? []
+          : keywordSuggestions;
+        const sortedKeywordSuggestions = filteredKeywordSuggestions.map(
+          (suggestion, index) => ({
+            ...suggestion,
+            sortText: `1-${String(index).padStart(3, "0")}`,
+          }),
+        );
+
+        const suggestions = [
+          ...savedSearchSuggestions,
+          ...sortedKeywordSuggestions,
+        ];
+
+        if (suggestions.length > 0) {
+          return { suggestions };
+        }
+      }
+
       // Check if we're in a metadata path context: m. or metadata. prefix
       const metaMatch = textUntilPosition.match(
         /(?:^|[\s:])(?:m|metadata)\.([\w.]*?)$/,
@@ -536,13 +551,18 @@ export function registerLqlCompletionProvider(
           : "";
         const fullPrefix = "metadata." + pathPrefix;
 
-        for (const segment of getMetadataSuggestionSegments(fields, typedPath)) {
+        for (const segment of getMetadataSuggestionSegments(
+          fields,
+          typedPath,
+        )) {
           const field = metadataFields.find(
             (item) =>
               item.name === `${fullPrefix}${segment}` ||
               item.name.startsWith(`${fullPrefix}${segment}.`),
           );
-          const isLeaf = field ? field.name === `${fullPrefix}${segment}` : true;
+          const isLeaf = field
+            ? field.name === `${fullPrefix}${segment}`
+            : true;
 
           suggestions.push({
             label: segment,
@@ -588,7 +608,7 @@ export function registerLqlCompletionProvider(
           currentTokenRange,
         );
 
-        if (suggestions.length > 0) {
+        if (!hasSingleExactKeywordSuggestion(currentToken, suggestions)) {
           return { suggestions };
         }
       }

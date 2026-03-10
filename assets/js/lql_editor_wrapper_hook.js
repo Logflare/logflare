@@ -20,103 +20,153 @@ const LqlEditorWrapper = {
     this._suggestedSearches = [];
     this._completionDisposable = null;
     this._editor = null;
+    this._editorDisposables = [];
     this._refreshSuggestionsTimer = null;
-    this._skipNextSavedSearchRequest = false;
-
-    // Listen for CodeEditorHook's mount event (bubbles from inner element)
-    this.el.addEventListener("lme:editor_mounted", (event) => {
+    this._handleSubmitRequest = () => {
+      this.submitSearch();
+    };
+    this._handleEditorMounted = (event) => {
       const { editor } = event.detail;
       const standaloneEditor = editor.standalone_code_editor;
+
+      if (this._editor === standaloneEditor && this._completionDisposable) {
+        return;
+      }
+
+      this.disposeEditorBindings();
       this._editor = standaloneEditor;
 
       const monaco = window.monaco;
 
-      // Register LQL language and set model language
       registerLqlLanguage(monaco);
       const model = standaloneEditor.getModel();
       monaco.editor.setModelLanguage(model, "lql");
 
-      // Register completion provider
       this._completionDisposable = registerLqlCompletionProvider(
         monaco,
         () => this._schemaFields,
         () => this._suggestedSearches,
       );
 
-      standaloneEditor.addAction({
-        id: "lql.dismissSavedSearchSuggest",
-        label: "Dismiss saved search suggest",
-        run: () => {
-          this._skipNextSavedSearchRequest = true;
-
-          const suggestController = standaloneEditor.getContribution(
-            "editor.contrib.suggestController",
-          );
-
-          suggestController?.cancelSuggestWidget?.();
-        },
-      });
-
-      // Enter submits the form (only when suggest widget is NOT visible)
       standaloneEditor.addCommand(
         monaco.KeyCode.Enter,
         () => {
-          const form = this.el.closest("form");
-          if (form) {
-            form.dispatchEvent(
-              new Event("submit", { bubbles: true, cancelable: true }),
-            );
-          }
+          this.submitSearch();
         },
         "!suggestWidgetVisible",
       );
 
-      // Sync value to hidden input on change
-      standaloneEditor.onDidChangeModelContent(() => {
-        const value = standaloneEditor.getValue();
-        const hiddenInput = this.el.querySelector(
-          'input[type="hidden"][name="search[querystring]"]',
-        );
-        if (hiddenInput) {
-          hiddenInput.value = value;
-          hiddenInput.dispatchEvent(new Event("input", { bubbles: true }));
-        }
+      this._editorDisposables = [
+        standaloneEditor.onDidChangeModelContent(() => {
+          const value = standaloneEditor.getValue();
+          this.pushEvent("querystring_changed", { querystring: value });
 
-        if (this._skipNextSavedSearchRequest) {
-          this._skipNextSavedSearchRequest = false;
           clearTimeout(this._refreshSuggestionsTimer);
-          return;
-        }
-
-        clearTimeout(this._refreshSuggestionsTimer);
-        this._refreshSuggestionsTimer = window.setTimeout(() => {
-          this.refreshSuggestions();
-        }, 100);
-      });
-
-      // Forward focus/blur to LiveView
-      standaloneEditor.onDidFocusEditorText(() => {
-        this.pushEvent(
-          "form_focus",
-          { value: standaloneEditor.getValue() },
-          ({ suggestions = [] }) => {
-            this._suggestedSearches = Array.isArray(suggestions)
-              ? suggestions
-              : [];
-
+          this._refreshSuggestionsTimer = window.setTimeout(() => {
             this.refreshSuggestions();
-          },
-        );
-      });
+          }, 100);
+        }),
+        standaloneEditor.onDidFocusEditorText(() => {
+          this.pushEvent(
+            "form_focus",
+            { value: standaloneEditor.getValue() },
+            ({ suggestions = [] }) => {
+              this._suggestedSearches = Array.isArray(suggestions)
+                ? suggestions
+                : [];
 
-      standaloneEditor.onDidBlurEditorText(() => {
-        this.pushEvent("form_blur", { value: standaloneEditor.getValue() });
-      });
-    });
+              this.refreshSuggestions();
+            },
+          );
+        }),
+        standaloneEditor.onDidBlurEditorText(() => {
+          this.pushEvent("form_blur", { value: standaloneEditor.getValue() });
+        }),
+      ];
+    };
+
+    this.el.addEventListener("lql:submit", this._handleSubmitRequest);
+    this.el.addEventListener("lme:editor_mounted", this._handleEditorMounted);
   },
 
   updated() {
     this._schemaFields = parseSchemaFields(this.el.dataset.schemaFieldsJson);
+    this.restoreCursorToEndIfNeeded();
+  },
+
+  restoreCursorToEndIfNeeded(attempt = 0) {
+    window.requestAnimationFrame(() => {
+      const serverQuerystring = this.el.dataset.querystring ?? "";
+      const editorValue = this._editor?.getValue?.();
+      const model = this._editor?.getModel?.();
+      const position = this._editor?.getPosition?.();
+      const suggestController = this._editor?.getContribution?.(
+        "editor.contrib.suggestController",
+      );
+
+      if (!this._editor || !model || !position) {
+        return;
+      }
+
+      if (serverQuerystring !== editorValue) {
+        if (attempt < 6) {
+          window.setTimeout(() => {
+            this.restoreCursorToEndIfNeeded(attempt + 1);
+          }, 50);
+        }
+
+        return;
+      }
+
+      if (editorValue.length === 0) {
+        return;
+      }
+
+      const endPosition = {
+        lineNumber: model.getLineCount(),
+        column: model.getLineMaxColumn(model.getLineCount()),
+      };
+      const hasTextFocus = this._editor.hasTextFocus();
+
+      if (hasTextFocus && position.lineNumber === 1 && position.column === 1) {
+        this._editor.setPosition(endPosition);
+        suggestController?.cancelSuggestWidget?.();
+        return;
+      }
+
+      if (!hasTextFocus && attempt < 6) {
+        window.setTimeout(() => {
+          this.restoreCursorToEndIfNeeded(attempt + 1);
+        }, 50);
+      }
+    });
+  },
+
+  collectRecommendedFields() {
+    const searchControl =
+      this.el.closest("#source-logs-search-control") || this.el.parentElement;
+    const fields = {};
+
+    searchControl
+      ?.querySelectorAll('#recommended_fields input[name^="fields["]')
+      .forEach((input) => {
+        const match = input.name.match(/^fields\[(.+)\]$/);
+
+        if (match) {
+          fields[match[1]] = input.value;
+        }
+      });
+
+    return fields;
+  },
+
+  submitSearch() {
+    const querystring = this._editor?.getValue?.() ?? "";
+
+    this.pushEvent("start_search", {
+      querystring,
+      fields: this.collectRecommendedFields(),
+    });
   },
 
   refreshSuggestions() {
@@ -159,13 +209,22 @@ const LqlEditorWrapper = {
     this._editor?.getAction("editor.action.triggerSuggest").run();
   },
 
-  destroyed() {
-    clearTimeout(this._refreshSuggestionsTimer);
+  disposeEditorBindings() {
+    this._editorDisposables.forEach((disposable) => disposable?.dispose?.());
+    this._editorDisposables = [];
 
     if (this._completionDisposable) {
       this._completionDisposable.dispose();
       this._completionDisposable = null;
     }
+  },
+
+  destroyed() {
+    clearTimeout(this._refreshSuggestionsTimer);
+    this.el.removeEventListener("lql:submit", this._handleSubmitRequest);
+    this.el.removeEventListener("lme:editor_mounted", this._handleEditorMounted);
+    this.disposeEditorBindings();
+    this._editor = null;
   },
 };
 

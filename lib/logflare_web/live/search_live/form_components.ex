@@ -11,7 +11,6 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   alias Logflare.Utils
   alias Logflare.Sources.Source
 
-  attr :form, Phoenix.HTML.Form, required: true
   attr :lql_rules, :list, required: true
   attr :chart_aggregate_enabled?, :boolean, required: true
 
@@ -22,33 +21,29 @@ defmodule LogflareWeb.SearchLive.FormComponents do
         Chart period:
       </div>
       <div class="pr-3 pt-1 pb-1">
-        {select(@form, :chart_period, ["day", "hour", "minute", "second"],
-          selected: Rules.get_chart_period(@lql_rules, "minute"),
-          class: "form-control form-control-sm"
-        )}
+        <select id="search_chart_period" name="chart_period" class="form-control form-control-sm">
+          {Phoenix.HTML.Form.options_for_select(
+            ["day", "hour", "minute", "second"],
+            Rules.get_chart_period(@lql_rules, "minute")
+          )}
+        </select>
       </div>
       <div class="pr-3 pt-1 pb-1 hide-on-mobile">
         Aggregate:
       </div>
       <div class="pr-3 pt-1 pb-1">
         <%= if @chart_aggregate_enabled? do %>
-          {select(
-            @form,
-            :chart_aggregate,
-            ["sum", "avg", "max", "p50", "p95", "p99", "count"],
-            selected: Rules.get_chart_aggregate(@lql_rules, "count"),
-            class: "form-control form-control-sm"
-          )}
+          <select id="search_chart_aggregate" name="chart_aggregate" class="form-control form-control-sm">
+            {Phoenix.HTML.Form.options_for_select(
+              ["sum", "avg", "max", "p50", "p95", "p99", "count"],
+              Rules.get_chart_aggregate(@lql_rules, "count")
+            )}
+          </select>
         <% else %>
           <span class="d-inline-block" tabindex="0" data-toggle="tooltip" title="Chart aggregate setting requires usage of chart: operator" trigger="hover click" delay="0">
-            {select(
-              @form,
-              :chart_aggregate,
-              ["count"],
-              selected: "count",
-              class: "form-control form-control-sm",
-              style: "pointer-events: none;"
-            )}
+            <select id="search_chart_aggregate" name="chart_aggregate" class="form-control form-control-sm" style="pointer-events: none;">
+              {Phoenix.HTML.Form.options_for_select(["count"], "count")}
+            </select>
           </span>
         <% end %>
       </div>
@@ -152,24 +147,19 @@ defmodule LogflareWeb.SearchLive.FormComponents do
             <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
 
             <div class="tw-order-2 tw-basis-full tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
-              <div id="lql-editor-hook" phx-hook="LqlEditorWrapper" phx-update="ignore" data-schema-fields-json={@lql_schema_fields_json} class="lql-editor-wrapper tw-mt-0">
+              <div id="lql-editor-hook" phx-hook="LqlEditorWrapper" phx-update="ignore" data-querystring={@querystring} data-schema-fields-json={@lql_schema_fields_json} class="lql-editor-wrapper tw-mt-0">
                 <LiveMonacoEditor.code_editor value={@querystring} path="lql_query" class="tw-w-full tw-h-8" opts={lql_editor_opts()} />
                 {hidden_input(f, :querystring, value: @querystring)}
               </div>
             </div>
           </div>
-          {text_input(f, :search_timezone,
-            class: "d-none",
-            value: @search_timezone,
-            id: "search-timezone"
-          )}
         </div>
 
         <div class="d-flex flex-wrap align-items-center form-text">
           <div class="pr-2 pt-1 pb-1">
-            <%= submit disabled: @loading, id: "search", class: "btn btn-primary" do %>
+            <button type="button" disabled={@loading} id="search" class="btn btn-primary" phx-click={Phoenix.LiveView.JS.dispatch("lql:submit", to: "#lql-editor-hook")}>
               <i class="fas fa-search"></i><span class="fas-in-button hide-on-mobile">Search</span>
-            <% end %>
+            </button>
           </div>
 
           <.navigation_buttons tailing?={@tailing?} uri_params={@uri_params} />
@@ -177,7 +167,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
           <.action_buttons source={@source} user={@user} has_results?={@has_results?} />
         </div>
 
-        <.chart_controls form={f} lql_rules={@lql_rules} chart_aggregate_enabled?={search_agg_controls_enabled?(@lql_rules)} />
+        <.chart_controls lql_rules={@lql_rules} chart_aggregate_enabled?={search_agg_controls_enabled?(@lql_rules)} />
 
         <div id="observer-target"></div>
       </.form>
