@@ -153,11 +153,15 @@ defmodule Logflare.Networking do
     }
   end
 
-  defp grpc_pools() do
-    [
-      GRPC.Client.Supervisor,
-      {Logflare.Networking.GrpcPool,
-       name: GoogleApiClient.connetion_pool_name(), url: "https://bigquerystorage.googleapis.com"}
-    ]
+  defp grpc_pools do
+    if Application.get_env(:logflare, :env) == :test do
+      []
+    else
+      [
+        GRPC.Client.Supervisor,
+        {Logflare.Networking.GrpcPool,
+         name: GoogleApiClient.connetion_pool_name(), url: "https://bigquerystorage.googleapis.com"}
+      ]
+    end
   end
 end
