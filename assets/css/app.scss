@@ -77,6 +77,10 @@ main.app {
   min-width: 100px;
 }
 
+.tooltip.max-w-640 .tooltip-inner {
+  max-width: 640px;
+}
+
 .source-meta-data {
   margin-left: 2em;
 }
