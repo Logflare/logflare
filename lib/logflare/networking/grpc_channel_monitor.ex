@@ -27,7 +27,9 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
   def handle_info(:connect, %{idx: idx, url: url, registry: registry} = state) do
     case GRPC.Stub.connect(url,
            adapter: GRPC.Client.Adapters.Mint,
-           interceptors: [Logflare.Networking.GrpcAuthInterceptor]
+           interceptors: [Logflare.Networking.GrpcAuthInterceptor],
+           # Reset to Mint defaults, avoiding grpc bug https://github.com/elixir-grpc/grpc/issues/507
+           cred: GRPC.Credential.new([])
          ) do
       {:ok, channel} ->
         Registry.register(registry, idx, channel)
