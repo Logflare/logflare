@@ -411,6 +411,22 @@
               Region of your cluster
             </small>
           </div>
+        <% "oodle" -> %>
+          <div class="form-group">
+            {label(f_config, :instance, "Instance")}
+            {text_input(f_config, :instance, class: "form-control")}
+            <small class="form-text text-muted">
+              Oodle instance identifier used in the ingestion headers.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :api_key, "API Key")}
+            {text_input(f_config, :api_key, class: "form-control",
+              type: "password")}
+            <small class="form-text text-muted">
+              API key used for authenticating with Oodle ingestion.
+            </small>
+          </div>
         <% _ -> %>
           <div>Select a Backend Type</div>
       <% end %>

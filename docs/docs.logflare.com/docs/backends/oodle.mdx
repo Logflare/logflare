@@ -1,0 +1,25 @@
+---
+sidebar_position: 12
+---
+
+# Oodle
+
+The Oodle backend is **ingest-only**, and sends logs to
+[Oodle](https://oodle.ai) via the Oodle collector HTTP endpoint.
+
+## Behaviour and configurations
+
+### Configuration
+
+The backend can be configured with the following options:
+
+- `:instance` (string, required) - Oodle instance identifier.
+- `:api_key` (string, required) - API key used for ingestion
+  authentication.
+
+### Implementation Details
+
+- The adaptor sends logs to
+  `https://<instance>-logs.collector.oodle.ai/ingest/v1/logs`.
+- Authentication is handled with `X-API-KEY` and `X-OODLE-INSTANCE`
+  headers.
