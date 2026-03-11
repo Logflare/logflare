@@ -252,16 +252,7 @@ hooks.SourceLogsSearch = {
         const elapsed = new Date().getTime() / 1000 - lastQueryCompletedAt
         $("#last-query-completed-at span").text(elapsed.toFixed(1))
       }
-    }, 250)
-  },
-  destroyed() {
-    if (this._handleSearchControlChange) {
-      this.el.removeEventListener("change", this._handleSearchControlChange)
-    }
-
-    if (this._handleSearchControlKeydown) {
-      this.el.removeEventListener("keydown", this._handleSearchControlKeydown)
-    }
+    }, 250);
   },
 };
 
