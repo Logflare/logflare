@@ -87,7 +87,12 @@ defmodule LogflareWeb.SearchLive.FormComponents do
               required
             </span>
           </div>
-          <input id={"#{@id_prefix}-#{field.name}"} name={input_name(:fields, field.name)} class="form-control" type="text" />
+          <input
+            id={"#{@id_prefix}-#{field.name}"}
+            name={input_name(:fields, field.name)}
+            class="form-control tw-h-8 tw-min-h-8 tw-max-h-8 tw-border-[#282c34] tw-bg-[#282c34] tw-py-[3px] tw-font-mono tw-text-[#c4cad6] placeholder:tw-text-[#8c92a3] focus:tw-border-[#3e4451] focus:tw-bg-[#282c34] focus:tw-text-[#c4cad6]"
+            type="text"
+          />
         </div>
       </div>
     </div>
@@ -204,6 +209,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
         "parameterHints" => %{"enabled" => false},
         "quickSuggestions" => true,
         "matchBrackets" => "never",
+        "tabIndex" => 0,
         "fontFamily" =>
           "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
         "padding" => %{"top" => 5, "bottom" => 5},
