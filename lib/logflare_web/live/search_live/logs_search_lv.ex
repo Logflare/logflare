@@ -197,7 +197,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:chart_loading, true)
           |> assign(:tailing_initial?, true)
           |> assign(:lql_rules, lql_rules)
-          |> assign_querystring(qs)
+          |> assign(:querystring, qs)
           |> assign(:search_op_log_events, search_op_log_events)
 
         if connected?(socket) do
@@ -214,12 +214,12 @@ defmodule LogflareWeb.Source.SearchLV do
 
         {:error, error} ->
           socket
-          |> assign_querystring(qs)
+          |> assign(:querystring, qs)
           |> error_socket(error)
 
         {:error, :field_not_found = type, suggested_querystring, error} ->
           socket
-          |> assign_querystring(qs)
+          |> assign(:querystring, qs)
           |> error_socket(type, suggested_querystring, error)
       end
 
@@ -475,7 +475,7 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       |> assign(:tailing?, false)
       |> assign(:lql_rules, lql_list)
-      |> assign_querystring(qs)
+      |> assign(:querystring, qs)
       |> push_patch_with_params(%{querystring: qs, tailing?: false})
 
     {:noreply, socket}
@@ -596,7 +596,7 @@ defmodule LogflareWeb.Source.SearchLV do
       qs = Lql.encode!(lql_rules)
 
       socket
-      |> assign_querystring(qs)
+      |> assign(:querystring, qs)
       |> assign(:lql_rules, lql_rules)
       |> assign(:loading, true)
       |> assign(:chart_loading, true)
@@ -763,7 +763,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:tailing_initial?, true)
         |> clear_flash()
         |> assign(:lql_rules, lql_rules)
-        |> assign_querystring(qs)
+        |> assign(:querystring, qs)
         |> push_patch_with_params(%{querystring: qs, tz: tz, tailing?: tailing?})
 
       {:error, error} ->
@@ -1071,7 +1071,7 @@ defmodule LogflareWeb.Source.SearchLV do
     qs = Lql.encode!(lql_rules)
 
     socket
-    |> assign_querystring(qs)
+    |> assign(:querystring, qs)
     |> assign(:lql_rules, lql_rules)
   end
 
