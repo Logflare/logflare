@@ -51,7 +51,6 @@
    :unused_fun},
   {"lib/logflare/sql/dialect_translation.ex", :pattern_match},
   {"lib/logflare/sql/dialect_translation.ex", :guard_fail},
-  {"lib/logflare/system_metrics/cachex/poller.ex", :pattern_match},
   {"lib/logflare_web/controllers/api/endpoint_controller.ex", :pattern_match},
   {"lib/logflare_web/controllers/billing_controller.ex", :unused_fun},
   {"lib/logflare_web/controllers/billing_controller.ex", :pattern_match_cov},
