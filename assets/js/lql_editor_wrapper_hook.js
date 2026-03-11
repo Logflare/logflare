@@ -25,9 +25,6 @@ const LqlEditorWrapper = {
     this._editor = null;
     this._editorDisposables = [];
     this._pendingServerValue = null;
-    this.handleEvent("set_lql_value", ({ value }) => {
-      this.handleServerValueEvent(value);
-    });
     this._handleSubmitRequest = () => {
       this.submitSearch();
     };
@@ -86,23 +83,14 @@ const LqlEditorWrapper = {
     this._suggestedSearches = parseSuggestedSearches(
       this.el.dataset.suggestedSearchesJson,
     );
-  },
-
-  handleServerValueEvent(value) {
-    if (typeof value !== "string") {
-      return;
-    }
+    const value = this.el.dataset.querystring ?? "";
 
     if (!this._editor) {
-      this.setPendingEditorValue(value);
+      this._pendingServerValue = value;
       return;
     }
 
     this.setEditorValue(value);
-  },
-
-  setPendingEditorValue(value) {
-    this._pendingServerValue = value;
   },
 
   applyPendingEditorValue() {
