@@ -5,6 +5,7 @@ use rustler::types::map::MapIterator;
 use rustler::{Encoder, Env, Term};
 
 use crate::path::{self, PathSegment};
+use crate::string_filters::{CharClass, StringFilters};
 
 // ── Data structures ────────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ pub struct CompiledField {
     pub enum8_data: Option<Enum8Data>,
     pub filter_nil: bool,
     pub flat_map_value_type: FlatMapValueType,
+    pub filters: Option<StringFilters>,
 }
 
 #[derive(Debug)]
@@ -211,6 +213,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
 
     let filter_nil = decode_filter_nil(env, field);
     let flat_map_value_type = decode_flat_map_value_type(env, field)?;
+    let filters = decode_filters(env, field);
 
     Ok(CompiledField {
         name,
@@ -226,6 +229,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         enum8_data,
         filter_nil,
         flat_map_value_type,
+        filters,
     })
 }
 
@@ -473,6 +477,46 @@ fn decode_flat_map_value_type<'a>(
             )),
         },
     }
+}
+
+fn decode_filters<'a>(env: Env<'a>, field: Term<'a>) -> Option<StringFilters> {
+    let filters_term = get_term_key(env, field, "filters")?;
+
+    let len_eq = get_int_key(env, filters_term, "len_eq").map(|v| v as usize);
+    let len_gt = get_int_key(env, filters_term, "len_gt").map(|v| v as usize);
+    let len_gte = get_int_key(env, filters_term, "len_gte").map(|v| v as usize);
+    let len_lt = get_int_key(env, filters_term, "len_lt").map(|v| v as usize);
+    let len_lte = get_int_key(env, filters_term, "len_lte").map(|v| v as usize);
+
+    let char_class = get_string_key(env, filters_term, "char_class")
+        .ok()
+        .flatten()
+        .and_then(|s| match s.to_lowercase().as_str() {
+            "alpha" => Some(CharClass::Alpha),
+            "numeric" => Some(CharClass::Numeric),
+            "alphanumeric" => Some(CharClass::Alphanumeric),
+            _ => None,
+        });
+
+    // Return None if no filter options were set
+    if len_eq.is_none()
+        && len_gt.is_none()
+        && len_gte.is_none()
+        && len_lt.is_none()
+        && len_lte.is_none()
+        && char_class.is_none()
+    {
+        return None;
+    }
+
+    Some(StringFilters {
+        len_eq,
+        len_gt,
+        len_gte,
+        len_lt,
+        len_lte,
+        char_class,
+    })
 }
 
 // ── Enum8-specific decoders ────────────────────────────────────────────────

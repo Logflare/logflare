@@ -2,7 +2,6 @@ defmodule Logflare.Logs.Github do
   @moduledoc """
   Formats log events from Github callbacks.
   """
-  require Logger
 
   @behaviour Logflare.Logs.Processor
 

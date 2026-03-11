@@ -9,8 +9,6 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
 
   alias Logflare.Billing
 
-  require Logger
-
   def mount(socket) do
     socket =
       socket

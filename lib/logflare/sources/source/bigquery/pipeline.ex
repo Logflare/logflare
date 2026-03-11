@@ -119,31 +119,39 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         %{}
       end
 
-    source = Sources.Cache.get_by_id(sid)
+    case Sources.Cache.get_by_id(sid) do
+      nil ->
+        Logger.warning("Source not found for ack!", source_id: sid)
 
-    for %{data: le} <- successful do
-      # delete immediately if not default backend or if avg rate is above 100
-      if metrics.avg > 100 or bid != nil do
-        IngestEventQueue.delete(queue, le)
-      end
+        for %{data: le} <- successful do
+          IngestEventQueue.delete(queue, le)
+        end
 
-      # emit telemetry on event
-      event_labels = Sources.get_labels_from_event(source, le)
+      source ->
+        for %{data: le} <- successful do
+          # delete immediately if not default backend or if avg rate is above 100
+          if metrics.avg > 100 or bid != nil do
+            IngestEventQueue.delete(queue, le)
+          end
 
-      metrics = %{ingested_bytes: :erlang.external_size(le.body)}
+          # emit telemetry on event
+          event_labels = Sources.get_labels_from_event(source, le)
 
-      metadata =
-        %{
-          "source_id" => sid,
-          "backend_id" => bid,
-          "source_uuid" => Utils.stringify(source.token),
-          "user_id" => source.user_id,
-          "system_source" => source.system_source
-        }
-        |> Map.merge(event_labels)
-        |> Map.merge(backend_metadata)
+          metrics = %{ingested_bytes: :erlang.external_size(le.body)}
 
-      :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
+          metadata =
+            %{
+              "source_id" => sid,
+              "backend_id" => bid,
+              "source_uuid" => Utils.stringify(source.token),
+              "user_id" => source.user_id,
+              "system_source" => source.system_source
+            }
+            |> Map.merge(event_labels)
+            |> Map.merge(backend_metadata)
+
+          :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
+        end
     end
   end
 
@@ -324,7 +332,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     # random sample if local ingest rate is above a certain level
     # dynamic calculation maintains ~1 schema update per second across all rate levels
-    unless source.lock_schema do
+    if source && not source.lock_schema do
       probability =
         case PubSubRates.Cache.get_local_rates(source.token) do
           %{average_rate: avg} when avg > 0 ->

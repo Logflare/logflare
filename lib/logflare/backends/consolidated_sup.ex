@@ -19,8 +19,6 @@ defmodule Logflare.Backends.ConsolidatedSup do
 
   use Supervisor
 
-  require Logger
-
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
@@ -34,10 +32,14 @@ defmodule Logflare.Backends.ConsolidatedSup do
 
   @impl Supervisor
   def init(_args) do
-    children = [
-      {DynamicSupervisor, strategy: :one_for_one, name: @dynamic_sup_name},
-      ConsolidatedSupWorker
-    ]
+    children =
+      [
+        {DynamicSupervisor, strategy: :one_for_one, name: @dynamic_sup_name}
+      ] ++
+        if(Application.get_env(:logflare, :env) != :test,
+          do: [ConsolidatedSupWorker],
+          else: []
+        )
 
     Supervisor.init(children, strategy: :one_for_one)
   end

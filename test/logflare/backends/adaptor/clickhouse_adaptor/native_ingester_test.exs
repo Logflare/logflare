@@ -10,9 +10,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
 
   setup do
     insert(:plan, name: "Free")
-    {source, backend, cleanup_fn} = setup_clickhouse_test()
-
-    on_exit(fn -> cleanup_fn.() end)
+    {source, backend} = setup_clickhouse_test()
 
     [source: source, backend: backend]
   end

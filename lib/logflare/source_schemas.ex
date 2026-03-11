@@ -7,8 +7,6 @@ defmodule Logflare.SourceSchemas do
   alias Logflare.SourceSchemas.SourceSchema
   alias Logflare.Google.BigQuery.SchemaUtils
 
-  require Logger
-
   @doc """
   Returns the list of source_schemas.
 

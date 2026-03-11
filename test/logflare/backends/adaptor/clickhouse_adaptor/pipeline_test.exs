@@ -14,8 +14,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   setup do
     insert(:plan, name: "Free")
 
-    {source, backend, cleanup_fn} = setup_clickhouse_test()
-    on_exit(cleanup_fn)
+    {source, backend} = setup_clickhouse_test()
 
     {:ok, supervisor_pid} = ClickHouseAdaptor.start_link(backend)
 
@@ -26,6 +25,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     end)
 
     Process.sleep(200)
+
+    assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
     context = %{backend_id: backend.id}
 

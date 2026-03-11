@@ -469,6 +469,22 @@ defmodule Logflare.AlertingTest do
       assert length(Alerting.list_future_jobs(alert.id)) == 1
     end
 
+    test "changing cron on enabled alert reschedules future jobs", %{user: user} do
+      alert = insert(:alert, user: user, cron: "0 0 * * *")
+      Alerting.schedule_alert(alert)
+      old_jobs = Alerting.list_future_jobs(alert.id)
+      assert length(old_jobs) == 5
+
+      {:ok, updated} = Alerting.update_alert_query(alert, %{cron: "7 */6 * * *"})
+      assert updated.cron == "7 */6 * * *"
+
+      new_jobs = Alerting.list_future_jobs(alert.id)
+      assert length(new_jobs) == 5
+
+      old_ids = MapSet.new(old_jobs, & &1.id)
+      assert Enum.all?(new_jobs, fn job -> job.id not in old_ids end)
+    end
+
     test "schedule_alert/1 handles invalid cron gracefully", %{user: user} do
       alert = insert(:alert, user: user)
       assert :ok = Alerting.schedule_alert(%{alert | cron: "invalid"})

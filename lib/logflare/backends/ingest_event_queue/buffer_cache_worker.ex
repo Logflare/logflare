@@ -5,8 +5,9 @@ defmodule Logflare.Backends.IngestEventQueue.BufferCacheWorker do
   Caches cluster buffer length of all source-backend queues.
   """
   use GenServer
+
   alias Logflare.Backends
-  require Logger
+
   @ets_table_mapper :ingest_event_queue_mapping
 
   @default_interval 2_500

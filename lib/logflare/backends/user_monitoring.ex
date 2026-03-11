@@ -28,7 +28,8 @@ defmodule Logflare.Backends.UserMonitoring do
         export_period: export_period,
         max_concurrency: System.schedulers_online(),
         max_batch_size: 1000,
-        spawn_opt: [fullsweep_after: 10_000]
+        spawn_opt: [fullsweep_after: 10_000],
+        hibernate_after: 5_000
       ]
 
     [{OtelMetricExporter, otel_exporter_opts}]

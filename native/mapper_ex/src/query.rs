@@ -2,6 +2,7 @@ use rustler::types::ListIterator;
 use rustler::{Binary, Encoder, Env, Term};
 
 use crate::path::PathSegment;
+use crate::string_filters::{self, StringFilters};
 
 /// Evaluates a path against an Elixir term (map/list).
 ///
@@ -70,11 +71,13 @@ fn evaluate_wildcard<'a>(
 
 /// Evaluates multiple paths against a document, returning the first
 /// non-nil result. For String field types, also skips empty strings.
+/// When filters are provided, resolved strings must pass all filters.
 pub fn evaluate_first<'a>(
     env: Env<'a>,
     document: Term<'a>,
     paths: &[Vec<PathSegment>],
     skip_empty_strings: bool,
+    string_filters: Option<&StringFilters>,
     nil: Term<'a>,
 ) -> Term<'a> {
     for segments in paths {
@@ -87,6 +90,12 @@ pub fn evaluate_first<'a>(
             if let Ok(b) = result.decode::<Binary>() {
                 if b.is_empty() {
                     continue;
+                }
+                // Piggyback filter check on already-decoded binary
+                if let Some(f) = string_filters {
+                    if !string_filters::passes_filters(b.as_slice(), f) {
+                        continue;
+                    }
                 }
             }
         }

@@ -258,7 +258,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Protocol do
   @spec decode_string(binary()) :: {String.t(), binary()}
   def decode_string(binary) when is_binary(binary) do
     {length, rest} = decode_varuint(binary)
-    <<str::binary-size(length), rest2::binary>> = rest
+    <<str::binary-size(^length), rest2::binary>> = rest
     {str, rest2}
   end
 
@@ -418,7 +418,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Protocol do
 
   @spec decode_fixed_string(binary(), pos_integer()) :: {binary(), binary()}
   def decode_fixed_string(data, n) when is_binary(data) and is_pos_integer(n) do
-    <<str::binary-size(n), rest::binary>> = data
+    <<str::binary-size(^n), rest::binary>> = data
     {str, rest}
   end
 

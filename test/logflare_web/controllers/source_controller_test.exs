@@ -192,9 +192,9 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_has("label", text: "metadata.level")
       |> assert_has("label", text: "m.user_id")
       |> assert_has(".required-field-indicator", text: "required")
-      |> assert_has("input.form-control-sm[id='recent-logs-field-session_id']")
-      |> assert_has("input.form-control-sm[id='recent-logs-field-metadata.level']")
-      |> assert_has("input.form-control-sm[id='recent-logs-field-m.user_id']")
+      |> assert_has("input.form-control[id='recent-logs-field-session_id']")
+      |> assert_has("input.form-control[id='recent-logs-field-metadata.level']")
+      |> assert_has("input.form-control[id='recent-logs-field-m.user_id']")
     end
 
     test "invalid source", %{conn: conn, source: source} do

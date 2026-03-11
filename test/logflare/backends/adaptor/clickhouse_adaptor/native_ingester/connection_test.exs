@@ -113,15 +113,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.ConnectionT
   describe "send_query/4" do
     setup do
       insert(:plan, name: "Free")
-      {_source, backend, cleanup_fn} = setup_clickhouse_test()
+      {_source, backend} = setup_clickhouse_test()
       start_supervised!({ClickHouseAdaptor, backend})
 
       on_exit(fn ->
         for table <- ["native_test_basic", "native_test_lc"] do
           ClickHouseAdaptor.execute_ch_query(backend, "DROP TABLE IF EXISTS #{table}")
         end
-
-        cleanup_fn.()
       end)
 
       [backend: backend]

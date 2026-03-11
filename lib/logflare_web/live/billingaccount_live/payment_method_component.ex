@@ -7,8 +7,6 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
 
   alias Logflare.Billing
 
-  require Logger
-
   defp env_stripe_publishable_key, do: Application.get_env(:stripity_stripe, :publishable_key)
 
   def mount(socket) do
