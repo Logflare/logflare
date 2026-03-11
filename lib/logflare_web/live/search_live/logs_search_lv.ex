@@ -355,7 +355,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search",
-        %{"querystring" => qs, "fields" => fields} = _params,
+        %{"querystring" => qs} = params,
         %{assigns: prev_assigns} = socket
       ) do
     schema_flatmap = SourceSchemas.source_schema_flatmap_or_default(socket.assigns.source)
