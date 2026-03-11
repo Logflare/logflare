@@ -352,7 +352,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search",
-        %{"querystring" => qs, "fields" => fields} = _params,
+        %{"querystring" => qs} = params,
         %{assigns: prev_assigns} = socket
       ) do
     bq_table_schema = get_bigquery_schema(socket.assigns.source)
@@ -360,7 +360,7 @@ defmodule LogflareWeb.Source.SearchLV do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
-    qs = append_fields_rules(qs, fields, bq_table_schema)
+    qs = append_fields_rules(qs, Map.get(params, "fields", %{}), bq_table_schema)
 
     socket =
       socket
