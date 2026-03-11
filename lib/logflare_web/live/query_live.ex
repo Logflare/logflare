@@ -3,8 +3,6 @@ defmodule LogflareWeb.QueryLive do
   use LogflareWeb, :live_view
   use Phoenix.Component
 
-  require Logger
-
   alias Logflare.Alerting
   alias Logflare.Backends
   alias Logflare.Endpoints

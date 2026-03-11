@@ -59,7 +59,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
     test "preserves partitioning, ordering, and settings" do
       ddl = QueryTemplates.create_simple_logs_table_statement("simple_otel_logs_test")
       assert ddl =~ "PARTITION BY toDate(timestamp)"
-      assert ddl =~ "ORDER BY (source_name, project, toDate(timestamp))"
+      assert ddl =~ "ORDER BY (source_name, project, timestamp_hour)"
       assert ddl =~ "SETTINGS index_granularity = 8192"
     end
   end
@@ -85,54 +85,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
       assert ddl =~ "`metric_type` Enum8"
       assert ddl =~ "`value` Float64"
       assert ddl =~ "`bucket_counts` Array(UInt64)"
-      assert ddl =~ "ORDER BY (source_name, metric_name, project, toDate(timestamp))"
+      assert ddl =~ "ORDER BY (source_name, metric_name, project, timestamp_hour)"
     end
   end
 
-  describe "optimized and cloud settings in DDL output" do
-    test "logs DDL includes optimized settings when opt is passed" do
-      ddl = QueryTemplates.create_logs_table_statement("test", optimized_settings: true)
-      assert ddl =~ "max_parts_in_total = 20000"
-      assert ddl =~ "parts_to_delay_insert = 5000"
-      assert ddl =~ "parts_to_throw_insert = 10000"
-      assert ddl =~ "min_bytes_for_wide_part = 0"
-      refute ddl =~ "shared_merge_tree"
-    end
-
-    test "simple logs DDL includes optimized settings when opt is passed" do
-      ddl = QueryTemplates.create_simple_logs_table_statement("test", optimized_settings: true)
-      assert ddl =~ "max_parts_in_total = 20000"
-      refute ddl =~ "shared_merge_tree"
-    end
-
-    test "logs DDL includes cloud settings when both opts are passed" do
-      ddl =
-        QueryTemplates.create_logs_table_statement("test",
-          optimized_settings: true,
-          clickhouse_cloud: true
-        )
-
-      assert ddl =~ "max_parts_in_total = 20000"
+  describe "cloud settings in DDL output" do
+    test "logs DDL includes cloud settings when opt is passed" do
+      ddl = QueryTemplates.create_logs_table_statement("test", clickhouse_cloud: true)
       assert ddl =~ "shared_merge_tree_enable_coordinated_merges = 1"
       assert ddl =~ "min_bytes_for_full_part_storage = 2147483648"
     end
 
-    test "DDL excludes optimized and cloud settings by default" do
+    test "simple logs DDL includes cloud settings when opt is passed" do
+      ddl = QueryTemplates.create_simple_logs_table_statement("test", clickhouse_cloud: true)
+      assert ddl =~ "shared_merge_tree_enable_coordinated_merges = 1"
+    end
+
+    test "DDL excludes cloud settings by default" do
       ddl = QueryTemplates.create_logs_table_statement("test")
       assert ddl =~ "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
-      refute ddl =~ "max_parts_in_total"
       refute ddl =~ "shared_merge_tree"
-    end
-
-    test "metrics/traces DDL excludes optimized settings even with opts (controlled by module attr)" do
-      ddl = QueryTemplates.create_metrics_table_statement("test")
-      refute ddl =~ "max_parts_in_total"
-    end
-
-    test "cloud settings are not applied without optimized_settings flag" do
-      ddl = QueryTemplates.create_logs_table_statement("test", clickhouse_cloud: true)
-      refute ddl =~ "shared_merge_tree"
-      refute ddl =~ "max_parts_in_total"
     end
   end
 
@@ -160,7 +132,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
       assert ddl =~ "`span_name` LowCardinality(String)"
       assert ddl =~ "idx_trace_id"
       assert ddl =~ "idx_duration"
-      assert ddl =~ "ORDER BY (source_name, span_name, project, toDate(timestamp))"
+      assert ddl =~ "ORDER BY (source_name, span_name, project, timestamp_hour)"
     end
   end
 end

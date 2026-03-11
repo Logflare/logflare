@@ -14,8 +14,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
 
-  require Logger
-
   @doc """
   Dynamically compiles a new Ecto.Repo module for a given source.
   Requires `:source` to be preloaded.

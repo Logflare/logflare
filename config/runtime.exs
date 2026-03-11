@@ -242,7 +242,8 @@ config :logflare,
          grafana_sa: System.get_env("GOOGLE_GRAFANA_SA"),
          api_sa: System.get_env("GOOGLE_API_SA"),
          cloud_build_sa: System.get_env("GOOGLE_CLOUD_BUILD_SA"),
-         cloud_build_trigger_sa: System.get_env("GOOGLE_CLOUD_BUILD_TRIGGER_SA")
+         cloud_build_trigger_sa: System.get_env("GOOGLE_CLOUD_BUILD_TRIGGER_SA"),
+         project_viewer: System.get_env("GOOGLE_PROJECT_VIEWER")
        )
 
 config :ueberauth,

@@ -1,8 +1,6 @@
 defmodule Logflare.Sources.SourceRouter.Sequential do
   @moduledoc false
 
-  require Logger
-
   alias Logflare.LogEvent, as: LE
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules

@@ -10,8 +10,6 @@ defmodule Logflare.SavedSearches do
   alias Logflare.SavedSearch
   alias Logflare.Sources.Source
 
-  require Logger
-
   @type lql_rule :: ChartRule.t() | FilterRule.t()
 
   @doc """

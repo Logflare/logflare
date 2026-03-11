@@ -56,7 +56,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     Broadway.start_link(__MODULE__,
       name: name,
       hibernate_after: 5_000,
-      spawn_opt: [fullsweep_after: 10],
+      spawn_opt: [fullsweep_after: 100],
       producer: [
         module: {BufferProducer, [backend_id: backend.id, consolidated: true]},
         transformer: {__MODULE__, :transform, [backend_id: backend.id]},
@@ -190,7 +190,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     )
 
     events = Enum.map(exhausted, fn %{data: %LogEvent{} = event} -> event end)
-    IngestEventQueue.delete_batch({:consolidated, backend_id}, events)
+
+    try do
+      IngestEventQueue.delete_batch({:consolidated, backend_id}, events)
+    rescue
+      ArgumentError -> :ok
+    end
   end
 
   @spec requeue_retriable_messages(retriable :: [Message.t()], backend_id :: pos_integer()) :: :ok

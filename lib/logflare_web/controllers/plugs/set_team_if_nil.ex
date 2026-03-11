@@ -10,8 +10,6 @@ defmodule LogflareWeb.Plugs.SetTeamIfNil do
   alias Logflare.User
   alias Logflare.Teams
 
-  require Logger
-
   def init(_), do: []
 
   def call(conn, _opts) do

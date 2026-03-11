@@ -193,8 +193,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   def formatted_timestamp(log_event, timezone) do
     tz_part =
-      Timex.Timezone.get(timezone).offset_utc
-      |> DateTimeUtils.humanize_timezone_offset()
+      case Timex.Timezone.get(timezone) do
+        {:error, _} -> DateTimeUtils.humanize_timezone_offset(0)
+        tz_info -> DateTimeUtils.humanize_timezone_offset(tz_info.offset_utc)
+      end
 
     format_timestamp(log_event.body["timestamp"], timezone) <> tz_part
   end

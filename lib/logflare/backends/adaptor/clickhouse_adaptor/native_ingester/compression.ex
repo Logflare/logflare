@@ -46,7 +46,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Compression
           uncompressed_size::little-unsigned-32, rest::binary>>
       ) do
     data_size = compressed_size - @header_size
-    <<compressed_data::binary-size(data_size), _rest::binary>> = rest
+    <<compressed_data::binary-size(^data_size), _rest::binary>> = rest
 
     header_and_data =
       <<@lz4_method::8, compressed_size::little-unsigned-32,

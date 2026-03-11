@@ -3,6 +3,7 @@ mod mapper;
 mod mapping;
 mod path;
 mod query;
+mod string_filters;
 
 use rustler::{Encoder, Env, NifResult, Resource, ResourceArc, Term};
 
