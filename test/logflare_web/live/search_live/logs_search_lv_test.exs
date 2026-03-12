@@ -4,6 +4,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   import Phoenix.LiveViewTest
 
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
   alias LogflareWeb.Source.SearchLV
@@ -490,6 +491,69 @@ defmodule LogflareWeb.Source.SearchLVTest do
       querystring = find_querystring(html)
 
       assert querystring =~ "c:count(*) c:group_by(t::minute)"
+    end
+
+    test "query field has schema fields and saved searches", %{
+      conn: conn,
+      source: source
+    } do
+      query_a = "metadata.level:error"
+      query_b = "tags:active"
+
+      insert(:saved_search, source: source, querystring: query_a)
+      insert(:saved_search, source: source, querystring: query_b)
+
+      bq_schema =
+        TestUtils.build_bq_schema(%{
+          "message" => "string",
+          "metadata" => %{
+            "flags" => [true],
+            "store" => %{"zip" => 123}
+          }
+        })
+
+      schema_flat_map = SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
+
+      source_schema = Logflare.SourceSchemas.get_source_schema_by(source_id: source.id)
+
+      {:ok, _source_schema} =
+        Logflare.SourceSchemas.update_source_schema(source_schema, %{
+          bigquery_schema: bq_schema,
+          schema_flat_map: schema_flat_map
+        })
+
+      _ = Logflare.SavedSearches.Cache.bust_by(source_id: source.id)
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      html =
+        view
+        |> TestUtils.wait_for_render("#lql-editor-hook")
+        |> render()
+
+      {:ok, document} = Floki.parse_document(html)
+
+      [schema_fields_json] =
+        document
+        |> Floki.find("#lql-editor-hook")
+        |> Floki.attribute("data-schema-fields-json")
+
+      [saved_searches_json] =
+        document
+        |> Floki.find("#lql-editor-hook")
+        |> Floki.attribute("data-suggested-searches-json")
+
+      assert {:ok, schema_fields} = Jason.decode(schema_fields_json)
+      assert {:ok, saved_searches} = Jason.decode(saved_searches_json)
+
+      assert %{"name" => "metadata.flags", "type" => "list[boolean]"} in schema_fields
+      assert %{"name" => "metadata.store.zip", "type" => "integer"} in schema_fields
+
+      assert query_a in saved_searches
+      assert query_b in saved_searches
     end
 
     test "empty results message", %{conn: conn, source: source} do
