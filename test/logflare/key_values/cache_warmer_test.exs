@@ -2,6 +2,8 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
   @moduledoc false
   use Logflare.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias Logflare.KeyValues.Cache
   alias Logflare.KeyValues.CacheWarmer
 
@@ -30,6 +32,24 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
       CacheWarmer.execute(nil)
 
       assert :persistent_term.get(@pt_key, false)
+    end
+
+    test "if cache warmer fails, does not mark itself as initialized" do
+      stub(Logflare.KeyValues.CacheWarmer, :warm_full, fn ->
+        raise RuntimeError, "test"
+      end)
+
+      assert :persistent_term.get(@pt_key, false) == false
+
+      log =
+        capture_log([level: :error], fn ->
+          CacheWarmer.execute(nil)
+        end)
+
+      assert log =~ "Error performing full KeyValues.Cache warming"
+      assert log =~ "RuntimeError"
+      assert log =~ "test"
+      assert :persistent_term.get(@pt_key, false) == false
     end
 
     test "returns :ignore", %{user: user} do

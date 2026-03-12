@@ -7,6 +7,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
   alias Logflare.KeyValues.KeyValue
   alias Logflare.Repo
 
+  require Logger
   import Ecto.Query
 
   @pt_key {__MODULE__, :initialized}
@@ -16,14 +17,19 @@ defmodule Logflare.KeyValues.CacheWarmer do
     if initialized?() do
       warm_recent()
     else
-      warm_full()
-      :persistent_term.put(@pt_key, true)
+      try do
+        __MODULE__.warm_full()
+        :persistent_term.put(@pt_key, true)
+      rescue
+        e ->
+          Logger.error("Error performing full KeyValues.Cache warming: #{inspect(e)}")
+      end
     end
 
     :ignore
   end
 
-  defp warm_full do
+  def warm_full do
     Repo.transaction(fn ->
       KeyValue
       |> Repo.stream()
@@ -35,7 +41,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
     end)
   end
 
-  defp warm_recent do
+  def warm_recent do
     entries =
       KeyValue
       |> where([kv], kv.inserted_at >= ago(1, "hour"))
