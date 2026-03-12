@@ -17,7 +17,7 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
 
   @impl GenServer
   def init({idx, url, registry}) do
-    send(self(), :connect)
+    connect_after(0)
     {:ok, %__MODULE__{idx: idx, url: url, registry: registry, backoff: @min_backoff}}
   end
 
@@ -40,7 +40,7 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
           "GrpcChannelMonitor[#{idx}]: connect failed (#{inspect(reason)}), retry in #{state.backoff}ms"
         )
 
-        Process.send_after(self(), :connect, state.backoff)
+        connect_after(state.backoff)
         {:noreply, %{state | backoff: min(state.backoff * 2, @max_backoff)}}
     end
   end
@@ -59,7 +59,15 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
 
   defp handle_disconnection(%{idx: idx, registry: registry} = state) do
     Registry.unregister(registry, idx)
-    send(self(), :connect)
+    connect_after(0)
     %{state | backoff: @min_backoff, connected?: false}
+  end
+
+  defp connect_after(timeout) do
+    send_after =
+      Application.get_env(:logflare, __MODULE__, [])
+      |> Keyword.get(:send_after, &Process.send_after/3)
+
+    send_after.(self(), :connect, timeout)
   end
 end
