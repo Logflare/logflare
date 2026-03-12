@@ -98,7 +98,7 @@ defmodule LogflareWeb.BillingController do
       ) do
     plan = Billing.get_plan_by(stripe_id: stripe_id)
 
-    with false <- billing_accoount_has_subscription?(billing_account),
+    with false <- billing_account_has_subscription?(billing_account),
          {:ok, session} <- Stripe.create_payment_session(user, plan) do
       conn
       |> put_session(:stripe_session, session)
@@ -119,7 +119,7 @@ defmodule LogflareWeb.BillingController do
         %{"stripe_id" => stripe_id, "type" => "metered"}
       ) do
     with plan <- Billing.get_plan_by(stripe_id: stripe_id),
-         false <- billing_accoount_has_subscription?(billing_account),
+         false <- billing_account_has_subscription?(billing_account),
          false <- billing_account.lifetime_plan,
          {:ok, session} <- Stripe.create_metered_customer_session(user, plan) do
       conn
@@ -141,7 +141,7 @@ defmodule LogflareWeb.BillingController do
         %{"stripe_id" => stripe_id}
       ) do
     with plan <- Billing.get_plan_by(stripe_id: stripe_id),
-         false <- billing_accoount_has_subscription?(billing_account),
+         false <- billing_account_has_subscription?(billing_account),
          {:ok, session} <- Stripe.create_customer_session(user, plan) do
       conn
       |> put_session(:stripe_session, session)
@@ -161,88 +161,15 @@ defmodule LogflareWeb.BillingController do
         %{
           assigns: %{
             user: %User{billing_account: billing_account, sources: sources} = _user,
-            plan: %Billing.Plan{type: "standard"}
+            plan: %Billing.Plan{type: billing_plan_type}
           }
         } = conn,
-        %{"plan" => plan_id, "type" => "metered"}
-      ) do
+        %{"plan" => plan_id, "type" => type}
+      )
+      when billing_plan_type in ["standard", "metered"] and type in ["standard", "metered"] do
     with plan <- Billing.get_plan!(plan_id),
-         true <- billing_accoount_has_subscription?(billing_account),
+         true <- billing_account_has_subscription?(billing_account),
          {:ok, _response} <- Stripe.change_to_metered_subscription(billing_account, sources, plan) do
-      success_and_redirect(conn, "Plan successfully changed!")
-    else
-      false ->
-        error_and_redirect(conn, "You need a subscription to change first!")
-
-      err ->
-        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
-
-        error_and_redirect(conn, @default_error_message)
-    end
-  end
-
-  def change_subscription(
-        %{
-          assigns: %{
-            user: %User{billing_account: billing_account, sources: sources} = _user,
-            plan: %Billing.Plan{type: "metered"}
-          }
-        } = conn,
-        %{"plan" => plan_id, "type" => "metered"}
-      ) do
-    with plan <- Billing.get_plan!(plan_id),
-         true <- billing_accoount_has_subscription?(billing_account),
-         {:ok, _response} <-
-           Stripe.change_from_metered_subscription(billing_account, sources, plan) do
-      success_and_redirect(conn, "Plan successfully changed!")
-    else
-      false ->
-        error_and_redirect(conn, "You need a subscription to change first!")
-
-      err ->
-        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
-
-        error_and_redirect(conn, @default_error_message)
-    end
-  end
-
-  def change_subscription(
-        %{
-          assigns: %{
-            user: %User{billing_account: billing_account, sources: sources} = _user,
-            plan: %Billing.Plan{type: "standard"}
-          }
-        } = conn,
-        %{"plan" => plan_id, "type" => "standard"}
-      ) do
-    with plan <- Billing.get_plan!(plan_id),
-         true <- billing_accoount_has_subscription?(billing_account),
-         {:ok, _response} <- Stripe.change_subscription(billing_account, sources, plan) do
-      success_and_redirect(conn, "Plan successfully changed!")
-    else
-      false ->
-        error_and_redirect(conn, "You need a subscription to change first!")
-
-      err ->
-        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
-
-        error_and_redirect(conn, @default_error_message)
-    end
-  end
-
-  def change_subscription(
-        %{
-          assigns: %{
-            user: %User{billing_account: billing_account, sources: sources} = _user,
-            plan: %Billing.Plan{type: "metered"}
-          }
-        } = conn,
-        %{"plan" => plan_id, "type" => "standard"}
-      ) do
-    with plan <- Billing.get_plan!(plan_id),
-         true <- billing_accoount_has_subscription?(billing_account),
-         {:ok, _response} <-
-           Stripe.change_from_metered_subscription(billing_account, sources, plan) do
       success_and_redirect(conn, "Plan successfully changed!")
     else
       false ->
@@ -275,7 +202,7 @@ defmodule LogflareWeb.BillingController do
         %{assigns: %{user: %User{billing_account: billing_account}} = _user} = conn,
         _params
       ) do
-    with true <- billing_accoount_has_subscription?(billing_account),
+    with true <- billing_account_has_subscription?(billing_account),
          {:ok, session} <- Stripe.create_add_credit_card_session(billing_account) do
       conn
       |> put_session(:stripe_session, session)
@@ -406,9 +333,9 @@ defmodule LogflareWeb.BillingController do
     end
   end
 
-  defp billing_accoount_has_subscription?(billing_account) do
-    if subcriptions = billing_account.stripe_subscriptions["data"] do
-      Enum.count(subcriptions) > 0
+  defp billing_account_has_subscription?(billing_account) do
+    if subscriptions = billing_account.stripe_subscriptions["data"] do
+      Enum.count(subscriptions) > 0
     else
       false
     end
