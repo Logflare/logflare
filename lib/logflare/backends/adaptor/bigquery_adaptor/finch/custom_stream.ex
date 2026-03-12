@@ -1,7 +1,7 @@
 defmodule Grpc.Client.Adapters.Finch.CustomStream do
   alias GRPC.Client.Adapters.Finch.StreamState
 
-  def start() do
+  def start do
     with {:ok, pid} <- StreamState.start_link() do
       stream =
         Stream.unfold(pid, fn pid ->

@@ -15,7 +15,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   Returns a list of supported protocols
   """
   @spec protocols() :: [String.t()]
-  def protocols() do
+  def protocols do
     [
       # "grpc",
       "http/protobuf"

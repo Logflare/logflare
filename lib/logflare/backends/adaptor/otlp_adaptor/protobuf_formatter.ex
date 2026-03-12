@@ -50,7 +50,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
     |> Protobuf.encode_to_iodata()
   end
 
-  defp build_resource() do
+  defp build_resource do
     attributes =
       [
         name: "Logflare",
