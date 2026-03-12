@@ -199,10 +199,14 @@ defmodule LogflareWeb.AlertsLive do
   def handle_event(
         "run-query",
         params,
-        %{assigns: %{alert: %_{} = alert}} = socket
+        %{assigns: %{alert: alert, user: user}} = socket
       ) do
-    query = get_in(params, ["query"]) || socket.assigns.query_string || alert.query
-    test_alert = %{alert | query: query}
+    query = get_in(params, ["query"]) || socket.assigns.query_string || (alert && alert.query)
+
+    test_alert =
+      if alert,
+        do: %{alert | query: query},
+        else: %AlertQuery{query: query, language: :bq_sql, user: user, user_id: user.id}
 
     with {:ok, %{rows: [_ | _]} = result} <-
            Alerting.execute_alert_query(test_alert, use_query_cache: false) do
