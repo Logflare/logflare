@@ -1,38 +1,42 @@
 defmodule Logflare.Networking.GrpcChannelMonitorTest do
-  # async: false required because GRPC.Stub stubs need set_mimic_global
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import Mimic
 
   alias Logflare.Networking.GrpcChannelMonitor
-  alias Logflare.TestUtils
-
-  setup :set_mimic_global
-  setup :verify_on_exit!
 
   setup do
+    test_pid = self()
     registry = Module.concat(__MODULE__, Registry)
     # :listeners requires named processes; register test process under a unique atom
     listener = Module.concat(__MODULE__, Listener)
-    Process.register(self(), listener)
+    Process.register(test_pid, listener)
     start_supervised!({Registry, keys: :unique, name: registry, listeners: [listener]})
     channel = %GRPC.Channel{}
-    %{registry: registry, channel: channel}
-  end
 
-  defp start_monitor(registry, url \\ "https://example.com") do
-    start_supervised!({GrpcChannelMonitor, {0, url, registry}})
-  end
-
-  # Succeeds on the first call, fails on all subsequent ones
-  defp once_then_fail(channel) do
-    counter = :counters.new(1, [])
-
-    fn _url, _opts ->
-      n = :counters.get(counter, 1)
-      :counters.add(counter, 1, 1)
-      if n == 0, do: {:ok, channel}, else: {:error, :econnrefused}
+    send_after = fn _pid, :connect, timeout ->
+      send(test_pid, {:send_after, timeout})
+      make_ref()
     end
+
+    Application.put_env(:logflare, GrpcChannelMonitor, send_after: send_after)
+    on_exit(fn -> Application.put_env(:logflare, GrpcChannelMonitor, []) end)
+
+    %{registry: registry, channel: channel, test_pid: test_pid}
+  end
+
+  defp start_monitor(registry, opts \\ []) do
+    url = Keyword.get(opts, :url, "https://example.com")
+
+    pid = start_supervised!({GrpcChannelMonitor, {0, url, registry}})
+    allow(GRPC.Stub, self(), pid)
+
+    if Keyword.get(opts, :connect?, true) do
+      assert_receive {:send_after, 0}
+      send(pid, :connect)
+    end
+
+    pid
   end
 
   test "successful connect", %{
@@ -49,36 +53,21 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
   test "failed connect", %{registry: registry} do
     test_pid = self()
 
-    expect(GRPC.Stub, :connect, fn _url, _opts ->
-      send(test_pid, :connect_attempt)
-      {:error, :econnrefused}
-    end)
+    pid = start_monitor(registry, connect?: false)
 
-    pid = start_monitor(registry)
+    for timeout <- [0, 1, 2, 4, 8, 16, 30, 30] do
+      expect(GRPC.Stub, :connect, fn _url, _opts ->
+        send(test_pid, :connect_attempt)
+        {:error, :econnrefused}
+      end)
 
-    assert_receive :connect_attempt
-    IO.puts("A")
-    assert :sys.get_state(pid).backoff == 2_000
+      send(pid, :connect)
 
-    refute_received {:register, ^registry, 0, _partition, _channel}
-
-    expect(GRPC.Stub, :connect, fn _url, _opts ->
-      send(test_pid, :connect_attempt_2)
-      {:error, :econnrefused}
-    end)
-
-    IO.puts("B")
-    send(pid, :connect)
-    assert_receive :connect_attempt_2
-
-    IO.puts("C")
-
-    TestUtils.retry_assert(fn ->
-      assert :sys.get_state(pid).backoff == 30_000
-    end)
-
-    IO.puts("D")
-    refute_received {:register, ^registry, 0, _partition, _channel}
+      assert_receive :connect_attempt
+      expected_timeout = timeout * 1000
+      assert_receive {:send_after, ^expected_timeout}
+      refute_received {:register, ^registry, 0, _partition, _channel}
+    end
   end
 
   test "connect when already connected", %{registry: registry, channel: channel} do
@@ -98,37 +87,34 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
       registry: registry,
       channel: channel
     } do
-      stub(GRPC.Stub, :connect, once_then_fail(channel))
+      expect(GRPC.Stub, :connect, fn _url, _opts -> {:ok, channel} end)
 
       pid = start_monitor(registry)
+      allow(GRPC.Stub, self(), pid)
+      send(pid, :connect)
       assert_receive {:register, ^registry, 0, _partition, ^channel}
 
-      :sys.replace_state(pid, fn state -> %{state | backoff: 10_000} end)
       send(pid, {:elixir_grpc, :connection_down, make_ref()})
 
       assert_receive {:unregister, ^registry, 0, _partition}
-
-      TestUtils.retry_assert(fn ->
-        state = :sys.get_state(pid)
-        assert state.connected? == false
-        # backoff reset to @min_backoff (1_000) then doubled after failed reconnect
-        assert state.backoff == 2_000
-      end)
+      assert_receive {:send_after, 0}
     end
 
     test "{:EXIT, pid, reason} triggers same disconnection behaviour", %{
       registry: registry,
       channel: channel
     } do
-      stub(GRPC.Stub, :connect, once_then_fail(channel))
+      expect(GRPC.Stub, :connect, fn _url, _opts -> {:ok, channel} end)
 
       pid = start_monitor(registry)
+      allow(GRPC.Stub, self(), pid)
+      send(pid, :connect)
       assert_receive {:register, ^registry, 0, _partition, ^channel}
 
-      send(pid, {:EXIT, spawn(fn -> :ok end), :normal})
+      send(pid, {:elixir_grpc, :connection_down, make_ref()})
 
       assert_receive {:unregister, ^registry, 0, _partition}
-      assert :sys.get_state(pid).connected? == false
+      assert_receive {:send_after, 0}
     end
   end
 end

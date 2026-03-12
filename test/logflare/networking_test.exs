@@ -10,7 +10,10 @@ defmodule Logflare.NetworkingTest do
     test "returns bigquery and clickhouse connection pools" do
       finch_names =
         Networking.pools()
-        |> Enum.filter(fn {mod, _} -> mod == Finch; _ -> false end)
+        |> Enum.filter(fn
+          {mod, _} -> mod == Finch
+          _ -> false
+        end)
         |> Enum.map(fn {Finch, opts} -> Keyword.get(opts, :name) end)
 
       assert finch_names == [
