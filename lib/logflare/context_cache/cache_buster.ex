@@ -112,18 +112,18 @@ defmodule Logflare.ContextCache.CacheBuster do
   defp fetch_or_bust({:refresh, {context, pkey}}) when is_integer(pkey) do
     cache_module = ContextCache.cache_name(context)
 
-    if function_exported?(cache_module, :fetch_by_id, 1) do
-      case cache_module.fetch_by_id(pkey) do
-        nil -> {:bust, {context, pkey}}
-        struct -> {:fetched, {context, pkey, struct}}
-      end
+    with true <- function_exported?(cache_module, :fetch_by_id, 1),
+         struct when is_struct(struct) <- cache_module.fetch_by_id(pkey) do
+      {:fetched, {context, pkey, struct}}
     else
-      {:bust, {context, pkey}}
+      _ -> {:bust, {context, pkey}}
     end
   end
 
-  defp fetch_or_bust({:refresh, {context, keyword}}), do: {:bust, {context, keyword}}
-  defp fetch_or_bust({:bust, {context, key}}), do: {:bust, {context, key}}
+  defp fetch_or_bust({:refresh, {context, keyword}}) when is_list(keyword),
+    do: {:bust, {context, keyword}}
+
+  defp fetch_or_bust({:bust, {_ctx, _key}} = bust), do: bust
 
   # WAL record classification
 
