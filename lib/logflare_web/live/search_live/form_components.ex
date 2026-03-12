@@ -90,7 +90,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
           <input
             id={"#{@id_prefix}-#{field.name}"}
             name={input_name(:fields, field.name)}
-            class="form-control tw-h-8 tw-min-h-8 tw-max-h-8 tw-border-[#282c34] tw-bg-[#282c34] tw-py-[3px] tw-font-mono tw-text-[#c4cad6] placeholder:tw-text-[#8c92a3] focus:tw-border-[#3e4451] focus:tw-bg-[#282c34] focus:tw-text-[#c4cad6]"
+            class="form-control tw-h-8 tw-min-h-8 tw-max-h-8 tw-border-[#282c34] tw-bg-[#282c34] tw-py-[3px] tw-text-sm tw-font-mono tw-text-[#c4cad6] placeholder:tw-text-[#8c92a3] focus:tw-border-[#3e4451] focus:tw-bg-[#282c34] focus:tw-text-[#c4cad6]"
             type="text"
           />
         </div>
