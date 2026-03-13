@@ -81,6 +81,10 @@ main.app {
   max-width: 640px;
 }
 
+.tooltip.tw-text-left .tooltip-inner {
+    text-align: left;
+}
+
 .source-meta-data {
   margin-left: 2em;
 }
