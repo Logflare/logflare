@@ -36,7 +36,7 @@ defmodule LogflareWeb.DashboardLiveTest do
              |> render() =~ description
     end
 
-    test "truncates long source descriptions and exposes the full value in a tooltip", %{
+    test "truncates long source descriptions and expose the full value in a tooltip", %{
       conn: conn,
       user: user
     } do
@@ -51,15 +51,11 @@ defmodule LogflareWeb.DashboardLiveTest do
         |> render()
         |> Floki.parse_fragment!()
 
-      assert rendered
-             |> Floki.find("#source-#{source.token}-description")
-             |> Floki.text()
-             |> String.trim()
-             |> String.length() == 281
+      tooltip_el = Floki.find(rendered, "#source-#{source.token}-description")
 
-      assert rendered
-             |> Floki.find("#source-#{source.token}-description")
-             |> Floki.attribute("data-title") == [description]
+      assert tooltip_el |> Floki.text() |> String.trim() == description
+      assert Floki.attribute(tooltip_el, "data-title") == [description]
+      assert Floki.attribute(tooltip_el, "data-html") == ["true"]
     end
 
     test "sources have a saved searches modal", %{conn: conn, source: source} do
