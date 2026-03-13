@@ -84,8 +84,8 @@ defmodule LogflareWeb.SearchLive.FormComponents do
 
     ~H"""
     <div :if={Enum.any?(@fields)} class="form-text tw-order-1 tw-basis-full sm:tw-basis-auto sm:tw-shrink-0" id="recommended_fields" phx-update="ignore">
-      <div class="tw-flex tw-flex-wrap tw-items-end tw--mr-2 tw--mb-[0.3rem]">
-        <div :for={field <- @fields} class="recommended-field-container tw-basis-full tw-min-w-0 tw-pt-0 tw-pr-2 tw-pb-[0.3rem] sm:tw-basis-48 sm:tw-min-w-20">
+      <div class="sm:tw-flex tw-items-end tw-gap-2">
+        <div :for={field <- @fields} class="recommended-field-container tw-basis-full tw-min-w-0 sm:tw-min-w-20 sm:tw-max-w-48 tw-mb-2 sm:tw-mb-0">
           <div class="tw-flex tw-justify-between tw-items-baseline">
             <label for={"#{@id_prefix}-#{field.name}"} data-toggle="tooltip" title={field.name} class="logflare-tooltip tw-truncate tw-mb-0 tw-text-xs tw-text-gray-300 tw-block">{field.name}</label>
             <span :if={field.required?} class="required-field-indicator tw-text-gray-500 tw-block tw-text-right tw-text-xs">
