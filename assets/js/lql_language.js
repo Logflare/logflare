@@ -423,32 +423,8 @@ export function registerLqlCompletionProvider(
           filteredSavedSearchQuerystrings,
           lineRange,
         );
-
-        const keywordSuggestions = buildKeywordSuggestions(
-          monaco,
-          currentToken,
-          lineRange,
-        );
-        const filteredKeywordSuggestions = hasSingleExactKeywordSuggestion(
-          currentToken,
-          keywordSuggestions,
-        )
-          ? []
-          : keywordSuggestions;
-        const sortedKeywordSuggestions = filteredKeywordSuggestions.map(
-          (suggestion, index) => ({
-            ...suggestion,
-            sortText: `1-${String(index).padStart(3, "0")}`,
-          }),
-        );
-
-        const suggestions = [
-          ...savedSearchSuggestions,
-          ...sortedKeywordSuggestions,
-        ];
-
-        if (suggestions.length > 0) {
-          return { suggestions };
+        if (savedSearchSuggestions.length > 0) {
+          return { suggestions: savedSearchSuggestions };
         }
       }
 
@@ -476,7 +452,9 @@ export function registerLqlCompletionProvider(
               name === `${fullPrefix}${segment}` ||
               name.startsWith(`${fullPrefix}${segment}.`),
           );
-          const isLeaf = fieldName ? fieldName === `${fullPrefix}${segment}` : true;
+          const isLeaf = fieldName
+            ? fieldName === `${fullPrefix}${segment}`
+            : true;
 
           suggestions.push({
             label: segment,
@@ -495,6 +473,15 @@ export function registerLqlCompletionProvider(
 
       // At start of input or after whitespace: suggest LQL keywords
       if (/(?:^|[\s])$/.test(textUntilPosition)) {
+        if (textUntilPosition.trim().length === 0) {
+          return {
+            suggestions: buildSavedSearchSuggestions(
+              savedSearchQuerystrings,
+              lineRange,
+            ),
+          };
+        }
+
         const keywordSuggestions = LQL_KEYWORDS.map((kw, i) => ({
           label: kw.label,
           kind: monaco.languages.CompletionItemKind.Keyword,
@@ -507,13 +494,8 @@ export function registerLqlCompletionProvider(
           range: replaceRange,
           sortText: `1-${String(i).padStart(3, "0")}`,
         }));
-        const showSavedSearches = textUntilPosition.trim().length === 0;
-        const savedSearchSuggestions = showSavedSearches
-          ? buildSavedSearchSuggestions(savedSearchQuerystrings, lineRange)
-          : [];
-        const suggestions = [...savedSearchSuggestions, ...keywordSuggestions];
 
-        return { suggestions };
+        return { suggestions: keywordSuggestions };
       }
 
       if (currentToken) {
