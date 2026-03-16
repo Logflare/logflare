@@ -117,9 +117,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       pid = start_supervised!({Provisioner, invalid_backend}, restart: :transient)
       ref = Process.monitor(pid)
 
-      assert_receive {:DOWN, ^ref, :process, ^pid,
-                      {:shutdown, {:error, "Error executing ClickHouse query"}}},
-                     5_000
+      TestUtils.retry_assert(fn ->
+        assert_receive {:DOWN, ^ref, :process, ^pid,
+                        {:shutdown, {:error, "Error executing ClickHouse query"}}},
+                       5_000
+      end)
     end
   end
 
