@@ -287,7 +287,6 @@ defmodule LogflareWeb.Source.SearchLV do
       </div>
       <FormComponents.search_controls
         querystring={@querystring}
-        lql_schema_fields_json={schema_fields_json(@source)}
         saved_searches={@saved_searches}
         loading={@loading}
         tailing?={@tailing?}
@@ -1185,26 +1184,9 @@ defmodule LogflareWeb.Source.SearchLV do
     |> push_event("set_lql_value", %{value: qs})
   end
 
-  defp schema_fields_json(source), do: source |> lql_schema_fields() |> Jason.encode!()
-
-  defp lql_schema_fields(source) do
-    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
-      %{schema_flat_map: flat_map} when is_map(flat_map) ->
-        Enum.map(flat_map, fn {name, type} ->
-          %{name: name, type: format_schema_type(type)}
-        end)
-
-      _ ->
-        []
-    end
-  end
-
   defp saved_searches(source) do
     source.id
     |> SavedSearches.Cache.list_saved_searches_by_source()
     |> Enum.map(& &1.querystring)
   end
-
-  defp format_schema_type({type, inner}), do: "#{type}[#{inner}]"
-  defp format_schema_type(type), do: to_string(type)
 end

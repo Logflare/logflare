@@ -250,8 +250,12 @@ function buildTimestampSuggestions(monaco, token, range) {
   }));
 }
 
+function getMetadataFieldNames(fields) {
+  return Object.keys(fields).filter((name) => name.startsWith("metadata."));
+}
+
 function getMetadataSuggestionSegments(fields, typedPath) {
-  const metadataFields = fields.filter((f) => f.name.startsWith("metadata."));
+  const metadataFields = getMetadataFieldNames(fields);
   const pathPrefix = typedPath.includes(".")
     ? typedPath.substring(0, typedPath.lastIndexOf(".") + 1)
     : "";
@@ -260,9 +264,9 @@ function getMetadataSuggestionSegments(fields, typedPath) {
   const suggestions = [];
 
   for (const field of metadataFields) {
-    if (!field.name.startsWith(fullPrefix)) continue;
+    if (!field.startsWith(fullPrefix)) continue;
 
-    const remainder = field.name.slice(fullPrefix.length);
+    const remainder = field.slice(fullPrefix.length);
     if (!remainder) continue;
 
     const dotIdx = remainder.indexOf(".");
@@ -427,9 +431,7 @@ export function registerLqlCompletionProvider(
         const typedPath = metaMatch[1]; // e.g. "request." or "req"
         const fields = getFields();
         const suggestions = [];
-        const metadataFields = fields.filter((f) =>
-          f.name.startsWith("metadata."),
-        );
+        const metadataFieldNames = getMetadataFieldNames(fields);
         const pathPrefix = typedPath.includes(".")
           ? typedPath.substring(0, typedPath.lastIndexOf(".") + 1)
           : "";
@@ -439,21 +441,19 @@ export function registerLqlCompletionProvider(
           fields,
           typedPath,
         )) {
-          const field = metadataFields.find(
-            (item) =>
-              item.name === `${fullPrefix}${segment}` ||
-              item.name.startsWith(`${fullPrefix}${segment}.`),
+          const fieldName = metadataFieldNames.find(
+            (name) =>
+              name === `${fullPrefix}${segment}` ||
+              name.startsWith(`${fullPrefix}${segment}.`),
           );
-          const isLeaf = field
-            ? field.name === `${fullPrefix}${segment}`
-            : true;
+          const isLeaf = fieldName ? fieldName === `${fullPrefix}${segment}` : true;
 
           suggestions.push({
             label: segment,
             kind: isLeaf
               ? monaco.languages.CompletionItemKind.Field
               : monaco.languages.CompletionItemKind.Module,
-            detail: isLeaf ? field.type : "namespace",
+            detail: isLeaf ? fields[fieldName] : "namespace",
             insertText: segment,
             range: replaceRange,
             sortText: segment.padStart(50),

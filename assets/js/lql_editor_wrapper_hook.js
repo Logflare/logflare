@@ -4,7 +4,7 @@ import {
 } from "./lql_language";
 
 const parseSchemaFields = (schemaFieldsJson) => {
-  if (!schemaFieldsJson) return [];
+  if (!schemaFieldsJson) return {};
 
   return JSON.parse(schemaFieldsJson);
 };
