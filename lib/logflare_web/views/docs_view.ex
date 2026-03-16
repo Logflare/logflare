@@ -1,7 +1,9 @@
 defmodule LogflareWeb.DocsView do
   use LogflareWeb, :live_view_with_templates
 
-  Logflare.MixTasks.Docs.run(nil)
+  alias Logflare.MixTasks.Docs
+
+  Docs.run(nil)
 
   @doc """
   This is used to render docs markdown pages within the app.

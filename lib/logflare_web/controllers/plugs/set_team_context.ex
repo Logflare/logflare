@@ -2,11 +2,15 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
   @moduledoc """
   Assigns user and team if browser session is present in conn.
   """
+  use LogflareWeb, :routes
+
   import Plug.Conn
   import Phoenix.Controller
 
   alias Logflare.Teams.TeamContext
-  use LogflareWeb, :routes
+  alias Logflare.Teams
+  alias LogflareWeb.Plugs
+  alias Plug.Conn.Query
 
   def init(_), do: nil
 
@@ -27,7 +31,7 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
   def set_team_context(conn, team_id, email) do
     case TeamContext.resolve(team_id, email) do
       {:ok, %{user: user, team: team, team_user: team_user}} ->
-        teams = Logflare.Teams.list_teams_by_user_access(team_user || user)
+        teams = Teams.list_teams_by_user_access(team_user || user)
 
         conn
         |> assign(:user, user)
@@ -63,7 +67,7 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
       |> put_view(LogflareWeb.ErrorView)
       |> assign(:user, user)
       |> assign(:team, team)
-      |> LogflareWeb.Plugs.SetPlan.call([])
+      |> Plugs.SetPlan.call([])
       |> halt()
 
     conn
@@ -80,7 +84,7 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
       if params == %{} do
         conn.request_path
       else
-        conn.request_path <> "?" <> Plug.Conn.Query.encode(params)
+        conn.request_path <> "?" <> Query.encode(params)
       end
 
     conn

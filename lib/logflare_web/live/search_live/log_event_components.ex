@@ -10,6 +10,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   alias Logflare.DateTimeUtils
   alias Logflare.Lql
   alias Logflare.Lql.Rules
+  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Sources.Source
   alias Phoenix.LiveView.JS
 
@@ -104,7 +105,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       |> Enum.reject(&MapSet.member?(existing_filter_paths, &1))
       |> Enum.filter(&Map.has_key?(event.body, strip_meta(&1)))
       |> Enum.map(fn field_name ->
-        Lql.Rules.FilterRule.build(
+        FilterRule.build(
           path: field_name,
           operator: :=,
           value: Map.get(event.body, strip_meta(field_name))
@@ -132,7 +133,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       |> Enum.join("\n")
 
     """
-    #{LogflareWeb.SearchLive.LogEventComponents.formatted_timestamp(log, search_op.search_timezone)}    #{log.body["event_message"]}
+    #{formatted_timestamp(log, search_op.search_timezone)}    #{log.body["event_message"]}
 
     #{select_fields}
     """
@@ -295,7 +296,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   def extended_search_lql(datetime) do
     new_rule =
-      Lql.Rules.FilterRule.build(
+      FilterRule.build(
         modifiers: %{},
         operator: :>=,
         path: "timestamp",

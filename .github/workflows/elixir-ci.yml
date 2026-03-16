@@ -48,7 +48,7 @@ jobs:
       matrix:
         commands:
           - name: Code Quality - Linting
-            run: mix lint
+            run: mix lint.all
           - name: Code Quality - Formatting
             run: mix test.format
           - name: Compilation Warnings

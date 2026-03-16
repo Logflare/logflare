@@ -1,6 +1,7 @@
 defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase, async: false
 
+  alias GoogleApi.BigQuery.V2.Api.Jobs, as: BigQueryJobs
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
@@ -28,7 +29,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       endpoint = insert(:endpoint, user: user, enable_auth: false)
       pid = self()
 
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+      expect(BigQueryJobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:error, :failed_request}
       end)
 
@@ -78,7 +79,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       refute response.error
       refute conn.halted
 
-      reject(&GoogleApi.BigQuery.V2.Api.Jobs.bigquery_jobs_query/3)
+      reject(&BigQueryJobs.bigquery_jobs_query/3)
 
       conn =
         init_conn

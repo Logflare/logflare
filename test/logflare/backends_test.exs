@@ -8,6 +8,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSup
@@ -1452,7 +1453,7 @@ defmodule Logflare.BackendsTest do
     test "handles non-existent backend gracefully" do
       non_existent_id = 99_999
 
-      reject(&Logflare.Cluster.Utils.rpc_multicast/3)
+      reject(&ClusterUtils.rpc_multicast/3)
 
       assert :ok = Backends.sync_backend_across_cluster(non_existent_id)
     end
@@ -1470,7 +1471,7 @@ defmodule Logflare.BackendsTest do
 
       # Should not make any RPC calls
 
-      reject(&Logflare.Cluster.Utils.rpc_multicast/3)
+      reject(&ClusterUtils.rpc_multicast/3)
 
       assert :ok = Backends.sync_backend_across_cluster(backend.id)
     end

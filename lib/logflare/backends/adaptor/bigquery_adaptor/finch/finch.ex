@@ -3,12 +3,15 @@ defmodule GRPC.Client.Adapters.Finch do
   A client adapter using Finch.
   """
 
-  alias Grpc.Client.Adapters.Finch.BidirectionalStream
-  alias GRPC.Client.Adapters.Finch.StreamState
-  alias Grpc.Client.Adapters.Finch.StreamRequestProcess
-  alias Grpc.Client.Adapters.Finch.CustomStream
-
   @behaviour GRPC.Client.Adapter
+
+  alias GRPC.Client.Adapters.Finch.StreamState
+  alias GRPC.Client.Stream, as: ClientStream
+  alias GRPC.Transport.HTTP2, as: HTTP2Transport
+
+  alias Grpc.Client.Adapters.Finch.BidirectionalStream
+  alias Grpc.Client.Adapters.Finch.CustomStream
+  alias Grpc.Client.Adapters.Finch.StreamRequestProcess
 
   @impl true
   def connect(channel, opts \\ []) do
@@ -28,13 +31,13 @@ defmodule GRPC.Client.Adapters.Finch do
     do: raise(ArgumentError, "Can't perform a request without a connection process")
 
   def send_request(stream, message, opts) do
-    headers = GRPC.Transport.HTTP2.client_headers_without_reserved(stream, opts)
+    headers = HTTP2Transport.client_headers_without_reserved(stream, opts)
     {:ok, data, _} = GRPC.Message.to_data(message, opts)
     path = get_full_path(stream)
 
     {:ok, stream_request_pid} = StreamRequestProcess.start_link(path, headers, data)
 
-    GRPC.Client.Stream.put_payload(stream, :stream_request_pid, stream_request_pid)
+    ClientStream.put_payload(stream, :stream_request_pid, stream_request_pid)
   end
 
   @impl true
@@ -55,12 +58,12 @@ defmodule GRPC.Client.Adapters.Finch do
     {:ok, stream_state_pid} = StreamState.start_link()
 
     stream
-    |> GRPC.Client.Stream.put_payload(:stream_state_pid, stream_state_pid)
-    |> GRPC.Client.Stream.put_payload(:stream_state_opts, opts)
+    |> ClientStream.put_payload(:stream_state_pid, stream_state_pid)
+    |> ClientStream.put_payload(:stream_state_opts, opts)
   end
 
   def send_headers(stream, opts) do
-    headers = GRPC.Transport.HTTP2.client_headers_without_reserved(stream, opts)
+    headers = HTTP2Transport.client_headers_without_reserved(stream, opts)
     {:ok, {body_stream, stream_state_pid}} = CustomStream.start()
 
     path = get_full_path(stream)
@@ -69,8 +72,8 @@ defmodule GRPC.Client.Adapters.Finch do
       StreamRequestProcess.start_link(path, headers, {:stream, body_stream}, opts)
 
     stream
-    |> GRPC.Client.Stream.put_payload(:stream_request_pid, stream_request_pid)
-    |> GRPC.Client.Stream.put_payload(:stream_state_pid, stream_state_pid)
+    |> ClientStream.put_payload(:stream_request_pid, stream_request_pid)
+    |> ClientStream.put_payload(:stream_state_pid, stream_state_pid)
   end
 
   @impl true
@@ -115,7 +118,7 @@ defmodule GRPC.Client.Adapters.Finch do
 
     if payload[:stream_state_pid] do
       CustomStream.close(payload[:stream_state_pid])
-      GRPC.Client.Stream.put_payload(stream, :stream_state_pid, nil)
+      ClientStream.put_payload(stream, :stream_state_pid, nil)
     end
 
     if payload[:stream_request_pid] do
@@ -292,7 +295,7 @@ defmodule GRPC.Client.Adapters.Finch do
   end
 
   defp parse_headers(headers) do
-    headers = GRPC.Transport.HTTP2.decode_headers(headers)
+    headers = HTTP2Transport.decode_headers(headers)
 
     if headers["grpc-status"] do
       grpc_status = String.to_integer(headers["grpc-status"])
