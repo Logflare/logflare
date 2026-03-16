@@ -288,6 +288,219 @@ function getMetadataSuggestionSegments(fields, typedPath) {
   return suggestions;
 }
 
+export function getLqlCompletionItems({
+  fields = {},
+  kinds,
+  lineMaxColumn,
+  position,
+  savedSearches = [],
+  snippetInsertTextRule,
+  textUntilPosition,
+  word,
+  fullLine = textUntilPosition,
+}) {
+  const replaceRange = {
+    startLineNumber: position.lineNumber,
+    endLineNumber: position.lineNumber,
+    startColumn: word.startColumn,
+    endColumn: word.endColumn,
+  };
+  const lineRange = {
+    startLineNumber: position.lineNumber,
+    endLineNumber: position.lineNumber,
+    startColumn: 1,
+    endColumn: lineMaxColumn,
+  };
+  const operatorMatch = textUntilPosition.match(
+    /(?:^|\s)-?(?:(?:m|metadata)\.[\w.]+|(?:t|timestamp)|[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*):([@><~=]*)$/,
+  );
+  const groupByMatch = textUntilPosition.match(
+    /(?:^|\s)(?:c|chart):group_by\(([^)]*)$/,
+  );
+  const timestampValueMatch = textUntilPosition.match(
+    /(?:^|\s)(?:t|timestamp):([a-zA-Z@]*)$/,
+  );
+  const tokenMatch = textUntilPosition.match(/(?:^|\s)(\S+)$/);
+  const currentToken = tokenMatch ? tokenMatch[1] : null;
+  const currentTokenRange = currentToken
+    ? {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: position.column - currentToken.length,
+        endColumn: position.column,
+      }
+    : replaceRange;
+  const savedSearchQuerystrings = [...new Set(savedSearches)];
+  const completionApi = {
+    languages: {
+      CompletionItemInsertTextRule: {
+        InsertAsSnippet: snippetInsertTextRule,
+      },
+      CompletionItemKind: kinds,
+    },
+  };
+  const buildSavedSearchSuggestions = (querystrings, range) =>
+    querystrings.map((querystring, index) => ({
+      label: querystring,
+      kind: kinds.Snippet,
+      detail: "saved search",
+      insertText: querystring,
+      range,
+      sortText: `0-${String(index).padStart(3, "0")}`,
+    }));
+
+  if (timestampValueMatch) {
+    const timestampToken = timestampValueMatch[1];
+    const suggestions = buildTimestampSuggestions(
+      completionApi,
+      timestampToken,
+      {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: position.column - timestampToken.length,
+        endColumn: position.column,
+      },
+    );
+
+    if (suggestions.length > 0) {
+      return suggestions;
+    }
+  }
+
+  if (operatorMatch) {
+    const operatorPrefix = `:${operatorMatch[1]}`;
+    const operatorRange = {
+      startLineNumber: position.lineNumber,
+      endLineNumber: position.lineNumber,
+      startColumn: position.column - operatorPrefix.length,
+      endColumn: position.column,
+    };
+    const suggestions = buildOperatorSuggestions(
+      completionApi,
+      operatorPrefix,
+      operatorRange,
+    );
+
+    if (suggestions.length > 0) {
+      return suggestions;
+    }
+  }
+
+  if (groupByMatch) {
+    const groupByToken = groupByMatch[1];
+    const groupByRange = {
+      startLineNumber: position.lineNumber,
+      endLineNumber: position.lineNumber,
+      startColumn: position.column - groupByToken.length,
+      endColumn: position.column,
+    };
+    const suggestions = buildGroupBySuggestions(
+      completionApi,
+      groupByToken,
+      groupByRange,
+    );
+
+    if (suggestions.length > 0) {
+      return suggestions;
+    }
+  }
+
+  if (
+    currentToken &&
+    textUntilPosition.length > 0 &&
+    /^\S+$/.test(textUntilPosition) &&
+    fullLine === textUntilPosition &&
+    !["t:", "timestamp:"].includes(currentToken)
+  ) {
+    const matchedSavedSearches = savedSearchQuerystrings.filter((querystring) =>
+      querystring
+        .toLocaleLowerCase()
+        .startsWith(currentToken.toLocaleLowerCase()),
+    );
+    const filteredSavedSearchQuerystrings =
+      matchedSavedSearches.length === 1 &&
+      matchedSavedSearches[0].toLocaleLowerCase() ===
+        currentToken.toLocaleLowerCase()
+        ? []
+        : matchedSavedSearches;
+    const savedSearchSuggestions = buildSavedSearchSuggestions(
+      filteredSavedSearchQuerystrings,
+      lineRange,
+    );
+
+    if (savedSearchSuggestions.length > 0) {
+      return savedSearchSuggestions;
+    }
+  }
+
+  const metaMatch = textUntilPosition.match(
+    /(?:^|[\s:])(?:m|metadata)\.([\w.]*?)$/,
+  );
+
+  if (metaMatch) {
+    const typedPath = metaMatch[1];
+    const suggestions = [];
+    const metadataFieldNames = getMetadataFieldNames(fields);
+    const pathPrefix = typedPath.includes(".")
+      ? typedPath.substring(0, typedPath.lastIndexOf(".") + 1)
+      : "";
+    const fullPrefix = "metadata." + pathPrefix;
+
+    for (const segment of getMetadataSuggestionSegments(fields, typedPath)) {
+      const fieldName = metadataFieldNames.find(
+        (name) =>
+          name === `${fullPrefix}${segment}` ||
+          name.startsWith(`${fullPrefix}${segment}.`),
+      );
+      const isLeaf = fieldName ? fieldName === `${fullPrefix}${segment}` : true;
+
+      suggestions.push({
+        label: segment,
+        kind: isLeaf ? kinds.Field : kinds.Module,
+        detail: isLeaf ? fields[fieldName] : "namespace",
+        insertText: segment,
+        range: replaceRange,
+        sortText: segment.padStart(50),
+      });
+    }
+
+    return suggestions;
+  }
+
+  if (/(?:^|[\s])$/.test(textUntilPosition)) {
+    if (textUntilPosition.trim().length === 0) {
+      return buildSavedSearchSuggestions(savedSearchQuerystrings, lineRange);
+    }
+
+    return LQL_KEYWORDS.map((kw, i) => ({
+      label: kw.label,
+      kind: kinds.Keyword,
+      detail: kw.detail,
+      insertText: kw.insertText,
+      insertTextRules: kw.insertText.includes("$0")
+        ? snippetInsertTextRule
+        : undefined,
+      command: getKeywordSuggestionCommand(kw),
+      range: replaceRange,
+      sortText: `1-${String(i).padStart(3, "0")}`,
+    }));
+  }
+
+  if (currentToken) {
+    const suggestions = buildKeywordSuggestions(
+      completionApi,
+      currentToken,
+      currentTokenRange,
+    );
+
+    if (!hasSingleExactKeywordSuggestion(currentToken, suggestions)) {
+      return suggestions;
+    }
+  }
+
+  return [];
+}
+
 export function registerLqlCompletionProvider(
   monaco,
   getFields,
@@ -304,213 +517,20 @@ export function registerLqlCompletionProvider(
         endColumn: position.column,
       });
 
-      const word = model.getWordUntilPosition(position);
-      const replaceRange = {
-        startLineNumber: position.lineNumber,
-        endLineNumber: position.lineNumber,
-        startColumn: word.startColumn,
-        endColumn: word.endColumn,
+      return {
+        suggestions: getLqlCompletionItems({
+          fields: getFields(),
+          fullLine: model.getLineContent(position.lineNumber),
+          kinds: monaco.languages.CompletionItemKind,
+          lineMaxColumn: model.getLineMaxColumn(position.lineNumber),
+          position,
+          savedSearches: getSuggestedSearches(),
+          snippetInsertTextRule:
+            monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          textUntilPosition,
+          word: model.getWordUntilPosition(position),
+        }),
       };
-      const lineRange = {
-        startLineNumber: position.lineNumber,
-        endLineNumber: position.lineNumber,
-        startColumn: 1,
-        endColumn: model.getLineMaxColumn(position.lineNumber),
-      };
-      const operatorMatch = textUntilPosition.match(
-        /(?:^|\s)-?(?:(?:m|metadata)\.[\w.]+|(?:t|timestamp)|[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*):([@><~=]*)$/,
-      );
-      const groupByMatch = textUntilPosition.match(
-        /(?:^|\s)(?:c|chart):group_by\(([^)]*)$/,
-      );
-      const timestampValueMatch = textUntilPosition.match(
-        /(?:^|\s)(?:t|timestamp):([a-zA-Z@]*)$/,
-      );
-      const fullLine = model.getLineContent(position.lineNumber);
-      const tokenMatch = textUntilPosition.match(/(?:^|\s)(\S+)$/);
-      const currentToken = tokenMatch ? tokenMatch[1] : null;
-      const currentTokenRange = currentToken
-        ? {
-            startLineNumber: position.lineNumber,
-            endLineNumber: position.lineNumber,
-            startColumn: position.column - currentToken.length,
-            endColumn: position.column,
-          }
-        : replaceRange;
-      const savedSearchQuerystrings = [...new Set(getSuggestedSearches())];
-      const buildSavedSearchSuggestions = (querystrings, range) =>
-        querystrings.map((querystring, index) => ({
-          label: querystring,
-          kind: monaco.languages.CompletionItemKind.Snippet,
-          detail: "saved search",
-          insertText: querystring,
-          range,
-          sortText: `0-${String(index).padStart(3, "0")}`,
-        }));
-
-      if (timestampValueMatch) {
-        const timestampToken = timestampValueMatch[1];
-        const suggestions = buildTimestampSuggestions(monaco, timestampToken, {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: position.column - timestampToken.length,
-          endColumn: position.column,
-        });
-
-        if (suggestions.length > 0) {
-          return { suggestions };
-        }
-      }
-
-      if (operatorMatch) {
-        const operatorPrefix = `:${operatorMatch[1]}`;
-        const operatorRange = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: position.column - operatorPrefix.length,
-          endColumn: position.column,
-        };
-        const suggestions = buildOperatorSuggestions(
-          monaco,
-          operatorPrefix,
-          operatorRange,
-        );
-
-        if (suggestions.length > 0) {
-          return { suggestions };
-        }
-      }
-
-      if (groupByMatch) {
-        const groupByToken = groupByMatch[1];
-        const groupByRange = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: position.column - groupByToken.length,
-          endColumn: position.column,
-        };
-        const suggestions = buildGroupBySuggestions(
-          monaco,
-          groupByToken,
-          groupByRange,
-        );
-
-        if (suggestions.length > 0) {
-          return { suggestions };
-        }
-      }
-
-      if (
-        currentToken &&
-        textUntilPosition.length > 0 &&
-        /^\S+$/.test(textUntilPosition) &&
-        fullLine === textUntilPosition &&
-        !["t:", "timestamp:"].includes(currentToken)
-      ) {
-        const matchedSavedSearches = savedSearchQuerystrings.filter(
-          (querystring) =>
-            querystring
-              .toLocaleLowerCase()
-              .startsWith(currentToken.toLocaleLowerCase()),
-        );
-        const filteredSavedSearchQuerystrings =
-          matchedSavedSearches.length === 1 &&
-          matchedSavedSearches[0].toLocaleLowerCase() ===
-            currentToken.toLocaleLowerCase()
-            ? []
-            : matchedSavedSearches;
-        const savedSearchSuggestions = buildSavedSearchSuggestions(
-          filteredSavedSearchQuerystrings,
-          lineRange,
-        );
-        if (savedSearchSuggestions.length > 0) {
-          return { suggestions: savedSearchSuggestions };
-        }
-      }
-
-      // Check if we're in a metadata path context: m. or metadata. prefix
-      const metaMatch = textUntilPosition.match(
-        /(?:^|[\s:])(?:m|metadata)\.([\w.]*?)$/,
-      );
-
-      if (metaMatch) {
-        const typedPath = metaMatch[1]; // e.g. "request." or "req"
-        const fields = getFields();
-        const suggestions = [];
-        const metadataFieldNames = getMetadataFieldNames(fields);
-        const pathPrefix = typedPath.includes(".")
-          ? typedPath.substring(0, typedPath.lastIndexOf(".") + 1)
-          : "";
-        const fullPrefix = "metadata." + pathPrefix;
-
-        for (const segment of getMetadataSuggestionSegments(
-          fields,
-          typedPath,
-        )) {
-          const fieldName = metadataFieldNames.find(
-            (name) =>
-              name === `${fullPrefix}${segment}` ||
-              name.startsWith(`${fullPrefix}${segment}.`),
-          );
-          const isLeaf = fieldName
-            ? fieldName === `${fullPrefix}${segment}`
-            : true;
-
-          suggestions.push({
-            label: segment,
-            kind: isLeaf
-              ? monaco.languages.CompletionItemKind.Field
-              : monaco.languages.CompletionItemKind.Module,
-            detail: isLeaf ? fields[fieldName] : "namespace",
-            insertText: segment,
-            range: replaceRange,
-            sortText: segment.padStart(50),
-          });
-        }
-
-        return { suggestions };
-      }
-
-      // At start of input or after whitespace: suggest LQL keywords
-      if (/(?:^|[\s])$/.test(textUntilPosition)) {
-        if (textUntilPosition.trim().length === 0) {
-          return {
-            suggestions: buildSavedSearchSuggestions(
-              savedSearchQuerystrings,
-              lineRange,
-            ),
-          };
-        }
-
-        const keywordSuggestions = LQL_KEYWORDS.map((kw, i) => ({
-          label: kw.label,
-          kind: monaco.languages.CompletionItemKind.Keyword,
-          detail: kw.detail,
-          insertText: kw.insertText,
-          insertTextRules: kw.insertText.includes("$0")
-            ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-            : undefined,
-          command: getKeywordSuggestionCommand(kw),
-          range: replaceRange,
-          sortText: `1-${String(i).padStart(3, "0")}`,
-        }));
-
-        return { suggestions: keywordSuggestions };
-      }
-
-      if (currentToken) {
-        const suggestions = buildKeywordSuggestions(
-          monaco,
-          currentToken,
-          currentTokenRange,
-        );
-
-        if (!hasSingleExactKeywordSuggestion(currentToken, suggestions)) {
-          return { suggestions };
-        }
-      }
-
-      return { suggestions: [] };
     },
   });
 }
