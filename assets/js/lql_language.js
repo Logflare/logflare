@@ -127,11 +127,9 @@ export function registerLqlLanguage(monaco) {
 }
 
 const LQL_KEYWORDS = [
-  { label: "t:", detail: "timestamp filter", insertText: "t:" },
-  { label: "timestamp:", detail: "timestamp filter", insertText: "timestamp:" },
-  { label: "m.", detail: "metadata field", insertText: "m." },
-  { label: "metadata.", detail: "metadata field", insertText: "metadata." },
-  { label: "s:", detail: "select all fields", insertText: "s:" },
+  { label: "t:", detail: "alias timestamp:", insertText: "t:" },
+  { label: "m.", detail: "alias metadata.", insertText: "m." },
+  { label: "s:", detail: "alias select:", insertText: "s:" },
   { label: "c:count()", detail: "chart count", insertText: "c:count($0)" },
   {
     label: "c:countd()",
@@ -149,8 +147,6 @@ const LQL_KEYWORDS = [
   { label: "c:p50()", detail: "chart p50", insertText: "c:p50($0)" },
   { label: "c:p95()", detail: "chart p95", insertText: "c:p95($0)" },
   { label: "c:p99()", detail: "chart p99", insertText: "c:p99($0)" },
-  { label: "s:", detail: "select fields", insertText: "s:" },
-  { label: "select:", detail: "select fields", insertText: "select:" },
   { label: "f:", detail: "from source", insertText: "f:" },
   { label: "from:", detail: "from source", insertText: "from:" },
 ];
@@ -184,7 +180,7 @@ const LQL_FILTER_OPERATORS = [
 
 function getKeywordSuggestionCommand(kw) {
   return kw.insertText === "m." ||
-    kw.insertText === "metadata." ||
+    kw.insertText === "t:" ||
     kw.insertText === "c:group_by($0)"
     ? {
         id: "editor.action.triggerSuggest",
