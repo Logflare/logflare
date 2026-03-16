@@ -364,7 +364,7 @@ defmodule Logflare.LogEvent do
   defp determine_timestamp(_), do: {default_timestamp(), true}
 
   @spec default_timestamp() :: integer()
-  defp default_timestamp() do
+  defp default_timestamp do
     System.system_time(:microsecond)
   end
 end

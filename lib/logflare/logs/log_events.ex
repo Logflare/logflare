@@ -56,7 +56,7 @@ defmodule Logflare.Logs.LogEvents do
       |> partition_query([min, max], partition_type)
       |> where([t], t.id == ^id)
       |> Lql.apply_filter_rules(lql_rules)
-      |> select([t], fragment("*"))
+      |> select([t], fragment("?.*", t))
 
     BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, query,
       query_type: :search
