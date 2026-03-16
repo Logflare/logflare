@@ -42,7 +42,12 @@ const LqlEditorWrapper = {
 
       const monaco = window.monaco;
 
-      registerLqlLanguage(monaco);
+      try {
+        registerLqlLanguage(monaco);
+      } catch (_) {
+        console.log("Failed to register LQL language", _);
+      }
+
       const model = standaloneEditor.getModel();
       monaco.editor.setModelLanguage(model, "lql");
 
