@@ -139,24 +139,9 @@ const LQL_KEYWORDS = [
     insertText: "c:countd($0)",
   },
   {
-    label: "c:group_by(t::minute)",
-    detail: "chart group by minute",
-    insertText: "c:group_by(t::minute)",
-  },
-  {
-    label: "c:group_by(t::second)",
-    detail: "chart group by second",
-    insertText: "c:group_by(t::second)",
-  },
-  {
-    label: "c:group_by(t::hour)",
-    detail: "chart group by hour",
-    insertText: "c:group_by(t::hour)",
-  },
-  {
-    label: "c:group_by(t::day)",
-    detail: "chart group by day",
-    insertText: "c:group_by(t::day)",
+    label: "c:group_by",
+    detail: "chart group by",
+    insertText: "c:group_by($0)",
   },
   { label: "c:avg()", detail: "chart average", insertText: "c:avg($0)" },
   { label: "c:sum()", detail: "chart sum", insertText: "c:sum($0)" },
@@ -178,6 +163,13 @@ const LQL_TIMESTAMP_KEYWORDS = [
   { label: "this@", detail: "current time period", insertText: "this@" },
 ];
 
+const LQL_GROUP_BY_KEYWORDS = [
+  { label: "t::second", detail: "group by second", insertText: "t::second" },
+  { label: "t::minute", detail: "group by minute", insertText: "t::minute" },
+  { label: "t::hour", detail: "group by hour", insertText: "t::hour" },
+  { label: "t::day", detail: "group by day", insertText: "t::day" },
+];
+
 const LQL_FILTER_OPERATORS = [
   { label: ":", detail: "exact match", insertText: ":" },
   { label: ":..", detail: "range operator", insertText: ":.." },
@@ -189,6 +181,17 @@ const LQL_FILTER_OPERATORS = [
   { label: ":@>", detail: "array includes value", insertText: ":@>" },
   { label: ":@>~", detail: "array includes regex match", insertText: ":@>~" },
 ];
+
+function getKeywordSuggestionCommand(kw) {
+  return kw.insertText === "m." ||
+    kw.insertText === "metadata." ||
+    kw.insertText === "c:group_by($0)"
+    ? {
+        id: "editor.action.triggerSuggest",
+        title: "Trigger suggest",
+      }
+    : undefined;
+}
 
 function buildKeywordSuggestions(monaco, token, range) {
   return LQL_KEYWORDS.filter(
@@ -203,13 +206,7 @@ function buildKeywordSuggestions(monaco, token, range) {
     insertTextRules: kw.insertText.includes("$0")
       ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
       : undefined,
-    command:
-      kw.insertText === "m." || kw.insertText === "metadata."
-        ? {
-            id: "editor.action.triggerSuggest",
-            title: "Trigger suggest",
-          }
-        : undefined,
+    command: getKeywordSuggestionCommand(kw),
     range,
     sortText: String(i).padStart(3, "0"),
   }));
@@ -237,6 +234,21 @@ function buildOperatorSuggestions(monaco, operatorPrefix, range) {
 
 function buildTimestampSuggestions(monaco, token, range) {
   return LQL_TIMESTAMP_KEYWORDS.filter(
+    (kw) =>
+      kw.label.toLocaleLowerCase().startsWith(token.toLocaleLowerCase()) ||
+      kw.insertText.toLocaleLowerCase().startsWith(token.toLocaleLowerCase()),
+  ).map((kw, i) => ({
+    label: kw.label,
+    kind: monaco.languages.CompletionItemKind.Keyword,
+    detail: kw.detail,
+    insertText: kw.insertText,
+    range,
+    sortText: String(i).padStart(3, "0"),
+  }));
+}
+
+function buildGroupBySuggestions(monaco, token, range) {
+  return LQL_GROUP_BY_KEYWORDS.filter(
     (kw) =>
       kw.label.toLocaleLowerCase().startsWith(token.toLocaleLowerCase()) ||
       kw.insertText.toLocaleLowerCase().startsWith(token.toLocaleLowerCase()),
@@ -286,7 +298,7 @@ export function registerLqlCompletionProvider(
   getSuggestedSearches,
 ) {
   return monaco.languages.registerCompletionItemProvider("lql", {
-    triggerCharacters: [".", ":", "@", ">", "<", "~"],
+    triggerCharacters: [".", ":", "@", ">", "<", "~", "("],
 
     provideCompletionItems(model, position) {
       const textUntilPosition = model.getValueInRange({
@@ -311,6 +323,9 @@ export function registerLqlCompletionProvider(
       };
       const operatorMatch = textUntilPosition.match(
         /(?:^|\s)-?(?:(?:m|metadata)\.[\w.]+|(?:t|timestamp)|[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*):([@><~=]*)$/,
+      );
+      const groupByMatch = textUntilPosition.match(
+        /(?:^|\s)(?:c|chart):group_by\(([^)]*)$/,
       );
       const timestampValueMatch = textUntilPosition.match(
         /(?:^|\s)(?:t|timestamp):([a-zA-Z@]*)$/,
@@ -363,6 +378,25 @@ export function registerLqlCompletionProvider(
           monaco,
           operatorPrefix,
           operatorRange,
+        );
+
+        if (suggestions.length > 0) {
+          return { suggestions };
+        }
+      }
+
+      if (groupByMatch) {
+        const groupByToken = groupByMatch[1];
+        const groupByRange = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: position.column - groupByToken.length,
+          endColumn: position.column,
+        };
+        const suggestions = buildGroupBySuggestions(
+          monaco,
+          groupByToken,
+          groupByRange,
         );
 
         if (suggestions.length > 0) {
@@ -473,6 +507,7 @@ export function registerLqlCompletionProvider(
           insertTextRules: kw.insertText.includes("$0")
             ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
             : undefined,
+          command: getKeywordSuggestionCommand(kw),
           range: replaceRange,
           sortText: `1-${String(i).padStart(3, "0")}`,
         }));
