@@ -549,8 +549,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert {:ok, schema_fields} = Jason.decode(schema_fields_json)
       assert {:ok, saved_searches} = Jason.decode(saved_searches_json)
 
-      assert %{"name" => "metadata.flags", "type" => "list[boolean]"} in schema_fields
-      assert %{"name" => "metadata.store.zip", "type" => "integer"} in schema_fields
+      assert schema_fields["metadata.flags"] == "list[boolean]"
+      assert schema_fields["metadata.store.zip"] == "integer"
 
       assert query_a in saved_searches
       assert query_b in saved_searches

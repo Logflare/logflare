@@ -8,6 +8,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   use Phoenix.Component
 
   alias Logflare.Lql.Rules
+  alias Logflare.SourceSchemas
   alias Logflare.Utils
   alias Logflare.Sources.Source
 
@@ -129,7 +130,6 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   end
 
   attr :querystring, :string, required: true
-  attr :lql_schema_fields_json, :string, required: true
   attr :saved_searches, :list, required: true
   attr :loading, :boolean, required: true
   attr :tailing?, :boolean, required: true
@@ -146,6 +146,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     assigns =
       assigns
       |> assign(:saved_searches_json, JSON.encode!(assigns.saved_searches))
+      |> assign(:lql_schema_fields_json, assigns.source |> lql_schema_fields() |> Jason.encode!())
 
     ~H"""
     <div class="search-control tw-mt-1" id="source-logs-search-control" phx-hook="SourceLogsSearch">
@@ -224,6 +225,21 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     |> Map.get(:value_type)
     |> Kernel.in([:integer, :float])
   end
+
+  defp lql_schema_fields(source) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      %{schema_flat_map: flat_map} when is_map(flat_map) ->
+        for {name, type} <- flat_map, into: %{} do
+          {name, format_schema_type(type)}
+        end
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp format_schema_type({type, inner}), do: "#{type}[#{inner}]"
+  defp format_schema_type(type), do: to_string(type)
 
   attr :tailing?, :boolean, required: true
   attr :play_event, :string, values: ["soft_play", "hard_play"]
