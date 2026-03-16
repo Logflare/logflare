@@ -63,9 +63,9 @@ defmodule Logflare.Utils do
   end
 
   @original_to_string String.Chars.impl_for(%Tesla.Env{})
-  def tesla_env_to_string(), do: @original_to_string
+  def tesla_env_to_string, do: @original_to_string
 
-  def cache_stats() do
+  def cache_stats do
     hook(module: Cachex.Stats)
   end
 
