@@ -302,7 +302,7 @@ defmodule Logflare.Sources.Source do
     |> Enum.reduce(changeset, fn {k, v}, cs -> add_error(cs, k, v) end)
     |> then(fn
       changeset when normalized == [] ->
-        changeset
+        delete_change(changeset, :labels)
 
       changeset ->
         changeset
