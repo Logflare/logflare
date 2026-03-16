@@ -131,7 +131,7 @@ const LQL_KEYWORDS = [
   { label: "timestamp:", detail: "timestamp filter", insertText: "timestamp:" },
   { label: "m.", detail: "metadata field", insertText: "m." },
   { label: "metadata.", detail: "metadata field", insertText: "metadata." },
-  { label: "s:*", detail: "select all fields", insertText: "s:*" },
+  { label: "s:", detail: "select all fields", insertText: "s:" },
   { label: "c:count()", detail: "chart count", insertText: "c:count($0)" },
   {
     label: "c:countd()",
