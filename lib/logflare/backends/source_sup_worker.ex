@@ -7,7 +7,6 @@ defmodule Logflare.Backends.SourceSupWorker do
   alias Logflare.Backends
   alias Logflare.Rules
   alias Logflare.Backends.SourceSup
-  require Logger
 
   @default_interval 30_000
 

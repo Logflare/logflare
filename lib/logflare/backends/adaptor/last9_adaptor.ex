@@ -23,7 +23,7 @@ defmodule Logflare.Backends.Adaptor.Last9Adaptor do
   }
   @regions Map.keys(@region_mapping)
 
-  def regions(), do: @regions
+  def regions, do: @regions
   def endpoint_per_region(region), do: @region_mapping[region]
 
   def child_spec(init_arg) do

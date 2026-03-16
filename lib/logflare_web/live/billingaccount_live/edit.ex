@@ -9,8 +9,6 @@ defmodule LogflareWeb.BillingAccountLive.Edit do
 
   alias Logflare.{Users, Billing}
 
-  require Logger
-
   on_mount {LogflareWeb.AuthLive, :default}
 
   @impl true

@@ -5,8 +5,6 @@ defmodule Logflare.LogEvent do
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_non_negative_integer: 1]
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
-  require Logger
-
   alias __MODULE__, as: LE
   alias __MODULE__.TypeDetection
   alias Logflare.KeyValues
@@ -366,7 +364,7 @@ defmodule Logflare.LogEvent do
   defp determine_timestamp(_), do: {default_timestamp(), true}
 
   @spec default_timestamp() :: integer()
-  defp default_timestamp() do
+  defp default_timestamp do
     System.system_time(:microsecond)
   end
 end

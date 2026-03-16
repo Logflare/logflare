@@ -48,6 +48,8 @@ defmodule Logflare.Telemetry do
           |> Keyword.update!(:otlp_headers, &Map.new/1)
           # set finch pool to 100 size
           |> Keyword.put(:otlp_concurrent_requests, max(base * 4, 50))
+          |> Keyword.put(:spawn_opt, fullsweep_after: 10_000)
+          |> Keyword.put(:hibernate_after, 5_000)
 
         [{OtelMetricExporter, otel_exporter_opts}]
       else

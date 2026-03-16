@@ -6,7 +6,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   import Logflare.Utils.Guards
 
   use Supervisor
-  require Logger
 
   alias __MODULE__.Pipeline
   alias Ecto.Changeset

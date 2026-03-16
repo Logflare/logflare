@@ -83,16 +83,16 @@ defmodule LogflareWeb.SearchLive.FormComponents do
       |> assign(:fields, format_recommended_fields(assigns.fields))
 
     ~H"""
-    <div :if={Enum.any?(@fields)} class="form-text" id="recommended_fields" phx-update="ignore">
-      <div class="d-flex flex-wrap">
-        <div :for={field <- @fields} class="pr-2 pt-1 pb-1">
+    <div :if={Enum.any?(@fields)} class="form-text tw-order-1 tw-basis-full sm:tw-basis-auto sm:tw-shrink-0" id="recommended_fields" phx-update="ignore">
+      <div class="sm:tw-flex tw-items-end tw-gap-2">
+        <div :for={field <- @fields} class="recommended-field-container tw-basis-full tw-min-w-0 sm:tw-min-w-20 sm:tw-max-w-48 tw-mb-2 sm:tw-mb-0">
           <div class="tw-flex tw-justify-between tw-items-baseline">
-            <label for={"#{@id_prefix}-#{field.name}"} class="tw-mb-0 tw-text-xs tw-text-gray-300 tw-block">{field.name}</label>
+            <label for={"#{@id_prefix}-#{field.name}"} data-toggle="tooltip" title={field.name} class="logflare-tooltip tw-truncate tw-mb-0 tw-text-xs tw-text-gray-300 tw-block">{field.name}</label>
             <span :if={field.required?} class="required-field-indicator tw-text-gray-500 tw-block tw-text-right tw-text-xs">
               required
             </span>
           </div>
-          <input id={"#{@id_prefix}-#{field.name}"} name={input_name(:fields, field.name)} class="form-control form-control-sm tw-text-xs " type="text" />
+          <input id={"#{@id_prefix}-#{field.name}"} name={input_name(:fields, field.name)} class="form-control" type="text" />
         </div>
       </div>
     </div>
@@ -147,16 +147,21 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     ~H"""
     <div class="search-control tw-mt-1" id="source-logs-search-control" phx-hook="SourceLogsSearch">
       <.form :let={f} for={@search_form} action="#" phx-submit="start_search" phx-change="form_update" class="form-group">
-        <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
-
         <div class="form-group form-text">
-          {text_input(f, :querystring,
-            phx_focus: :form_focus,
-            phx_blur: :form_blur,
-            value: @querystring,
-            class: "form-control form-control-margin tw-mt-1",
-            list: "matches"
-          )}
+          <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-2">
+            <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
+
+            <div class="tw-order-2 tw-basis-full tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
+              {text_input(f, :querystring,
+                phx_focus: :form_focus,
+                phx_blur: :form_blur,
+                value: @querystring,
+                class: "form-control tw-mt-0",
+                list: "matches"
+              )}
+            </div>
+          </div>
+
           {text_input(f, :search_timezone,
             class: "d-none",
             value: @search_timezone,

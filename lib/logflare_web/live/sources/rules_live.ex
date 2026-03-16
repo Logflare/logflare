@@ -13,8 +13,6 @@ defmodule LogflareWeb.Sources.RulesLive do
   alias Logflare.Sources
   alias Logflare.Users
 
-  require Logger
-
   @lql_dialect :routing
   @lql_string ""
 

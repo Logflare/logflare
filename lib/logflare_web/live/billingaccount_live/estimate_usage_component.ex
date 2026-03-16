@@ -4,8 +4,6 @@ defmodule LogflareWeb.BillingAccountLive.EstimateUsageComponent do
   """
   use LogflareWeb, :live_component
 
-  require Logger
-
   alias Logflare.Billing.BillingCounts
 
   def mount(socket), do: {:ok, socket}

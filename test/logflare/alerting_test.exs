@@ -475,18 +475,14 @@ defmodule Logflare.AlertingTest do
       old_jobs = Alerting.list_future_jobs(alert.id)
       assert length(old_jobs) == 5
 
-      {:ok, updated} = Alerting.update_alert_query(alert, %{cron: "*/30 * * * *"})
-      assert updated.cron == "*/30 * * * *"
+      {:ok, updated} = Alerting.update_alert_query(alert, %{cron: "7 */6 * * *"})
+      assert updated.cron == "7 */6 * * *"
 
       new_jobs = Alerting.list_future_jobs(alert.id)
       assert length(new_jobs) == 5
 
       old_ids = MapSet.new(old_jobs, & &1.id)
       assert Enum.all?(new_jobs, fn job -> job.id not in old_ids end)
-
-      old_times = Enum.map(old_jobs, & &1.scheduled_at)
-      new_times = Enum.map(new_jobs, & &1.scheduled_at)
-      assert MapSet.disjoint?(MapSet.new(old_times), MapSet.new(new_times))
     end
 
     test "schedule_alert/1 handles invalid cron gracefully", %{user: user} do

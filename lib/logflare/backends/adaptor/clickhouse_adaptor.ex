@@ -611,7 +611,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   defp decode_lp_string(data) do
     {len, rest} = decode_varuint(data)
-    <<string::binary-size(len), rest::bytes>> = rest
+    <<string::binary-size(^len), rest::bytes>> = rest
     {string, rest}
   end
 
@@ -624,10 +624,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> MapSet.new()
   end
 
-  defp convert_uuid_values(rows, uuid_indices) when map_size(uuid_indices) == 0, do: rows
-
-  defp convert_uuid_values(rows, uuid_indices),
-    do: Enum.map(rows, &convert_row_uuids(&1, uuid_indices))
+  defp convert_uuid_values(rows, uuid_indices) do
+    if MapSet.size(uuid_indices) > 0 do
+      Enum.map(rows, &convert_row_uuids(&1, uuid_indices))
+    else
+      rows
+    end
+  end
 
   defp convert_row_uuids(row, uuid_indices) do
     row

@@ -139,7 +139,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, project, timestamp_hour)
+      PRIMARY KEY (project, source_name, toDateTime(timestamp))
+      ORDER BY (project, source_name, toDateTime(timestamp), timestamp)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"

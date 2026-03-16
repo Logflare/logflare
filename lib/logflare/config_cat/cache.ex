@@ -6,8 +6,6 @@ defmodule Logflare.ConfigCatCache do
 
   alias Logflare.Utils
 
-  require Cachex.Spec
-
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
 

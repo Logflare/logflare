@@ -147,7 +147,7 @@ defmodule LogflareWeb.DashboardLive do
           New source
         </.team_link>
       </div>
-      <ul class="list-group">
+      <ul class="list-group" id="source-list-group" phx-hook="LiveTooltips">
         <%= if Enum.empty?(@sources) do %>
           <li class="list-group-item">You don't have any sources!</li>
           <li class="list-group-item">Sources are where your log events go.</li>
