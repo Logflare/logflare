@@ -93,7 +93,7 @@ defmodule LogflareWeb.QueryLive do
     <section :if={@query_result_rows} class="container mx-auto">
       <div class="tw-flex tw-justify-between tw-items-end">
         <h3>Query result</h3>
-        <div class="tw-mb-1" :if={@total_bytes_processed}>
+        <div :if={@total_bytes_processed} class="tw-mb-1">
           <QueryComponents.query_cost bytes={@total_bytes_processed} />
         </div>
       </div>
