@@ -107,6 +107,7 @@ Benchee.run(
   reduction_time: 3
 )
 
+# credo:disable-for-this-file Credo.Check.Readability.MaxLineLength
 # Historical results:
 # Run with: mix run test/profiling/add_to_table_bench.exs
 ##### With input 1000 events #####
