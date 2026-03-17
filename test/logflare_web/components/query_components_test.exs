@@ -116,7 +116,6 @@ defmodule LogflareWeb.QueryComponentsTest do
         })
 
       insert(:source_schema, source: source, bigquery_schema: schema)
-
       source_schema_flat_map = SchemaUtils.bq_schema_to_flat_typemap(schema)
 
       {:ok, source: source, schema: schema, source_schema_flat_map: source_schema_flat_map}

@@ -118,7 +118,12 @@ defmodule LogflareWeb.QueryComponents do
     case lookup_schema_path(path, flat_map) do
       {normalized_key, list_includes?} ->
         resolved_path = resolve_lql_path(normalized_key, flat_map)
-        updated_lql = append_filter(lql, resolved_path, value, lql_schema, list_includes?)
+
+        updated_lql =
+          lql
+          |> Lql.decode!(lql_schema)
+          |> upsert_filter_rule(resolved_path, value, list_includes?)
+          |> Lql.encode!()
 
         is_tailing = if key == "timestamp", do: false, else: is_tailing
 
@@ -129,42 +134,17 @@ defmodule LogflareWeb.QueryComponents do
     end
   end
 
-  defp append_filter(lql, path, value, schema, list_includes?) do
-    lql_rules = Lql.decode!(lql, schema)
-    chart_period = Lql.Rules.get_chart_period(lql_rules, :minute)
-    value = normalize_timestamp_value(path, value)
+  defp upsert_filter_rule(rules, "timestamp", value, _list_includes?) do
+    chart_period = Lql.Rules.get_chart_period(rules, :minute)
 
-    lql_rules
-    |> updated_lql(path, value, list_includes?, chart_period)
-    |> Lql.encode!()
+    ts_rule =
+      normalize_filter_rule_value("timestamp", value)
+      |> build_timestamp_filter_rule(chart_period)
+
+    Lql.Rules.upsert_filter_rule_by_path(rules, ts_rule)
   end
 
-  defp updated_lql(rules, path, value, list_includes?, chart_period) do
-    rules
-    |> maybe_drop_timestamp_filters(path)
-    |> add_filter_rule(path, value, list_includes?, chart_period)
-  end
-
-  defp maybe_drop_timestamp_filters(rules, "timestamp") do
-    Enum.reject(rules, &match?(%FilterRule{path: "timestamp"}, &1))
-  end
-
-  defp maybe_drop_timestamp_filters(rules, _path), do: rules
-
-  defp add_filter_rule(rules, "timestamp", value, _list_includes?, chart_period) do
-    {min_ts, max_ts} = timestamp_range(value, chart_period)
-
-    filter_rule =
-      FilterRule.build(
-        path: "timestamp",
-        operator: :range,
-        values: [min_ts, max_ts]
-      )
-
-    rules ++ [filter_rule]
-  end
-
-  defp add_filter_rule(rules, path, value, list_includes?, _chart_period) do
+  defp upsert_filter_rule(rules, path, value, list_includes?) do
     filter_rule =
       FilterRule.build(
         path: path,
@@ -173,7 +153,7 @@ defmodule LogflareWeb.QueryComponents do
         modifiers: if(is_binary(value), do: %{quoted_string: true}, else: %{})
       )
 
-    rules ++ [filter_rule]
+    Lql.Rules.upsert_filter_rule_by_path(rules, filter_rule)
   end
 
   @doc """
@@ -215,14 +195,24 @@ defmodule LogflareWeb.QueryComponents do
 
   defp quick_filter_value_ok?(_node), do: true
 
-  defp normalize_timestamp_value("timestamp", value) when is_integer(value) do
+  defp build_timestamp_filter_rule(value, chart_period) do
+    {min_ts, max_ts} = timestamp_range(value, chart_period)
+
+    FilterRule.build(
+      path: "timestamp",
+      operator: :range,
+      values: [min_ts, max_ts]
+    )
+  end
+
+  defp normalize_filter_rule_value("timestamp", value) when is_integer(value) do
     value
     |> Logflare.Utils.to_microseconds()
     |> DateTime.from_unix!(:microsecond)
     |> DateTime.to_naive()
   end
 
-  defp normalize_timestamp_value(_path, value), do: value
+  defp normalize_filter_rule_value(_path, value), do: value
 
   defp timestamp_range(%NaiveDateTime{} = timestamp, chart_period) do
     shift_key = Helpers.to_timex_shift_key(chart_period)
