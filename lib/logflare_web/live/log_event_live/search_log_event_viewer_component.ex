@@ -107,6 +107,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
     LogView.render("log_event_body.html",
       source: source,
+      source_schema_flat_map: assigns.source_schema_flat_map,
       body: body,
       fmt_body: BqSchema.encode_metadata(body),
       message: body["event_message"],
@@ -133,6 +134,9 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
     tailing? = assigns.params["tailing?"] == "true"
 
+    source_schema_flat_map =
+      socket.assigns[:source_schema_flat_map] || assigns[:source_schema_flat_map]
+
     socket
     |> assign(:user, user)
     |> assign(:team_user, team_user)
@@ -140,6 +144,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     |> assign(:timestamp, timestamp)
     |> assign(:lql, lql)
     |> assign(:tailing?, tailing?)
+    |> assign(:source_schema_flat_map, source_schema_flat_map)
     |> assign(:error, nil)
   end
 

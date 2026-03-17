@@ -111,17 +111,25 @@ defmodule LogflareWeb.QueryComponentsTest do
         })
 
       insert(:source_schema, source: source, bigquery_schema: schema)
-      {:ok, source: source}
+
+      source_schema_flat_map =
+        Logflare.Google.BigQuery.SchemaUtils.bq_schema_to_flat_typemap(schema)
+
+      {:ok, source: source, source_schema_flat_map: source_schema_flat_map}
     end
 
-    test "renders a timestamp quick filter link", %{source: source} do
+    test "renders a timestamp quick filter link", %{
+      source: source,
+      source_schema_flat_map: flat_map
+    } do
       timestamp = 1_609_459_200_000_000
 
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "t:last@7day c:count(*) c:group_by(t::hour)",
           node: %{key: "timestamp", path: [], value: timestamp},
-          source: source
+          source: source,
+          source_schema_flat_map: flat_map
         })
 
       [href] =
@@ -138,14 +146,18 @@ defmodule LogflareWeb.QueryComponentsTest do
              } = query |> URI.decode_query()
     end
 
-    test "renders a timestamp quick filter link with minute chart period", %{source: source} do
+    test "renders a timestamp quick filter link with minute chart period", %{
+      source: source,
+      source_schema_flat_map: flat_map
+    } do
       timestamp = 1_609_459_200_000_000
 
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "t:last@7day c:count(*) c:group_by(t::minute)",
           node: %{key: "timestamp", path: [], value: timestamp},
-          source: source
+          source: source,
+          source_schema_flat_map: flat_map
         })
 
       [href] =
@@ -162,14 +174,18 @@ defmodule LogflareWeb.QueryComponentsTest do
              } = query |> URI.decode_query()
     end
 
-    test "renders a metadata quick filter link", %{source: source} do
+    test "renders a metadata quick filter link", %{
+      source: source,
+      source_schema_flat_map: flat_map
+    } do
       lql = ~s|m.status:"error"|
 
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "",
           node: %{key: "status", path: ["metadata"], value: "error"},
-          source: source
+          source: source,
+          source_schema_flat_map: flat_map
         })
 
       expected_href = ~p"/sources/#{source}/search?#{%{querystring: lql, tailing?: false}}"
@@ -178,7 +194,7 @@ defmodule LogflareWeb.QueryComponentsTest do
       assert Floki.attribute(doc, "a", "href") == [expected_href]
     end
 
-    test "tailing? param", %{source: source} do
+    test "tailing? param", %{source: source, source_schema_flat_map: flat_map} do
       lql = ~s|m.status:"error"|
 
       html =
@@ -186,6 +202,7 @@ defmodule LogflareWeb.QueryComponentsTest do
           lql: "",
           node: %{key: "status", path: ["metadata"], value: "error"},
           source: source,
+          source_schema_flat_map: flat_map,
           is_tailing: true
         })
 
@@ -195,7 +212,10 @@ defmodule LogflareWeb.QueryComponentsTest do
       assert Floki.attribute(doc, "a", "href") == [expected_href]
     end
 
-    test "hides quick filter links until hover", %{source: source} do
+    test "hides quick filter links until hover", %{
+      source: source,
+      source_schema_flat_map: flat_map
+    } do
       [
         {%{key: "timestamp", path: [], value: NaiveDateTime.utc_now()}, []},
         {%{key: "event_message", path: [], value: "error"}, []},
@@ -207,7 +227,8 @@ defmodule LogflareWeb.QueryComponentsTest do
           render_component(&QueryComponents.quick_filter/1, %{
             lql: "",
             node: node,
-            source: source
+            source: source,
+            source_schema_flat_map: flat_map
           })
 
         doc = Floki.parse_document!(html)
@@ -216,24 +237,32 @@ defmodule LogflareWeb.QueryComponentsTest do
       end)
     end
 
-    test "omits the quick filter link when value is too long", %{source: source} do
+    test "omits the quick filter link when value is too long", %{
+      source: source,
+      source_schema_flat_map: flat_map
+    } do
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "",
           node: %{key: "message", path: ["metadata"], value: String.duplicate("a", 501)},
-          source: source
+          source: source,
+          source_schema_flat_map: flat_map
         })
 
       doc = Floki.parse_document!(html)
       assert Floki.find(doc, "a") == []
     end
 
-    test "returns empty HTML when key is not in schema", %{source: source} do
+    test "returns empty HTML when key is not in schema", %{
+      source: source,
+      source_schema_flat_map: flat_map
+    } do
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "",
           node: %{key: "missing", path: ["nonexistent", "path"], value: "test"},
-          source: source
+          source: source,
+          source_schema_flat_map: flat_map
         })
 
       doc = Floki.parse_document!(html)

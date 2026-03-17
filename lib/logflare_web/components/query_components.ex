@@ -2,7 +2,6 @@ defmodule LogflareWeb.QueryComponents do
   use Phoenix.Component
   use LogflareWeb, :routes
 
-  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Logs.SearchOperations.Helpers
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
@@ -31,6 +30,7 @@ defmodule LogflareWeb.QueryComponents do
   attr :lql, :string, required: true
   attr :node, :map, required: true
   attr :source, :map, required: true
+  attr :source_schema_flat_map, :map, required: true
   attr :is_tailing, :boolean, default: false
 
   def quick_filter(%{node: %{key: key, path: []}} = assigns)
@@ -45,7 +45,13 @@ defmodule LogflareWeb.QueryComponents do
       assigns
       |> assign(
         :path,
-        append_to_query(assigns.lql, assigns.node, assigns.source, assigns.is_tailing)
+        append_to_query(
+          assigns.lql,
+          assigns.node,
+          assigns.source,
+          assigns.source_schema_flat_map,
+          assigns.is_tailing
+        )
       )
       |> assign(:value_ok?, quick_filter_value_ok?(assigns.node))
       |> assign_new(:class, fn -> "tw-hidden group-hover:tw-inline" end)
@@ -106,11 +112,9 @@ defmodule LogflareWeb.QueryComponents do
     )
   end
 
-  @spec append_to_query(String.t(), map(), Logflare.Sources.Source.t(), boolean()) ::
+  @spec append_to_query(String.t(), map(), Logflare.Sources.Source.t(), map(), boolean()) ::
           String.t() | nil
-  def append_to_query(lql, %{key: key, path: path, value: value}, source, is_tailing) do
-    flat_map = source_schema_flat_map(source)
-
+  def append_to_query(lql, %{key: key, path: path, value: value}, source, flat_map, is_tailing) do
     case normalize_array_key(key, path, flat_map) do
       {normalized_key, list_includes?} ->
         resolved_path = resolve_lql_path(normalized_key, flat_map)
@@ -217,13 +221,6 @@ defmodule LogflareWeb.QueryComponents do
       key
     else
       "metadata.#{key}"
-    end
-  end
-
-  defp source_schema_flat_map(source) do
-    case Cache.get_source_schema_by(source_id: source.id) do
-      %_{schema_flat_map: flatmap} when is_map(flatmap) -> flatmap
-      _ -> SchemaBuilder.initial_table_schema() |> SchemaUtils.bq_schema_to_flat_typemap()
     end
   end
 

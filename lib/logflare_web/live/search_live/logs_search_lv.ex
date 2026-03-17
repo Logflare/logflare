@@ -27,6 +27,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.SearchLive.SubheadComponents
   alias LogflareWeb.SearchLive.LogEventComponents
   alias LogflareWeb.Utils
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Chart, as: ChartUtils
 
@@ -76,6 +77,7 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(
       executor_pid: executor_pid,
       source: source,
+      source_schema_flat_map: source_schema_flat_map(source),
       search_tip: SearchUtils.gen_search_tip(),
       user_timezone_from_connect_params: nil,
       search_timezone: Map.get(params, "tz", "Etc/UTC"),
@@ -246,6 +248,7 @@ defmodule LogflareWeb.Source.SearchLV do
         params: @modal.params,
         view: @modal.body[:view],
         source: @source,
+        source_schema_flat_map: @source_schema_flat_map,
         search_op_log_events: @search_op_log_events,
         search_op_log_aggregates: @search_op_log_aggregates,
         search_op_error: @search_op_error,
@@ -1190,6 +1193,13 @@ defmodule LogflareWeb.Source.SearchLV do
       source_schema.bigquery_schema
     else
       SchemaBuilder.initial_table_schema()
+    end
+  end
+
+  defp source_schema_flat_map(source) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      %_{schema_flat_map: flatmap} when is_map(flatmap) -> flatmap
+      _ -> SchemaBuilder.initial_table_schema() |> SchemaUtils.bq_schema_to_flat_typemap()
     end
   end
 end
