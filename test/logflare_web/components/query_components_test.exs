@@ -195,6 +195,27 @@ defmodule LogflareWeb.QueryComponentsTest do
       assert Floki.attribute(doc, "a", "href") == [expected_href]
     end
 
+    test "hides quick filter links until hover", %{source: source} do
+      [
+        {%{key: "timestamp", path: [], value: NaiveDateTime.utc_now()}, []},
+        {%{key: "event_message", path: [], value: "error"}, []},
+        {%{key: "status", path: ["metadata"], value: "error"},
+         ["tw-hidden group-hover:tw-inline"]}
+      ]
+      |> Enum.each(fn {node, class} ->
+        html =
+          render_component(&QueryComponents.quick_filter/1, %{
+            lql: "",
+            node: node,
+            source: source
+          })
+
+        doc = Floki.parse_document!(html)
+
+        assert Floki.attribute(doc, "a", "class") == class
+      end)
+    end
+
     test "omits the quick filter link when value is too long", %{source: source} do
       html =
         render_component(&QueryComponents.quick_filter/1, %{

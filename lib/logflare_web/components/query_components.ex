@@ -33,6 +33,13 @@ defmodule LogflareWeb.QueryComponents do
   attr :source, :map, required: true
   attr :is_tailing, :boolean, default: false
 
+  def quick_filter(%{node: %{key: key, path: []}} = assigns)
+      when key in ["event_message", "timestamp"] and not is_map_key(assigns, :class) do
+    assigns
+    |> assign(:class, nil)
+    |> quick_filter()
+  end
+
   def quick_filter(assigns) do
     assigns =
       assigns
@@ -41,10 +48,11 @@ defmodule LogflareWeb.QueryComponents do
         append_to_query(assigns.lql, assigns.node, assigns.source, assigns.is_tailing)
       )
       |> assign(:value_ok?, quick_filter_value_ok?(assigns.node))
+      |> assign_new(:class, fn -> "tw-hidden group-hover:tw-inline" end)
 
     ~H"""
-    <.link :if={@path && @value_ok?} title="Append to query" patch={@path}>
-      <i class="fas fa-search tw-mr-1 tw-w-2"></i>
+    <.link :if={@path && @value_ok?} title="Append to query" class={@class} patch={@path}>
+      <i class="fas fa-search tw-text-xs tw-mr-1 tw-w-2"></i>
     </.link>
     """
   end

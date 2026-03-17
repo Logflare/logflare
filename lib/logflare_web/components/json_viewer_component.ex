@@ -81,7 +81,7 @@ defmodule LogflareWeb.JSONViewerComponent do
     assigns = assigns |> assign(path_id: path_id)
 
     ~H"""
-    <div class="tw-my-0.5 tw-overflow-hidden" id={@path_id}>
+    <div class="tw-my-0.5 tw-overflow-hidden tw-group" id={@path_id}>
       <span class="tw-text-json-tree-key">{@key}:</span>
       <.tree_node_value key={@key} value={@value} path={@path} id={@id} action={@action} />
     </div>
