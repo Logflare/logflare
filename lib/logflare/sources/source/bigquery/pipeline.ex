@@ -300,9 +300,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     OpenTelemetry.Tracer.with_span :bq_api_call do
       case BigQuery.stream_batch!(context, rows) do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
+          OpenTelemetry.Tracer.set_attribute(:insert_error_count, 0)
           :ok
 
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
+          OpenTelemetry.Tracer.set_attribute(:insert_error_count, length(errors))
           error_string = inspect(errors)
           OpenTelemetry.Tracer.set_status(:error, error_string)
           Logger.warning("BigQuery insert errors.", error_string: error_string)
