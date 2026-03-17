@@ -6,15 +6,18 @@ defmodule LogflareWeb.OpenTelemetrySamplerTest do
   setup do
     prev_ingest = Application.get_env(:logflare, :ingest_sample_ratio)
     prev_endpoint = Application.get_env(:logflare, :endpoint_sample_ratio)
+    prev_bq_compare = Application.get_env(:logflare, :bq_compare_sample_ratio)
     prev_metadata = Application.get_env(:logflare, :metadata)
 
     Application.put_env(:logflare, :ingest_sample_ratio, 1.0)
     Application.put_env(:logflare, :endpoint_sample_ratio, 1.0)
+    Application.put_env(:logflare, :bq_compare_sample_ratio, 1.0)
     Application.put_env(:logflare, :metadata, [])
 
     on_exit(fn ->
       Application.put_env(:logflare, :ingest_sample_ratio, prev_ingest)
       Application.put_env(:logflare, :endpoint_sample_ratio, prev_endpoint)
+      Application.put_env(:logflare, :bq_compare_sample_ratio, prev_bq_compare)
       Application.put_env(:logflare, :metadata, prev_metadata)
     end)
 
@@ -100,6 +103,43 @@ defmodule LogflareWeb.OpenTelemetrySamplerTest do
                    sampler_config
                  )
       end
+    end
+
+    test "samples bigquery pipeline spans with bq_compare_sample_ratio", %{
+      ctx: ctx,
+      trace_id: trace_id,
+      links: links,
+      span_kind: span_kind,
+      sampler_config: sampler_config
+    } do
+      Application.put_env(:logflare, :bq_compare_sample_ratio, 0.0)
+      attributes = %{}
+
+      assert {:drop, _attrs, _state} =
+               OpenTelemetrySampler.should_sample(
+                 ctx,
+                 trace_id,
+                 links,
+                 :bigquery_pipeline,
+                 span_kind,
+                 attributes,
+                 sampler_config
+               )
+
+      Application.put_env(:logflare, :bq_compare_sample_ratio, 1.0)
+
+      {decision, _attrs, _state} =
+        OpenTelemetrySampler.should_sample(
+          ctx,
+          trace_id,
+          links,
+          :bigquery_pipeline,
+          span_kind,
+          attributes,
+          sampler_config
+        )
+
+      assert decision != :drop
     end
 
     test "uses default sampler config for other routes", %{

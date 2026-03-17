@@ -47,6 +47,23 @@ defmodule LogflareWeb.OpenTelemetrySampler do
   iex> {decision, _, _state} = should_sample(ctx, trace_id, links, span_name, span_kind, attributes, sampler_config)
   iex> decision == :drop
   false
+
+  bigquery pipeline spans can be sampled separately from the main sample ratio
+  iex> ctx =  %{}
+  iex> trace_id =  :otel_id_generator.generate_trace_id()
+  iex> links =  {:links, 128, 128, :infinity, 0, []}
+  iex> span_name = :bigquery_pipeline
+  iex> span_kind = :internal
+  iex> attributes = %{}
+  iex> sampler_config = :otel_sampler_trace_id_ratio_based.setup(1.0)
+  iex> Application.put_env(:logflare, :bq_compare_sample_ratio, 0.0)
+  iex> {decision, _, _state} = should_sample(ctx, trace_id, links, span_name, span_kind, attributes, sampler_config)
+  iex> decision == :drop
+  true
+  iex> Application.put_env(:logflare, :bq_compare_sample_ratio, 1.0)
+  iex> {decision, _, _state} = should_sample(ctx, trace_id, links, span_name, span_kind, attributes, sampler_config)
+  iex> decision == :drop
+  false
   """
   @impl :otel_sampler
   def should_sample(
@@ -59,12 +76,13 @@ defmodule LogflareWeb.OpenTelemetrySampler do
         sampler_config
       ) do
     config =
-      case Map.get(attributes, :"url.path") do
-        "/logs" <> _ -> ingest_config()
-        "/api/logs" <> _ -> ingest_config()
-        "/api/events" <> _ -> ingest_config()
-        "/endpoints/query" <> _ -> endpoint_config()
-        "/api/endpoints/query" <> _ -> endpoint_config()
+      case {span_name, Map.get(attributes, :"url.path")} do
+        {:bigquery_pipeline, _} -> bq_compare_config()
+        {_, "/logs" <> _} -> ingest_config()
+        {_, "/api/logs" <> _} -> ingest_config()
+        {_, "/api/events" <> _} -> ingest_config()
+        {_, "/endpoints/query" <> _} -> endpoint_config()
+        {_, "/api/endpoints/query" <> _} -> endpoint_config()
         _ -> sampler_config
       end
 
@@ -105,6 +123,11 @@ defmodule LogflareWeb.OpenTelemetrySampler do
 
   defp endpoint_config do
     prob = Application.get_env(:logflare, :endpoint_sample_ratio)
+    :otel_sampler_trace_id_ratio_based.setup(prob)
+  end
+
+  defp bq_compare_config do
+    prob = Application.get_env(:logflare, :bq_compare_sample_ratio)
     :otel_sampler_trace_id_ratio_based.setup(prob)
   end
 end
