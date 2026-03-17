@@ -4,6 +4,7 @@ defmodule LogflareWeb.QueryComponentsTest do
   alias GoogleApi.BigQuery.V2.Model.QueryParameter
   alias GoogleApi.BigQuery.V2.Model.QueryParameterType
   alias GoogleApi.BigQuery.V2.Model.QueryParameterValue
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
   alias LogflareWeb.QueryComponents
@@ -114,14 +115,14 @@ defmodule LogflareWeb.QueryComponentsTest do
 
       insert(:source_schema, source: source, bigquery_schema: schema)
 
-      source_schema_flat_map =
-        Logflare.Google.BigQuery.SchemaUtils.bq_schema_to_flat_typemap(schema)
+      source_schema_flat_map = SchemaUtils.bq_schema_to_flat_typemap(schema)
 
       {:ok, source: source, schema: schema, source_schema_flat_map: source_schema_flat_map}
     end
 
     test "renders a timestamp quick filter link", %{
       source: source,
+      schema: schema,
       source_schema_flat_map: flat_map
     } do
       timestamp = 1_609_459_200_000_000
@@ -131,7 +132,8 @@ defmodule LogflareWeb.QueryComponentsTest do
           lql: "t:last@7day c:count(*) c:group_by(t::hour)",
           node: %{key: "timestamp", path: ["timestamp"], value: timestamp},
           source: source,
-          source_schema_flat_map: flat_map
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
         })
 
       [href] =
@@ -150,6 +152,7 @@ defmodule LogflareWeb.QueryComponentsTest do
 
     test "renders a timestamp quick filter link with minute chart period", %{
       source: source,
+      schema: schema,
       source_schema_flat_map: flat_map
     } do
       timestamp = 1_609_459_200_000_000
@@ -159,7 +162,8 @@ defmodule LogflareWeb.QueryComponentsTest do
           lql: "t:last@7day c:count(*) c:group_by(t::minute)",
           node: %{key: "timestamp", path: ["timestamp"], value: timestamp},
           source: source,
-          source_schema_flat_map: flat_map
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
         })
 
       [href] =
@@ -178,6 +182,7 @@ defmodule LogflareWeb.QueryComponentsTest do
 
     test "renders a metadata quick filter link", %{
       source: source,
+      schema: schema,
       source_schema_flat_map: flat_map
     } do
       lql = ~s|m.status:"error"|
@@ -187,7 +192,8 @@ defmodule LogflareWeb.QueryComponentsTest do
           lql: "",
           node: %{key: "status", path: ["metadata", "status"], value: "error"},
           source: source,
-          source_schema_flat_map: flat_map
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
         })
 
       expected_href = ~p"/sources/#{source}/search?#{%{querystring: lql, tailing?: false}}"
@@ -196,7 +202,7 @@ defmodule LogflareWeb.QueryComponentsTest do
       assert Floki.attribute(doc, "a", "href") == [expected_href]
     end
 
-    test "tailing? param", %{source: source, source_schema_flat_map: flat_map} do
+    test "tailing? param", %{source: source, schema: schema, source_schema_flat_map: flat_map} do
       lql = ~s|m.status:"error"|
 
       html =
@@ -205,6 +211,7 @@ defmodule LogflareWeb.QueryComponentsTest do
           node: %{key: "status", path: ["metadata", "status"], value: "error"},
           source: source,
           source_schema_flat_map: flat_map,
+          lql_schema: schema,
           is_tailing: true
         })
 
@@ -224,7 +231,8 @@ defmodule LogflareWeb.QueryComponentsTest do
           lql: "",
           node: %{key: "", path: ["metadata", "tags"], value: "popular, tropical, organic"},
           source: source,
-          source_schema_flat_map: flat_map
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
         })
 
       [href] =
@@ -247,6 +255,7 @@ defmodule LogflareWeb.QueryComponentsTest do
 
     test "hides quick filter links until hover", %{
       source: source,
+      schema: schema,
       source_schema_flat_map: flat_map
     } do
       [
@@ -261,7 +270,8 @@ defmodule LogflareWeb.QueryComponentsTest do
             lql: "",
             node: node,
             source: source,
-            source_schema_flat_map: flat_map
+            source_schema_flat_map: flat_map,
+            lql_schema: schema
           })
 
         doc = Floki.parse_document!(html)
@@ -272,6 +282,7 @@ defmodule LogflareWeb.QueryComponentsTest do
 
     test "omits the quick filter link when value is too long", %{
       source: source,
+      schema: schema,
       source_schema_flat_map: flat_map
     } do
       html =
@@ -283,7 +294,8 @@ defmodule LogflareWeb.QueryComponentsTest do
             value: String.duplicate("a", 501)
           },
           source: source,
-          source_schema_flat_map: flat_map
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
         })
 
       doc = Floki.parse_document!(html)
@@ -292,6 +304,7 @@ defmodule LogflareWeb.QueryComponentsTest do
 
     test "returns empty HTML when key is not in schema", %{
       source: source,
+      schema: schema,
       source_schema_flat_map: flat_map
     } do
       html =
@@ -299,7 +312,8 @@ defmodule LogflareWeb.QueryComponentsTest do
           lql: "",
           node: %{key: "missing", path: ["nonexistent", "path", "missing"], value: "test"},
           source: source,
-          source_schema_flat_map: flat_map
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
         })
 
       doc = Floki.parse_document!(html)

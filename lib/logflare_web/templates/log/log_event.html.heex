@@ -16,6 +16,7 @@
     id={:log_event_viewer}
     {%{
   user: @user,
+    source_schema_flat_map: @source_schema_flat_map,
     source: @source,
     timestamp: @timestamp,
     log_event: @log_event,

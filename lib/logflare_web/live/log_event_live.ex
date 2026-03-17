@@ -5,8 +5,11 @@ defmodule LogflareWeb.LogEventLive do
 
   use LogflareWeb, :live_view
 
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Logs.LogEvents
+  alias Logflare.SourceSchemas
   alias Logflare.Sources
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   on_mount LogflareWeb.AuthLive
 
@@ -40,6 +43,7 @@ defmodule LogflareWeb.LogEventLive do
     socket =
       socket
       |> assign(:source, source)
+      |> assign(:source_schema_flat_map, get_source_schema_flat_map(source))
       |> assign(:log_event, log_event)
       |> assign(:origin, params["origin"])
       |> assign(:log_event_id, params["uuid"])
@@ -63,4 +67,15 @@ defmodule LogflareWeb.LogEventLive do
 
   defp maybe_put_timestamp(opts, timestamp),
     do: Keyword.put(opts, :timestamp, DateTime.truncate(timestamp, :second))
+
+  defp get_source_schema_flat_map(source) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      %_{schema_flat_map: flat_map} when is_map(flat_map) ->
+        flat_map
+
+      _ ->
+        SchemaBuilder.initial_table_schema()
+        |> SchemaUtils.bq_schema_to_flat_typemap()
+    end
+  end
 end

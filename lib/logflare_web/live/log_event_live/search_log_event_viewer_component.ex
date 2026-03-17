@@ -7,6 +7,8 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.LogEvents
+  alias Logflare.SourceSchemas
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias LogflareWeb.Helpers.BqSchema
   alias LogflareWeb.LogView
   alias LogflareWeb.SharedView
@@ -113,6 +115,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       message: body["event_message"],
       id: le.id,
       lql: assigns.lql,
+      lql_schema: get_lql_schema(source),
       is_tailing: assigns.tailing?,
       timestamp: timestamp,
       local_timezone: tz,
@@ -157,4 +160,11 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
   defp maybe_put_timestamp(opts, timestamp) when is_list(opts),
     do: Keyword.put(opts, :timestamp, DateTime.truncate(timestamp, :second))
+
+  defp get_lql_schema(source) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      %_{bigquery_schema: schema} when not is_nil(schema) -> schema
+      _ -> SchemaBuilder.initial_table_schema()
+    end
+  end
 end

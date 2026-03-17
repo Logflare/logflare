@@ -5,8 +5,6 @@ defmodule LogflareWeb.QueryComponents do
   alias Logflare.Logs.SearchOperations.Helpers
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
-  alias Logflare.SourceSchemas.Cache
-  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias LogflareWeb.Utils
   alias Phoenix.LiveView.JS
 
@@ -31,6 +29,7 @@ defmodule LogflareWeb.QueryComponents do
   attr :node, :map, required: true
   attr :source, :map, required: true
   attr :source_schema_flat_map, :map, required: true
+  attr :lql_schema, :map, required: true
   attr :is_tailing, :boolean, default: false
 
   def quick_filter(%{node: %{path: [path]}} = assigns)
@@ -50,7 +49,8 @@ defmodule LogflareWeb.QueryComponents do
           assigns.node,
           assigns.source,
           assigns.source_schema_flat_map,
-          assigns.is_tailing
+          assigns.is_tailing,
+          assigns.lql_schema
         )
       )
       |> assign(:value_ok?, quick_filter_value_ok?(assigns.node))
@@ -112,13 +112,13 @@ defmodule LogflareWeb.QueryComponents do
     )
   end
 
-  @spec append_to_query(String.t(), map(), Logflare.Sources.Source.t(), map(), boolean()) ::
+  @spec append_to_query(String.t(), map(), Logflare.Sources.Source.t(), map(), boolean(), map()) ::
           String.t() | nil
-  def append_to_query(lql, %{path: path, value: value}, source, flat_map, is_tailing) do
+  def append_to_query(lql, %{path: path, value: value}, source, flat_map, is_tailing, lql_schema) do
     case lookup_schema_path(path, flat_map) do
       {normalized_key, list_includes?} ->
         resolved_path = resolve_lql_path(normalized_key, flat_map)
-        updated_lql = append_filter(lql, resolved_path, value, source, list_includes?)
+        updated_lql = append_filter(lql, resolved_path, value, lql_schema, list_includes?)
 
         is_tailing = if key == "timestamp", do: false, else: is_tailing
 
@@ -129,8 +129,8 @@ defmodule LogflareWeb.QueryComponents do
     end
   end
 
-  defp append_filter(lql, path, value, source, list_includes?) do
-    lql_rules = Lql.decode!(lql, lql_schema(source))
+  defp append_filter(lql, path, value, schema, list_includes?) do
+    lql_rules = Lql.decode!(lql, schema)
     chart_period = Lql.Rules.get_chart_period(lql_rules, :minute)
     value = normalize_timestamp_value(path, value)
 
@@ -174,13 +174,6 @@ defmodule LogflareWeb.QueryComponents do
       )
 
     rules ++ [filter_rule]
-  end
-
-  defp lql_schema(source) do
-    case Cache.get_source_schema_by(source_id: source.id) do
-      %_{bigquery_schema: schema} when not is_nil(schema) -> schema
-      _ -> SchemaBuilder.initial_table_schema()
-    end
   end
 
   @doc """
