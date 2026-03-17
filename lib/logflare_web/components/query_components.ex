@@ -33,8 +33,8 @@ defmodule LogflareWeb.QueryComponents do
   attr :source_schema_flat_map, :map, required: true
   attr :is_tailing, :boolean, default: false
 
-  def quick_filter(%{node: %{key: key, path: []}} = assigns)
-      when key in ["event_message", "timestamp"] and not is_map_key(assigns, :class) do
+  def quick_filter(%{node: %{path: [path]}} = assigns)
+      when path in ["event_message", "timestamp"] and not is_map_key(assigns, :class) do
     assigns
     |> assign(:class, nil)
     |> quick_filter()
@@ -114,8 +114,8 @@ defmodule LogflareWeb.QueryComponents do
 
   @spec append_to_query(String.t(), map(), Logflare.Sources.Source.t(), map(), boolean()) ::
           String.t() | nil
-  def append_to_query(lql, %{key: key, path: path, value: value}, source, flat_map, is_tailing) do
-    case normalize_array_key(key, path, flat_map) do
+  def append_to_query(lql, %{path: path, value: value}, source, flat_map, is_tailing) do
+    case lookup_schema_path(path, flat_map) do
       {normalized_key, list_includes?} ->
         resolved_path = resolve_lql_path(normalized_key, flat_map)
         updated_lql = append_filter(lql, resolved_path, value, source, list_includes?)
@@ -184,13 +184,15 @@ defmodule LogflareWeb.QueryComponents do
   end
 
   @doc """
-  Checks the path + key exists in the schema.
-  If it doesn't the keypath may be an array index (eg. `tags.0`), so
+  Checks the path exists in the schema.
+  If it doesn't the keypath may include an array index (eg. `tags.0`), so
   recursively drops the last path segment until it finds an array type.
   """
-  @spec normalize_array_key(String.t(), [String.t()], map()) :: {String.t(), boolean()} | nil
-  def normalize_array_key(key, path, flat_map) do
-    keypath = (path ++ [key]) |> Enum.join(".")
+  @spec lookup_schema_path([String.t()], map()) :: {String.t(), boolean()} | nil
+  def lookup_schema_path(_path, nil), do: nil
+
+  def lookup_schema_path(path, flat_map) do
+    keypath = Enum.join(path, ".")
 
     case Map.get(flat_map, keypath) do
       {:list, _} ->

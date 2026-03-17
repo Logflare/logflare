@@ -4,6 +4,8 @@ defmodule LogflareWeb.QueryComponentsTest do
   alias GoogleApi.BigQuery.V2.Model.QueryParameter
   alias GoogleApi.BigQuery.V2.Model.QueryParameterType
   alias GoogleApi.BigQuery.V2.Model.QueryParameterValue
+  alias Logflare.Lql
+  alias Logflare.Lql.Rules.FilterRule
   alias LogflareWeb.QueryComponents
 
   describe "formatted_sql/1" do
@@ -115,7 +117,7 @@ defmodule LogflareWeb.QueryComponentsTest do
       source_schema_flat_map =
         Logflare.Google.BigQuery.SchemaUtils.bq_schema_to_flat_typemap(schema)
 
-      {:ok, source: source, source_schema_flat_map: source_schema_flat_map}
+      {:ok, source: source, schema: schema, source_schema_flat_map: source_schema_flat_map}
     end
 
     test "renders a timestamp quick filter link", %{
@@ -127,7 +129,7 @@ defmodule LogflareWeb.QueryComponentsTest do
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "t:last@7day c:count(*) c:group_by(t::hour)",
-          node: %{key: "timestamp", path: [], value: timestamp},
+          node: %{key: "timestamp", path: ["timestamp"], value: timestamp},
           source: source,
           source_schema_flat_map: flat_map
         })
@@ -155,7 +157,7 @@ defmodule LogflareWeb.QueryComponentsTest do
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "t:last@7day c:count(*) c:group_by(t::minute)",
-          node: %{key: "timestamp", path: [], value: timestamp},
+          node: %{key: "timestamp", path: ["timestamp"], value: timestamp},
           source: source,
           source_schema_flat_map: flat_map
         })
@@ -183,7 +185,7 @@ defmodule LogflareWeb.QueryComponentsTest do
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "",
-          node: %{key: "status", path: ["metadata"], value: "error"},
+          node: %{key: "status", path: ["metadata", "status"], value: "error"},
           source: source,
           source_schema_flat_map: flat_map
         })
@@ -200,7 +202,7 @@ defmodule LogflareWeb.QueryComponentsTest do
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "",
-          node: %{key: "status", path: ["metadata"], value: "error"},
+          node: %{key: "status", path: ["metadata", "status"], value: "error"},
           source: source,
           source_schema_flat_map: flat_map,
           is_tailing: true
@@ -212,14 +214,45 @@ defmodule LogflareWeb.QueryComponentsTest do
       assert Floki.attribute(doc, "a", "href") == [expected_href]
     end
 
+    test "renders a metadata array quick filter link", %{
+      source: source,
+      schema: schema,
+      source_schema_flat_map: flat_map
+    } do
+      html =
+        render_component(&QueryComponents.quick_filter/1, %{
+          lql: "",
+          node: %{key: "", path: ["metadata", "tags"], value: "popular, tropical, organic"},
+          source: source,
+          source_schema_flat_map: flat_map
+        })
+
+      [href] =
+        html
+        |> Floki.parse_document!()
+        |> Floki.attribute("a", "href")
+
+      %URI{query: query} = URI.parse(href)
+
+      assert %{"querystring" => querystring, "tailing?" => "false"} = URI.decode_query(query)
+
+      assert [
+               %FilterRule{
+                 path: "metadata.tags",
+                 operator: :list_includes,
+                 value: "popular, tropical, organic"
+               }
+             ] = Lql.decode!(querystring, schema)
+    end
+
     test "hides quick filter links until hover", %{
       source: source,
       source_schema_flat_map: flat_map
     } do
       [
-        {%{key: "timestamp", path: [], value: NaiveDateTime.utc_now()}, []},
-        {%{key: "event_message", path: [], value: "error"}, []},
-        {%{key: "status", path: ["metadata"], value: "error"},
+        {%{key: "timestamp", path: ["timestamp"], value: NaiveDateTime.utc_now()}, []},
+        {%{key: "event_message", path: ["event_message"], value: "error"}, []},
+        {%{key: "status", path: ["metadata", "status"], value: "error"},
          ["tw-hidden group-hover:tw-inline"]}
       ]
       |> Enum.each(fn {node, class} ->
@@ -244,7 +277,11 @@ defmodule LogflareWeb.QueryComponentsTest do
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "",
-          node: %{key: "message", path: ["metadata"], value: String.duplicate("a", 501)},
+          node: %{
+            key: "message",
+            path: ["metadata", "message"],
+            value: String.duplicate("a", 501)
+          },
           source: source,
           source_schema_flat_map: flat_map
         })
@@ -260,7 +297,7 @@ defmodule LogflareWeb.QueryComponentsTest do
       html =
         render_component(&QueryComponents.quick_filter/1, %{
           lql: "",
-          node: %{key: "missing", path: ["nonexistent", "path"], value: "test"},
+          node: %{key: "missing", path: ["nonexistent", "path", "missing"], value: "test"},
           source: source,
           source_schema_flat_map: flat_map
         })
