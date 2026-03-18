@@ -220,7 +220,7 @@ defmodule Logflare.ContextCache do
             :dropped_exists
 
           # do nothing if the WAL recently busted this specific record
-          is_tombstoned?(cache, value) ->
+          tombstoned?(cache, value) ->
             :dropped_stale
 
           true ->
@@ -252,7 +252,7 @@ defmodule Logflare.ContextCache do
     end)
   end
 
-  defp is_tombstoned?(cache, value) do
+  defp tombstoned?(cache, value) do
     pkeys = extract_pkeys(value)
 
     Enum.any?(pkeys, fn pkey ->
