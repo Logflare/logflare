@@ -82,7 +82,9 @@ defmodule LogflareWeb.JSONViewerComponent do
 
   defp tree_node(%{path: path, key_path: key_path} = assigns) do
     path = append_path(path, assigns.label)
-    key_path = append_path(key_path, assigns.key)
+
+    key_path =
+      append_path(key_path, assigns.key)
 
     assigns =
       assigns

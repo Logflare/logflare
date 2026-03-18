@@ -177,9 +177,16 @@ defmodule LogflareWeb.QueryComponents do
   end
 
   @doc """
-  Checks the path exists in the schema.
-  If it doesn't the keypath may include an array index (eg. `tags.0`), so
-  recursively drops the last path segment until it finds an array type.
+  Looks up the path in the schema flat map and returns whether it's a list type.
+
+  ## Examples
+
+      iex> lookup_schema_path(["metadata", "tags"], %{"metadata.tags" => {:list, :string}})
+      {"metadata.tags", true}
+      iex> lookup_schema_path(["metadata", "0", "status"], %{"metadata.0.status" => :string})
+      {"metadata.0.status", false}
+      iex> lookup_schema_path(["metadata", "missing"], %{"metadata.status" => :string})
+      nil
   """
   @spec lookup_schema_path([String.t()], map()) :: {String.t(), boolean()} | nil
   def lookup_schema_path(_path, nil), do: nil
@@ -188,26 +195,9 @@ defmodule LogflareWeb.QueryComponents do
     keypath = Enum.join(path, ".")
 
     case Map.get(flat_map, keypath) do
-      {:list, _} ->
-        {keypath, true}
-
-      nil ->
-        walk_up_for_array(path, flat_map)
-
-      _ ->
-        {keypath, false}
-    end
-  end
-
-  defp walk_up_for_array([], _flat_map), do: nil
-
-  defp walk_up_for_array(path, flat_map) do
-    keypath = Enum.join(path, ".")
-
-    case Map.get(flat_map, keypath) do
       {:list, _} -> {keypath, true}
-      nil -> walk_up_for_array(Enum.drop(path, -1), flat_map)
-      _ -> nil
+      nil -> nil
+      _ -> {keypath, false}
     end
   end
 

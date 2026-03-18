@@ -9,6 +9,8 @@ defmodule LogflareWeb.QueryComponentsTest do
   alias Logflare.Lql.Rules.FilterRule
   alias LogflareWeb.QueryComponents
 
+  doctest LogflareWeb.QueryComponents, import: true
+
   describe "formatted_sql/1" do
     test "formats SQL" do
       html =
