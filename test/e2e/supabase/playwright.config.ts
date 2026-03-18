@@ -32,6 +32,8 @@ export default defineConfig({
       password: process.env.DASHBOARD_PASSWORD!,
     },
 
+    headless: process.env.HEADLESS !== 'false',
+
     screenshot: 'only-on-failure',
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
