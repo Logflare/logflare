@@ -83,13 +83,31 @@ async function chromiumClipboardReadText(page: Page, expectedText: string) {
   }).toBe(expectedText);
 }
 
+// TODO: Replace fallback method for browsers that do not support navigator.clipboard.readText()
+// in headless mode (Firefox and WebKit)
+// Playwright's browserContext.grantPermissions(['clipboard-read']) only works in Chromium.
+// Firefox and WebKit don't support programmatic clipboard permission grants.
+// https://github.com/microsoft/playwright/issues/13037
+// https://github.com/microsoft/playwright/issues/19888
 async function defaultClipboardReadText(page: Page, expectedText: string) {
-  const pasteTarget = page.getByRole('textbox', { name: 'Search collections...' });
-  await pasteTarget.fill('');
-  await pasteTarget.focus();
+  await page.evaluate(() => {
+    document.getElementById('__clipboard_test__')?.remove();
+    const input = document.createElement('input');
+    input.id = '__clipboard_test__';
+    document.body.appendChild(input);
+  });
 
+  const pasteTarget = page.locator('#__clipboard_test__');
   const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-  await page.keyboard.press(`${modifier}+V`);
 
-  await expect(pasteTarget).toHaveValue(expectedText);
+  await expect.poll(async () => {
+    await pasteTarget.evaluate(el => (el as HTMLInputElement).value = '');
+    await pasteTarget.focus();
+    await page.keyboard.press(`${modifier}+V`);
+    return await pasteTarget.inputValue();
+  }, { timeout: 5000, intervals: [200, 500, 1000] }).toBe(expectedText);
+
+  await page.evaluate(() => {
+    document.getElementById('__clipboard_test__')?.remove();
+  });
 }
