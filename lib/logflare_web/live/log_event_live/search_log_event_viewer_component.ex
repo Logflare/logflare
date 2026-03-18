@@ -110,6 +110,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     LogView.render("log_event_body.html",
       source: source,
       source_schema_flat_map: assigns.source_schema_flat_map,
+      search_params: assigns.search_params,
       body: body,
       fmt_body: BqSchema.encode_metadata(body),
       message: body["event_message"],
@@ -137,6 +138,9 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     source_schema_flat_map =
       socket.assigns[:source_schema_flat_map] || assigns[:source_schema_flat_map]
 
+    search_params =
+      socket.assigns[:search_params] || extract_search_params(assigns)
+
     socket
     |> assign(:user, user)
     |> assign(:team_user, team_user)
@@ -144,6 +148,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     |> assign(:timestamp, timestamp)
     |> assign(:lql, lql)
     |> assign(:source_schema_flat_map, source_schema_flat_map)
+    |> assign(:search_params, search_params)
     |> assign(:error, nil)
   end
 
@@ -163,4 +168,9 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       _ -> SchemaBuilder.initial_table_schema()
     end
   end
+
+  defp extract_search_params(%{params: params}) when is_map(params),
+    do: Map.take(params, ["tz"])
+
+  defp extract_search_params(_assigns), do: %{}
 end

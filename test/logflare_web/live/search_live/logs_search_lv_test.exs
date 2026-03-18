@@ -976,7 +976,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:"abc-123"|}}")
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:\"abc-123\"|, tz: "Africa/Lagos"}}"
+        )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
@@ -998,8 +1001,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> element(~s|#log-event-tree-qf-uuid--user_id a[title="Append to query"]|)
       |> render_click()
 
-      assert_patch(view)
+      to = assert_patch(view)
       assert find_querystring(render(view)) =~ ~s|user_id:"abc-123"|
+
+      %URI{query: query} = URI.parse(to)
+
+      assert %{"tailing?" => "false", "tz" => "Africa/Lagos"} =
+               query |> URI.decode_query() |> Map.take(["tailing?", "tz"])
     end
 
     test "log event modal - loading from cache", %{conn: conn, user: user} do

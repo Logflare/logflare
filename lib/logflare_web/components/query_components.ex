@@ -30,6 +30,7 @@ defmodule LogflareWeb.QueryComponents do
   attr :source, :map, required: true
   attr :source_schema_flat_map, :map, required: true
   attr :lql_schema, :map, required: true
+  attr :search_params, :map, default: %{}
 
   def quick_filter(%{node: %{path: [path]}} = assigns)
       when path in ["event_message", "timestamp"] and not is_map_key(assigns, :class) do
@@ -48,7 +49,8 @@ defmodule LogflareWeb.QueryComponents do
           assigns.node,
           assigns.source,
           assigns.source_schema_flat_map,
-          assigns.lql_schema
+          assigns.lql_schema,
+          assigns.search_params
         )
       )
       |> assign(:value_ok?, quick_filter_value_ok?(assigns.node))
@@ -110,9 +112,16 @@ defmodule LogflareWeb.QueryComponents do
     )
   end
 
-  @spec append_to_query(String.t(), map(), Logflare.Sources.Source.t(), map(), map()) ::
+  @spec append_to_query(String.t(), map(), Logflare.Sources.Source.t(), map(), map(), map()) ::
           String.t() | nil
-  def append_to_query(lql, %{path: path, value: value}, source, flat_map, lql_schema) do
+  def append_to_query(
+        lql,
+        %{path: path, value: value},
+        source,
+        flat_map,
+        lql_schema,
+        search_params
+      ) do
     case lookup_schema_path(path, flat_map) do
       {normalized_key, list_includes?} ->
         resolved_path = resolve_lql_path(normalized_key, flat_map)
@@ -123,7 +132,12 @@ defmodule LogflareWeb.QueryComponents do
           |> upsert_filter_rule(resolved_path, value, list_includes?)
           |> Lql.encode!()
 
-        ~p"/sources/#{source}/search?#{%{querystring: updated_lql, tailing?: false}}"
+        params =
+          search_params
+          |> Map.take(["tz"])
+          |> Map.merge(%{querystring: updated_lql, tailing?: false})
+
+        ~p"/sources/#{source}/search?#{params}"
 
       nil ->
         nil

@@ -49,6 +49,7 @@ defmodule LogflareWeb.LogEventLive do
       |> assign(:log_event_id, params["uuid"])
       |> assign(:lql, lql)
       |> assign(:tailing?, is_tailing)
+      |> assign(:tz, params["tz"])
       |> assign(:timestamp, timestamp)
 
     {:ok, socket}

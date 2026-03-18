@@ -235,6 +235,35 @@ defmodule LogflareWeb.QueryComponentsTest do
              ] = Lql.decode!(querystring, schema)
     end
 
+    test "preserves timezone when rendering a quick filter link", %{
+      source: source,
+      schema: schema,
+      source_schema_flat_map: flat_map
+    } do
+      html =
+        render_component(&QueryComponents.quick_filter/1, %{
+          lql: "",
+          node: %{key: "status", path: ["metadata", "status"], value: "error"},
+          source: source,
+          source_schema_flat_map: flat_map,
+          lql_schema: schema,
+          search_params: %{"tz" => "Australia/Brisbane"}
+        })
+
+      [href] =
+        html
+        |> Floki.parse_document!()
+        |> Floki.attribute("a", "href")
+
+      %URI{query: query} = URI.parse(href)
+
+      assert %{
+               "querystring" => ~s|m.status:"error"|,
+               "tailing?" => "false",
+               "tz" => "Australia/Brisbane"
+             } = URI.decode_query(query)
+    end
+
     test "hides quick filter links until hover", %{
       source: source,
       schema: schema,
