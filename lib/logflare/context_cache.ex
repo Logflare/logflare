@@ -233,23 +233,29 @@ defmodule Logflare.ContextCache do
   end
 
   @doc false
-  def record_tombstones(values) when is_list(values) do
+  def record_tombstones(context_pkeys) when is_list(context_pkeys) do
     # Writes a short-lived marker for a primary key indicating it was recently updated or deleted.
     # Incoming cache broadcasts check this tombstone cache to determine if their payload could be stale.
-    Enum.each(values, fn value ->
-      case value do
-        {context, id} when is_integer(id) or is_binary(id) ->
-          Cachex.put(@wal_tombstones, {cache_name(context), id}, true)
-
-        {context, info} when is_list(info) ->
-          if id = Keyword.get(info, :id) do
-            Cachex.put(@wal_tombstones, {cache_name(context), id}, true)
-          end
-
-        _other ->
-          :ignore
+    Enum.each(context_pkeys, fn context_pkey ->
+      if tombstone = to_tombstone(context_pkey) do
+        Cachex.put(@wal_tombstones, tombstone, true)
       end
     end)
+  end
+
+  defp to_tombstone(context_pkey) do
+    case context_pkey do
+      {context, id} when is_integer(id) or is_binary(id) ->
+        {cache_name(context), id}
+
+      {context, info} when is_list(info) ->
+        if id = Keyword.get(info, :id) do
+          {cache_name(context), id}
+        end
+
+      _other ->
+        nil
+    end
   end
 
   defp tombstoned?(cache, value) do
