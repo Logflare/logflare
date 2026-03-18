@@ -203,25 +203,6 @@ defmodule LogflareWeb.QueryComponentsTest do
       assert Floki.attribute(doc, "a", "href") == [expected_href]
     end
 
-    test "tailing? param", %{source: source, schema: schema, source_schema_flat_map: flat_map} do
-      lql = ~s|m.status:"error"|
-
-      html =
-        render_component(&QueryComponents.quick_filter/1, %{
-          lql: "",
-          node: %{key: "status", path: ["metadata", "status"], value: "error"},
-          source: source,
-          source_schema_flat_map: flat_map,
-          lql_schema: schema,
-          is_tailing: true
-        })
-
-      expected_href = ~p"/sources/#{source}/search?#{%{querystring: lql, tailing?: true}}"
-
-      doc = Floki.parse_document!(html)
-      assert Floki.attribute(doc, "a", "href") == [expected_href]
-    end
-
     test "renders a metadata array quick filter link", %{
       source: source,
       schema: schema,

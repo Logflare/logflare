@@ -78,7 +78,7 @@
           <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
             <JSONViewerComponent.json_viewer data={@fmt_body |> JSON.decode!()} id={"log-event-tree-#{@id}"}>
               <:action :let={node}>
-                <.quick_filter lql={@lql || ""} node={node} source={@source} source_schema_flat_map={@source_schema_flat_map} lql_schema={@lql_schema} is_tailing={@is_tailing} />
+                <.quick_filter lql={@lql || ""} node={node} source={@source} source_schema_flat_map={@source_schema_flat_map} lql_schema={@lql_schema} />
               </:action>
             </JSONViewerComponent.json_viewer>
           </div>

@@ -116,7 +116,6 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       id: le.id,
       lql: assigns.lql,
       lql_schema: get_lql_schema(source),
-      is_tailing: assigns.tailing?,
       timestamp: timestamp,
       local_timezone: tz,
       local_timestamp: local_timestamp
@@ -135,8 +134,6 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     timestamp = socket.assigns[:timestamp] || assigns[:timestamp]
     lql = socket.assigns[:lql] || assigns[:lql] || assigns.params["lql"] || ""
 
-    tailing? = assigns.params["tailing?"] == "true"
-
     source_schema_flat_map =
       socket.assigns[:source_schema_flat_map] || assigns[:source_schema_flat_map]
 
@@ -146,7 +143,6 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     |> assign(:source, source)
     |> assign(:timestamp, timestamp)
     |> assign(:lql, lql)
-    |> assign(:tailing?, tailing?)
     |> assign(:source_schema_flat_map, source_schema_flat_map)
     |> assign(:error, nil)
   end
