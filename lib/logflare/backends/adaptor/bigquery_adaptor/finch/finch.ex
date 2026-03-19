@@ -14,7 +14,7 @@ defmodule GRPC.Client.Adapters.Finch do
   def connect(channel, opts \\ []) do
     instance_name = Keyword.fetch!(opts, :instance_name)
 
-    {:ok, %{channel | adapter_payload: %{instance_name: instance_name}}}
+    {:ok, %{channel | adapter_payload: %{conn_pid: self(), instance_name: instance_name}}}
   end
 
   @impl true

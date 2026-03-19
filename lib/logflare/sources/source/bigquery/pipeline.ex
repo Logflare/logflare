@@ -298,6 +298,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # All others send to the rejected list with the message from BigQuery.
     # See todo in `process_data` also.
     OpenTelemetry.Tracer.with_span :bq_api_call do
+      OpenTelemetry.Tracer.set_attribute(:impl, "stream_batch")
+
       case BigQuery.stream_batch!(context, rows) do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
           OpenTelemetry.Tracer.set_attribute(:insert_error_count, 0)
