@@ -8,7 +8,7 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
   @min_backoff 1_000
   @max_backoff 30_000
 
-  defstruct [:idx, :url, :registry, :backoff, connected?: false]
+  defstruct [:idx, :url, :registry, :backoff, :channel, :conn_time]
 
   @spec start_link({non_neg_integer(), String.t(), atom()}) :: GenServer.on_start()
   def start_link({idx, url, registry}) do
@@ -17,23 +17,28 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
 
   @impl GenServer
   def init({idx, url, registry}) do
-    connect_after(0)
+    # Idle connections are disconnected after 4 minutes, start with delay to prevent reconnection storm
+    connect_after(idx * 250)
     {:ok, %__MODULE__{idx: idx, url: url, registry: registry, backoff: @min_backoff}}
   end
 
   @impl GenServer
-  def handle_info(:connect, %{connected?: true} = state), do: {:noreply, state}
+  def handle_info(:connect, %{channel: channel} = state) when channel != nil,
+    do: {:noreply, state}
 
   def handle_info(:connect, %{idx: idx, url: url, registry: registry} = state) do
     case GRPC.Stub.connect(url,
            adapter: GRPC.Client.Adapters.Mint,
            interceptors: [Logflare.Networking.GrpcAuthInterceptor],
+           compressor: GRPC.Compressor.Gzip,
            # Reset to Mint defaults, avoiding grpc bug https://github.com/elixir-grpc/grpc/issues/507
            cred: GRPC.Credential.new([])
          ) do
       {:ok, channel} ->
         Registry.register(registry, idx, channel)
-        {:noreply, %{state | backoff: @min_backoff, connected?: true}}
+
+        {:noreply,
+         %{state | backoff: @min_backoff, channel: channel, conn_time: System.os_time(:second)}}
 
       {:error, reason} ->
         Logger.warning(
@@ -46,21 +51,30 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
   end
 
   def handle_info({:elixir_grpc, :connection_down, _pid}, state) do
-    Logger.warning("GrpcChannelMonitor[#{state.idx}]: connection down, reconnecting")
+    Logger.warning(
+      "GrpcChannelMonitor[#{state.idx}]: connection down after #{System.os_time(:second) - state.conn_time}s, reconnecting"
+    )
+
     {:noreply, handle_disconnection(state)}
   end
 
   # GRPC.Client.Adapters.Mint calls Process.flag(:trap_exit, true) on the caller;
+  # handle exit after :connection_down
+  def handle_info({:EXIT, _pid, _reason}, %{channel: nil} = state) do
+    {:noreply, state}
+  end
+
   # handle crashes of the ConnectionProcess that don't emit :connection_down
   def handle_info({:EXIT, _pid, _reason}, state) do
     Logger.warning("GrpcChannelMonitor[#{state.idx}]: connection process exited, reconnecting")
     {:noreply, handle_disconnection(state)}
   end
 
-  defp handle_disconnection(%{idx: idx, registry: registry} = state) do
+  defp handle_disconnection(%{idx: idx, registry: registry, channel: channel} = state) do
     Registry.unregister(registry, idx)
+    if channel, do: GRPC.Stub.disconnect(channel)
     connect_after(0)
-    %{state | backoff: @min_backoff, connected?: false}
+    %{state | backoff: @min_backoff, channel: nil}
   end
 
   defp connect_after(timeout) do
