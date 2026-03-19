@@ -12,8 +12,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   require Logger
   require OpenTelemetry.Tracer
 
-  @finch_instance_name Logflare.FinchBQStorageWrite
-
   @spec connetion_pool_name() :: module()
   def connetion_pool_name(), do: GrpcPool
 
@@ -49,11 +47,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
     end
   end
 
-  def append_rows({:arrow, arrow_rows}, context, table, impl \\ :finch) do
+  def append_rows({:arrow, arrow_rows}, context, table) do
     project = context[:project_id]
     dataset = context[:dataset_id]
 
-    with {:ok, channel} <- get_channel(impl) do
+    with {:ok, channel} <- GrpcPool.get_channel(connetion_pool_name()) do
       stream = BigQueryWrite.Stub.append_rows(channel)
 
       stream =
@@ -111,23 +109,4 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
       end
     end
   end
-
-  defp get_channel(:finch) do
-    partition_count = System.schedulers_online()
-    partition = :erlang.phash2(self(), partition_count)
-
-    with {:ok, goth_token} <- Goth.fetch({Logflare.Goth, partition}) do
-      GRPC.Stub.connect("https://bigquerystorage.googleapis.com",
-        adapter: GRPC.Client.Adapters.Finch,
-        adapter_opts: [instance_name: @finch_instance_name],
-        headers: [{"Authorization", "Bearer #{goth_token.token}"}]
-      )
-    end
-  end
-
-  defp get_channel(:mint) do
-    GrpcPool.get_channel(connetion_pool_name())
-  end
-
-  def get_finch_instance_name, do: @finch_instance_name
 end
