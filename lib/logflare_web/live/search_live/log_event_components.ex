@@ -42,7 +42,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                    title="Log Event"
                    phx-value-log-event-id={log.id}
                    phx-value-log-event-timestamp={log.body["timestamp"]}
-                   phx-value-lql={@querystring}
+                   phx-value-lql={lql_with_recommended_fields(@search_op.lql_rules, log, @search_op.source)}
                  >
                    <span>view</span>
                  </.modal_link>
