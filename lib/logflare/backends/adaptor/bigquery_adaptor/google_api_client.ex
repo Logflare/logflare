@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
 
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest.ArrowData
+  alias Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse
   alias Google.Cloud.Bigquery.Storage.V1.ArrowRecordBatch
   alias Google.Cloud.Bigquery.Storage.V1.BigQueryWrite
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC
@@ -78,31 +79,34 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
         {:ok, responses} ->
           insert_error_count =
             Enum.reduce(responses, 0, fn
-              {:ok, %{row_errors: errors}}, acc when is_list(errors) -> acc + length(errors)
-              _, acc -> acc
+              {:error, response}, acc ->
+                Logger.warning(
+                  "Storage Write API AppendRows response error - #{inspect(response)}"
+                )
+
+                acc
+
+              {:ok, %AppendRowsResponse{response: {:error, %{message: msg}}}}, acc ->
+                Logger.warning(
+                  "Storage Write API AppendRows response with error msg - #{inspect(msg)}"
+                )
+
+                acc
+
+              {:ok, %AppendRowsResponse{row_errors: []}}, acc ->
+                acc
+
+              {:ok, %AppendRowsResponse{row_errors: errors}}, acc when is_list(errors) ->
+                Logger.warning("Storage Write API AppendRows row errors - #{inspect(errors)}")
+                length(errors) + acc
             end)
 
           OpenTelemetry.Tracer.set_attribute(:insert_error_count, insert_error_count)
 
-          Enum.each(responses, fn
-            {:error, response} ->
-              Logger.warning("Storage Write API AppendRows response error - #{inspect(response)}")
-
-            {:ok, %{response: {:error, %{message: msg}}}} ->
-              Logger.warning(
-                "Storage Write API AppendRows response with error msg - #{inspect(msg)}"
-              )
-
-              :ok
-
-            _ ->
-              :ok
-          end)
-
           :ok
 
         {:error, response} = err ->
-          Logger.warning("Storage Write API AppendRows  error - #{inspect(response)}")
+          Logger.warning("Storage Write API AppendRows error - #{inspect(response)}")
           err
       end
     end
