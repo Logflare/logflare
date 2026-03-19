@@ -44,7 +44,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
   def warm_recent do
     entries =
       KeyValue
-      |> where([kv], kv.inserted_at >= ago(1, "hour"))
+      |> where([kv], kv.updated_at >= ago(1, "hour"))
       |> Repo.all()
       |> Enum.map(&to_cache_entry/1)
 
