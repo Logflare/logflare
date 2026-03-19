@@ -12,7 +12,7 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
     listener = Module.concat(__MODULE__, Listener)
     Process.register(test_pid, listener)
     start_supervised!({Registry, keys: :unique, name: registry, listeners: [listener]})
-    channel = %GRPC.Channel{}
+    channel = %GRPC.Channel{ref: make_ref()}
 
     send_after = fn _pid, :connect, timeout ->
       send(test_pid, {:send_after, timeout})
@@ -83,35 +83,37 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
   end
 
   describe "disconnection handling" do
-    test ":connection_down unregisters, reconnects, resets backoff", %{
+    test ":connection_down", %{
       registry: registry,
       channel: channel
     } do
       expect(GRPC.Stub, :connect, fn _url, _opts -> {:ok, channel} end)
+      expect(GRPC.Stub, :disconnect, fn ^channel -> {:ok, channel} end)
 
       pid = start_monitor(registry)
       allow(GRPC.Stub, self(), pid)
       send(pid, :connect)
       assert_receive {:register, ^registry, 0, _partition, ^channel}
 
-      send(pid, {:elixir_grpc, :connection_down, make_ref()})
+      send(pid, {:elixir_grpc, :connection_down, channel.ref})
 
       assert_receive {:unregister, ^registry, 0, _partition}
       assert_receive {:send_after, 0}
     end
 
-    test "{:EXIT, pid, reason} triggers same disconnection behaviour", %{
+    test "{:EXIT, pid, reason}", %{
       registry: registry,
       channel: channel
     } do
       expect(GRPC.Stub, :connect, fn _url, _opts -> {:ok, channel} end)
+      expect(GRPC.Stub, :disconnect, fn ^channel -> {:ok, channel} end)
 
       pid = start_monitor(registry)
       allow(GRPC.Stub, self(), pid)
       send(pid, :connect)
       assert_receive {:register, ^registry, 0, _partition, ^channel}
 
-      send(pid, {:elixir_grpc, :connection_down, make_ref()})
+      send(pid, {:elixir_grpc, :connection_down, channel.ref})
 
       assert_receive {:unregister, ^registry, 0, _partition}
       assert_receive {:send_after, 0}
