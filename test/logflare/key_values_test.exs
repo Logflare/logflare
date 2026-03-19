@@ -64,7 +64,32 @@ defmodule Logflare.KeyValuesTest do
     # upsert overwrites
     updated = %{"n" => "updated"}
     assert {1, _} = KeyValues.bulk_upsert_key_values(user.id, [%{key: "a", value: updated}])
+
+    for kv <- Logflare.Repo.all(KeyValues.KeyValue) do
+      assert kv.updated_at
+      assert kv.inserted_at
+    end
+
     assert ^updated = KeyValues.lookup(user.id, "a")
+  end
+
+  test "bulk_upsert_key_values/2 upsert will update the updated_at timestamp", %{user: user} do
+    entries = [%{key: "a", value: %{"n" => "1"}}]
+    assert {1, _} = KeyValues.bulk_upsert_key_values(user.id, entries)
+
+    assert [%{updated_at: updated_at, inserted_at: inserted_at}] =
+             Logflare.Repo.all(KeyValues.KeyValue)
+
+    :timer.sleep(50)
+
+    assert {1, _} =
+             KeyValues.bulk_upsert_key_values(user.id, [
+               %{"key" => "a", "value" => %{"n" => "updated"}}
+             ])
+
+    assert [upserted] = Logflare.Repo.all(KeyValues.KeyValue)
+    assert upserted.updated_at > updated_at
+    assert upserted.inserted_at == inserted_at
   end
 
   test "count_key_values/1", %{user: user} do
