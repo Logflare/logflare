@@ -28,17 +28,6 @@ filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
 end
 
-detect_ip_version = fn host ->
-  host = String.to_charlist(host)
-
-  cond do
-    match?([], host) -> {:ok, nil}
-    match?({:ok, _}, :inet6_tcp.getaddr(host)) -> {:ok, :inet6}
-    match?({:ok, _}, :inet.gethostbyname(host)) -> {:ok, :inet}
-    true -> {:error, :nxdomain}
-  end
-end
-
 logflare_metadata =
   [cluster: System.get_env("LOGFLARE_METADATA_CLUSTER")]
   |> filter_nil_kv_pairs.()
@@ -159,10 +148,10 @@ config :logflare,
          password: System.get_env("DB_PASSWORD"),
          username: System.get_env("DB_USERNAME"),
          socket_options:
-           case detect_ip_version.(System.get_env("DB_HOSTNAME", "")) do
-             {:ok, nil} -> []
-             {:ok, version} -> [version]
-             {:error, reason} -> raise "Failed to detect IP version for DB_HOSTNAME: #{reason}"
+           case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
+             nil -> []
+             version when version in [:inet, :inet6] -> [version]
+             error -> raise "Failed to detect IP version for DB_HOSTNAME: #{error}"
            end,
          after_connect:
            if(System.get_env("DB_SCHEMA"),
@@ -295,15 +284,10 @@ socket_options_for_url = fn
   url when is_binary(url) ->
     case URI.parse(url) do
       %URI{host: host} ->
-        case detect_ip_version.(host) do
-          {:ok, nil} ->
-            []
-
-          {:ok, version} ->
-            [version]
-
-          {:error, reason} ->
-            raise "Failed to detect IP version for URL host: #{host}, reason: #{reason}"
+        case Utils.ip_version(host) do
+          nil -> []
+          version when version in [:inet, :inet6] -> [version]
+          reason -> raise "Failed to detect IP version for URL host: #{host}, reason: #{reason}"
         end
 
       _ ->
