@@ -8,7 +8,6 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   use Phoenix.Component
 
   alias Logflare.Lql.Rules
-  alias Logflare.SourceSchemas
   alias Logflare.Utils
   alias Logflare.Sources.Source
 
@@ -141,12 +140,16 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   attr :has_results?, :boolean
   attr :source, Logflare.Sources.Source, required: true
   attr :last_query_completed_at, :any, default: nil
+  attr :lql_schema_flat_map, :map, required: true
 
   def search_controls(assigns) do
     assigns =
       assigns
       |> assign(:saved_searches_json, JSON.encode!(assigns.saved_searches))
-      |> assign(:lql_schema_fields_json, assigns.source |> lql_schema_fields() |> Jason.encode!())
+      |> assign(
+        :lql_schema_fields_json,
+        assigns.lql_schema_flat_map |> lql_schema_fields() |> Jason.encode!()
+      )
 
     ~H"""
     <div class="search-control tw-mt-1" id="source-logs-search-control" phx-hook="SourceLogsSearch">
@@ -226,17 +229,13 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     |> Kernel.in([:integer, :float])
   end
 
-  defp lql_schema_fields(source) do
-    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
-      %{schema_flat_map: flat_map} when is_map(flat_map) ->
-        for {name, type} <- flat_map, into: %{} do
-          {name, format_schema_type(type)}
-        end
-
-      _ ->
-        %{}
+  defp lql_schema_fields(flat_map) when is_map(flat_map) do
+    for {name, type} <- flat_map, into: %{} do
+      {name, format_schema_type(type)}
     end
   end
+
+  defp lql_schema_fields(_), do: %{}
 
   defp format_schema_type({type, inner}), do: "#{type}[#{inner}]"
   defp format_schema_type(type), do: to_string(type)

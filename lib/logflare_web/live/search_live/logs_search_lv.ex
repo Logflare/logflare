@@ -296,6 +296,7 @@ defmodule LogflareWeb.Source.SearchLV do
         has_results?={[@search_op_log_events, @search_op_log_aggregates] |> Enum.any?()}
         source={@source}
         last_query_completed_at={@last_query_completed_at}
+        lql_schema_flat_map={lql_schema_flat_map(@source)}
       />
       <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval={@user_idle_interval}></div>
     </div>
@@ -1182,6 +1183,17 @@ defmodule LogflareWeb.Source.SearchLV do
     socket
     |> assign(:querystring, qs)
     |> push_event("set_lql_value", %{value: qs})
+  end
+
+  @spec lql_schema_flat_map(Logflare.Sources.Source.t()) :: map()
+  defp lql_schema_flat_map(source) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      %{schema_flat_map: flat_map} when is_map(flat_map) ->
+        flat_map
+
+      _ ->
+        %{}
+    end
   end
 
   defp saved_searches(source) do
