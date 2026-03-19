@@ -287,6 +287,9 @@ defmodule Logflare.Sources.Source do
     end
   end
 
+  defp normalize_and_validate_labels(%_{changes: changes} = changeset)
+       when not is_map_key(changes, :labels), do: changeset
+
   defp normalize_and_validate_labels(changeset) do
     {normalized, errors} =
       case get_change(changeset, :labels) do
@@ -302,7 +305,7 @@ defmodule Logflare.Sources.Source do
     |> Enum.reduce(changeset, fn {k, v}, cs -> add_error(cs, k, v) end)
     |> then(fn
       changeset when normalized == [] ->
-        changeset
+        put_change(changeset, :labels, "")
 
       changeset ->
         changeset
