@@ -613,4 +613,30 @@ defmodule Logflare.EndpointsTest do
       assert Endpoints.derive_language_from_backend_id(backend.id) == :pg_sql
     end
   end
+
+  describe "enable_dynamic_reservation" do
+    test "changeset/2 casts enable_dynamic_reservation" do
+      user = insert(:user)
+
+      changeset =
+        Endpoints.change_query(%Query{user: user}, %{
+          "name" => "test-endpoint",
+          "query" => "select 1",
+          "enable_dynamic_reservation" => true
+        })
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_change(changeset, :enable_dynamic_reservation) == true
+    end
+
+    test "enable_dynamic_reservation defaults to false" do
+      endpoint = insert(:endpoint)
+      assert endpoint.enable_dynamic_reservation == false
+    end
+
+    test "enable_dynamic_reservation can be persisted as true" do
+      endpoint = insert(:endpoint, enable_dynamic_reservation: true)
+      assert endpoint.enable_dynamic_reservation == true
+    end
+  end
 end
