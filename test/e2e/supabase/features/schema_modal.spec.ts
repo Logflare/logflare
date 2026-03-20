@@ -85,10 +85,15 @@ async function chromiumClipboardReadText(page: Page, expectedText: string) {
 
 async function defaultClipboardReadText(page: Page, expectedText: string) {
   const pasteTarget = page.getByRole('textbox', { name: 'Search collections...' });
-  await pasteTarget.fill('');
   await pasteTarget.focus();
 
   const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+  // Clear the input field before pasting
+  await page.keyboard.press(`${modifier}+A`);
+  await page.keyboard.press('Backspace');
+
+  // Paste the clipboard content into the input field
   await page.keyboard.press(`${modifier}+V`);
 
   await expect(pasteTarget).toHaveValue(expectedText);
