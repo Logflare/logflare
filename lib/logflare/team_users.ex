@@ -75,7 +75,7 @@ defmodule Logflare.TeamUsers do
         update_team_user(team_user, auth_params)
 
       true ->
-        count = list_team_users_by(id: team_id) |> Enum.count()
+        count = list_team_users_by(team_id: team_id) |> Enum.count()
         %Billing.Plan{limit_team_users_limit: limit} = Billing.get_plan_by_user(user)
 
         if count < limit do

@@ -7,7 +7,7 @@ use arrow::{
 };
 use rustler::{Binary, Env, NewBinary, NifResult, OwnedBinary};
 
-#[rustler::nif(schedule = "DirtyIo")]
+#[rustler::nif(schedule = "DirtyCpu")]
 fn get_ipc_bytes(env: Env, dataframe_json: String) -> NifResult<(Binary, Vec<Binary>)> {
     let byte_data = dataframe_json.as_bytes();
 

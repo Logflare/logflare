@@ -1,6 +1,10 @@
 defmodule LogflareWeb.QueryComponents do
   use Phoenix.Component
+  use LogflareWeb, :routes
 
+  alias Logflare.Logs.SearchOperations.Helpers
+  alias Logflare.Lql
+  alias Logflare.Lql.Rules.FilterRule
   alias LogflareWeb.Utils
   alias Phoenix.LiveView.JS
 
@@ -18,6 +22,44 @@ defmodule LogflareWeb.QueryComponents do
     <div :if={is_number(@bytes)} class="tw-text-sm">
       {@size} {@unit} processed
     </div>
+    """
+  end
+
+  attr :lql, :string, required: true
+  attr :node, :map, required: true
+  attr :source, :map, required: true
+  attr :source_schema_flat_map, :map, required: true
+  attr :lql_schema, :map, required: true
+  attr :search_params, :map, default: %{}
+
+  def quick_filter(%{node: %{path: [path]}} = assigns)
+      when path in ["event_message", "timestamp"] and not is_map_key(assigns, :class) do
+    assigns
+    |> assign(:class, nil)
+    |> quick_filter()
+  end
+
+  def quick_filter(assigns) do
+    assigns =
+      assigns
+      |> assign(
+        :path,
+        append_to_query(
+          assigns.lql,
+          assigns.node,
+          assigns.source,
+          assigns.source_schema_flat_map,
+          assigns.lql_schema,
+          assigns.search_params
+        )
+      )
+      |> assign(:value_ok?, quick_filter_value_ok?(assigns.node))
+      |> assign_new(:class, fn -> "tw-hidden group-hover:tw-inline" end)
+
+    ~H"""
+    <.link :if={@path && @value_ok?} title="Append to query" class={@class} patch={@path}>
+      <i class="fas fa-search tw-text-xs tw-mr-1 tw-w-2"></i>
+    </.link>
     """
   end
 
@@ -68,5 +110,126 @@ defmodule LogflareWeb.QueryComponents do
         "`#{project}.#{rest}`"
       end
     )
+  end
+
+  @spec append_to_query(String.t(), map(), Logflare.Sources.Source.t(), map(), map(), map()) ::
+          String.t() | nil
+  def append_to_query(
+        lql,
+        %{path: path, value: value},
+        source,
+        flat_map,
+        lql_schema,
+        search_params
+      ) do
+    case lookup_schema_path(path, flat_map) do
+      {normalized_key, list_includes?} ->
+        resolved_path = resolve_lql_path(normalized_key, flat_map)
+
+        updated_lql =
+          lql
+          |> Lql.decode!(lql_schema)
+          |> upsert_filter_rule(resolved_path, value, list_includes?)
+          |> Lql.encode!()
+
+        params =
+          search_params
+          |> Map.take(["tz"])
+          |> Map.merge(%{querystring: updated_lql, tailing?: false})
+
+        ~p"/sources/#{source}/search?#{params}"
+
+      nil ->
+        nil
+    end
+  end
+
+  defp upsert_filter_rule(rules, "timestamp", value, _list_includes?) do
+    chart_period = Lql.Rules.get_chart_period(rules, :minute)
+
+    ts_rule =
+      normalize_filter_rule_value("timestamp", value)
+      |> build_timestamp_filter_rule(chart_period)
+
+    Lql.Rules.upsert_filter_rule_by_path(rules, ts_rule)
+  end
+
+  defp upsert_filter_rule(rules, path, value, list_includes?) do
+    filter_rule =
+      FilterRule.build(
+        path: path,
+        operator: if(list_includes?, do: :list_includes, else: :=),
+        value: value,
+        modifiers: if(is_binary(value), do: %{quoted_string: true}, else: %{})
+      )
+
+    Lql.Rules.upsert_filter_rule_by_path(rules, filter_rule)
+  end
+
+  @doc """
+  Looks up the path in the schema flat map and returns whether it's a list type.
+
+  ## Examples
+
+      iex> lookup_schema_path(["metadata", "tags"], %{"metadata.tags" => {:list, :string}})
+      {"metadata.tags", true}
+      iex> lookup_schema_path(["metadata", "0", "status"], %{"metadata.0.status" => :string})
+      {"metadata.0.status", false}
+      iex> lookup_schema_path(["metadata", "missing"], %{"metadata.status" => :string})
+      nil
+  """
+  @spec lookup_schema_path([String.t()], map()) :: {String.t(), boolean()} | nil
+  def lookup_schema_path(_path, nil), do: nil
+
+  def lookup_schema_path(path, flat_map) do
+    keypath = Enum.join(path, ".")
+
+    case Map.get(flat_map, keypath) do
+      {:list, _} -> {keypath, true}
+      nil -> nil
+      _ -> {keypath, false}
+    end
+  end
+
+  defp resolve_lql_path(key, schema_flat_map) do
+    if Map.has_key?(schema_flat_map, key) do
+      key
+    else
+      "metadata.#{key}"
+    end
+  end
+
+  defp quick_filter_value_ok?(%{value: value}) when is_binary(value) do
+    String.length(value) <= 500
+  end
+
+  defp quick_filter_value_ok?(_node), do: true
+
+  defp build_timestamp_filter_rule(value, chart_period) do
+    {min_ts, max_ts} = timestamp_range(value, chart_period)
+
+    FilterRule.build(
+      path: "timestamp",
+      operator: :range,
+      values: [min_ts, max_ts]
+    )
+  end
+
+  defp normalize_filter_rule_value("timestamp", value) when is_integer(value) do
+    value
+    |> Logflare.Utils.to_microseconds()
+    |> DateTime.from_unix!(:microsecond)
+    |> DateTime.to_naive()
+  end
+
+  defp normalize_filter_rule_value(_path, value), do: value
+
+  defp timestamp_range(%NaiveDateTime{} = timestamp, chart_period) do
+    shift_key = Helpers.to_timex_shift_key(chart_period)
+
+    {
+      Timex.shift(timestamp, [{shift_key, -1}]),
+      Timex.shift(timestamp, [{shift_key, 1}])
+    }
   end
 end
