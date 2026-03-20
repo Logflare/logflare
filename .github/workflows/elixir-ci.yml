@@ -28,9 +28,9 @@ jobs:
     name: Get versions
     runs-on: ubuntu-latest
     outputs:
-      elixir:  ${{ steps.v.outputs.elixir }}
-      erlang:  ${{ steps.v.outputs.erlang }}
-      rust:    ${{ steps.v.outputs.rust }}
+      elixir: ${{ steps.v.outputs.elixir }}
+      erlang: ${{ steps.v.outputs.erlang }}
+      rust: ${{ steps.v.outputs.rust }}
     steps:
       - uses: actions/checkout@v6
       - name: Read versions from .tool-versions
@@ -103,6 +103,15 @@ jobs:
       COVERALLS_SERVICE_JOB_ID: ${{ github.sha }}-${{ strategy.job-index }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v6
+
+      - name: Prepare Telegraf Output Dir
+        run: |
+          mkdir -p db/telegraf_output
+          touch db/telegraf_output/metrics.out
+          chmod 666 db/telegraf_output/metrics.out
+
+      - name: Start Telegraf
+        run: docker compose up -d telegraf
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
