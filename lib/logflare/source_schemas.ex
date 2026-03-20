@@ -4,7 +4,9 @@ defmodule Logflare.SourceSchemas do
   """
 
   alias Logflare.Repo
+  alias Logflare.SourceSchemas.Cache
   alias Logflare.SourceSchemas.SourceSchema
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Google.BigQuery.SchemaUtils
 
   @doc """
@@ -99,6 +101,17 @@ defmodule Logflare.SourceSchemas do
   """
   def change_source_schema(%SourceSchema{} = source_schema, attrs \\ %{}) do
     SourceSchema.changeset(source_schema, attrs)
+  end
+
+  def source_schema_flatmap_or_default(source) do
+    case Cache.get_source_schema_by(source_id: source.id) do
+      %_{schema_flat_map: flat_map} when is_map(flat_map) ->
+        flat_map
+
+      _ ->
+        SchemaBuilder.initial_table_schema()
+        |> SchemaUtils.bq_schema_to_flat_typemap()
+    end
   end
 
   def format_schema(bq_schema, variant, to_merge \\ %{})

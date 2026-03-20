@@ -72,10 +72,13 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:ok, executor_pid} = SearchQueryExecutor.start_link(source: source)
 
+    flat_map = SourceSchemas.source_schema_flatmap_or_default(source)
+
     socket
     |> assign(
       executor_pid: executor_pid,
       source: source,
+      source_schema_flat_map: flat_map,
       search_tip: SearchUtils.gen_search_tip(),
       user_timezone_from_connect_params: nil,
       search_timezone: Map.get(params, "tz", "Etc/UTC"),
@@ -246,6 +249,7 @@ defmodule LogflareWeb.Source.SearchLV do
         params: @modal.params,
         view: @modal.body[:view],
         source: @source,
+        source_schema_flat_map: @source_schema_flat_map,
         search_op_log_events: @search_op_log_events,
         search_op_log_aggregates: @search_op_log_aggregates,
         search_op_error: @search_op_error,
