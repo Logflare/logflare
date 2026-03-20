@@ -12,8 +12,8 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   def subhead(assigns) do
     assigns =
       assigns
-      |> assign(:flag_multibackend, LogflareWeb.Utils.flag("multibackend", assigns.user))
-      |> assign(:flag_key_values, LogflareWeb.Utils.flag("key_values", assigns.user))
+      |> assign(:flag_multibackend, Logflare.Utils.flag("multibackend", assigns.user))
+      |> assign(:flag_key_values, Logflare.Utils.flag("key_values", assigns.user))
 
     ~H"""
     <div class="subhead ">
@@ -69,11 +69,10 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
     <div class="">
       <.integrations_list>
         <:heading>Integrations</:heading>
-        <:item title="Cloudflare" link="https://cloudflareapps.com/apps/logflare" />
+        <:item title="OpenTelemetry" link="https://docs.logflare.app/integrations/open-telemetry" description="OpenTelemetry" />
         <:item title="Vercel" link="https://docs.logflare.app/integrations/vercel/" />
         <:item title="Fly" link="https://github.com/Logflare/fly-log-shipper" />
-        <:item title="Postgres FDW" link="https://docs.logflare.app/integrations/postgres-fdw" description="SQL" />
-        <:item title="pino-logflare" link="https://docs.logflare.app/integrations/pino-logflare" description="Javascript" />
+        <:item title="pino-logflare" link="https://github.com/Logflare/pino-logflare" description="Javascript" />
         <:item title="LoggerBackend" link="https://github.com/Logflare/logflare_logger_backend" description="Elixir" />
         <:item title="logflare_erl" link="https://github.com/Logflare/logflare_erl" description="Erlang" />
       </.integrations_list>

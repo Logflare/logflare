@@ -5,18 +5,15 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   use GenServer
 
-  require Logger
-
-  alias Logflare.Alerting
   alias Logflare.Backends
+  alias Logflare.ContextCache
   alias Logflare.Rules
   alias Logflare.Utils
-  alias Logflare.ContextCache
 
   @supervisor_name __MODULE__.Supervisor
 
   @spec supervisor_spec() :: Supervisor.module_spec()
-  def supervisor_spec() do
+  def supervisor_spec do
     {PartitionSupervisor, child_spec: __MODULE__, name: @supervisor_name}
   end
 
@@ -43,13 +40,6 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
     end
 
     {:noreply, state}
-  end
-
-  defp maybe_do_cross_cluster_syncing({Alerting, alert_id}) when is_integer(alert_id) do
-    # sync alert job
-    Utils.Tasks.start_child(fn ->
-      Alerting.sync_alert_job(alert_id)
-    end)
   end
 
   defp maybe_do_cross_cluster_syncing({Backends, backend_id})

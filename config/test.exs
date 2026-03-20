@@ -24,7 +24,8 @@ config :logflare, Logflare.Google,
   grafana_sa: "GOOGLE_GRAFANA_SA",
   api_sa: "GOOGLE_API_SA",
   cloud_build_sa: "GOOGLE_CLOUD_BUILD_SA",
-  cloud_build_trigger_sa: "GOOGLE_CLOUD_BUILD_TRIGGER_SA"
+  cloud_build_trigger_sa: "GOOGLE_CLOUD_BUILD_TRIGGER_SA",
+  project_viewer: "GOOGLE_PROJECT_VIEWER"
 
 config :logflare, Logflare.Repo,
   username: "postgres",
@@ -45,16 +46,28 @@ defmodule LogflareTest.LogFilters do
   end
 
   def ignore_finch_disconnections(le, _opts), do: le
+
+  def ignore_db_connection_failures(
+        %{meta: %{mfa: {DBConnection.Connection, :handle_event, 4}}},
+        _opts
+      ) do
+    :stop
+  end
+
+  def ignore_db_connection_failures(le, _opts), do: le
 end
 
 config :logger,
   default_handler: [
     filters: [
-      {:finch_silencer, {&LogflareTest.LogFilters.ignore_finch_disconnections/2, []}}
+      {:finch_silencer, {&LogflareTest.LogFilters.ignore_finch_disconnections/2, []}},
+      {:db_conn_silencer, {&LogflareTest.LogFilters.ignore_db_connection_failures/2, []}}
     ],
     level: :error
   ]
 
 config :tesla, Logflare.Backends.Adaptor.WebhookAdaptor.Client, adapter: Tesla.Mock
+
+config :logflare, Oban, testing: :manual
 
 config :phoenix_test, otp_app: :logflare, endpoint: LogflareWeb.Endpoint

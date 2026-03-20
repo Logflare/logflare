@@ -8,8 +8,6 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   alias Contex.{Plot, Dataset, BarChart}
   alias Logflare.Billing.BillingCounts
 
-  require Logger
-
   def mount(socket), do: {:ok, socket}
 
   def update(%{user: user, days: days} = _assigns, socket) do

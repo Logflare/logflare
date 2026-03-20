@@ -17,7 +17,7 @@ defmodule Logflare.Sources.Source.EmailNotificationServerTest do
 
     test "init/1", %{source: source} do
       EmailNotificationServer.init(source: source)
-      assert_receive :check_rate, 1_100
+      TestUtils.retry_assert(fn -> assert_receive :check_rate end)
     end
   end
 end

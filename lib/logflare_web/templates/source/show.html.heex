@@ -49,8 +49,8 @@
       <div class="collapse metadata" id={"metadata-#{inx}"}>
         <pre class="pre-metadata"><code><%= JSON.encode!(log.body, pretty: true) %></code></pre>
       </div>
-      <%= if log.via_rule do %>
-        <span data-toggle="tooltip" data-placement="top" title={"Matching #{ log.via_rule.lql_string } routing from #{log.source_uuid }"} style="color: ##5eeb8f;">
+      <%= if log[:via_rule_id] do %>
+        <span data-toggle="tooltip" data-placement="top" title={"Routed from #{ log.source_uuid }"} style="color: #5eeb8f;">
           <i class="fa fa-code-branch" style="font-size: 1em;"></i>
         </span>
       <% end %>
@@ -61,7 +61,12 @@
   <div>
     <%= form_for @conn, Routes.live_path(@conn, LogflareWeb.Source.SearchLV, @source), [method: :get], fn f -> %>
       <div class="form-group form-text">
-        {text_input(f, :querystring, placeholder: "404", class: "form-control form-control-margin", autofocus: true)}
+        <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-2">
+          <LogflareWeb.SearchLive.FormComponents.recommended_field_inputs fields={Logflare.Sources.Source.recommended_query_fields(@source)} id_prefix="recent-logs-field" />
+          <div class="tw-order-2 tw-basis-full tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
+            {text_input(f, :querystring, placeholder: "404", class: "form-control tw-mt-0", autofocus: true)}
+          </div>
+        </div>
         {hidden_input(f, :tailing?, value: "true")}
         <%= if @team do %>
           {hidden_input(f, :t, value: @team.id)}

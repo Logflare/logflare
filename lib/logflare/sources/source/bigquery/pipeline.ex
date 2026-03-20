@@ -119,31 +119,39 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         %{}
       end
 
-    source = Sources.Cache.get_by_id(sid)
+    case Sources.Cache.get_by_id(sid) do
+      nil ->
+        Logger.warning("Source not found for ack!", source_id: sid)
 
-    for %{data: le} <- successful do
-      # delete immediately if not default backend or if avg rate is above 100
-      if metrics.avg > 100 or bid != nil do
-        IngestEventQueue.delete(queue, le)
-      end
+        for %{data: le} <- successful do
+          IngestEventQueue.delete(queue, le)
+        end
 
-      # emit telemetry on event
-      event_labels = Sources.get_labels_from_event(source, le)
+      source ->
+        for %{data: le} <- successful do
+          # delete immediately if not default backend or if avg rate is above 100
+          if metrics.avg > 100 or bid != nil do
+            IngestEventQueue.delete(queue, le)
+          end
 
-      metrics = %{ingested_bytes: :erlang.external_size(le.body)}
+          # emit telemetry on event
+          event_labels = Sources.get_labels_from_event(source, le)
 
-      metadata =
-        %{
-          "source_id" => sid,
-          "backend_id" => bid,
-          "source_uuid" => Utils.stringify(source.token),
-          "user_id" => source.user_id,
-          "system_source" => source.system_source
-        }
-        |> Map.merge(event_labels)
-        |> Map.merge(backend_metadata)
+          metrics = %{ingested_bytes: :erlang.external_size(le.body)}
 
-      :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
+          metadata =
+            %{
+              "source_id" => sid,
+              "backend_id" => bid,
+              "source_uuid" => Utils.stringify(source.token),
+              "user_id" => source.user_id,
+              "system_source" => source.system_source
+            }
+            |> Map.merge(event_labels)
+            |> Map.merge(backend_metadata)
+
+          :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
+        end
     end
   end
 
@@ -324,7 +332,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     # random sample if local ingest rate is above a certain level
     # dynamic calculation maintains ~1 schema update per second across all rate levels
-    unless source.lock_schema do
+    if source && not source.lock_schema do
       probability =
         case PubSubRates.Cache.get_local_rates(source.token) do
           %{average_rate: avg} when avg > 0 ->
@@ -361,6 +369,14 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       bigquery_processed_bytes_limit: 10_000_000_000
     }
 
+    Logger.warning("user audit: BigQuery backend auto-disconnect triggered",
+      action: "user.bq_auto_disconnect",
+      user_id: user.id,
+      user_email: user.email,
+      source_token: source_id,
+      reason: message
+    )
+
     case Users.update_user_allowed(user, defaults) do
       {:ok, user} ->
         Supervisor.reset_all_user_sources(user)
@@ -369,11 +385,22 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         |> AccountEmail.backend_disconnected(message)
         |> Mailer.deliver()
 
-        Logger.warning("Backend disconnected for: #{user.email}", tesla_response: message)
+        Logger.warning("user audit: BigQuery backend auto-disconnected",
+          action: "user.bq_auto_disconnected",
+          user_id: user.id,
+          user_email: user.email,
+          source_token: source_id,
+          reason: message
+        )
 
       {:error, changeset} ->
-        Logger.error("Failed to reset backend for user: #{user.email}",
-          changeset: inspect(changeset)
+        Logger.error("user audit: BigQuery backend auto-disconnect failed",
+          action: "user.bq_auto_disconnect_failed",
+          user_id: user.id,
+          user_email: user.email,
+          source_token: source_id,
+          reason: message,
+          errors: inspect(changeset.errors)
         )
     end
   end

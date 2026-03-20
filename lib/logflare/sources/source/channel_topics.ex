@@ -7,8 +7,6 @@ defmodule Logflare.Sources.Source.ChannelTopics do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Sources
 
-  require Logger
-
   typedstruct do
     field :source_token, String.t(), enforce: true
     field :log_count, integer(), default: 0
@@ -28,7 +26,7 @@ defmodule Logflare.Sources.Source.ChannelTopics do
 
     maybe_broadcast("source:#{source.token}", "source:#{source.token}:new", %{
       body: body,
-      via_rule: le.via_rule && Map.take(le.via_rule, [:regex]),
+      via_rule_id: le.via_rule_id,
       source_uuid: le.source_uuid
     })
   end

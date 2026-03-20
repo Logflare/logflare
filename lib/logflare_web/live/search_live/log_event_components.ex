@@ -43,6 +43,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                    phx-value-log-event-id={log.id}
                    phx-value-log-event-timestamp={log.body["timestamp"]}
                    phx-value-lql={@querystring}
+                   phx-value-tailing?={@tailing?}
+                   phx-value-tz={@search_timezone}
                  >
                    <span>view</span>
                  </.modal_link>
@@ -87,7 +89,11 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   @spec lql_with_recommended_fields(Lql.Rules.lql_rules(), Logflare.LogEvent.t(), Source.t()) ::
           String.t()
   def lql_with_recommended_fields(lql_rules, event, source) do
-    fields = Source.recommended_query_fields(source)
+    fields =
+      source
+      |> Source.recommended_query_fields()
+      |> Enum.map(&Source.query_field_name/1)
+      |> Enum.uniq()
 
     existing_filter_paths =
       lql_rules
@@ -111,8 +117,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     |> Lql.encode!()
   end
 
-  defp strip_meta("metadata." <> k), do: k
-  defp strip_meta(k), do: k
+  defp strip_meta(field), do: field |> Source.query_field_name() |> strip_metadata_prefix()
+
+  defp strip_metadata_prefix("metadata." <> key), do: key
+  defp strip_metadata_prefix(key), do: key
 
   def formatted_for_clipboard(log, search_op) do
     select_fields =
@@ -187,8 +195,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   def formatted_timestamp(log_event, timezone) do
     tz_part =
-      Timex.Timezone.get(timezone).offset_utc
-      |> DateTimeUtils.humanize_timezone_offset()
+      case Timex.Timezone.get(timezone) do
+        {:error, _} -> DateTimeUtils.humanize_timezone_offset(0)
+        tz_info -> DateTimeUtils.humanize_timezone_offset(tz_info.offset_utc)
+      end
 
     format_timestamp(log_event.body["timestamp"], timezone) <> tz_part
   end

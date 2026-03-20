@@ -97,7 +97,7 @@ defmodule Logflare.DataCase do
   @doc """
   Sets up a ClickHouse test environment with automatic cleanup.
 
-  Returns `{source, backend, cleanup_fn}` tuple.
+  Returns `{source, backend}` tuple. Registers cleanup via `on_exit/1`.
 
   ## Options
   - `:config` - Custom ClickHouse configuration (merged with defaults)
@@ -139,9 +139,9 @@ defmodule Logflare.DataCase do
         sources: [source]
       )
 
-    cleanup_fn = fn -> cleanup_clickhouse_tables(backend) end
+    on_exit(fn -> cleanup_clickhouse_tables(backend) end)
 
-    {source, backend, cleanup_fn}
+    {source, backend}
   end
 
   @doc """
@@ -181,21 +181,30 @@ defmodule Logflare.DataCase do
   """
   def cleanup_clickhouse_tables(backend) do
     tables =
-      Enum.map([:log, :metric, :trace], fn type ->
-        ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
+      Enum.flat_map([:log, :metric, :trace], fn type ->
+        [
+          ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type),
+          ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, type)
+        ]
       end)
 
-    for table_name <- tables do
-      try do
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "DROP TABLE IF EXISTS #{table_name}"
-        )
-      rescue
-        _ -> :ok
-      catch
-        :exit, _ -> :ok
-      end
+    drop_query =
+      tables
+      |> Enum.map_join("; ", fn table_name -> "DROP TABLE IF EXISTS #{table_name}" end)
+
+    try do
+      ClickHouseAdaptor.execute_ch_query(
+        backend,
+        drop_query,
+        [],
+        pool_timeout: 1_000
+      )
+
+      Logflare.Backends.ConsolidatedSup.stop_pipeline(backend.id)
+    rescue
+      _ -> :ok
+    catch
+      :exit, _ -> :ok
     end
   end
 end

@@ -11,6 +11,7 @@ defmodule Logflare.Sources.Source do
   @derive {Jason.Encoder,
            only: [
              :name,
+             :description,
              :service_name,
              :token,
              :id,
@@ -112,6 +113,7 @@ defmodule Logflare.Sources.Source do
 
   typed_schema "sources" do
     field :name, :string
+    field :description, :string, default: nil
     field :service_name, :string
     field :token, Ecto.UUID.Atom, autogenerate: true
     field :public_token, :string
@@ -179,6 +181,7 @@ defmodule Logflare.Sources.Source do
     source
     |> cast(attrs, [
       :name,
+      :description,
       :service_name,
       :token,
       :public_token,
@@ -215,6 +218,7 @@ defmodule Logflare.Sources.Source do
     source
     |> cast(attrs, [
       :name,
+      :description,
       :service_name,
       :token,
       :public_token,
@@ -244,6 +248,7 @@ defmodule Logflare.Sources.Source do
 
   def default_validations(changeset, source) do
     changeset
+    |> normalize_description()
     |> validate_required([:name])
     |> unique_constraint(:name, name: :sources_name_index)
     |> unique_constraint(:token)
@@ -282,6 +287,9 @@ defmodule Logflare.Sources.Source do
     end
   end
 
+  defp normalize_and_validate_labels(%_{changes: changes} = changeset)
+       when not is_map_key(changes, :labels), do: changeset
+
   defp normalize_and_validate_labels(changeset) do
     {normalized, errors} =
       case get_change(changeset, :labels) do
@@ -297,11 +305,21 @@ defmodule Logflare.Sources.Source do
     |> Enum.reduce(changeset, fn {k, v}, cs -> add_error(cs, k, v) end)
     |> then(fn
       changeset when normalized == [] ->
-        changeset
+        put_change(changeset, :labels, "")
 
       changeset ->
         changeset
         |> put_change(:labels, normalized |> Enum.reverse() |> Enum.join(","))
+    end)
+  end
+
+  defp normalize_description(changeset) do
+    update_change(changeset, :description, fn
+      description when is_binary(description) ->
+        String.trim(description)
+
+      value ->
+        value
     end)
   end
 
@@ -409,7 +427,7 @@ defmodule Logflare.Sources.Source do
 
       iex> source = %Source{bigquery_clustering_fields: "id,timestamp", suggested_keys: "m.user_id!,status"}
       iex> recommended_query_fields(source)
-      ["id", "timestamp", "m.user_id", "status"]
+      ["id", "timestamp", "m.user_id!", "status"]
 
 
       iex> source = %Source{bigquery_clustering_fields: nil, suggested_keys: ""}
@@ -425,8 +443,22 @@ defmodule Logflare.Sources.Source do
     suggested_keys =
       (source.suggested_keys || "")
       |> String.split(",", trim: true)
-      |> Enum.map(fn key -> key |> String.trim() |> String.trim_trailing("!") end)
+      |> Enum.map(&String.trim/1)
 
     clustering_fields ++ suggested_keys
+  end
+
+  @spec required_query_field?(String.t()) :: boolean()
+  def required_query_field?(field) when is_binary(field) do
+    field
+    |> String.trim()
+    |> String.ends_with?("!")
+  end
+
+  @spec query_field_name(String.t()) :: String.t()
+  def query_field_name(field) when is_binary(field) do
+    field
+    |> String.trim()
+    |> String.trim_trailing("!")
   end
 end

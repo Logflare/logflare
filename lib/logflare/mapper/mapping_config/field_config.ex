@@ -26,6 +26,24 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     * `:allowed_values` — list of permitted string values. After transform is applied,
       if the value is not in this list it is replaced with the field's default. Useful for
       `LowCardinality(String)` columns where arbitrary strings would pollute the index.
+    * `:filters` — optional map of string validation filters applied during path resolution.
+      If a resolved string doesn't pass all filters, it's treated as "not found" and coalesce
+      continues to the next path (or falls back to the default). All configured filters must
+      pass (AND logic). Supported keys:
+
+      * `:len_eq` — exact byte length match (integer)
+      * `:len_gt` — byte length must exceed threshold (integer)
+      * `:len_gte` — byte length must meet or exceed threshold (integer)
+      * `:len_lt` — byte length must be below threshold (integer)
+      * `:len_lte` — byte length must be at or below threshold (integer)
+      * `:char_class` — `"alpha"` (ASCII letters only), `"numeric"` (ASCII digits only),
+        or `"alphanumeric"` (ASCII letters and digits only)
+
+      Length checks are O(1) and run first, gating the O(n) character class scan.
+      Filters are evaluated inside the NIF with zero additional BEAM reductions.
+
+      Example: `filters: %{len_eq: 20, char_class: "alpha"}` ensures the resolved
+      value is exactly 20 ASCII alphabetic characters.
 
   ### `datetime64/2`
 
@@ -50,9 +68,24 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       If pick produces a non-empty map, it becomes the field value. If empty, falls back
       to `:path`/`:paths`.
 
+  ### `flat_map/2`
+
+  Like `json/2` but flattens nested maps to dot-notation keys with values
+  coerced according to `:value_type`. Designed for ClickHouse `Map(String, V)`
+  columns where `V` depends on the value type.
+
+    * `:value_type` — target value type for the flat map (default `"string"`).
+      Currently only `"string"` is supported. Future value types (`"integer"`,
+      `"float"`) will target `Map(String, Int64)`, `Map(String, Float64)`, etc.
+    * Nested maps: `%{"a" => %{"b" => 1}}` → `%{"a.b" => "1"}`
+    * Lists: JSON-encoded as strings (e.g. `[1, 2]` → `"[1,2]"`)
+    * Scalars: coerced to string (`42` → `"42"`, `true` → `"true"`)
+    * nil values: omitted from the output map
+    * Accepts the same options as `json/2`: `:exclude_keys`, `:elevate_keys`, `:pick`
+
   ## Array Types
 
-  Six array constructors extract and coerce lists of values. All default to `[]`
+  Seven array constructors extract and coerce lists of values. All default to `[]`
   when the path resolves to nil or a non-list value.
 
   Wildcard paths work naturally with array types — `$.items[*].name` resolves to
@@ -95,6 +128,13 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   Extracts a list of maps. Non-map elements are always filtered out (regardless
   of `filter_nil`), protecting against ClickHouse insert failures at high throughput.
 
+  ### `array_flat_map/2`
+
+  Like `array_map/2` but each map element is flattened using the same logic as
+  `flat_map/2`. Non-map elements are filtered out. Inherits `:value_type` from
+  the scalar `flat_map` behavior (default `"string"`). Designed for ClickHouse
+  `Array(Map(String, V))` columns.
+
   ## Inference Rules (`InferRule` / `InferCondition`)
 
   Used by `enum8/2` to infer a value from structural cues when explicit path lookup finds
@@ -132,8 +172,9 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   alias Logflare.Mapper.MappingConfig.InferRule
   alias Logflare.Mapper.MappingConfig.PickEntry
 
-  @valid_types ~w(string uint8 uint32 uint64 int32 float64 bool enum8 datetime64 json array_string array_uint64 array_float64 array_datetime64 array_json array_map)
+  @valid_types ~w(string uint8 uint32 uint64 int32 float64 bool enum8 datetime64 json flat_map array_string array_uint64 array_float64 array_datetime64 array_json array_map array_flat_map)
   @valid_transforms ~w(upcase downcase)
+  @valid_value_types ~w(string)
 
   @type common_opts :: [
           path: String.t(),
@@ -159,7 +200,9 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     field(:enum_values, :map)
     field(:exclude_keys, {:array, :string})
     field(:elevate_keys, {:array, :string})
+    field(:filters, :map)
     field(:filter_nil, :boolean, default: false)
+    field(:value_type, :string)
     embeds_many(:pick, PickEntry)
     embeds_many(:infer, InferRule)
   end
@@ -183,20 +226,23 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
         :enum_values,
         :exclude_keys,
         :elevate_keys,
-        :filter_nil
+        :filters,
+        :filter_nil,
+        :value_type
       ],
       empty_values: []
     )
     |> validate_required([:name, :type])
     |> validate_inclusion(:type, @valid_types)
     |> validate_inclusion(:transform, @valid_transforms)
+    |> validate_inclusion(:value_type, @valid_value_types)
     |> cast_embed(:pick, with: &PickEntry.changeset/2)
     |> cast_embed(:infer, with: &InferRule.changeset/2)
   end
 
   @spec string(String.t(), keyword()) :: t()
   def string(name, opts \\ []) do
-    build(name, "string", opts, [:transform, :allowed_values])
+    build(name, "string", opts, [:transform, :allowed_values, :filters])
   end
 
   @spec uint8(String.t(), keyword()) :: t()
@@ -281,6 +327,19 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @spec array_map(String.t(), keyword()) :: t()
   def array_map(name, opts \\ []) do
     build(name, "array_map", opts, [:filter_nil])
+  end
+
+  @spec flat_map(String.t(), keyword()) :: t()
+  def flat_map(name, opts \\ []) do
+    opts = Keyword.put_new(opts, :value_type, "string")
+    base = build(name, "flat_map", opts, [:exclude_keys, :elevate_keys, :value_type])
+    maybe_put_pick(base, opts[:pick])
+  end
+
+  @spec array_flat_map(String.t(), keyword()) :: t()
+  def array_flat_map(name, opts \\ []) do
+    opts = Keyword.put_new(opts, :value_type, "string")
+    build(name, "array_flat_map", opts, [:filter_nil, :value_type])
   end
 
   defp build(name, type, opts, extra_keys \\ []) do

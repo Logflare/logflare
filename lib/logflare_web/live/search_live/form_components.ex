@@ -8,7 +8,8 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   use Phoenix.Component
 
   alias Logflare.Lql.Rules
-  alias LogflareWeb.Utils
+  alias Logflare.Utils
+  alias Logflare.Sources.Source
 
   attr :form, Phoenix.HTML.Form, required: true
   attr :lql_rules, :list, required: true
@@ -73,6 +74,60 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     """
   end
 
+  attr :fields, :list, required: true
+  attr :id_prefix, :string, default: "recommended-field"
+
+  def recommended_field_inputs(assigns) do
+    assigns =
+      assigns
+      |> assign(:fields, format_recommended_fields(assigns.fields))
+
+    ~H"""
+    <div :if={Enum.any?(@fields)} class="form-text tw-order-1 tw-basis-full sm:tw-basis-auto sm:tw-shrink-0" id="recommended_fields" phx-update="ignore">
+      <div class="sm:tw-flex tw-items-end tw-gap-2">
+        <div :for={field <- @fields} class="recommended-field-container tw-basis-full tw-min-w-0 sm:tw-min-w-20 sm:tw-max-w-48 tw-mb-2 sm:tw-mb-0">
+          <div class="tw-flex tw-justify-between tw-items-baseline">
+            <label for={"#{@id_prefix}-#{field.name}"} data-toggle="tooltip" title={field.name} class="logflare-tooltip tw-truncate tw-mb-0 tw-text-xs tw-text-gray-300 tw-block">{field.name}</label>
+            <span :if={field.required?} class="required-field-indicator tw-text-gray-500 tw-block tw-text-right tw-text-xs">
+              required
+            </span>
+          </div>
+          <input id={"#{@id_prefix}-#{field.name}"} name={input_name(:fields, field.name)} class="form-control" type="text" />
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp format_recommended_fields(fields) do
+    {order, required_map} =
+      Enum.reduce(fields, {[], %{}}, fn field, {order, required_map} ->
+        case Source.query_field_name(field) do
+          "" ->
+            {order, required_map}
+
+          name ->
+            required? = Source.required_query_field?(field)
+            merged_required? = Map.get(required_map, name, false) or required?
+            order = maybe_prepend_name(order, required_map, name)
+
+            {order, Map.put(required_map, name, merged_required?)}
+        end
+      end)
+
+    order
+    |> Enum.reverse()
+    |> Enum.map(&%{name: &1, required?: required_map[&1]})
+  end
+
+  defp maybe_prepend_name(order, required_map, name) do
+    if Map.has_key?(required_map, name) do
+      order
+    else
+      [name | order]
+    end
+  end
+
   attr :search_form, :any, required: true
   attr :querystring, :string, required: true
   attr :search_history, :list, required: true
@@ -90,16 +145,23 @@ defmodule LogflareWeb.SearchLive.FormComponents do
 
   def search_controls(assigns) do
     ~H"""
-    <div class="search-control" id="source-logs-search-control" phx-hook="SourceLogsSearch">
+    <div class="search-control tw-mt-1" id="source-logs-search-control" phx-hook="SourceLogsSearch">
       <.form :let={f} for={@search_form} action="#" phx-submit="start_search" phx-change="form_update" class="form-group">
         <div class="form-group form-text">
-          {text_input(f, :querystring,
-            phx_focus: :form_focus,
-            phx_blur: :form_blur,
-            value: @querystring,
-            class: "form-control form-control-margin",
-            list: "matches"
-          )}
+          <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-2">
+            <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
+
+            <div class="tw-order-2 tw-basis-full tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
+              {text_input(f, :querystring,
+                phx_focus: :form_focus,
+                phx_blur: :form_blur,
+                value: @querystring,
+                class: "form-control tw-mt-0",
+                list: "matches"
+              )}
+            </div>
+          </div>
+
           {text_input(f, :search_timezone,
             class: "d-none",
             value: @search_timezone,

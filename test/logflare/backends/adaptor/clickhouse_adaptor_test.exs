@@ -9,7 +9,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup, as: NativePoolSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
 
@@ -19,8 +22,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test()
 
       stringified_backend_token =
         backend.token
@@ -51,14 +53,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
                "otel_traces_#{stringified_backend_token}"
     end
+
+    test "generates simple_otel-prefixed table names per log type",
+         %{backend: backend, stringified_backend_token: stringified_backend_token} do
+      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :log) ==
+               "simple_otel_logs_#{stringified_backend_token}"
+
+      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :metric) ==
+               "simple_otel_metrics_#{stringified_backend_token}"
+
+      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :trace) ==
+               "simple_otel_traces_#{stringified_backend_token}"
+    end
   end
 
   describe "connection and basic functionality" do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
 
@@ -84,6 +97,66 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         ClickHouseAdaptor.execute_ch_query(backend, "INVALID SQL QUERY")
 
       assert {:error, _} = result
+    end
+
+    test "preserves 16-byte strings while converting UUID columns", %{backend: backend} do
+      # A 16-byte string that could be mistaken for a UUID binary
+      sixteen_byte_str = "exactly16bytesXX"
+      assert byte_size(sixteen_byte_str) == 16
+
+      uuid_hex = "550e8400-e29b-41d4-a716-446655440000"
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT toFixedString('exactly16bytesXX', 16) AS fixed_str, toUUID('#{uuid_hex}') AS uuid_col"
+        )
+
+      assert [%{"fixed_str" => ^sixteen_byte_str, "uuid_col" => ^uuid_hex}] = rows
+    end
+
+    test "handles Nullable(UUID) values", %{backend: backend} do
+      uuid_hex = "660e8400-e29b-41d4-a716-446655440001"
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT NULL::Nullable(UUID) AS null_uuid, toUUID('#{uuid_hex}')::Nullable(UUID) AS present_uuid"
+        )
+
+      assert [%{"null_uuid" => nil, "present_uuid" => ^uuid_hex}] = rows
+    end
+  end
+
+  describe "clickhouse_cloud?/1" do
+    test "returns true for ClickHouse Cloud URLs" do
+      backend = %Backend{config: %{url: "https://abc123.eu-central-1.aws.clickhouse.cloud"}}
+      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
+    end
+
+    test "returns true for GCP Cloud URLs" do
+      backend = %Backend{config: %{url: "https://xyz.europe-west4.gcp.clickhouse.cloud"}}
+      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
+    end
+
+    test "returns true regardless of port in URL" do
+      backend = %Backend{config: %{url: "https://foo.clickhouse.cloud:8443"}}
+      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
+    end
+
+    test "returns false for self-hosted URLs" do
+      backend = %Backend{config: %{url: "http://localhost:8123"}}
+      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
+    end
+
+    test "returns false for similar but non-Cloud domains" do
+      backend = %Backend{config: %{url: "https://clickhouse.cloud.example.com"}}
+      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
+    end
+
+    test "returns false when config has no url" do
+      backend = %Backend{config: %{}}
+      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
     end
   end
 
@@ -207,8 +280,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} =
+        setup_clickhouse_test(config: %{use_simple_schemas: true})
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
@@ -314,6 +387,175 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert :ok = result
     end
 
+    test "insert_log_events/3 routes through native pool when enabled", %{
+      source: source,
+      backend: query_backend
+    } do
+      {_source, native_backend} =
+        setup_clickhouse_test(
+          source: source,
+          config: %{insert_protocol: "native", native_port: 9000}
+        )
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(native_backend, :log)
+
+      ddl = QueryTemplates.create_table_statement(table_name, :log, ttl_days: 0)
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
+
+      log_event = build_mapped_log_event(source: source, message: "native route test")
+
+      assert :ok = ClickHouseAdaptor.insert_log_events(native_backend, [log_event], :log)
+
+      pool_pid = GenServer.whereis(NativeIngester.Pool.via(native_backend))
+      assert is_pid(pool_pid)
+
+      {:ok, rows} =
+        ClickHouseAdaptor.execute_ch_query(
+          query_backend,
+          "SELECT event_message FROM #{table_name}"
+        )
+
+      assert length(rows) == 1
+      assert Enum.at(rows, 0)["event_message"] == "native route test"
+
+      on_exit(fn ->
+        NativePoolSup.stop_pool(native_backend)
+        ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
+      end)
+    end
+
+    test "insert_simple_log_events/3 routes through native pool with Map attributes", %{
+      source: source,
+      backend: query_backend
+    } do
+      {_source, native_backend} =
+        setup_clickhouse_test(
+          source: source,
+          config: %{insert_protocol: "native", native_port: 9000}
+        )
+
+      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(native_backend, :log)
+
+      ddl = QueryTemplates.create_simple_table_statement(table_name, :log, ttl_days: 0)
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
+
+      log_event =
+        build_mapped_log_event(
+          source: source,
+          message: "native simple test",
+          body: %{"metadata" => %{"level" => "error", "host" => "web-1"}},
+          mapping_variant: :simple
+        )
+
+      assert :ok = ClickHouseAdaptor.insert_simple_log_events(native_backend, [log_event], :log)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          query_backend,
+          "SELECT event_message, log_attributes, resource_attributes FROM #{table_name}"
+        )
+
+      assert row["event_message"] == "native simple test"
+      assert is_map(row["log_attributes"])
+      assert row["log_attributes"]["level"] == "error"
+      assert row["log_attributes"]["host"] == "web-1"
+      assert is_map(row["resource_attributes"])
+
+      on_exit(fn ->
+        NativePoolSup.stop_pool(native_backend)
+        ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
+      end)
+    end
+
+    test "insert_simple_log_events/3 inserts logs into simple table with Map attributes", %{
+      source: source,
+      backend: backend
+    } do
+      log_event =
+        build_mapped_log_event(
+          source: source,
+          message: "Simple log insert",
+          body: %{"metadata" => %{"level" => "warn", "region" => "us-west-2"}},
+          mapping_variant: :simple
+        )
+
+      :ok = ClickHouseAdaptor.insert_simple_log_events(backend, [log_event], :log)
+
+      Process.sleep(100)
+
+      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :log)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT event_message, resource_attributes, scope_attributes, log_attributes FROM #{table_name}"
+        )
+
+      assert row["event_message"] == "Simple log insert"
+      assert is_map(row["resource_attributes"])
+      assert is_map(row["scope_attributes"])
+      assert is_map(row["log_attributes"])
+      assert row["log_attributes"]["level"] == "warn"
+      assert row["log_attributes"]["region"] == "us-west-2"
+    end
+
+    test "insert_simple_log_events/3 inserts metrics into simple table with Map attributes", %{
+      source: source,
+      backend: backend
+    } do
+      metric_event =
+        build_mapped_metric_event(
+          source: source,
+          message: "Simple metric insert",
+          mapping_variant: :simple
+        )
+
+      :ok = ClickHouseAdaptor.insert_simple_log_events(backend, [metric_event], :metric)
+
+      Process.sleep(100)
+
+      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :metric)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT event_message, resource_attributes, scope_attributes, attributes FROM #{table_name}"
+        )
+
+      assert row["event_message"] == "Simple metric insert"
+      assert is_map(row["resource_attributes"])
+      assert is_map(row["scope_attributes"])
+      assert is_map(row["attributes"])
+    end
+
+    test "insert_simple_log_events/3 inserts traces into simple table with Map attributes", %{
+      source: source,
+      backend: backend
+    } do
+      trace_event =
+        build_mapped_trace_event(
+          source: source,
+          message: "Simple trace insert",
+          mapping_variant: :simple
+        )
+
+      :ok = ClickHouseAdaptor.insert_simple_log_events(backend, [trace_event], :trace)
+
+      Process.sleep(100)
+
+      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :trace)
+
+      {:ok, [row]} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT event_message, resource_attributes, span_attributes FROM #{table_name}"
+        )
+
+      assert row["event_message"] == "Simple trace insert"
+      assert is_map(row["resource_attributes"])
+      assert is_map(row["span_attributes"])
+    end
+
     test "insert_log_events/3 inserts into type-specific table", %{
       source: source,
       backend: backend
@@ -347,8 +589,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
 
@@ -409,14 +650,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       source1 = insert(:source, user: user, default_ingest_backend_enabled?: true)
       source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
 
-      {source1_with_backend, backend, cleanup_fn} =
+      {source1_with_backend, backend} =
         setup_clickhouse_test(
           source: source1,
           user: user,
           default_ingest?: true
         )
 
-      on_exit(cleanup_fn)
       start_supervised!({ClickHouseAdaptor, backend})
 
       [backend: backend, user: user, source1: source1_with_backend, source2: source2]
@@ -528,8 +768,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   describe "read query `ConnectionManager` automatic wake-up" do
     setup do
       insert(:plan, name: "Free")
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
       Process.sleep(100)
@@ -580,8 +819,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       source: source,
       backend: backend1
     } do
-      {_source2, backend2, cleanup_fn2} = setup_clickhouse_test(source: source)
-      on_exit(cleanup_fn2)
+      {_source2, backend2} = setup_clickhouse_test(source: source)
       start_supervised!({ClickHouseAdaptor, backend2}, id: :adaptor2)
 
       {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend2, "SELECT 1")

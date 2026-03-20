@@ -9,7 +9,8 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Backends.Adaptor
   alias Logflare.Endpoints
   alias Logflare.Endpoints.PiiRedactor
-  alias LogflareWeb.{QueryComponents, Utils}
+  alias LogflareWeb.QueryComponents
+  alias Logflare.Utils
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -55,6 +56,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
       |> assign(:prev_params, %{})
+      |> assign(:prev_reservation, nil)
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
       |> assign(:declared_params, %{})
       |> assign(:alerts, alerts)
@@ -176,7 +178,7 @@ defmodule LogflareWeb.EndpointsLive do
         {:noreply,
          socket
          |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
-         |> push_patch(to: Utils.with_team_param(~p"/endpoints/#{endpoint.id}", team))
+         |> push_patch(to: LogflareWeb.Utils.with_team_param(~p"/endpoints/#{endpoint.id}", team))
          |> assign(:show_endpoint, endpoint)
          |> assign(:query_result_rows, nil)
          |> assign(:total_bytes_processed, nil)}
@@ -218,6 +220,7 @@ defmodule LogflareWeb.EndpointsLive do
       ) do
     query_string = Map.get(payload, "query")
     query_params = Map.get(payload, "params", %{})
+    reservation = Map.get(payload, "reservation")
 
     allowed_labels = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :labels)
 
@@ -236,13 +239,15 @@ defmodule LogflareWeb.EndpointsLive do
            parsed_labels: parsed_labels,
            use_query_cache: false,
            redact_pii: redact_pii,
-           backend_id: backend_id
+           backend_id: backend_id,
+           reservation: reservation
          ) do
       {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
         {:noreply,
          socket
          |> put_flash(:info, "Ran query successfully")
          |> assign(:prev_params, query_params)
+         |> assign(:prev_reservation, reservation)
          |> assign(:query_result_rows, rows)
          |> assign(:total_bytes_processed, total_bytes_processed)}
 
@@ -252,6 +257,7 @@ defmodule LogflareWeb.EndpointsLive do
          socket
          |> put_flash(:info, "Ran query successfully")
          |> assign(:prev_params, query_params)
+         |> assign(:prev_reservation, reservation)
          |> assign(:query_result_rows, rows)
          |> assign(:total_bytes_processed, nil)}
 

@@ -1,8 +1,6 @@
 defmodule Logflare.Cluster.Utils do
   @moduledoc false
 
-  require Logger
-
   @spec node_list_all() :: [Node.t()]
   def node_list_all do
     [Node.self() | Node.list()]

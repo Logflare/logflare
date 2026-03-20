@@ -13,8 +13,11 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Backends.SourceSup
 
   describe "changesets" do
+    setup do
+      [plan: insert(:plan)]
+    end
+
     test "update_by_user_changeset" do
-      insert(:plan)
       source = insert(:source, user: insert(:user), labels: "initial=label")
 
       assert %Ecto.Changeset{changes: changes} = Source.update_by_user_changeset(source, %{})
@@ -24,6 +27,49 @@ defmodule Logflare.SourcesTest do
                Source.update_by_user_changeset(source, %{labels: "test=some_label"})
 
       assert changes == %{labels: "test=some_label"}
+    end
+
+    test "bug: update_by_user_changeset  empty string should clear labels" do
+      source = insert(:source, user: insert(:user), labels: "status=m.level")
+
+      changeset = Source.update_by_user_changeset(source, %{})
+      assert Ecto.Changeset.get_field(changeset, :labels) == "status=m.level"
+
+      changeset = Source.update_by_user_changeset(source, %{labels: ""})
+      assert Ecto.Changeset.get_field(changeset, :labels) == ""
+    end
+
+    test "update_by_user_changeset trims description and turns blank into nil" do
+      source = insert(:source, user: insert(:user), description: "existing description")
+
+      assert %Ecto.Changeset{changes: %{description: "trimmed description"}} =
+               Source.update_by_user_changeset(source, %{description: "  trimmed description  "})
+
+      assert %Ecto.Changeset{changes: %{description: nil}} =
+               Source.update_by_user_changeset(source, %{description: "   "})
+    end
+  end
+
+  describe "recommended_query_fields/1" do
+    test "preserves required marker in suggested keys" do
+      source =
+        build(:source,
+          bigquery_clustering_fields: "session_id",
+          suggested_keys: "metadata.level!,m.user_id"
+        )
+
+      assert Source.recommended_query_fields(source) == [
+               "session_id",
+               "metadata.level!",
+               "m.user_id"
+             ]
+    end
+
+    test "query_field_name/1 and required_query_field?/1 normalize correctly" do
+      assert Source.query_field_name("metadata.level!") == "metadata.level"
+      assert Source.query_field_name("metadata.level") == "metadata.level"
+      assert Source.required_query_field?("metadata.level!")
+      refute Source.required_query_field?("metadata.level")
     end
   end
 

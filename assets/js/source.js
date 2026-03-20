@@ -101,7 +101,7 @@ export function scrollBottom() {
 }
 
 async function logTemplate(e) {
-  const { via_rule, source_uuid, body } = e;
+  const { via_rule_id, source_uuid, body } = e;
   const metadata = JSON.stringify(body, null, 2);
   const formatter = await userSelectedFormatter();
   const formattedDatetime = formatter(body.timestamp);
@@ -129,9 +129,9 @@ async function logTemplate(e) {
     }">${formattedDatetime}</mark> ${logLevelTemplate}
     ${escape(body.event_message)}
     ${metadataElement}
-    ${via_rule
+    ${via_rule_id
       ? `<span
-    data-toggle="tooltip" data-placement="top" title="Matching ${via_rule.regex} routing from ${source_uuid}" style="color: ##5eeb8f;">
+    data-toggle="tooltip" data-placement="top" title="Routed from ${source_uuid}" style="color: #5eeb8f;">
     <i class="fa fa-code-branch" style="font-size: 1em;"></i>
     </span>`
       : `<span></span>`

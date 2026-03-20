@@ -6,15 +6,13 @@ defmodule Logflare.Telemetry do
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
+  context_caches_with_metrics = Logflare.ContextCache.Supervisor.list_caches_with_metrics()
+
   @caches [
-    {Logflare.Logs.LogEvents.Cache, :log_events},
-    {Logflare.Logs.RejectedLogEvents, :rejected_log_events},
-    {Logflare.Sources.Cache, :sources},
-    {Logflare.SourceSchemas.Cache, :source_schemas},
-    {Logflare.PubSubRates.Cache, :pub_sub_rates},
-    {Logflare.Billing.Cache, :billing},
-    {Logflare.Users.Cache, :users}
-  ]
+            {Logflare.Logs.LogEvents.Cache, :log_events},
+            {Logflare.Logs.RejectedLogEvents, :rejected_log_events},
+            {Logflare.PubSubRates.Cache, :pub_sub_rates}
+          ] ++ context_caches_with_metrics
 
   @process_metrics %{
     memory: %{
@@ -50,6 +48,8 @@ defmodule Logflare.Telemetry do
           |> Keyword.update!(:otlp_headers, &Map.new/1)
           # set finch pool to 100 size
           |> Keyword.put(:otlp_concurrent_requests, max(base * 4, 50))
+          |> Keyword.put(:spawn_opt, fullsweep_after: 10_000)
+          |> Keyword.put(:hibernate_after, 5_000)
 
         [{OtelMetricExporter, otel_exporter_opts}]
       else
@@ -76,6 +76,10 @@ defmodule Logflare.Telemetry do
             last_value("cachex.#{metric}.evictions"),
             last_value("cachex.#{metric}.expirations"),
             last_value("cachex.#{metric}.operations"),
+            last_value("cachex.#{metric}.hits"),
+            last_value("cachex.#{metric}.misses"),
+            last_value("cachex.#{metric}.hit_rate"),
+            last_value("cachex.#{metric}.miss_rate"),
             last_value("cachex.#{metric}.total_heap_size", unit: {:byte, :megabyte})
           ]
         end)
@@ -264,11 +268,15 @@ defmodule Logflare.Telemetry do
         |> Process.info(:total_heap_size)
 
       metrics = %{
-        purge: Map.get(stats, :purge),
-        stats: Map.get(stats, :stats),
-        evictions: Map.get(stats, :evictions),
-        expirations: Map.get(stats, :expirations),
-        operations: Map.get(stats, :operations),
+        purge: Map.get(stats, :purge, 0),
+        stats: Map.get(stats, :stats, 0),
+        evictions: Map.get(stats, :evictions, 0),
+        expirations: Map.get(stats, :expirations, 0),
+        operations: Map.get(stats, :operations, 0),
+        hits: Map.get(stats, :hits, 0),
+        misses: Map.get(stats, :misses, 0),
+        hit_rate: Map.get(stats, :hit_rate, 0),
+        miss_rate: Map.get(stats, :miss_rate, 0),
         total_heap_size: total_heap_size
       }
 

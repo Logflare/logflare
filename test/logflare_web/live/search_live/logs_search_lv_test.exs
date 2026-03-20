@@ -68,6 +68,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   # do this for all tests
   setup [:setup_mocks, :on_exit_kill_tasks]
+  setup {TestUtils, :attach_wait_for_render}
 
   describe "resource switching for team_users" do
     setup %{conn: conn} do
@@ -317,7 +318,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
           ~p"/sources/#{source.id}/search?t=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Singapore"
         )
 
-      :timer.sleep(300)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
 
       assert view |> element(".subhead") |> render() =~ "(+08:00)"
       assert render(view) =~ "something123"
@@ -342,7 +344,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     setup [:setup_mocks, :setup_user_session]
-    setup {TestUtils, :attach_wait_for_render}
 
     test "subheader - lql docs", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?querystring=something123")
@@ -583,36 +584,31 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert_receive {:event_query, _query}
       assert_receive {:agg_query, _query}
 
-      TestUtils.retry_assert(fn ->
-        html = view |> element("#logs-list-container") |> render()
+      html = view |> element("#logs-list-container") |> render()
 
-        assert html =~ "No events matching your query"
+      assert html =~ "No events matching your query"
 
-        {:ok, document} = Floki.parse_document(html)
+      {:ok, document} = Floki.parse_document(html)
 
-        extend_search_links =
-          document
-          |> Floki.find("a")
-          |> Enum.filter(fn link -> Floki.text(link) =~ "Extend search" end)
+      assert [link] =
+               document
+               |> Floki.find("a")
+               |> Enum.filter(fn link -> Floki.text(link) =~ "Extend search" end)
 
-        assert [_link] = extend_search_links
-        [link] = extend_search_links
+      assert Floki.text(document) =~ "t:>=#{expected_hits_ts}"
+      refute Floki.text(document) =~ "t:>=#{expected_zero_ts}"
 
-        assert Floki.text(document) =~ "t:>=#{expected_hits_ts}"
-        refute Floki.text(document) =~ "t:>=#{expected_zero_ts}"
+      href =
+        link
+        |> Floki.attribute("href")
+        |> hd()
 
-        href =
-          link
-          |> Floki.attribute("href")
-          |> hd()
+      uri = URI.parse(href)
+      assert uri.path == "/sources/#{source.id}/search"
 
-        uri = URI.parse(href)
-        assert uri.path == "/sources/#{source.id}/search"
-
-        query_params = URI.decode_query(uri.query)
-        assert query_params["tailing?"] == "false"
-        assert query_params["querystring"] =~ "t:>=#{expected_hits_ts}"
-      end)
+      query_params = URI.decode_query(uri.query)
+      assert query_params["tailing?"] == "false"
+      assert query_params["querystring"] =~ "t:>=#{expected_hits_ts}"
     end
 
     test "page title includes source name", %{conn: conn, source: source} do
@@ -651,7 +647,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
         }
       })
 
-      :timer.sleep(1000)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
 
       render_change(view, :start_search, %{
         "search" => %{
@@ -660,7 +657,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       })
 
       # wait for async search task to complete
-      :timer.sleep(1000)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
 
       html = view |> element("#logs-list-container") |> render()
 
@@ -722,7 +720,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
         next_update: System.system_time(:millisecond)
       })
 
-      :timer.sleep(500)
       Cachex.clear(Logflare.SourceSchemas.Cache)
 
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
@@ -741,15 +738,20 @@ defmodule LogflareWeb.Source.SearchLVTest do
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
+
       # post-init fetching
-      :timer.sleep(800)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container")
 
       TestUtils.retry_assert(fn ->
         render_change(view, :start_search, %{
           "search" => %{@default_search_params | "querystring" => "m.nested:test top:test"}
         })
 
-        :timer.sleep(200)
+        view
+        |> TestUtils.wait_for_render("#logs-list-container li")
 
         html = view |> element("#logs-list-container") |> render()
 
@@ -776,14 +778,16 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       # post-init fetching
-      :timer.sleep(500)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
 
       render_change(view, :start_search, %{
         "search" => %{@default_search_params | "chart_period" => "day"}
       })
 
       # wait for async search task to complete
-      :timer.sleep(500)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
 
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"
@@ -851,7 +855,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       # wait for async search task to complete
-      :timer.sleep(500)
+      view
+      |> TestUtils.wait_for_render("#logs-list li:first-of-type a[href^='/sources']")
 
       assert view
              |> element("#logs-list li:first-of-type a[href^='/sources']", "permalink")
@@ -918,7 +923,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       # wait for async search task to complete
-      :timer.sleep(500)
+      view
+      |> TestUtils.wait_for_render("li:first-of-type a[phx-value-log-event-id='some-uuid']")
 
       schema = TestUtils.build_bq_schema(%{"testing" => "string"})
       source = insert(:source, user: user)
@@ -956,6 +962,54 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert query =~ ~r"..\.testing"
     end
 
+    test "log event modal - quick filter button appends filter to search", %{
+      conn: conn,
+      source: source
+    } do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "quick filter test",
+           "user_id" => "abc-123",
+           "id" => "qf-uuid"
+         })}
+      end)
+
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:\"abc-123\"|, tz: "Africa/Lagos"}}"
+        )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
+
+      view
+      |> element("li:first-of-type a[phx-value-log-event-id='qf-uuid']", "view")
+      |> render_click()
+
+      TestUtils.retry_assert(fn ->
+        html = render(view)
+        assert html =~ "quick filter test"
+        assert html =~ ~s|title="Append to query"|
+      end)
+
+      view
+      |> element(~s|#log-event-tree-qf-uuid--user_id a[title="Append to query"]|)
+      |> render_click()
+
+      to = assert_patch(view)
+      assert find_querystring(render(view)) =~ ~s|user_id:"abc-123"|
+
+      %URI{query: query} = URI.parse(to)
+
+      assert %{"tailing?" => "false", "tz" => "Africa/Lagos"} =
+               query |> URI.decode_query() |> Map.take(["tailing?", "tz"])
+    end
+
     test "log event modal - loading from cache", %{conn: conn, user: user} do
       schema = TestUtils.build_bq_schema(%{"testing" => "string"})
       source = insert(:source, user: user)
@@ -977,7 +1031,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       # Wait for search to complete
-      :timer.sleep(200)
+      view
+      |> TestUtils.wait_for_render("li:first-of-type a[phx-value-log-event-id='some-uuid']")
 
       # First render builds a LogEvent and caches it
       view
@@ -985,7 +1040,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> render_click()
 
       # wait for cache to populate
-      :timer.sleep(500)
+      view
+      |> TestUtils.wait_for_render("#logflare-modal")
 
       # Second render loads the LogEvent from cache
       assert view
@@ -1058,7 +1114,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       # post-init fetching
-      :timer.sleep(500)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
 
       assert get_view_assigns(view).tailing?
       render_click(view, "soft_pause", %{})
@@ -1086,7 +1143,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       # post-init fetching
-      :timer.sleep(500)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container")
 
       render_change(view, "datetime_update", %{"querystring" => "t:last@2h"})
 
@@ -1116,7 +1174,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     setup [:setup_team_user_session]
-    setup {TestUtils, :attach_wait_for_render}
 
     test "create new query from search", %{conn: conn, source: source, team_user: team_user} do
       {:ok, view, _html} =
@@ -1302,7 +1359,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     } do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
-      :timer.sleep(800)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container")
 
       view
       |> render_change(:start_search, %{
@@ -1325,7 +1383,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     } do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
-      :timer.sleep(800)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container")
 
       view
       |> render_change(:start_search, %{
@@ -1344,7 +1403,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     } do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
-      :timer.sleep(800)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
 
       assert view
              |> render_change(:start_search, %{
@@ -1375,7 +1435,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     } do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
-      :timer.sleep(400)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container")
 
       view
       |> render_change(:start_search, %{
@@ -1398,7 +1459,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     } do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
-      :timer.sleep(400)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container")
 
       view
       |> render_change(:start_search, %{
@@ -1409,6 +1471,106 @@ defmodule LogflareWeb.Source.SearchLVTest do
       })
 
       refute view |> element(".message .alert", "required") |> has_element?()
+    end
+  end
+
+  describe "recommended field inputs" do
+    setup do
+      plan = insert(:plan)
+      user = insert(:user)
+
+      source =
+        insert(:source,
+          user: user,
+          suggested_keys: "metadata.level!,m.user_id",
+          bigquery_clustering_fields: "session_id"
+        )
+
+      source_without_recommendations = insert(:source, user: user)
+
+      %{
+        user: user,
+        plan: plan,
+        source: source,
+        source_without_recommendations: source_without_recommendations
+      }
+    end
+
+    setup [:setup_user_session]
+
+    test "renders inputs for suggested and cluster fields", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      assert has_element?(view, "label", "session_id")
+      assert has_element?(view, "label", "metadata.level")
+      assert has_element?(view, "label", "m.user_id")
+      assert has_element?(view, ".required-field-indicator", "required")
+    end
+
+    test "does not render inputs when no fields are configured", %{
+      conn: conn,
+      source_without_recommendations: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      refute has_element?(view, "input[id^='search-field-']")
+    end
+
+    # Search initiated from SourceController.show
+    test "search with field params are appended", %{
+      conn: conn,
+      source: source
+    } do
+      query_params = [
+        {"fields[metadata.level]", "error"},
+        {"fields[metadata.user_id]", "123"},
+        {"fields[event_message]", "api-timeout"},
+        {"fields[metadata.request_id]", ""},
+        querystring: "c:count(*) c:group_by(t::minute)"
+      ]
+
+      path = ~p"/sources/#{source.id}/search?#{query_params}"
+
+      {:error, {:live_redirect, %{to: to}}} =
+        live(conn, path)
+
+      refute to =~ "fields%5B"
+
+      {:ok, view, _html} = live(conn, to)
+
+      qs = render(view) |> find_querystring()
+
+      assert qs =~ "api-timeout"
+      assert qs =~ "m.level:error"
+      assert qs =~ "m.user_id:123"
+      refute qs =~ "m.request_id:"
+    end
+
+    test "start_search upserts filters by path and ignores empty fields", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      render_change(view, :start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "event_message:timeout c:count(*) c:group_by(t::minute)"
+        },
+        "fields" => %{
+          "event_message" => "api-timeout",
+          "metadata.request_id" => ""
+        }
+      })
+
+      qs = render(view) |> find_querystring()
+
+      assert qs =~ "api-timeout"
+      refute qs =~ "event_message:timeout"
+      refute qs =~ "m.request_id:"
     end
   end
 
@@ -1441,7 +1603,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       refute get_view_assigns(view).tailing?
 
-      :timer.sleep(400)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container")
+
       assert render_click(view, "soft_play", %{}) =~ "disabled for this source"
 
       view
@@ -1455,7 +1619,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       refute get_view_assigns(view).tailing?
 
-      :timer.sleep(400)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container")
     end
   end
 

@@ -42,6 +42,11 @@ defmodule Logflare.Utils.Guards do
   defguard is_datetime(value) when is_struct(value, DateTime)
 
   @doc """
+  Guard that indicates if the value is a `DateTime` struct with second precision.
+  """
+  defguard is_second_precision(value) when is_datetime(value) and value.microsecond == {0, 0}
+
+  @doc """
   Guard that indicates if the value is a `NaiveDateTime` struct.
   """
   defguard is_naive_datetime(value) when is_struct(value, NaiveDateTime)

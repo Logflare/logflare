@@ -128,7 +128,7 @@ defmodule LogflareWeb.SourceControllerTest do
       team = insert(:team, user: user)
       source = insert(:source, user: user)
       user = Repo.preload(user, :sources)
-      [source: source, team: team, conn: login_user(conn, user)]
+      [user: user, source: source, team: team, conn: login_user(conn, user)]
     end
 
     test "show source", %{conn: conn, source: source} do
@@ -141,7 +141,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
     test "show source's recent logs", %{conn: conn, source: source} do
       start_supervised!({SourceSup, source})
-      le = build(:log_event, source: source, metadata: %{"level" => "debug"})
+      le = build(:log_event, level: "debug", source: source)
       Backends.ingest_logs([le], source)
 
       conn
@@ -151,6 +151,50 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_has("pre > code",
         text: Logflare.JSON.encode!(le.body["event_message"], pretty: true)
       )
+    end
+
+    test "show source's recent logs when log is a plain map without :via_rule_id", %{
+      conn: conn,
+      source: source
+    } do
+      le = build(:log_event, source: source)
+
+      plain_map_log =
+        le
+        |> Map.from_struct()
+        |> Map.drop([:via_rule_id])
+
+      Backends
+      |> expect(:list_recent_logs, fn _source -> [plain_map_log] end)
+
+      html =
+        conn
+        |> get(~p"/sources/#{source}")
+        |> html_response(200)
+
+      assert html =~ le.body["event_message"]
+    end
+
+    test "renders inputs for recommended query fields", %{
+      conn: conn,
+      user: user
+    } do
+      source =
+        insert(:source,
+          user: user,
+          suggested_keys: "metadata.level!,m.user_id",
+          bigquery_clustering_fields: "session_id"
+        )
+
+      conn
+      |> visit(~p"/sources/#{source}")
+      |> assert_has("label", text: "session_id")
+      |> assert_has("label", text: "metadata.level")
+      |> assert_has("label", text: "m.user_id")
+      |> assert_has(".required-field-indicator", text: "required")
+      |> assert_has("input.form-control[id='recent-logs-field-session_id']")
+      |> assert_has("input.form-control[id='recent-logs-field-metadata.level']")
+      |> assert_has("input.form-control[id='recent-logs-field-m.user_id']")
     end
 
     test "invalid source", %{conn: conn, source: source} do
@@ -325,14 +369,39 @@ defmodule LogflareWeb.SourceControllerTest do
   describe "update" do
     setup [:create_plan, :old_setup]
 
+    test "source details form includes current description value", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [s1, _s2 | _]
+    } do
+      description = "Current source description"
+      source = Repo.update!(Ecto.Changeset.change(s1, description: description))
+
+      html =
+        conn
+        |> login_user(u1)
+        |> get(~p"/sources/#{source}/edit")
+        |> html_response(200)
+        |> Floki.parse_document!()
+
+      assert [_textarea] = Floki.find(html, "textarea[name='source[description]']")
+
+      assert html
+             |> Floki.find("textarea[name='source[description]']")
+             |> Floki.text()
+             |> String.trim() == description
+    end
+
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = TestUtils.random_string()
+      new_description = TestUtils.random_string()
 
       params = %{
         "id" => s1.id,
         "source" => %{
           "favorite" => true,
-          "name" => new_name
+          "name" => new_name,
+          "description" => new_description
         }
       }
 
@@ -346,6 +415,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 302) =~ "redirected"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
       assert s1_new.name == new_name
+      assert s1_new.description == new_description
       assert s1_new.favorite == true
 
       conn =
@@ -355,6 +425,7 @@ defmodule LogflareWeb.SourceControllerTest do
         |> get(~p"/sources/#{s1}")
 
       assert conn.assigns.source.name == new_name
+      assert conn.assigns.source.description == new_description
     end
 
     test "able to update labels", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
@@ -402,6 +473,30 @@ defmodule LogflareWeb.SourceControllerTest do
       assert s1_new.name != new_name
       assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Something went wrong!"
       assert html_response(conn, 406) =~ "Source Name"
+    end
+
+    test "updates description when valid", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [s1, _s2 | _]
+    } do
+      new_description = "  valid description  "
+
+      conn =
+        conn
+        |> login_user(u1)
+        |> patch(~p"/sources/#{s1}", %{
+          "id" => s1.id,
+          "source" => %{
+            "description" => new_description
+          }
+        })
+
+      s1_new = Sources.get_by(id: s1.id)
+
+      assert html_response(conn, 302) =~ "redirected"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+      assert s1_new.description == "valid description"
     end
 
     test "returns 200 but doesn't change restricted params", %{

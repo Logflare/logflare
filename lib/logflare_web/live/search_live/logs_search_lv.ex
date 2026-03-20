@@ -72,10 +72,13 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:ok, executor_pid} = SearchQueryExecutor.start_link(source: source)
 
+    flat_map = SourceSchemas.source_schema_flatmap_or_default(source)
+
     socket
     |> assign(
       executor_pid: executor_pid,
       source: source,
+      source_schema_flat_map: flat_map,
       search_tip: SearchUtils.gen_search_tip(),
       user_timezone_from_connect_params: nil,
       search_timezone: Map.get(params, "tz", "Etc/UTC"),
@@ -131,6 +134,28 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Sources.preload_defaults()
     |> Sources.put_bq_table_id()
     |> Sources.put_bq_dataset_id()
+  end
+
+  def handle_params(%{"fields" => fields, "querystring" => qs} = params, _uri, socket)
+      when is_map(fields) do
+    source = socket.assigns.source
+
+    bq_table_schema =
+      source
+      |> get_bigquery_schema()
+
+    qs = append_fields_rules(qs, fields, bq_table_schema)
+
+    params =
+      params
+      |> Map.delete("fields")
+      |> Map.delete("source_id")
+      |> Map.put("querystring", qs)
+
+    path =
+      Routes.live_path(socket, __MODULE__, source.id, params)
+
+    {:noreply, push_patch(socket, to: path, replace: true)}
   end
 
   def handle_params(%{"querystring" => qs} = params, uri, socket) do
@@ -224,6 +249,7 @@ defmodule LogflareWeb.Source.SearchLV do
         params: @modal.params,
         view: @modal.body[:view],
         source: @source,
+        source_schema_flat_map: @source_schema_flat_map,
         search_op_log_events: @search_op_log_events,
         search_op_log_aggregates: @search_op_log_aggregates,
         search_op_error: @search_op_error,
@@ -332,17 +358,26 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search",
-        %{"search" => %{"querystring" => qs}} = _params,
+        %{"search" => %{"querystring" => qs}} = params,
         %{assigns: prev_assigns} = socket
       ) do
+    bq_table_schema = get_bigquery_schema(socket.assigns.source)
+
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
+
+    qs =
+      append_fields_rules(
+        qs,
+        Map.get(params, "fields", %{}),
+        bq_table_schema
+      )
 
     socket =
       assign_new_search_with_qs(
         socket,
         %{querystring: qs, tailing?: prev_assigns.tailing?},
-        get_bigquery_schema(socket.assigns.source)
+        bq_table_schema
       )
 
     {:noreply, socket}
@@ -552,6 +587,27 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, push_navigate(socket, to: destination)}
   end
 
+  defp append_fields_rules(qs, recommended_fields, schema) do
+    with true <- is_map(recommended_fields),
+         {:ok, lql_rules} <- Lql.decode(qs, schema) do
+      recommended_filter_rules =
+        recommended_fields
+        |> Enum.reject(fn {_path, value} -> is_nil(value) or String.trim(value) == "" end)
+        |> Enum.map(fn {path, value} ->
+          Lql.Rules.FilterRule.build(path: path, operator: :=, value: value)
+        end)
+
+      lql_rules =
+        Enum.reduce(recommended_filter_rules, lql_rules, fn recommended_filter_rule, rules ->
+          Rules.upsert_filter_rule_by_path(rules, recommended_filter_rule)
+        end)
+
+      Lql.encode!(lql_rules)
+    else
+      _ -> qs
+    end
+  end
+
   def handle_info(:soft_pause = ev, socket) do
     soft_pause(ev, socket)
   end
@@ -686,6 +742,10 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, put_flash(socket, type, message)}
   end
 
+  def handle_info({:put_flash, type, message}, socket) do
+    {:noreply, put_flash(socket, type, message)}
+  end
+
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
     %{querystring: qs, tailing?: tailing?} = params
 
@@ -809,15 +869,19 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp adjust_timestamp_rules(timestamp_rules, search_timezone) do
-    tz = Timex.Timezone.get(search_timezone)
+    case Timex.Timezone.get(search_timezone) do
+      {:error, _} -> timestamp_rules
+      tz -> do_adjust_timestamp_rules(timestamp_rules, tz)
+    end
+  end
 
-    Enum.map(timestamp_rules, fn
-      lql_rule ->
-        if Lql.Rules.timestamp_filter_rule_is_shorthand?(lql_rule) do
-          Map.replace!(lql_rule, :values, shift_timestamps(lql_rule.values, tz))
-        else
-          lql_rule
-        end
+  defp do_adjust_timestamp_rules(timestamp_rules, tz) do
+    Enum.map(timestamp_rules, fn lql_rule ->
+      if Lql.Rules.timestamp_filter_rule_is_shorthand?(lql_rule) do
+        Map.replace!(lql_rule, :values, shift_timestamps(lql_rule.values, tz))
+      else
+        lql_rule
+      end
     end)
   end
 

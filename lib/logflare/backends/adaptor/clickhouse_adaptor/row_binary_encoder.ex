@@ -11,6 +11,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
 
   import Bitwise
 
+  import Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodingUtils, only: [sanitize_for_json: 1]
   import Logflare.Utils.Guards
 
   @epoch_date ~D[1970-01-01]
@@ -304,26 +305,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
     string(Jason.encode_to_iodata!(sanitize_for_json(value)))
   end
 
-  @spec sanitize_for_json(term()) :: Jason.Encoder.t()
-  defp sanitize_for_json(value) when is_map(value) do
-    Map.new(value, fn {k, v} -> {k, sanitize_for_json(v)} end)
-  end
-
-  defp sanitize_for_json(value) when is_list(value) do
-    Enum.map(value, &sanitize_for_json/1)
-  end
-
-  defp sanitize_for_json(value) when is_tuple(value) do
-    value |> Tuple.to_list() |> Enum.map(&sanitize_for_json/1)
-  end
-
-  defp sanitize_for_json(value)
-       when is_port(value) or is_pid(value) or is_reference(value) or is_function(value) do
-    inspect(value)
-  end
-
-  defp sanitize_for_json(value), do: value
-
   # =============================================================================
   # Nullable (1-byte null flag + value if not null)
   # =============================================================================
@@ -387,8 +368,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
   end
 
   defp encode_map_pairs(pairs, key_encoder, value_encoder) do
-    {keys, values} = Enum.unzip(pairs)
-    [varint(length(pairs)), Enum.map(keys, key_encoder), Enum.map(values, value_encoder)]
+    [
+      varint(length(pairs))
+      | Enum.flat_map(pairs, fn {k, v} -> [key_encoder.(k), value_encoder.(v)] end)
+    ]
   end
 
   @spec map_string_string(map() | [{String.t(), String.t()}]) :: iodata()

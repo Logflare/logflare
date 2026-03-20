@@ -110,18 +110,6 @@ config :logflare,
        |> filter_nil_kv_pairs.()
 
 config :logflare,
-       Logflare.Alerting,
-       [
-         min_cluster_size:
-           if(System.get_env("LOGFLARE_ALERTS_MIN_CLUSTER_SIZE") != nil,
-             do: String.to_integer(System.get_env("LOGFLARE_ALERTS_MIN_CLUSTER_SIZE")),
-             else: nil
-           ),
-         enabled: System.get_env("LOGFLARE_ALERTS_ENABLED", "true") == "true"
-       ]
-       |> filter_nil_kv_pairs.()
-
-config :logflare,
        LogflareWeb.Endpoint,
        filter_nil_kv_pairs.(
          http:
@@ -254,7 +242,8 @@ config :logflare,
          grafana_sa: System.get_env("GOOGLE_GRAFANA_SA"),
          api_sa: System.get_env("GOOGLE_API_SA"),
          cloud_build_sa: System.get_env("GOOGLE_CLOUD_BUILD_SA"),
-         cloud_build_trigger_sa: System.get_env("GOOGLE_CLOUD_BUILD_TRIGGER_SA")
+         cloud_build_trigger_sa: System.get_env("GOOGLE_CLOUD_BUILD_TRIGGER_SA"),
+         project_viewer: System.get_env("GOOGLE_PROJECT_VIEWER")
        )
 
 config :ueberauth,
@@ -465,5 +454,23 @@ syn_endpoints_partitions =
   for n <- 0..System.schedulers_online(), do: "endpoints_#{n}" |> String.to_atom()
 
 config :syn,
-  scopes: [:core, :ui, :alerting] ++ syn_endpoints_partitions,
+  scopes: [:core, :ui] ++ syn_endpoints_partitions,
   event_handler: Logflare.SynEventHandler
+
+enable_alerting? = System.get_env("LOGFLARE_ALERTS_ENABLED", "true") == "true"
+
+config :logflare, Oban,
+  queues: [default: 10] ++ if(enable_alerting?, do: [alerts: 5], else: []),
+  plugins: [
+    {Oban.Plugins.Pruner, max_age: 86_400},
+    # crontab must be shared across all nodes, in case leader is set on a node/cluster where alerting is disabled
+    # oban internal cron scheduler performs scheduling only if is leader and if crontab configuration is present
+    # https://github.com/oban-bg/oban/blob/584e86a8515b7cb8d6eff2f148fb880529fc68f8/lib/oban/plugins/cron.ex#L198
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"* * * * *", Logflare.Alerting.AlertSchedulerWorker},
+       {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker}
+     ]}
+  ]
+
+config :logflare, Logflare.Alerting, enabled: enable_alerting?

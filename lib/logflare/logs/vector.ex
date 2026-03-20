@@ -5,8 +5,6 @@ defmodule Logflare.Logs.Vector do
 
   @behaviour Logflare.Logs.Processor
 
-  require Logger
-
   def handle_batch(batch, _source) when is_list(batch) do
     Enum.map(batch, fn x -> handle_event(x) end)
   end

@@ -1786,4 +1786,653 @@ defmodule Logflare.MapperTest do
       assert attrs["level"] == "info"
     end
   end
+
+  # ── FlatMap type ───────────────────────────────────────────────────────
+
+  describe "flat_map type" do
+    test "flattens a nested map to dot-notation keys with string values" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{"attributes" => %{"a" => %{"b" => %{"c" => 1}}}}
+        )
+
+      assert result["attrs"] == %{"a.b.c" => "1"}
+    end
+
+    test "coerces scalar values to strings" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{
+            "attributes" => %{
+              "int_val" => 42,
+              "float_val" => 3.14,
+              "bool_true" => true,
+              "bool_false" => false,
+              "string_val" => "hello"
+            }
+          }
+        )
+
+      attrs = result["attrs"]
+      assert attrs["int_val"] == "42"
+      assert attrs["float_val"] == "3.14"
+      assert attrs["bool_true"] == "true"
+      assert attrs["bool_false"] == "false"
+      assert attrs["string_val"] == "hello"
+    end
+
+    test "JSON-encodes list values" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{"attributes" => %{"tags" => [1, 2, 3]}}
+        )
+
+      assert result["attrs"]["tags"] == "[1,2,3]"
+    end
+
+    test "omits nil values" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{"attributes" => %{"present" => "yes", "absent" => nil}}
+        )
+
+      assert result["attrs"] == %{"present" => "yes"}
+    end
+
+    test "returns empty map for nil input" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{}
+        )
+
+      assert result["attrs"] == %{}
+    end
+
+    test "returns empty map for non-map input" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.value")],
+          %{"value" => "just a string"}
+        )
+
+      assert result["attrs"] == %{}
+    end
+
+    test "flattens deeply nested structures" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{
+            "attributes" => %{
+              "level1" => %{
+                "level2" => %{
+                  "level3" => "deep"
+                }
+              }
+            }
+          }
+        )
+
+      assert result["attrs"] == %{"level1.level2.level3" => "deep"}
+    end
+
+    test "handles mixed nested and flat keys" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{
+            "attributes" => %{
+              "simple" => "val",
+              "nested" => %{"key" => "val2"}
+            }
+          }
+        )
+
+      attrs = result["attrs"]
+      assert attrs["simple"] == "val"
+      assert attrs["nested.key"] == "val2"
+    end
+
+    test "handles empty nested map" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{"attributes" => %{"empty_map" => %{}}}
+        )
+
+      assert result["attrs"] == %{"empty_map" => "{}"}
+    end
+
+    test "supports pick entries" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("resource_attributes",
+              paths: ["$.resource"],
+              pick: [
+                {"service_name", ["$.resource.service.name", "$.service_name"]},
+                {"region", ["$.metadata.region"]}
+              ]
+            )
+          ],
+          %{
+            "service_name" => "my-service",
+            "metadata" => %{"region" => "us-east-1"}
+          }
+        )
+
+      attrs = result["resource_attributes"]
+      assert attrs["service_name"] == "my-service"
+      assert attrs["region"] == "us-east-1"
+    end
+
+    test "supports exclude_keys" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              path: "$",
+              exclude_keys: ["id", "timestamp"]
+            )
+          ],
+          %{"id" => "123", "timestamp" => 999, "name" => "test"}
+        )
+
+      attrs = result["attrs"]
+      refute Map.has_key?(attrs, "id")
+      refute Map.has_key?(attrs, "timestamp")
+      assert attrs["name"] == "test"
+    end
+
+    test "supports elevate_keys" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              path: "$",
+              exclude_keys: ["id"],
+              elevate_keys: ["metadata"]
+            )
+          ],
+          %{"id" => "123", "metadata" => %{"level" => "info"}, "extra" => "val"}
+        )
+
+      attrs = result["attrs"]
+      refute Map.has_key?(attrs, "id")
+      assert attrs["level"] == "info"
+      assert attrs["extra"] == "val"
+    end
+
+    test "JSON-encodes list of mixed types" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$.attributes")],
+          %{"attributes" => %{"mixed" => ["a", 1, true, nil]}}
+        )
+
+      assert result["attrs"]["mixed"] == ~s(["a",1,true,null])
+    end
+  end
+
+  # ── ArrayFlatMap type ──────────────────────────────────────────────────
+
+  describe "array_flat_map type" do
+    test "flattens each map element in an array" do
+      result =
+        compile_and_map(
+          [Field.array_flat_map("event_attrs", path: "$.events[*].attributes")],
+          %{
+            "events" => [
+              %{"attributes" => %{"key1" => "val1", "nested" => %{"a" => 1}}},
+              %{"attributes" => %{"key2" => "val2"}}
+            ]
+          }
+        )
+
+      assert result["event_attrs"] == [
+               %{"key1" => "val1", "nested.a" => "1"},
+               %{"key2" => "val2"}
+             ]
+    end
+
+    test "filters out non-map elements" do
+      result =
+        compile_and_map(
+          [Field.array_flat_map("attrs", path: "$.items")],
+          %{"items" => [%{"a" => "1"}, "not a map", 42, %{"b" => "2"}]}
+        )
+
+      assert result["attrs"] == [%{"a" => "1"}, %{"b" => "2"}]
+    end
+
+    test "defaults to empty list when path is nil" do
+      result =
+        compile_and_map(
+          [Field.array_flat_map("attrs", path: "$.missing")],
+          %{}
+        )
+
+      assert result["attrs"] == []
+    end
+
+    test "handles empty array" do
+      result =
+        compile_and_map(
+          [Field.array_flat_map("attrs", path: "$.items")],
+          %{"items" => []}
+        )
+
+      assert result["attrs"] == []
+    end
+  end
+
+  # ── String filters ────────────────────────────────────────────────────
+
+  describe "string filters" do
+    test "len_eq: exact length match passes" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{len_eq: 20}
+            )
+          ],
+          %{"project" => "abcdefghijklmnopqrst"}
+        )
+
+      assert result["project"] == "abcdefghijklmnopqrst"
+    end
+
+    test "len_eq: rejects shorter string, falls to default" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "fallback",
+              filters: %{len_eq: 20}
+            )
+          ],
+          %{"project" => "short"}
+        )
+
+      assert result["project"] == "fallback"
+    end
+
+    test "len_eq: rejects longer string, falls to default" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{len_eq: 5}
+            )
+          ],
+          %{"project" => "toolong"}
+        )
+
+      assert result["project"] == ""
+    end
+
+    test "len_gt: passes when length exceeds threshold" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "",
+              filters: %{len_gt: 3}
+            )
+          ],
+          %{"val" => "abcd"}
+        )
+
+      assert result["val"] == "abcd"
+    end
+
+    test "len_gt: rejects equal length" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "no",
+              filters: %{len_gt: 4}
+            )
+          ],
+          %{"val" => "abcd"}
+        )
+
+      assert result["val"] == "no"
+    end
+
+    test "len_gte: passes at exact boundary" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "",
+              filters: %{len_gte: 4}
+            )
+          ],
+          %{"val" => "abcd"}
+        )
+
+      assert result["val"] == "abcd"
+    end
+
+    test "len_lt: passes when length is below threshold" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "",
+              filters: %{len_lt: 10}
+            )
+          ],
+          %{"val" => "short"}
+        )
+
+      assert result["val"] == "short"
+    end
+
+    test "len_lt: rejects equal length" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "no",
+              filters: %{len_lt: 5}
+            )
+          ],
+          %{"val" => "abcde"}
+        )
+
+      assert result["val"] == "no"
+    end
+
+    test "len_lte: passes at exact boundary" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "",
+              filters: %{len_lte: 5}
+            )
+          ],
+          %{"val" => "abcde"}
+        )
+
+      assert result["val"] == "abcde"
+    end
+
+    test "char_class alpha: passes alphabetic string" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abcdefghij"}
+        )
+
+      assert result["project"] == "abcdefghij"
+    end
+
+    test "char_class alpha: rejects digits" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "none",
+              filters: %{char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abc123"}
+        )
+
+      assert result["project"] == "none"
+    end
+
+    test "char_class alpha: rejects special chars" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abc-def"}
+        )
+
+      assert result["project"] == ""
+    end
+
+    test "char_class numeric: passes digit-only string" do
+      result =
+        compile_and_map(
+          [
+            Field.string("code",
+              path: "$.code",
+              default: "",
+              filters: %{char_class: "numeric"}
+            )
+          ],
+          %{"code" => "12345"}
+        )
+
+      assert result["code"] == "12345"
+    end
+
+    test "char_class numeric: rejects letters" do
+      result =
+        compile_and_map(
+          [
+            Field.string("code",
+              path: "$.code",
+              default: "0",
+              filters: %{char_class: "numeric"}
+            )
+          ],
+          %{"code" => "123abc"}
+        )
+
+      assert result["code"] == "0"
+    end
+
+    test "char_class alphanumeric: passes mixed letters and digits" do
+      result =
+        compile_and_map(
+          [
+            Field.string("id",
+              path: "$.id",
+              default: "",
+              filters: %{char_class: "alphanumeric"}
+            )
+          ],
+          %{"id" => "abc123"}
+        )
+
+      assert result["id"] == "abc123"
+    end
+
+    test "char_class alphanumeric: rejects special chars" do
+      result =
+        compile_and_map(
+          [
+            Field.string("id",
+              path: "$.id",
+              default: "",
+              filters: %{char_class: "alphanumeric"}
+            )
+          ],
+          %{"id" => "abc-123"}
+        )
+
+      assert result["id"] == ""
+    end
+
+    test "combined filters: len_eq + char_class alpha both must pass" do
+      # Correct: 20 alpha chars
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{len_eq: 20, char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abcdefghijklmnopqrst"}
+        )
+
+      assert result["project"] == "abcdefghijklmnopqrst"
+
+      # Wrong length (19 alpha chars)
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{len_eq: 20, char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abcdefghijklmnopqrs"}
+        )
+
+      assert result["project"] == ""
+
+      # Right length but has digits
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "",
+              filters: %{len_eq: 20, char_class: "alpha"}
+            )
+          ],
+          %{"project" => "abcdefghijklmnopqr12"}
+        )
+
+      assert result["project"] == ""
+    end
+
+    test "coalesce: filters skip non-matching, continue to next path" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              paths: ["$.project", "$.project_ref"],
+              default: "",
+              filters: %{len_eq: 20, char_class: "alpha"}
+            )
+          ],
+          %{
+            "project" => "not-a-valid-project",
+            "project_ref" => "abcdefghijklmnopqrst"
+          }
+        )
+
+      assert result["project"] == "abcdefghijklmnopqrst"
+    end
+
+    test "coalesce: all paths fail filters, falls to default" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              paths: ["$.project", "$.project_ref"],
+              default: "unknown",
+              filters: %{len_eq: 20, char_class: "alpha"}
+            )
+          ],
+          %{
+            "project" => "short",
+            "project_ref" => "also_short"
+          }
+        )
+
+      assert result["project"] == "unknown"
+    end
+
+    test "single path with filters: falls back to default on filter failure" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              path: "$.project",
+              default: "default_val",
+              filters: %{len_eq: 10}
+            )
+          ],
+          %{"project" => "wrong_length_string"}
+        )
+
+      assert result["project"] == "default_val"
+    end
+
+    test "no filters configured: existing behavior unchanged" do
+      result =
+        compile_and_map(
+          [Field.string("project", path: "$.project", default: "")],
+          %{"project" => "anything goes here!!!"}
+        )
+
+      assert result["project"] == "anything goes here!!!"
+    end
+
+    test "empty string still skipped before filter check" do
+      result =
+        compile_and_map(
+          [
+            Field.string("project",
+              paths: ["$.project", "$.fallback"],
+              default: "default",
+              filters: %{len_eq: 5}
+            )
+          ],
+          %{"project" => "", "fallback" => "hello"}
+        )
+
+      assert result["project"] == "hello"
+    end
+
+    test "non-string values bypass filters" do
+      # Filters only apply to binary/string values
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "default",
+              filters: %{len_eq: 5}
+            )
+          ],
+          %{"val" => 12_345}
+        )
+
+      # Non-binary values are not filtered, they pass through to coercion
+      assert result["val"] == "12345"
+    end
+  end
 end

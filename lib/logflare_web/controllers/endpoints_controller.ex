@@ -29,7 +29,8 @@ defmodule LogflareWeb.EndpointsController do
       "X-Requested-With",
       "X-API-Key",
       "LF-ENDPOINT-LABELS",
-      "LF-ENDPOINT-REDACT-PII"
+      "LF-ENDPOINT-REDACT-PII",
+      "LF-ENDPOINT-BIGQUERY-RESERVATION"
     ],
     methods: ["GET", "POST", "OPTIONS"],
     send_preflight_response?: true
@@ -72,10 +73,16 @@ defmodule LogflareWeb.EndpointsController do
     redact_pii =
       if override, do: String.downcase(override) == "true", else: endpoint_query.redact_pii
 
+    reservation =
+      if endpoint_query.enable_dynamic_reservation do
+        get_req_header(conn, "lf-endpoint-bigquery-reservation") |> List.first()
+      end
+
     case Endpoints.run_cached_query(
            %{endpoint_query | parsed_labels: parsed_labels},
            params,
-           redact_pii: redact_pii
+           redact_pii: redact_pii,
+           reservation: reservation
          ) do
       {:ok, result} ->
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")

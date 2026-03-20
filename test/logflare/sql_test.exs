@@ -533,8 +533,7 @@ defmodule Logflare.SqlTest do
       other_source = insert(:source, user: user, name: "other_ch_table")
 
       # setup local clickhouse for e2e test
-      {source, backend, cleanup_fn} = setup_clickhouse_test(source: source, user: user)
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test(source: source, user: user)
 
       {:ok, _pid} = ClickHouseAdaptor.start_link(backend)
       assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)

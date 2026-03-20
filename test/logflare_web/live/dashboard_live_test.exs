@@ -25,6 +25,39 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert html =~ source.name
     end
 
+    test "renders source description value", %{conn: conn, user: user} do
+      description = "Production API logs"
+      source = insert(:source, user: user, description: description)
+
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert view
+             |> element("#source-#{source.token}")
+             |> render() =~ description
+    end
+
+    test "truncates long source descriptions and expose the full value in a tooltip", %{
+      conn: conn,
+      user: user
+    } do
+      description = String.trim(String.duplicate("Long source description ", 20))
+      source = insert(:source, user: user, description: description)
+
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      rendered =
+        view
+        |> element("#source-#{source.token}")
+        |> render()
+        |> Floki.parse_fragment!()
+
+      tooltip_el = Floki.find(rendered, "#source-#{source.token}-description")
+
+      assert tooltip_el |> Floki.text() |> String.trim() == description
+      assert Floki.attribute(tooltip_el, "data-title") == [description]
+      assert Floki.attribute(tooltip_el, "data-html") == ["true"]
+    end
+
     test "sources have a saved searches modal", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
@@ -174,8 +207,10 @@ defmodule LogflareWeb.DashboardLiveTest do
       {:ok, _view, _html} = live(conn, "/dashboard")
 
       # The UserMetricsPoller should be registered and running after mount
-      assert {poller_pid, _} = :syn.lookup(:ui, {Logflare.Sources.UserMetricsPoller, user.id})
-      assert Process.alive?(poller_pid)
+      TestUtils.retry_assert(fn ->
+        assert {poller_pid, _} = :syn.lookup(:ui, {Logflare.Sources.UserMetricsPoller, user.id})
+        assert Process.alive?(poller_pid)
+      end)
 
       # Should have one subscriber (the LiveView process)
       assert [_subscriber] = Logflare.Sources.UserMetricsPoller.list_subscribers(user.id)
@@ -190,7 +225,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert view |> has_element?("span[id=#{source.token}-max-rate]", "0")
       assert view |> has_element?("span[id=#{source.token}-rejected]", "0")
 
-      assert view |> element("li[id=source-#{source.token}] [title^=Pipelines]") |> render =~
+      assert view |> element("li[id=source-#{source.token}] [data-title^=Pipelines]") |> render =~
                "0"
 
       assert view |> element("li[id=source-#{source.token}]") |> render =~ "ttl: 3 days"
@@ -225,13 +260,15 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      assert {poller_pid, _} = :syn.lookup(:ui, {Logflare.Sources.UserMetricsPoller, user.id})
+      TestUtils.retry_assert(fn ->
+        assert {poller_pid, _} = :syn.lookup(:ui, {Logflare.Sources.UserMetricsPoller, user.id})
+        send(poller_pid, :poll_metrics)
+      end)
 
-      send(poller_pid, :poll_metrics)
       # wait for broadcast
       Process.sleep(100)
 
-      assert view |> element("li[id=source-#{source.token}] [title^=Pipelines]") |> render =~
+      assert view |> element("li[id=source-#{source.token}] [data-title^=Pipelines]") |> render =~
                to_string(buffer)
 
       assert view |> has_element?("span[id=#{source.token}-rate]", "#{last_rate}/s")

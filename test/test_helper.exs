@@ -28,16 +28,17 @@ Mimic.copy(Stripe.SubscriptionItem.Usage)
 Mimic.copy(Tesla.Adapter.Finch)
 
 Mimic.copy(Logflare.Admin)
-Mimic.copy(Logflare.Alerting.AlertsScheduler)
 Mimic.copy(Logflare.Auth)
 Mimic.copy(Logflare.Backends)
 Mimic.copy(Logflare.Backends.Adaptor)
+Mimic.copy(Logflare.Backends.Adaptor.AxiomAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.BigQueryAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient)
 Mimic.copy(Logflare.Cluster.Utils)
 Mimic.copy(Logflare.ContextCache)
 Mimic.copy(Logflare.Backends.Adaptor.ClickHouseAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager)
+Mimic.copy(Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool)
 Mimic.copy(Logflare.Backends.Adaptor.HttpBased.Client)
 Mimic.copy(Logflare.Backends.Adaptor.SlackAdaptor.Client)
 Mimic.copy(Logflare.Backends.Adaptor.WebhookAdaptor)
@@ -62,6 +63,7 @@ Mimic.copy(Logflare.Sources.Source.Supervisor)
 Mimic.copy(Logflare.SystemMetrics.AllLogsLogged)
 Mimic.copy(Logflare.Users)
 Mimic.copy(Logflare.Users.Cache)
+Mimic.copy(Logflare.KeyValues.CacheWarmer)
 Mimic.copy(Logflare.Utils)
 Mimic.copy(LogflareWeb.Plugs.RateLimiter)
 {:ok, _} = Application.ensure_all_started(:ex_machina)
@@ -82,5 +84,9 @@ ExUnit.configure(
 )
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
+
+if System.get_env("E2E", "false") in ["true", "1"] do
+  {:ok, _} = PhoenixTest.Playwright.Supervisor.start_link()
+end
 
 Application.put_env(:phoenix_test, :base_url, LogflareWeb.Endpoint.url())

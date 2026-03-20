@@ -52,17 +52,11 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   def source_metadata(assigns) do
     ~H"""
     <div class="tw-ml-8">
+      <.source_description source={@source} />
       <div>
         <small class="source-details">
           id:
-          <span
-            class="pointer-cursor copy-token logflare-tooltip copy-tooltip"
-            phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @source.token})}
-            data-toggle="tooltip"
-            data-placement="top"
-            title="Copy this"
-            id={String.replace(Atom.to_string(@source.token), ~r/[0-9]|-/, "")}
-          >
+          <span class="pointer-cursor copy-token logflare-tooltip copy-tooltip" phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @source.token})} data-placement="top" data-title="Copy this" id={String.replace(Atom.to_string(@source.token), ~r/[0-9]|-/, "")}>
             {@source.token}
           </span>
         </small>
@@ -70,6 +64,25 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
       <div>
         <.source_metrics source={@source} metrics={@metrics} rate_limit={@plan.limit_source_rate_limit} fields_limit={@plan.limit_source_fields_limit} team={@team} />
       </div>
+    </div>
+    """
+  end
+
+  attr :source, Logflare.Sources.Source, required: true
+
+  def source_description(assigns) do
+    description = assigns.source.description
+
+    assigns =
+      assigns
+      |> assign(:description, description)
+      |> assign(:tooltip_description, description_to_html(description))
+
+    ~H"""
+    <div :if={@description} class="tw-py-1 tw-text-sm">
+      <.tooltip id={"source-#{@source.token}-description"} title={@tooltip_description} tooltip_class="max-w-640 tw-text-left" class="tw-block tw-truncate" html={true}>
+        {@description}
+      </.tooltip>
     </div>
     """
   end
@@ -164,12 +177,14 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   attr :id, :string, required: true
   attr :placement, :string, default: "top"
   attr :class, :string, default: ""
+  attr :tooltip_class, :string, default: ""
+  attr :html, :boolean, default: false
   attr :rest, :global
   slot :inner_block
 
   def tooltip(assigns) do
     ~H"""
-    <span class={["logflare-tooltip", @class]} id={@id} data-placement={@placement} title={@title} data-toggle="tooltip">
+    <span class={["logflare-tooltip", @class]} id={@id} data-placement={@placement} data-title={@title} data-custom-class={@tooltip_class} data-html={@html && "true"} {@rest}>
       {render_slot(@inner_block)}
     </span>
     """
@@ -189,4 +204,13 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   defp metric_id(source, key), do: [to_string(source.token), "-", key]
   defp rate_limit_warning?(source, limit), do: source.metrics.avg >= 0.80 * limit
   defp fields_limit_warning?(source, limit), do: source.metrics.fields > limit
+
+  defp description_to_html(description) when is_binary(description) do
+    description
+    |> Phoenix.HTML.html_escape()
+    |> Phoenix.HTML.safe_to_string()
+    |> String.replace("\n", "<br>")
+  end
+
+  defp description_to_html(_), do: nil
 end

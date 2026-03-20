@@ -10,8 +10,6 @@ defmodule Logflare.Sources.Source.TextNotificationServer do
   alias LogflareWeb.Endpoint
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  require Logger
-
   @twilio_phone "+16026006731"
 
   def start_link(args) do
