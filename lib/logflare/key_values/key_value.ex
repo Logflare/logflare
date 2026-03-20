@@ -11,6 +11,8 @@ defmodule Logflare.KeyValues.KeyValue do
     field :value, :map
 
     belongs_to :user, Logflare.User
+
+    timestamps(type: :utc_datetime_usec)
   end
 
   @spec changeset(%__MODULE__{}, map()) :: Ecto.Changeset.t()

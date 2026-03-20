@@ -111,7 +111,13 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
 
   defp build_timezones_select_form_options do
     Timex.timezones()
-    |> Enum.map(&[offset: Timex.Timezone.get(&1).offset_utc, t: &1])
+    |> Enum.map(fn tz ->
+      case Timex.Timezone.get(tz) do
+        {:error, _} -> nil
+        tz_info -> [offset: tz_info.offset_utc, t: tz]
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
     |> Enum.sort_by(& &1[:offset])
     |> Enum.map(fn [offset: offset, t: t] ->
       hoursstring = DateTimeUtils.humanize_timezone_offset(offset)

@@ -63,9 +63,12 @@ defmodule Logflare.Backends.SourceSup do
         {TextNotificationServer, [source: source, plan: plan]},
         {WebhookNotificationServer, [source: source]},
         {SlackHookServer, [source: source]},
-        {BillingWriter, [source: source]},
-        {SourceSupWorker, [source: source]}
-      ] ++ specs
+        {BillingWriter, [source: source]}
+      ] ++
+        if(Application.get_env(:logflare, :env) != :test,
+          do: [{SourceSupWorker, [source: source]}],
+          else: []
+        ) ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)
   end

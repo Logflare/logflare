@@ -1,6 +1,6 @@
 defmodule Logflare.Alerting.AlertSchedulerWorker do
   @moduledoc false
-  use Oban.Worker, queue: :default, max_attempts: 1
+  use Oban.Worker, queue: :alerts, max_attempts: 3
 
   alias Logflare.Alerting
 

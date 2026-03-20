@@ -11,8 +11,6 @@ defmodule Logflare.AccountEmail do
   alias LogflareWeb.Helpers.BqSchema
   alias LogflareWeb.Router.Helpers, as: Routes
 
-  require Logger
-
   def welcome(user) do
     new()
     |> to(user.email)

@@ -159,4 +159,59 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                result
     end
   end
+
+  describe "build_base_query_opts reservation" do
+    setup do
+      insert(:plan, name: "Free", type: "standard")
+      pid = self()
+
+      user =
+        insert(:user,
+          bigquery_dataset_id: "test_dataset",
+          bigquery_reservation_search: "projects/p/locations/l/reservations/search"
+        )
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      [user: user]
+    end
+
+    test "explicit :reservation in opts overrides query_type-based reservation", %{user: user} do
+      override = "projects/p/locations/l/reservations/override"
+
+      BigQueryAdaptor.execute_query(
+        {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :search,
+        reservation: override
+      )
+
+      assert_received {:reservation, ^override}
+    end
+
+    test "falls back to query_type-based reservation when :reservation is nil", %{user: user} do
+      BigQueryAdaptor.execute_query(
+        {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :search
+      )
+
+      assert_received {:reservation, "projects/p/locations/l/reservations/search"}
+    end
+
+    test "reservation is nil when query_type is not :search or :alerts and no override", %{
+      user: user
+    } do
+      BigQueryAdaptor.execute_query(
+        {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        []
+      )
+
+      assert_received {:reservation, nil}
+    end
+  end
 end

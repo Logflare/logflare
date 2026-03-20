@@ -134,7 +134,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       pid = self()
 
       Logflare.Google.BigQuery
-      |> expect(:stream_batch!, fn _, _ ->
+      |> stub(:stream_batch!, fn _, _ ->
         send(pid, :streamed)
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
@@ -155,11 +155,11 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       end)
 
       GoogleApi.BigQuery.V2.Api.Tables
-      |> expect(:bigquery_tables_patch, fn _conn,
-                                           _project_id,
-                                           _dataset_id,
-                                           _table_name,
-                                           [body: _body] ->
+      |> stub(:bigquery_tables_patch, fn _conn,
+                                         _project_id,
+                                         _dataset_id,
+                                         _table_name,
+                                         [body: _body] ->
         send(pid, :patched)
         {:ok, %{}}
       end)

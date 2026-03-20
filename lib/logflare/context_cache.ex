@@ -30,9 +30,6 @@ defmodule Logflare.ContextCache do
   bust the cache on, it will get reverse indexed with `select_key/1` as `:unknown`.
   """
 
-  require Logger
-  require Ex2ms
-
   @doc """
   Optional callback implementing custom cache key busting by a keyword of values
   """

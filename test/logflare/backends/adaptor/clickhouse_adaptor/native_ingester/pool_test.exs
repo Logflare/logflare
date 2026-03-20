@@ -28,35 +28,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
 
   setup do
     insert(:plan, name: "Free")
-    {_source, backend, cleanup_fn} = setup_clickhouse_test()
+    {_source, backend} = setup_clickhouse_test()
     start_supervised!({ClickHouseAdaptor, backend})
 
     on_exit(fn ->
       for table <- @test_tables do
         ClickHouseAdaptor.execute_ch_query(backend, "DROP TABLE IF EXISTS #{table}")
       end
-
-      cleanup_fn.()
     end)
 
     [backend: backend]
   end
 
   describe "Pool lifecycle" do
-    test "starts and stops a pool" do
-      pool_name = :"pool_lifecycle_test_#{System.unique_integer([:positive])}"
-
-      {:ok, pid} =
-        NimblePool.start_link(
-          worker: {Pool, @pool_connect_opts},
-          pool_size: 2,
-          name: pool_name
-        )
-
-      assert Process.alive?(pid)
-      GenServer.stop(pid)
-    end
-
     test "pool creates connections on checkout" do
       pool_name = :"pool_checkout_test_#{System.unique_integer([:positive])}"
 

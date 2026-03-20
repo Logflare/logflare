@@ -8,8 +8,7 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
     setup do
       insert(:plan, name: "Free")
 
-      {_source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {_source, backend} = setup_clickhouse_test()
 
       [backend: backend]
     end
@@ -78,10 +77,17 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
     setup do
       insert(:plan, name: "Free")
 
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test()
 
       IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+
+      on_exit(fn ->
+        try do
+          ConsolidatedSup.stop_pipeline(backend.id)
+        catch
+          _kind, _value -> :ok
+        end
+      end)
 
       [source: source, backend: backend]
     end

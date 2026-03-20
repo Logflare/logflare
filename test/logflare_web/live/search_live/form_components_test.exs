@@ -15,7 +15,7 @@ defmodule LogflareWeb.SearchLive.FormComponentsTest do
 
       document = Floki.parse_document!(html)
 
-      field_blocks = Floki.find(document, "div.pr-2.pt-1.pb-1")
+      field_blocks = Floki.find(document, "div.recommended-field-container")
 
       fields =
         Enum.map(field_blocks, fn block ->

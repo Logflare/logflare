@@ -16,8 +16,6 @@ defmodule Logflare.Users do
   alias Logflare.Users.{Cache, UserPreferences}
   alias Logflare.Endpoints
 
-  require Logger
-
   @max_limit 100
 
   def user_changeset(user, attrs) do

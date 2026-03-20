@@ -5,8 +5,6 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   use GenServer
 
-  require Logger
-
   alias Logflare.Backends
   alias Logflare.ContextCache
   alias Logflare.Rules
@@ -15,7 +13,7 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
   @supervisor_name __MODULE__.Supervisor
 
   @spec supervisor_spec() :: Supervisor.module_spec()
-  def supervisor_spec() do
+  def supervisor_spec do
     {PartitionSupervisor, child_spec: __MODULE__, name: @supervisor_name}
   end
 

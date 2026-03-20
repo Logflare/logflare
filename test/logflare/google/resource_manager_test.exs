@@ -55,6 +55,12 @@ defmodule Logflare.Google.CloudResourceManagerTest do
       for member <- expected_members do
         assert Enum.member?(members_list, member)
       end
+
+      viewer_binding =
+        Enum.find(bindings, fn %Binding{role: role} -> role == "roles/viewer" end)
+
+      assert viewer_binding
+      assert ("user:" <> google_configs.project_viewer) in viewer_binding.members
     end
 
     test "sets user as invalid google account if user does not exist" do

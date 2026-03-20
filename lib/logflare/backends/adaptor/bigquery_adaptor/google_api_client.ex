@@ -88,7 +88,5 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
     end
   end
 
-  def get_finch_instance_name() do
-    @finch_instance_name
-  end
+  def get_finch_instance_name, do: @finch_instance_name
 end
