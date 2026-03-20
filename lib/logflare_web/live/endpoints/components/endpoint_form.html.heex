@@ -135,7 +135,7 @@
         {error_tag(f, :enable_dynamic_reservation)}
         <small class="form-text text-muted">
           When enabled, API callers can set the BigQuery reservation for query execution using the <code>LF-ENDPOINT-BIGQUERY-RESERVATION</code> request header.
-          The value should be in the format <code>projects/&#123;project&#125;/locations/&#123;location&#125;/reservations/&#123;reservation&#125;</code>.
+          The value should be in the format <code>{"projects/{project}/locations/{location}/reservations/{reservation}"}</code>.
         </small>
       </div>
     </section>
