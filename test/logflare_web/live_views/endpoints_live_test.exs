@@ -876,6 +876,58 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
+  describe "run query with dynamic BigQuery reservation" do
+    setup %{user: user} do
+      [
+        endpoint:
+          insert(:endpoint, user: user, query: "select 1 as n", enable_dynamic_reservation: true)
+      ]
+    end
+
+    test "shows reservation input when enabled", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      assert has_element?(view, "input[name='run[reservation]']")
+    end
+
+    test "does not show reservation input when disabled", %{conn: conn, user: user} do
+      endpoint =
+        insert(:endpoint, user: user, query: "select 1 as n", enable_dynamic_reservation: false)
+
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      refute has_element?(view, "input[name='run[reservation]']")
+    end
+
+    test "shows reservation input on edit page", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+      assert has_element?(view, "input[name='run[reservation]']")
+    end
+
+    test "passes reservation to BigQuery and retains input value after submit", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
+      pid = self()
+      reservation = "projects/my-proj/locations/us/reservations/my-reservation"
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response([%{"n" => "1"}])}
+      end)
+
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      view
+      |> element("form", "Test query")
+      |> render_submit(%{run: %{query: endpoint.query, params: %{}, reservation: reservation}})
+
+      assert_received {:reservation, ^reservation}
+
+      assert view |> element("input[name='run[reservation]']") |> render() =~
+               ~s(value="#{reservation}")
+    end
+  end
+
   describe "resolving team context" do
     setup %{user: user, team: team} do
       team_user = insert(:team_user, team: team)

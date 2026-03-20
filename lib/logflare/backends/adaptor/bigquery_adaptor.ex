@@ -532,10 +532,16 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
       dryRun: Keyword.get(opts, :dry_run, false),
       reservation:
-        case Keyword.get(opts, :query_type) do
-          :search -> user.bigquery_reservation_search
-          :alerts -> user.bigquery_reservation_alerts
-          _ -> nil
+        case Keyword.get(opts, :reservation) do
+          nil ->
+            case Keyword.get(opts, :query_type) do
+              :search -> user.bigquery_reservation_search
+              :alerts -> user.bigquery_reservation_alerts
+              _ -> nil
+            end
+
+          value ->
+            value
         end
     ]
   end
