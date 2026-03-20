@@ -484,6 +484,11 @@ defmodule LogflareWeb.Router do
       only: [:index, :show]
     )
 
+    resources("/backends", Api.BackendController,
+      param: "token",
+      only: [:index, :show]
+    )
+
     get "/key-values", Api.KeyValueController, :index
     post "/key-values", Api.KeyValueController, :create
     delete "/key-values", Api.KeyValueController, :delete
@@ -500,7 +505,7 @@ defmodule LogflareWeb.Router do
     scope "/backends" do
       resources("/", Api.BackendController,
         param: "token",
-        only: [:index, :show, :create, :update, :delete]
+        only: [:create, :update, :delete]
       )
 
       post("/:token/test", Api.BackendController, :test_connection)
