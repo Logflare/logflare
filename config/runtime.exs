@@ -96,7 +96,8 @@ config :logflare,
          encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED"),
          metadata: logflare_metadata,
          health: logflare_health,
-         http_connection_pools: http_connection_pools
+         http_connection_pools: http_connection_pools,
+         bq_write_api_pool_size: System.get_env("LOGFLARE_BQ_WRITE_API_POOL_SIZE")
        ]
        |> filter_nil_kv_pairs.()
 
@@ -414,10 +415,18 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
       value -> String.to_float(value)
     end
 
+  bq_compare_sample_ratio =
+    System.get_env("LOGFLARE_OTEL_BQ_COMPARE_SAMPLE_RATIO")
+    |> case do
+      nil -> default_sample_ratio
+      value -> String.to_float(value)
+    end
+
   config :logflare,
     opentelemetry_enabled?: true,
     ingest_sample_ratio: ingest_sample_ratio,
-    endpoint_sample_ratio: endpoint_sample_ratio
+    endpoint_sample_ratio: endpoint_sample_ratio,
+    bq_compare_sample_ratio: bq_compare_sample_ratio
 
   logflare_trace_metadata =
     ["service.cluster": System.get_env("LOGFLARE_METADATA_CLUSTER")]
@@ -443,10 +452,12 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
     otlp_protocol: :http_protobuf,
     otlp_endpoint: System.get_env("LOGFLARE_OTEL_ENDPOINT"),
     otlp_compression: :gzip,
-    otlp_headers: [
-      {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
-      {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
-    ],
+    otlp_headers:
+      [
+        {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
+        {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
+      ]
+      |> filter_nil_kv_pairs.(),
     max_batch_size: 250
 end
 

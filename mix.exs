@@ -225,7 +225,7 @@ defmodule Logflare.Mixfile do
       {:open_api_spex, "~> 3.16"},
       # required for yaml open api generation
       {:ymlr, "~> 2.0"},
-      {:grpc, "~> 0.9.0"},
+      {:grpc, "~> 0.11.0"},
       # otel_metric_exporter requires an update https://github.com/electric-sql/elixir-otel-metric-exporter/pull/13
       {:protobuf, "~> 0.15.0", override: true},
       {:gun, "~> 2.0", override: true},
