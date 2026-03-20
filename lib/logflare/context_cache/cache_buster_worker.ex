@@ -33,6 +33,7 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   @impl true
   def handle_cast({:to_bust, context_pkeys}, state) do
+    ContextCache.record_tombstones(context_pkeys)
     ContextCache.bust_keys(context_pkeys)
 
     for record <- context_pkeys do

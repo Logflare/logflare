@@ -7,11 +7,13 @@ defmodule Logflare.Telemetry do
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
   context_caches_with_metrics = Logflare.ContextCache.Supervisor.list_caches_with_metrics()
+  wal_tombstones = Logflare.ContextCache.wal_tombstones_cache_name()
 
   @caches [
             {Logflare.Logs.LogEvents.Cache, :log_events},
             {Logflare.Logs.RejectedLogEvents, :rejected_log_events},
-            {Logflare.PubSubRates.Cache, :pub_sub_rates}
+            {Logflare.PubSubRates.Cache, :pub_sub_rates},
+            {wal_tombstones, wal_tombstones}
           ] ++ context_caches_with_metrics
 
   @process_metrics %{
@@ -225,6 +227,26 @@ defmodule Logflare.Telemetry do
       ),
       counter("thousand_island.acceptor.spawn_error",
         description: "Count of client connection spawn errors"
+      ),
+      counter("logflare.context_cache.broadcast.count",
+        event_name: "logflare.context_cache.broadcast.stop",
+        tags: [:cache, :enabled],
+        description: "Total cache broadcast attempts"
+      ),
+      distribution("logflare.context_cache.broadcast.stop.duration",
+        tags: [:cache, :enabled],
+        unit: {:native, :millisecond},
+        description: "Latency of dispatching the cache broadcast"
+      ),
+      counter("logflare.context_cache.receive_broadcast.count",
+        event_name: "logflare.context_cache.receive_broadcast.stop",
+        tags: [:cache, :action],
+        description: "Total cache broadcasts received and their outcome (cached or dropped)"
+      ),
+      distribution("logflare.context_cache.receive_broadcast.stop.duration",
+        tags: [:cache, :action],
+        unit: {:native, :millisecond},
+        description: "Latency of processing an incoming cache broadcast"
       )
     ]
 
