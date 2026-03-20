@@ -30,6 +30,11 @@ defmodule Logflare.Backends.Cache do
     }
   end
 
+  @behaviour Logflare.ContextCache
+
+  @impl Logflare.ContextCache
+  def fetch_by_id(id) when is_integer(id), do: Backends.get_backend(id)
+
   def list_backends(arg), do: apply_repo_fun(__ENV__.function, [arg])
   def get_backend(arg), do: apply_repo_fun(__ENV__.function, [arg])
 

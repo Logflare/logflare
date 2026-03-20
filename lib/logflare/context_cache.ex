@@ -31,9 +31,22 @@ defmodule Logflare.ContextCache do
   """
 
   @doc """
-  Optional callback implementing custom cache key busting by a keyword of values
+  Optional callback providing keys to bust based on a keyword defined in `Logflare.ContextCache.CacheBuster`
   """
-  @callback bust_by(keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  @callback keys_to_bust(keyword()) :: [{fun :: atom(), args :: list()}]
+
+  @doc """
+  Fetches a record by its integer primary key directly from the database (bypassing cache).
+  Used by CacheBuster to pre-fetch fresh data before broadcasting to the cluster.
+  """
+  @callback fetch_by_id(id :: integer()) :: struct() | nil
+
+  @optional_callbacks [keys_to_bust: 1, fetch_by_id: 1]
+
+  @spec cache_name(atom()) :: atom()
+  def cache_name(context) do
+    Module.concat(context, Cache)
+  end
 
   @spec apply_fun(module(), tuple() | atom(), list()) :: any()
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
@@ -70,56 +83,34 @@ defmodule Logflare.ContextCache do
 
   For keywords, it expects the cache to handle busting by implementing `c:bust_by/1`
   """
-  @spec bust_keys(list()) :: {:ok, non_neg_integer()}
+  @spec bust_keys(list()) :: :ok
   def bust_keys(values) when is_list(values) do
-    busted =
-      for {context, primary_key} <- values, reduce: 0 do
-        acc ->
-          {:ok, n} = bust_key({context, primary_key})
-          acc + n
-      end
+    for {context, primary_key} <- values do
+      context_cache = cache_name(context)
+      bust_key(context_cache, primary_key)
+    end
 
-    {:ok, busted}
+    :ok
   end
 
-  defp bust_key({context, kw}) when is_list(kw) do
-    context_cache = cache_name(context)
-    context_cache.bust_by(kw)
+  defp bust_key(context_cache, kw) when is_list(kw) do
+    Cachex.execute!(context_cache, fn cache ->
+      context_cache.keys_to_bust(kw)
+      |> delete_entries(cache)
+    end)
   end
 
-  defp bust_key({context, pkey}) do
-    context_cache = cache_name(context)
-
-    filter =
-      {
-        # use orelse to prevent 2nd condition failing as value is not a map
-        :orelse,
-        {
-          :orelse,
-          # handle lists
-          {:is_list, {:element, 2, :value}},
-          # handle :ok tuples when struct with id is in 2nd element pos.
-          {:andalso, {:is_tuple, {:element, 2, :value}},
-           {:andalso, {:==, {:element, 1, {:element, 2, :value}}, :ok},
-            {:andalso, {:is_map, {:element, 2, {:element, 2, :value}}},
-             {:==, {:map_get, :id, {:element, 2, {:element, 2, :value}}}, pkey}}}}
-        },
-        # handle single maps
-        {:andalso, {:is_map, {:element, 2, :value}},
-         {:==, {:map_get, :id, {:element, 2, :value}}, pkey}}
-      }
-
-    query =
-      Cachex.Query.build(where: filter, output: {:key, :value})
-
-    context_cache
-    |> Cachex.stream!(query)
-    |> delete_matching_entries(context_cache, pkey)
+  defp bust_key(context_cache, pkey) do
+    Cachex.execute!(context_cache, fn cache ->
+      keys_with_id(cache, pkey)
+      |> delete_entries(cache)
+    end)
   end
 
-  @spec cache_name(atom()) :: atom()
-  def cache_name(context) do
-    Module.concat(context, Cache)
+  defp delete_entries(entries, cache) do
+    Enum.each(entries, fn key ->
+      Cachex.del(cache, key)
+    end)
   end
 
   @doc """
@@ -141,22 +132,80 @@ defmodule Logflare.ContextCache do
     end
   end
 
-  defp delete_matching_entries(entries, context_cache, pkey) do
-    to_delete =
-      entries
-      |> Stream.filter(fn
-        {_k, {:cached, v}} when is_list(v) ->
-          Enum.any?(v, &(&1.id == pkey))
+  @spec refresh_keys([{module(), integer(), struct()}]) :: :ok
+  def refresh_keys(values) when is_list(values) do
+    Enum.each(values, fn {context, pkey, struct} ->
+      refresh_key(context, pkey, struct)
+    end)
 
-        {_k, _v} ->
-          true
-      end)
+    :ok
+  end
 
-    Cachex.execute(context_cache, fn worker ->
-      Enum.reduce(to_delete, 0, fn {k, _v}, acc ->
-        Cachex.del(worker, k)
-        acc + 1
+  defp refresh_key(context, pkey, fresh_struct) when is_integer(pkey) do
+    cache = cache_name(context)
+
+    Cachex.execute!(cache, fn ets_cache ->
+      keys_with_id_and_values(ets_cache, pkey)
+      |> Enum.each(fn {key, cached_value} ->
+        new_value = replace_in_cached(cached_value, pkey, fresh_struct)
+        Cachex.update(cache, key, new_value)
       end)
+    end)
+  end
+
+  defp replace_in_cached({:cached, %{id: _}}, _pkey, fresh), do: {:cached, fresh}
+
+  defp replace_in_cached({:cached, tuple}, _pkey, fresh)
+       when is_tuple(tuple) and elem(tuple, 0) == :ok do
+    {:cached, put_elem(tuple, 1, fresh)}
+  end
+
+  defp replace_in_cached({:cached, list}, pkey, fresh) when is_list(list) do
+    {:cached,
+     Enum.map(list, fn
+       %{id: ^pkey} -> fresh
+       other -> other
+     end)}
+  end
+
+  defp keys_with_id(cache, id) do
+    keys_with_id_stream(cache, id)
+    |> Stream.map(&elem(&1, 0))
+  end
+
+  defp keys_with_id_and_values(cache, id) do
+    keys_with_id_stream(cache, id)
+    |> Enum.to_list()
+  end
+
+  defp keys_with_id_stream(cache, id) do
+    # match {_cached, %{id: ^pkey}}
+    direct_filter =
+      {:andalso, {:is_map, {:element, 2, :value}},
+       {:==, {:map_get, :id, {:element, 2, :value}}, id}}
+
+    # match {_cached, {:ok, %{id: ^pkey}}} and larger ok-tuples
+    tuple_filter =
+      {:andalso, {:is_tuple, {:element, 2, :value}},
+       {:andalso, {:==, {:element, 1, {:element, 2, :value}}, :ok},
+        {:andalso, {:is_map, {:element, 2, {:element, 2, :value}}},
+         {:==, {:map_get, :id, {:element, 2, {:element, 2, :value}}}, id}}}}
+
+    element_filter =
+      {:orelse, direct_filter, tuple_filter}
+
+    list_filter = {:is_list, {:element, 2, :value}}
+    filter = {:orelse, list_filter, element_filter}
+    query = Cachex.Query.build(where: filter, output: {:key, :value})
+
+    cache
+    |> Cachex.stream!(query)
+    |> Stream.filter(fn
+      {_k, {:cached, v}} when is_list(v) ->
+        Enum.any?(v, &(&1.id == id))
+
+      {_k, _v} ->
+        true
     end)
   end
 end

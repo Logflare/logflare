@@ -28,6 +28,11 @@ defmodule Logflare.Endpoints.Cache do
     }
   end
 
+  @behaviour Logflare.ContextCache
+
+  @impl Logflare.ContextCache
+  def fetch_by_id(id) when is_integer(id), do: Endpoints.get_endpoint_query(id)
+
   def get_endpoint_query(kw), do: apply_repo_fun(:get_endpoint_query, [kw])
   def get_by(kw), do: apply_repo_fun(:get_by, [kw])
   def get_mapped_query_by_token(token), do: apply_repo_fun(:get_mapped_query_by_token, [token])

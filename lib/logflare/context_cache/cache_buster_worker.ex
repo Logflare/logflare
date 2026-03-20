@@ -1,6 +1,8 @@
 defmodule Logflare.ContextCache.CacheBusterWorker do
   @moduledoc """
-    Monitors our Postgres replication log and busts the cache accordingly.
+  Executes cache busting and in-place updates via a PartitionSupervisor for parallelism.
+  ETS scans with matchspecs (especially for list entries) can be expensive, so this work
+  is offloaded from the CacheBuster GenServer to avoid blocking PubSub message processing.
   """
 
   use GenServer
@@ -17,9 +19,13 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
     {PartitionSupervisor, child_spec: __MODULE__, name: @supervisor_name}
   end
 
-  @spec cast_to_bust([{context, args}]) :: :ok when context: module(), args: term()
-  def cast_to_bust(records) do
-    GenServer.cast({:via, PartitionSupervisor, {@supervisor_name, records}}, {:to_bust, records})
+  @spec cast_apply([{:fetched, {module(), integer(), struct()}} | {:bust, {module(), term()}}]) ::
+          :ok
+  def cast_apply(results) when is_list(results) do
+    GenServer.cast(
+      {:via, PartitionSupervisor, {@supervisor_name, results}},
+      {:apply, results}
+    )
   end
 
   def start_link(init_args) do
@@ -32,11 +38,14 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
   end
 
   @impl true
-  def handle_cast({:to_bust, context_pkeys}, state) do
-    ContextCache.bust_keys(context_pkeys)
+  def handle_cast({:apply, results}, state) do
+    grouped = Enum.group_by(results, &elem(&1, 0), &elem(&1, 1))
 
-    for record <- context_pkeys do
-      maybe_do_cross_cluster_syncing(record)
+    ContextCache.refresh_keys(Map.get(grouped, :fetched, []))
+    ContextCache.bust_keys(Map.get(grouped, :bust, []))
+
+    for {_tag, value} <- results do
+      maybe_do_cross_cluster_syncing(value)
     end
 
     {:noreply, state}
@@ -44,18 +53,19 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   defp maybe_do_cross_cluster_syncing({Backends, backend_id})
        when is_integer(backend_id) do
-    # sync backend across cluster for v2 sources
     Utils.Tasks.start_child(fn ->
       Backends.sync_backend_across_cluster(backend_id)
     end)
   end
 
   defp maybe_do_cross_cluster_syncing({Rules, rule_id}) when is_integer(rule_id) do
-    # sync rule
     Utils.Tasks.start_child(fn ->
       Rules.sync_rule(rule_id)
     end)
   end
+
+  defp maybe_do_cross_cluster_syncing({context, pkey, _struct}),
+    do: maybe_do_cross_cluster_syncing({context, pkey})
 
   defp maybe_do_cross_cluster_syncing(_), do: :noop
 end

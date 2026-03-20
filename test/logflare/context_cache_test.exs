@@ -6,6 +6,8 @@ defmodule Logflare.ContextCacheTest do
   alias Logflare.Sources.Source
   alias Logflare.Backends
   alias Logflare.Backends.Backend
+  alias Logflare.Rules
+  alias Logflare.Rules.Rule
   alias Logflare.Auth
 
   describe "ContextCache" do
@@ -17,7 +19,7 @@ defmodule Logflare.ContextCacheTest do
     end
 
     test "bust_keys/1, does nothing for empty list" do
-      assert {:ok, 0} = ContextCache.bust_keys([])
+      assert :ok = ContextCache.bust_keys([])
     end
 
     test "apply_fun/3,  bust_keys/1 by :id field of value", %{source: source} do
@@ -25,7 +27,9 @@ defmodule Logflare.ContextCacheTest do
       cache_key = {:get_by, [[token: source.token]]}
       assert {:cached, %Source{}} = Cachex.get!(Sources.Cache, cache_key)
 
-      assert {:ok, 1} = ContextCache.bust_keys([{Sources, source.id}])
+      size_before = Cachex.size!(Sources.Cache)
+      assert :ok = ContextCache.bust_keys([{Sources, source.id}])
+      assert Cachex.size!(Sources.Cache) == size_before - 1
       assert is_nil(Cachex.get!(Sources.Cache, cache_key))
     end
 
@@ -35,7 +39,9 @@ defmodule Logflare.ContextCacheTest do
       cache_key = {:verify_access_token, [key.token]}
       assert {:cached, {:ok, %_{}, _user}} = Cachex.get!(Auth.Cache, cache_key)
 
-      assert {:ok, 1} = ContextCache.bust_keys([{Auth, key.id}])
+      size_before = Cachex.size!(Auth.Cache)
+      assert :ok = ContextCache.bust_keys([{Auth, key.id}])
+      assert Cachex.size!(Auth.Cache) == size_before - 1
       assert is_nil(Cachex.get!(Auth.Cache, cache_key))
     end
 
@@ -47,8 +53,52 @@ defmodule Logflare.ContextCacheTest do
       cache_key = {:list_backends, [[source_id: source.id]]}
       assert {:cached, [%Backend{}]} = Cachex.get!(Backends.Cache, cache_key)
 
-      assert {:ok, 1} = ContextCache.bust_keys([{Backends, backend.id}])
+      size_before = Cachex.size!(Backends.Cache)
+      assert :ok = ContextCache.bust_keys([{Backends, backend.id}])
+      assert Cachex.size!(Backends.Cache) == size_before - 1
       assert is_nil(Cachex.get!(Backends.Cache, cache_key))
+    end
+
+    test "refresh_keys/1 list entry", %{source: source, user: user} do
+      backend = insert(:backend, sources: [source], user: user)
+      Backends.Cache.list_backends(source_id: source.id)
+      old_name = backend.name
+      new_name = "NotHotdog"
+      change = Backend.changeset(backend, %{name: new_name})
+      assert {:ok, new_backend} = Repo.update(change)
+
+      cache_key = {:list_backends, [[source_id: source.id]]}
+      assert {:cached, [%Backend{name: ^old_name}]} = Cachex.get!(Backends.Cache, cache_key)
+
+      assert :ok = ContextCache.refresh_keys([{Backends, backend.id, new_backend}])
+      assert {:cached, [%Backend{name: ^new_name}]} = Cachex.get!(Backends.Cache, cache_key)
+    end
+
+    test "refresh_keys/1 regular entry", %{source: source} do
+      old_name = source.name
+      new_name = "NotHotdog"
+      Sources.Cache.get_by(token: source.token)
+      change = Source.changeset(source, %{name: new_name})
+      assert {:ok, new_source} = Repo.update(change)
+
+      cache_key = {:get_by, [[token: source.token]]}
+      assert {:cached, %Source{name: ^old_name}} = Cachex.get!(Sources.Cache, cache_key)
+
+      assert :ok = ContextCache.refresh_keys([{Sources, source.id, new_source}])
+      assert {:cached, %Source{name: ^new_name}} = Cachex.get!(Sources.Cache, cache_key)
+    end
+
+    test "refresh_keys/1 with struct does in-place update for :ok tuple", %{user: user} do
+      {:ok, key} = Auth.create_access_token(user)
+      {:ok, token, _user} = Auth.Cache.verify_access_token(key.token)
+      cache_key = {:verify_access_token, [key.token]}
+      assert {:cached, {:ok, %_{id: _}, %_{id: _}}} = Cachex.get!(Auth.Cache, cache_key)
+
+      fresh = %{token | description: "InPlace"}
+      assert :ok = ContextCache.refresh_keys([{Auth, token.id, fresh}])
+
+      assert {:cached, {:ok, %_{description: "InPlace"}, %_{id: _}}} =
+               Cachex.get!(Auth.Cache, cache_key)
     end
   end
 
@@ -65,8 +115,8 @@ defmodule Logflare.ContextCacheTest do
       :ok
     end
 
-    test "TransactionBroadcaster subscribes to wal and broadcasts transactions" do
-      ContextCache.CacheBuster.subscribe_to_transactions()
+    test "TransactionBroadcaster subscribes to wal and broadcasts cache_updates" do
+      ContextCache.CacheBuster.subscribe_updates()
       start_supervised!({ContextCache.TransactionBroadcaster, interval: 100})
       :timer.sleep(200)
 
@@ -74,8 +124,7 @@ defmodule Logflare.ContextCacheTest do
         insert(:user)
       end)
 
-      :timer.sleep(500)
-      assert_received %Cainophile.Changes.Transaction{}
+      assert_receive {:cache_updates, _results}, 500
     end
   end
 end

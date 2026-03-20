@@ -35,6 +35,11 @@ defmodule Logflare.SourceSchemas.Cache do
     }
   end
 
+  @behaviour Logflare.ContextCache
+
+  @impl Logflare.ContextCache
+  def fetch_by_id(id) when is_integer(id), do: SourceSchemas.get_source_schema(id)
+
   def get_source_schema_by(kv), do: apply_fun(__ENV__.function, [kv])
 
   defp apply_fun(arg1, arg2) do
