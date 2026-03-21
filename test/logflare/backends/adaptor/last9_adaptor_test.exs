@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Tesla.MockAdapter
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
 
@@ -150,7 +151,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
     |> expect(:new, calls_num, fn opts ->
       HttpBased.Client
       |> Mimic.call_original(:new, [opts])
-      |> Logflare.Tesla.MockAdapter.replace(function)
+      |> MockAdapter.replace(function)
     end)
   end
 end

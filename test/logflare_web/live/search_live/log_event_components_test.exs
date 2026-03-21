@@ -5,7 +5,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
   import Phoenix.Component
 
   alias Logflare.Lql
+  alias Logflare.Lql.Rules.SelectRule
+  alias Logflare.LogEvent
   alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias LogflareWeb.SearchLive.LogEventComponents
 
   @default_attrs %{
@@ -73,7 +76,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
       {:ok, lql_rules} =
         Lql.decode(
           "c:count(*) c:group_by(t::minute)",
-          Source.BigQuery.SchemaBuilder.initial_table_schema()
+          SchemaBuilder.initial_table_schema()
         )
 
       [
@@ -127,7 +130,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
       source: source,
       lql_rules: lql_rules
     } do
-      log_event_without_message = %Logflare.LogEvent{
+      log_event_without_message = %LogEvent{
         id: Ecto.UUID.generate(),
         body: %{
           "timestamp" => System.system_time(:microsecond),
@@ -163,7 +166,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
           source: source
         )
 
-      log_event_without_message = %Logflare.LogEvent{
+      log_event_without_message = %LogEvent{
         id: Ecto.UUID.generate(),
         body: %{
           "timestamp" => System.system_time(:microsecond),
@@ -282,9 +285,9 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         )
 
       lql_rules = [
-        %Logflare.Lql.Rules.SelectRule{path: "metadata.user_id", alias: nil},
-        %Logflare.Lql.Rules.SelectRule{path: "metadata.store.city", alias: "city"},
-        %Logflare.Lql.Rules.SelectRule{path: "long_field", alias: nil}
+        %SelectRule{path: "metadata.user_id", alias: nil},
+        %SelectRule{path: "metadata.store.city", alias: "city"},
+        %SelectRule{path: "long_field", alias: nil}
       ]
 
       search_op = %{

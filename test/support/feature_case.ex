@@ -11,6 +11,8 @@ defmodule Logflare.FeatureCase do
       import Logflare.Factory
       import unquote(__MODULE__)
 
+      alias Logflare.Backends.IngestEventQueue
+      alias Logflare.PubSubRates
       alias Logflare.TestUtils
 
       require Logflare.TestUtils
@@ -24,8 +26,8 @@ defmodule Logflare.FeatureCase do
         Mimic.verify_on_exit!(context)
 
         on_exit(fn ->
-          Logflare.Backends.IngestEventQueue.delete_all_mappings()
-          Logflare.PubSubRates.Cache.clear()
+          IngestEventQueue.delete_all_mappings()
+          PubSubRates.Cache.clear()
         end)
 
         :ok

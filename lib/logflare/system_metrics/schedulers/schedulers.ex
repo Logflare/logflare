@@ -1,8 +1,10 @@
 defmodule Logflare.SystemMetrics.Schedulers do
   @moduledoc false
 
+  alias Logflare.Utils.Tasks
+
   def async_dispatch_stats(duration \\ to_timeout(second: 1)) do
-    Logflare.Utils.Tasks.start_child(fn -> collect_dispatch_stats(duration) end)
+    Tasks.start_child(fn -> collect_dispatch_stats(duration) end)
   end
 
   def collect_dispatch_stats(duration \\ to_timeout(second: 1)) do

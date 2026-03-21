@@ -3,6 +3,9 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  alias Logflare.Backends
+  alias Logflare.Backends.DynamicPipeline
+  alias Logflare.Sources.Source.BigQuery.Pipeline, as: BigQueryPipeline
   alias Logflare.Sources.Source
   alias LogflareWeb.ModalLiveHelpers
   alias LogflareWeb.SearchLive.SavedSearchesModalComponent
@@ -192,10 +195,10 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
   @spec pipeline_count(Source.t()) :: non_neg_integer()
   def pipeline_count(source) do
-    name = Logflare.Backends.via_source(source.id, Logflare.Sources.Source.BigQuery.Pipeline, nil)
+    name = Backends.via_source(source.id, BigQueryPipeline, nil)
 
     if GenServer.whereis(name) do
-      Logflare.Backends.DynamicPipeline.pipeline_count(name)
+      DynamicPipeline.pipeline_count(name)
     else
       0
     end

@@ -2,6 +2,8 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   use LogflareWeb, :live_component
 
   alias Logflare.JSON
+  alias Logflare.Lql.Rules, as: LqlRules
+  alias Logflare.Lql.Rules.FilterRule
   alias Phoenix.LiveView.{AsyncResult, JS}
   alias Logflare.{Lql, Logs, SourceSchemas, Sources.Source, Sources}
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
@@ -51,7 +53,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       )
 
     timestamp_range =
-      Lql.Rules.FilterRule.build(
+      FilterRule.build(
         path: "timestamp",
         operator: :range,
         values: [
@@ -66,7 +68,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       |> Enum.map(&Source.query_field_name/1)
 
     lql_rules
-    |> Logflare.Lql.Rules.get_filter_rules()
+    |> LqlRules.get_filter_rules()
     |> Enum.filter(&(&1.path in required_fields))
     |> Lql.Rules.update_timestamp_rules([timestamp_range])
   end
