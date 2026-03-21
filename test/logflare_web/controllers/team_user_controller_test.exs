@@ -141,4 +141,58 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     assert Logflare.TeamUsers.get_team_user!(member2_team_user.id)
   end
+
+  test "update with invalid params shows error", %{conn: conn} do
+    owner = insert(:user)
+    member_user = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team, email: member_user.email)
+
+    conn =
+      conn
+      |> login_user(member_user, team_user)
+      |> put(~p"/profile/edit?t=#{team.id}", %{"team_user" => %{"email" => ""}})
+
+    assert html_response(conn, 200) =~ "Something went wrong!"
+  end
+
+  test "delete shows error when deletion fails", %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    member_user = insert(:user)
+    member_team_user = insert(:team_user, team: team, email: member_user.email)
+
+    changeset = Logflare.TeamUsers.TeamUser.changeset(member_team_user, %{})
+
+    expect(Logflare.TeamUsers, :delete_team_user, fn _team_user ->
+      {:error, Ecto.Changeset.add_error(changeset, :base, "cannot delete")}
+    end)
+
+    conn =
+      conn
+      |> login_user(owner)
+      |> delete(~p"/profile/#{member_team_user.id}")
+
+    assert redirected_to(conn, 302) == "/account/edit"
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Something went wrong!"
+  end
+
+  test "delete_self shows error when deletion fails", %{conn: conn} do
+    user = insert(:user)
+    team = insert(:team, user: user)
+    team_user = insert(:team_user, team: team, email: user.email)
+
+    changeset = Logflare.TeamUsers.TeamUser.changeset(team_user, %{})
+
+    expect(Logflare.TeamUsers, :delete_team_user, fn _team_user ->
+      {:error, Ecto.Changeset.add_error(changeset, :base, "cannot delete")}
+    end)
+
+    conn =
+      conn
+      |> login_user(user, team_user)
+      |> delete(~p"/profile")
+
+    assert html_response(conn, 200) =~ "Something went wrong!"
+  end
 end
