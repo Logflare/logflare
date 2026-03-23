@@ -1,5 +1,9 @@
 defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   use Logflare.DataCase, async: false
+
+  alias Logflare.Backends.Adaptor.SyslogAdaptor
+  alias Logflare.Backends.IngestEventQueue
+
   @moduletag :telegraf
 
   @telegraf_output_path "db/telegraf_output/metrics.out"
@@ -415,8 +419,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
 
   defp syslog_changeset(backend_config) do
     backend_config
-    |> Logflare.Backends.Adaptor.SyslogAdaptor.cast_config()
-    |> Logflare.Backends.Adaptor.SyslogAdaptor.validate_config()
+    |> SyslogAdaptor.cast_config()
+    |> SyslogAdaptor.validate_config()
   end
 
   describe "pipeline retries" do
@@ -496,7 +500,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
                      to_timeout(second: 10)
 
       assert {:ok, []} =
-               Logflare.Backends.IngestEventQueue.fetch_events({source.id, backend.id}, 1)
+               IngestEventQueue.fetch_events({source.id, backend.id}, 1)
     end
   end
 

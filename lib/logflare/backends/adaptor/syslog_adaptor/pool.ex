@@ -1,6 +1,11 @@
 defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   @moduledoc false
+
   import Kernel, except: [send: 2]
+
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.SyslogAdaptor
+
   @behaviour NimblePool
 
   @connect_timeout to_timeout(second: 15)
@@ -131,7 +136,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
         {:error, reason} ->
           :atomics.add(connect_failures, 1, 1)
-          redacted_config = Logflare.Backends.Adaptor.SyslogAdaptor.redact_config(backend_config)
+          redacted_config = SyslogAdaptor.redact_config(backend_config)
 
           raise "failed to connect to Syslog (#{inspect(redacted_config)}), reason: #{inspect(reason)}"
       end
@@ -167,7 +172,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   end
 
   defp current_backend_config(backend_id) do
-    if backend = Logflare.Backends.Cache.get_backend(backend_id) do
+    if backend = Backends.Cache.get_backend(backend_id) do
       backend.config
     else
       raise "missing backend #{backend_id}"
