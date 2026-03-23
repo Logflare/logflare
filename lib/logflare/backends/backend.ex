@@ -118,7 +118,7 @@ defmodule Logflare.Backends.Backend do
     def encode(value, opts) do
       type = value.type
 
-      adaptor = Logflare.Backends.Backend.adaptor_mapping()[type]
+      adaptor = Backend.adaptor_mapping()[type]
 
       values =
         value

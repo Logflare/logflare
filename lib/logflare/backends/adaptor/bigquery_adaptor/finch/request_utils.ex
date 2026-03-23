@@ -1,4 +1,6 @@
 defmodule Grpc.Client.Adapters.Finch.RequestUtils do
+  alias GRPC.Transport.HTTP2
+
   def check_compression(headers, stream) do
     headers_map = Map.new(headers)
     encoding = headers_map["grpc-encoding"]
@@ -12,7 +14,7 @@ defmodule Grpc.Client.Adapters.Finch.RequestUtils do
   end
 
   def parse_headers(headers) do
-    headers = GRPC.Transport.HTTP2.decode_headers(headers)
+    headers = HTTP2.decode_headers(headers)
 
     if headers["grpc-status"] do
       grpc_status = String.to_integer(headers["grpc-status"])

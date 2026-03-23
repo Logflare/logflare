@@ -5,6 +5,7 @@ defmodule Logflare.AlertingTest do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
+  alias Logflare.Utils.Tasks
 
   doctest Logflare.SynEventHandler
 
@@ -12,7 +13,7 @@ defmodule Logflare.AlertingTest do
     insert(:plan, name: "Free")
 
     on_exit(fn ->
-      Logflare.Utils.Tasks.kill_all_tasks()
+      Tasks.kill_all_tasks()
     end)
 
     {:ok, user: insert(:user)}

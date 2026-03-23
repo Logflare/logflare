@@ -8,7 +8,9 @@ defmodule Logflare.SourcesTest do
   alias Logflare.SourceSchemas
   alias Logflare.Backends
   alias Logflare.Users
+  alias Logflare.Sources.Counters
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.RateCounterServer
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
 
@@ -424,8 +426,8 @@ defmodule Logflare.SourcesTest do
     end
 
     test "does NOT shut down sources with active ingest", %{source: source} do
-      Logflare.Sources.Counters.increment(source.token, 1)
-      Logflare.Sources.Source.RateCounterServer.handle_info(:put_rate, source.token)
+      Counters.increment(source.token, 1)
+      RateCounterServer.handle_info(:put_rate, source.token)
 
       assert Sources.get_source_metrics_for_ingest(source).avg > 0
 

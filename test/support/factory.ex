@@ -24,6 +24,7 @@ defmodule Logflare.Factory do
   alias Logflare.Users.UserPreferences
   alias Logflare.Alerting.AlertQuery
   alias Logflare.KeyValues.KeyValue
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   def user_factory do
     email = "#{TestUtils.random_string(8)}@#{TestUtils.random_string()}.com"
@@ -78,7 +79,7 @@ defmodule Logflare.Factory do
     %SourceSchema{
       bigquery_schema: attrs[:bigquery_schema] || TestUtils.default_bq_schema(),
       schema_flat_map:
-        Logflare.Google.BigQuery.SchemaUtils.bq_schema_to_flat_typemap(
+        SchemaUtils.bq_schema_to_flat_typemap(
           attrs[:bigquery_schema] || TestUtils.default_bq_schema()
         )
     }
