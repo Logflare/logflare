@@ -137,6 +137,14 @@ defmodule LogflareWeb.Api.AccessTokensTest do
       |> json_response(401)
     end
 
+    test "malformed scopes payload returns validation error", %{conn: conn, user: user} do
+      assert %{"errors" => %{"scopes" => _}} =
+               conn
+               |> add_access_token(user, "private")
+               |> post("/api/access-tokens", %{scopes: %{bad: "value"}})
+               |> json_response(422)
+    end
+
     test "must use private token", %{conn: conn, user: user} do
       conn =
         conn

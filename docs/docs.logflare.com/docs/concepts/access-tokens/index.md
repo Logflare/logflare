@@ -14,8 +14,8 @@ Access tokens can be scoped to specific functionality.
 
 1. `ingest` - allows ingestion of events into sources.
 2. `query` - allows querying of Logflare Endpoints.
-3. `private` - allows management of team resources 
-4. `private:admin` allows management of team resources and team users.
+3. `private` - allows Management API access for account resources. Destructive team and backend operations require `private:admin`.
+4. `private:admin` - includes `private` access and allows admin operations for teams and backends.
 
 `ingest` and `query` scopes can be scoped to specific sources and endpoints. It is recommended to use the least privileged token for the given task, especially for public ingestion.
 

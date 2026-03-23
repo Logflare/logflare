@@ -204,7 +204,6 @@ defmodule LogflareWeb.AccessTokensLive do
     %{assigns: %{user: user}} = socket
     sources = Sources.list_sources_by_user(user)
     endpoints = Endpoints.list_endpoints_by(user_id: user.id)
-    team_context = struct(TeamContext, socket.assigns)
 
     socket =
       socket
@@ -214,7 +213,6 @@ defmodule LogflareWeb.AccessTokensLive do
       |> assign(scopes_ingest_sources: %{})
       |> assign(scopes_query_endpoints: %{})
       |> assign(create_token_form: Form.new() |> Form.change())
-      |> assign(:team_context, team_context)
       |> do_refresh()
 
     {:ok, socket}
@@ -229,7 +227,7 @@ defmodule LogflareWeb.AccessTokensLive do
   def handle_event(
         "create-token",
         payload,
-        %{assigns: %{user: user}} = socket
+        %{assigns: %{team_context: team_context, user: user}} = socket
       ) do
     params = form_params(payload)
 
@@ -245,7 +243,7 @@ defmodule LogflareWeb.AccessTokensLive do
       form = Ecto.Changeset.apply_changes(changeset)
       attrs = %{description: form.description, scopes: form |> Form.to_scopes() |> Enum.join(" ")}
 
-      case Auth.create_access_token(user, attrs) do
+      case Auth.create_access_token(team_context, user, attrs) do
         {:ok, token} ->
           socket =
             socket
@@ -255,6 +253,9 @@ defmodule LogflareWeb.AccessTokensLive do
             |> push_patch(to: ~p"/access-tokens")
 
           {:noreply, socket}
+
+        {:error, :unauthorized} ->
+          {:noreply, put_flash(socket, :error, "Could not create access token")}
 
         {:error, %Ecto.Changeset{} = changeset} ->
           message = changeset |> Utils.stringify_changeset_errors("Could not create access token")
@@ -303,6 +304,7 @@ defmodule LogflareWeb.AccessTokensLive do
            %{
              "description" => _description,
              "private" => _private,
+             "admin" => _admin,
              "ingest" => _ingest,
              "query" => _query
            } = params
