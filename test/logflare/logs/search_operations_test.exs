@@ -346,7 +346,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
 
     test "handles exact timestamp filter", %{ts: ts, ts_filters: filters} do
       %{min: min_ts, max: max_ts, message: nil} =
-        Logflare.Logs.SearchOperations.Helpers.get_min_max_filter_timestamps(filters, :minute)
+        SearchOperations.Helpers.get_min_max_filter_timestamps(filters, :minute)
 
       assert min_ts == Timex.shift(ts, minutes: -1)
       assert max_ts == Timex.shift(ts, minutes: 1)
@@ -358,7 +358,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
       filters = [%{hd(ts_filters) | operator: :>}]
 
       %{message: message} =
-        Logflare.Logs.SearchOperations.Helpers.get_min_max_filter_timestamps(filters, :hour)
+        SearchOperations.Helpers.get_min_max_filter_timestamps(filters, :hour)
 
       assert message =~ "number of chart ticks is limited"
     end
