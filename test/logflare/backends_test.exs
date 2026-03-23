@@ -483,6 +483,34 @@ defmodule Logflare.BackendsTest do
 
       :timer.sleep(1000)
     end
+
+    test "partial config update preserves existing fields", %{user: user} do
+      assert {:ok, backend} =
+               Backends.create_backend(%{
+                 name: "some name",
+                 type: :webhook,
+                 config: %{url: "http://example.com", gzip: true},
+                 user_id: user.id
+               })
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{config: %{gzip: false}})
+      assert updated.config.url == "http://example.com"
+      assert updated.config.gzip == false
+    end
+
+    test "partial config update with string keys", %{user: user} do
+      assert {:ok, backend} =
+               Backends.create_backend(%{
+                 name: "some name",
+                 type: :webhook,
+                 config: %{url: "http://example.com", gzip: true},
+                 user_id: user.id
+               })
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{config: %{"gzip" => false}})
+      assert updated.config.url == "http://example.com"
+      assert updated.config.gzip == false
+    end
   end
 
   describe "update_backend/2 with default_ingest?" do
