@@ -18,6 +18,7 @@ defmodule Logflare.Lql do
   @default_dialect :bigquery
 
   @typep dialect :: :bigquery | :clickhouse | :postgres
+  @type schema_flat_map :: Parser.schema_flat_map()
 
   @doc """
   Converts a language identifier to a dialect identifier.
@@ -34,12 +35,8 @@ defmodule Logflare.Lql do
   This function accepts any schema format but maintains backward compatibility
   with BigQuery `TableSchema` for existing usage.
   """
-  @spec decode(qs :: String.t(), table_schema :: TS.t()) :: {:ok, [term()]} | {:error, term()}
-  def decode(qs, %TS{} = table_schema) when is_binary(qs) do
-    Parser.parse(qs, table_schema)
-  end
-
-  @spec decode(qs :: String.t(), schema :: any()) :: {:ok, [term()]} | {:error, term()}
+  @spec decode(qs :: String.t(), schema :: TS.t() | schema_flat_map()) ::
+          {:ok, [term()]} | {:error, term()}
   def decode(qs, schema) when is_binary(qs) do
     Parser.parse(qs, schema)
   end
@@ -50,13 +47,7 @@ defmodule Logflare.Lql do
   This function accepts any schema format but maintains backward compatibility
   with BigQuery `TableSchema` for existing usage.
   """
-  @spec decode!(qs :: String.t(), table_schema :: TS.t()) :: [term()]
-  def decode!(qs, %TS{} = table_schema) when is_binary(qs) do
-    {:ok, lql_rules} = Parser.parse(qs, table_schema)
-    lql_rules
-  end
-
-  @spec decode!(qs :: String.t(), schema :: any()) :: [term()]
+  @spec decode!(qs :: String.t(), schema :: TS.t() | schema_flat_map()) :: [term()]
   def decode!(qs, schema) when is_binary(qs) do
     {:ok, lql_rules} = Parser.parse(qs, schema)
     lql_rules
