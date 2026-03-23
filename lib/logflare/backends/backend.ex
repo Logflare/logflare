@@ -84,20 +84,18 @@ defmodule Logflare.Backends.Backend do
     mod = adaptor_mapping()[type]
     existing_config = changeset.data.config_encrypted || %{}
 
-    case Changeset.get_change(changeset, :config) do
+    with %{} = config <- Changeset.get_change(changeset, :config),
+         %{valid?: true} = merged_cs <-
+           Adaptor.cast_and_validate_config(mod, config, existing_config) do
+      Changeset.put_change(changeset, :config, Ecto.Changeset.apply_changes(merged_cs))
+    else
       nil ->
         changeset
 
-      config ->
-        case Adaptor.cast_and_validate_config(mod, config, existing_config) do
-          %{valid?: true} = merged_cs ->
-            Changeset.put_change(changeset, :config, Ecto.Changeset.apply_changes(merged_cs))
-
-          %{valid?: false, errors: errors} ->
-            Enum.reduce(errors, changeset, fn {key, {msg, opts}}, cs ->
-              Changeset.add_error(cs, :"config.#{key}", msg, opts)
-            end)
-        end
+      %{valid?: false, errors: errors} = changeset ->
+        Enum.reduce(errors, changeset, fn {key, {msg, opts}}, cs ->
+          Changeset.add_error(cs, :"config.#{key}", msg, opts)
+        end)
     end
   end
 
