@@ -109,6 +109,42 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     assert html =~ "private"
   end
 
+  test "create admin token", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    do_ui_create_token(view, "private:admin")
+
+    html = view |> element("table") |> render()
+    assert html =~ "some description"
+    assert html =~ "private:admin"
+  end
+
+  test "create token - rejects admin scope from crafted team member payload", %{
+    conn: conn,
+    user: user
+  } do
+    team = insert(:team, user: user)
+    team_user = insert(:team_user, team: team)
+    conn = login_user(conn, user, team_user)
+
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    assert view |> element("button", "Create access token") |> render_click()
+
+    html =
+      view
+      |> element("form")
+      |> render_submit(%{
+        description: "crafted",
+        scopes_main: ["private:admin"],
+        scopes_ingest: [],
+        scopes_query: []
+      })
+
+    assert html =~ "Could not create access token"
+    assert Logflare.Auth.list_valid_access_tokens(user) == []
+  end
+
   test "create token - rejects partner scope from crafted form payload", %{conn: conn, user: user} do
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
 
@@ -217,7 +253,7 @@ defmodule LogflareWeb.AccessTokensLiveTest do
            |> element("form")
            |> render_submit(%{
              description: "some description",
-             scopes_main: if(scopes =~ ":", do: [], else: [scopes]),
+             scopes_main: if(scopes =~ ~r/^(ingest|query):/, do: [], else: [scopes]),
              scopes_ingest: if(scopes =~ "ingest:", do: [scopes], else: []),
              scopes_query: if(scopes =~ "query:", do: [scopes], else: [])
            }) =~ "created successfully"

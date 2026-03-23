@@ -11,26 +11,6 @@ defmodule LogflareWeb.AccessTokensLive do
   alias Logflare.Teams.TeamContext
 
   def render(assigns) do
-    assigns =
-      assigns
-      |> assign(:scopes, [
-        {
-          "ingest",
-          "For ingestion into a source. Allows ingest into all sources if no specific source is selected."
-        },
-        {
-          "query",
-          "For querying an endpoint. Allows querying of all endpoints if no specific endpoint is selected"
-        },
-        {
-          "private",
-          "Create and modify account resources"
-        },
-        if(Auth.can_create_admin_token?(assigns.team_context),
-          do: {Auth.admin_scope(), "Create and modify account resources and team users."}
-        )
-      ])
-
     ~H"""
     <.subheader>
       <:path>
@@ -62,7 +42,7 @@ defmodule LogflareWeb.AccessTokensLive do
 
           <div class="form-group ">
             <label name="scopes" class="tw-mr-3">Scope</label>
-            <.scope_input :for={{value, description} <- @scopes} endpoints={@endpoints} sources={@sources} value={value} description={description} form={@create_token_form} />
+            <.scope_inputs endpoints={@endpoints} sources={@sources} form={@create_token_form} team_context={@team_context} />
           </div>
           <button type="button" class="btn btn-secondary" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
           {submit("Create", class: "btn btn-primary")}
@@ -145,18 +125,26 @@ defmodule LogflareWeb.AccessTokensLive do
 
   attr :sources, :list
   attr :endpoints, :list
+  attr :form, Phoenix.HTML.Form
+  attr :team_context, TeamContext
+
+  def scope_inputs(assigns) do
+    ~H"""
+    <.scope_input endpoints={@endpoints} sources={@sources} value="ingest" title="Ingest" description="For ingestion into a source. Allows ingest into all sources if no specific source is selected." form={@form} />
+    <.scope_input endpoints={@endpoints} sources={@sources} value="query" title="Query" description="For querying an endpoint. Allows querying of all endpoints if no specific endpoint is selected" form={@form} />
+    <.scope_input endpoints={@endpoints} sources={@sources} value="private" title="Private" description="Create and modify account resources" form={@form} />
+    <.scope_input :if={Auth.can_create_admin_token?(@team_context)} endpoints={@endpoints} sources={@sources} value={Auth.admin_scope()} title="Admin" description="Create and modify account resources and team users." form={@form} />
+    """
+  end
+
+  attr :sources, :list
+  attr :endpoints, :list
   attr :value, :string
+  attr :title, :string
   attr :description, :string
   attr :form, Phoenix.HTML.Form
 
   def scope_input(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:title, fn
-        %{value: "private:admin"} -> "Admin"
-        %{value: value} -> String.capitalize(value)
-      end)
-
     ~H"""
     <div class="form-check tw-mr-2">
       <input class="form-check-input" type="checkbox" name="scopes_main[]" id={["scopes", "main", @value]} value={@value} checked={@value in @form["scopes_main"]} />
@@ -228,7 +216,7 @@ defmodule LogflareWeb.AccessTokensLive do
   def handle_event(
         "create-token",
         params,
-        %{assigns: %{user: user}} = socket
+        %{assigns: %{team_context: team_context, user: user}} = socket
       ) do
     Logger.debug(
       "Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}"
@@ -253,7 +241,7 @@ defmodule LogflareWeb.AccessTokensLive do
       |> Map.take(["description"])
       |> Map.put("scopes", Enum.join(scopes, " "))
 
-    case Auth.create_access_token(user, attrs) do
+    case Auth.create_access_token(team_context, user, attrs) do
       {:ok, token} ->
         socket =
           socket
@@ -269,6 +257,9 @@ defmodule LogflareWeb.AccessTokensLive do
           LogflareWeb.Utils.stringify_changeset_errors(changeset, "Could not create access token")
 
         {:noreply, put_flash(socket, :error, message)}
+
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "Could not create access token")}
     end
   end
 
