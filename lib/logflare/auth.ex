@@ -9,7 +9,6 @@ defmodule Logflare.Auth do
   alias Logflare.Partners
   alias Logflare.Partners.Partner
   alias Logflare.Repo
-  alias Logflare.Teams.Team
   alias Logflare.Teams.TeamContext
   alias Logflare.User
   alias Logflare.Users
@@ -135,17 +134,30 @@ defmodule Logflare.Auth do
     ExOauth2Provider.AccessTokens.get_by_token(token, env_partner_oauth_config())
   end
 
-  @doc "Creates an Oauth access token with no expiry, linked to the given user or team's user."
-  @typep create_attrs :: %{optional(atom() | String.t()) => String.t()}
-  @spec create_access_token(Team.t() | User.t() | Partner.t(), create_attrs()) ::
-          {:ok, OauthAccessToken.t() | PartnerOauthAccessToken.t()} | {:error, Changeset.t()}
-  def create_access_token(user_or_team_or_partner, attrs \\ %{})
+  @doc """
+  Creates a user Oauth access token with context authorization for requested scopes.
 
-  def create_access_token(%Team{user_id: user_id}, attrs) do
-    user_id
-    |> Logflare.Users.get()
-    |> create_access_token(attrs)
+  Verifies `context` is authorized to create a token with the requested scopes.
+  """
+  @typep create_attr_value :: String.t() | nil
+  @typep create_attrs :: %{optional(atom() | String.t()) => create_attr_value()}
+  @spec create_access_token(OauthAccessToken.t() | TeamContext.t(), User.t(), create_attrs()) ::
+          {:ok, OauthAccessToken.t()} | {:error, Changeset.t()} | {:error, :unauthorized}
+  def create_access_token(context, %User{} = user, attrs) do
+    with :ok <- verify_create_scopes(context, attrs) do
+      create_access_token(user, attrs)
+    end
   end
+
+  @doc """
+  Creates an Oauth access token from trusted server-side callers.
+
+  Request handlers accepting user-selected scopes should call
+  `create_access_token/3` with the current authorization context.
+  """
+  @spec create_access_token(User.t() | Partner.t(), create_attrs()) ::
+          {:ok, OauthAccessToken.t() | PartnerOauthAccessToken.t()} | {:error, Changeset.t()}
+  def create_access_token(user_or_partner, attrs \\ %{})
 
   def create_access_token(%User{} = user, attrs) do
     do_create_user_access_token(user, attrs, [:scopes, :description])
@@ -181,6 +193,17 @@ defmodule Logflare.Auth do
       |> validate_scopes()
       |> Changeset.unique_constraint(:token)
     end)
+  end
+
+  defp verify_create_scopes(context, attrs) do
+    with scopes when is_binary(scopes) <- Map.get(attrs, "scopes", Map.get(attrs, :scopes, "")),
+         true <- @admin_scope in String.split(scopes),
+         false <- can_create_admin_token?(context) do
+      {:error, :unauthorized}
+    else
+      _ ->
+        :ok
+    end
   end
 
   defp run_create_access_token(resource_owner, oauth_config, build_changeset) do
