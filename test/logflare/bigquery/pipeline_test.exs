@@ -13,6 +13,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Backend
   alias Logflare.Backends
+  alias Logflare.PubSubRates.Cache, as: PubSubRatesCache
   use ExUnitProperties
 
   @pipeline_name :test_pipeline
@@ -36,7 +37,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       mod.ack(ref, [message], [])
       refute IngestEventQueue.get_table_size(sid_bid_pid) == 0
 
-      Logflare.PubSubRates.Cache.cache_rates(source.token, %{
+      PubSubRatesCache.cache_rates(source.token, %{
         Node.self() => %{
           average_rate: 500,
           last_rate: 500,

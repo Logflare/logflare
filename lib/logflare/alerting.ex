@@ -5,6 +5,8 @@ defmodule Logflare.Alerting do
 
   import Ecto.Query, warn: false
 
+  alias Crontab.CronExpression.Parser, as: CronParser
+  alias Crontab.Scheduler, as: CronScheduler
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends
@@ -222,12 +224,12 @@ defmodule Logflare.Alerting do
   """
   @spec schedule_alert(AlertQuery.t()) :: :ok
   def schedule_alert(%AlertQuery{} = alert_query) do
-    case Crontab.CronExpression.Parser.parse(alert_query.cron) do
+    case CronParser.parse(alert_query.cron) do
       {:ok, cron_expr} ->
         now = NaiveDateTime.utc_now()
 
         cron_expr
-        |> Crontab.Scheduler.get_next_run_dates(now)
+        |> CronScheduler.get_next_run_dates(now)
         |> Enum.take(5)
         |> Enum.each(fn run_date ->
           scheduled_at = DateTime.from_naive!(run_date, "Etc/UTC")

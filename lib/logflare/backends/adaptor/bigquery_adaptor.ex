@@ -11,6 +11,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   require OpenTelemetry.Tracer
 
   alias Ecto.Changeset
+  alias GoogleApi.IAM.V1.Api.Projects, as: IAMProjects
+  alias GoogleApi.IAM.V1.Model.CreateServiceAccountRequest
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
@@ -485,7 +487,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   # handles pagination for the IAM api
   defp get_next_page(project_id, page_token) do
     GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list("projects/#{project_id}",
+    |> IAMProjects.iam_projects_service_accounts_list("projects/#{project_id}",
       pageSize: 100,
       pageToken: page_token
     )
@@ -512,9 +514,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           {:ok, GoogleApi.IAM.V1.Model.ServiceAccount.t()} | {:error, Tesla.Env.t() | String.t()}
   defp create_managed_service_account(project_id, service_account_index) do
     GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(
+    |> IAMProjects.iam_projects_service_accounts_create(
       "projects/#{project_id}",
-      body: %GoogleApi.IAM.V1.Model.CreateServiceAccountRequest{
+      body: %CreateServiceAccountRequest{
         accountId: managed_service_account_id(service_account_index)
       }
     )
@@ -550,10 +552,16 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
       dryRun: Keyword.get(opts, :dry_run, false),
       reservation:
-        case Keyword.get(opts, :query_type) do
-          :search -> user.bigquery_reservation_search
-          :alerts -> user.bigquery_reservation_alerts
-          _ -> nil
+        case Keyword.get(opts, :reservation) do
+          nil ->
+            case Keyword.get(opts, :query_type) do
+              :search -> user.bigquery_reservation_search
+              :alerts -> user.bigquery_reservation_alerts
+              _ -> nil
+            end
+
+          value ->
+            value
         end
     ]
   end

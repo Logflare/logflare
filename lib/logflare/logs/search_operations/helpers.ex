@@ -23,7 +23,11 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
       |> override_min_max_for_open_intervals(chart_period)
       |> min_max_timestamps()
 
-    message = generate_message(chart_period)
+    message =
+      case ts_filters do
+        [%{operator: op}] when op in ~w[> >= < <=]a -> generate_message(chart_period)
+        _ -> nil
+      end
 
     %{min: min, max: max, message: message}
   end
@@ -71,6 +75,11 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
        when op in @ops do
     shift = [{to_timex_shift_key(period), -@default_open_interval_length}]
     [ts |> Timex.shift(shift), ts]
+  end
+
+  defp override_min_max_for_open_intervals([%{operator: :=, value: ts}], period) do
+    shift_key = to_timex_shift_key(period)
+    [Timex.shift(ts, [{shift_key, -1}]), Timex.shift(ts, [{shift_key, 1}])]
   end
 
   @spec to_timex_shift_key(:day | :hour | :minute | :second) ::

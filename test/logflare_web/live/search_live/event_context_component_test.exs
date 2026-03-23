@@ -3,7 +3,10 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.BqRepo
+  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.Utils.Tasks
   alias LogflareWeb.SearchLive.EventContextComponent
   alias Logflare.Users
 
@@ -65,7 +68,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   defp on_exit_kill_tasks(_ctx) do
     on_exit(fn ->
       # Kill all tasks first
-      Logflare.Utils.Tasks.kill_all_tasks()
+      Tasks.kill_all_tasks()
 
       # Give processes time to clean up
       Process.sleep(10)
@@ -86,7 +89,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
     setup %{user: user} do
       schema =
         %{"user_id" => 1, "metadata" => %{"level" => "info"}}
-        |> Source.BigQuery.SchemaBuilder.build_table_schema(@default_schema)
+        |> SchemaBuilder.build_table_schema(@default_schema)
 
       source = insert(:source, user: user, suggested_keys: "event_message")
       insert(:source_schema, source: source, bigquery_schema: schema)
@@ -102,7 +105,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
       query_string = "c:count(*) c:group_by(t::minute)"
 
       assert [
-               %Logflare.Lql.Rules.FilterRule{
+               %FilterRule{
                  path: "timestamp",
                  operator: :range,
                  values: [~U[2025-08-19 02:33:51Z], ~U[2025-08-21 02:33:51Z]]

@@ -22,6 +22,8 @@ defmodule LogflareWeb.ConnCase do
 
   use ExUnit.CaseTemplate
 
+  alias Logflare.Partners.Partner
+
   using _opts do
     quote do
       use Mimic
@@ -37,10 +39,12 @@ defmodule LogflareWeb.ConnCase do
       import Plug.Conn
       import unquote(__MODULE__)
 
+      alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+      alias Logflare.Backends.IngestEventQueue
+      alias Logflare.PubSubRates
       alias Logflare.TestUtils
       alias Logflare.TestUtilsGrpc
       alias Logflare.User
-      alias Logflare.Partners.Partner
       alias LogflareWeb.Router.Helpers, as: Routes
 
       # The default endpoint for testing
@@ -61,9 +65,9 @@ defmodule LogflareWeb.ConnCase do
         Enum.each(caches, &Cachex.reset(&1, hooks: [Cachex.Stats]))
 
         on_exit(fn ->
-          Logflare.Backends.IngestEventQueue.delete_all_mappings()
-          Logflare.PubSubRates.Cache.clear()
-          Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup.terminate_all()
+          IngestEventQueue.delete_all_mappings()
+          PubSubRates.Cache.clear()
+          ClickHouseAdaptor.QueryConnectionSup.terminate_all()
         end)
 
         :ok
@@ -109,7 +113,7 @@ defmodule LogflareWeb.ConnCase do
     Plug.Conn.put_req_header(conn, "authorization", "Bearer #{access_token.token}")
   end
 
-  def add_access_token(conn, %Logflare.Partners.Partner{} = partner, scopes) do
+  def add_access_token(conn, %Partner{} = partner, scopes) do
     scopes = if is_list(scopes), do: Enum.join(scopes, " "), else: scopes
     {:ok, access_token} = Logflare.Auth.create_access_token(partner, %{scopes: scopes})
 

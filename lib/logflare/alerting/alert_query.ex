@@ -4,6 +4,8 @@ defmodule Logflare.Alerting.AlertQuery do
 
   import Ecto.Changeset
 
+  alias Crontab.CronExpression.Parser, as: CronParser
+  alias Crontab.Scheduler
   alias Logflare.Endpoints.Query
 
   @derive {Jason.Encoder,
@@ -55,8 +57,8 @@ defmodule Logflare.Alerting.AlertQuery do
     ])
     |> validate_required([:name, :query, :cron, :language])
     |> validate_change(:cron, fn :cron, cron ->
-      with {:ok, expr} <- Crontab.CronExpression.Parser.parse(cron),
-           [first, second] <- Crontab.Scheduler.get_next_run_dates(expr) |> Enum.take(2),
+      with {:ok, expr} <- CronParser.parse(cron),
+           [first, second] <- Scheduler.get_next_run_dates(expr) |> Enum.take(2),
            true <- NaiveDateTime.diff(first, second, :minute) <= -5 do
         []
       else
