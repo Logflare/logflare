@@ -8,6 +8,7 @@ defmodule LogflareWeb.Api.BackendController do
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApi.Unauthorized
   alias LogflareWeb.OpenApi.UnprocessableEntity
   alias LogflareWeb.OpenApiSchemas.BackendApiParams
   alias LogflareWeb.OpenApiSchemas.BackendApiSchema
@@ -49,6 +50,7 @@ defmodule LogflareWeb.Api.BackendController do
     request_body: BackendApiParams.params(),
     responses: %{
       201 => Created.response(BackendApiSchema),
+      401 => Unauthorized.response(),
       404 => NotFound.response(),
       422 => UnprocessableEntity.response()
     }
@@ -69,6 +71,7 @@ defmodule LogflareWeb.Api.BackendController do
     responses: %{
       204 => Accepted.response(),
       200 => Accepted.response(BackendApiSchema),
+      401 => Unauthorized.response(),
       404 => NotFound.response(),
       422 => UnprocessableEntity.response()
     }
@@ -95,6 +98,7 @@ defmodule LogflareWeb.Api.BackendController do
     parameters: [token: [in: :path, description: "Backend Token", type: :string]],
     responses: %{
       204 => Accepted.response(),
+      401 => Unauthorized.response(),
       404 => NotFound.response()
     }
   )
@@ -113,6 +117,7 @@ defmodule LogflareWeb.Api.BackendController do
     parameters: [token: [in: :path, description: "Backend Token", type: :string]],
     responses: %{
       200 => BackendConnectionTest.response(),
+      401 => Unauthorized.response(),
       404 => NotFound.response()
     }
   )
