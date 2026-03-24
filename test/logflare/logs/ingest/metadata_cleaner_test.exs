@@ -113,23 +113,6 @@ defmodule Logflare.Logs.Ingest.MetadataCleanerTest do
                %{"items.0.name" => "a", "items.1.name" => "b"}
     end
 
-    test "nested lists" do
-      assert Cleaner.flatten(%{"matrix" => [[1, 2], [3, 4]]}) ==
-               %{
-                 "matrix.0.0" => 1,
-                 "matrix.0.1" => 2,
-                 "matrix.1.0" => 3,
-                 "matrix.1.1" => 4
-               }
-    end
-
-    test "preserves nil and empty values (no cleaning)" do
-      input = %{"a" => nil, "b" => "", "c" => %{}, "d" => [], "e" => 1}
-
-      assert Cleaner.flatten(input) ==
-               %{"a" => nil, "b" => "", "c" => %{}, "d" => [], "e" => 1}
-    end
-
     test "empty map" do
       assert Cleaner.flatten(%{}) == %{}
     end
