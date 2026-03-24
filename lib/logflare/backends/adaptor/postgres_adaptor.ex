@@ -140,6 +140,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    case execute_query(backend, "SELECT 1 AS result", []) do
+      {:ok, [%{"result" => 1}]} -> :ok
+      {:error, _} = error -> error
+    end
+  end
+
+  @impl Logflare.Backends.Adaptor
   def ecto_to_sql(%Ecto.Query{} = query, _opts) do
     SqlUtils.ecto_to_pg_sql(query)
   end
