@@ -1,5 +1,6 @@
 defmodule Grpc.Client.Adapters.Finch.BidirectionalStream do
   alias GRPC.Client.Adapters.Finch.StreamState
+  alias GRPC.Transport.HTTP2
   alias Grpc.Client.Adapters.Finch.RequestUtils
   use GenServer
 
@@ -75,7 +76,7 @@ defmodule Grpc.Client.Adapters.Finch.BidirectionalStream do
 
   defp send_request(request, %{grpc_stream: stream} = state) do
     client_headers =
-      GRPC.Transport.HTTP2.client_headers_without_reserved(
+      HTTP2.client_headers_without_reserved(
         stream,
         stream.payload.stream_state_opts
       )

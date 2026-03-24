@@ -1,6 +1,7 @@
 defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase, async: false
 
+  alias GoogleApi.BigQuery.V2.Api.Jobs, as: BigQueryJobs
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
@@ -28,7 +29,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       endpoint = insert(:endpoint, user: user, enable_auth: false)
       pid = self()
 
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+      expect(BigQueryJobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:error, :failed_request}
       end)
 
@@ -78,7 +79,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       refute response.error
       refute conn.halted
 
-      reject(&GoogleApi.BigQuery.V2.Api.Jobs.bigquery_jobs_query/3)
+      reject(&BigQueryJobs.bigquery_jobs_query/3)
 
       conn =
         init_conn
@@ -942,6 +943,68 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       refute response.error
       refute conn.halted
+    end
+  end
+
+  describe "dynamic BigQuery reservation" do
+    setup do
+      _plan = insert(:plan, name: "Free")
+      user = insert(:user)
+      {:ok, user: user}
+    end
+
+    test "passes reservation header to BigQuery when enable_dynamic_reservation is true", %{
+      conn: init_conn,
+      user: user
+    } do
+      pid = self()
+      reservation = "projects/my-project/locations/us/reservations/my-reservation"
+
+      endpoint =
+        insert(:endpoint, user: user, enable_auth: false, enable_dynamic_reservation: true)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-bigquery-reservation", reservation)
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert json_response(conn, 200)
+      refute conn.halted
+
+      assert_received {:reservation, ^reservation}
+    end
+
+    test "ignores reservation header when enable_dynamic_reservation is false", %{
+      conn: init_conn,
+      user: user
+    } do
+      pid = self()
+      reservation = "projects/my-project/locations/us/reservations/my-reservation"
+
+      endpoint =
+        insert(:endpoint, user: user, enable_auth: false, enable_dynamic_reservation: false)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-bigquery-reservation", reservation)
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert json_response(conn, 200)
+      refute conn.halted
+
+      assert_received {:reservation, nil}
     end
   end
 end

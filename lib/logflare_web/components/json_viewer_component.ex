@@ -29,23 +29,28 @@ defmodule LogflareWeb.JSONViewerComponent do
           map
       end
 
-    assigns = Map.put(assigns, :data, data)
+    assigns = assign(assigns, :data, data)
 
     ~H"""
     <div id={@id} class={["tw-font-mono tw-text-sm", @class]} {@rest}>
-      <.tree_node :for={{k, v} <- @data} key={k} value={v} path={[]} id={@id} action={@action} />
+      <.tree_node :for={{k, v} <- @data} key={k} label={k} value={v} path={[]} key_path={[]} id={@id} action={@action} />
     </div>
     """
   end
 
-  defp tree_node(%{value: _value, kind: _kind, path: path, key: key} = assigns) do
-    full_path = path ++ [key]
+  defp tree_node(%{value: _value, kind: _kind, path: path, key: _key} = assigns) do
+    full_path = append_path(path, assigns.label)
     path_id = build_path_id(full_path, assigns.id)
 
     assigns =
       assigns
-      |> Map.put(:full_path, full_path)
-      |> Map.put(:path_id, path_id)
+      |> assign(
+        path: full_path,
+        key_path: append_path(assigns.key_path, assigns.key),
+        path_id: path_id
+      )
+      |> assign_new(:children, fn -> nil end)
+      |> assign_new(:action, fn -> [] end)
 
     ~H"""
     <div class="tw-my-0.5">
@@ -54,7 +59,7 @@ defmodule LogflareWeb.JSONViewerComponent do
       <span class="tw-text-json-tree-label">{@kind}</span>
 
       <div class="tw-pl-4" id={@path_id}>
-        <.tree_node_value value={@value} key={@key} path={@full_path} id={@id} action={@action} />
+        <.tree_node_value value={@value} children={@children} key={@key} path={@path} key_path={@key_path} id={@id} action={@action} />
       </div>
     </div>
     """
@@ -62,36 +67,47 @@ defmodule LogflareWeb.JSONViewerComponent do
 
   defp tree_node(%{value: value, path: _path} = assigns) when is_map(value) do
     assigns
-    |> Map.put(:kind, "Object")
+    |> assign(kind: "Object", children: value)
     |> tree_node()
   end
 
   defp tree_node(%{value: value, path: _path} = assigns) when is_list(value) do
     assigns
-    |> Map.put(:kind, "Array")
-    |> Map.put(:value, Enum.with_index(value, fn v, index -> {to_string(index), v} end))
+    |> assign(
+      kind: ["Array", " (", to_string(length(value)), ")"],
+      children: Enum.with_index(value, fn v, index -> {to_string(index), v} end)
+    )
     |> tree_node()
   end
 
-  defp tree_node(%{path: path, key: key} = assigns) do
-    full_path = path ++ [key]
-    path_id = build_path_id(full_path, assigns.id)
-    assigns = assigns |> assign(path_id: path_id)
+  defp tree_node(%{path: path, key_path: key_path} = assigns) do
+    path = append_path(path, assigns.label)
+
+    key_path =
+      append_path(key_path, assigns.key)
+
+    assigns =
+      assigns
+      |> assign(path: path, key_path: key_path)
+      |> assign_new(:children, fn -> nil end)
+      |> assign_new(:action, fn -> [] end)
 
     ~H"""
-    <div class="tw-my-0.5 tw-overflow-hidden" id={@path_id}>
-      <span class="tw-text-json-tree-key">{@key}:</span>
-      <.tree_node_value key={@key} value={@value} path={@path} id={@id} action={@action} />
+    <div class="tw-my-0.5 tw-overflow-hidden tw-group" id={build_path_id(@path, @id)}>
+      <span class="tw-text-json-tree-key">{@label}:</span>
+      <.tree_node_value key={@key} value={@value} children={@children} path={@path} key_path={@key_path} id={@id} action={@action} />
     </div>
     """
   end
 
   defp tree_node_value(%{value: "http" <> _url} = assigns) do
-    assigns = Map.put_new(assigns, :class, "tw-text-json-tree-string")
+    assigns =
+      assigns
+      |> assign(class: "tw-text-json-tree-string")
 
     ~H"""
     <span class={@class}>"</span><.link href={@value} target="_blank" class={@class}>{@value}</.link><span class={@class}>"</span>
-    {render_slot(@action, %{key: @key, value: @value, path: @path})}
+    {render_slot(@action, %{key: @key, value: @value, path: @key_path})}
     """
   end
 
@@ -99,7 +115,7 @@ defmodule LogflareWeb.JSONViewerComponent do
     ~H"""
     <span class={@class}>
       {@formatted_value}
-      {render_slot(@action, %{key: @key, value: @value, path: @path})}
+      {render_slot(@action, %{key: @key, value: @value, path: @key_path})}
     </span>
     """
   end
@@ -140,19 +156,22 @@ defmodule LogflareWeb.JSONViewerComponent do
     |> tree_node_value()
   end
 
-  defp tree_node_value(%{value: value, path: _path} = assigns) when is_list(value) do
+  defp tree_node_value(%{children: children, path: _path, key_path: _key_path} = assigns)
+       when is_list(children) do
     ~H"""
-    <.tree_node :for={{k, v} <- @value} value={v} key={k} path={@path} id={@id} action={@action} />
+    <.tree_node :for={{index, v} <- @children} key={nil} label={index} value={v} path={@path} key_path={@key_path} id={@id} action={@action} />
     """
   end
 
-  defp tree_node_value(%{value: value, path: path} = assigns) when is_map(value) do
-    assigns = Map.put(assigns, :path, path)
-
+  defp tree_node_value(%{children: children, path: _path, key_path: _key_path} = assigns)
+       when is_map(children) do
     ~H"""
-    <.tree_node :for={{k, v} <- @value} value={v} key={k} path={@path} id={@id} action={@action} />
+    <.tree_node :for={{k, v} <- @children} value={v} key={k} label={k} path={@path} key_path={@key_path} id={@id} action={@action} />
     """
   end
+
+  defp append_path(path, nil), do: path
+  defp append_path(path, segment), do: path ++ [segment]
 
   defp build_path_id(path, root_id) do
     segments =

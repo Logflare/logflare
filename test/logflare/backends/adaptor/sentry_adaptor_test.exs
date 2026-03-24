@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.SentryAdaptor
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Tesla.MockAdapter
 
   @subject SentryAdaptor
   @tesla_adapter Tesla.Adapter.Finch
@@ -367,7 +368,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
     |> expect(:new, fn opts ->
       HttpBased.Client
       |> Mimic.call_original(:new, [opts])
-      |> Logflare.Tesla.MockAdapter.replace(function)
+      |> MockAdapter.replace(function)
     end)
   end
 end

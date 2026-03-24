@@ -1,7 +1,9 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
 
+  alias Logflare.Logs.LogEvents
   alias Logflare.Logs.SearchOperation, as: SO
+  alias Logflare.Lql.Rules, as: LqlRules
   alias Logflare.Sources
   import Ecto.Query
   import Logflare.Logs.SearchOperations
@@ -78,18 +80,18 @@ defmodule Logflare.Logs.Search do
   def search_event_context(%SO{} = so, log_event_id, %DateTime{} = timestamp) do
     so =
       so
-      |> Logflare.Logs.Search.get_and_put_partition_by()
+      |> get_and_put_partition_by()
 
     %{values: [min, max]} =
       so.lql_rules
-      |> Logflare.Lql.Rules.get_timestamp_filters()
+      |> LqlRules.get_timestamp_filters()
       |> Enum.find(fn rule -> rule.operator == :range end)
 
     fields = [:id, :timestamp, :event_message, :metadata]
 
     numbered_rows =
       from(so.source.bq_table_id)
-      |> Logflare.Logs.LogEvents.partition_query([min, max], so.partition_by)
+      |> LogEvents.partition_query([min, max], so.partition_by)
       |> Logflare.Lql.apply_filter_rules(so.lql_rules)
       |> where([t], t.timestamp >= ^min and t.timestamp <= ^max)
       |> select([t], map(t, ^fields))

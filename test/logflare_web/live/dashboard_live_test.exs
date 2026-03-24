@@ -3,6 +3,7 @@ defmodule LogflareWeb.DashboardLiveTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Repo
+  alias Logflare.Sources.UserMetricsPoller
 
   setup %{conn: conn} do
     insert(:plan)
@@ -208,12 +209,12 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       # The UserMetricsPoller should be registered and running after mount
       TestUtils.retry_assert(fn ->
-        assert {poller_pid, _} = :syn.lookup(:ui, {Logflare.Sources.UserMetricsPoller, user.id})
+        assert {poller_pid, _} = :syn.lookup(:ui, {UserMetricsPoller, user.id})
         assert Process.alive?(poller_pid)
       end)
 
       # Should have one subscriber (the LiveView process)
-      assert [_subscriber] = Logflare.Sources.UserMetricsPoller.list_subscribers(user.id)
+      assert [_subscriber] = UserMetricsPoller.list_subscribers(user.id)
     end
 
     test "renders source metrics ", %{conn: conn, source: source} do
@@ -261,7 +262,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       {:ok, view, _html} = live(conn, "/dashboard")
 
       TestUtils.retry_assert(fn ->
-        assert {poller_pid, _} = :syn.lookup(:ui, {Logflare.Sources.UserMetricsPoller, user.id})
+        assert {poller_pid, _} = :syn.lookup(:ui, {UserMetricsPoller, user.id})
         send(poller_pid, :poll_metrics)
       end)
 

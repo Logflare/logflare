@@ -89,4 +89,50 @@ defmodule Logflare.Logs.Ingest.MetadataCleanerTest do
       assert "vary2" not in get_keys_in.(~w(response headers))
     end
   end
+
+  describe "flatten/1" do
+    test "flat map passes through unchanged" do
+      assert Cleaner.flatten(%{"a" => 1, "b" => "hello"}) ==
+               %{"a" => 1, "b" => "hello"}
+    end
+
+    test "nested maps produce dot-delimited keys" do
+      assert Cleaner.flatten(%{"a" => %{"b" => %{"c" => 42}}}) ==
+               %{"a.b.c" => 42}
+    end
+
+    test "lists use integer indices" do
+      assert Cleaner.flatten(%{"tags" => ["alpha", "beta"]}) ==
+               %{"tags.0" => "alpha", "tags.1" => "beta"}
+    end
+
+    test "nested maps inside lists" do
+      input = %{"items" => [%{"name" => "a"}, %{"name" => "b"}]}
+
+      assert Cleaner.flatten(input) ==
+               %{"items.0.name" => "a", "items.1.name" => "b"}
+    end
+
+    test "empty map" do
+      assert Cleaner.flatten(%{}) == %{}
+    end
+
+    test "mixed depth realistic body" do
+      input = %{
+        "event_message" => "hello",
+        "timestamp" => 123,
+        "metadata" => %{
+          "level" => "info",
+          "context" => %{"request_id" => "abc"}
+        }
+      }
+
+      assert Cleaner.flatten(input) == %{
+               "event_message" => "hello",
+               "timestamp" => 123,
+               "metadata.level" => "info",
+               "metadata.context.request_id" => "abc"
+             }
+    end
+  end
 end
