@@ -7,6 +7,8 @@ defmodule Logflare.Logs.SearchTest do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Logs.Search
   alias Logflare.Logs.SearchOperation, as: SO
+  alias Logflare.Lql
+  alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.SingleTenant
@@ -161,8 +163,8 @@ defmodule Logflare.Logs.SearchTest do
     } do
       lql_rules =
         matching_message
-        |> Logflare.Lql.decode!(schema)
-        |> Logflare.Lql.Rules.put_new_chart_rule(Logflare.Lql.Rules.default_chart_rule())
+        |> Lql.decode!(schema)
+        |> Rules.put_new_chart_rule(Rules.default_chart_rule())
 
       search_operation =
         SO.new(%{
