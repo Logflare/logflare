@@ -117,7 +117,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     table_id = format_table_name(opts[:source_token])
 
     arrow_data =
-      OpenTelemetry.Tracer.with_span :bq_serialize do
+      OpenTelemetry.Tracer.with_span "bigquery.serialize", %{
+        attributes: %{insert_method: :bq_storage_write}
+      } do
+        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erts_debug.flat_size(log_events))
+
         arrow_data =
           log_events
           |> Enum.map(&log_event_to_df_struct(&1))
@@ -127,14 +131,16 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
         OpenTelemetry.Tracer.set_attribute(
           :serialized_bytes,
-          Enum.sum_by(arrow_data, &:erlang.external_size(&1))
+          Enum.sum_by(arrow_data, &:erts_debug.flat_size(&1))
         )
 
         arrow_data
       end
 
     # append rows
-    OpenTelemetry.Tracer.with_span :bq_api_call do
+    OpenTelemetry.Tracer.with_span "bigquery.api_call", %{
+      attributes: %{insert_method: :bq_storage_write}
+    } do
       GoogleApiClient.append_rows({:arrow, arrow_data}, context, table_id)
       |> tap(fn
         {:error, reason} ->

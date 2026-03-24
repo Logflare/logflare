@@ -189,7 +189,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           v != nil,
           do: {k, v}
 
-    OpenTelemetry.Tracer.with_span :bigquery_pipeline, %{
+    OpenTelemetry.Tracer.with_span "ingest.bigquery_batch", %{
       attributes: Map.new(attributes)
     } do
       source = Sources.Cache.get_by_id(context.source_id)
@@ -198,7 +198,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         log_events = messages |> Enum.map(& &1.data)
         batch_attrs = compute_batch_attrs(messages, :bq_storage_write)
 
-        OpenTelemetry.Tracer.with_span :bq_insert, %{attributes: batch_attrs} do
+        OpenTelemetry.Tracer.with_span "bigquery.insert", %{attributes: batch_attrs} do
           BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
             project_id: context.bigquery_project_id,
             dataset_id: context.bigquery_dataset_id,
@@ -212,7 +212,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       else
         batch_attrs = compute_batch_attrs(messages, :bq_streaming_insert)
 
-        OpenTelemetry.Tracer.with_span :bq_insert, %{attributes: batch_attrs} do
+        OpenTelemetry.Tracer.with_span "bigquery.insert", %{attributes: batch_attrs} do
           stream_batch(context, messages)
         end
       end
@@ -288,16 +288,21 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   defp execute_bigquery_stream_batch(%{source_token: source_token} = context, messages) do
     rows =
-      OpenTelemetry.Tracer.with_span :bq_serialize do
+      OpenTelemetry.Tracer.with_span "bigquery.serialize", %{
+        attributes: %{insert_method: :bq_streaming_insert}
+      } do
+        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erts_debug.flat_size(messages))
         result = le_messages_to_bq_rows(messages)
-        OpenTelemetry.Tracer.set_attribute(:serialized_bytes, :erlang.external_size(result))
+        OpenTelemetry.Tracer.set_attribute(:serialized_bytes, :erts_debug.flat_size(result))
         result
       end
 
     # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
     # All others send to the rejected list with the message from BigQuery.
     # See todo in `process_data` also.
-    OpenTelemetry.Tracer.with_span :bq_api_call do
+    OpenTelemetry.Tracer.with_span "bigquery.api_call", %{
+      attributes: %{insert_method: :bq_streaming_insert}
+    } do
       case BigQuery.stream_batch!(context, rows) do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
           OpenTelemetry.Tracer.set_attribute(:insert_error_count, 0)

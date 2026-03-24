@@ -60,7 +60,7 @@ defmodule LogflareWeb.OpenTelemetrySampler do
       ) do
     config =
       case {span_name, Map.get(attributes, :"url.path")} do
-        {:bigquery_pipeline, _} -> ingest_config()
+        {"ingest." <> _, _} -> ingest_config()
         {_, "/logs" <> _} -> ingest_config()
         {_, "/api/logs" <> _} -> ingest_config()
         {_, "/api/events" <> _} -> ingest_config()

@@ -12,7 +12,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
 
   @spec encode_ndjson([map()]) :: binary()
   def encode_ndjson(data_frames) do
-    OpenTelemetry.Tracer.with_span :bq_ndjson_encode do
+    OpenTelemetry.Tracer.with_span "bigquery.ndjson_encode" do
       ndjson = Enum.map_join(data_frames, "\n", &Jason.encode!/1)
       OpenTelemetry.Tracer.set_attribute(:ndjson_bytes, byte_size(ndjson))
       ndjson
@@ -21,7 +21,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
 
   def encode_arrow_data(ndjson) do
     {arrow_schema, batch_msgs} =
-      OpenTelemetry.Tracer.with_span :bq_ipc_encode do
+      OpenTelemetry.Tracer.with_span "bigquery.ipc_encode" do
         {_schema, msgs} = r = ArrowIPC.get_ipc_bytes(ndjson)
         OpenTelemetry.Tracer.set_attribute(:ipc_batch_count, length(msgs))
         r
