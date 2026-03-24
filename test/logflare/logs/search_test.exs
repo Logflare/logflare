@@ -1,11 +1,16 @@
 defmodule Logflare.Logs.SearchTest do
-  use Logflare.DataCase, async: true
+  use Logflare.DataCase, async: false
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Logs.Search
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.SingleTenant
+  alias Logflare.SourceSchemas
 
   setup do
     insert(:plan, name: "Free", type: "standard")
@@ -91,6 +96,89 @@ defmodule Logflare.Logs.SearchTest do
       # apply_select_rules/1 is performed after apply_filter_rules/1
       assert sql =~ "UNNEST(t0.metadata)"
       assert sql =~ "STRPOS(t0.event_message"
+    end
+  end
+
+  describe "postgres single tenant integration" do
+    TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
+
+    setup do
+      start_supervised!(Logflare.SystemMetricsSup)
+
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user)
+
+      assert :ok = Backends.ensure_source_sup_started(source)
+
+      matching_message = "postgres-search-match-#{System.unique_integer([:positive])}"
+      non_matching_message = "postgres-search-miss-#{System.unique_integer([:positive])}"
+
+      assert {:ok, 2} =
+               Backends.ingest_logs(
+                 [
+                   %{"event_message" => matching_message},
+                   %{"event_message" => non_matching_message}
+                 ],
+                 source
+               )
+
+      schema = TestUtils.build_bq_schema(%{"event_message" => matching_message})
+
+      assert {:ok, _source_schema} =
+               SourceSchemas.create_or_update_source_schema(source, %{
+                 bigquery_schema: schema,
+                 schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(schema)
+               })
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      backend = Backends.get_default_backend(user)
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, rows} =
+                 PostgresAdaptor.execute_query(
+                   backend,
+                   "select event_message from #{PostgresAdaptor.table_name(source)} order by timestamp desc",
+                   []
+                 )
+
+        assert Enum.any?(rows, &(&1["event_message"] == matching_message))
+        assert Enum.any?(rows, &(&1["event_message"] == non_matching_message))
+      end)
+
+      %{
+        user: user,
+        source: source,
+        matching_message: matching_message,
+        schema: schema
+      }
+    end
+
+    test "event search filters postgres rows by event_message", %{
+      source: source,
+      matching_message: matching_message,
+      schema: schema
+    } do
+      lql_rules =
+        matching_message
+        |> Logflare.Lql.decode!(schema)
+        |> Logflare.Lql.Rules.put_new_chart_rule(Logflare.Lql.Rules.default_chart_rule())
+
+      search_operation =
+        SO.new(%{
+          source: source,
+          querystring: matching_message,
+          lql_rules: lql_rules,
+          chart_data_shape_id: nil,
+          tailing?: false,
+          type: :events,
+          partition_by: :timestamp
+        })
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, %{events: events_so}} = Search.search(search_operation)
+        assert [%{"event_message" => ^matching_message}] = events_so.rows
+      end)
     end
   end
 end
