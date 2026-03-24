@@ -414,18 +414,10 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
       value -> String.to_float(value)
     end
 
-  bq_compare_sample_ratio =
-    System.get_env("LOGFLARE_OTEL_BQ_COMPARE_SAMPLE_RATIO")
-    |> case do
-      nil -> default_sample_ratio
-      value -> String.to_float(value)
-    end
-
   config :logflare,
     opentelemetry_enabled?: true,
     ingest_sample_ratio: ingest_sample_ratio,
-    endpoint_sample_ratio: endpoint_sample_ratio,
-    bq_compare_sample_ratio: bq_compare_sample_ratio
+    endpoint_sample_ratio: endpoint_sample_ratio
 
   logflare_trace_metadata =
     ["service.cluster": System.get_env("LOGFLARE_METADATA_CLUSTER")]
