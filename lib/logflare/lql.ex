@@ -36,7 +36,7 @@ defmodule Logflare.Lql do
   with BigQuery `TableSchema` for existing usage.
   """
   @spec decode(qs :: String.t(), schema :: TS.t() | schema_flat_map()) ::
-          {:ok, [term()]} | {:error, term()}
+          {:ok, [term()]} | {:error, term()} | {:error, :field_not_found, String.t(), term()}
   def decode(qs, schema) when is_binary(qs) do
     Parser.parse(qs, schema)
   end

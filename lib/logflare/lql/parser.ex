@@ -116,7 +116,9 @@ defmodule Logflare.Lql.Parser do
   end
 
   @spec parse(String.t(), TS.t() | schema_flat_map()) ::
-          {:ok, Rules.lql_rules()} | {:error, term()}
+          {:ok, Rules.lql_rules()}
+          | {:error, term()}
+          | {:error, :field_not_found, String.t(), term()}
   def parse("", _schema), do: {:ok, []}
 
   def parse(querystring, %TS{} = schema) when is_binary(querystring) do
