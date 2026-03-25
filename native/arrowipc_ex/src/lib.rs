@@ -2,13 +2,45 @@ use std::sync::Arc;
 
 use arrow::{
     datatypes::{DataType, Field, Schema, TimeUnit},
-    ipc::writer::{write_message, DictionaryTracker, IpcDataGenerator, IpcWriteOptions},
+    ipc::{
+        writer::{write_message, DictionaryTracker, IpcDataGenerator, IpcWriteOptions},
+        CompressionType,
+    },
     json::{reader::infer_json_schema, ReaderBuilder},
 };
-use rustler::{Binary, Env, NewBinary, NifResult, OwnedBinary};
+use rustler::{Atom, Binary, Env, Error, NewBinary, NifResult, OwnedBinary};
+
+rustler::atoms! {
+    zstd,
+    lz4,
+    none,
+}
+
+fn atom_to_compression(atom: Atom) -> NifResult<Option<CompressionType>> {
+    if atom == zstd() {
+        Ok(Some(CompressionType::ZSTD))
+    } else if atom == lz4() {
+        Ok(Some(CompressionType::LZ4_FRAME))
+    } else if atom == none() {
+        Ok(None)
+    } else {
+        Err(Error::BadArg)
+    }
+}
+
+fn build_write_options(compression: Option<CompressionType>) -> IpcWriteOptions {
+    IpcWriteOptions::default()
+        .try_with_compression(compression)
+        .unwrap()
+}
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn get_ipc_bytes(env: Env, dataframe_json: String) -> NifResult<(Binary, Vec<Binary>)> {
+fn get_ipc_bytes(
+    env: Env,
+    dataframe_json: String,
+    compression: Atom,
+) -> NifResult<(Binary, Vec<Binary>)> {
+    let compression_type = atom_to_compression(compression)?;
     let byte_data = dataframe_json.as_bytes();
 
     let inferred_schema = {
@@ -37,23 +69,20 @@ fn get_ipc_bytes(env: Env, dataframe_json: String) -> NifResult<(Binary, Vec<Bin
         Arc::new(Schema::new(new_fields))
     };
 
+    let write_options = build_write_options(compression_type);
+
     let ipc_schema_bytes = {
         let mut dictionary_tracker = DictionaryTracker::new(false);
         let data_gen = IpcDataGenerator::default();
         let schema_data = data_gen.schema_to_bytes_with_dictionary_tracker(
             &inferred_schema,
             &mut dictionary_tracker,
-            &IpcWriteOptions::default(),
+            &write_options,
         );
 
         let mut ipc_schema_bytes = Vec::new();
 
-        write_message(
-            &mut ipc_schema_bytes,
-            schema_data,
-            &IpcWriteOptions::default(),
-        )
-        .unwrap();
+        write_message(&mut ipc_schema_bytes, schema_data, &write_options).unwrap();
 
         ipc_schema_bytes
     };
@@ -78,21 +107,12 @@ fn get_ipc_bytes(env: Env, dataframe_json: String) -> NifResult<(Binary, Vec<Bin
         let mut dictionary_tracker = DictionaryTracker::new(false);
         let data_gen = IpcDataGenerator::default();
         let (_, encoded_batch) = data_gen
-            .encoded_batch(
-                &batch_record,
-                &mut dictionary_tracker,
-                &IpcWriteOptions::default(),
-            )
+            .encoded_batch(&batch_record, &mut dictionary_tracker, &write_options)
             .unwrap();
 
         let mut ipc_record_batch = Vec::new();
 
-        write_message(
-            &mut ipc_record_batch,
-            encoded_batch,
-            &IpcWriteOptions::default(),
-        )
-        .unwrap();
+        write_message(&mut ipc_record_batch, encoded_batch, &write_options).unwrap();
 
         let mut values_binary = NewBinary::new(env, ipc_record_batch.len());
         values_binary.copy_from_slice(&ipc_record_batch);
