@@ -143,7 +143,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
   def test_connection(%Backend{} = backend) do
     case execute_query(backend, "SELECT 1 AS result", []) do
-      {:ok, [%{"result" => 1}]} -> :ok
+      {:ok, %QueryResult{rows: [%{"result" => 1}]}} -> :ok
       {:error, _} = error -> error
     end
   end
