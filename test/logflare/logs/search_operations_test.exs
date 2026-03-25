@@ -5,6 +5,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Logs.SearchOperations
   alias Logflare.Lql.Parser
@@ -171,6 +172,91 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert length(strpos_matches) == 1, "SQL: #{sql}"
 
       assert [%{params: [{"metrics", :any}]}] = so.query.wheres
+    end
+  end
+
+  describe "postgres chart aggregation" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      base_so = %SO{
+        source: source,
+        querystring: "",
+        chart_data_shape_id: nil,
+        tailing?: false,
+        partition_by: :timestamp,
+        type: :aggregates,
+        backend_type: :postgres,
+        lql_ts_filters: [],
+        lql_meta_and_msg_filters: []
+      }
+
+      [base_so: base_so]
+    end
+
+    test "chart-path filters are excluded from WHERE clause", %{base_so: base_so} do
+      chart_filter = %FilterRule{
+        path: "event_message",
+        operator: :string_contains,
+        value: "metrics",
+        modifiers: %{}
+      }
+
+      non_chart_filter = %FilterRule{
+        path: "metadata.level",
+        operator: :=,
+        value: "error",
+        modifiers: %{}
+      }
+
+      chart_rule = %ChartRule{
+        path: "event_message",
+        aggregate: :count,
+        period: :minute,
+        value_type: :string
+      }
+
+      so = %{
+        base_so
+        | chart_rules: [chart_rule],
+          lql_meta_and_msg_filters: [chart_filter, non_chart_filter],
+          query: from("test_table")
+      }
+
+      so = SearchOperations.apply_numeric_aggs(so)
+
+      assert length(so.query.wheres) == 1
+    end
+
+    test "generates expected SQL for all aggregate types", %{base_so: base_so} do
+      for agg <- [:count, :avg, :sum, :max] do
+        chart_rule = %ChartRule{
+          path: "event_message",
+          aggregate: agg,
+          period: :minute,
+          value_type: :string
+        }
+
+        so = %{
+          base_so
+          | chart_rules: [chart_rule],
+            query: from("test_table")
+        }
+
+        so = SearchOperations.apply_numeric_aggs(so)
+        {:ok, {sql, _params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
+        sql = String.downcase(sql)
+
+        expected_aggregate_sql =
+          case agg do
+            :count -> ~s|count(t0."timestamp")|
+            _ -> ~s|#{agg}(t0."event_message")|
+          end
+
+        assert sql =~ expected_aggregate_sql
+      end
     end
   end
 
