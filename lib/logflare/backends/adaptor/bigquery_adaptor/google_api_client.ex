@@ -12,8 +12,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   require Logger
   require OpenTelemetry.Tracer
 
-  @spec connetion_pool_name() :: module()
-  def connetion_pool_name(), do: GrpcPool
+  @spec connetion_pool_name :: module()
+  def connetion_pool_name, do: GrpcPool
 
   @spec encode_ndjson([map()]) :: binary()
   def encode_ndjson(data_frames) do
