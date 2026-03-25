@@ -231,6 +231,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
       assert result.group_bys != []
       assert result.order_bys != []
       assert result.select != nil
+      assert_select_keys(result, [:timestamp, :count])
     end
 
     test "generates count aggregation by minute" do
@@ -248,6 +249,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
       assert %Ecto.Query{} = result
       assert result.group_bys != []
       assert result.order_bys != []
+      assert_select_keys(result, [:timestamp, :count])
     end
 
     test "generates count aggregation by hour" do
@@ -263,6 +265,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       assert %Ecto.Query{} = result
+      assert_select_keys(result, [:timestamp, :count])
     end
 
     test "generates count aggregation by day" do
@@ -278,6 +281,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       assert %Ecto.Query{} = result
+      assert_select_keys(result, [:timestamp, :count])
     end
 
     test "generates avg aggregation on JSONB field" do
@@ -293,6 +297,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       assert %Ecto.Query{} = result
+      assert_select_keys(result, [:timestamp, :count])
     end
 
     test "generates sum aggregation on JSONB field" do
@@ -308,6 +313,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       assert %Ecto.Query{} = result
+      assert_select_keys(result, [:timestamp, :count])
     end
 
     test "generates max aggregation on JSONB field" do
@@ -323,6 +329,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       assert %Ecto.Query{} = result
+      assert_select_keys(result, [:timestamp, :count])
     end
 
     test "generates percentile aggregation (p50)" do
@@ -338,6 +345,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       assert %Ecto.Query{} = result
+      assert_select_keys(result, [:timestamp, :count])
     end
 
     test "generates percentile aggregation (p95)" do
@@ -353,6 +361,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       assert %Ecto.Query{} = result
+      assert_select_keys(result, [:timestamp, :count])
     end
 
     test "generates percentile aggregation (p99)" do
@@ -368,6 +377,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       assert %Ecto.Query{} = result
+      assert_select_keys(result, [:timestamp, :count])
     end
   end
 
@@ -503,5 +513,11 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         Postgres.where_timestamp_ago(base_query, datetime, 1, "INVALID")
       end
     end
+  end
+
+  defp assert_select_keys(%Query{select: select}, expected_keys) do
+    {:%{}, [], fields} = select.expr
+    keys = Enum.map(fields, fn {key, _} -> key end) |> Enum.sort()
+    assert keys == Enum.sort(expected_keys)
   end
 end

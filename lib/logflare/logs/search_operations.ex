@@ -478,11 +478,13 @@ defmodule Logflare.Logs.SearchOperations do
   def apply_numeric_aggs(%SO{query: query, lql_meta_and_msg_filters: filter_rules} = so) do
     chart_rule = hd(so.chart_rules)
 
+    non_chart_filters = reject_chart_filters(filter_rules, chart_rule)
+
     case so.backend_type do
       :postgres ->
         query =
           query
-          |> Lql.apply_filter_rules(filter_rules, dialect: :postgres)
+          |> Lql.apply_filter_rules(non_chart_filters)
           |> PostgresTransformer.transform_chart_rule(
             chart_rule.aggregate,
             chart_rule.path,
@@ -493,16 +495,12 @@ defmodule Logflare.Logs.SearchOperations do
         %{so | query: query}
 
       :bigquery ->
-        apply_bq_numeric_aggs(so, query, chart_rule, filter_rules)
+        apply_bq_numeric_aggs(so, query, chart_rule, non_chart_filters, filter_rules)
     end
   end
 
-  defp apply_bq_numeric_aggs(so, query, chart_rule, filter_rules) do
+  defp apply_bq_numeric_aggs(so, query, chart_rule, non_chart_filters, filter_rules) do
     chart_period = chart_rule.period
-    chart_path = chart_rule.path
-
-    non_chart_filters =
-      Enum.reject(filter_rules, fn %FilterRule{path: path} -> path == chart_path end)
 
     query =
       query
@@ -660,6 +658,11 @@ defmodule Logflare.Logs.SearchOperations do
 
   defp normalize_aggregate_timestamp([timestamp]), do: normalize_aggregate_timestamp(timestamp)
   defp normalize_aggregate_timestamp(timestamp), do: timestamp
+
+  @spec reject_chart_filters([FilterRule.t()], ChartRule.t()) :: [FilterRule.t()]
+  defp reject_chart_filters(filter_rules, %ChartRule{path: chart_path}) do
+    Enum.reject(filter_rules, fn %FilterRule{path: path} -> path == chart_path end)
+  end
 
   def add_missing_agg_timestamps(%SO{} = so) do
     chart_period = chart_period(so)
