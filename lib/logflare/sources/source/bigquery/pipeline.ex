@@ -291,9 +291,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       OpenTelemetry.Tracer.with_span "bigquery.serialize", %{
         attributes: %{insert_method: :bq_streaming_insert}
       } do
-        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erts_debug.flat_size(messages))
+        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erlang.external_size(messages))
         result = le_messages_to_bq_rows(messages)
-        OpenTelemetry.Tracer.set_attribute(:serialized_bytes, :erts_debug.flat_size(result))
+        OpenTelemetry.Tracer.set_attribute(:serialized_bytes, :erlang.external_size(result))
         result
       end
 

@@ -120,7 +120,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       OpenTelemetry.Tracer.with_span "bigquery.serialize", %{
         attributes: %{insert_method: :bq_storage_write}
       } do
-        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erts_debug.flat_size(log_events))
+        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erlang.external_size(log_events))
 
         arrow_data =
           log_events
@@ -131,7 +131,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
         OpenTelemetry.Tracer.set_attribute(
           :serialized_bytes,
-          Enum.sum_by(arrow_data, &:erts_debug.flat_size(&1))
+          Enum.sum_by(arrow_data, &:erlang.external_size(&1))
         )
 
         arrow_data
