@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -147,6 +148,20 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       query = from(l in PostgresAdaptor.table_name(source), select: l.timestamp)
 
       assert {:ok, [%NaiveDateTime{}]} = PostgresAdaptor.execute_query(backend, query, [])
+    end
+  end
+
+  describe "test_connection/1" do
+    test "test_connection/1 returns :ok", %{backend: backend} do
+      assert :ok = PostgresAdaptor.test_connection(backend)
+    end
+
+    test "returns error when connection fails", %{backend: backend} do
+      Mimic.expect(SharedRepo, :with_repo, fn _backend, _func ->
+        {:error, :cannot_connect}
+      end)
+
+      assert {:error, :cannot_connect} = PostgresAdaptor.test_connection(backend)
     end
   end
 

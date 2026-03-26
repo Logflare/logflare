@@ -105,20 +105,20 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   def execute_query(%Backend{} = backend, {query_string, params}, _opts)
       when is_non_empty_binary(query_string) and is_list(params) do
-    {:ok, result} =
-      SharedRepo.with_repo(backend, fn ->
-        SharedRepo.query(query_string, params)
-      end)
+    with {:ok, result} <-
+           SharedRepo.with_repo(backend, fn ->
+             SharedRepo.query(query_string, params)
+           end) do
+      rows =
+        for row <- result.rows do
+          result.columns
+          |> Enum.zip(row)
+          |> Map.new()
+          |> nested_map_update()
+        end
 
-    rows =
-      for row <- result.rows do
-        result.columns
-        |> Enum.zip(row)
-        |> Map.new()
-        |> nested_map_update()
-      end
-
-    {:ok, rows}
+      {:ok, rows}
+    end
   end
 
   def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, opts)
@@ -136,6 +136,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
              is_list(opts) do
     execute_query(backend, {query_string, declared_params, input_params}, opts)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    case execute_query(backend, "SELECT 1 AS result", []) do
+      {:ok, [%{"result" => 1}]} -> :ok
+      {:error, _} = error -> error
+    end
   end
 
   @impl Logflare.Backends.Adaptor

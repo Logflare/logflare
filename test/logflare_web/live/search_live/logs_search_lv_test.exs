@@ -5,19 +5,17 @@ defmodule LogflareWeb.Source.SearchLVTest do
   import Phoenix.LiveViewTest
 
   alias Ecto.Adapters.SQL
+  alias Logflare.Backends
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.SingleTenant
+  alias Logflare.SourceSchemas
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Utils.Tasks
   alias LogflareWeb.Source.SearchLV
 
   @endpoint LogflareWeb.Endpoint
-  @default_search_params %{
-    "querystring" => "c:count(*) c:group_by(t::minute)",
-    "chart_period" => "minute",
-    "chart_aggregate" => "count",
-    "tailing?" => "false"
-  }
+  @default_querystring "c:count(*) c:group_by(t::minute)"
 
   defp setup_mocks(_ctx) do
     stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
@@ -504,6 +502,69 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert querystring =~ "c:count(*) c:group_by(t::minute)"
     end
 
+    test "query field has schema fields and saved searches", %{
+      conn: conn,
+      source: source
+    } do
+      query_a = "metadata.level:error"
+      query_b = "tags:active"
+
+      insert(:saved_search, source: source, querystring: query_a)
+      insert(:saved_search, source: source, querystring: query_b)
+
+      bq_schema =
+        TestUtils.build_bq_schema(%{
+          "message" => "string",
+          "metadata" => %{
+            "flags" => [true],
+            "store" => %{"zip" => 123}
+          }
+        })
+
+      schema_flat_map = SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
+
+      source_schema = Logflare.SourceSchemas.get_source_schema_by(source_id: source.id)
+
+      {:ok, _source_schema} =
+        Logflare.SourceSchemas.update_source_schema(source_schema, %{
+          bigquery_schema: bq_schema,
+          schema_flat_map: schema_flat_map
+        })
+
+      _ = Logflare.SavedSearches.Cache.bust_by(source_id: source.id)
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      html =
+        view
+        |> TestUtils.wait_for_render("#lql-editor-hook")
+        |> render()
+
+      {:ok, document} = Floki.parse_document(html)
+
+      [schema_fields_json] =
+        document
+        |> Floki.find("#lql-editor-hook")
+        |> Floki.attribute("data-schema-fields-json")
+
+      [saved_searches_json] =
+        document
+        |> Floki.find("#lql-editor-hook")
+        |> Floki.attribute("data-suggested-searches-json")
+
+      assert {:ok, schema_fields} = Jason.decode(schema_fields_json)
+      assert {:ok, saved_searches} = Jason.decode(saved_searches_json)
+
+      assert schema_fields["metadata.flags"] == "list[boolean]"
+      assert schema_fields["metadata.store.zip"] == "integer"
+
+      assert query_a in saved_searches
+      assert query_b in saved_searches
+    end
+
     test "empty results message", %{conn: conn, source: source} do
       pid = self()
 
@@ -647,20 +708,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {:ok, TestUtils.gen_bq_response(%{"event_message" => "some error message"})}
       end)
 
-      render_change(view, :form_update, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
-        }
+      render_change(view, :querystring_changed, %{
+        "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
       })
 
       view
       |> TestUtils.wait_for_render("#logs-list-container li")
 
       render_change(view, :start_search, %{
-        "search" => %{
-          "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
-        }
+        "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
       })
 
       # wait for async search task to complete
@@ -690,12 +746,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
       render_change(view, :start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:countd(event_message) c:group_by(t::hour)",
-            "chart_aggregate" => "countd",
-            "chart_period" => "hour"
-        }
+        "querystring" => "c:countd(event_message) c:group_by(t::hour)"
       })
 
       TestUtils.retry_assert(fn ->
@@ -754,7 +805,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       TestUtils.retry_assert(fn ->
         render_change(view, :start_search, %{
-          "search" => %{@default_search_params | "querystring" => "m.nested:test top:test"}
+          "querystring" => "m.nested:test top:test"
         })
 
         view
@@ -789,7 +840,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> TestUtils.wait_for_render("#logs-list-container li")
 
       render_change(view, :start_search, %{
-        "search" => %{@default_search_params | "chart_period" => "day"}
+        "querystring" => @default_querystring
       })
 
       # wait for async search task to complete
@@ -826,12 +877,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> has_element?("#search_chart_period option[selected]", "second")
 
       # a chart period selected by the user is preserved, and search halted
-      render_change(view, :form_update, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => query,
-            "chart_period" => "day"
-        }
+      render_change(view, :chart_controls_update, %{
+        "chart_aggregate" => "count",
+        "chart_period" => "day"
       })
 
       assert view
@@ -1331,7 +1379,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
 
       render_change(view, :start_search, %{
-        "search" => %{@default_search_params | "querystring" => "somestring"}
+        "querystring" => "somestring"
       })
 
       TestUtils.retry_assert(fn ->
@@ -1340,6 +1388,71 @@ defmodule LogflareWeb.Source.SearchLVTest do
         assert html =~ "some correct message"
         assert html =~ ~s|class="log-level-warning">warning|
       end)
+    end
+  end
+
+  describe "single tenant searching with postgres backend" do
+    TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
+
+    setup do
+      start_supervised!(Logflare.SystemMetricsSup)
+
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user)
+      plan = SingleTenant.get_default_plan()
+
+      assert :ok = Backends.ensure_source_sup_started(source)
+
+      matching_message = "postgres-live-search-match-#{System.unique_integer([:positive])}"
+      non_matching_message = "postgres-live-search-miss-#{System.unique_integer([:positive])}"
+
+      assert {:ok, 2} =
+               Backends.ingest_logs(
+                 [
+                   %{"event_message" => matching_message},
+                   %{"event_message" => non_matching_message}
+                 ],
+                 source
+               )
+
+      bq_schema = TestUtils.build_bq_schema(%{"event_message" => matching_message})
+
+      assert {:ok, _source_schema} =
+               SourceSchemas.create_or_update_source_schema(source, %{
+                 bigquery_schema: bq_schema,
+                 schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
+               })
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      %{
+        user: user,
+        source: source,
+        plan: plan,
+        matching_message: matching_message
+      }
+    end
+
+    setup [:setup_user_session]
+
+    test "run a search against postgres backend", %{
+      conn: conn,
+      source: source,
+      matching_message: matching_message
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      render_change(view, :start_search, %{
+        "search" => %{@default_search_params | "querystring" => matching_message}
+      })
+
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
+
+      assert view |> element("#logs-list-container") |> render() =~ matching_message
     end
   end
 
@@ -1371,10 +1484,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute)"
-        }
+        "querystring" => @default_querystring
       })
 
       flash = view |> element(".message .alert") |> render()
@@ -1395,10 +1505,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute) message"
-        }
+        "querystring" => "c:count(*) c:group_by(t::minute) message"
       })
 
       refute view |> element(".message .alert") |> has_element?()
@@ -1415,10 +1522,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert view
              |> render_change(:start_search, %{
-               "search" => %{
-                 @default_search_params
-                 | "querystring" => "c:count(*) c:group_by(t::minute) message"
-               }
+               "querystring" => "c:count(*) c:group_by(t::minute) message"
              })
              |> Floki.parse_document!()
              |> Floki.find("div[role=alert]>span")
@@ -1447,10 +1551,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute)"
-        }
+        "querystring" => @default_querystring
       })
 
       flash = view |> element(".message .alert") |> render()
@@ -1471,10 +1572,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute) metadata.level:error"
-        }
+        "querystring" => "c:count(*) c:group_by(t::minute) metadata.level:error"
       })
 
       refute view |> element(".message .alert", "required") |> has_element?()
@@ -1563,10 +1661,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       allow_sandbox(search_executor_pid)
 
       render_change(view, :start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "event_message:timeout c:count(*) c:group_by(t::minute)"
-        },
+        "querystring" => "event_message:timeout c:count(*) c:group_by(t::minute)",
         "fields" => %{
           "event_message" => "api-timeout",
           "metadata.request_id" => ""
@@ -1617,11 +1712,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> render_change(:start_search, %{
-        "search" => %{
-          @default_search_params
-          | "querystring" => "c:count(*) c:group_by(t::minute) message",
-            "tailing?" => "true"
-        }
+        "querystring" => "c:count(*) c:group_by(t::minute) message"
       })
 
       refute get_view_assigns(view).tailing?
@@ -1878,6 +1969,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   def find_querystring(html) do
-    find_search_form_value(html, "#search_querystring")
+    {:ok, document} = Floki.parse_document(html)
+
+    document
+    |> Floki.find("#lql-editor-hook")
+    |> Floki.attribute("data-querystring")
+    |> hd()
   end
 end

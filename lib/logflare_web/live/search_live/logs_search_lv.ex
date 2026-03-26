@@ -29,7 +29,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.SearchLive.SubheadComponents
   alias LogflareWeb.SearchLive.LogEventComponents
   alias LogflareWeb.Utils
-  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Chart, as: ChartUtils
 
   require Logger
@@ -102,10 +101,9 @@ defmodule LogflareWeb.Source.SearchLV do
       uri_params: nil,
       uri: nil,
       lql_rules: [],
+      saved_searches: saved_searches(source),
       querystring: Map.get(params, "querystring", @default_qs),
-      force_query: Map.get(params, "force", "false") == "true",
-      search_history: [],
-      search_form: to_form(%{}, as: :search)
+      force_query: Map.get(params, "force", "false") == "true"
     )
     |> maybe_assign_user_timezone(team_user, user)
   end
@@ -142,11 +140,9 @@ defmodule LogflareWeb.Source.SearchLV do
       when is_map(fields) do
     source = socket.assigns.source
 
-    bq_table_schema =
-      source
-      |> get_bigquery_schema()
+    schema_flatmap = SourceSchemas.source_schema_flatmap_or_default(source)
 
-    qs = append_fields_rules(qs, fields, bq_table_schema)
+    qs = append_fields_rules(qs, fields, schema_flatmap)
 
     params =
       params
@@ -181,7 +177,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       with {:ok, lql_rules} <-
-             Lql.decode(qs, get_bigquery_schema(source)),
+             Lql.decode(qs, SourceSchemas.source_schema_flatmap_or_default(source)),
            lql_rules = Rules.put_new_chart_rule(lql_rules, Rules.default_chart_rule()),
            {:ok, socket} <- check_suggested_keys(lql_rules, source, socket) do
         qs = Lql.encode!(lql_rules)
@@ -290,10 +286,8 @@ defmodule LogflareWeb.Source.SearchLV do
         )}
       </div>
       <FormComponents.search_controls
-        search_form={@search_form}
         querystring={@querystring}
-        search_history={@search_history}
-        search_timezone={@search_timezone}
+        saved_searches={@saved_searches}
         loading={@loading}
         tailing?={@tailing?}
         uri_params={@uri_params}
@@ -302,6 +296,7 @@ defmodule LogflareWeb.Source.SearchLV do
         has_results?={[@search_op_log_events, @search_op_log_aggregates] |> Enum.any?()}
         source={@source}
         last_query_completed_at={@last_query_completed_at}
+        lql_schema_flat_map={lql_schema_flat_map(@source)}
       />
       <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval={@user_idle_interval}></div>
     </div>
@@ -352,7 +347,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:search_timezone, tz)
       |> assign_new_search_with_qs(
         %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
-        get_bigquery_schema(socket.assigns.source)
+        SourceSchemas.source_schema_flatmap_or_default(socket.assigns.source)
       )
 
     {:noreply, socket |> assign(:timezone, tz)}
@@ -360,26 +355,21 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search",
-        %{"search" => %{"querystring" => qs}} = params,
+        %{"querystring" => qs} = params,
         %{assigns: prev_assigns} = socket
       ) do
-    bq_table_schema = get_bigquery_schema(socket.assigns.source)
+    schema_flatmap = SourceSchemas.source_schema_flatmap_or_default(socket.assigns.source)
 
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
-    qs =
-      append_fields_rules(
-        qs,
-        Map.get(params, "fields", %{}),
-        bq_table_schema
-      )
+    qs = append_fields_rules(qs, Map.get(params, "fields", %{}), schema_flatmap)
 
     socket =
-      assign_new_search_with_qs(
-        socket,
+      socket
+      |> assign_new_search_with_qs(
         %{querystring: qs, tailing?: prev_assigns.tailing?},
-        bq_table_schema
+        schema_flatmap
       )
 
     {:noreply, socket}
@@ -430,13 +420,9 @@ defmodule LogflareWeb.Source.SearchLV do
     hard_play(ev, socket)
   end
 
-  def handle_event("form_focus", %{"value" => value}, socket) do
+  def handle_event("form_focus", %{"value" => _value}, socket) do
     send(self(), :soft_pause)
-
-    source = socket.assigns.source
-    search_history = search_history(value, source)
-
-    {:noreply, assign(socket, :search_history, search_history)}
+    {:noreply, socket}
   end
 
   def handle_event("form_blur", %{"value" => _value}, socket) do
@@ -445,43 +431,21 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("form_update" = _ev, %{"search" => search}, %{assigns: prev_assigns} = socket) do
-    source = prev_assigns.source
+  def handle_event("querystring_changed", %{"querystring" => qs}, socket) do
+    {:noreply, assign(socket, :querystring, qs)}
+  end
 
-    new_qs = search["querystring"]
-    new_chart_agg = String.to_existing_atom(search["chart_aggregate"])
-    new_chart_period = String.to_existing_atom(search["chart_period"])
-
-    search_history = search_history(new_qs, source)
-
-    socket = assign(socket, :querystring, new_qs)
-
-    prev_chart_rule =
-      Rules.get_chart_rule(prev_assigns.lql_rules) || Rules.default_chart_rule()
-
-    socket =
-      if new_chart_agg != prev_chart_rule.aggregate or
-           new_chart_period != prev_chart_rule.period do
-        lql_rules =
-          Lql.Rules.update_chart_rule(
-            prev_assigns.lql_rules,
-            Lql.Rules.default_chart_rule(),
-            %{aggregate: new_chart_agg, period: new_chart_period}
-          )
-
-        qs = Lql.encode!(lql_rules)
-
+  def handle_event(
+        "chart_controls_update",
+        %{"chart_aggregate" => new_chart_agg, "chart_period" => new_chart_period},
         socket
-        |> assign(:search_history, search_history)
-        |> assign(:querystring, qs)
-        |> assign(:lql_rules, lql_rules)
-        |> assign(:loading, true)
-        |> assign(:chart_loading, true)
-        |> clear_flash()
-        |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
-      else
-        assign(socket, :search_history, search_history)
-      end
+      ) do
+    socket =
+      maybe_update_chart_controls(
+        socket,
+        String.to_existing_atom(new_chart_agg),
+        String.to_existing_atom(new_chart_period)
+      )
 
     {:noreply, socket}
   end
@@ -494,7 +458,7 @@ defmodule LogflareWeb.Source.SearchLV do
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
     {:ok, ts_rules} =
-      Lql.decode(ts_qs, get_bigquery_schema(assigns.source))
+      Lql.decode(ts_qs, SourceSchemas.source_schema_flatmap_or_default(assigns.source))
 
     lql_list = Rules.update_timestamp_rules(assigns.lql_rules, ts_rules)
 
@@ -531,10 +495,16 @@ defmodule LogflareWeb.Source.SearchLV do
     if SavedSearches.Cache.list_saved_searches_by_source(source.id) |> length() < limit do
       case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do
         {:ok, _saved_search} ->
+          saved_searches =
+            [qs | saved_searches(source)]
+            |> Enum.uniq()
+            |> Enum.sort_by(&String.downcase/1)
+
           socket =
             socket
             |> put_flash(:info, "Search saved!")
             |> assign(:source, Sources.get_source_for_lv_param(source.id))
+            |> assign(:saved_searches, saved_searches)
 
           {:noreply, socket}
 
@@ -607,6 +577,33 @@ defmodule LogflareWeb.Source.SearchLV do
       Lql.encode!(lql_rules)
     else
       _ -> qs
+    end
+  end
+
+  defp maybe_update_chart_controls(socket, new_chart_agg, new_chart_period) do
+    prev_chart_rule =
+      Lql.Rules.get_chart_rule(socket.assigns.lql_rules) || Lql.Rules.default_chart_rule()
+
+    if new_chart_agg != prev_chart_rule.aggregate or
+         new_chart_period != prev_chart_rule.period do
+      lql_rules =
+        Lql.Rules.update_chart_rule(
+          socket.assigns.lql_rules,
+          Lql.Rules.default_chart_rule(),
+          %{aggregate: new_chart_agg, period: new_chart_period}
+        )
+
+      qs = Lql.encode!(lql_rules)
+
+      socket
+      |> assign(:querystring, qs)
+      |> assign(:lql_rules, lql_rules)
+      |> assign(:loading, true)
+      |> assign(:chart_loading, true)
+      |> clear_flash()
+      |> push_patch_with_params(%{querystring: qs, tailing?: socket.assigns.tailing?})
+    else
+      socket
     end
   end
 
@@ -748,7 +745,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, put_flash(socket, type, message)}
   end
 
-  defp assign_new_search_with_qs(socket, params, bq_table_schema) do
+  defp assign_new_search_with_qs(socket, params, schema_flatmap) do
     %{querystring: qs, tailing?: tailing?} = params
 
     # source disable_tailing overrides search tailing
@@ -756,7 +753,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     tz = socket.assigns.search_timezone
 
-    case Lql.decode(qs, bq_table_schema) do
+    case Lql.decode(qs, schema_flatmap) do
       {:ok, lql_rules} ->
         lql_rules = Rules.put_new_chart_rule(lql_rules, Rules.default_chart_rule())
         qs = Lql.encode!(lql_rules)
@@ -1003,15 +1000,6 @@ defmodule LogflareWeb.Source.SearchLV do
     |> put_flash(:error, error)
   end
 
-  defp search_history(new_qs, source) do
-    search_history = SavedSearches.suggest_saved_searches(new_qs, source.id)
-
-    if Enum.count(search_history) == 1 &&
-         hd(search_history).querystring == new_qs,
-       do: [],
-       else: search_history
-  end
-
   defp soft_play(
          _ev,
          %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket
@@ -1078,7 +1066,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp reset_search(%{assigns: assigns} = socket) do
     lql_rules =
-      Lql.decode!(@default_qs, get_bigquery_schema(assigns.source))
+      Lql.decode!(@default_qs, SourceSchemas.source_schema_flatmap_or_default(assigns.source))
 
     qs = Lql.encode!(lql_rules)
 
@@ -1191,11 +1179,26 @@ defmodule LogflareWeb.Source.SearchLV do
     )
   end
 
-  defp get_bigquery_schema(source) do
-    if source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
-      source_schema.bigquery_schema
-    else
-      SchemaBuilder.initial_table_schema()
+  defp assign_querystring(socket, qs) do
+    socket
+    |> assign(:querystring, qs)
+    |> push_event("set_lql_value", %{value: qs})
+  end
+
+  @spec lql_schema_flat_map(Logflare.Sources.Source.t()) :: map()
+  defp lql_schema_flat_map(source) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      %{schema_flat_map: flat_map} when is_map(flat_map) ->
+        flat_map
+
+      _ ->
+        %{}
     end
+  end
+
+  defp saved_searches(source) do
+    source.id
+    |> SavedSearches.Cache.list_saved_searches_by_source()
+    |> Enum.map(& &1.querystring)
   end
 end
