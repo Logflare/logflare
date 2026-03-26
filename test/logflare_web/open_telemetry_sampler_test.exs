@@ -6,18 +6,15 @@ defmodule LogflareWeb.OpenTelemetrySamplerTest do
   setup do
     prev_ingest = Application.get_env(:logflare, :ingest_sample_ratio)
     prev_endpoint = Application.get_env(:logflare, :endpoint_sample_ratio)
-    prev_bq_compare = Application.get_env(:logflare, :bq_compare_sample_ratio)
     prev_metadata = Application.get_env(:logflare, :metadata)
 
     Application.put_env(:logflare, :ingest_sample_ratio, 1.0)
     Application.put_env(:logflare, :endpoint_sample_ratio, 1.0)
-    Application.put_env(:logflare, :bq_compare_sample_ratio, 1.0)
     Application.put_env(:logflare, :metadata, [])
 
     on_exit(fn ->
       Application.put_env(:logflare, :ingest_sample_ratio, prev_ingest)
       Application.put_env(:logflare, :endpoint_sample_ratio, prev_endpoint)
-      Application.put_env(:logflare, :bq_compare_sample_ratio, prev_bq_compare)
       Application.put_env(:logflare, :metadata, prev_metadata)
     end)
 
