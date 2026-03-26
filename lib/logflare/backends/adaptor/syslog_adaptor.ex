@@ -45,8 +45,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{},
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config,
      %{
        tls: :boolean,
        host: :string,
