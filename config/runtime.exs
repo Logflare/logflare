@@ -474,3 +474,49 @@ config :logflare, Oban,
   ]
 
 config :logflare, Logflare.Alerting, enabled: enable_alerting?
+
+default_cache_broadcast_enabled = if config_env() == :test, do: "true", else: "false"
+
+cache_broadcast_enabled? =
+  System.get_env("LOGFLARE_CACHE_BROADCAST_ENABLED", default_cache_broadcast_enabled) == "true"
+
+cache_broadcast_ratio =
+  "LOGFLARE_CACHE_BROADCAST_RATIO" |> System.get_env("0.1") |> String.to_float()
+
+cache_broadcast_max_nodes =
+  "LOGFLARE_CACHE_BROADCAST_MAX_NODES" |> System.get_env("5") |> String.to_integer()
+
+known_caches =
+  Logflare.ContextCache.Supervisor.list_caches_with_metrics()
+  |> Enum.map(fn {name, short_name} -> {Atom.to_string(short_name), name} end)
+  |> Map.new()
+
+# allows excluding heavy caches via: LOGFLARE_CACHE_BROADCAST_EXCLUDE="auth,saved_searches"
+excluded_caches =
+  System.get_env("LOGFLARE_CACHE_BROADCAST_EXCLUDE", "")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+  |> MapSet.new()
+
+invalid_caches =
+  Enum.filter(excluded_caches, fn excluded_short_name ->
+    not Map.has_key?(known_caches, excluded_short_name)
+  end)
+
+if invalid_caches != [] do
+  raise "unknown caches specified in $LOGFLARE_CACHE_BROADCAST_EXCLUDE: " <>
+          Enum.join(invalid_caches, ", ")
+end
+
+cache_broadcasts =
+  Map.new(known_caches, fn {short_name, name} ->
+    config = %{
+      ratio: cache_broadcast_ratio,
+      max_nodes: cache_broadcast_max_nodes,
+      enabled: cache_broadcast_enabled? and not MapSet.member?(excluded_caches, short_name)
+    }
+
+    {name, config}
+  end)
+
+config :logflare, :cache_broadcasts, cache_broadcasts

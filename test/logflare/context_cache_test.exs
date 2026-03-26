@@ -80,4 +80,92 @@ defmodule Logflare.ContextCacheTest do
       assert_received %Cainophile.Changes.Transaction{}
     end
   end
+
+  describe "broadcasts" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+      source = insert(:source, user: user)
+      %{source: source, user: user}
+    end
+
+    setup do
+      Cachex.clear!(:wal_tombstones)
+      Cachex.clear!(Sources.Cache)
+
+      telemetry_ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:logflare, :context_cache, :broadcast, :stop],
+          [:logflare, :context_cache, :receive_broadcast, :stop]
+        ])
+
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+      {:ok, telemetry_ref: telemetry_ref}
+    end
+
+    test "record_tombstones/1 writes primary keys and :not_found to the tombstone cache" do
+      ContextCache.record_tombstones([
+        {Sources, 123},
+        {Sources, "uuid-456"},
+        {Sources, id: 234, other: :info}
+      ])
+
+      assert {:ok, true} == Cachex.exists?(:wal_tombstones, {Sources.Cache, 123})
+      assert {:ok, true} == Cachex.exists?(:wal_tombstones, {Sources.Cache, "uuid-456"})
+      assert {:ok, true} == Cachex.exists?(:wal_tombstones, {Sources.Cache, 234})
+    end
+
+    test "record_tombstones/1 ignores unsupported types gracefully" do
+      ContextCache.record_tombstones([{Sources, %{id: 123}}])
+      assert Cachex.size(:wal_tombstones) == {:ok, _size = 0}
+    end
+
+    test "maybe_broadcast/3 emits telemetry on cache miss", %{
+      source: source,
+      telemetry_ref: telemetry_ref
+    } do
+      Sources.Cache.get_by(token: source.token)
+
+      assert_receive {[:logflare, :context_cache, :broadcast, :stop], ^telemetry_ref,
+                      _measurements, %{cache: Sources.Cache} = metadata}
+
+      assert metadata.enabled == true
+      assert metadata.max_nodes == 5
+      assert metadata.ratio == 0.1
+    end
+
+    test "receive_broadcast/3 inserts valid broadcast when cache is empty and emits telemetry", %{
+      telemetry_ref: telemetry_ref
+    } do
+      cache_key = {:get, [999]}
+      value = %{id: 999, name: "valid"}
+
+      ContextCache.receive_broadcast(Sources.Cache, cache_key, value)
+
+      assert Cachex.get!(Sources.Cache, cache_key) == {:cached, value}
+
+      assert_receive {[:logflare, :context_cache, :receive_broadcast, :stop], ^telemetry_ref,
+                      _measurements, metadata}
+
+      assert metadata.action == :cached
+      assert metadata.cache == Sources.Cache
+    end
+
+    test "receive_broadcast/3 drops broadcast if the local node already has the key cached", %{
+      telemetry_ref: telemetry_ref
+    } do
+      cache_key = {:get, [111]}
+      existing_value = {:cached, %{id: 111, name: "local_data"}}
+      Cachex.put(Sources.Cache, cache_key, existing_value)
+      ContextCache.receive_broadcast(Sources.Cache, cache_key, %{id: 111, name: "stale"})
+
+      assert Cachex.get!(Sources.Cache, cache_key) == existing_value
+
+      assert_receive {[:logflare, :context_cache, :receive_broadcast, :stop], ^telemetry_ref,
+                      _measurements, metadata}
+
+      assert metadata.action == :dropped_exists
+      assert metadata.cache == Sources.Cache
+    end
+  end
 end
