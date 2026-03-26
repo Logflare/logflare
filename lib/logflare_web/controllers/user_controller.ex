@@ -9,6 +9,7 @@ defmodule LogflareWeb.UserController do
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Billing.Stripe
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.TeamUsers
   alias Logflare.User
@@ -35,7 +36,7 @@ defmodule LogflareWeb.UserController do
     render(conn, "edit.html",
       changeset: changeset,
       user: user,
-      service_account: env_service_account()
+      service_account: GCPConfig.service_account() || ""
     )
   end
 
@@ -109,7 +110,7 @@ defmodule LogflareWeb.UserController do
         |> render("edit.html",
           changeset: changeset,
           user: conn.assigns.user,
-          service_account: env_service_account()
+          service_account: GCPConfig.service_account() || ""
         )
     end
   end
@@ -315,9 +316,6 @@ defmodule LogflareWeb.UserController do
       end
     end
   end
-
-  defp env_service_account,
-    do: Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
   defp bq_field_changes(old_user, new_user) do
     Enum.reduce(@bq_fields, %{}, fn field, acc ->

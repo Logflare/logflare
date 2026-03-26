@@ -3,6 +3,7 @@ defmodule Logflare.Google.CloudResourceManager do
 
   alias GoogleApi.CloudResourceManager.V1.Api
   alias GoogleApi.CloudResourceManager.V1.Model
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Users
   alias Logflare.User
@@ -196,7 +197,7 @@ defmodule Logflare.Google.CloudResourceManager do
 
     for {member, roles} <-
           [
-            {env_service_account(),
+            {GCPConfig.service_account(),
              [
                "roles/bigquery.admin",
                "roles/resourcemanager.projectIamAdmin",
@@ -265,7 +266,6 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   defp env_project_number, do: Application.get_env(:logflare, Logflare.Google)[:project_number]
-  defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account]
   defp env_api_sa, do: Application.get_env(:logflare, Logflare.Google)[:api_sa]
   defp env_cloud_build_sa, do: Application.get_env(:logflare, Logflare.Google)[:cloud_build_sa]
 
