@@ -29,7 +29,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.SearchLive.SubheadComponents
   alias LogflareWeb.SearchLive.LogEventComponents
   alias LogflareWeb.Utils
-  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Chart, as: ChartUtils
 
   require Logger
@@ -142,11 +141,9 @@ defmodule LogflareWeb.Source.SearchLV do
       when is_map(fields) do
     source = socket.assigns.source
 
-    bq_table_schema =
-      source
-      |> get_bigquery_schema()
+    schema_flatmap = SourceSchemas.source_schema_flatmap_or_default(source)
 
-    qs = append_fields_rules(qs, fields, bq_table_schema)
+    qs = append_fields_rules(qs, fields, schema_flatmap)
 
     params =
       params
@@ -181,7 +178,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       with {:ok, lql_rules} <-
-             Lql.decode(qs, get_bigquery_schema(source)),
+             Lql.decode(qs, SourceSchemas.source_schema_flatmap_or_default(source)),
            lql_rules = Rules.put_new_chart_rule(lql_rules, Rules.default_chart_rule()),
            {:ok, socket} <- check_suggested_keys(lql_rules, source, socket) do
         qs = Lql.encode!(lql_rules)
@@ -352,7 +349,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:search_timezone, tz)
       |> assign_new_search_with_qs(
         %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
-        get_bigquery_schema(socket.assigns.source)
+        SourceSchemas.source_schema_flatmap_or_default(socket.assigns.source)
       )
 
     {:noreply, socket |> assign(:timezone, tz)}
@@ -363,23 +360,18 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"search" => %{"querystring" => qs}} = params,
         %{assigns: prev_assigns} = socket
       ) do
-    bq_table_schema = get_bigquery_schema(socket.assigns.source)
+    schema_flatmap = SourceSchemas.source_schema_flatmap_or_default(socket.assigns.source)
 
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
-    qs =
-      append_fields_rules(
-        qs,
-        Map.get(params, "fields", %{}),
-        bq_table_schema
-      )
+    qs = append_fields_rules(qs, Map.get(params, "fields", %{}), schema_flatmap)
 
     socket =
       assign_new_search_with_qs(
         socket,
         %{querystring: qs, tailing?: prev_assigns.tailing?},
-        bq_table_schema
+        schema_flatmap
       )
 
     {:noreply, socket}
@@ -494,7 +486,7 @@ defmodule LogflareWeb.Source.SearchLV do
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
     {:ok, ts_rules} =
-      Lql.decode(ts_qs, get_bigquery_schema(assigns.source))
+      Lql.decode(ts_qs, SourceSchemas.source_schema_flatmap_or_default(assigns.source))
 
     lql_list = Rules.update_timestamp_rules(assigns.lql_rules, ts_rules)
 
@@ -748,7 +740,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, put_flash(socket, type, message)}
   end
 
-  defp assign_new_search_with_qs(socket, params, bq_table_schema) do
+  defp assign_new_search_with_qs(socket, params, schema_flatmap) do
     %{querystring: qs, tailing?: tailing?} = params
 
     # source disable_tailing overrides search tailing
@@ -756,7 +748,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     tz = socket.assigns.search_timezone
 
-    case Lql.decode(qs, bq_table_schema) do
+    case Lql.decode(qs, schema_flatmap) do
       {:ok, lql_rules} ->
         lql_rules = Rules.put_new_chart_rule(lql_rules, Rules.default_chart_rule())
         qs = Lql.encode!(lql_rules)
@@ -1078,7 +1070,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp reset_search(%{assigns: assigns} = socket) do
     lql_rules =
-      Lql.decode!(@default_qs, get_bigquery_schema(assigns.source))
+      Lql.decode!(@default_qs, SourceSchemas.source_schema_flatmap_or_default(assigns.source))
 
     qs = Lql.encode!(lql_rules)
 
@@ -1189,13 +1181,5 @@ defmodule LogflareWeb.Source.SearchLV do
       to: %{uri | query: URI.encode_query(params)},
       class: "tw-block tw-pt-3"
     )
-  end
-
-  defp get_bigquery_schema(source) do
-    if source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
-      source_schema.bigquery_schema
-    else
-      SchemaBuilder.initial_table_schema()
-    end
   end
 end
