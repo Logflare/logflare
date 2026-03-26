@@ -4,6 +4,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
   import Ecto.Query
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Logs.SearchOperation, as: SO
@@ -14,10 +15,30 @@ defmodule Logflare.Logs.SearchOperationsTest do
   alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Sources.Source.BigQuery.Schema
 
+  @postgres_search_attrs %{
+    source: nil,
+    querystring: "",
+    query: nil,
+    chart_data_shape_id: nil,
+    tailing?: false,
+    tailing_initial?: nil,
+    partition_by: :timestamp,
+    type: :events,
+    backend_type: :postgres,
+    lql_rules: [],
+    lql_ts_filters: [],
+    lql_meta_and_msg_filters: []
+  }
+
+  setup do
+    insert(:plan)
+
+    [user: insert(:user)]
+  end
+
   describe "unnesting metadata if present" do
-    setup do
-      insert(:plan)
-      source = insert(:source, user: insert(:user), bq_table_id: "1")
+    setup %{user: user} do
+      source = insert(:source, user: user, bq_table_id: "1")
 
       [
         so: %Logflare.Logs.SearchOperation{
@@ -77,9 +98,8 @@ defmodule Logflare.Logs.SearchOperationsTest do
   end
 
   describe "chart aggregation query generation" do
-    setup do
-      insert(:plan)
-      source = insert(:source, user: insert(:user), bq_table_id: "test_table")
+    setup %{user: user} do
+      source = insert(:source, user: user, bq_table_id: "test_table")
 
       base_so = %SO{
         source: source,
@@ -176,22 +196,15 @@ defmodule Logflare.Logs.SearchOperationsTest do
   end
 
   describe "postgres chart aggregation" do
-    setup do
-      insert(:plan)
-      user = insert(:user)
+    setup %{user: user} do
       source = insert(:source, user: user)
 
-      base_so = %SO{
-        source: source,
-        querystring: "",
-        chart_data_shape_id: nil,
-        tailing?: false,
-        partition_by: :timestamp,
-        type: :aggregates,
-        backend_type: :postgres,
-        lql_ts_filters: [],
-        lql_meta_and_msg_filters: []
-      }
+      stub(Backends, :get_default_backend, fn ^user -> %{type: :postgres} end)
+
+      base_so =
+        @postgres_search_attrs
+        |> Map.merge(%{source: source, type: :aggregates})
+        |> SO.new()
 
       [base_so: base_so]
     end
@@ -260,10 +273,332 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
+  describe "postgres query defaults and rules" do
+    setup %{user: user} do
+      source = insert(:source, user: user)
+
+      stub(Backends, :get_default_backend, fn ^user -> %{type: :postgres} end)
+
+      so =
+        %{@postgres_search_attrs | source: source}
+        |> SO.new()
+
+      [so: so]
+    end
+
+    test "apply_query_defaults/1 uses the postgres table name", %{so: so} do
+      so = SearchOperations.apply_query_defaults(so)
+
+      {:ok, {sql, _params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
+
+      assert sql =~ ~s|FROM "#{PostgresAdaptor.table_name(so.source)}"|
+      assert sql =~ ~s|ORDER BY l0."timestamp" DESC|
+      assert sql =~ ~s|LIMIT 100|
+    end
+
+    test "apply_select_rules/1 uses postgres dialect defaults", %{so: so} do
+      so =
+        so
+        |> SearchOperations.apply_query_defaults()
+        |> SearchOperations.apply_select_rules()
+
+      {:ok, {sql, _params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
+
+      assert sql =~ ~s|SELECT l0."timestamp", l0."id", l0."event_message"|
+    end
+
+    test "apply_filters/1 uses postgres dialect for top-level fields", %{so: so} do
+      filter = %FilterRule{
+        path: "event_message",
+        operator: :=,
+        value: "error",
+        modifiers: %{}
+      }
+
+      so =
+        %{so | lql_meta_and_msg_filters: [filter]}
+        |> SearchOperations.apply_query_defaults()
+        |> SearchOperations.apply_filters()
+
+      {:ok, {sql, params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
+
+      assert sql =~ ~s|l0."event_message"|
+      assert params == ["error"]
+    end
+  end
+
+  describe "postgres timestamp filter rules" do
+    setup %{user: user} do
+      source = insert(:source, user: user)
+
+      stub(Backends, :get_default_backend, fn ^user -> %{type: :postgres} end)
+
+      base_so =
+        @postgres_search_attrs
+        |> Map.merge(%{
+          source: source,
+          tailing_initial?: false,
+          query: from("test_table")
+        })
+        |> SO.new()
+
+      [base_so: base_so]
+    end
+
+    test "events live tail query applies the 10 minute timestamp window", %{base_so: base_so} do
+      before_call = DateTime.utc_now()
+
+      so =
+        %{base_so | tailing?: true}
+        |> SearchOperations.apply_timestamp_filter_rules()
+
+      after_call = DateTime.utc_now()
+      [%{params: [{cutoff, _type}]}] = so.query.wheres
+
+      assert DateTime.compare(cutoff, DateTime.add(before_call, -601, :second)) == :gt
+      assert DateTime.compare(cutoff, DateTime.add(after_call, -599, :second)) == :lt
+    end
+
+    test "events initial tail query applies the default 2 day window", %{base_so: base_so} do
+      before_call = DateTime.utc_now()
+
+      so =
+        %{base_so | tailing?: true, tailing_initial?: true}
+        |> SearchOperations.apply_timestamp_filter_rules()
+
+      after_call = DateTime.utc_now()
+      [%{params: [{cutoff, _type}]}] = so.query.wheres
+
+      assert DateTime.compare(cutoff, DateTime.add(before_call, -(2 * 24 * 3600 + 1), :second)) ==
+               :gt
+
+      assert DateTime.compare(cutoff, DateTime.add(after_call, -(2 * 24 * 3600 - 1), :second)) ==
+               :lt
+    end
+
+    test "events explicit timestamp filters use postgres filter rules", %{base_so: base_so} do
+      min = ~U[2026-01-29 04:13:48.748909Z]
+      max = ~U[2026-01-29 06:13:48.748909Z]
+
+      timestamp_filter = %FilterRule{
+        path: "timestamp",
+        operator: :range,
+        values: [min, max],
+        modifiers: %{}
+      }
+
+      so =
+        %{base_so | lql_ts_filters: [timestamp_filter]}
+        |> SearchOperations.apply_timestamp_filter_rules()
+
+      [%{params: params}] = so.query.wheres
+
+      assert [{^min, _}, {^max, _}] = params
+    end
+
+    test "aggregate query without filter applys min/max", %{base_so: base_so} do
+      chart_rule = %ChartRule{
+        path: "timestamp",
+        aggregate: :count,
+        period: :minute,
+        value_type: :datetime
+      }
+
+      so =
+        %{base_so | type: :aggregates, chart_rules: [chart_rule], query: nil}
+        |> SearchOperations.apply_timestamp_filter_rules()
+
+      assert so.query.from.source == {PostgresAdaptor.table_name(base_so.source), nil}
+      assert length(so.query.wheres) == 1
+
+      [%{params: params}] = so.query.wheres
+
+      assert [{%DateTime{}, _}, {%DateTime{}, _}] = params
+    end
+
+    test "aggregate query uses filters and timestamp", %{
+      base_so: base_so
+    } do
+      min = ~U[2026-01-29 04:13:48.748909Z]
+      max = ~U[2026-01-29 06:13:48.748909Z]
+
+      chart_rule = %ChartRule{
+        path: "timestamp",
+        aggregate: :count,
+        period: :minute,
+        value_type: :datetime
+      }
+
+      timestamp_filter = %FilterRule{
+        path: "timestamp",
+        operator: :range,
+        values: [min, max],
+        modifiers: %{}
+      }
+
+      so =
+        %{
+          base_so
+          | type: :aggregates,
+            chart_rules: [chart_rule],
+            lql_ts_filters: [timestamp_filter],
+            query: nil
+        }
+        |> SearchOperations.apply_timestamp_filter_rules()
+
+      assert length(so.query.wheres) == 2
+
+      [first_where, second_where] = so.query.wheres
+
+      assert [{^min, _}, {^max, _}] = first_where.params
+      assert [{^min, _}, {^max, _}] = second_where.params
+    end
+  end
+
+  describe "postgres backend adaptor integration" do
+    setup %{user: user} do
+      Mimic.copy(PostgresAdaptor)
+
+      source = insert(:source, user: user)
+      backend = build(:backend, type: :postgres)
+
+      stub(Backends, :get_default_backend, fn ^user -> backend end)
+
+      base_so =
+        %{@postgres_search_attrs | source: source, query: from("test_table")}
+        |> SO.new()
+
+      [backend: backend, base_so: base_so]
+    end
+
+    test "do_query/1 uses Postgres backend adaptor and normalizes event rows", %{
+      backend: backend,
+      base_so: base_so
+    } do
+      timestamp = ~U[2026-01-29 05:13:48.748909Z]
+      naive_timestamp = ~N[2026-01-29 05:14:48.748909]
+      nested_timestamp = ~N[2026-01-29 05:15:48.748909]
+      date = ~D[2026-01-29]
+
+      Backends
+      |> expect(:get_default_backend, fn user ->
+        assert user.id == base_so.source.user.id
+        backend
+      end)
+
+      PostgresAdaptor
+      |> expect(:execute_query, fn ^backend, %Ecto.Query{} = query, opts ->
+        assert opts == [query_type: :search]
+        assert %Ecto.Query{} = query
+
+        {:ok,
+         [
+           %{
+             event_message: "postgres event",
+             timestamp: timestamp,
+             inserted_at: naive_timestamp,
+             log_date: date,
+             metadata: %{level: "error", seen_at: nested_timestamp},
+             tags: [date, naive_timestamp]
+           }
+         ]}
+      end)
+
+      PostgresAdaptor
+      |> expect(:ecto_to_sql, fn %Ecto.Query{}, [] ->
+        {:ok, {"SELECT * FROM test_table", ["param"]}}
+      end)
+
+      result_so = SearchOperations.do_query(base_so)
+
+      assert result_so.sql_string == "SELECT * FROM test_table"
+      assert result_so.sql_params == ["param"]
+
+      assert result_so.rows == [
+               %{
+                 "event_message" => "postgres event",
+                 "timestamp" => DateTime.to_unix(timestamp, :microsecond),
+                 "inserted_at" =>
+                   DateTime.to_unix(
+                     DateTime.from_naive!(naive_timestamp, "Etc/UTC"),
+                     :microsecond
+                   ),
+                 "log_date" => "2026-01-29",
+                 "metadata" => %{
+                   "level" => "error",
+                   "seen_at" =>
+                     DateTime.to_unix(
+                       DateTime.from_naive!(nested_timestamp, "Etc/UTC"),
+                       :microsecond
+                     )
+                 },
+                 "tags" => [
+                   "2026-01-29",
+                   DateTime.to_unix(
+                     DateTime.from_naive!(naive_timestamp, "Etc/UTC"),
+                     :microsecond
+                   )
+                 ]
+               }
+             ]
+
+      refute result_so.error
+    end
+
+    test "do_query/1 stores postgres backend errors", %{backend: backend, base_so: base_so} do
+      Backends
+      |> expect(:get_default_backend, fn _user -> backend end)
+
+      PostgresAdaptor
+      |> expect(:execute_query, fn ^backend, %Ecto.Query{}, [query_type: :search] ->
+        {:error, :postgres_failed}
+      end)
+
+      result_so = SearchOperations.do_query(base_so)
+
+      assert result_so.error == :postgres_failed
+    end
+
+    test "do_query/1 normalizes aggregate postgres rows and process_query_result/1 adds datetime",
+         %{
+           backend: backend,
+           base_so: base_so
+         } do
+      timestamp = ~N[2026-01-29 05:13:48.748909]
+
+      Backends
+      |> expect(:get_default_backend, fn _user -> backend end)
+
+      PostgresAdaptor
+      |> expect(:execute_query, fn ^backend, %Ecto.Query{}, [query_type: :search] ->
+        {:ok, [%{count: 2, timestamp: timestamp}]}
+      end)
+
+      PostgresAdaptor
+      |> expect(:ecto_to_sql, fn %Ecto.Query{}, [] ->
+        {:ok, {"SELECT count(*) FROM test_table", []}}
+      end)
+
+      result_so =
+        %{base_so | type: :aggregates}
+        |> SearchOperations.do_query()
+        |> SearchOperations.process_query_result()
+
+      unix_timestamp = DateTime.to_unix(DateTime.from_naive!(timestamp, "Etc/UTC"), :microsecond)
+
+      assert result_so.rows == [
+               %{
+                 "value" => 2,
+                 "timestamp" => unix_timestamp,
+                 "datetime" => Timex.from_unix(unix_timestamp, :microsecond)
+               }
+             ]
+    end
+  end
+
   describe "apply_select_rules/1" do
-    setup do
-      insert(:plan)
-      source = insert(:source, user: insert(:user), bq_table_id: "test_table")
+    setup %{user: user} do
+      source = insert(:source, user: user, bq_table_id: "test_table")
 
       so = %SO{
         source: source,
@@ -451,9 +786,8 @@ defmodule Logflare.Logs.SearchOperationsTest do
   end
 
   describe "backend adaptor integration" do
-    setup do
-      insert(:plan)
-      source = insert(:source, user: insert(:user), bq_table_id: "test_table")
+    setup %{user: user} do
+      source = insert(:source, user: user, bq_table_id: "test_table")
 
       base_so = %SO{
         source: source,
