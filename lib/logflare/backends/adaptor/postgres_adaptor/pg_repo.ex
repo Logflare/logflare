@@ -13,8 +13,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
-
-  require Logger
+  alias Ecto.Adapters.SQL
 
   @doc """
   Dynamically compiles a new Ecto.Repo module for a given source.
@@ -63,7 +62,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
 
   defp do_destroy_instance(source, timeout) do
     if Process.whereis(SharedRepo) != nil do
-      if Ecto.Adapters.SQL.table_exists?(SharedRepo, table_name(source)) do
+      if SQL.table_exists?(SharedRepo, table_name(source)) do
         SharedRepo.down!(source)
       end
 

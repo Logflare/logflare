@@ -14,13 +14,18 @@ defmodule Logflare.DataCase do
 
   use ExUnit.CaseTemplate
 
+  alias Ecto.Adapters.SQL
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.ConsolidatedSup
 
   using do
     quote do
       alias Logflare.Repo
       alias Logflare.TestUtils
       alias Logflare.TestUtilsGrpc
+      alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+      alias Logflare.Backends.IngestEventQueue
+      alias Logflare.PubSubRates
       require TestUtils
 
       import Ecto
@@ -43,9 +48,9 @@ defmodule Logflare.DataCase do
         Enum.each(caches, &Cachex.reset(&1, hooks: [Cachex.Stats]))
 
         on_exit(fn ->
-          Logflare.Backends.IngestEventQueue.delete_all_mappings()
-          Logflare.PubSubRates.Cache.clear()
-          Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup.terminate_all()
+          IngestEventQueue.delete_all_mappings()
+          PubSubRates.Cache.clear()
+          ClickHouseAdaptor.QueryConnectionSup.terminate_all()
         end)
 
         :ok
@@ -64,8 +69,8 @@ defmodule Logflare.DataCase do
   Sets up the sandbox based on the test tags.
   """
   def setup_sandbox(tags) do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Logflare.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+    pid = SQL.Sandbox.start_owner!(Logflare.Repo, shared: not tags[:async])
+    on_exit(fn -> SQL.Sandbox.stop_owner(pid) end)
   end
 
   @doc """
@@ -200,7 +205,7 @@ defmodule Logflare.DataCase do
         pool_timeout: 1_000
       )
 
-      Logflare.Backends.ConsolidatedSup.stop_pipeline(backend.id)
+      ConsolidatedSup.stop_pipeline(backend.id)
     rescue
       _ -> :ok
     catch

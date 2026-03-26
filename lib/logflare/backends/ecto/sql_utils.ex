@@ -5,6 +5,8 @@ defmodule Logflare.Backends.Ecto.SqlUtils do
 
   require Logger
 
+  alias Ecto.Adapters.SQL
+
   @doc """
   Base function for converting Ecto queries to SQL using Ecto's PostgreSQL adapter.
 
@@ -13,14 +15,12 @@ defmodule Logflare.Backends.Ecto.SqlUtils do
   """
   @spec ecto_to_pg_sql(Ecto.Query.t()) :: {:ok, {String.t(), [any()]}} | {:error, String.t()}
   def ecto_to_pg_sql(%Ecto.Query{} = query) do
-    try do
-      {sql, params} = Ecto.Adapters.SQL.to_sql(:all, Logflare.Repo, query)
-      {:ok, {sql, params}}
-    rescue
-      error ->
-        Logger.warning("Failed to convert Ecto query to PostgreSQL SQL: #{inspect(error)}")
-        {:error, "Could not convert Ecto query: #{Exception.message(error)}"}
-    end
+    {sql, params} = SQL.to_sql(:all, Logflare.Repo, query)
+    {:ok, {sql, params}}
+  rescue
+    error ->
+      Logger.warning("Failed to convert Ecto query to PostgreSQL SQL: #{inspect(error)}")
+      {:error, "Could not convert Ecto query: #{Exception.message(error)}"}
   end
 
   @doc """

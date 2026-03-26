@@ -1,6 +1,5 @@
 defmodule Logflare.Vercel.Client do
   @moduledoc false
-  require Logger
 
   alias Logflare.Vercel
 

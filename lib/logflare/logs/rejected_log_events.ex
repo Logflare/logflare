@@ -21,7 +21,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
     }'
   ```
   """
-  require Ex2ms
+
   alias Logflare.Sources.Source
   alias Logflare.LogEvent, as: LE
   alias Logflare.Utils

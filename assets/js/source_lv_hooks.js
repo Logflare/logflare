@@ -272,4 +272,16 @@ hooks.DocumentVisibility = {
   },
 };
 
+hooks.LiveTooltips = {
+  mounted() {
+    $(this.el).tooltip({
+      selector: ".logflare-tooltip",
+      delay: { show: 100, hide: 200 },
+    });
+  },
+  destroyed() {
+    $(this.el).tooltip("dispose");
+  },
+};
+
 export default hooks;

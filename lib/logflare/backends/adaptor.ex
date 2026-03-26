@@ -58,6 +58,14 @@ defmodule Logflare.Backends.Adaptor do
     |> mod.validate_config()
   end
 
+  @spec cast_and_validate_config(module(), map(), map()) :: Ecto.Changeset.t()
+  def cast_and_validate_config(mod, params, existing_config)
+      when is_atom(mod) and is_map(existing_config) do
+    params
+    |> mod.cast_config(existing_config)
+    |> mod.validate_config()
+  end
+
   @doc """
   Returns true if a given `Backend` supports being used for default ingest.
 
@@ -137,6 +145,7 @@ defmodule Logflare.Backends.Adaptor do
   Typecasts config params.
   """
   @callback cast_config(param :: map()) :: Ecto.Changeset.t()
+  @callback cast_config(param :: map(), existing_config :: map()) :: Ecto.Changeset.t()
 
   @doc """
   Optional callback to convert an Ecto query to the backend's native SQL format.

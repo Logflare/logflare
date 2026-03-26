@@ -3,6 +3,8 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
 
   import Ecto.Query
 
+  alias Ecto.Query
+  alias Ecto.Query.BooleanExpr
   alias Ecto.Query.DynamicExpr
   alias Logflare.Lql.BackendTransformer.Postgres
   alias Logflare.Lql.Rules.FilterRule
@@ -445,6 +447,61 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
 
       assert %Ecto.Query{select: %{expr: expr}} = result
       assert expr |> Macro.to_string() =~ "user_id"
+    end
+  end
+
+  describe "where_timestamp_ago/4" do
+    setup do
+      {:ok, base_query: from("logs"), datetime: ~U[2025-02-21 03:27:12Z]}
+    end
+
+    @valid_intervals [
+      {"MINUTE", 5, "minutes"},
+      {"HOUR", 24, "hours"},
+      {"DAY", 7, "days"},
+      {"SECOND", 30, "seconds"},
+      {"MILLISECOND", 1_000, "milliseconds"},
+      {"MICROSECOND", 1_000_000, "microseconds"}
+    ]
+
+    for {unit, count, expected_suffix} <- @valid_intervals do
+      test "builds correct interval fragment for #{unit}", %{
+        base_query: base_query,
+        datetime: datetime
+      } do
+        result = Postgres.where_timestamp_ago(base_query, datetime, unquote(count), unquote(unit))
+
+        assert %Query{wheres: [%BooleanExpr{expr: expr} | _]} = result
+        assert {:>=, _, [_field, {:fragment, _, fragment_parts}]} = expr
+
+        raw_sql =
+          fragment_parts
+          |> Enum.filter(&match?({:raw, _}, &1))
+          |> Enum.map(fn {:raw, s} -> s end)
+          |> Enum.join()
+
+        assert raw_sql =~ unquote(expected_suffix)
+      end
+    end
+
+    test "composes with existing where clauses", %{datetime: datetime} do
+      assert %Query{} =
+               query =
+               from("logs")
+               |> where([t], t.level == "error")
+               |> Postgres.where_timestamp_ago(datetime, 10, "MINUTE")
+               |> where([t], t.status == 500)
+
+      assert length(query.wheres) == 3
+    end
+
+    test "raises ArgumentError for invalid interval", %{
+      base_query: base_query,
+      datetime: datetime
+    } do
+      assert_raise ArgumentError, "Invalid interval: INVALID", fn ->
+        Postgres.where_timestamp_ago(base_query, datetime, 1, "INVALID")
+      end
     end
   end
 end

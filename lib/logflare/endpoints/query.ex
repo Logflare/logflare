@@ -31,7 +31,8 @@ defmodule Logflare.Endpoints.Query do
              :max_limit,
              :enable_auth,
              :labels,
-             :redact_pii
+             :redact_pii,
+             :enable_dynamic_reservation
            ]}
   typed_schema "endpoint_queries" do
     field(:token, Ecto.UUID, autogenerate: true)
@@ -46,6 +47,7 @@ defmodule Logflare.Endpoints.Query do
     field(:max_limit, :integer, default: 1_000)
     field(:enable_auth, :boolean, default: true)
     field(:redact_pii, :boolean, default: false)
+    field(:enable_dynamic_reservation, :boolean, default: false)
     field(:labels, :string)
     field(:parsed_labels, :map, virtual: true)
     field(:metrics, :map, virtual: true)
@@ -78,6 +80,7 @@ defmodule Logflare.Endpoints.Query do
       :max_limit,
       :enable_auth,
       :redact_pii,
+      :enable_dynamic_reservation,
       :language,
       :description,
       :backend_id,
@@ -99,6 +102,7 @@ defmodule Logflare.Endpoints.Query do
       :max_limit,
       :enable_auth,
       :redact_pii,
+      :enable_dynamic_reservation,
       :language,
       :description,
       :backend_id,

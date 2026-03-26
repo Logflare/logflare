@@ -4,6 +4,7 @@ defmodule LogflareWeb.DashboardLive do
 
   alias Logflare.Billing
   alias Logflare.Sources
+  alias Logflare.Sources.UserMetricsPoller
   alias Logflare.Teams
   alias LogflareWeb.DashboardLive.DashboardComponents
   alias LogflareWeb.DashboardLive.DashboardSourceComponents
@@ -32,7 +33,7 @@ defmodule LogflareWeb.DashboardLive do
 
     if connected?(socket) do
       %{user: user} = socket.assigns
-      Logflare.Sources.UserMetricsPoller.track(self(), user.id)
+      track_user_metrics(user.id)
       Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user.id}")
     end
 
@@ -59,14 +60,14 @@ defmodule LogflareWeb.DashboardLive do
   def handle_event("visibility_change", %{"visibility" => "hidden"}, socket) do
     %{user: user} = socket.assigns
 
-    Logflare.Sources.UserMetricsPoller.untrack(self(), user.id)
+    untrack_user_metrics(user.id)
     {:noreply, socket}
   end
 
   def handle_event("visibility_change", %{"visibility" => "visible"}, socket) do
     %{user: user} = socket.assigns
 
-    Logflare.Sources.UserMetricsPoller.track(self(), user.id)
+    track_user_metrics(user.id)
     {:noreply, socket}
   end
 
@@ -147,7 +148,7 @@ defmodule LogflareWeb.DashboardLive do
           New source
         </.team_link>
       </div>
-      <ul class="list-group">
+      <ul class="list-group" id="source-list-group" phx-hook="LiveTooltips">
         <%= if Enum.empty?(@sources) do %>
           <li class="list-group-item">You don't have any sources!</li>
           <li class="list-group-item">Sources are where your log events go.</li>
@@ -168,5 +169,13 @@ defmodule LogflareWeb.DashboardLive do
   # groups services by name, ungrouped sources last.
   defp grouped_sources(sources) do
     sources |> Enum.group_by(fn source -> source.service_name end) |> Enum.reverse()
+  end
+
+  defp track_user_metrics(user_id) do
+    UserMetricsPoller.track(self(), user_id)
+  end
+
+  defp untrack_user_metrics(user_id) do
+    UserMetricsPoller.untrack(self(), user_id)
   end
 end

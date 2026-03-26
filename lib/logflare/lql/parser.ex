@@ -10,8 +10,6 @@ defmodule Logflare.Lql.Parser do
   import Logflare.Lql.Parser.Combinators
   import Logflare.Lql.Parser.Helpers
 
-  require Logger
-
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql.Rules
@@ -19,6 +17,8 @@ defmodule Logflare.Lql.Parser do
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.FromRule
   alias Logflare.Lql.Rules.SelectRule
+
+  @type schema_flat_map :: %{optional(String.t()) => term()}
 
   defparsec(
     :do_parse,
@@ -115,11 +115,17 @@ defmodule Logflare.Lql.Parser do
       {:error, err}
   end
 
-  def parse("", _schema) do
-    {:ok, []}
+  @spec parse(String.t(), TS.t() | schema_flat_map()) ::
+          {:ok, Rules.lql_rules()}
+          | {:error, term()}
+          | {:error, :field_not_found, String.t(), term()}
+  def parse("", _schema), do: {:ok, []}
+
+  def parse(querystring, %TS{} = schema) when is_binary(querystring) do
+    parse(querystring, SchemaUtils.bq_schema_to_flat_typemap(schema))
   end
 
-  def parse(querystring, %TS{} = schema) do
+  def parse(querystring, typemap) when is_binary(querystring) and is_map(typemap) do
     parsed =
       querystring
       |> String.trim()
@@ -148,8 +154,6 @@ defmodule Logflare.Lql.Parser do
             {:from, _} -> true
             _ -> false
           end)
-
-        typemap = SchemaUtils.bq_schema_to_flat_typemap(schema)
 
         chart_rule = build_chart_rule(chart_rule_tokens, typemap, querystring)
         from_rule = build_from_rule(from_rule_tokens)

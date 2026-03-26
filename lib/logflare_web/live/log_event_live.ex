@@ -5,9 +5,8 @@ defmodule LogflareWeb.LogEventLive do
 
   use LogflareWeb, :live_view
 
-  require Logger
-
   alias Logflare.Logs.LogEvents
+  alias Logflare.SourceSchemas
   alias Logflare.Sources
 
   on_mount LogflareWeb.AuthLive
@@ -22,11 +21,14 @@ defmodule LogflareWeb.LogEventLive do
         dt
       end
 
+    lql = params["lql"] || ""
+    is_tailing = params["tailing?"] == "true"
+
     opts =
       [
         source: source,
         user: socket.assigns.user,
-        lql: params["lql"] || ""
+        lql: lql
       ]
       |> maybe_put_timestamp(timestamp)
 
@@ -36,13 +38,18 @@ defmodule LogflareWeb.LogEventLive do
         {:error, _} -> nil
       end
 
+    flat_map = SourceSchemas.source_schema_flatmap_or_default(source)
+
     socket =
       socket
       |> assign(:source, source)
+      |> assign(:source_schema_flat_map, flat_map)
       |> assign(:log_event, log_event)
       |> assign(:origin, params["origin"])
       |> assign(:log_event_id, params["uuid"])
-      |> assign(:lql, params["lql"])
+      |> assign(:lql, lql)
+      |> assign(:tailing?, is_tailing)
+      |> assign(:tz, params["tz"])
       |> assign(:timestamp, timestamp)
 
     {:ok, socket}

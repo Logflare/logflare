@@ -1,6 +1,7 @@
 defmodule Logflare.GenSingletonTest do
   use Logflare.DataCase, async: true
   alias Logflare.GenSingleton
+  alias Logflare.GenSingleton.Watcher
 
   defmodule TestGenserver do
     use GenServer, restart: :temporary
@@ -82,13 +83,13 @@ defmodule Logflare.GenSingletonTest do
 
   describe "Watcher child_spec/1" do
     test "defaults restart to :permanent" do
-      spec = Logflare.GenSingleton.Watcher.child_spec(child_spec: __MODULE__.TestGenserver)
+      spec = Watcher.child_spec(child_spec: __MODULE__.TestGenserver)
       assert spec.restart == :permanent
     end
 
     test "allows restart option to be overridden" do
       spec =
-        Logflare.GenSingleton.Watcher.child_spec(
+        Watcher.child_spec(
           child_spec: __MODULE__.TestGenserver,
           restart: :transient
         )

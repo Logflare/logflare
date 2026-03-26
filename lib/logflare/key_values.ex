@@ -106,17 +106,21 @@ defmodule Logflare.KeyValues do
 
   @spec bulk_upsert_key_values(integer(), [map()]) :: {non_neg_integer(), nil | [KeyValue.t()]}
   def bulk_upsert_key_values(user_id, entries) do
+    now = DateTime.utc_now()
+
     rows =
       Enum.map(entries, fn entry ->
         %{
           user_id: user_id,
           key: entry[:key] || entry["key"],
-          value: entry[:value] || entry["value"]
+          value: entry[:value] || entry["value"],
+          updated_at: now,
+          inserted_at: now
         }
       end)
 
     Repo.insert_all(KeyValue, rows,
-      on_conflict: {:replace, [:value]},
+      on_conflict: {:replace, [:value, :updated_at]},
       conflict_target: [:user_id, :key]
     )
   end

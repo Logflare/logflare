@@ -1,13 +1,10 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
 
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Logs.LogEvents
   alias Logflare.Logs.SearchOperation, as: SO
-  alias Logflare.Logs.SearchQueries
+  alias Logflare.Lql.Rules, as: LqlRules
   alias Logflare.Sources
-  alias Logflare.Sources.Source
   import Ecto.Query
   import Logflare.Logs.SearchOperations
 
@@ -83,18 +80,18 @@ defmodule Logflare.Logs.Search do
   def search_event_context(%SO{} = so, log_event_id, %DateTime{} = timestamp) do
     so =
       so
-      |> Logflare.Logs.Search.get_and_put_partition_by()
+      |> get_and_put_partition_by()
 
     %{values: [min, max]} =
       so.lql_rules
-      |> Logflare.Lql.Rules.get_timestamp_filters()
+      |> LqlRules.get_timestamp_filters()
       |> Enum.find(fn rule -> rule.operator == :range end)
 
     fields = [:id, :timestamp, :event_message, :metadata]
 
     numbered_rows =
       from(so.source.bq_table_id)
-      |> Logflare.Logs.LogEvents.partition_query([min, max], so.partition_by)
+      |> LogEvents.partition_query([min, max], so.partition_by)
       |> Logflare.Lql.apply_filter_rules(so.lql_rules)
       |> where([t], t.timestamp >= ^min and t.timestamp <= ^max)
       |> select([t], map(t, ^fields))
@@ -129,26 +126,6 @@ defmodule Logflare.Logs.Search do
     else
       so -> {:error, so}
     end
-  end
-
-  def query_source_streaming_buffer(%Source{} = source) do
-    q =
-      case Sources.get_table_partition_type(source) do
-        :pseudo ->
-          SearchQueries.source_table_streaming_buffer(source.bq_table_id)
-
-        :timestamp ->
-          SearchQueries.source_table_last_1_minutes(source.bq_table_id)
-      end
-      |> order_by(desc: :timestamp)
-      |> limit(100)
-
-    bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
-    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
-
-    BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, q,
-      query_type: :search
-    )
   end
 
   def get_and_put_partition_by(%SO{} = so) do

@@ -6,7 +6,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   import Logflare.Utils.Guards
 
   use Supervisor
-  require Logger
 
   alias __MODULE__.Pipeline
   alias Ecto.Changeset
@@ -44,8 +43,8 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
   @doc false
   @impl Adaptor
-  def cast_config(%{} = params) do
-    {%{},
+  def cast_config(%{} = params, existing_config \\ %{}) do
+    {existing_config,
      %{
        s3_bucket: :string,
        storage_region: :string,

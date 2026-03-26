@@ -4,8 +4,6 @@ defmodule LogflareWeb.SearchLV.Utils do
   """
   use LogflareWeb, :html
 
-  require Logger
-
   def maybe_cancel_tailing_timer(socket) do
     if socket.assigns.tailing_timer, do: Process.cancel_timer(socket.assigns.tailing_timer)
   end

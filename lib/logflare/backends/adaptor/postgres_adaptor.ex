@@ -54,8 +54,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{},
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config,
      %{
        url: :string,
        username: :string,
@@ -237,7 +237,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @spec should_transform_bigquery_to_postgres?() :: boolean()
-  defp should_transform_bigquery_to_postgres?() do
+  defp should_transform_bigquery_to_postgres? do
     # Only transform BigQuery SQL -> PostgreSQL in SingleTenant Supabase mode with PostgreSQL backend enabled
     SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?()
   end

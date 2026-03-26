@@ -8,6 +8,10 @@ defmodule Logflare.Google.CloudResourceManagerTest do
     google_configs = Map.new(Application.get_env(:logflare, Logflare.Google))
     expected_members = setup_test_state()
 
+    on_exit(fn ->
+      Application.put_env(:logflare, Logflare.Google, Map.to_list(google_configs))
+    end)
+
     %{
       google_configs: google_configs,
       expected_members: expected_members
@@ -55,6 +59,44 @@ defmodule Logflare.Google.CloudResourceManagerTest do
       for member <- expected_members do
         assert Enum.member?(members_list, member)
       end
+
+      viewer_binding =
+        Enum.find(bindings, fn %Binding{role: role} -> role == "roles/viewer" end)
+
+      assert viewer_binding
+      assert ("user:" <> google_configs.project_viewer) in viewer_binding.members
+    end
+
+    test "uses group: prefix as-is for project viewer binding", %{
+      google_configs: google_configs
+    } do
+      Application.put_env(
+        :logflare,
+        Logflare.Google,
+        Map.to_list(%{google_configs | project_viewer: "group:support@mile.cloud"})
+      )
+
+      pid = self()
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: body] ->
+          send(pid, body.policy.bindings)
+          {:ok, ""}
+        end
+      )
+
+      CloudResourceManager.set_iam_policy(async: false)
+
+      assert_received [_ | _] = bindings
+
+      viewer_binding =
+        Enum.find(bindings, fn %Binding{role: role} -> role == "roles/viewer" end)
+
+      assert viewer_binding
+      assert "group:support@mile.cloud" in viewer_binding.members
+      refute "user:support@mile.cloud" in viewer_binding.members
     end
 
     test "sets user as invalid google account if user does not exist" do

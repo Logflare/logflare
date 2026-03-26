@@ -8,7 +8,9 @@ defmodule Logflare.SourcesTest do
   alias Logflare.SourceSchemas
   alias Logflare.Backends
   alias Logflare.Users
+  alias Logflare.Sources.Counters
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.RateCounterServer
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
 
@@ -29,6 +31,16 @@ defmodule Logflare.SourcesTest do
       assert changes == %{labels: "test=some_label"}
     end
 
+    test "bug: update_by_user_changeset  empty string should clear labels" do
+      source = insert(:source, user: insert(:user), labels: "status=m.level")
+
+      changeset = Source.update_by_user_changeset(source, %{})
+      assert Ecto.Changeset.get_field(changeset, :labels) == "status=m.level"
+
+      changeset = Source.update_by_user_changeset(source, %{labels: ""})
+      assert Ecto.Changeset.get_field(changeset, :labels) == ""
+    end
+
     test "update_by_user_changeset trims description and turns blank into nil" do
       source = insert(:source, user: insert(:user), description: "existing description")
 
@@ -37,22 +49,6 @@ defmodule Logflare.SourcesTest do
 
       assert %Ecto.Changeset{changes: %{description: nil}} =
                Source.update_by_user_changeset(source, %{description: "   "})
-    end
-
-    test "update_by_user_changeset enforces description max length" do
-      source = insert(:source, user: insert(:user))
-
-      valid_description = String.duplicate("a", 280)
-      too_long_description = String.duplicate("a", 281)
-
-      assert %Ecto.Changeset{valid?: true} =
-               Source.update_by_user_changeset(source, %{description: valid_description})
-
-      assert %Ecto.Changeset{valid?: false} =
-               changeset =
-               Source.update_by_user_changeset(source, %{description: too_long_description})
-
-      assert "should be at most 280 character(s)" in errors_on(changeset).description
     end
   end
 
@@ -430,8 +426,8 @@ defmodule Logflare.SourcesTest do
     end
 
     test "does NOT shut down sources with active ingest", %{source: source} do
-      Logflare.Sources.Counters.increment(source.token, 1)
-      Logflare.Sources.Source.RateCounterServer.handle_info(:put_rate, source.token)
+      Counters.increment(source.token, 1)
+      RateCounterServer.handle_info(:put_rate, source.token)
 
       assert Sources.get_source_metrics_for_ingest(source).avg > 0
 

@@ -94,6 +94,7 @@ The `LOGFLARE_METADATA_CLUSTER` environment variable is also set in the Erlang n
 | `GOOGLE_PROJECT_ID`                 | string, required            | Specifies the GCP project to use.                                                                                                                                                                   |
 | `GOOGLE_PROJECT_NUMBER`             | string, required            | Specifies the GCP project to use.                                                                                                                                                                   |
 | `GOOGLE_DATASET_ID_APPEND`          | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery.                                                                                                                                       |
+| `GOOGLE_PROJECT_VIEWER`             | string, optional            | Email of a Google user account to grant Viewer role on the GCP project.                                                                                                                             |
 | `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run throguh the main service account. |
 
 #### Managed Service Accounts
