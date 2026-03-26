@@ -112,8 +112,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @doc false
   @impl Logflare.Backends.Adaptor
-  def cast_config(%{} = params) do
-    {%{insert_protocol: "http"},
+  def cast_config(%{} = params, existing_config \\ %{}) do
+    {existing_config,
      %{
        url: :string,
        username: :string,
@@ -144,6 +144,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     ])
     |> Logflare.Utils.default_field_value(:async_insert, false)
     |> Logflare.Utils.default_field_value(:use_simple_schemas, false)
+    |> Logflare.Utils.default_field_value(:insert_protocol, "http")
   end
 
   @doc false

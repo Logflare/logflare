@@ -85,8 +85,8 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{}, %{api_token: :string, alert_source_config_id: :string, metadata: :map}}
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config, %{api_token: :string, alert_source_config_id: :string, metadata: :map}}
     |> Ecto.Changeset.cast(params, [:api_token, :alert_source_config_id, :metadata])
   end
 

@@ -39,14 +39,14 @@ defmodule Logflare.Backends.Adaptor.Last9Adaptor do
   end
 
   @impl Adaptor
-  def cast_config(params) do
+  def cast_config(params, existing_config \\ %{}) do
     types = %{
       region: :string,
       username: :string,
       password: :string
     }
 
-    {%{}, types}
+    {existing_config, types}
     |> Ecto.Changeset.cast(params, Map.keys(types))
   end
 

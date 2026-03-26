@@ -12,7 +12,6 @@ defmodule Logflare.Backends.Adaptor do
   alias Logflare.Endpoints.Query
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
-  alias Logflare.Utils
 
   @type t :: module()
   @type query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
@@ -62,11 +61,8 @@ defmodule Logflare.Backends.Adaptor do
   @spec cast_and_validate_config(module(), map(), map()) :: Ecto.Changeset.t()
   def cast_and_validate_config(mod, params, existing_config)
       when is_atom(mod) and is_map(existing_config) do
-    params = Utils.stringify_keys(params)
-    existing_config = Utils.stringify_keys(existing_config)
-
-    Map.merge(existing_config, params)
-    |> mod.cast_config()
+    params
+    |> mod.cast_config(existing_config)
     |> mod.validate_config()
   end
 
@@ -149,6 +145,7 @@ defmodule Logflare.Backends.Adaptor do
   Typecasts config params.
   """
   @callback cast_config(param :: map()) :: Ecto.Changeset.t()
+  @callback cast_config(param :: map(), existing_config :: map()) :: Ecto.Changeset.t()
 
   @doc """
   Optional callback to convert an Ecto query to the backend's native SQL format.
