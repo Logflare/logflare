@@ -74,6 +74,37 @@ defmodule LogflareWeb.Api.AccessTokensTest do
       |> json_response(401)
     end
 
+    test "users with private:admin scope token can create admin scope tokens", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, admin_token} = Logflare.Auth.create_access_token(user, %{scopes: "private:admin"})
+
+      response =
+        conn
+        |> put_req_header("authorization", "Bearer #{admin_token.token}")
+        |> post("/api/access-tokens", %{scopes: "private:admin"})
+        |> json_response(201)
+
+      assert response["scopes"] =~ "private:admin"
+      assert response["token"]
+    end
+
+    test "users with other scope token cannot create admin scope tokens", %{
+      conn: conn,
+      user: user
+    } do
+      conn
+      |> add_access_token(user, "private")
+      |> post("/api/access-tokens", %{scopes: "private:admin"})
+      |> json_response(401)
+
+      conn
+      |> add_access_token(user, "ingest:source:1")
+      |> post("/api/access-tokens", %{scopes: "private:admin"})
+      |> json_response(401)
+    end
+
     test "must use private token", %{conn: conn, user: user} do
       conn
       |> add_access_token(user, "public")
