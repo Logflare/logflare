@@ -217,8 +217,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def supports_default_ingest?, do: true
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{}, %{project_id: :string, dataset_id: :string}}
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config, %{project_id: :string, dataset_id: :string}}
     |> Changeset.cast(params, [:project_id, :dataset_id])
   end
 

@@ -54,8 +54,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{},
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config,
      %{
        url: :string,
        username: :string,
