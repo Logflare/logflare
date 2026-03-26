@@ -7,6 +7,7 @@ defmodule Logflare.Lql.IntegrationTest do
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @default_schema SchemaBuilder.initial_table_schema()
@@ -20,16 +21,20 @@ defmodule Logflare.Lql.IntegrationTest do
 
     test "parses and encodes simple filter", %{source: _source} do
       schema = build_schema(%{"metadata" => %{"status" => "success"}})
-      lql_string = "m.status:success"
 
-      {:ok, parsed_rules} = Parser.parse(lql_string, schema)
-      encoded_string = Lql.encode!(parsed_rules)
+      [schema, SchemaUtils.bq_schema_to_flat_typemap(schema)]
+      |> Enum.each(fn schema ->
+        lql_string = "m.status:success"
 
-      assert encoded_string == lql_string
-      assert length(parsed_rules) == 1
+        {:ok, parsed_rules} = Parser.parse(lql_string, schema)
+        encoded_string = Lql.encode!(parsed_rules)
 
-      [rule] = parsed_rules
-      assert %FilterRule{path: "metadata.status", operator: :=, value: "success"} = rule
+        assert encoded_string == lql_string
+        assert length(parsed_rules) == 1
+
+        [rule] = parsed_rules
+        assert %FilterRule{path: "metadata.status", operator: :=, value: "success"} = rule
+      end)
     end
 
     test "parses and encodes complex filter with multiple conditions", %{source: _source} do
