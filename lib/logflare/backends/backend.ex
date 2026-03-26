@@ -92,7 +92,7 @@ defmodule Logflare.Backends.Backend do
       nil ->
         changeset
 
-      %{valid?: false, errors: errors} = changeset ->
+      %{valid?: false, errors: errors} ->
         Enum.reduce(errors, changeset, fn {key, {msg, opts}}, cs ->
           Changeset.add_error(cs, :"config.#{key}", msg, opts)
         end)
