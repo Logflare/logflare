@@ -9,6 +9,7 @@ defmodule Logflare.Google.CloudResourceManager do
   alias Logflare.TeamUsers
   alias Logflare.Utils.Tasks
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Utils
 
   require Logger
 
@@ -167,17 +168,17 @@ defmodule Logflare.Google.CloudResourceManager do
       if result == :noop do
         Logger.error(
           "Could find user #{captured} in the database. Set IAM policy error: #{message}",
-          error_string: Jason.decode!(response.body)
+          error_string: Jason.decode!(response.body) |> Utils.stringify()
         )
       else
         Logger.info(
           "Google account #{captured} was marked as invalid and excluded from IAM policy",
-          error_string: Jason.decode!(response.body)
+          error_string: Jason.decode!(response.body) |> Utils.stringify()
         )
       end
     else
       Logger.error("Set IAM policy unknown API error: #{message}",
-        error_string: Jason.decode!(response.body)
+        error_string: Jason.decode!(response.body) |> Utils.stringify()
       )
 
       :noop
@@ -288,7 +289,7 @@ defmodule Logflare.Google.CloudResourceManager do
 
       value ->
         member =
-          if String.starts_with?(value, "user:") do
+          if String.starts_with?(value, "user:") or String.starts_with?(value, "group:") do
             value
           else
             "user:" <> value
