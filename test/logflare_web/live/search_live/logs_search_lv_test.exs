@@ -1355,10 +1355,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source = insert(:source, user: user)
       plan = SingleTenant.get_default_plan()
 
-      assert :ok = Backends.ensure_source_sup_started(source)
-
       matching_message = "postgres-live-search-match-#{System.unique_integer([:positive])}"
       non_matching_message = "postgres-live-search-miss-#{System.unique_integer([:positive])}"
+
+      bq_schema = TestUtils.build_bq_schema(%{"event_message" => matching_message})
+      insert(:source_schema, source: source, bigquery_schema: bq_schema)
+
+      assert :ok = Backends.ensure_source_sup_started(source)
 
       assert {:ok, 2} =
                Backends.ingest_logs(
@@ -1368,16 +1371,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
                  ],
                  source
                )
-
-      bq_schema = TestUtils.build_bq_schema(%{"event_message" => matching_message})
-
-      assert {:ok, _source_schema} =
-               SourceSchemas.create_or_update_source_schema(source, %{
-                 bigquery_schema: bq_schema,
-                 schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
-               })
-
-      Cachex.clear(Logflare.SourceSchemas.Cache)
 
       %{
         user: user,
