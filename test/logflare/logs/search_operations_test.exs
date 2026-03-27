@@ -245,7 +245,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
 
     test "generates expected SQL for all aggregate types", %{base_so: base_so} do
-      for agg <- [:count, :avg, :sum, :max] do
+      for agg <- [:count, :avg, :sum, :max, :countd, :p50, :p95, :p99] do
         chart_rule = %ChartRule{
           path: "event_message",
           aggregate: agg,
@@ -266,6 +266,10 @@ defmodule Logflare.Logs.SearchOperationsTest do
         expected_aggregate_sql =
           case agg do
             :count -> ~s|count(t0."timestamp")|
+            :countd -> ~s|count(distinct t0."event_message")|
+            :p50 -> ~s|percentile_cont(|
+            :p95 -> ~s|percentile_cont(|
+            :p99 -> ~s|percentile_cont(|
             _ -> ~s|#{agg}(t0."event_message")|
           end
 
