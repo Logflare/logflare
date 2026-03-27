@@ -96,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       |> mod.all()
       |> Enum.map(&nested_map_update/1)
 
-    {:ok, QueryResult.new(result)}
+    {:ok, QueryResult.new(result, pg_meta(result))}
   end
 
   def execute_query(%Backend{} = backend, query_string, opts)
@@ -106,20 +106,20 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   def execute_query(%Backend{} = backend, {query_string, params}, _opts)
       when is_non_empty_binary(query_string) and is_list(params) do
-    {:ok, result} =
-      SharedRepo.with_repo(backend, fn ->
-        SharedRepo.query(query_string, params)
-      end)
+    with {:ok, result} <-
+           SharedRepo.with_repo(backend, fn ->
+             SharedRepo.query(query_string, params)
+           end) do
+      rows =
+        for row <- result.rows do
+          result.columns
+          |> Enum.zip(row)
+          |> Map.new()
+          |> nested_map_update()
+        end
 
-    rows =
-      for row <- result.rows do
-        result.columns
-        |> Enum.zip(row)
-        |> Map.new()
-        |> nested_map_update()
-      end
-
-    {:ok, QueryResult.new(rows)}
+      {:ok, QueryResult.new(rows, pg_meta(rows))}
+    end
   end
 
   def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, opts)
@@ -241,6 +241,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   defp should_transform_bigquery_to_postgres? do
     # Only transform BigQuery SQL -> PostgreSQL in SingleTenant Supabase mode with PostgreSQL backend enabled
     SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?()
+  end
+
+  @spec pg_meta(list()) :: map()
+  defp pg_meta(rows) when is_list(rows) do
+    %{total_rows: length(rows)}
   end
 
   @spec nested_map_update(term()) :: term()
