@@ -6,6 +6,7 @@ defmodule Logflare.Logs.SearchOperations do
   import Logflare.Logs.SearchQueries
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.DateTimeUtils
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
@@ -63,13 +64,16 @@ defmodule Logflare.Logs.SearchOperations do
     end
   end
 
-  @spec put_sql_string_and_params(SO.t(), %{query_string: String.t(), bq_params: list()}) ::
+  @spec put_sql_string_and_params(SO.t(), QueryResult.t()) ::
           SO.t()
   defp put_sql_string_and_params(%{sql_string: sql_string} = so, _response)
        when is_binary(sql_string),
        do: so
 
-  defp put_sql_string_and_params(so, %{query_string: query_string, bq_params: bq_params}) do
+  defp put_sql_string_and_params(so, %QueryResult{} = response) do
+    query_string = QueryResult.meta(response, :query_string)
+    bq_params = QueryResult.meta(response, :bq_params, [])
+
     %{so | sql_string: query_string, sql_params: bq_params}
   end
 
@@ -164,8 +168,8 @@ defmodule Logflare.Logs.SearchOperations do
     stats =
       stats
       |> Map.merge(%{
-        total_rows: so.query_result.total_rows,
-        total_bytes_processed: so.query_result.total_bytes_processed
+        total_rows: QueryResult.meta(so.query_result, :total_rows, 0),
+        total_bytes_processed: QueryResult.meta(so.query_result, :total_bytes_processed, 0)
       })
       |> Map.put(
         :total_duration,
@@ -176,7 +180,7 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   @spec process_query_result(SO.t()) :: SO.t()
-  def process_query_result(%SO{query_result: %{rows: rows}, type: :aggregates} = so) do
+  def process_query_result(%SO{query_result: %QueryResult{rows: rows}, type: :aggregates} = so) do
     rows =
       Enum.map(rows, fn agg ->
         Map.put(agg, "datetime", Timex.from_unix(agg["timestamp"], :microsecond))

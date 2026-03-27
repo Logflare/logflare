@@ -15,6 +15,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
+  alias Logflare.Backends.Adaptor.QueryResult
 
   doctest ClickHouseAdaptor
 
@@ -599,7 +600,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "executes simple queries using backend-only interface", %{backend: backend} do
       result = ClickHouseAdaptor.execute_query(backend, "SELECT 1 as test_value", [])
 
-      assert {:ok, [%{"test_value" => 1}]} = result
+      assert {:ok, %QueryResult{rows: [%{"test_value" => 1}]}} = result
     end
 
     test "converts `@param` syntax to ClickHouse `{param:String}` format", %{backend: backend} do
@@ -610,7 +611,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
           []
         )
 
-      assert {:ok, [%{"param_result" => "hello"}]} = result
+      assert {:ok, %QueryResult{rows: [%{"param_result" => "hello"}]}} = result
     end
 
     test "handles query errors gracefully", %{backend: backend} do
