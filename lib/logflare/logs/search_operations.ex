@@ -49,6 +49,8 @@ defmodule Logflare.Logs.SearchOperations do
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
     with {:ok, response} <- execute_backend_query(so) do
+      response = normalize_query_result(so, response)
+
       so
       |> SearchUtils.put_result(:query_result, response)
       |> SearchUtils.put_result(:rows, response.rows)
@@ -58,6 +60,13 @@ defmodule Logflare.Logs.SearchOperations do
         SearchUtils.put_result(so, :error, err)
     end
   end
+
+  @spec normalize_query_result(SO.t(), QueryResult.t()) :: QueryResult.t()
+  defp normalize_query_result(%SO{backend_type: :postgres, type: type}, %QueryResult{} = response) do
+    normalize_postgres_response(response, type)
+  end
+
+  defp normalize_query_result(%SO{}, %QueryResult{} = response), do: response
 
   @spec execute_backend_query(SO.t()) :: {:ok, map()} | {:error, term()}
   defp execute_backend_query(%SO{backend_type: :postgres} = so) do
@@ -605,56 +614,20 @@ defmodule Logflare.Logs.SearchOperations do
     end
   end
 
-  @spec normalize_postgres_response([term()], :events | :aggregates) :: map()
-  defp normalize_postgres_response(rows, type) do
-    normalized_rows = Enum.map(rows, &normalize_postgres_row(&1, type))
+  @spec normalize_postgres_response(QueryResult.t(), :events | :aggregates) :: QueryResult.t()
+  defp normalize_postgres_response(%QueryResult{} = response, :events), do: response
 
-    %{
-      rows: normalized_rows,
-      total_rows: length(normalized_rows),
-      total_bytes_processed: 0
-    }
+  defp normalize_postgres_response(%QueryResult{} = response, :aggregates) do
+    rows =
+      Enum.map(response.rows, fn row ->
+        case Map.pop(row, "count") do
+          {nil, _row} -> row
+          {count, row} -> Map.put(row, "value", count)
+        end
+      end)
+
+    %QueryResult{response | rows: rows}
   end
-
-  defp normalize_postgres_row(%{} = row, :events) do
-    Map.new(row, fn {key, value} ->
-      {to_string(key), normalize_postgres_value(key, value)}
-    end)
-  end
-
-  defp normalize_postgres_row(%{} = row, :aggregates) do
-    row
-    |> Enum.reduce(%{}, fn {key, value}, acc ->
-      key = to_string(key)
-      key = if key == "count", do: "value", else: key
-      Map.put(acc, key, normalize_postgres_value(key, value))
-    end)
-  end
-
-  defp normalize_postgres_row(other, _type), do: other
-
-  defp normalize_postgres_value(_key, %DateTime{} = value),
-    do: DateTime.to_unix(value, :microsecond)
-
-  defp normalize_postgres_value(_key, %NaiveDateTime{} = value) do
-    value
-    |> DateTime.from_naive!("Etc/UTC")
-    |> DateTime.to_unix(:microsecond)
-  end
-
-  defp normalize_postgres_value(_key, %Date{} = value), do: Date.to_iso8601(value)
-
-  defp normalize_postgres_value(_key, %{} = value) do
-    Map.new(value, fn {nested_key, nested_value} ->
-      {to_string(nested_key), normalize_postgres_value(nested_key, nested_value)}
-    end)
-  end
-
-  defp normalize_postgres_value(_key, value) when is_list(value) do
-    Enum.map(value, &normalize_postgres_value(nil, &1))
-  end
-
-  defp normalize_postgres_value(_key, value), do: value
 
   defp normalize_aggregate_timestamp([timestamp]), do: normalize_aggregate_timestamp(timestamp)
   defp normalize_aggregate_timestamp(timestamp), do: timestamp

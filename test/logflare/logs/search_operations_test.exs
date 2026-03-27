@@ -472,14 +472,24 @@ defmodule Logflare.Logs.SearchOperationsTest do
       [backend: backend, base_so: base_so]
     end
 
-    test "do_query/1 uses Postgres backend adaptor and normalizes event rows", %{
+    test "do_query/1 uses Postgres backend adaptor and passes through event rows", %{
       backend: backend,
       base_so: base_so
     } do
-      timestamp = ~U[2026-01-29 05:13:48.748909Z]
-      naive_timestamp = ~N[2026-01-29 05:14:48.748909]
-      nested_timestamp = ~N[2026-01-29 05:15:48.748909]
-      date = ~D[2026-01-29]
+      timestamp_us = DateTime.to_unix(~U[2026-01-29 05:13:48.748909Z], :microsecond)
+      inserted_at_us = DateTime.to_unix(~U[2026-01-29 05:14:48.748909Z], :microsecond)
+      seen_at_us = DateTime.to_unix(~U[2026-01-29 05:15:48.748909Z], :microsecond)
+
+      rows = [
+        %{
+          "event_message" => "postgres event",
+          "timestamp" => timestamp_us,
+          "inserted_at" => inserted_at_us,
+          "log_date" => "2026-01-29",
+          "metadata" => %{"level" => "error", "seen_at" => seen_at_us},
+          "tags" => ["2026-01-29", inserted_at_us]
+        }
+      ]
 
       Backends
       |> expect(:get_default_backend, fn user ->
@@ -492,17 +502,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
         assert opts == [query_type: :search]
         assert %Ecto.Query{} = query
 
-        {:ok,
-         [
-           %{
-             event_message: "postgres event",
-             timestamp: timestamp,
-             inserted_at: naive_timestamp,
-             log_date: date,
-             metadata: %{level: "error", seen_at: nested_timestamp},
-             tags: [date, naive_timestamp]
-           }
-         ]}
+        {:ok, QueryResult.new(rows, %{total_rows: length(rows)})}
       end)
 
       PostgresAdaptor
@@ -514,35 +514,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
 
       assert result_so.sql_string == "SELECT * FROM test_table"
       assert result_so.sql_params == ["param"]
-
-      assert result_so.rows == [
-               %{
-                 "event_message" => "postgres event",
-                 "timestamp" => DateTime.to_unix(timestamp, :microsecond),
-                 "inserted_at" =>
-                   DateTime.to_unix(
-                     DateTime.from_naive!(naive_timestamp, "Etc/UTC"),
-                     :microsecond
-                   ),
-                 "log_date" => "2026-01-29",
-                 "metadata" => %{
-                   "level" => "error",
-                   "seen_at" =>
-                     DateTime.to_unix(
-                       DateTime.from_naive!(nested_timestamp, "Etc/UTC"),
-                       :microsecond
-                     )
-                 },
-                 "tags" => [
-                   "2026-01-29",
-                   DateTime.to_unix(
-                     DateTime.from_naive!(naive_timestamp, "Etc/UTC"),
-                     :microsecond
-                   )
-                 ]
-               }
-             ]
-
+      assert result_so.rows == rows
       refute result_so.error
     end
 
@@ -560,19 +532,20 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert result_so.error == :postgres_failed
     end
 
-    test "do_query/1 normalizes aggregate postgres rows and process_query_result/1 adds datetime",
+    test "do_query/1 renames count to value for aggregates and process_query_result/1 adds datetime",
          %{
            backend: backend,
            base_so: base_so
          } do
-      timestamp = ~N[2026-01-29 05:13:48.748909]
+      unix_timestamp = DateTime.to_unix(~U[2026-01-29 05:13:48.748909Z], :microsecond)
 
       Backends
       |> expect(:get_default_backend, fn _user -> backend end)
 
       PostgresAdaptor
       |> expect(:execute_query, fn ^backend, %Ecto.Query{}, [query_type: :search] ->
-        {:ok, [%{count: 2, timestamp: timestamp}]}
+        rows = [%{"count" => 2, "timestamp" => unix_timestamp}]
+        {:ok, QueryResult.new(rows, %{total_rows: length(rows)})}
       end)
 
       PostgresAdaptor
@@ -584,8 +557,6 @@ defmodule Logflare.Logs.SearchOperationsTest do
         %{base_so | type: :aggregates}
         |> SearchOperations.do_query()
         |> SearchOperations.process_query_result()
-
-      unix_timestamp = DateTime.to_unix(DateTime.from_naive!(timestamp, "Etc/UTC"), :microsecond)
 
       assert result_so.rows == [
                %{
