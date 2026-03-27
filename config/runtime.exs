@@ -235,6 +235,7 @@ config :logflare,
        Logflare.Google,
        filter_nil_kv_pairs.(
          dataset_id_append: System.get_env("GOOGLE_DATASET_ID_APPEND"),
+         default_dataset_location: System.get_env("GOOGLE_DATASET_LOCATION"),
          project_number: System.get_env("GOOGLE_PROJECT_NUMBER"),
          project_id: System.get_env("GOOGLE_PROJECT_ID"),
          service_account: System.get_env("GOOGLE_SERVICE_ACCOUNT"),
