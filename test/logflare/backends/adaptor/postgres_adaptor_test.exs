@@ -125,11 +125,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                           "nested" => [
                             %{
                               "host" => "db-default",
-                              "parsed" => [
-                                %{
-                                  "elements" => [%{"meta" => [%{"data" => "date"}]}]
-                                }
-                              ]
+                              "parsed" => [%{"elements" => [%{"meta" => [%{"data" => "date"}]}]}]
                             }
                           ]
                         }
@@ -148,11 +144,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       query = from(l in PostgresAdaptor.table_name(source), select: count(l.id))
       assert {:ok, %QueryResult{rows: [1]}} = PostgresAdaptor.execute_query(backend, query, [])
 
-      # struct results are not impacted by metadata transformations
+      # NaiveDateTime results are converted to unix microseconds
       query = from(l in PostgresAdaptor.table_name(source), select: l.timestamp)
 
-      assert {:ok, %QueryResult{rows: [%NaiveDateTime{}]}} =
+      assert {:ok, %QueryResult{rows: [timestamp]}} =
                PostgresAdaptor.execute_query(backend, query, [])
+
+      assert is_integer(timestamp)
     end
   end
 
