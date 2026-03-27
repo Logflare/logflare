@@ -8,7 +8,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Backends
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.SingleTenant
-  alias Logflare.SourceSchemas
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Utils.Tasks
   alias LogflareWeb.Source.SearchLV
@@ -1376,7 +1375,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
         user: user,
         source: source,
         plan: plan,
-        matching_message: matching_message
+        matching_message: matching_message,
+        non_matching_message: non_matching_message
       }
     end
 
@@ -1385,7 +1385,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "run a search against postgres backend", %{
       conn: conn,
       source: source,
-      matching_message: matching_message
+      matching_message: matching_message,
+      non_matching_message: non_matching_message
     } do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
@@ -1400,6 +1401,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> TestUtils.wait_for_render("#logs-list-container li")
 
       assert view |> element("#logs-list-container") |> render() =~ matching_message
+      refute view |> element("#logs-list-container") |> render() =~ non_matching_message
     end
   end
 
