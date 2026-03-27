@@ -117,6 +117,47 @@ In order to test all changes locally, perform the following steps:
 3. Update the test Supabase project's config under `supabase/config.toml`
    - Logflare uses the `analytics` namespace.
 
+### Testing Logflare E2E integration with Supabase
+
+These tests live in `test/e2e/supabase` and use Playwright against a local Supabase docker-compose setup.
+
+Run locally:
+
+```bash
+cd test/e2e/supabase
+
+# Boot Supabase services
+bash ./setup-supabase-services.sh
+
+# Install JS dependencies
+npm ci
+
+# Install Playwright browsers and OS deps
+npx playwright install --with-deps
+
+# Run all Playwright tests
+npm run playwright:test
+
+# Optional: run with Playwright UI
+npm run playwright:test:ui
+```
+
+For debugging or troubleshooting you can easily interact with the containers with `bin/compose` with any valid
+docker-compose commands. You need to be in the same directory.
+
+```bash
+cd test/e2e/supabase
+
+# See Logflare container logs
+bin/compose logs analytics -f
+
+# Stop all service containers
+bin/compose stop
+
+# Remove all containers and associated volumes
+bin/compose down -v
+```
+
 ## Command Reference
 
 ```bash
