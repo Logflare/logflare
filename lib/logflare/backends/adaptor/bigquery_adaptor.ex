@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   import Logflare.Utils.Guards
 
   require Logger
+  require OpenTelemetry.Tracer
 
   alias Ecto.Changeset
   alias GoogleApi.IAM.V1.Api.Projects, as: IAMProjects
@@ -101,7 +102,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   def insert_log_events_via_storage_write_api(log_events, opts) do
-    # convert log events to table rows
     context =
       Keyword.validate!(opts, [
         :project_id,
@@ -112,20 +112,41 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         :backend_id
       ])
 
-    # get table id
     table_id = format_table_name(opts[:source_token])
 
-    data_frames =
-      log_events
-      |> Enum.map(&log_event_to_df_struct(&1))
-      |> normalize_df_struct_fields()
+    arrow_data =
+      OpenTelemetry.Tracer.with_span "bigquery.serialize", %{
+        attributes: %{insert_method: :bq_storage_write}
+      } do
+        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erlang.external_size(log_events))
+
+        arrow_data =
+          log_events
+          |> Enum.map(&log_event_to_df_struct(&1))
+          |> normalize_df_struct_fields()
+          |> GoogleApiClient.encode_ndjson()
+          |> GoogleApiClient.encode_arrow_data()
+
+        OpenTelemetry.Tracer.set_attribute(
+          :serialized_bytes,
+          Enum.sum_by(arrow_data, &:erlang.external_size(&1))
+        )
+
+        arrow_data
+      end
 
     # append rows
-    GoogleApiClient.append_rows(
-      {:arrow, data_frames},
-      context,
-      table_id
-    )
+    OpenTelemetry.Tracer.with_span "bigquery.api_call", %{
+      attributes: %{insert_method: :bq_storage_write}
+    } do
+      case GoogleApiClient.append_rows({:arrow, arrow_data}, context, table_id) do
+        {:error, reason} ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(reason))
+
+        _ ->
+          :ok
+      end
+    end
   end
 
   @spec format_table_name(atom) :: String.t()
