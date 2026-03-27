@@ -71,12 +71,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
 
       TestUtils.retry_assert(fn ->
-        assert {:ok, %QueryResult{rows: [%{"test" => "data"}]}} =
+        assert {:ok, %QueryResult{rows: [%{"test" => "data"}], total_rows: 1}} =
                  PostgresAdaptor.execute_query(backend, query, [])
       end)
 
       # query by string
-      assert {:ok, %QueryResult{rows: [%{"body" => [%{"test" => "data"}]}]}} =
+      assert {:ok, %QueryResult{rows: [%{"body" => [%{"test" => "data"}]}], total_rows: 1}} =
                PostgresAdaptor.execute_query(
                  backend,
                  "select body from #{PostgresAdaptor.table_name(source)}",
@@ -84,7 +84,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                )
 
       # query by string with parameter
-      assert {:ok, %QueryResult{rows: [%{"value" => "data"}]}} =
+      assert {:ok, %QueryResult{rows: [%{"value" => "data"}], total_rows: 1}} =
                PostgresAdaptor.execute_query(
                  backend,
                  {"select body ->> $1 as value from #{PostgresAdaptor.table_name(source)}",
