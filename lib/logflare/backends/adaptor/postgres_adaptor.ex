@@ -258,6 +258,14 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @spec nested_map_update(term()) :: term()
+  defp nested_map_update(%DateTime{} = value), do: DateTime.to_unix(value, :microsecond)
+
+  defp nested_map_update(%NaiveDateTime{} = value) do
+    value |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
+  end
+
+  defp nested_map_update(%Date{} = value), do: Date.to_iso8601(value)
+
   defp nested_map_update(value) when is_struct(value), do: value
 
   defp nested_map_update(value) when is_map(value),
@@ -267,11 +275,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   defp nested_map_update(value), do: value
 
+  defp nested_map_update({key, value}, acc) when is_struct(value) do
+    Map.put(acc, to_string(key), nested_map_update(value))
+  end
+
   defp nested_map_update({key, value}, acc) when is_map(value) do
-    Map.put(acc, key, [nested_map_update(value)])
+    Map.put(acc, to_string(key), [nested_map_update(value)])
   end
 
   defp nested_map_update({key, value}, acc) do
-    Map.put(acc, key, nested_map_update(value))
+    Map.put(acc, to_string(key), nested_map_update(value))
   end
 end
