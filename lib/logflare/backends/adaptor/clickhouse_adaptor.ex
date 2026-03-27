@@ -28,6 +28,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
 
@@ -82,7 +83,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def execute_query(%Backend{} = backend, {query_string, params}, _opts)
       when is_non_empty_binary(query_string) and is_list(params) do
     case execute_ch_query(backend, query_string, params) do
-      {:ok, result} -> {:ok, result}
+      {:ok, result} -> {:ok, QueryResult.new(result)}
       error -> error
     end
   end
@@ -652,7 +653,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           declared_params :: [String.t()],
           input_params :: map()
         ) ::
-          {:ok, [map()]} | {:error, any()}
+          {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_params(
          %Backend{} = backend,
          query_string,
@@ -663,7 +664,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     ch_params = Map.take(input_params, declared_params)
 
     case execute_ch_query(backend, converted_query, ch_params) do
-      {:ok, result} -> {:ok, result}
+      {:ok, result} -> {:ok, QueryResult.new(result)}
       error -> error
     end
   end

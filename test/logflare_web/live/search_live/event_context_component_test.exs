@@ -2,6 +2,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   use LogflareWeb.ConnCase, async: false
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.BqRepo
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Sources.Source
@@ -51,13 +52,12 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
            ) do
         {:ok, result} ->
           {:ok,
-           %{
-             rows: result.rows,
+           QueryResult.new(result.rows, %{
              total_bytes_processed: result.total_bytes_processed,
              total_rows: result.total_rows,
              query_string: bq_sql,
              bq_params: bq_params
-           }}
+           })}
 
         error ->
           error
