@@ -19,6 +19,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Billing
   alias Logflare.BqRepo
@@ -35,6 +36,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Model.QueryParameter, as: Param
   alias Model.QueryParameterType, as: Type
   alias Model.QueryParameterValue, as: Value
+
+  @typep bq_query_meta :: %{
+           total_bytes_processed: integer(),
+           total_rows: integer(),
+           query_string: String.t(),
+           bq_params: [map()]
+         }
 
   @managed_service_account_partition_count 5
   @service_account_prefix "logflare-managed"
@@ -555,7 +563,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           input_params :: map(),
           nil | Query.t(),
           opts :: Keyword.t()
-        ) :: {:ok, Query.t()} | {:error, any()}
+        ) :: {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_context(user_id, query_string, declared_params, input_params, nil, opts) do
     user = Users.Cache.get(user_id)
     bq_params = build_bq_params(declared_params, input_params)
@@ -571,7 +579,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           input_params :: map(),
           endpoint_query :: Query.t(),
           opts :: Keyword.t()
-        ) :: {:ok, Query.t()} | {:error, any()}
+        ) :: {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_context(
          user_id,
          query_string,
@@ -604,7 +612,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bq_params :: [map()],
           query_opts :: Keyword.t()
         ) ::
-          {:ok, %{rows: [map()], total_bytes_processed: integer(), total_rows: integer()}}
+          {:ok, QueryResult.t(bq_query_meta())}
           | {:error, any()}
   defp execute_user_query(%User{} = user, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
@@ -624,7 +632,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bq_params :: [map()],
           query_opts :: Keyword.t()
         ) ::
-          {:ok, %{rows: [map()], total_bytes_processed: integer(), total_rows: integer()}}
+          {:ok, QueryResult.t(bq_query_meta())}
           | {:error, any()}
   defp execute_user_query(%User{} = user, project_id, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
@@ -637,13 +645,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          ) do
       {:ok, result} ->
         {:ok,
-         %{
-           rows: result.rows,
+         QueryResult.new(result.rows, %{
            total_bytes_processed: result.total_bytes_processed,
            total_rows: result.total_rows,
            query_string: query_string,
            bq_params: bq_params
-         }}
+         })}
 
       {:error, %{body: body}} ->
         error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)

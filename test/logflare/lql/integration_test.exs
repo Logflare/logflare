@@ -15,7 +15,7 @@ defmodule Logflare.Lql.IntegrationTest do
   describe "end-to-end LQL processing" do
     setup do
       user = insert(:user)
-      source = insert(:source, user_id: user.id)
+      source = insert(:source, user: user)
       {:ok, source: source, user: user}
     end
 

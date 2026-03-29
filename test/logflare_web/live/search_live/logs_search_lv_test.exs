@@ -5,6 +5,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   import Phoenix.LiveViewTest
 
   alias Ecto.Adapters.SQL
+  alias Logflare.Backends
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
@@ -1340,6 +1341,67 @@ defmodule LogflareWeb.Source.SearchLVTest do
         assert html =~ "some correct message"
         assert html =~ ~s|class="log-level-warning">warning|
       end)
+    end
+  end
+
+  describe "single tenant searching with postgres backend" do
+    TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
+
+    setup do
+      start_supervised!(Logflare.SystemMetricsSup)
+
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user)
+      plan = SingleTenant.get_default_plan()
+
+      matching_message = "postgres-live-search-match-#{System.unique_integer([:positive])}"
+      non_matching_message = "postgres-live-search-miss-#{System.unique_integer([:positive])}"
+
+      bq_schema = TestUtils.build_bq_schema(%{"event_message" => matching_message})
+      insert(:source_schema, source: source, bigquery_schema: bq_schema)
+
+      assert :ok = Backends.ensure_source_sup_started(source)
+
+      assert {:ok, 2} =
+               Backends.ingest_logs(
+                 [
+                   %{"event_message" => matching_message},
+                   %{"event_message" => non_matching_message}
+                 ],
+                 source
+               )
+
+      %{
+        user: user,
+        source: source,
+        plan: plan,
+        matching_message: matching_message,
+        non_matching_message: non_matching_message
+      }
+    end
+
+    setup [:setup_user_session]
+
+    test "run a search against postgres backend", %{
+      conn: conn,
+      source: source,
+      matching_message: matching_message,
+      non_matching_message: non_matching_message
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      render_change(view, :start_search, %{
+        "search" => %{@default_search_params | "querystring" => matching_message}
+      })
+
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
+
+      assert view |> element("#logs-list-container") |> render() =~ matching_message
+      refute view |> element("#logs-list-container") |> render() =~ non_matching_message
     end
   end
 
