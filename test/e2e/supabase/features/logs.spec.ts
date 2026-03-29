@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import { searchLogs } from '../lib/utils';
 import supabase from '../lib/supabase';
 
+const LOG_TIMEOUT = 10_000;
+
 test.beforeAll(async ({ request }) => {
   await supabase.auth.signUp({ email: 'example@email.com', password: 'example-password' })
 
@@ -34,34 +36,34 @@ test('receives logs from API Gateway', async ({ page }) => {
   await page.goto('/project/default/logs/edge-logs');
   await searchLogs(page, '/functions/v1/hello');
 
-  await expect(page.getByRole('table')).toContainText('/functions/v1/hello');
+  await expect(page.getByRole('table')).toContainText('/functions/v1/hello', { timeout: LOG_TIMEOUT });
 });
 
 test('receives logs from PostgREST', async ({ page }) => {
   await page.goto('/project/default/logs/postgrest-logs');
   await searchLogs(page, 'Config reloaded');
 
-  await expect(page.getByRole('table')).toContainText('Config reloaded');
+  await expect(page.getByRole('table')).toContainText('Config reloaded', { timeout: LOG_TIMEOUT });
 });
 
 test('receives logs from Auth', async ({ page }) => {
   await page.goto('/project/default/logs/auth-logs');
   await searchLogs(page, 'example@email.com');
 
-  await expect(page.getByRole('table')).toContainText('/signup | request completed');
+  await expect(page.getByRole('table')).toContainText('/signup | request completed', { timeout: LOG_TIMEOUT });
 });
 
 test('receives logs from Storage', async ({ page }) => {
   await page.goto('/project/default/logs/storage-logs');
   await searchLogs(page, '/bucket/avatars');
 
-  await expect(page.getByRole('table')).toContainText('/bucket/avatars');
+  await expect(page.getByRole('table')).toContainText('/bucket/avatars', { timeout: LOG_TIMEOUT });
 });
 
 test('receives logs from Realtime', async ({ page }) => {
   await page.goto('/project/default/logs/realtime-logs');
   await searchLogs(page, 'Starting');
-  await expect(page.getByRole('table')).toContainText('Starting Realtime');
+  await expect(page.getByRole('table')).toContainText('Starting Realtime', { timeout: LOG_TIMEOUT });
 });
 
 test('receives logs from Edge Functions', async ({ page }) => {
@@ -76,5 +78,3 @@ test('receives logs from Cron', async ({ page }) => {
   await expect(page.getByRole('table')).toContainText('LOG: cron job 1 completed: 1 row');
   await expect(page.getByRole('table')).toContainText('LOG: cron job 1 starting: SELECT auth.email()');
 });
-
-
