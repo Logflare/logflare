@@ -281,7 +281,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       insert(:plan, name: "Free")
 
       {source, backend} =
-        setup_clickhouse_test(config: %{use_simple_schemas: true})
+        setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)

@@ -125,8 +125,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_url: :string,
        insert_protocol: :string,
        native_port: :integer,
-       native_pool_size: :integer,
-       use_simple_schemas: :boolean
+       native_pool_size: :integer
      }}
     |> Changeset.cast(params, [
       :url,
@@ -139,11 +138,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_url,
       :insert_protocol,
       :native_port,
-      :native_pool_size,
-      :use_simple_schemas
+      :native_pool_size
     ])
     |> Logflare.Utils.default_field_value(:async_insert, false)
-    |> Logflare.Utils.default_field_value(:use_simple_schemas, false)
     |> Logflare.Utils.default_field_value(:insert_protocol, "http")
   end
 
