@@ -1,10 +1,14 @@
-alias Logflare.Mapper
-alias Logflare.Mapper.MappingConfig
-alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
+import Logflare.Factory
 
-# Real-world edge log payload (POST 404) with deeply nested metadata.
-# Source: Supabase edge function log via Cloudflare worker.
-payload = %{
+alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
+alias Logflare.LogEvent
+alias Logflare.Mapper
+
+user = insert(:user)
+source = insert(:source, user: user)
+
+# Semi-realistic edge log payload with deeply nested metadata.
+log_params = %{
   "event_message" =>
     "POST | 404 | 33.254.251.15 | 9ee9a1c5fdfa3b4b | https://zzzenjkohrkaatgpywnz.supabase.co/rest/v1/rpc/set_active_session | Deno/2.1.4 (variant; SupabaseEdgeRuntime/1.69.25)",
   "headers" => %{
@@ -274,233 +278,45 @@ payload = %{
   "timestamp" => 1_768_497_240_000_000
 }
 
-# Mapping config aligned with the OTEL logs table DDL
-logs_mapping =
-  MappingConfig.new([
-    Field.string("project",
-      paths: ["$.project", "$.project_ref", "$.project_id"],
-      default: "",
-      filters: %{len_eq: 20, char_class: "alpha"}
-    ),
-    Field.string("trace_id",
-      paths: ["$.trace_id", "$.traceId", "$.otel_trace_id"],
-      default: ""
-    ),
-    Field.string("span_id",
-      paths: ["$.span_id", "$.spanId", "$.otel_span_id"],
-      default: ""
-    ),
-    Field.uint8("trace_flags",
-      paths: ["$.trace_flags", "$.traceFlags"],
-      default: 0
-    ),
-    Field.string("severity_text",
-      paths: ["$.severity_text", "$.severityText", "$.metadata.level", "$.level"],
-      default: "INFO",
-      transform: "upcase",
-      allowed_values:
-        ~w(TRACE DEBUG INFO NOTICE WARN WARNING ERROR FATAL CRITICAL EMERGENCY ALERT LOG PANIC)
-    ),
-    Field.uint8("severity_number",
-      from_output: "severity_text",
-      value_map: %{
-        "TRACE" => 1,
-        "DEBUG" => 5,
-        "INFO" => 9,
-        "WARN" => 13,
-        "WARNING" => 13,
-        "ERROR" => 17,
-        "FATAL" => 21,
-        "CRITICAL" => 21,
-        "EMERGENCY" => 21
-      },
-      default: 0
-    ),
-    Field.string("service_name",
-      paths: [
-        "$.resource.service.name",
-        "$.service_name",
-        "$.resource.name",
-        "$.metadata.context.application"
-      ],
-      default: ""
-    ),
-    Field.string("event_message",
-      paths: ["$.event_message", "$.message", "$.body", "$.msg"],
-      default: ""
-    ),
-    Field.string("scope_name",
-      paths: [
-        "$.scope.name",
-        "$.metadata.context.module",
-        "$.metadata.context.application",
-        "$.instrumentation_library.name"
-      ],
-      default: ""
-    ),
-    Field.string("scope_version",
-      paths: [
-        "$.scope.version",
-        "$.instrumentation_library.version"
-      ],
-      default: ""
-    ),
-    Field.string("scope_schema_url",
-      paths: ["$.scope.schema_url"],
-      default: ""
-    ),
-    Field.string("resource_schema_url",
-      paths: ["$.resource.schema_url"],
-      default: ""
-    ),
-    Field.json("resource_attributes",
-      paths: ["$.resource"],
-      pick: [
-        {"region", ["$.metadata.region", "$.region"]},
-        {"cluster", ["$.metadata.cluster", "$.cluster"]},
-        {"service.name", ["$.resource.service.name", "$.service_name"]},
-        {"application", ["$.metadata.context.application"]},
-        {"node", ["$.metadata.context.vm.node"]},
-        {"project", ["$.project", "$.project_ref", "$.project_id"]}
-      ],
-      default: %{}
-    ),
-    Field.json("scope_attributes",
-      paths: ["$.scope.attributes", "$.scope"],
-      default: %{}
-    ),
-    Field.json("log_attributes",
-      path: "$",
-      exclude_keys: ["id", "event_message", "timestamp"],
-      elevate_keys: ["metadata"]
-    ),
-    Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
-  ])
+# ── Build LogEvent via standard ingestion path ───────────────────────────
+log_event = LogEvent.make(log_params, %{source: source})
 
-compiled = Mapper.compile!(logs_mapping)
-nif_result = Mapper.map(payload, compiled)
+# ── Compile mapping config ───────────────────────────────────────────────
+log_compiled = Mapper.compile!(MappingDefaults.for_log())
 
-# credo:disable-for-lines:3
-IO.puts("\n--- Log scenario ---")
-IO.puts("Output Keys: #{inspect(Map.keys(nif_result) |> Enum.sort())}")
+# ── Verify output ────────────────────────────────────────────────────────
+log_result = Mapper.map(log_event.body, log_compiled)
+
+# credo:disable-for-lines:6
+IO.puts("\n--- Log mapping (body) ---")
+IO.puts("Output keys: #{inspect(Map.keys(log_result) |> Enum.sort())}")
+IO.puts("resource_attributes: #{inspect(log_result["resource_attributes"])}")
+IO.puts("log_attributes key count: #{map_size(log_result["log_attributes"])}")
 IO.puts("")
 
-# ── Array extraction scenario ─────────────────────────────────────────
-#
-# Simulates an OTEL histogram metric data point with parallel arrays,
-# exemplars (list of objects → wildcard extraction), and nested attributes.
-
-metric_payload = %{
-  "name" => "http.server.request.duration",
-  "timestamp" => 1_769_018_088_144_506,
-  "start_time" => 1_769_018_080_000_000,
-  "count" => 142,
-  "sum" => 8472.5,
-  "min" => 0.3,
-  "max" => 892.1,
-  "explicit_bounds" => [0.0, 5.0, 10.0, 25.0, 50.0, 75.0, 100.0, 250.0, 500.0, 750.0, 1000.0],
-  "bucket_counts" => [0, 12, 28, 45, 30, 15, 8, 3, 1, 0, 0, 0],
-  "exemplars" => [
-    %{
-      "trace_id" => "abc123def456",
-      "span_id" => "span001",
-      "value" => 12.5,
-      "timestamp" => 1_769_018_085_000_000,
-      "attributes" => %{"http.method" => "GET", "http.status_code" => 200}
-    },
-    %{
-      "trace_id" => "fed654cba321",
-      "span_id" => "span002",
-      "value" => 892.1,
-      "timestamp" => 1_769_018_087_500_000,
-      "attributes" => %{"http.method" => "POST", "http.status_code" => 500}
-    },
-    %{
-      "trace_id" => "111222333444",
-      "span_id" => "span003",
-      "value" => 3.2,
-      "timestamp" => 1_769_018_088_100_000,
-      "attributes" => %{"http.method" => "GET", "http.status_code" => 200}
-    }
-  ],
-  "resource" => %{
-    "service" => %{"name" => "api-gateway"},
-    "region" => "us-east-1"
-  },
-  "scope" => %{"name" => "otel-elixir", "version" => "1.4.0"},
-  "attributes" => %{
-    "http.method" => "GET",
-    "http.route" => "/api/v1/users",
-    "http.scheme" => "https"
-  },
-  "aggregation_temporality" => "cumulative"
-}
-
-metric_mapping =
-  MappingConfig.new([
-    Field.string("metric_name", path: "$.name", default: ""),
-    Field.datetime64("timestamp", path: "$.timestamp", precision: 9),
-    Field.datetime64("start_time", path: "$.start_time", precision: 9),
-    Field.uint64("count", path: "$.count", default: 0),
-    Field.float64("sum", path: "$.sum", default: 0.0),
-    Field.float64("min", path: "$.min", default: 0.0),
-    Field.float64("max", path: "$.max", default: 0.0),
-    Field.array_float64("explicit_bounds", path: "$.explicit_bounds"),
-    Field.array_uint64("bucket_counts", path: "$.bucket_counts"),
-    Field.array_string("exemplar_trace_ids", path: "$.exemplars[*].trace_id"),
-    Field.array_string("exemplar_span_ids", path: "$.exemplars[*].span_id"),
-    Field.array_float64("exemplar_values", path: "$.exemplars[*].value"),
-    Field.array_datetime64("exemplar_timestamps",
-      path: "$.exemplars[*].timestamp",
-      precision: 9
-    ),
-    Field.array_map("exemplar_attributes", path: "$.exemplars[*].attributes"),
-    Field.json("resource_attributes", path: "$.resource"),
-    Field.json("scope_attributes", path: "$.scope"),
-    Field.json("metric_attributes", path: "$.attributes")
-  ])
-
-compiled_metric = Mapper.compile!(metric_mapping)
-nif_metric_result = Mapper.map(metric_payload, compiled_metric)
-
-# credo:disable-for-lines:3
-IO.puts("\n--- Metric (array) scenario ---")
-IO.puts("Output Keys: #{inspect(Map.keys(nif_metric_result) |> Enum.sort())}")
-IO.puts("")
-
-# ── FlatMap scenarios (simple schema equivalents) ─────────────────────
-
-alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
-
-simple_log_compiled = Mapper.compile!(MappingDefaults.for_log_simple())
-simple_log_result = Mapper.map(payload, simple_log_compiled)
-
-simple_metric_compiled = Mapper.compile!(MappingDefaults.for_metric_simple())
-simple_metric_result = Mapper.map(metric_payload, simple_metric_compiled)
-
-# credo:disable-for-lines:8
-IO.puts("\n--- Simple log (flat_map) scenario ---")
-IO.puts("Output Keys: #{inspect(Map.keys(simple_log_result) |> Enum.sort())}")
-IO.puts("resource_attributes type: #{inspect(simple_log_result["resource_attributes"])}")
-IO.puts("")
-IO.puts("\n--- Simple metric (flat_map) scenario ---")
-IO.puts("Output Keys: #{inspect(Map.keys(simple_metric_result) |> Enum.sort())}")
-IO.puts("resource_attributes type: #{inspect(simple_metric_result["resource_attributes"])}")
-IO.puts("")
-
+# ── Benchmark ────────────────────────────────────────────────────────────
 Benchee.run(
   %{
-    "[log] JSON mapping" => fn -> Mapper.map(payload, compiled) end,
-    "[log] FlatMap mapping" => fn -> Mapper.map(payload, simple_log_compiled) end,
-    "[metric] JSON mapping" => fn ->
-      Mapper.map(metric_payload, compiled_metric)
-    end,
-    "[metric] FlatMap mapping" => fn ->
-      Mapper.map(metric_payload, simple_metric_compiled)
-    end
+    "[log] Mapper.map(body)" => fn -> Mapper.map(log_event.body, log_compiled) end
   },
   time: 5,
   warmup: 2,
   memory_time: 3,
   reduction_time: 3
 )
+
+# Baseline results — Mapper.map(event.body) with MappingDefaults.for_log()
+# Apple M4 / 32 GB / macOS / Elixir 1.19.5 / Erlang 27.3.4.6
+#
+# Name                             ips        average  deviation         median         99th %
+# [log] Mapper.map(body)       17.09 K       58.53 μs    ±32.69%          49 μs      132.46 μs
+#
+# Memory usage statistics:
+#
+# Name                      Memory usage
+# [log] Mapper.map(body)         5.90 KB
+#
+# Reduction count statistics:
+#
+# Name                   Reduction count
+# [log] Mapper.map(body)             637
