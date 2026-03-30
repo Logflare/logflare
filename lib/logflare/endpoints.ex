@@ -593,7 +593,7 @@ defmodule Logflare.Endpoints do
       case adaptor.execute_query(backend, query_args, opts) do
         {:ok, %QueryResult{rows: rows} = result} ->
           redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
-          {:ok, result |> Map.put(:rows, redacted_rows) |> QueryResult.to_map()}
+          {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}
 
         {:error, error} ->
           {:error, error}

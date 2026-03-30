@@ -239,7 +239,7 @@ defmodule Logflare.AlertingTest do
       assert {:ok,
               %QueryResult{
                 rows: [%{"testing" => "123"}],
-                meta: %{total_bytes_processed: _}
+                total_bytes_processed: _
               }} =
                Alerting.execute_alert_query(alert_query)
 
@@ -262,7 +262,7 @@ defmodule Logflare.AlertingTest do
       assert {:ok,
               %QueryResult{
                 rows: [%{"testing" => "123"}],
-                meta: %{total_bytes_processed: _}
+                total_bytes_processed: _
               }} =
                Alerting.execute_alert_query(alert_query)
 

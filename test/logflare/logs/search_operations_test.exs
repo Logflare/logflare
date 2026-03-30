@@ -392,7 +392,11 @@ defmodule Logflare.Logs.SearchOperationsTest do
         Process.put(:captured_opts, opts)
 
         {:ok,
-         QueryResult.new([%{"test" => "data"}], %{total_rows: 1, query_string: "", bq_params: []})}
+         QueryResult.new([%{"test" => "data"}], %{
+           total_rows: 1,
+           query_string: "",
+           bq_params: []
+         })}
       end)
 
       result_so = SearchOperations.do_query(base_so)

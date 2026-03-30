@@ -38,13 +38,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Model.QueryParameterType, as: Type
   alias Model.QueryParameterValue, as: Value
 
-  @typep bq_query_meta :: %{
-           total_bytes_processed: integer(),
-           total_rows: integer(),
-           query_string: String.t(),
-           bq_params: [map()]
-         }
-
   @managed_service_account_partition_count 5
   @service_account_prefix "logflare-managed"
 
@@ -613,7 +606,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bq_params :: [map()],
           query_opts :: Keyword.t()
         ) ::
-          {:ok, QueryResult.t(bq_query_meta())}
+          {:ok, QueryResult.t()}
           | {:error, any()}
   defp execute_user_query(%User{} = user, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
@@ -633,7 +626,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bq_params :: [map()],
           query_opts :: Keyword.t()
         ) ::
-          {:ok, QueryResult.t(bq_query_meta())}
+          {:ok, QueryResult.t()}
           | {:error, any()}
   defp execute_user_query(%User{} = user, project_id, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do

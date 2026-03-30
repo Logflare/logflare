@@ -144,7 +144,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       assert {:ok,
               %QueryResult{
                 rows: [%{"event_message" => "test message", "value" => "123"}],
-                meta: %{total_rows: 1}
+                total_rows: 1
               }} =
                result
     end
@@ -161,7 +161,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       assert {:ok,
               %QueryResult{
                 rows: [%{"event_message" => "test message", "value" => "123"}],
-                meta: %{total_rows: 1}
+                total_rows: 1
               }} =
                result
     end

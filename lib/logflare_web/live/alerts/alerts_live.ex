@@ -214,14 +214,14 @@ defmodule LogflareWeb.AlertsLive do
       {:noreply,
        socket
        |> assign(:query_result_rows, result.rows)
-       |> assign(:total_bytes_processed, QueryResult.meta(result, :total_bytes_processed))
+       |> assign(:total_bytes_processed, result.total_bytes_processed)
        |> put_flash(:info, "Query executed successfully. Alert will fire.")}
     else
       {:ok, %QueryResult{rows: []} = result} ->
         {:noreply,
          socket
          |> assign(:query_result_rows, [])
-         |> assign(:total_bytes_processed, QueryResult.meta(result, :total_bytes_processed))
+         |> assign(:total_bytes_processed, result.total_bytes_processed)
          |> put_flash(:info, "No results from query. Alert will not fire.")}
 
       {:error, err} ->
@@ -244,7 +244,7 @@ defmodule LogflareWeb.AlertsLive do
       {:noreply,
        socket
        |> assign(:query_result_rows, result.rows)
-       |> assign(:total_bytes_processed, QueryResult.meta(result, :total_bytes_processed))
+       |> assign(:total_bytes_processed, result.total_bytes_processed)
        |> put_flash(:info, "Alert has been triggered. Notifications sent!")}
     else
       {:error, :no_results} ->

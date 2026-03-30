@@ -318,10 +318,10 @@ defmodule Logflare.Alerting do
           )
         end
 
-        {:ok, result |> QueryResult.to_map() |> Map.put(:fired, true)}
+        {:ok, result |> Map.from_struct() |> Map.put(:fired, true)}
 
       {:ok, %QueryResult{rows: rows} = result} when rows == [] or rows == nil ->
-        {:ok, result |> QueryResult.to_map() |> Map.put(:fired, false)}
+        {:ok, result |> Map.from_struct() |> Map.put(:fired, false)}
 
       other ->
         other

@@ -70,11 +70,15 @@ defmodule Logflare.Logs.SearchOperations do
        when is_binary(sql_string),
        do: so
 
-  defp put_sql_string_and_params(so, %QueryResult{} = response) do
-    query_string = QueryResult.meta(response, :query_string)
-    bq_params = QueryResult.meta(response, :bq_params, [])
-
-    %{so | sql_string: query_string, sql_params: bq_params}
+  defp put_sql_string_and_params(so, %QueryResult{
+         query_string: query_string,
+         bq_params: bq_params
+       }) do
+    %{
+      so
+      | sql_string: if(is_binary(query_string), do: query_string, else: nil),
+        sql_params: if(is_list(bq_params), do: bq_params, else: [])
+    }
   end
 
   @spec apply_query_defaults(SO.t()) :: SO.t()
@@ -168,8 +172,12 @@ defmodule Logflare.Logs.SearchOperations do
     stats =
       stats
       |> Map.merge(%{
-        total_rows: QueryResult.meta(so.query_result, :total_rows, 0),
-        total_bytes_processed: QueryResult.meta(so.query_result, :total_bytes_processed, 0)
+        total_rows: so.query_result.total_rows,
+        total_bytes_processed:
+          if(so.query_result.total_bytes_processed == :not_supported,
+            do: 0,
+            else: so.query_result.total_bytes_processed
+          )
       })
       |> Map.put(
         :total_duration,

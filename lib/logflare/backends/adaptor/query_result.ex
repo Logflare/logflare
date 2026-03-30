@@ -1,27 +1,33 @@
 defmodule Logflare.Backends.Adaptor.QueryResult do
   @moduledoc false
 
-  @enforce_keys [:rows]
-  defstruct rows: [], meta: %{}
+  @not_supported :not_supported
+  @typep not_supported :: :not_supported
 
-  @type t :: t(map())
-  @type t(meta) :: %__MODULE__{
+  @enforce_keys [:rows, :total_rows]
+  defstruct [
+    :rows,
+    :total_rows,
+    total_bytes_processed: @not_supported,
+    query_string: @not_supported,
+    bq_params: @not_supported
+  ]
+
+  @type t :: %__MODULE__{
           rows: [term()],
-          meta: meta
+          total_bytes_processed: integer() | not_supported(),
+          total_rows: integer(),
+          query_string: String.t() | not_supported(),
+          bq_params: [map()] | not_supported()
         }
 
   @spec new([term()], map()) :: t()
-  def new(rows, meta \\ %{}) when is_list(rows) and is_map(meta) do
-    %__MODULE__{rows: rows, meta: meta}
-  end
+  def new(rows, attrs \\ %{}) when is_list(rows) do
+    attrs =
+      attrs
+      |> Map.put(:rows, rows)
+      |> Map.put_new(:total_rows, length(rows))
 
-  @spec meta(t(), atom(), any()) :: any()
-  def meta(%__MODULE__{meta: meta}, key, default \\ nil) when is_atom(key) do
-    Map.get(meta, key, default)
-  end
-
-  @spec to_map(t()) :: map()
-  def to_map(%__MODULE__{rows: rows, meta: meta}) when is_map(meta) do
-    Map.put(meta, :rows, rows)
+    struct!(__MODULE__, attrs)
   end
 end
