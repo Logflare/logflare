@@ -29,11 +29,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
 
   @spec for_log() :: MappingConfig.t()
   def for_log do
-    build_log_fields() |> convert_json_to_flat_map()
-  end
-
-  @spec build_log_fields() :: MappingConfig.t()
-  defp build_log_fields do
     MappingConfig.new([
       Field.string("project",
         paths: [
@@ -136,7 +131,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         paths: ["$.resource.schema_url"],
         default: ""
       ),
-      Field.json("resource_attributes",
+      Field.flat_map("resource_attributes",
         paths: ["$.resource"],
         pick: [
           {"application_id", ["$.app_id", "$.application_id", "$.metadata.app_id"]},
@@ -171,11 +166,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         ],
         default: %{}
       ),
-      Field.json("scope_attributes",
+      Field.flat_map("scope_attributes",
         paths: ["$.scope.attributes", "$.scope"],
         default: %{}
       ),
-      Field.json("log_attributes",
+      Field.flat_map("log_attributes",
         path: "$",
         exclude_keys: ["id", "event_message", "timestamp"],
         elevate_keys: ["metadata"]
@@ -186,11 +181,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
 
   @spec for_metric() :: MappingConfig.t()
   def for_metric do
-    build_metric_fields() |> convert_json_to_flat_map()
-  end
-
-  @spec build_metric_fields() :: MappingConfig.t()
-  defp build_metric_fields do
     MappingConfig.new([
       Field.string("project",
         paths: [
@@ -288,7 +278,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         paths: ["$.resource.schema_url"],
         default: ""
       ),
-      Field.json("resource_attributes",
+      Field.flat_map("resource_attributes",
         paths: ["$.resource"],
         pick: [
           {"application", ["$.metadata.context.application"]},
@@ -307,11 +297,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         ],
         default: %{}
       ),
-      Field.json("scope_attributes",
+      Field.flat_map("scope_attributes",
         paths: ["$.scope.attributes", "$.scope"],
         default: %{}
       ),
-      Field.json("attributes",
+      Field.flat_map("attributes",
         path: "$",
         exclude_keys: ["id", "event_message", "timestamp"],
         elevate_keys: ["metadata"]
@@ -403,7 +393,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.array_float64("quantiles",
         paths: ["$.quantiles", "$.summary.quantiles"]
       ),
-      Field.array_json("exemplars.filtered_attributes",
+      Field.array_flat_map("exemplars.filtered_attributes",
         path: "$.exemplars[*].filtered_attributes"
       ),
       Field.array_datetime64("exemplars.time_unix",
@@ -439,11 +429,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
 
   @spec for_trace() :: MappingConfig.t()
   def for_trace do
-    build_trace_fields() |> convert_json_to_flat_map()
-  end
-
-  @spec build_trace_fields() :: MappingConfig.t()
-  defp build_trace_fields do
     MappingConfig.new([
       Field.string("project",
         paths: [
@@ -540,7 +525,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         ],
         default: ""
       ),
-      Field.json("resource_attributes",
+      Field.flat_map("resource_attributes",
         paths: ["$.resource"],
         pick: [
           {"application", ["$.metadata.context.application"]},
@@ -559,7 +544,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         ],
         default: %{}
       ),
-      Field.json("span_attributes",
+      Field.flat_map("span_attributes",
         path: "$",
         exclude_keys: ["id", "event_message", "timestamp"],
         elevate_keys: ["metadata"]
@@ -571,7 +556,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.array_string("events.name",
         path: "$.events[*].name"
       ),
-      Field.array_json("events.attributes",
+      Field.array_flat_map("events.attributes",
         path: "$.events[*].attributes"
       ),
       Field.array_string("links.trace_id",
@@ -583,22 +568,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.array_string("links.trace_state",
         path: "$.links[*].trace_state"
       ),
-      Field.array_json("links.attributes",
+      Field.array_flat_map("links.attributes",
         path: "$.links[*].attributes"
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ])
-  end
-
-  @spec convert_json_to_flat_map(MappingConfig.t()) :: MappingConfig.t()
-  defp convert_json_to_flat_map(%MappingConfig{fields: fields} = config) do
-    updated_fields =
-      Enum.map(fields, fn
-        %Field{type: "json"} = f -> %{f | type: "flat_map", value_type: "string"}
-        %Field{type: "array_json"} = f -> %{f | type: "array_flat_map", value_type: "string"}
-        f -> f
-      end)
-
-    %{config | fields: updated_fields}
   end
 end

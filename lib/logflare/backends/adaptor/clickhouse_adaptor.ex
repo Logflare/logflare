@@ -313,43 +313,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         event_type
       )
       when is_event_type(event_type) do
-    with :ok <- NativePoolSup.ensure_started(backend) do
-      table_name = clickhouse_ingest_table_name(backend, event_type)
-      do_insert_log_events(backend, events, event_type, :native, table_name)
+    Logger.metadata(backend_id: backend.id)
+    table_name = clickhouse_ingest_table_name(backend, event_type)
+
+    with :ok <- NativePoolSup.ensure_started(backend),
+         :ok <- NativeIngester.insert(backend, table_name, events, event_type) do
+      :ok
+    else
+      {:error, reason} ->
+        Logger.warning("ClickHouse native insert error.",
+          error_string: inspect(reason)
+        )
+
+        {:error, reason}
     end
   end
 
   def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
       when is_event_type(event_type) do
-    table_name = clickhouse_ingest_table_name(backend, event_type)
-    do_insert_log_events(backend, events, event_type, :http, table_name)
-  end
-
-  @spec do_insert_log_events(
-          Backend.t(),
-          [LogEvent.t()],
-          TypeDetection.event_type(),
-          :http | :native,
-          String.t()
-        ) :: :ok | {:error, String.t()}
-  defp do_insert_log_events(backend, events, event_type, protocol, table_name) do
     Logger.metadata(backend_id: backend.id)
+    table_name = clickhouse_ingest_table_name(backend, event_type)
 
-    result =
-      case protocol do
-        :native ->
-          NativeIngester.insert(backend, table_name, events, event_type)
-
-        :http ->
-          Ingester.insert(backend, table_name, events, event_type)
-      end
-
-    case result do
+    case Ingester.insert(backend, table_name, events, event_type) do
       :ok ->
         :ok
 
       {:error, reason} ->
-        Logger.warning("ClickHouse #{protocol} insert error.",
+        Logger.warning("ClickHouse http insert error.",
           error_string: inspect(reason)
         )
 
