@@ -133,5 +133,8 @@ jobs:
       - name: Install dependencies
         run: mix do deps.get + deps.compile
 
+      - name: Build assets
+        run: npm run deploy --prefix assets
+
       - name: Run Tests
         run: mix test.e2e
