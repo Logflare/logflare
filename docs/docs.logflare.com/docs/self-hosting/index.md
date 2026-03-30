@@ -89,13 +89,14 @@ The `LOGFLARE_METADATA_CLUSTER` environment variable is also set in the Erlang n
 
 ### BigQuery Backend Configuration
 
-| Env Var                             | Type                        | Description                                                                                                                                                                                         |
-| ----------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GOOGLE_PROJECT_ID`                 | string, required            | Specifies the GCP project to use.                                                                                                                                                                   |
-| `GOOGLE_PROJECT_NUMBER`             | string, required            | Specifies the GCP project to use.                                                                                                                                                                   |
-| `GOOGLE_DATASET_ID_APPEND`          | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery.                                                                                                                                       |
-| `GOOGLE_PROJECT_VIEWER`             | string, optional            | Email of a Google user account to grant Viewer role on the GCP project.                                                                                                                             |
-| `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run throguh the main service account. |
+| Env Var                             | Type                        | Description                                                                                                                                                                                                     |
+| ----------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_PROJECT_ID`                 | string, required            | Specifies the GCP project to use.                                                                                                                                                                               |
+| `GOOGLE_PROJECT_NUMBER`             | string, required            | Specifies the GCP project to use.                                                                                                                                                                               |
+| `GOOGLE_DATASET_ID_APPEND`          | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery.                                                                                                                                                   |
+| `GOOGLE_DATASET_LOCATION`           | string, defaults to `US`    | Allows customization of region, where dataset is created in BigQuery. Defaults to the "US" multi-region. See [BigQuery docs](https://docs.cloud.google.com/bigquery/docs/locations) for a full list of options. |
+| `GOOGLE_PROJECT_VIEWER`             | string, optional            | Email of a Google user account to grant Viewer role on the GCP project.                                                                                                                                         |
+| `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run throguh the main service account.             |
 
 #### Managed Service Accounts
 

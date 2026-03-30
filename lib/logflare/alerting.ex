@@ -16,6 +16,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Cluster
   alias Logflare.Endpoints
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Repo
   alias Logflare.Teams
@@ -449,7 +450,7 @@ defmodule Logflare.Alerting do
          {:ok, result} <-
            BigQueryAdaptor.execute_query(
              {
-               alert_query.user.bigquery_project_id || env_project_id(),
+               alert_query.user.bigquery_project_id || GCPConfig.default_project_id(),
                alert_query.user.bigquery_dataset_id,
                alert_query.user.id
              },
@@ -494,7 +495,4 @@ defmodule Logflare.Alerting do
         {:error, error}
     end
   end
-
-  # helper to get the google project id via env.
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 end

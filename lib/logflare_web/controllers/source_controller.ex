@@ -5,6 +5,7 @@ defmodule LogflareWeb.SourceController do
 
   alias Logflare.Billing
   alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.JSON
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.Logs.SearchUtils
@@ -19,11 +20,6 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.SourceSchemas
   alias LogflareWeb.AuthController
   alias Logflare.Backends
-
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-
-  defp env_dataset_id_append,
-    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   @lql_dialect :routing
 
@@ -131,8 +127,10 @@ defmodule LogflareWeb.SourceController do
           conn,
         _params
       ) do
-    bigquery_project_id = user.bigquery_project_id || env_project_id()
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
+    bigquery_project_id = user.bigquery_project_id || GCPConfig.default_project_id()
+
+    dataset_id =
+      user.bigquery_dataset_id || Integer.to_string(user.id) <> GCPConfig.dataset_id_append()
 
     explore_link =
       generate_explore_link(team_user.email, source.token, bigquery_project_id, dataset_id)
@@ -156,8 +154,10 @@ defmodule LogflareWeb.SourceController do
   end
 
   def explore(%{assigns: %{user: %{provider: "google"} = user, source: source}} = conn, _params) do
-    bigquery_project_id = user.bigquery_project_id || env_project_id()
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
+    bigquery_project_id = user.bigquery_project_id || GCPConfig.default_project_id()
+
+    dataset_id =
+      user.bigquery_dataset_id || Integer.to_string(user.id) <> GCPConfig.dataset_id_append()
 
     explore_link =
       generate_explore_link(user.email, source.token, bigquery_project_id, dataset_id)

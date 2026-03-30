@@ -25,6 +25,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Endpoints.Query
   alias Logflare.Google
   alias Logflare.Google.BigQuery.EventUtils
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
   alias Logflare.Sources
@@ -266,7 +267,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   """
   @spec list_managed_service_accounts(String.t()) :: [GoogleApi.IAM.V1.Model.ServiceAccount.t()]
   def list_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || env_project_id()
+    project_id = project_id || GCPConfig.default_project_id()
 
     get_next_page(project_id, nil)
     |> Enum.filter(&(&1.name =~ @service_account_prefix))
@@ -281,7 +282,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @spec create_managed_service_accounts(String.t()) ::
           {:ok, [GoogleApi.IAM.V1.Model.ServiceAccount.t()]}
   def create_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || env_project_id()
+    project_id = project_id || GCPConfig.default_project_id()
 
     # determine the ids of of service accounts to create, based on what service accounts already exist
     size =
@@ -419,7 +420,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   """
   @spec impersonated_goth_child_specs :: [Supervisor.child_spec()]
   def impersonated_goth_child_specs do
-    project_id = env_project_id()
+    project_id = GCPConfig.default_project_id()
     pool_size = managed_service_account_pool_size()
     json = Application.get_env(:goth, :json)
 
@@ -610,7 +611,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
     execute_user_query(
       user,
-      user.bigquery_project_id || env_project_id(),
+      user.bigquery_project_id || GCPConfig.default_project_id(),
       query_string,
       bq_params,
       query_opts
@@ -675,7 +676,4 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       parameterValue: %Value{value: param}
     }
   end
-
-  @spec env_project_id :: String.t()
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 end
