@@ -42,13 +42,19 @@ fn compile_mapping<'a>(env: Env<'a>, config: Term<'a>) -> NifResult<Term<'a>> {
 /// Maps a single document using a pre-compiled mapping.
 ///
 /// Returns the mapped Elixir map directly (no ok/error tuple).
+///
+/// When `flat_keys` is `true`, dotted JSONPaths like `$.resource.service.name`
+/// are resolved as literal key lookups (`map_get("resource.service.name")`)
+/// instead of nested map navigation. This allows mapping against pre-flattened
+/// input (e.g., `LogEvent.flattened_body`).
 #[rustler::nif]
 fn map<'a>(
     env: Env<'a>,
     body: Term<'a>,
     compiled: ResourceArc<CompiledMappingResource>,
+    flat_keys: bool,
 ) -> Term<'a> {
-    mapper::map_single(env, body, &compiled.mapping)
+    mapper::map_single(env, body, &compiled.mapping, flat_keys)
 }
 
 fn on_load(env: Env, _info: Term) -> bool {
