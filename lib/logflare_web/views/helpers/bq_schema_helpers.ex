@@ -5,6 +5,8 @@ defmodule LogflareWeb.Helpers.BqSchema do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.JSON
 
+  @type field_and_type :: {String.t(), String.t()}
+
   def format_bq_schema(nil), do: ""
 
   def format_bq_schema(bq_schema) do
