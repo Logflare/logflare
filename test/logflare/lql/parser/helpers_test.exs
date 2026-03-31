@@ -268,6 +268,51 @@ defmodule Logflare.Lql.Parser.HelpersTest do
       assert result == ~N[2023-01-15 10:30:00]
     end
 
+    test "parse_date_or_datetime normalizes UTC offsets" do
+      result = Helpers.parse_date_or_datetime([{:datetime, "2023-01-15T10:30:00+02:00"}])
+      assert result == ~N[2023-01-15 08:30:00]
+    end
+
+    test "parse_datetime_literal handles Unix timestamps in seconds and milliseconds" do
+      assert {:ok, ~N[2024-03-17 13:47:02]} = Helpers.parse_datetime_literal("1710683222")
+      assert {:ok, ~N[2024-03-17 13:47:02.000]} = Helpers.parse_datetime_literal("1710683222000")
+    end
+
+    test "parse_datetime_literal truncates Unix microseconds to milliseconds" do
+      assert {:ok, ~N[2024-03-17 13:47:02.000]} =
+               Helpers.parse_datetime_literal("1710683222000001")
+    end
+
+    test "parse_datetime_literal rejects unsupported Unix widths" do
+      assert {:error, :invalid_format} = Helpers.parse_datetime_literal("171068322200")
+      assert {:error, :invalid_format} = Helpers.parse_datetime_literal("17106832220000")
+      assert {:error, :invalid_format} = Helpers.parse_datetime_literal("171068322200000")
+    end
+
+    test "parse_datetime_literal rejects invalid formats" do
+      assert {:error, :invalid_format} = Helpers.parse_datetime_literal(:bad_format)
+    end
+
+    test "parse_unix_timestamp_literal raises for unsupported widths" do
+      assert catch_throw(Helpers.parse_unix_timestamp_literal(["17106832220000"])) ==
+               "Error while parsing timestamp: '17106832220000' is not a valid Unix timestamp (expected 10, 13, or 16 digits)"
+    end
+
+    test "parse_date_or_datetime_with_range normalizes timezone-bearing values" do
+      result =
+        Helpers.parse_date_or_datetime_with_range(
+          year: [2023],
+          month: [1],
+          day: [15],
+          hour: [10],
+          minute: [30],
+          second: [0],
+          timezone: "+02:00"
+        )
+
+      assert result == [~N[2023-01-15 08:30:00]]
+    end
+
     test "timestamp_shorthand_to_value handles 'now'" do
       result = Helpers.timestamp_shorthand_to_value(["now"])
       assert result.shorthand == "now"
@@ -323,8 +368,6 @@ defmodule Logflare.Lql.Parser.HelpersTest do
 
   describe "ISO8601 parsing error handling" do
     test "handles ISO8601 parsing with timezone offset" do
-      stub(Date, :from_iso8601, fn _ -> {:ok, ~D[2023-01-01], "+00:00"} end)
-
       result = Helpers.parse_date_or_datetime([{:date, "2023-01-01"}])
       assert result == ~D[2023-01-01]
     end
@@ -336,7 +379,7 @@ defmodule Logflare.Lql.Parser.HelpersTest do
       assert error =~ "Error while parsing timestamp date value: expected ISO8601 string, got"
     end
 
-    test "handles generic ISO8601 error" do
+    test "preserves generic ISO8601 date errors" do
       stub(Date, :from_iso8601, fn _ -> {:error, "custom error"} end)
 
       error = catch_throw(Helpers.parse_date_or_datetime([{:date, "2023-01-01"}]))
