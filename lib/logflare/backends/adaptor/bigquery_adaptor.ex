@@ -117,7 +117,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     table_id = format_table_name(opts[:source_token])
 
     arrow_data =
-      OpenTelemetry.Tracer.with_span "bigquery.serialize", %{
+      OpenTelemetry.Tracer.with_span "ingest.bq_serialize", %{
         attributes: %{insert_method: :bq_storage_write}
       } do
         OpenTelemetry.Tracer.set_attribute(:input_bytes, :erlang.external_size(log_events))
@@ -138,7 +138,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       end
 
     # append rows
-    OpenTelemetry.Tracer.with_span "bigquery.api_call", %{
+    OpenTelemetry.Tracer.with_span "ingest.bq_api_call", %{
       attributes: %{insert_method: :bq_storage_write}
     } do
       GoogleApiClient.append_rows({:arrow, arrow_data}, context, table_id)
