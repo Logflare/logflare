@@ -16,6 +16,8 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Backend
+  alias Logflare.Utils
+  alias Ecto.Changeset
 
   @behaviour Adaptor
   @behaviour HttpBased.Client
@@ -33,26 +35,22 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
   end
 
   @impl Adaptor
-  def cast_config(params) do
-    defaults = %{
-      domain: "api.axiom.co"
-    }
-
+  def cast_config(params, existing_config \\ %{}) do
     types = %{
       domain: :string,
       api_token: :string,
       dataset_name: :string
     }
 
-    {%{}, types}
-    |> Ecto.Changeset.change(defaults)
-    |> Ecto.Changeset.cast(params, Map.keys(types))
+    {existing_config, types}
+    |> Changeset.cast(params, Map.keys(types))
+    |> Utils.default_field_value(:domain, "api.axiom.co")
   end
 
   @impl Adaptor
   def validate_config(changeset) do
     changeset
-    |> Ecto.Changeset.validate_required([:domain, :api_token, :dataset_name])
+    |> Changeset.validate_required([:domain, :api_token, :dataset_name])
   end
 
   @impl Adaptor

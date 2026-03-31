@@ -11,7 +11,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   @default_ttl_days 90
 
   # When true, applies cloud settings to all table types (logs, metrics, traces).
-  # When false, only applies to *otel_logs* tables (standard + simple).
+  # When false, only applies to *otel_logs* table.
   @apply_cloud_settings_to_all_tables false
 
   @base_settings "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
@@ -128,13 +128,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `scope_version` LowCardinality(String) CODEC(ZSTD(1)),
         `scope_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
         `resource_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
-        `resource_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
-        `scope_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
-        `log_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
+        `resource_attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        `scope_attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        `log_attributes` Map(String, String) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
         `timestamp_time` DateTime DEFAULT toDateTime(timestamp),
-        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1
       )
       ENGINE = #{engine}
@@ -155,191 +154,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   """
   @spec create_metrics_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
   def create_metrics_table_statement(table, opts \\ [])
-      when is_non_empty_binary(table) and is_list(opts) do
-    {db_table, engine, ttl_days} = extract_opts(table, opts)
-
-    Enum.join([
-      """
-      CREATE TABLE IF NOT EXISTS #{db_table} (
-        `id` UUID,
-        `source_uuid` LowCardinality(String) CODEC(ZSTD(1)),
-        `source_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `project` String CODEC(ZSTD(1)),
-        `time_unix` Nullable(DateTime64(9)) CODEC(Delta(8), ZSTD(1)),
-        `start_time_unix` Nullable(DateTime64(9)) CODEC(Delta(8), ZSTD(1)),
-        `metric_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `metric_description` String CODEC(ZSTD(1)),
-        `metric_unit` LowCardinality(String) CODEC(ZSTD(1)),
-        `metric_type` Enum8('gauge' = 1, 'sum' = 2, 'histogram' = 3, 'exponential_histogram' = 4, 'summary' = 5),
-        `service_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `event_message` String CODEC(ZSTD(1)),
-        `scope_name` String CODEC(ZSTD(1)),
-        `scope_version` LowCardinality(String) CODEC(ZSTD(1)),
-        `scope_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
-        `resource_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
-        `resource_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
-        `scope_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
-        `attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
-        `aggregation_temporality` LowCardinality(String) CODEC(ZSTD(1)),
-        `is_monotonic` Bool,
-        `flags` UInt32 CODEC(ZSTD(1)),
-        `value` Float64 CODEC(ZSTD(1)),
-        `count` UInt64 CODEC(ZSTD(1)),
-        `sum` Float64 CODEC(ZSTD(1)),
-        `bucket_counts` Array(UInt64) CODEC(ZSTD(1)),
-        `explicit_bounds` Array(Float64) CODEC(ZSTD(1)),
-        `min` Float64 CODEC(ZSTD(1)),
-        `max` Float64 CODEC(ZSTD(1)),
-        `scale` Int32 CODEC(ZSTD(1)),
-        `zero_count` UInt64 CODEC(ZSTD(1)),
-        `positive_offset` Int32 CODEC(ZSTD(1)),
-        `positive_bucket_counts` Array(UInt64) CODEC(ZSTD(1)),
-        `negative_offset` Int32 CODEC(ZSTD(1)),
-        `negative_bucket_counts` Array(UInt64) CODEC(ZSTD(1)),
-        `quantile_values` Array(Float64) CODEC(ZSTD(1)),
-        `quantiles` Array(Float64) CODEC(ZSTD(1)),
-        `exemplars.filtered_attributes` Array(JSON(max_dynamic_paths=0, max_dynamic_types=1)) CODEC(ZSTD(1)),
-        `exemplars.time_unix` Array(DateTime64(9)) CODEC(ZSTD(1)),
-        `exemplars.value` Array(Float64) CODEC(ZSTD(1)),
-        `exemplars.span_id` Array(String) CODEC(ZSTD(1)),
-        `exemplars.trace_id` Array(String) CODEC(ZSTD(1)),
-        `mapping_config_id` UUID,
-        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp)
-      )
-      ENGINE = #{engine}
-      PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, metric_name, project, timestamp_hour)
-      """,
-      if is_pos_integer(ttl_days) do
-        "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
-      end,
-      build_settings_string(opts)
-    ])
-    |> String.trim_trailing("\n")
-  end
-
-  @doc """
-  Generates a ClickHouse DDL statement for an OTEL traces table.
-  """
-  @spec create_traces_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
-  def create_traces_table_statement(table, opts \\ [])
-      when is_non_empty_binary(table) and is_list(opts) do
-    {db_table, engine, ttl_days} = extract_opts(table, opts)
-
-    Enum.join([
-      """
-      CREATE TABLE IF NOT EXISTS #{db_table} (
-        `id` UUID,
-        `source_uuid` LowCardinality(String) CODEC(ZSTD(1)),
-        `source_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `project` String CODEC(ZSTD(1)),
-        `trace_id` String CODEC(ZSTD(1)),
-        `span_id` String CODEC(ZSTD(1)),
-        `parent_span_id` String CODEC(ZSTD(1)),
-        `trace_state` String CODEC(ZSTD(1)),
-        `span_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `span_kind` LowCardinality(String) CODEC(ZSTD(1)),
-        `service_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `event_message` String CODEC(ZSTD(1)),
-        `duration` UInt64 CODEC(ZSTD(1)),
-        `status_code` LowCardinality(String) CODEC(ZSTD(1)),
-        `status_message` String CODEC(ZSTD(1)),
-        `scope_name` String CODEC(ZSTD(1)),
-        `scope_version` String CODEC(ZSTD(1)),
-        `resource_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
-        `span_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
-        `events.timestamp` Array(DateTime64(9)) CODEC(ZSTD(1)),
-        `events.name` Array(LowCardinality(String)) CODEC(ZSTD(1)),
-        `events.attributes` Array(JSON(max_dynamic_paths=0, max_dynamic_types=1)) CODEC(ZSTD(1)),
-        `links.trace_id` Array(String) CODEC(ZSTD(1)),
-        `links.span_id` Array(String) CODEC(ZSTD(1)),
-        `links.trace_state` Array(String) CODEC(ZSTD(1)),
-        `links.attributes` Array(JSON(max_dynamic_paths=0, max_dynamic_types=1)) CODEC(ZSTD(1)),
-        `mapping_config_id` UUID,
-        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp),
-        INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
-        INDEX idx_duration duration TYPE minmax GRANULARITY 1
-      )
-      ENGINE = #{engine}
-      PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, span_name, project, timestamp_hour)
-      """,
-      if is_pos_integer(ttl_days) do
-        "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
-      end,
-      build_settings_string(opts)
-    ])
-    |> String.trim_trailing("\n")
-  end
-
-  @doc """
-  Dispatches to the correct type-specific simple DDL function based on `event_type`.
-
-  Simple tables use `Map(String, String)` instead of `JSON` for attribute columns.
-  """
-  @spec create_simple_table_statement(
-          table :: String.t(),
-          event_type :: TypeDetection.event_type(),
-          opts :: Keyword.t()
-        ) :: String.t()
-  def create_simple_table_statement(table, :log, opts),
-    do: create_simple_logs_table_statement(table, opts)
-
-  def create_simple_table_statement(table, :metric, opts),
-    do: create_simple_metrics_table_statement(table, opts)
-
-  def create_simple_table_statement(table, :trace, opts),
-    do: create_simple_traces_table_statement(table, opts)
-
-  @spec create_simple_logs_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
-  def create_simple_logs_table_statement(table, opts \\ [])
-      when is_non_empty_binary(table) and is_list(opts) do
-    {db_table, engine, ttl_days} = extract_opts(table, opts)
-
-    Enum.join([
-      """
-      CREATE TABLE IF NOT EXISTS #{db_table} (
-        `id` UUID,
-        `source_uuid` LowCardinality(String) CODEC(ZSTD(1)),
-        `source_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `project` String CODEC(ZSTD(1)),
-        `trace_id` String CODEC(ZSTD(1)),
-        `span_id` String CODEC(ZSTD(1)),
-        `trace_flags` UInt8,
-        `severity_text` LowCardinality(String) CODEC(ZSTD(1)),
-        `severity_number` UInt8,
-        `service_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `event_message` String CODEC(ZSTD(1)),
-        `scope_name` String CODEC(ZSTD(1)),
-        `scope_version` LowCardinality(String) CODEC(ZSTD(1)),
-        `scope_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
-        `resource_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
-        `resource_attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-        `scope_attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-        `log_attributes` Map(String, String) CODEC(ZSTD(1)),
-        `mapping_config_id` UUID,
-        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-        `timestamp_time` DateTime DEFAULT toDateTime(timestamp),
-        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp),
-        INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1
-      )
-      ENGINE = #{engine}
-      PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, project, timestamp_hour)
-      """,
-      if is_pos_integer(ttl_days) do
-        "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
-      end,
-      build_settings_string(opts)
-    ])
-    |> String.trim_trailing("\n")
-  end
-
-  @spec create_simple_metrics_table_statement(table :: String.t(), opts :: Keyword.t()) ::
-          String.t()
-  def create_simple_metrics_table_statement(table, opts \\ [])
       when is_non_empty_binary(table) and is_list(opts) do
     {db_table, engine, ttl_days} = extract_opts(table, opts)
 
@@ -389,12 +203,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `exemplars.span_id` Array(String) CODEC(ZSTD(1)),
         `exemplars.trace_id` Array(String) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
-        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp)
+        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1))
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, metric_name, project, timestamp_hour)
+      PRIMARY KEY (project, source_name, toDateTime(timestamp))
+      ORDER BY (project, source_name, toDateTime(timestamp), timestamp)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
@@ -404,9 +218,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
     |> String.trim_trailing("\n")
   end
 
-  @spec create_simple_traces_table_statement(table :: String.t(), opts :: Keyword.t()) ::
-          String.t()
-  def create_simple_traces_table_statement(table, opts \\ [])
+  @doc """
+  Generates a ClickHouse DDL statement for an OTEL traces table.
+  """
+  @spec create_traces_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
+  def create_traces_table_statement(table, opts \\ [])
       when is_non_empty_binary(table) and is_list(opts) do
     {db_table, engine, ttl_days} = extract_opts(table, opts)
 
@@ -435,19 +251,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `events.timestamp` Array(DateTime64(9)) CODEC(ZSTD(1)),
         `events.name` Array(LowCardinality(String)) CODEC(ZSTD(1)),
         `events.attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
+        `Events.Timestamp` Array(DateTime64(9)) ALIAS `events.timestamp`,
+        `Events.Name` Array(LowCardinality(String)) ALIAS `events.name`,
+        `Events.Attributes` Array(Map(LowCardinality(String), String)) ALIAS `events.attributes`,
         `links.trace_id` Array(String) CODEC(ZSTD(1)),
         `links.span_id` Array(String) CODEC(ZSTD(1)),
         `links.trace_state` Array(String) CODEC(ZSTD(1)),
         `links.attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-        `timestamp_hour` DateTime DEFAULT toStartOfHour(timestamp),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
         INDEX idx_duration duration TYPE minmax GRANULARITY 1
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_name, span_name, project, timestamp_hour)
+      PRIMARY KEY (project, source_name, toDateTime(timestamp))
+      ORDER BY (project, source_name, toDateTime(timestamp), timestamp)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"

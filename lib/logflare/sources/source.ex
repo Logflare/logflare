@@ -5,6 +5,7 @@ defmodule Logflare.Sources.Source do
   import Ecto.Changeset
 
   alias Logflare.Billing
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Users
 
   @default_source_api_quota 25
@@ -33,9 +34,6 @@ defmodule Logflare.Sources.Source do
              :bigquery_clustering_fields,
              :default_ingest_backend_enabled?
            ]}
-
-  defp env_dataset_id_append,
-    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   defmodule Metrics do
     @moduledoc false
@@ -272,7 +270,7 @@ defmodule Logflare.Sources.Source do
         days = round(plan.limit_source_ttl / :timer.hours(24))
 
         cond do
-          user.bigquery_project_id != Application.get_env(:logflare, Logflare.Google)[:project_id] ->
+          user.bigquery_project_id != GCPConfig.default_project_id() ->
             []
 
           ttl > days ->
@@ -347,13 +345,12 @@ defmodule Logflare.Sources.Source do
   end
 
   def generate_bq_table_id(%__MODULE__{} = source) do
-    default_project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
-
-    bq_project_id = source.user.bigquery_project_id || default_project_id
+    bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
 
     table = format_table_name(source.token)
 
-    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}" <> env_dataset_id_append()
+    dataset_id =
+      source.user.bigquery_dataset_id || "#{source.user.id}" <> GCPConfig.dataset_id_append()
 
     "`#{bq_project_id}`.#{dataset_id}.#{table}"
   end

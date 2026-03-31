@@ -20,12 +20,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Billing
   alias Logflare.BqRepo
   alias Logflare.Endpoints.Query
   alias Logflare.Google
   alias Logflare.Google.BigQuery.EventUtils
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
   alias Logflare.Sources
@@ -241,8 +243,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def supports_default_ingest?, do: true
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{}, %{project_id: :string, dataset_id: :string}}
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config, %{project_id: :string, dataset_id: :string}}
     |> Changeset.cast(params, [:project_id, :dataset_id])
   end
 
@@ -290,7 +292,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   """
   @spec list_managed_service_accounts(String.t()) :: [GoogleApi.IAM.V1.Model.ServiceAccount.t()]
   def list_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || env_project_id()
+    project_id = project_id || GCPConfig.default_project_id()
 
     get_next_page(project_id, nil)
     |> Enum.filter(&(&1.name =~ @service_account_prefix))
@@ -305,7 +307,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @spec create_managed_service_accounts(String.t()) ::
           {:ok, [GoogleApi.IAM.V1.Model.ServiceAccount.t()]}
   def create_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || env_project_id()
+    project_id = project_id || GCPConfig.default_project_id()
 
     # determine the ids of of service accounts to create, based on what service accounts already exist
     size =
@@ -443,7 +445,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   """
   @spec impersonated_goth_child_specs :: [Supervisor.child_spec()]
   def impersonated_goth_child_specs do
-    project_id = env_project_id()
+    project_id = GCPConfig.default_project_id()
     pool_size = managed_service_account_pool_size()
     json = Application.get_env(:goth, :json)
 
@@ -579,7 +581,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           input_params :: map(),
           nil | Query.t(),
           opts :: Keyword.t()
-        ) :: {:ok, Query.t()} | {:error, any()}
+        ) :: {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_context(user_id, query_string, declared_params, input_params, nil, opts) do
     user = Users.Cache.get(user_id)
     bq_params = build_bq_params(declared_params, input_params)
@@ -595,7 +597,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           input_params :: map(),
           endpoint_query :: Query.t(),
           opts :: Keyword.t()
-        ) :: {:ok, Query.t()} | {:error, any()}
+        ) :: {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_context(
          user_id,
          query_string,
@@ -628,13 +630,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bq_params :: [map()],
           query_opts :: Keyword.t()
         ) ::
-          {:ok, %{rows: [map()], total_bytes_processed: integer(), total_rows: integer()}}
+          {:ok, QueryResult.t()}
           | {:error, any()}
   defp execute_user_query(%User{} = user, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
     execute_user_query(
       user,
-      user.bigquery_project_id || env_project_id(),
+      user.bigquery_project_id || GCPConfig.default_project_id(),
       query_string,
       bq_params,
       query_opts
@@ -648,7 +650,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bq_params :: [map()],
           query_opts :: Keyword.t()
         ) ::
-          {:ok, %{rows: [map()], total_bytes_processed: integer(), total_rows: integer()}}
+          {:ok, QueryResult.t()}
           | {:error, any()}
   defp execute_user_query(%User{} = user, project_id, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
@@ -661,13 +663,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          ) do
       {:ok, result} ->
         {:ok,
-         %{
-           rows: result.rows,
+         QueryResult.new(result.rows, %{
            total_bytes_processed: result.total_bytes_processed,
            total_rows: result.total_rows,
            query_string: query_string,
            bq_params: bq_params
-         }}
+         })}
 
       {:error, %{body: body}} ->
         error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)
@@ -699,7 +700,4 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       parameterValue: %Value{value: param}
     }
   end
-
-  @spec env_project_id :: String.t()
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 end

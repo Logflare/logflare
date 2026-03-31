@@ -6,6 +6,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.SystemMetrics.AllLogsLogged
   alias GoogleApi.CloudResourceManager.V1.Model
 
@@ -79,7 +80,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       source = insert(:source, user: user)
       start_supervised!({SourceSup, source})
 
-      assert {:ok, %{rows: [%{"test" => "input_data"}]}} =
+      assert {:ok, %QueryResult{rows: [%{"test" => "input_data"}]}} =
                BigQueryAdaptor.execute_query(
                  backend,
                  {"SELECT @test", ["test"], %{"test" => "input_data"}},
@@ -103,7 +104,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       source = insert(:source, user: user)
       start_supervised!({SourceSup, source})
 
-      assert {:ok, %{rows: [%{"test" => "1"}]}} =
+      assert {:ok, %QueryResult{rows: [%{"test" => "1"}]}} =
                BigQueryAdaptor.execute_query(backend, "SELECT 1", [])
     end
   end

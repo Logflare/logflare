@@ -14,8 +14,10 @@ defmodule Logflare.Alerting do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Cluster
   alias Logflare.Endpoints
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Repo
   alias Logflare.Teams
@@ -293,7 +295,7 @@ defmodule Logflare.Alerting do
     alert_query = alert_query |> preload_alert_query()
 
     case execute_alert_query(alert_query) do
-      {:ok, %{rows: [_ | _] = results} = result} ->
+      {:ok, %QueryResult{rows: [_ | _] = results} = result} ->
         if alert_query.webhook_notification_url do
           send_webhook_notification(alert_query, results)
         end
@@ -316,10 +318,10 @@ defmodule Logflare.Alerting do
           )
         end
 
-        {:ok, Map.put(result, :fired, true)}
+        {:ok, result |> Map.from_struct() |> Map.put(:fired, true)}
 
-      {:ok, %{rows: rows} = result} when rows == [] or rows == nil ->
-        {:ok, Map.put(result, :fired, false)}
+      {:ok, %QueryResult{rows: rows} = result} when rows == [] or rows == nil ->
+        {:ok, result |> Map.from_struct() |> Map.put(:fired, false)}
 
       other ->
         other
@@ -423,11 +425,11 @@ defmodule Logflare.Alerting do
 
   ```elixir
   iex> execute_alert_query(alert_query)
-  {:ok, [%{"user_id" => "my-user-id"}]}
+  {:ok, %Logflare.Backends.Adaptor.QueryResult{rows: [%{"user_id" => "my-user-id"}]}}
   ```
   """
   @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
-          Logflare.BqRepo.query_result() | {:error, any()}
+          {:ok, QueryResult.t()} | {:error, any()}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
     Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
@@ -449,7 +451,7 @@ defmodule Logflare.Alerting do
          {:ok, result} <-
            BigQueryAdaptor.execute_query(
              {
-               alert_query.user.bigquery_project_id || env_project_id(),
+               alert_query.user.bigquery_project_id || GCPConfig.default_project_id(),
                alert_query.user.bigquery_dataset_id,
                alert_query.user.id
              },
@@ -494,7 +496,4 @@ defmodule Logflare.Alerting do
         {:error, error}
     end
   end
-
-  # helper to get the google project id via env.
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 end

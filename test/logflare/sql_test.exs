@@ -10,6 +10,7 @@ defmodule Logflare.SqlTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Adaptor.QueryResult
 
   @logflare_project_id "logflare-project-id"
   @user_project_id "user-project-id"
@@ -563,7 +564,10 @@ defmodule Logflare.SqlTest do
       consumer_query = "select event_message from src"
 
       assert {:ok, transformed} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
-      assert {:ok, results} = ClickHouseAdaptor.execute_query(backend, transformed, [])
+
+      assert {:ok, %QueryResult{rows: results}} =
+               ClickHouseAdaptor.execute_query(backend, transformed, [])
+
       assert length(results) == 2
 
       # cannot access the source table directly
@@ -930,7 +934,9 @@ defmodule Logflare.SqlTest do
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
-      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed, [])
+
+      assert {:ok, %QueryResult{rows: [%{"count" => 1}]}} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
     test "translate operator to numeric with between with 2 level nested field reference",
@@ -954,7 +960,9 @@ defmodule Logflare.SqlTest do
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
-      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed, [])
+
+      assert {:ok, %QueryResult{rows: [%{"count" => 1}]}} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
     test "CTE translation with cross join",
@@ -978,11 +986,13 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
       assert {:ok,
-              [
-                %{
-                  "count" => 1
-                }
-              ]} = PostgresAdaptor.execute_query(backend, transformed, [])
+              %QueryResult{
+                rows: [
+                  %{
+                    "count" => 1
+                  }
+                ]
+              }} = PostgresAdaptor.execute_query(backend, transformed, [])
     end
   end
 
@@ -1016,14 +1026,16 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
       assert {:ok,
-              [
-                %{
-                  "event_message" => "something",
-                  "method" => "GET",
-                  "path" => "/",
-                  "status_code" => 200
-                }
-              ]} = PostgresAdaptor.execute_query(backend, transformed, [])
+              %QueryResult{
+                rows: [
+                  %{
+                    "event_message" => "something",
+                    "method" => "GET",
+                    "path" => "/",
+                    "status_code" => 200
+                  }
+                ]
+              }} = PostgresAdaptor.execute_query(backend, transformed, [])
     end
   end
 
@@ -1065,7 +1077,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
       # execute it on PG
-      assert {:ok, [%{"test" => "data", "nested" => "value"}]} =
+      assert {:ok, %QueryResult{rows: [%{"test" => "data", "nested" => "value"}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1089,7 +1101,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"count" => 1}]} =
+      assert {:ok, %QueryResult{rows: [%{"count" => 1}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1103,7 +1115,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"has_substring" => true}]} =
+      assert {:ok, %QueryResult{rows: [%{"has_substring" => true}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1117,7 +1129,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"has_substring" => false}]} =
+      assert {:ok, %QueryResult{rows: [%{"has_substring" => false}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1135,7 +1147,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"has_substring" => true}]} =
+      assert {:ok, %QueryResult{rows: [%{"has_substring" => true}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1154,7 +1166,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"nested" => "value"}]} =
+      assert {:ok, %QueryResult{rows: [%{"nested" => "value"}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1184,7 +1196,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"nested" => "deeper"}]} =
+      assert {:ok, %QueryResult{rows: [%{"nested" => "deeper"}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
