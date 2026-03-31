@@ -8,6 +8,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
@@ -27,7 +28,9 @@ defmodule Logflare.Endpoints do
   @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
 
   @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
-  @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
+  @typep run_query_return ::
+           {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
+           | {:error, String.t()}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
@@ -588,14 +591,9 @@ defmodule Logflare.Endpoints do
       redact_pii = Keyword.get(opts, :redact_pii, endpoint_query.redact_pii)
 
       case adaptor.execute_query(backend, query_args, opts) do
-        {:ok, rows} when is_list(rows) ->
+        {:ok, %QueryResult{rows: rows} = result} ->
           redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
-          {:ok, %{rows: redacted_rows}}
-
-        {:ok, %{rows: rows} = result} ->
-          # Pass through the full result map with all metadata, but redact PII in rows
-          redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
-          {:ok, %{result | rows: redacted_rows}}
+          {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}
 
         {:error, error} ->
           {:error, error}
