@@ -53,18 +53,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
                "otel_traces_#{stringified_backend_token}"
     end
-
-    test "generates simple_otel-prefixed table names per log type",
-         %{backend: backend, stringified_backend_token: stringified_backend_token} do
-      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :log) ==
-               "simple_otel_logs_#{stringified_backend_token}"
-
-      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :metric) ==
-               "simple_otel_metrics_#{stringified_backend_token}"
-
-      assert ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :trace) ==
-               "simple_otel_traces_#{stringified_backend_token}"
-    end
   end
 
   describe "connection and basic functionality" do
@@ -281,7 +269,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       insert(:plan, name: "Free")
 
       {source, backend} =
-        setup_clickhouse_test(config: %{use_simple_schemas: true})
+        setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
@@ -374,11 +362,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       # mapper elevates metadata keys and excludes event_message from log_attributes
       assert log_attributes1["level"] == "info"
-      assert log_attributes1["user_id"] == 123
+      assert log_attributes1["user_id"] == "123"
       refute Map.has_key?(log_attributes1, "event_message")
 
       assert log_attributes2["level"] == "error"
-      assert log_attributes2["user_id"] == 456
+      assert log_attributes2["user_id"] == "456"
       refute Map.has_key?(log_attributes2, "event_message")
     end
 
@@ -424,66 +412,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       end)
     end
 
-    test "insert_simple_log_events/3 routes through native pool with Map attributes", %{
-      source: source,
-      backend: query_backend
-    } do
-      {_source, native_backend} =
-        setup_clickhouse_test(
-          source: source,
-          config: %{insert_protocol: "native", native_port: 9000}
-        )
-
-      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(native_backend, :log)
-
-      ddl = QueryTemplates.create_simple_table_statement(table_name, :log, ttl_days: 0)
-      {:ok, _} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
-
-      log_event =
-        build_mapped_log_event(
-          source: source,
-          message: "native simple test",
-          body: %{"metadata" => %{"level" => "error", "host" => "web-1"}},
-          mapping_variant: :simple
-        )
-
-      assert :ok = ClickHouseAdaptor.insert_simple_log_events(native_backend, [log_event], :log)
-
-      {:ok, [row]} =
-        ClickHouseAdaptor.execute_ch_query(
-          query_backend,
-          "SELECT event_message, log_attributes, resource_attributes FROM #{table_name}"
-        )
-
-      assert row["event_message"] == "native simple test"
-      assert is_map(row["log_attributes"])
-      assert row["log_attributes"]["level"] == "error"
-      assert row["log_attributes"]["host"] == "web-1"
-      assert is_map(row["resource_attributes"])
-
-      on_exit(fn ->
-        NativePoolSup.stop_pool(native_backend)
-        ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
-      end)
-    end
-
-    test "insert_simple_log_events/3 inserts logs into simple table with Map attributes", %{
+    test "insert_log_events/3 inserts logs with Map attributes", %{
       source: source,
       backend: backend
     } do
       log_event =
         build_mapped_log_event(
           source: source,
-          message: "Simple log insert",
-          body: %{"metadata" => %{"level" => "warn", "region" => "us-west-2"}},
-          mapping_variant: :simple
+          message: "Map log insert",
+          body: %{"metadata" => %{"level" => "warn", "region" => "us-west-2"}}
         )
 
-      :ok = ClickHouseAdaptor.insert_simple_log_events(backend, [log_event], :log)
+      :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
 
       Process.sleep(100)
 
-      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :log)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       {:ok, [row]} =
         ClickHouseAdaptor.execute_ch_query(
@@ -491,7 +435,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
           "SELECT event_message, resource_attributes, scope_attributes, log_attributes FROM #{table_name}"
         )
 
-      assert row["event_message"] == "Simple log insert"
+      assert row["event_message"] == "Map log insert"
       assert is_map(row["resource_attributes"])
       assert is_map(row["scope_attributes"])
       assert is_map(row["log_attributes"])
@@ -499,22 +443,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert row["log_attributes"]["region"] == "us-west-2"
     end
 
-    test "insert_simple_log_events/3 inserts metrics into simple table with Map attributes", %{
+    test "insert_log_events/3 inserts metrics with Map attributes", %{
       source: source,
       backend: backend
     } do
       metric_event =
         build_mapped_metric_event(
           source: source,
-          message: "Simple metric insert",
-          mapping_variant: :simple
+          message: "Map metric insert"
         )
 
-      :ok = ClickHouseAdaptor.insert_simple_log_events(backend, [metric_event], :metric)
+      :ok = ClickHouseAdaptor.insert_log_events(backend, [metric_event], :metric)
 
       Process.sleep(100)
 
-      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :metric)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
       {:ok, [row]} =
         ClickHouseAdaptor.execute_ch_query(
@@ -522,28 +465,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
           "SELECT event_message, resource_attributes, scope_attributes, attributes FROM #{table_name}"
         )
 
-      assert row["event_message"] == "Simple metric insert"
+      assert row["event_message"] == "Map metric insert"
       assert is_map(row["resource_attributes"])
       assert is_map(row["scope_attributes"])
       assert is_map(row["attributes"])
     end
 
-    test "insert_simple_log_events/3 inserts traces into simple table with Map attributes", %{
+    test "insert_log_events/3 inserts traces with Map attributes", %{
       source: source,
       backend: backend
     } do
       trace_event =
         build_mapped_trace_event(
           source: source,
-          message: "Simple trace insert",
-          mapping_variant: :simple
+          message: "Map trace insert"
         )
 
-      :ok = ClickHouseAdaptor.insert_simple_log_events(backend, [trace_event], :trace)
+      :ok = ClickHouseAdaptor.insert_log_events(backend, [trace_event], :trace)
 
       Process.sleep(100)
 
-      table_name = ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, :trace)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
       {:ok, [row]} =
         ClickHouseAdaptor.execute_ch_query(
@@ -551,7 +493,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
           "SELECT event_message, resource_attributes, span_attributes FROM #{table_name}"
         )
 
-      assert row["event_message"] == "Simple trace insert"
+      assert row["event_message"] == "Map trace insert"
       assert is_map(row["resource_attributes"])
       assert is_map(row["span_attributes"])
     end

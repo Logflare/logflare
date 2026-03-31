@@ -125,8 +125,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_url: :string,
        insert_protocol: :string,
        native_port: :integer,
-       native_pool_size: :integer,
-       use_simple_schemas: :boolean
+       native_pool_size: :integer
      }}
     |> Changeset.cast(params, [
       :url,
@@ -139,11 +138,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_url,
       :insert_protocol,
       :native_port,
-      :native_pool_size,
-      :use_simple_schemas
+      :native_pool_size
     ])
     |> Logflare.Utils.default_field_value(:async_insert, false)
-    |> Logflare.Utils.default_field_value(:use_simple_schemas, false)
     |> Logflare.Utils.default_field_value(:insert_protocol, "http")
   end
 
@@ -243,23 +240,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def clickhouse_ingest_table_name(%Backend{} = backend, :trace),
     do: build_otel_table_name(backend, "otel_traces")
 
-  @doc """
-  Produces a type-specific simple ingest table name for ClickHouse.
-
-  - `:log`    -> `simple_otel_logs_<token>`
-  - `:metric` -> `simple_otel_metrics_<token>`
-  - `:trace`  -> `simple_otel_traces_<token>`
-  """
-  @spec simple_clickhouse_ingest_table_name(Backend.t(), TypeDetection.event_type()) :: String.t()
-  def simple_clickhouse_ingest_table_name(%Backend{} = backend, :log),
-    do: build_otel_table_name(backend, "simple_otel_logs")
-
-  def simple_clickhouse_ingest_table_name(%Backend{} = backend, :metric),
-    do: build_otel_table_name(backend, "simple_otel_metrics")
-
-  def simple_clickhouse_ingest_table_name(%Backend{} = backend, :trace),
-    do: build_otel_table_name(backend, "simple_otel_traces")
-
   @spec build_otel_table_name(Backend.t(), String.t()) :: String.t()
   defp build_otel_table_name(%Backend{token: token}, prefix) do
     token_str = String.replace(token, "-", "_")
@@ -333,72 +313,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         event_type
       )
       when is_event_type(event_type) do
-    with :ok <- NativePoolSup.ensure_started(backend) do
-      table_name = clickhouse_ingest_table_name(backend, event_type)
-      do_insert_log_events(backend, events, event_type, :native, table_name)
+    Logger.metadata(backend_id: backend.id)
+    table_name = clickhouse_ingest_table_name(backend, event_type)
+
+    with :ok <- NativePoolSup.ensure_started(backend),
+         :ok <- NativeIngester.insert(backend, table_name, events, event_type) do
+      :ok
+    else
+      {:error, reason} ->
+        Logger.warning("ClickHouse native insert error.",
+          error_string: inspect(reason)
+        )
+
+        {:error, reason}
     end
   end
 
   def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
       when is_event_type(event_type) do
-    table_name = clickhouse_ingest_table_name(backend, event_type)
-    do_insert_log_events(backend, events, event_type, :http, table_name)
-  end
-
-  @doc """
-  Inserts a list of `LogEvent` structs into a simple type-specific ingest table.
-  """
-  @spec insert_simple_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type()) ::
-          :ok | {:error, String.t()}
-  def insert_simple_log_events(%Backend{}, [], _event_type), do: :ok
-
-  def insert_simple_log_events(
-        %Backend{config: %{insert_protocol: "native"}} = backend,
-        [%LogEvent{} | _] = events,
-        event_type
-      )
-      when is_event_type(event_type) do
-    with :ok <- NativePoolSup.ensure_started(backend) do
-      table_name = simple_clickhouse_ingest_table_name(backend, event_type)
-      do_insert_log_events(backend, events, event_type, :native, table_name, :simple)
-    end
-  end
-
-  def insert_simple_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
-      when is_event_type(event_type) do
-    table_name = simple_clickhouse_ingest_table_name(backend, event_type)
-    do_insert_log_events(backend, events, event_type, :http, table_name, :simple)
-  end
-
-  @spec do_insert_log_events(
-          Backend.t(),
-          [LogEvent.t()],
-          TypeDetection.event_type(),
-          :http | :native,
-          String.t(),
-          :simple | nil
-        ) :: :ok | {:error, String.t()}
-  defp do_insert_log_events(backend, events, event_type, protocol, table_name, variant \\ nil) do
     Logger.metadata(backend_id: backend.id)
+    table_name = clickhouse_ingest_table_name(backend, event_type)
 
-    result =
-      case {protocol, variant} do
-        {:native, _} ->
-          NativeIngester.insert(backend, table_name, events, event_type)
-
-        {:http, :simple} ->
-          Ingester.insert_simple(backend, table_name, events, event_type)
-
-        {:http, _} ->
-          Ingester.insert(backend, table_name, events, event_type)
-      end
-
-    case result do
+    case Ingester.insert(backend, table_name, events, event_type) do
       :ok ->
         :ok
 
       {:error, reason} ->
-        Logger.warning("ClickHouse #{protocol} insert error.",
+        Logger.warning("ClickHouse http insert error.",
           error_string: inspect(reason)
         )
 
@@ -410,44 +351,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   Provisions all type-specific ingest tables for the backend, if they do not already exist.
 
   Creates one table per log type: `_logs`, `_metrics`, and `_traces`.
-  Simple schema tables (`_simple_logs`, etc.) are only provisioned when `use_simple_schemas: true`
-  is set in the backend config.
   """
   @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, Exception.t()}
-  def provision_ingest_tables(%Backend{config: %{use_simple_schemas: true}} = backend) do
-    with :ok <- provision_standard_tables(backend) do
-      provision_simple_tables(backend)
-    end
-  end
-
   def provision_ingest_tables(%Backend{} = backend) do
-    provision_standard_tables(backend)
-  end
-
-  @spec provision_standard_tables(Backend.t()) :: :ok | {:error, Exception.t()}
-  defp provision_standard_tables(backend) do
     cloud? = clickhouse_cloud?(backend)
 
     Enum.reduce_while([:log, :metric, :trace], :ok, fn event_type, :ok ->
       table_name = clickhouse_ingest_table_name(backend, event_type)
       ddl_opts = build_ddl_opts(event_type, cloud?)
       statement = QueryTemplates.create_table_statement(table_name, event_type, ddl_opts)
-
-      case execute_ch_query(backend, statement) do
-        {:ok, _} -> {:cont, :ok}
-        {:error, _} = error -> {:halt, error}
-      end
-    end)
-  end
-
-  @spec provision_simple_tables(Backend.t()) :: :ok | {:error, Exception.t()}
-  defp provision_simple_tables(backend) do
-    cloud? = clickhouse_cloud?(backend)
-
-    Enum.reduce_while([:log, :metric, :trace], :ok, fn event_type, :ok ->
-      table_name = simple_clickhouse_ingest_table_name(backend, event_type)
-      ddl_opts = build_ddl_opts(event_type, cloud?)
-      statement = QueryTemplates.create_simple_table_statement(table_name, event_type, ddl_opts)
 
       case execute_ch_query(backend, statement) do
         {:ok, _} -> {:cont, :ok}
