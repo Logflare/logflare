@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   @moduledoc false
 
   import Kernel, except: [send: 2]
+  alias Logflare.Backends.Cache, as: BackendsCache
 
   @behaviour NimblePool
 
@@ -142,7 +143,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   defp close(socket), do: :ssl.close(socket)
 
   defp current_backend_config(backend_id) do
-    if backend = Logflare.Backends.Cache.get_backend(backend_id) do
+    if backend = BackendsCache.get_backend(backend_id) do
       backend.config
     else
       raise "missing backend #{backend_id}"
