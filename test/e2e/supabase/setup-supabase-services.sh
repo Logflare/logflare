@@ -2,24 +2,12 @@
 
 set -euo pipefail
 
-RED='\033[31m'
-GREEN='\033[32m'
-YELLOW='\033[33m'
-PURPLE='\033[35m'
-PINK='\033[95m'
-GREY='\033[90m'
-CYAN='\033[36m'
-BLUE='\033[34m'
-RESET='\033[0m'
+BASE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
 
-SUPABASE_REPO="https://github.com/supabase/supabase"
-BRANCH="master"
-SPARSE_PATH="docker"
-SUPABASE_DIR="supabase"
-GITHUB_ACTIONS="${GITHUB_ACTIONS:-false}"
+source "$BASE_DIR/config.sh"
 
 compose() {
-  docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml "$@"
+  $BASE_DIR/bin/compose "$@"
 }
 
 endgroup() {
@@ -35,9 +23,7 @@ error() { echo -e "${GREY}[$(date +"%Y-%m-%d %H:%M:%S")]${RESET} ${RED}[✗]${RE
 log "Cloning Supabase repository..."
 if [ -d "$SUPABASE_DIR" ]; then
   warn "Directory '$SUPABASE_DIR' exists. Removing..."
-  cd "$SUPABASE_DIR/$SPARSE_PATH"
   compose down -v
-  cd ../..
   sudo rm -rf "$SUPABASE_DIR"
 fi
 
@@ -63,6 +49,8 @@ if [ ! -f ".env.example" ]; then
 fi
 cp .env.example .env
 endgroup
+
+cd ../..
 
 [ ! "$GITHUB_ACTIONS" = "true" ] && log "Build logflare image..." && compose build analytics
 
