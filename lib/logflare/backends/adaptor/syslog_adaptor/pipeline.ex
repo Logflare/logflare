@@ -134,7 +134,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
 
   defp lookup_backend_config(backend_id) do
     %{config: config} =
-      Logflare.Backends.Cache.get_backend(backend_id) || raise "missing backend #{backend_id}"
+      Backends.Cache.get_backend(backend_id) || raise "missing backend #{backend_id}"
 
     if cipher_key = config[:cipher_key] do
       Map.put(config, :cipher_key, Base.decode64!(cipher_key))
