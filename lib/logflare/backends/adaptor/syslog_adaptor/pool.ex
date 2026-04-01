@@ -3,8 +3,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
   import Kernel, except: [send: 2]
 
-  alias Logflare.Backends
-
   @behaviour NimblePool
 
   @connect_timeout to_timeout(second: 15)
@@ -26,23 +24,23 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
         when error_reason: :closed | :timeout | :badarg | :inet.posix() | :ssl.reason()
   def send(pool, message) do
     NimblePool.checkout!(pool, :checkout, fn {pid, _ref}, conn ->
-      with {:connected, socket, _config} = conn <- ensure_connected(conn, pid),
+      with {:ok, conn, socket} <- ensure_connected(conn, pid),
            :ok <- send_data(socket, message) do
-        {:ok, {:ok, conn}}
+        {:ok, conn}
       else
         {:error, reason} = error -> {error, {:remove, reason}}
       end
     end)
   end
 
-  defp ensure_connected(conn, owner) do
-    with {:idle, backend_id} <- conn do
-      config = current_backend_config(backend_id)
+  defp ensure_connected({:connected, socket}, _owner), do: {:ok, :keep, socket}
 
-      case connect(config, owner) do
-        {:ok, socket} -> {:connected, socket, config}
-        {:error, _reason} = error -> error
-      end
+  defp ensure_connected({:idle, backend_id}, owner) do
+    config = current_backend_config(backend_id)
+
+    case connect(config, owner) do
+      {:ok, socket} -> {:ok, {:connected, socket, config}, socket}
+      {:error, _reason} = error -> error
     end
   end
 
@@ -62,11 +60,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
       :idle ->
         {:ok, {:idle, backend_id}, conn, backend_id}
 
-      {:connected, _socket, backend_config} ->
+      {:connected, socket, config} ->
         # if current backend config is the same as what it was when conn was opened,
         # return conn, otherwise remove it and try another one
-        if backend_config == current_backend_config(backend_id) do
-          {:ok, conn, conn, backend_id}
+        if config == current_backend_config(backend_id) do
+          {:ok, {:connected, socket}, conn, backend_id}
         else
           {:remove, :stale_config, backend_id}
         end
@@ -74,7 +72,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   end
 
   @impl NimblePool
-  def handle_checkin({:ok, conn}, _from, _prev_conn, backend_id) do
+  def handle_checkin(:keep, _from, conn, backend_id) do
+    {:ok, conn, backend_id}
+  end
+
+  def handle_checkin({:connected, _socket, _config} = conn, _from, :idle, backend_id) do
     {:ok, conn, backend_id}
   end
 
@@ -140,7 +142,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   defp close(socket), do: :ssl.close(socket)
 
   defp current_backend_config(backend_id) do
-    if backend = Backends.Cache.get_backend(backend_id) do
+    if backend = Logflare.Backends.Cache.get_backend(backend_id) do
       backend.config
     else
       raise "missing backend #{backend_id}"
