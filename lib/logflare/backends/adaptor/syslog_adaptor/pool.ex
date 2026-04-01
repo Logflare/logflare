@@ -35,17 +35,15 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     end)
   end
 
-  defp ensure_connected({:connect, backend_id}, owner) do
-    backend_config = current_backend_config(backend_id)
+  defp ensure_connected(worker, owner) do
+    with {:connect, backend_id} <- worker do
+      config = current_backend_config(backend_id)
 
-    case connect(backend_config, owner) do
-      {:ok, socket} -> {:connected, socket, backend_config}
-      {:error, _reason} = error -> error
+      case connect(config, owner) do
+        {:ok, socket} -> {:connected, socket, config}
+        {:error, _reason} = error -> error
+      end
     end
-  end
-
-  defp ensure_connected({:connected, _socket, _config} = conn, _owner) do
-    conn
   end
 
   @impl NimblePool
