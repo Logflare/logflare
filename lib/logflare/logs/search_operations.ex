@@ -90,7 +90,7 @@ defmodule Logflare.Logs.SearchOperations do
   defp put_sql_string(%{sql_string: sql_string} = so, _response) when is_binary(sql_string),
     do: so
 
-  defp put_sql_string(so, %QueryResult{
+  defp put_sql_string(%SO{backend_type: :bigquery} = so, %QueryResult{
          query_string: query_string,
          bq_params: bq_params
        }) do
@@ -101,7 +101,7 @@ defmodule Logflare.Logs.SearchOperations do
     }
   end
 
-  defp put_sql_string(%SO{} = so, _response) do
+  defp put_sql_string(%SO{backend_type: :postgres} = so, _response) do
     case PostgresAdaptor.ecto_to_sql(so.query, []) do
       {:ok, {query_string, params}} -> %{so | sql_string: query_string, sql_params: params}
       {:error, _reason} -> so
