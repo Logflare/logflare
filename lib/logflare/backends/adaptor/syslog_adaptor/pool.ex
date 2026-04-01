@@ -23,10 +23,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   end
 
   @spec send(NimblePool.pool(), iodata) :: :ok | {:error, error_reason}
-        when error_reason: :closed | :timeout | :inet.posix() | :ssl.reason()
+        when error_reason: :closed | :timeout | :badarg | :inet.posix() | :ssl.reason()
   def send(pool, message) do
-    NimblePool.checkout!(pool, :checkout, fn {pid, _ref}, worker ->
-      with {:connected, socket, _config} = conn <- ensure_connected(worker, pid),
+    NimblePool.checkout!(pool, :checkout, fn {pid, _ref}, conn ->
+      with {:connected, socket, _config} = conn <- ensure_connected(conn, pid),
            :ok <- send_data(socket, message) do
         {:ok, {:ok, conn}}
       else
@@ -35,8 +35,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     end)
   end
 
-  defp ensure_connected(worker, owner) do
-    with {:connect, backend_id} <- worker do
+  defp ensure_connected(conn, owner) do
+    with {:idle, backend_id} <- conn do
       config = current_backend_config(backend_id)
 
       case connect(config, owner) do
@@ -60,7 +60,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   def handle_checkout(:checkout, _from, conn, backend_id) do
     case conn do
       :idle ->
-        {:ok, {:connect, backend_id}, conn, backend_id}
+        {:ok, {:idle, backend_id}, conn, backend_id}
 
       {:connected, _socket, backend_config} ->
         # if current backend config is the same as what it was when conn was opened,
