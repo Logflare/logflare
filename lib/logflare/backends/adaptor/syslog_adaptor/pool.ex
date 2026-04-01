@@ -93,7 +93,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   end
 
   @impl NimblePool
-  def handle_ping(_conn, backend_id) do
+  def handle_ping(_conn, _backend_id) do
     {:remove, :idle_timeout}
   end
 
