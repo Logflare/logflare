@@ -14,7 +14,14 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   def start_link(opts) do
     backend_id = Keyword.fetch!(opts, :backend_id)
     name = Keyword.fetch!(opts, :name)
-    NimblePool.start_link(worker: {__MODULE__, backend_id}, lazy: true, name: name)
+    worker_idle_timeout = Keyword.fetch!(opts, :worker_idle_timeout)
+
+    NimblePool.start_link(
+      worker: {__MODULE__, backend_id},
+      worker_idle_timeout: worker_idle_timeout,
+      lazy: true,
+      name: name
+    )
   end
 
   def child_spec(opts) do
@@ -83,6 +90,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
   def handle_checkin({:remove, reason}, _from, _conn, backend_id) do
     {:remove, reason, backend_id}
+  end
+
+  @impl NimblePool
+  def handle_ping(_conn, backend_id) do
+    {:remove, :idle_timeout}
   end
 
   # NOTE: handle_info is called for every socket in the pool for every message received.
