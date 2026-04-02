@@ -56,7 +56,6 @@ defmodule Logflare.ContextCache.GossipClusterTest do
     {:ok, telemetry_ref: telemetry_ref, source: source, user: user}
   end
 
-  @tag :capture_log
   test "cache miss on peer gossips to local node", %{telemetry_ref: telemetry_ref, source: source} do
     peer = start_peer()
 
@@ -77,7 +76,6 @@ defmodule Logflare.ContextCache.GossipClusterTest do
     assert id == source.id
   end
 
-  @tag :capture_log
   test "local node drops peer gossip if record is tombstoned", %{
     telemetry_ref: telemetry_ref,
     source: source
@@ -122,6 +120,8 @@ defmodule Logflare.ContextCache.GossipClusterTest do
     :ok =
       :erpc.call(node, Application, :put_env, [:logflare, LogflareWeb.Endpoint, [server: false]])
 
+    {:ok, _} = :erpc.call(node, Application, :ensure_all_started, [:mix])
+    :ok = :erpc.call(node, Mix, :env, [Mix.env()])
     {:ok, _} = :erpc.call(node, Application, :ensure_all_started, [:logflare])
 
     node

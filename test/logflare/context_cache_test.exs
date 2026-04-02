@@ -105,7 +105,7 @@ defmodule Logflare.ContextCacheTest do
     end
 
     test "record_tombstones/1 writes primary keys and :not_found to the tombstone cache" do
-      ContextCache.record_tombstones([
+      ContextCache.Gossip.record_tombstones([
         {Sources, 123},
         {Sources, id: 234, other: :info},
         {Sources, %{id: 345, other: :info}},
@@ -119,7 +119,7 @@ defmodule Logflare.ContextCacheTest do
     end
 
     test "record_tombstones/1 ignores unsupported types gracefully" do
-      ContextCache.record_tombstones([{Sources, make_ref()}])
+      ContextCache.Gossip.record_tombstones([{Sources, make_ref()}])
     end
 
     test "maybe_gossip/3 emits telemetry on cache miss", %{
@@ -140,7 +140,7 @@ defmodule Logflare.ContextCacheTest do
       cache_key = {:get, [999]}
       value = %{id: 999, name: "valid"}
 
-      ContextCache.receive_gossip(Sources.Cache, cache_key, value)
+      ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, value)
 
       assert Cachex.get!(Sources.Cache, cache_key) == {:cached, value}
 
@@ -157,7 +157,7 @@ defmodule Logflare.ContextCacheTest do
       cache_key = {:get, [111]}
       existing_value = {:cached, %{id: 111, name: "local_data"}}
       Cachex.put(Sources.Cache, cache_key, existing_value)
-      ContextCache.receive_gossip(Sources.Cache, cache_key, %{id: 111, name: "stale"})
+      ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, %{id: 111, name: "stale"})
 
       assert Cachex.get!(Sources.Cache, cache_key) == existing_value
 
