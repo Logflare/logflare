@@ -203,7 +203,7 @@ defmodule Logflare.ContextCache do
 
   @doc false
   def receive_gossip(cache, key, value) do
-    meta = %{cache: cache}
+    meta = %{cache: cache, key: key}
 
     :telemetry.span([:logflare, :context_cache_gossip, :receive], meta, fn ->
       action =
