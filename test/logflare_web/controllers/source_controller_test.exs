@@ -6,6 +6,7 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Repo
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends
+  alias Logflare.TestUtils
   alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
@@ -195,6 +196,20 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_has("input.form-control[id='recent-logs-field-session_id']")
       |> assert_has("input.form-control[id='recent-logs-field-metadata.level']")
       |> assert_has("input.form-control[id='recent-logs-field-m.user_id']")
+    end
+
+    test "shows source schema modal trigger and content", %{conn: conn, source: source} do
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: TestUtils.build_bq_schema(%{"metadata" => %{"status" => 200}})
+      )
+
+      conn
+      |> visit(~p"/sources/#{source}")
+      |> assert_has("a[data-target='#sourceSchemaModal']", text: "schema")
+      |> assert_has("div#sourceSchemaModal")
+      |> assert_has("h5", text: "Source Schema")
+      |> assert_has("kbd", text: "metadata.status")
     end
 
     test "invalid source", %{conn: conn, source: source} do

@@ -3,7 +3,7 @@ services:
     image: supabase/logflare:local
     build:
       context: ../../../../..
-      dockerfile: ./Dockerfile
+      dockerfile: ./Dockerfile.multi-step
       tags:
         - "supabase/logflare:local"
     pull_policy: never

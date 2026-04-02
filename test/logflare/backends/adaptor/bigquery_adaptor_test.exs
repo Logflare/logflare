@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
 
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
 
   describe "ecto_to_sql/2" do
     test "converts Ecto query to BigQuery SQL format" do
@@ -141,7 +142,10 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
         )
 
       assert {:ok,
-              %{rows: [%{"event_message" => "test message", "value" => "123"}], total_rows: 1}} =
+              %QueryResult{
+                rows: [%{"event_message" => "test message", "value" => "123"}],
+                total_rows: 1
+              }} =
                result
     end
 
@@ -155,7 +159,10 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       result = BigQueryAdaptor.execute_query(backend, query, [])
 
       assert {:ok,
-              %{rows: [%{"event_message" => "test message", "value" => "123"}], total_rows: 1}} =
+              %QueryResult{
+                rows: [%{"event_message" => "test message", "value" => "123"}],
+                total_rows: 1
+              }} =
                result
     end
   end

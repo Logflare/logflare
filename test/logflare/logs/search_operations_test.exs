@@ -5,6 +5,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Logs.SearchOperations
   alias Logflare.Lql.Parser
@@ -391,12 +392,11 @@ defmodule Logflare.Logs.SearchOperationsTest do
         Process.put(:captured_opts, opts)
 
         {:ok,
-         %{
-           rows: [%{"test" => "data"}],
+         QueryResult.new([%{"test" => "data"}], %{
            total_rows: 1,
            query_string: "",
            bq_params: []
-         }}
+         })}
       end)
 
       result_so = SearchOperations.do_query(base_so)
