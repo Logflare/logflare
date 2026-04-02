@@ -36,13 +36,26 @@ defmodule Logflare.ContextCache.GossipClusterTest do
       :telemetry.detach(telemetry_ref)
     end)
 
-    insert(:plan, name: "Free")
-    user = insert(:user)
-    source = insert(:source, user: user)
+    {plan, user, source} =
+      Ecto.Adapters.SQL.Sandbox.unboxed_run(Logflare.Repo, fn ->
+        plan = insert(:plan, name: "Free")
+        user = insert(:user)
+        source = insert(:source, user: user)
+        {plan, user, source}
+      end)
+
+    on_exit(fn ->
+      Ecto.Adapters.SQL.Sandbox.unboxed_run(Logflare.Repo, fn ->
+        Logflare.Repo.delete(source)
+        Logflare.Repo.delete(user)
+        Logflare.Repo.delete(plan)
+      end)
+    end)
 
     {:ok, telemetry_ref: telemetry_ref, source: source, user: user}
   end
 
+  @tag :capture_log
   test "cache miss on peer gossips to local node", %{telemetry_ref: telemetry_ref, source: source} do
     peer = start_peer()
 
@@ -54,11 +67,8 @@ defmodule Logflare.ContextCache.GossipClusterTest do
 
     # wait for the local telemetry event indicating gossip was received
     assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                    _measurements, metadata},
+                    _measurements, %{cache: Sources.Cache, action: :cached}},
                    to_timeout(second: 10)
-
-    assert metadata.action == :cached
-    assert metadata.cache == Sources.Cache
 
     assert {:cached, %Sources.Source{id: id}} =
              Cachex.get!(Sources.Cache, {:get_by, [[token: source.token]]})
@@ -66,6 +76,7 @@ defmodule Logflare.ContextCache.GossipClusterTest do
     assert id == source.id
   end
 
+  @tag :capture_log
   test "local node drops peer gossip if record is tombstoned", %{
     telemetry_ref: telemetry_ref,
     source: source
@@ -83,10 +94,9 @@ defmodule Logflare.ContextCache.GossipClusterTest do
 
     # wait for the local telemetry event
     assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                    _measurements, metadata},
+                    _measurements, %{cache: Sources.Cache, action: :dropped_stale}},
                    to_timeout(second: 10)
 
-    assert metadata.action == :dropped_stale
     refute Cachex.get!(Sources.Cache, {:get_by, [[token: source.token]]})
   end
 
