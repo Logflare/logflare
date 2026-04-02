@@ -31,6 +31,7 @@ defmodule Logflare.User do
              :bigquery_dataset_id,
              :bigquery_reservation_alerts,
              :bigquery_reservation_search,
+             :bigquery_additional_projects,
              :api_quota,
              :company,
              :token,
@@ -81,6 +82,7 @@ defmodule Logflare.User do
     field :bigquery_reservation_alerts, :string
     field :bigquery_processed_bytes_limit, :integer
     field :bigquery_enable_managed_service_accounts, :boolean, default: false
+    field :bigquery_additional_projects, :string
     field :api_quota, :integer, default: @default_user_api_quota
     field :valid_google_account, :boolean
     field :provider_uid, :string
@@ -120,6 +122,7 @@ defmodule Logflare.User do
     :bigquery_reservation_search,
     :bigquery_processed_bytes_limit,
     :bigquery_enable_managed_service_accounts,
+    :bigquery_additional_projects,
     :valid_google_account,
     :provider_uid,
     :company,
@@ -201,6 +204,16 @@ defmodule Logflare.User do
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
   end
 
+  @spec parse_bigquery_additional_projects(t()) :: [String.t()]
+  def parse_bigquery_additional_projects(%__MODULE__{bigquery_additional_projects: nil}), do: []
+
+  def parse_bigquery_additional_projects(%__MODULE__{bigquery_additional_projects: projects}) do
+    projects
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
   def hide_bigquery_defaults(user) do
     if user.bigquery_project_id == bq_project_id() do
       %{
@@ -210,7 +223,8 @@ defmodule Logflare.User do
           bigquery_dataset_location: nil,
           bigquery_processed_bytes_limit: nil,
           bigquery_reservation_alerts: nil,
-          bigquery_reservation_search: nil
+          bigquery_reservation_search: nil,
+          bigquery_additional_projects: nil
       }
     else
       user
