@@ -5,6 +5,7 @@ sidebar_position: 12
 import BetterStackNewSource from "./syslog/00_betterstack_new_source.png";
 import LogflareNewBackend from "./syslog/01_logflare_new_backend.png";
 import LogflareEnableBackend from "./syslog/02_logflare_enable_backend.png";
+import BetterStackLogs from "./syslog/03_betterstack_logs.png";
 
 # Syslog
 
@@ -57,5 +58,24 @@ To integrate Logflare with [Better Stack](https://betterstack.com), follow these
    <img
      src={LogflareEnableBackend}
      alt="Enable the backend"
+     style={{ maxHeight: "none", maxWidth: "100%" }}
+   />
+
+4. Test the integration by sending a log message to your Logflare source. You should see the log appear in Better Stack within a few seconds.
+
+   ```console
+   export LOGFLARE_DEMO_ENDPOINT="http://localhost:4000"
+   export LOGFLARE_DEMO_SOURCE_ID="e3041ee1-8b85-4115-af7b-3c9ccc7f649c"
+   export LOGFLARE_DEMO_API_KEY="my-other-cool-api-key-123"
+
+   curl -X POST "$LOGFLARE_DEMO_ENDPOINT/logs/json?source=$LOGFLARE_DEMO_SOURCE_ID" \
+        -H "content-type: application/json" \
+        -H "x-api-key: $LOGFLARE_DEMO_API_KEY" \
+        -d '"Hello from Logflare to Better Stack via Syslog!"'
+   ```
+
+   <img
+     src={BetterStackLogs}
+     alt="Logs appearing in Better Stack"
      style={{ maxHeight: "none", maxWidth: "100%" }}
    />
