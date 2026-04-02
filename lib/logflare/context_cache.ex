@@ -186,7 +186,7 @@ defmodule Logflare.ContextCache do
   end
 
   defp maybe_gossip(cache, key, value) when is_atom(cache) do
-    meta = %{cache: cache}
+    meta = %{cache: cache, key: key}
 
     :telemetry.span([:logflare, :context_cache_gossip, :multicast], meta, fn ->
       %{enabled: enabled, ratio: ratio, max_nodes: max_nodes} =
