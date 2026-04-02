@@ -430,7 +430,7 @@
             {label(f_config, :structured_data, "Structured Data (RFC5424)")}
             {textarea(f_config, :structured_data, class: "form-control")}
             <small class="text-muted">
-              Optional Structured Data element. Must match RFC5424 format, e.g. <code>[SD-ID key="value"]</code>
+              Optional Structured Data element. Must match <a href="https://datatracker.ietf.org/doc/html/rfc5424#section-6.3" target="_blank">RFC5424</a> format, e.g. <code>[SD-ID key="value"]</code>
             </small>
           </div>
           <div class="form-group">
@@ -444,7 +444,7 @@
             {label(f_config, :ca_cert, "CA Certificate (PEM)")}
             {textarea(f_config, :ca_cert, class: "form-control")}
             <small class="text-muted">
-              Optional CA certificate for verifying the syslog server's TLS certificate. Must be in PEM format.
+              Optional custom CA certificate for verifying the syslog server's TLS certificate. Must be in PEM format. If not provided, system CAs will be used.
             </small>
           </div>
           <div class="form-group">
