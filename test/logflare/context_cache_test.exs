@@ -130,8 +130,8 @@ defmodule Logflare.ContextCacheTest do
                       _measurements, %{cache: Sources.Cache} = metadata}
 
       assert metadata.enabled == true
-      assert metadata.max_nodes == 5
-      assert metadata.ratio == 0.1
+      assert metadata.max_nodes == 3
+      assert metadata.ratio == 0.05
     end
 
     test "receive_broadcast/3 inserts valid broadcast when cache is empty and emits telemetry", %{

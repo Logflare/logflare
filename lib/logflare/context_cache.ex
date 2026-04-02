@@ -189,10 +189,7 @@ defmodule Logflare.ContextCache do
 
     :telemetry.span([:logflare, :context_cache, :broadcast], meta, fn ->
       %{enabled: enabled, ratio: ratio, max_nodes: max_nodes} =
-        config =
-        :logflare
-        |> Application.fetch_env!(:cache_broadcasts)
-        |> Map.fetch!(cache)
+        config = Application.fetch_env!(:logflare, :cache_broadcasts)
 
       if enabled do
         peers = Logflare.Cluster.Utils.peer_list_partial(ratio, max_nodes)

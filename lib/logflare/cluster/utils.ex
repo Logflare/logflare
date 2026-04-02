@@ -6,6 +6,10 @@ defmodule Logflare.Cluster.Utils do
     [Node.self() | Node.list()]
   end
 
+  @doc """
+  Returns a random subset of the current cluster peers
+  based on the given ratio and maximum number of nodes.
+  """
   @spec peer_list_partial(float, pos_integer) :: [Node.t()]
   def peer_list_partial(ratio, max_nodes) do
     peers = Node.list()

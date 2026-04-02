@@ -484,42 +484,23 @@ cache_broadcast_enabled? =
   System.get_env("LOGFLARE_CACHE_BROADCAST_ENABLED", default_cache_broadcast_enabled) == "true"
 
 cache_broadcast_ratio =
-  "LOGFLARE_CACHE_BROADCAST_RATIO" |> System.get_env("0.1") |> String.to_float()
+  "LOGFLARE_CACHE_GOSSIP_RATIO" |> System.get_env("0.05") |> String.to_float()
 
-cache_broadcast_max_nodes =
-  "LOGFLARE_CACHE_BROADCAST_MAX_NODES" |> System.get_env("5") |> String.to_integer()
-
-known_caches =
-  Logflare.ContextCache.Supervisor.list_caches_with_metrics()
-  |> Enum.map(fn {name, short_name} -> {Atom.to_string(short_name), name} end)
-  |> Map.new()
-
-# allows excluding heavy caches via: LOGFLARE_CACHE_BROADCAST_EXCLUDE="auth,saved_searches"
-excluded_caches =
-  System.get_env("LOGFLARE_CACHE_BROADCAST_EXCLUDE", "")
-  |> String.split(",", trim: true)
-  |> Enum.map(&String.trim/1)
-  |> MapSet.new()
-
-invalid_caches =
-  Enum.filter(excluded_caches, fn excluded_short_name ->
-    not Map.has_key?(known_caches, excluded_short_name)
-  end)
-
-if invalid_caches != [] do
-  raise "unknown caches specified in $LOGFLARE_CACHE_BROADCAST_EXCLUDE: " <>
-          Enum.join(invalid_caches, ", ")
+if cache_broadcast_ratio <= 0.0 or cache_broadcast_ratio > 1.0 do
+  raise ArgumentError,
+        "Invalid LOGFLARE_CACHE_GOSSIP_RATIO: #{cache_broadcast_ratio}. Must be between 0 and 1."
 end
 
-cache_broadcasts =
-  Map.new(known_caches, fn {short_name, name} ->
-    config = %{
-      ratio: cache_broadcast_ratio,
-      max_nodes: cache_broadcast_max_nodes,
-      enabled: cache_broadcast_enabled? and not MapSet.member?(excluded_caches, short_name)
-    }
+cache_gossip_max_nodes =
+  "LOGFLARE_CACHE_GOSSIP_MAX_NODES" |> System.get_env("3") |> String.to_integer()
 
-    {name, config}
-  end)
+if cache_gossip_max_nodes <= 0 do
+  raise ArgumentError,
+        "Invalid LOGFLARE_CACHE_GOSSIP_MAX_NODES: #{cache_gossip_max_nodes}. Must be a positive integer."
+end
 
-config :logflare, :cache_broadcasts, cache_broadcasts
+config :logflare, :cache_broadcasts, %{
+  enabled: cache_broadcast_enabled?,
+  ratio: cache_broadcast_ratio,
+  max_nodes: cache_gossip_max_nodes
+}
