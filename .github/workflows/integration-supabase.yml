@@ -39,11 +39,10 @@ jobs:
         browsers:
           - name: Chrome
             project: chromium
-          # TODO: reactivate when Firefox/Webkit tests are fixed
-          # - name: Firefox
-          #   project: firefox
-          # - name: Safari
-          #   project: webkit
+          - name: Firefox
+            project: firefox
+          - name: Safari
+            project: webkit
 
     timeout-minutes: 20
 

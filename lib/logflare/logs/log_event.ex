@@ -18,6 +18,7 @@ defmodule Logflare.LogEvent do
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
     field :body, :map, default: %{}
+    field :flattened_body, :map, default: %{}
     field :valid, :boolean
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
@@ -91,7 +92,12 @@ defmodule Logflare.LogEvent do
     |> struct!(le_map)
     |> transform(source)
     |> validate(source)
+    |> flatten_body()
   end
+
+  @spec flatten_body(LE.t()) :: LE.t()
+  defp flatten_body(%LE{valid: false} = le), do: le
+  defp flatten_body(%LE{} = le), do: %{le | flattened_body: MetadataCleaner.flatten(le.body)}
 
   @spec mapper(map()) :: %{String.t() => term}
   defp mapper(params) do
@@ -247,7 +253,7 @@ defmodule Logflare.LogEvent do
 
     with raw when not is_nil(raw) <- get_in(body, from_path),
          raw_string <- to_string(raw),
-         #  true <- Logflare.Utils.flag("key_values", raw_string),
+         true <- Logflare.Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-
            KeyValues.Cache.lookup(user_id, raw_string, accessor_path) do
       put_in(body, Enum.map(to_path, &Access.key(&1, %{})), value)
@@ -269,7 +275,9 @@ defmodule Logflare.LogEvent do
   def apply_custom_event_message(%LE{} = le, %Source{} = source) do
     message = make_message(le, source)
 
-    Kernel.put_in(le.body["event_message"], message)
+    le
+    |> Kernel.put_in([Access.key(:body), "event_message"], message)
+    |> Kernel.put_in([Access.key(:flattened_body), "event_message"], message)
   end
 
   @doc """

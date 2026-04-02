@@ -75,7 +75,7 @@ defmodule Logflare.TeamUsers do
         update_team_user(team_user, auth_params)
 
       true ->
-        count = list_team_users_by(id: team_id) |> Enum.count()
+        count = list_team_users_by(team_id: team_id) |> Enum.count()
         %Billing.Plan{limit_team_users_limit: limit} = Billing.get_plan_by_user(user)
 
         if count < limit do
@@ -84,19 +84,6 @@ defmodule Logflare.TeamUsers do
           {:error, :limit_reached}
         end
     end
-  end
-
-  def update_team_user_on_change_team(user, team_user_id) do
-    team_user = get_team_user(team_user_id)
-
-    {:ok, _team_user} =
-      update_team_user(team_user, %{
-        provider: user.provider,
-        valid_google_account: user.valid_google_account || false,
-        token: user.token,
-        image: user.image,
-        provider_uid: user.provider_uid
-      })
   end
 
   def get_team_user!(id), do: Repo.get!(TeamUser, id)

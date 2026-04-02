@@ -4,6 +4,8 @@ ENV MIX_ENV=prod
 
 WORKDIR /app
 
+COPY . ./
+
 # release
 RUN mix release  && \
     npm run --prefix assets deploy && \

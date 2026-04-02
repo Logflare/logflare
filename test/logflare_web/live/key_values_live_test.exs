@@ -3,6 +3,8 @@ defmodule LogflareWeb.KeyValuesLiveTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.KeyValues
+  alias Logflare.Billing.Plan
+  alias Logflare.Repo
 
   setup do
     insert(:plan, limit_key_values: 100)
@@ -87,10 +89,10 @@ defmodule LogflareWeb.KeyValuesLiveTest do
     end
 
     test "create respects plan limits", %{conn: conn} do
-      plan = Logflare.Repo.one(Logflare.Billing.Plan)
+      plan = Repo.one(Plan)
 
-      Logflare.Billing.Plan.changeset(plan, %{limit_key_values: 0})
-      |> Logflare.Repo.update!()
+      Plan.changeset(plan, %{limit_key_values: 0})
+      |> Repo.update!()
 
       {:ok, view, _html} = live(conn, ~p"/key-values")
 

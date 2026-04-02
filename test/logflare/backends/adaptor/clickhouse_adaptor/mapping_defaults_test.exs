@@ -8,10 +8,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
     {:ok,
      log: Mapper.compile!(MappingDefaults.for_log()),
      metric: Mapper.compile!(MappingDefaults.for_metric()),
-     trace: Mapper.compile!(MappingDefaults.for_trace()),
-     simple_log: Mapper.compile!(MappingDefaults.for_log_simple()),
-     simple_metric: Mapper.compile!(MappingDefaults.for_metric_simple()),
-     simple_trace: Mapper.compile!(MappingDefaults.for_trace_simple())}
+     trace: Mapper.compile!(MappingDefaults.for_trace())}
   end
 
   describe "for_type/1" do
@@ -406,22 +403,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
     end
   end
 
-  describe "for_type_simple/1" do
-    test "returns a MappingConfig for each type" do
-      assert %Mapper.MappingConfig{} = MappingDefaults.for_type_simple(:log)
-      assert %Mapper.MappingConfig{} = MappingDefaults.for_type_simple(:metric)
-      assert %Mapper.MappingConfig{} = MappingDefaults.for_type_simple(:trace)
-    end
-
-    test "config_id_simple returns unique IDs" do
-      assert MappingDefaults.config_id_simple(:log) != MappingDefaults.config_id(:log)
-      assert MappingDefaults.config_id_simple(:metric) != MappingDefaults.config_id(:metric)
-      assert MappingDefaults.config_id_simple(:trace) != MappingDefaults.config_id(:trace)
-    end
-  end
-
-  describe "simple logs mapping" do
-    test "produces flat string-keyed maps for attribute fields", %{simple_log: compiled} do
+  describe "flat_map attribute values are strings" do
+    test "log attribute values are all strings", %{log: compiled} do
       payload = %{
         "event_message" => "Something happened",
         "project" => "abcdefghijklmnopqrst",
@@ -434,100 +417,62 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
 
       result = Mapper.map(payload, compiled)
 
-      # Scalar fields should work identically
-      assert result["event_message"] == "Something happened"
-      assert result["project"] == "abcdefghijklmnopqrst"
-      assert result["severity_text"] == "ERROR"
-      assert result["severity_number"] == 17
-
-      # resource_attributes should be flat %{String => String} via pick
-      res_attrs = result["resource_attributes"]
-      assert is_map(res_attrs)
-      assert res_attrs["project"] == "abcdefghijklmnopqrst"
-      assert res_attrs["service_name"] == "my-svc"
-
-      # All values should be strings
-      for {_k, v} <- res_attrs do
+      for {_k, v} <- result["resource_attributes"] do
         assert is_binary(v), "Expected string value, got: #{inspect(v)}"
       end
 
-      # scope_attributes should be flat
-      scope_attrs = result["scope_attributes"]
-      assert is_map(scope_attrs)
-
-      for {_k, v} <- scope_attrs do
+      for {_k, v} <- result["scope_attributes"] do
         assert is_binary(v), "Expected string value, got: #{inspect(v)}"
       end
 
-      # log_attributes should be flat with exclude/elevate applied
-      log_attrs = result["log_attributes"]
-      assert is_map(log_attrs)
-      refute Map.has_key?(log_attrs, "id")
-      refute Map.has_key?(log_attrs, "event_message")
-      refute Map.has_key?(log_attrs, "timestamp")
-      # Elevated from metadata
-      assert log_attrs["level"] == "error"
-      assert log_attrs["request_id"] == "req-1"
-      assert log_attrs["extra_field"] == "kept"
-
-      for {_k, v} <- log_attrs do
+      for {_k, v} <- result["log_attributes"] do
         assert is_binary(v), "Expected string value, got: #{inspect(v)}"
       end
     end
 
-    test "non-attribute fields are unchanged", %{simple_log: compiled} do
-      result = Mapper.map(%{}, compiled)
-
-      assert result["project"] == ""
-      assert result["trace_id"] == ""
-      assert result["trace_flags"] == 0
-      assert result["severity_text"] == "INFO"
-      assert result["severity_number"] == 9
-    end
-  end
-
-  describe "simple metrics mapping" do
-    test "produces flat attribute maps", %{simple_metric: compiled} do
+    test "metric attribute values are all strings", %{metric: compiled} do
       payload = %{
         "metric_name" => "http_requests_total",
         "value" => 42.5,
         "project" => "proj",
         "scope" => %{"name" => "my-scope", "attributes" => %{"lib" => "otel"}},
-        "metadata" => %{"region" => "us-east-1", "level" => "info"},
+        "metadata" => %{"region" => "us-east-1"},
         "timestamp" => 1_700_000_000_000_000
       }
 
       result = Mapper.map(payload, compiled)
 
-      assert result["metric_name"] == "http_requests_total"
-      assert result["value"] == 42.5
-
-      # attributes should be flat
-      attrs = result["attributes"]
-      assert is_map(attrs)
-
-      for {_k, v} <- attrs do
+      for {_k, v} <- result["attributes"] do
         assert is_binary(v), "Expected string value, got: #{inspect(v)}"
       end
 
-      # resource_attributes should be flat
-      res_attrs = result["resource_attributes"]
-      assert is_map(res_attrs)
-
-      for {_k, v} <- res_attrs do
+      for {_k, v} <- result["resource_attributes"] do
         assert is_binary(v), "Expected string value, got: #{inspect(v)}"
       end
 
-      # scope_attributes should be flat
-      scope_attrs = result["scope_attributes"]
-      assert is_map(scope_attrs)
-
-      for {_k, v} <- scope_attrs do
+      for {_k, v} <- result["scope_attributes"] do
         assert is_binary(v), "Expected string value, got: #{inspect(v)}"
       end
     end
 
-    test "exemplars.filtered_attributes becomes array of flat maps", %{simple_metric: compiled} do
+    test "trace attribute values are all strings", %{trace: compiled} do
+      payload = %{
+        "trace_id" => "trace-abc",
+        "span_id" => "span-def",
+        "span_name" => "GET /api",
+        "metadata" => %{"request_id" => "req-1"},
+        "http.method" => "GET",
+        "timestamp" => 1_700_000_000_000_000
+      }
+
+      result = Mapper.map(payload, compiled)
+
+      for {_k, v} <- result["span_attributes"] do
+        assert is_binary(v), "Expected string value, got: #{inspect(v)}"
+      end
+    end
+
+    test "exemplars.filtered_attributes are flat maps with string values", %{metric: compiled} do
       payload = %{
         "exemplars" => [
           %{
@@ -547,34 +492,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert filtered_attrs["key"] == "val1"
       assert filtered_attrs["nested.a"] == "1"
     end
-  end
 
-  describe "simple traces mapping" do
-    test "produces flat attribute maps", %{simple_trace: compiled} do
-      payload = %{
-        "trace_id" => "trace-abc",
-        "span_id" => "span-def",
-        "span_name" => "GET /api",
-        "metadata" => %{"request_id" => "req-1"},
-        "http.method" => "GET",
-        "timestamp" => 1_700_000_000_000_000
-      }
-
-      result = Mapper.map(payload, compiled)
-
-      assert result["trace_id"] == "trace-abc"
-      assert result["span_name"] == "GET /api"
-
-      # span_attributes should be flat
-      span_attrs = result["span_attributes"]
-      assert is_map(span_attrs)
-
-      for {_k, v} <- span_attrs do
-        assert is_binary(v), "Expected string value, got: #{inspect(v)}"
-      end
-    end
-
-    test "events.attributes becomes array of flat maps", %{simple_trace: compiled} do
+    test "events.attributes are flat maps with string values", %{trace: compiled} do
       payload = %{
         "events" => [
           %{
@@ -593,7 +512,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert event_attrs["nested.a"] == "1"
     end
 
-    test "links.attributes becomes array of flat maps", %{simple_trace: compiled} do
+    test "links.attributes are flat maps with string values", %{trace: compiled} do
       payload = %{
         "links" => [
           %{

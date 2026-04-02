@@ -8,6 +8,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSup
@@ -481,6 +482,34 @@ defmodule Logflare.BackendsTest do
       assert %Backend{config: %{url: "http" <> _}} = Backends.get_backend(backend.id)
 
       :timer.sleep(1000)
+    end
+
+    test "partial config update preserves existing fields", %{user: user} do
+      assert {:ok, backend} =
+               Backends.create_backend(%{
+                 name: "some name",
+                 type: :webhook,
+                 config: %{url: "http://example.com", gzip: true},
+                 user_id: user.id
+               })
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{config: %{gzip: false}})
+      assert updated.config.url == "http://example.com"
+      assert updated.config.gzip == false
+    end
+
+    test "partial config update with string keys", %{user: user} do
+      assert {:ok, backend} =
+               Backends.create_backend(%{
+                 name: "some name",
+                 type: :webhook,
+                 config: %{url: "http://example.com", gzip: true},
+                 user_id: user.id
+               })
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{config: %{"gzip" => false}})
+      assert updated.config.url == "http://example.com"
+      assert updated.config.gzip == false
     end
   end
 
@@ -1452,7 +1481,7 @@ defmodule Logflare.BackendsTest do
     test "handles non-existent backend gracefully" do
       non_existent_id = 99_999
 
-      reject(&Logflare.Cluster.Utils.rpc_multicast/3)
+      reject(&ClusterUtils.rpc_multicast/3)
 
       assert :ok = Backends.sync_backend_across_cluster(non_existent_id)
     end
@@ -1470,7 +1499,7 @@ defmodule Logflare.BackendsTest do
 
       # Should not make any RPC calls
 
-      reject(&Logflare.Cluster.Utils.rpc_multicast/3)
+      reject(&ClusterUtils.rpc_multicast/3)
 
       assert :ok = Backends.sync_backend_across_cluster(backend.id)
     end

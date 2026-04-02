@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Tesla.MockAdapter
 
   @subject Adaptor.AxiomAdaptor
   @tesla_adapter Tesla.Adapter.Finch
@@ -189,7 +190,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     |> expect(:new, calls_num, fn opts ->
       HttpBased.Client
       |> Mimic.call_original(:new, [opts])
-      |> Logflare.Tesla.MockAdapter.replace(function)
+      |> MockAdapter.replace(function)
     end)
   end
 end

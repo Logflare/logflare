@@ -4,8 +4,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   import Phoenix.LiveViewTest
 
+  alias Ecto.Adapters.SQL
+  alias Logflare.Backends
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Utils.Tasks
   alias LogflareWeb.Source.SearchLV
 
   @endpoint LogflareWeb.Endpoint
@@ -40,7 +44,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   defp on_exit_kill_tasks(_ctx) do
     on_exit(fn ->
       # Kill all tasks first
-      Logflare.Utils.Tasks.kill_all_tasks()
+      Tasks.kill_all_tasks()
 
       # Give processes time to clean up
       Process.sleep(10)
@@ -64,6 +68,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
     user = user |> Logflare.Repo.preload(:billing_account)
 
     [conn: login_user(conn, user, team_user)]
+  end
+
+  defp allow_sandbox(search_executor_pid) do
+    SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
   end
 
   # do this for all tests
@@ -337,7 +345,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       insert(:source_schema,
         source: source,
         bigquery_schema: bq_schema,
-        schema_flat_map: Logflare.Google.BigQuery.SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
+        schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
       )
 
       [user: user, source: source, plan: plan]
@@ -395,7 +403,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       assert view
              |> element(".subhead a", "aggregate")
@@ -422,7 +430,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "subheader - saved searches", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       assert view
              |> element(".subhead a", "saved")
@@ -456,7 +464,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "load page", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       assert html =~ "~/logs/"
       assert html =~ source.name
@@ -514,7 +522,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       view
       |> TestUtils.wait_for_render("#source-logs-search-list")
@@ -576,7 +584,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       view
       |> TestUtils.wait_for_render("#source-logs-search-list")
@@ -620,7 +628,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
       pid = self()
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       view
       |> TestUtils.wait_for_render("#logs-list-container li")
@@ -736,7 +744,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       view
       |> TestUtils.wait_for_render("#logs-list-container li")
@@ -775,7 +783,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       # post-init fetching
       view
@@ -852,7 +860,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       # wait for async search task to complete
       view
@@ -889,7 +897,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "s:user.id"}}")
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       view
       |> TestUtils.wait_for_render("#logs-list")
@@ -920,7 +928,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "testing:modal123"}}")
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       # wait for async search task to complete
       view
@@ -962,6 +970,54 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert query =~ ~r"..\.testing"
     end
 
+    test "log event modal - quick filter button appends filter to search", %{
+      conn: conn,
+      source: source
+    } do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "quick filter test",
+           "user_id" => "abc-123",
+           "id" => "qf-uuid"
+         })}
+      end)
+
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:\"abc-123\"|, tz: "Africa/Lagos"}}"
+        )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
+
+      view
+      |> element("li:first-of-type a[phx-value-log-event-id='qf-uuid']", "view")
+      |> render_click()
+
+      TestUtils.retry_assert(fn ->
+        html = render(view)
+        assert html =~ "quick filter test"
+        assert html =~ ~s|title="Append to query"|
+      end)
+
+      view
+      |> element(~s|#log-event-tree-qf-uuid--user_id a[title="Append to query"]|)
+      |> render_click()
+
+      to = assert_patch(view)
+      assert find_querystring(render(view)) =~ ~s|user_id:"abc-123"|
+
+      %URI{query: query} = URI.parse(to)
+
+      assert %{"tailing?" => "false", "tz" => "Africa/Lagos"} =
+               query |> URI.decode_query() |> Map.take(["tailing?", "tz"])
+    end
+
     test "log event modal - loading from cache", %{conn: conn, user: user} do
       schema = TestUtils.build_bq_schema(%{"testing" => "string"})
       source = insert(:source, user: user)
@@ -980,7 +1036,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: ""}}")
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       # Wait for search to complete
       view
@@ -1006,7 +1062,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
                live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       assert render(view) =~ "Error while parsing timestamp filter"
     end
@@ -1019,7 +1075,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
                live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       error_response =
         %{
@@ -1063,7 +1119,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "stop/start live search", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source))
       %{executor_pid: search_executor_pid} = view |> get_view_assigns()
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       # post-init fetching
       view
@@ -1074,7 +1130,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # Allow database access after pause click which might trigger a new search
       %{executor_pid: search_executor_pid} = view |> get_view_assigns()
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       refute get_view_assigns(view).tailing?
 
@@ -1082,7 +1138,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # Allow database access after play click which might trigger a new search
       %{executor_pid: search_executor_pid} = view |> get_view_assigns()
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       assert get_view_assigns(view).tailing?
     end
@@ -1092,7 +1148,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         live(conn, Routes.live_path(conn, SearchLV, source, querystring: "error"))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       # post-init fetching
       view
@@ -1271,7 +1327,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
       %{executor_pid: search_executor_pid} = view |> get_view_assigns()
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       # post-init fetching
 
@@ -1285,6 +1341,67 @@ defmodule LogflareWeb.Source.SearchLVTest do
         assert html =~ "some correct message"
         assert html =~ ~s|class="log-level-warning">warning|
       end)
+    end
+  end
+
+  describe "single tenant searching with postgres backend" do
+    TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
+
+    setup do
+      start_supervised!(Logflare.SystemMetricsSup)
+
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user)
+      plan = SingleTenant.get_default_plan()
+
+      matching_message = "postgres-live-search-match-#{System.unique_integer([:positive])}"
+      non_matching_message = "postgres-live-search-miss-#{System.unique_integer([:positive])}"
+
+      bq_schema = TestUtils.build_bq_schema(%{"event_message" => matching_message})
+      insert(:source_schema, source: source, bigquery_schema: bq_schema)
+
+      assert :ok = Backends.ensure_source_sup_started(source)
+
+      assert {:ok, 2} =
+               Backends.ingest_logs(
+                 [
+                   %{"event_message" => matching_message},
+                   %{"event_message" => non_matching_message}
+                 ],
+                 source
+               )
+
+      %{
+        user: user,
+        source: source,
+        plan: plan,
+        matching_message: matching_message,
+        non_matching_message: non_matching_message
+      }
+    end
+
+    setup [:setup_user_session]
+
+    test "run a search against postgres backend", %{
+      conn: conn,
+      source: source,
+      matching_message: matching_message,
+      non_matching_message: non_matching_message
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      render_change(view, :start_search, %{
+        "search" => %{@default_search_params | "querystring" => matching_message}
+      })
+
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
+
+      assert view |> element("#logs-list-container") |> render() =~ matching_message
+      refute view |> element("#logs-list-container") |> render() =~ non_matching_message
     end
   end
 
@@ -1505,7 +1622,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      allow_sandbox(search_executor_pid)
 
       render_change(view, :start_search, %{
         "search" => %{

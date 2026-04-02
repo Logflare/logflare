@@ -67,38 +67,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
         assert [%{"result" => 1}] = exists
       end
     end
-
-    test "provisions both standard and simple tables when use_simple_schemas is set to true" do
-      {_source, backend} =
-        setup_clickhouse_test(config: %{use_simple_schemas: true})
-
-      {:ok, supervisor_pid} = ClickHouseAdaptor.start_link(backend)
-
-      on_exit(fn ->
-        if Process.alive?(supervisor_pid), do: Process.exit(supervisor_pid, :shutdown)
-      end)
-
-      {:ok, pid} = Provisioner.start_link(backend)
-      ref = Process.monitor(pid)
-      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
-
-      for event_type <- [:log, :metric, :trace] do
-        standard_table = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
-
-        {:ok, result} =
-          ClickHouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{standard_table}")
-
-        assert [%{"result" => 1}] = result
-
-        simple_table =
-          ClickHouseAdaptor.simple_clickhouse_ingest_table_name(backend, event_type)
-
-        {:ok, result} =
-          ClickHouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{simple_table}")
-
-        assert [%{"result" => 1}] = result
-      end
-    end
   end
 
   describe "connection test failure handling" do

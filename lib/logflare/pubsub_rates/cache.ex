@@ -4,6 +4,7 @@ defmodule Logflare.PubSubRates.Cache do
 
   alias Logflare.Sources.Source
   alias Logflare.Cluster
+  alias Logflare.Users.Cache, as: UsersCache
   alias Logflare.Utils
 
   @cache __MODULE__
@@ -198,8 +199,8 @@ defmodule Logflare.PubSubRates.Cache do
   def get_all_local_metrics(user_id) do
     %{sources: sources} =
       user_id
-      |> Logflare.Users.Cache.get()
-      |> Logflare.Users.Cache.preload_sources()
+      |> UsersCache.get()
+      |> UsersCache.preload_sources()
 
     sources
     |> Enum.map(fn source ->

@@ -3,6 +3,7 @@ defmodule Logflare.LqlTest do
 
   import Ecto.Query
 
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql
   alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.ChartRule
@@ -169,6 +170,16 @@ defmodule Logflare.LqlTest do
       assert [%FilterRule{path: "metadata.status", operator: :=, value: "error"}] = rules
     end
 
+    test "works with a schema flat map" do
+      lql_string = "m.status:error"
+      schema_flat_map = build_basic_schema() |> SchemaUtils.bq_schema_to_flat_typemap()
+
+      {:ok, rules} = Lql.decode(lql_string, schema_flat_map)
+
+      assert length(rules) == 1
+      assert [%FilterRule{path: "metadata.status", operator: :=, value: "error"}] = rules
+    end
+
     test "handles empty string with any schema" do
       {:ok, rules} = Lql.decode("", "any_schema")
 
@@ -182,6 +193,16 @@ defmodule Logflare.LqlTest do
       schema = build_basic_schema()
 
       rules = Lql.decode!(lql_string, schema)
+
+      assert length(rules) == 1
+      assert [%FilterRule{path: "metadata.status", operator: :=, value: "error"}] = rules
+    end
+
+    test "works with a schema flat map and returns rules directly" do
+      lql_string = "m.status:error"
+      schema_flat_map = build_basic_schema() |> SchemaUtils.bq_schema_to_flat_typemap()
+
+      rules = Lql.decode!(lql_string, schema_flat_map)
 
       assert length(rules) == 1
       assert [%FilterRule{path: "metadata.status", operator: :=, value: "error"}] = rules

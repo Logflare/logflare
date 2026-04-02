@@ -22,6 +22,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
   alias Logflare.Sql
@@ -54,8 +55,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{},
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config,
      %{
        url: :string,
        username: :string,
@@ -78,12 +79,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   ### Examples
 
   ```elixir
-  iex> execute_query(souce_backend, from(s in "log_event_..."))
-  {:ok, [%{...}]}
+  iex> execute_query(source_backend, from(s in "log_event_..."))
+  {:ok, %QueryResult{rows: [%{...}]}}
   iex> execute_query(backend, "select body from log_event_table")
-  {:ok, [%{...}]}
+  {:ok, %QueryResult{rows: [%{...}]}}
   iex> execute_query(backend, {"select $1 as c from log_event_table", ["value"]})
-  {:ok, [%{...}]}
+  {:ok, %QueryResult{rows: [%{...}]}}
   ```
   """
   @impl Logflare.Backends.Adaptor
@@ -95,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       |> mod.all()
       |> Enum.map(&nested_map_update/1)
 
-    {:ok, result}
+    {:ok, QueryResult.new(result, pg_meta(result))}
   end
 
   def execute_query(%Backend{} = backend, query_string, opts)
@@ -105,20 +106,20 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   def execute_query(%Backend{} = backend, {query_string, params}, _opts)
       when is_non_empty_binary(query_string) and is_list(params) do
-    {:ok, result} =
-      SharedRepo.with_repo(backend, fn ->
-        SharedRepo.query(query_string, params)
-      end)
+    with {:ok, result} <-
+           SharedRepo.with_repo(backend, fn ->
+             SharedRepo.query(query_string, params)
+           end) do
+      rows =
+        for row <- result.rows do
+          result.columns
+          |> Enum.zip(row)
+          |> Map.new()
+          |> nested_map_update()
+        end
 
-    rows =
-      for row <- result.rows do
-        result.columns
-        |> Enum.zip(row)
-        |> Map.new()
-        |> nested_map_update()
-      end
-
-    {:ok, rows}
+      {:ok, QueryResult.new(rows, pg_meta(rows))}
+    end
   end
 
   def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, opts)
@@ -136,6 +137,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
              is_list(opts) do
     execute_query(backend, {query_string, declared_params, input_params}, opts)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    case execute_query(backend, "SELECT 1 AS result", []) do
+      {:ok, %QueryResult{rows: [%{"result" => 1}]}} -> :ok
+      {:error, _} = error -> error
+    end
   end
 
   @impl Logflare.Backends.Adaptor
@@ -242,7 +252,20 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?()
   end
 
+  @spec pg_meta(list()) :: map()
+  defp pg_meta(rows) when is_list(rows) do
+    %{total_rows: length(rows)}
+  end
+
   @spec nested_map_update(term()) :: term()
+  defp nested_map_update(%DateTime{} = value), do: DateTime.to_unix(value, :microsecond)
+
+  defp nested_map_update(%NaiveDateTime{} = value) do
+    value |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
+  end
+
+  defp nested_map_update(%Date{} = value), do: Date.to_iso8601(value)
+
   defp nested_map_update(value) when is_struct(value), do: value
 
   defp nested_map_update(value) when is_map(value),
@@ -252,11 +275,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   defp nested_map_update(value), do: value
 
+  defp nested_map_update({key, value}, acc) when is_struct(value) do
+    Map.put(acc, to_string(key), nested_map_update(value))
+  end
+
   defp nested_map_update({key, value}, acc) when is_map(value) do
-    Map.put(acc, key, [nested_map_update(value)])
+    Map.put(acc, to_string(key), [nested_map_update(value)])
   end
 
   defp nested_map_update({key, value}, acc) do
-    Map.put(acc, key, nested_map_update(value))
+    Map.put(acc, to_string(key), nested_map_update(value))
   end
 end
