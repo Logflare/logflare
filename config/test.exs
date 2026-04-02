@@ -71,3 +71,8 @@ config :tesla, Logflare.Backends.Adaptor.WebhookAdaptor.Client, adapter: Tesla.M
 config :logflare, Oban, testing: :manual
 
 config :phoenix_test, otp_app: :logflare, endpoint: LogflareWeb.Endpoint
+
+config :opentelemetry,
+  sdk_disabled: false,
+  span_processor: :simple,
+  traces_exporter: :none

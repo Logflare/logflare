@@ -44,8 +44,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{}, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
     |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip])
     |> Logflare.Utils.default_field_value(:http, "http2")
     |> Logflare.Utils.default_field_value(:gzip, true)

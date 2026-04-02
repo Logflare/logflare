@@ -94,7 +94,7 @@ defmodule LogflareWeb.QueryLive do
       <div class="tw-flex tw-justify-between tw-items-end">
         <h3>Query result</h3>
         <div :if={@total_bytes_processed} class="tw-mb-1">
-          <QueryComponents.query_cost bytes={@total_bytes_processed} />
+          <QueryComponents.query_cost :if={is_integer(@total_bytes_processed)} bytes={@total_bytes_processed} />
         </div>
       </div>
       <p :if={@query_result_rows == []}>

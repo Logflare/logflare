@@ -22,6 +22,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
   alias Logflare.Sql
@@ -54,8 +55,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{},
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config,
      %{
        url: :string,
        username: :string,
@@ -78,12 +79,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   ### Examples
 
   ```elixir
-  iex> execute_query(souce_backend, from(s in "log_event_..."))
-  {:ok, [%{...}]}
+  iex> execute_query(source_backend, from(s in "log_event_..."))
+  {:ok, %QueryResult{rows: [%{...}]}}
   iex> execute_query(backend, "select body from log_event_table")
-  {:ok, [%{...}]}
+  {:ok, %QueryResult{rows: [%{...}]}}
   iex> execute_query(backend, {"select $1 as c from log_event_table", ["value"]})
-  {:ok, [%{...}]}
+  {:ok, %QueryResult{rows: [%{...}]}}
   ```
   """
   @impl Logflare.Backends.Adaptor
@@ -95,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       |> mod.all()
       |> Enum.map(&nested_map_update/1)
 
-    {:ok, result}
+    {:ok, QueryResult.new(result)}
   end
 
   def execute_query(%Backend{} = backend, query_string, opts)
@@ -118,7 +119,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
         |> nested_map_update()
       end
 
-    {:ok, rows}
+    {:ok, QueryResult.new(rows)}
   end
 
   def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, opts)

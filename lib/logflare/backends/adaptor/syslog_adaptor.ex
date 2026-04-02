@@ -37,7 +37,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     pipeline_name = Logflare.Backends.via_source(source, Pipeline, backend)
 
     children = [
-      {Pool, backend_id: backend.id, name: pool_name},
+      {Pool, backend_id: backend.id, name: pool_name, worker_idle_timeout: to_timeout(minute: 1)},
       {Pipeline, source: source, backend: backend, pool: pool_name, name: pipeline_name}
     ]
 
@@ -45,8 +45,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{},
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config,
      %{
        tls: :boolean,
        host: :string,

@@ -8,6 +8,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   alias GoogleApi.BigQuery.V2.Connection
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.JSON
   alias Logflare.Repo
   alias Logflare.Sources
@@ -33,7 +34,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     %Source{user_id: user_id} = Sources.Cache.get_by(token: source_id)
     %User{bigquery_project_id: project_id} = Users.Cache.get(user_id)
 
-    project_id || env_project_id()
+    project_id || GCPConfig.default_project_id()
   end
 
   @spec get_bq_user_info(source_id :: atom()) :: map()
@@ -55,9 +56,9 @@ defmodule Logflare.Google.BigQuery.GenUtils do
         true -> ttl * 86_400_000
       end
 
-    new_project_id = project_id || env_project_id()
+    new_project_id = project_id || GCPConfig.default_project_id()
     new_dataset_location = dataset_location || @default_dataset_location
-    new_dataset_id = dataset_id || "#{user_id}" <> env_default_table_name_append()
+    new_dataset_id = dataset_id || "#{user_id}" <> (GCPConfig.dataset_id_append() || "")
 
     %{
       user_id: user_id,
@@ -285,7 +286,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   defp process_bq_error_msg(message, user_id) when is_binary(message) do
     regex =
-      ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
+      ~r/#{GCPConfig.default_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
 
     case Regex.named_captures(regex, message) do
       %{"uuid" => uuid} ->
@@ -305,14 +306,6 @@ defmodule Logflare.Google.BigQuery.GenUtils do
       nil ->
         message
     end
-  end
-
-  @spec env_project_id() :: String.t()
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-
-  @spec env_default_table_name_append() :: String.t()
-  defp env_default_table_name_append do
-    Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] || ""
   end
 
   # copy over runtime adapter building from Tesla.client/2

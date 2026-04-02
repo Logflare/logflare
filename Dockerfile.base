@@ -32,7 +32,6 @@ RUN npm --prefix assets ci
 COPY config/config.exs config/
 COPY config/prod.exs config/
 COPY config/runtime.exs config/
-COPY . ./
 
 # rust bin path and release optimizations
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -41,3 +40,8 @@ ENV CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
 
 # check installed correctly
 RUN cargo version
+
+# pre-fetch cargo dependencies for layer caching
+COPY Cargo.toml Cargo.lock ./
+COPY --parents native/*/Cargo.toml ./
+RUN cargo fetch --locked

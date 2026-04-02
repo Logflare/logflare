@@ -93,8 +93,8 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{}, %{url: :string, headers: :map, username: :string, password: :string}}
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config, %{url: :string, headers: :map, username: :string, password: :string}}
     |> Ecto.Changeset.cast(params, [:headers, :url, :username, :password])
   end
 

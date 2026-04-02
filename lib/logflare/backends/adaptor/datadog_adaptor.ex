@@ -51,8 +51,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{}, %{api_key: :string, region: :string}}
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config, %{api_key: :string, region: :string}}
     |> Ecto.Changeset.cast(params, [:api_key, :region])
   end
 

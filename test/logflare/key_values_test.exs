@@ -88,7 +88,7 @@ defmodule Logflare.KeyValuesTest do
              ])
 
     assert [upserted] = Logflare.Repo.all(KeyValues.KeyValue)
-    assert upserted.updated_at > updated_at
+    assert DateTime.after?(upserted.updated_at, updated_at)
     assert upserted.inserted_at == inserted_at
   end
 
