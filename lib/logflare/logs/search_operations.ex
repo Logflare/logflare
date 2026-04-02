@@ -5,7 +5,10 @@ defmodule Logflare.Logs.SearchOperations do
   import Logflare.Ecto.BQQueryAPI
   import Logflare.Logs.SearchQueries
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.DateTimeUtils
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
@@ -14,6 +17,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Lql.BackendTransformer.BigQuery, as: BigQueryTransformer
+  alias Logflare.Lql.BackendTransformer.Postgres, as: PostgresTransformer
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
@@ -44,39 +48,70 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
-    bq_project_id = so.source.user.bigquery_project_id || GCPConfig.default_project_id()
-    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(so.source.token)
+    with {:ok, response} <- execute_backend_query(so) do
+      response = normalize_query_result(so, response)
 
-    with {:ok, response} <-
-           BigQueryAdaptor.execute_query(
-             {bq_project_id, dataset_id, so.source.user.id},
-             so.query,
-             query_type: :search
-           ) do
       so
       |> SearchUtils.put_result(:query_result, response)
       |> SearchUtils.put_result(:rows, response.rows)
-      |> put_sql_string_and_params(response)
+      |> put_sql_string(response)
     else
       {:error, err} ->
         SearchUtils.put_result(so, :error, err)
     end
   end
 
-  @spec put_sql_string_and_params(SO.t(), %{query_string: String.t(), bq_params: list()}) ::
-          SO.t()
-  defp put_sql_string_and_params(%{sql_string: sql_string} = so, _response)
-       when is_binary(sql_string),
-       do: so
+  @spec normalize_query_result(SO.t(), QueryResult.t()) :: QueryResult.t()
+  defp normalize_query_result(%SO{backend_type: :postgres, type: type}, %QueryResult{} = response) do
+    normalize_postgres_response(response, type)
+  end
 
-  defp put_sql_string_and_params(so, %{query_string: query_string, bq_params: bq_params}) do
-    %{so | sql_string: query_string, sql_params: bq_params}
+  defp normalize_query_result(%SO{}, %QueryResult{} = response), do: response
+
+  @spec execute_backend_query(SO.t()) :: {:ok, map()} | {:error, term()}
+  defp execute_backend_query(%SO{backend_type: :postgres} = so) do
+    backend = postgres_backend(so)
+
+    PostgresAdaptor.execute_query(backend, so.query, query_type: :search)
+  end
+
+  defp execute_backend_query(%SO{} = so) do
+    bq_project_id = so.source.user.bigquery_project_id || GCPConfig.default_project_id()
+    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(so.source.token)
+
+    BigQueryAdaptor.execute_query(
+      {bq_project_id, dataset_id, so.source.user.id},
+      so.query,
+      query_type: :search
+    )
+  end
+
+  @spec put_sql_string(SO.t(), QueryResult.t()) :: SO.t()
+  defp put_sql_string(%{sql_string: sql_string} = so, _response) when is_binary(sql_string),
+    do: so
+
+  defp put_sql_string(%SO{backend_type: :bigquery} = so, %QueryResult{
+         query_string: query_string,
+         bq_params: bq_params
+       }) do
+    %{
+      so
+      | sql_string: if(is_binary(query_string), do: query_string, else: nil),
+        sql_params: if(is_list(bq_params), do: bq_params, else: [])
+    }
+  end
+
+  defp put_sql_string(%SO{backend_type: :postgres} = so, _response) do
+    case PostgresAdaptor.ecto_to_sql(so.query, []) do
+      {:ok, {query_string, params}} -> %{so | sql_string: query_string, sql_params: params}
+      {:error, _reason} -> so
+    end
   end
 
   @spec apply_query_defaults(SO.t()) :: SO.t()
   def apply_query_defaults(%SO{} = so) do
     query =
-      from(so.source.bq_table_id)
+      from(table_name(so))
       |> select(%{})
       |> order_by([t], desc: t.timestamp)
       |> limit(@default_limit)
@@ -86,7 +121,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_halt_conditions(SO.t()) :: SO.t()
   def apply_halt_conditions(%SO{} = so) do
-    chart_period = hd(so.chart_rules).period
+    chart_period = chart_period(so)
 
     %{min: min_ts, max: max_ts} =
       SearchOperationHelpers.get_min_max_filter_timestamps(so.lql_ts_filters, chart_period)
@@ -121,7 +156,7 @@ defmodule Logflare.Logs.SearchOperations do
     %{message: message} =
       SearchOperationHelpers.get_min_max_filter_timestamps(
         so.lql_ts_filters,
-        hd(so.chart_rules).period
+        chart_period(so)
       )
 
     if message do
@@ -165,7 +200,11 @@ defmodule Logflare.Logs.SearchOperations do
       stats
       |> Map.merge(%{
         total_rows: so.query_result.total_rows,
-        total_bytes_processed: so.query_result.total_bytes_processed
+        total_bytes_processed:
+          if(so.query_result.total_bytes_processed == :not_supported,
+            do: 0,
+            else: so.query_result.total_bytes_processed
+          )
       })
       |> Map.put(
         :total_duration,
@@ -176,18 +215,26 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   @spec process_query_result(SO.t()) :: SO.t()
-  def process_query_result(%SO{query_result: %{rows: rows}, type: :aggregates} = so) do
+  def process_query_result(%SO{query_result: %QueryResult{rows: rows}, type: :aggregates} = so) do
     rows =
       Enum.map(rows, fn agg ->
-        Map.put(agg, "datetime", Timex.from_unix(agg["timestamp"], :microsecond))
+        timestamp = normalize_aggregate_timestamp(agg["timestamp"])
+
+        agg
+        |> Map.put("timestamp", timestamp)
+        |> Map.put("datetime", Timex.from_unix(timestamp, :microsecond))
       end)
 
     %{so | rows: rows}
   end
 
+  def apply_timestamp_filter_rules(%SO{backend_type: :postgres, type: :events} = so) do
+    %{so | query: apply_postgres_event_timestamp_filter_rules(so)}
+  end
+
   def apply_timestamp_filter_rules(%SO{type: :events} = so) do
     %SO{tailing?: t?, tailing_initial?: ti?, query: query} = so
-    chart_period = hd(so.chart_rules).period
+    chart_period = chart_period(so)
     utc_today = Date.utc_today()
     ts_filters = so.lql_ts_filters
 
@@ -261,80 +308,80 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_timestamp_filter_rules(SO.t()) :: SO.t()
   def apply_timestamp_filter_rules(%SO{tailing?: t?, type: :aggregates} = so) do
-    query = from(so.source.bq_table_id)
-    ts_filters = so.lql_ts_filters
+    query = from(table_name(so))
+    chart_period = chart_period(so)
+    filters = if(t? or Enum.empty?(so.lql_ts_filters), do: [], else: so.lql_ts_filters)
 
-    period =
-      so.chart_rules
-      |> hd()
-      |> Map.get(:period)
-      |> to_bq_interval_token()
+    q =
+      case so.backend_type do
+        :postgres ->
+          %{min: min, max: max} =
+            SearchOperationHelpers.get_min_max_filter_timestamps(filters, chart_period)
 
-    tick_count =
-      so.chart_rules
-      |> hd()
-      |> Map.get(:period)
-      |> SearchOperationHelpers.default_period_tick_count()
+          query = where(query, [t], t.timestamp >= ^min and t.timestamp <= ^max)
 
+          if Enum.empty?(filters),
+            do: query,
+            else: Lql.apply_filter_rules(query, filters, dialect: :postgres)
+
+        :bigquery ->
+          apply_bq_aggregate_timestamp_filters(query, so, filters, chart_period)
+      end
+
+    %{so | query: q}
+  end
+
+  defp apply_bq_aggregate_timestamp_filters(query, so, filters, chart_period) do
+    period = to_bq_interval_token(chart_period)
+    tick_count = SearchOperationHelpers.default_period_tick_count(chart_period)
     utc_today = Date.utc_today()
     utc_now = DateTime.utc_now()
 
     partition_days =
-      case hd(so.chart_rules).period do
+      case chart_period do
         :day -> 14
         :hour -> 3
         :minute -> 1
         :second -> 1
       end
 
-    q =
-      if t? or Enum.empty?(ts_filters) do
-        query =
-          query
-          |> BigQueryTransformer.where_timestamp_ago(
-            utc_now,
-            tick_count,
-            period
-          )
-          |> limit([t], ^tick_count)
+    if Enum.empty?(filters) do
+      query =
+        query
+        |> BigQueryTransformer.where_timestamp_ago(utc_now, tick_count, period)
+        |> limit([t], ^tick_count)
 
+      case so.partition_by do
+        :pseudo ->
+          where(
+            query,
+            partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
+              in_streaming_buffer()
+          )
+
+        :timestamp ->
+          query
+      end
+    else
+      %{min: min, max: max} =
+        SearchOperationHelpers.get_min_max_filter_timestamps(filters, chart_period)
+
+      query =
         case so.partition_by do
           :pseudo ->
-            where(
-              query,
-              partition_date() >= bq_date_sub(^utc_today, ^partition_days, "day") or
-                in_streaming_buffer()
+            query
+            |> where(
+              partition_date() >= ^Timex.to_date(min) and
+                partition_date() <= ^Timex.to_date(max)
             )
+            |> or_where(in_streaming_buffer())
 
           :timestamp ->
             query
         end
-      else
-        %{min: min, max: max} =
-          SearchOperationHelpers.get_min_max_filter_timestamps(
-            ts_filters,
-            hd(so.chart_rules).period
-          )
 
-        query =
-          case so.partition_by do
-            :pseudo ->
-              query
-              |> where(
-                partition_date() >= ^Timex.to_date(min) and
-                  partition_date() <= ^Timex.to_date(max)
-              )
-              |> or_where(in_streaming_buffer())
-
-            :timestamp ->
-              query
-          end
-
-        query
-        |> Lql.apply_filter_rules(ts_filters)
-      end
-
-    %{so | query: q}
+      Lql.apply_filter_rules(query, filters)
+    end
   end
 
   defp to_value_unit(average) when average < 10, do: {2, "DAY"}
@@ -358,13 +405,13 @@ defmodule Logflare.Logs.SearchOperations do
       |> Kernel.++(default_rules)
       |> Rules.SelectRule.normalize()
 
-    q = Lql.apply_select_rules(q, select_rules)
+    q = Lql.apply_select_rules(q, select_rules, dialect: so.backend_type)
 
     %{so | query: q}
   end
 
   def apply_filters(%SO{type: :events, query: q} = so) do
-    q = Lql.apply_filter_rules(q, so.lql_meta_and_msg_filters)
+    q = Lql.apply_filter_rules(q, so.lql_meta_and_msg_filters, dialect: so.backend_type)
 
     %{so | query: q}
   end
@@ -437,14 +484,32 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | lql_ts_filters: lql_ts_filters}
   end
 
-  def apply_numeric_aggs(
-        %SO{query: query, chart_rules: chart_rules, lql_meta_and_msg_filters: filter_rules} = so
-      ) do
-    chart_period = hd(so.chart_rules).period
-    chart_path = hd(chart_rules).path
+  def apply_numeric_aggs(%SO{query: query, lql_meta_and_msg_filters: filter_rules} = so) do
+    chart_rule = hd(so.chart_rules)
 
-    non_chart_filters =
-      Enum.reject(filter_rules, fn %FilterRule{path: path} -> path == chart_path end)
+    non_chart_filters = reject_chart_filters(filter_rules, chart_rule)
+
+    case so.backend_type do
+      :postgres ->
+        query =
+          query
+          |> Lql.apply_filter_rules(non_chart_filters)
+          |> PostgresTransformer.transform_chart_rule(
+            chart_rule.aggregate,
+            chart_rule.path,
+            chart_rule.period,
+            "timestamp"
+          )
+
+        %{so | query: query}
+
+      :bigquery ->
+        apply_bq_numeric_aggs(so, query, chart_rule, non_chart_filters, filter_rules)
+    end
+  end
+
+  defp apply_bq_numeric_aggs(so, query, chart_rule, non_chart_filters, filter_rules) do
+    chart_period = chart_rule.period
 
     query =
       query
@@ -452,87 +517,136 @@ defmodule Logflare.Logs.SearchOperations do
       |> order_by([t, ...], desc: 1)
 
     query = select_timestamp(query, chart_period)
-
-    query =
-      case chart_rules do
-        [%ChartRule{path: "timestamp", aggregate: :count, value_type: :datetime}] ->
-          case so.chart_data_shape_id do
-            :elixir_logger_levels ->
-              select_count_log_level(query)
-
-            :cloudflare_status_codes ->
-              select_count_cloudflare_http_status_code(query)
-
-            :vercel_status_codes ->
-              select_count_vercel_http_status_code(query)
-
-            :netlify_status_codes ->
-              select_count_netlify_http_status_code(query)
-
-            nil ->
-              select_merge_agg_value(query, :count, :timestamp)
-          end
-
-        [%ChartRule{value_type: _, path: p, aggregate: agg}] ->
-          last_chart_field =
-            p
-            |> String.split(".")
-            |> List.last()
-            |> String.to_existing_atom()
-
-          # Only create UNNEST joins for nested fields (containing ".")
-          # Top-level fields should reference the base table directly
-          is_nested_field = String.contains?(p, ".")
-
-          q =
-            if is_nested_field do
-              query
-              |> Lql.handle_nested_field_access(p)
-              |> select_merge_agg_value(agg, last_chart_field, :joined_table)
-            else
-              query
-              |> select_merge_agg_value(agg, last_chart_field, :base_table)
-            end
-
-          Enum.reduce(filter_rules, q, fn
-            %FilterRule{
-              path: ^p,
-              operator: operator,
-              value: value,
-              modifiers: modifiers
-            },
-            acc ->
-              where(
-                acc,
-                ^Lql.transform_filter_rule(%FilterRule{
-                  path: p,
-                  operator: operator,
-                  value: value,
-                  modifiers: modifiers
-                })
-              )
-
-            %FilterRule{}, acc ->
-              acc
-          end)
-      end
-
+    query = apply_bq_chart_select(query, chart_rule, so.chart_data_shape_id, filter_rules)
     query = group_by(query, 1)
 
     %{so | query: query}
   end
 
+  defp apply_bq_chart_select(
+         query,
+         %ChartRule{path: "timestamp", aggregate: :count, value_type: :datetime},
+         chart_data_shape_id,
+         _filter_rules
+       ) do
+    case chart_data_shape_id do
+      :elixir_logger_levels -> select_count_log_level(query)
+      :cloudflare_status_codes -> select_count_cloudflare_http_status_code(query)
+      :vercel_status_codes -> select_count_vercel_http_status_code(query)
+      :netlify_status_codes -> select_count_netlify_http_status_code(query)
+      nil -> select_merge_agg_value(query, :count, :timestamp)
+    end
+  end
+
+  defp apply_bq_chart_select(
+         query,
+         %ChartRule{path: p, aggregate: agg},
+         _chart_data_shape_id,
+         filter_rules
+       ) do
+    last_chart_field =
+      p
+      |> String.split(".")
+      |> List.last()
+      |> String.to_existing_atom()
+
+    q =
+      if String.contains?(p, ".") do
+        query
+        |> Lql.handle_nested_field_access(p)
+        |> select_merge_agg_value(agg, last_chart_field, :joined_table)
+      else
+        query
+        |> select_merge_agg_value(agg, last_chart_field, :base_table)
+      end
+
+    Enum.reduce(filter_rules, q, fn
+      %FilterRule{path: ^p, operator: operator, value: value, modifiers: modifiers}, acc ->
+        where(
+          acc,
+          ^Lql.transform_filter_rule(%FilterRule{
+            path: p,
+            operator: operator,
+            value: value,
+            modifiers: modifiers
+          })
+        )
+
+      %FilterRule{}, acc ->
+        acc
+    end)
+  end
+
+  @spec chart_period(SO.t()) :: chart_period()
+  defp chart_period(%SO{chart_rules: [%{period: period} | _]}), do: period
+
+  @spec table_name(SO.t()) :: String.t()
+  defp table_name(%SO{backend_type: :postgres, source: source}),
+    do: PostgresAdaptor.table_name(source)
+
+  defp table_name(%SO{source: source}), do: source.bq_table_id
+
+  defp postgres_backend(%SO{source: %{user: user}}) when not is_nil(user) do
+    Backends.get_default_backend(user)
+  end
+
+  defp postgres_backend(%SO{}), do: nil
+
+  @spec apply_postgres_event_timestamp_filter_rules(SO.t()) :: Ecto.Query.t()
+  defp apply_postgres_event_timestamp_filter_rules(%SO{} = so) do
+    %SO{tailing?: t?, tailing_initial?: ti?, query: query} = so
+    ts_filters = so.lql_ts_filters
+
+    cond do
+      t? and !ti? ->
+        where(
+          query,
+          [t],
+          t.timestamp >=
+            ^Timex.shift(DateTime.utc_now(), minutes: -@tailing_timestamp_filter_minutes)
+        )
+
+      (t? and ti?) || Enum.empty?(ts_filters) ->
+        where(query, [t], t.timestamp >= ^Timex.shift(DateTime.utc_now(), days: -2))
+
+      true ->
+        Lql.apply_filter_rules(query, ts_filters, dialect: :postgres)
+    end
+  end
+
+  @spec normalize_postgres_response(QueryResult.t(), :events | :aggregates) :: QueryResult.t()
+  defp normalize_postgres_response(%QueryResult{} = response, :events), do: response
+
+  defp normalize_postgres_response(%QueryResult{} = response, :aggregates) do
+    rows =
+      Enum.map(response.rows, fn row ->
+        case Map.pop(row, "count") do
+          {nil, _row} -> row
+          {count, row} -> Map.put(row, "value", count)
+        end
+      end)
+
+    %QueryResult{response | rows: rows}
+  end
+
+  defp normalize_aggregate_timestamp([timestamp]), do: normalize_aggregate_timestamp(timestamp)
+  defp normalize_aggregate_timestamp(timestamp), do: timestamp
+
+  @spec reject_chart_filters([FilterRule.t()], ChartRule.t()) :: [FilterRule.t()]
+  defp reject_chart_filters(filter_rules, %ChartRule{path: chart_path}) do
+    Enum.reject(filter_rules, fn %FilterRule{path: path} -> path == chart_path end)
+  end
+
   def add_missing_agg_timestamps(%SO{} = so) do
+    chart_period = chart_period(so)
+
     %{min: min, max: max} =
-      SearchOperationHelpers.get_min_max_filter_timestamps(
-        so.lql_ts_filters,
-        hd(so.chart_rules).period
-      )
+      SearchOperationHelpers.get_min_max_filter_timestamps(so.lql_ts_filters, chart_period)
 
     if min == max do
       so
     else
-      rows = intersperse_missing_range_timestamps(so.rows, min, max, hd(so.chart_rules).period)
+      rows = intersperse_missing_range_timestamps(so.rows, min, max, chart_period)
 
       %{so | rows: rows}
     end

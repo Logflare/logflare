@@ -3,6 +3,7 @@ defmodule Logflare.EndpointsTest do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
 
@@ -297,7 +298,7 @@ defmodule Logflare.EndpointsTest do
 
       expect(ClickHouseAdaptor, :execute_query, fn backend, _query, _opts ->
         send(test_pid, {:backend_used, backend.id})
-        {:ok, [%{"testing" => "123"}]}
+        {:ok, QueryResult.new([%{"testing" => "123"}])}
       end)
 
       query_string = "SELECT 1 as testing"
@@ -319,7 +320,7 @@ defmodule Logflare.EndpointsTest do
 
       expect(ClickHouseAdaptor, :execute_query, fn backend, _query, _opts ->
         send(test_pid, {:backend_used, backend.id})
-        {:ok, [%{"testing" => "123"}]}
+        {:ok, QueryResult.new([%{"testing" => "123"}])}
       end)
 
       query_string = "SELECT 1 as testing"
