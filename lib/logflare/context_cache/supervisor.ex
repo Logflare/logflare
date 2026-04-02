@@ -34,12 +34,12 @@ defmodule Logflare.ContextCache.Supervisor do
     |> Supervisor.init(strategy: :one_for_one)
   end
 
-  defp get_children(:test) do
-    list_caches() ++
-      [
-        {GenSingleton, child_spec: cainophile_child_spec()}
-      ]
-  end
+  defp get_children(:test),
+    do:
+      list_caches() ++
+        [
+          {GenSingleton, child_spec: cainophile_child_spec()}
+        ]
 
   defp get_children(_env) do
     list_caches() ++
