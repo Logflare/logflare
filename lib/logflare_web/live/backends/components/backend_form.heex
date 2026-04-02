@@ -409,39 +409,56 @@
           </div>
         <% "syslog" -> %>
           <div class="form-group">
-            {label(f_config, :host, "Host")}
-            {text_input(f_config, :host, class: "form-control", placeholder: "127.0.0.1")}
+            {label(f_config, :host, "Host (Required)")}
+            {text_input(f_config, :host, class: "form-control")}
+            <small class="text-muted">
+              The hostname or IP address of the syslog server.
+            </small>
           </div>
           <div class="form-group">
-            {label(f_config, :port, "Port")}
-            {number_input(f_config, :port, class: "form-control", placeholder: "6514")}
-          </div>
-          <div class="form-group">
-            {label(f_config, :cipher_key, "Cipher Key (Base64-encoded)")}
-            {text_input(f_config, :cipher_key, class: "form-control", placeholder: "IHBQBF1xUGhebXSR4tAJ2oDdZmYhlKQP7z5vBwJNcPo=")}
+            {label(f_config, :port, "Port (Required)")}
+            {number_input(f_config, :port, class: "form-control")}
+            <small class="text-muted">
+              It's usually 514 for UDP and 6514 for TCP with TLS, but may vary based on your syslog server configuration.
+            </small>
           </div>
           <div class="form-group">
             {label(f_config, :tls, "Use TLS?")}
             {checkbox(f_config, :tls, id: "tls")}
-            <small class="form-text text-muted">Connect using TLS</small>
           </div>
+          <div class="form-group">
+            {label(f_config, :structured_data, "Structured Data (RFC5424)")}
+            {textarea(f_config, :structured_data, class: "form-control")}
+            <small class="text-muted">
+              Optional Structured Data element. Must match RFC5424 format, e.g. <code>[SD-ID key="value"]</code>
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :cipher_key, "Cipher Key (Base64-encoded)")}
+            {text_input(f_config, :cipher_key, class: "form-control")}
+            <small class="text-muted">
+              Optional cipher key for encrypting syslog messages. Must be a 32-byte key encoded in Base64.
+            </small>
+          </div> 
           <div class="form-group">
             {label(f_config, :ca_cert, "CA Certificate (PEM)")}
             {textarea(f_config, :ca_cert, class: "form-control")}
+            <small class="text-muted">
+              Optional CA certificate for verifying the syslog server's TLS certificate. Must be in PEM format.
+            </small>
           </div>
           <div class="form-group">
             {label(f_config, :client_cert, "Client Certificate (PEM)")}
             {textarea(f_config, :client_cert, class: "form-control")}
+            <small class="text-muted">
+              Optional client certificate for mutual TLS authentication. Must be in PEM format.
+            </small>
           </div>
           <div class="form-group">
             {label(f_config, :client_key, "Client Key (PEM)")}
             {textarea(f_config, :client_key, class: "form-control")}
-          </div>
-          <div class="form-group">
-            {label(f_config, :structured_data, "Structured Data (RFC5424)")}
-            {textarea(f_config, :structured_data, class: "form-control", placeholder: "[logtail@11993 source_token=\"SOURCE_TOKEN\"]")}
-            <small class="form-text text-muted">
-              Optional Structured Data element. Must match RFC5424 format, e.g. <code>[SD-ID key="value"]</code>
+            <small class="text-muted">
+              Optional client key for mutual TLS authentication. Must be in PEM format.
             </small>
           </div>
         <% _ -> %>
