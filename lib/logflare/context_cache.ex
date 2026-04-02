@@ -39,6 +39,9 @@ defmodule Logflare.ContextCache do
   @doc """
   Optional callback implementing custom cache key busting by a keyword of values
   """
+
+  alias Logflare.Cluster.Utils, as: ClusterUtils
+
   @callback bust_by(keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
 
   @spec apply_fun(module(), tuple() | atom(), list()) :: any()
@@ -192,7 +195,7 @@ defmodule Logflare.ContextCache do
         config = Application.fetch_env!(:logflare, :context_cache_gossip)
 
       if enabled do
-        peers = Logflare.Cluster.Utils.peer_list_partial(ratio, max_nodes)
+        peers = ClusterUtils.peer_list_partial(ratio, max_nodes)
         :erpc.multicast(peers, __MODULE__, :receive_gossip, [cache, key, value])
       end
 
