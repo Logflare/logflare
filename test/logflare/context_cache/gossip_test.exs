@@ -2,6 +2,7 @@ defmodule Logflare.ContextCache.GossipClusterTest do
   use Logflare.DataCase, async: false
   import Logflare.Factory
 
+  alias Ecto.Adapters.SQL.Sandbox, as: EctoSandbox
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Sources
 
@@ -37,7 +38,7 @@ defmodule Logflare.ContextCache.GossipClusterTest do
     end)
 
     {plan, user, source} =
-      Ecto.Adapters.SQL.Sandbox.unboxed_run(Logflare.Repo, fn ->
+      EctoSandbox.unboxed_run(Logflare.Repo, fn ->
         plan = insert(:plan, name: "Free")
         user = insert(:user)
         source = insert(:source, user: user)
@@ -45,7 +46,7 @@ defmodule Logflare.ContextCache.GossipClusterTest do
       end)
 
     on_exit(fn ->
-      Ecto.Adapters.SQL.Sandbox.unboxed_run(Logflare.Repo, fn ->
+      EctoSandbox.unboxed_run(Logflare.Repo, fn ->
         Logflare.Repo.delete(source)
         Logflare.Repo.delete(user)
         Logflare.Repo.delete(plan)
