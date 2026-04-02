@@ -81,7 +81,7 @@ defmodule Logflare.ContextCacheTest do
     end
   end
 
-  describe "broadcasts" do
+  describe "gossip" do
     setup do
       insert(:plan, name: "Free")
       user = insert(:user)
@@ -95,8 +95,8 @@ defmodule Logflare.ContextCacheTest do
 
       telemetry_ref =
         :telemetry_test.attach_event_handlers(self(), [
-          [:logflare, :context_cache, :broadcast, :stop],
-          [:logflare, :context_cache, :receive_broadcast, :stop]
+          [:logflare, :context_cache_gossip, :multicast, :stop],
+          [:logflare, :context_cache_gossip, :receive_multicast, :stop]
         ])
 
       on_exit(fn -> :telemetry.detach(telemetry_ref) end)
@@ -126,7 +126,7 @@ defmodule Logflare.ContextCacheTest do
     } do
       Sources.Cache.get_by(token: source.token)
 
-      assert_receive {[:logflare, :context_cache, :broadcast, :stop], ^telemetry_ref,
+      assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
                       _measurements, %{cache: Sources.Cache} = metadata}
 
       assert metadata.enabled == true
@@ -140,12 +140,12 @@ defmodule Logflare.ContextCacheTest do
       cache_key = {:get, [999]}
       value = %{id: 999, name: "valid"}
 
-      ContextCache.receive_broadcast(Sources.Cache, cache_key, value)
+      ContextCache.receive_multicast(Sources.Cache, cache_key, value)
 
       assert Cachex.get!(Sources.Cache, cache_key) == {:cached, value}
 
-      assert_receive {[:logflare, :context_cache, :receive_broadcast, :stop], ^telemetry_ref,
-                      _measurements, metadata}
+      assert_receive {[:logflare, :context_cache_gossip, :receive_multicast, :stop],
+                      ^telemetry_ref, _measurements, metadata}
 
       assert metadata.action == :cached
       assert metadata.cache == Sources.Cache
@@ -157,12 +157,12 @@ defmodule Logflare.ContextCacheTest do
       cache_key = {:get, [111]}
       existing_value = {:cached, %{id: 111, name: "local_data"}}
       Cachex.put(Sources.Cache, cache_key, existing_value)
-      ContextCache.receive_broadcast(Sources.Cache, cache_key, %{id: 111, name: "stale"})
+      ContextCache.receive_multicast(Sources.Cache, cache_key, %{id: 111, name: "stale"})
 
       assert Cachex.get!(Sources.Cache, cache_key) == existing_value
 
-      assert_receive {[:logflare, :context_cache, :receive_broadcast, :stop], ^telemetry_ref,
-                      _measurements, metadata}
+      assert_receive {[:logflare, :context_cache_gossip, :receive_multicast, :stop],
+                      ^telemetry_ref, _measurements, metadata}
 
       assert metadata.action == :dropped_exists
       assert metadata.cache == Sources.Cache

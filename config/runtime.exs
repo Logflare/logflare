@@ -502,7 +502,7 @@ if cache_gossip_max_nodes <= 0 do
         "Invalid LOGFLARE_CACHE_GOSSIP_MAX_NODES: #{cache_gossip_max_nodes}. Must be a positive integer."
 end
 
-config :logflare, :cache_gossip, %{
+config :logflare, :context_cache_gossip, %{
   enabled: cache_gossip_enabled?,
   ratio: cache_gossip_ratio,
   max_nodes: cache_gossip_max_nodes

@@ -228,25 +228,26 @@ defmodule Logflare.Telemetry do
       counter("thousand_island.acceptor.spawn_error",
         description: "Count of client connection spawn errors"
       ),
-      counter("logflare.context_cache.broadcast.count",
-        event_name: "logflare.context_cache.broadcast.stop",
+      counter("logflare.context_cache_gossip.multicast.count",
+        event_name: "logflare.context_cache_gossip.multicast.stop",
         tags: [:cache, :enabled],
-        description: "Total cache broadcast attempts"
+        description: "Total cache gossip multicast attempts"
       ),
-      distribution("logflare.context_cache.broadcast.stop.duration",
+      distribution("logflare.context_cache_gossip.multicast.stop.duration",
         tags: [:cache, :enabled],
         unit: {:native, :millisecond},
-        description: "Latency of dispatching the cache broadcast"
+        description: "Latency of dispatching the cache gossip multicast"
       ),
-      counter("logflare.context_cache.receive_broadcast.count",
-        event_name: "logflare.context_cache.receive_broadcast.stop",
+      counter("logflare.context_cache_gossip.receive_multicast.count",
+        event_name: "logflare.context_cache_gossip.receive_multicast.stop",
         tags: [:cache, :action],
-        description: "Total cache broadcasts received and their outcome (cached or dropped)"
+        description:
+          "Total cache gossip multicasts received and their outcome (cached or dropped)"
       ),
-      distribution("logflare.context_cache.receive_broadcast.stop.duration",
+      distribution("logflare.context_cache_gossip.receive_multicast.stop.duration",
         tags: [:cache, :action],
         unit: {:native, :millisecond},
-        description: "Latency of processing an incoming cache broadcast"
+        description: "Latency of processing an incoming cache gossip multicast"
       )
     ]
 
