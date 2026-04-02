@@ -136,9 +136,7 @@ defmodule Logflare.ContextCacheTest do
       assert metadata.ratio == 0.05
     end
 
-    test "receive_gossip/3 inserts valid broadcast when cache is empty and emits telemetry", %{
-      telemetry_ref: telemetry_ref
-    } do
+    test "receive_gossip/3 caches received value", %{telemetry_ref: telemetry_ref} do
       cache_key = {:get, [999]}
       value = %{id: 999, name: "valid"}
 
@@ -153,7 +151,7 @@ defmodule Logflare.ContextCacheTest do
       assert metadata.cache == Sources.Cache
     end
 
-    test "receive_gossip/3 drops broadcast if the local node already has the key cached", %{
+    test "receive_gossip/3 refreshes ttl wehn value is already cached", %{
       telemetry_ref: telemetry_ref
     } do
       cache_key = {:get, [111]}
@@ -166,7 +164,7 @@ defmodule Logflare.ContextCacheTest do
       assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
                       _measurements, metadata}
 
-      assert metadata.action == :dropped_exists
+      assert metadata.action == :refreshed
       assert metadata.cache == Sources.Cache
     end
   end

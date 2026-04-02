@@ -208,9 +208,10 @@ defmodule Logflare.ContextCache do
     :telemetry.span([:logflare, :context_cache_gossip, :receive], meta, fn ->
       action =
         cond do
-          # do nothing if the node already has this cache key
+          # refresh if the node already has this cache key
           Cachex.exists?(cache, key) == {:ok, true} ->
-            :dropped_exists
+            Cachex.refresh(cache, key)
+            :refreshed
 
           # do nothing if the WAL recently busted this specific record
           tombstoned?(cache, value) ->
