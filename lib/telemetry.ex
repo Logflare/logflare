@@ -7,13 +7,11 @@ defmodule Logflare.Telemetry do
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
   context_caches_with_metrics = Logflare.ContextCache.Supervisor.list_caches_with_metrics()
-  wal_tombstones = Logflare.ContextCache.wal_tombstones_cache_name()
 
   @caches [
             {Logflare.Logs.LogEvents.Cache, :log_events},
             {Logflare.Logs.RejectedLogEvents, :rejected_log_events},
-            {Logflare.PubSubRates.Cache, :pub_sub_rates},
-            {wal_tombstones, wal_tombstones}
+            {Logflare.PubSubRates.Cache, :pub_sub_rates}
           ] ++ context_caches_with_metrics
 
   @process_metrics %{

@@ -36,12 +36,12 @@ defmodule Logflare.ContextCache do
   filter out stale incoming messages.
   """
 
+  alias Logflare.Cluster.Utils, as: ClusterUtils
+  alias Logflare.ContextCache.Tombstones
+
   @doc """
   Optional callback implementing custom cache key busting by a keyword of values
   """
-
-  alias Logflare.Cluster.Utils, as: ClusterUtils
-
   @callback bust_by(keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
 
   @spec apply_fun(module(), tuple() | atom(), list()) :: any()
@@ -180,8 +180,6 @@ defmodule Logflare.ContextCache do
 
   # Explicitly ignore high-volume/ephemeral caches
   defp maybe_gossip(Logflare.Logs.LogEvents.Cache, _key, _value), do: :ok
-  defp maybe_gossip(Logflare.Logs.RejectedLogEvents, _key, _value), do: :ok
-  defp maybe_gossip(Logflare.PubSubRates.Cache, _key, _value), do: :ok
 
   defp maybe_gossip(Cachex.Spec.cache(name: cache), key, value) do
     maybe_gossip(cache, key, value)
@@ -202,11 +200,6 @@ defmodule Logflare.ContextCache do
       {:ok, Map.merge(config, meta)}
     end)
   end
-
-  @wal_tombstones :wal_tombstones
-
-  @doc false
-  def wal_tombstones_cache_name, do: @wal_tombstones
 
   @doc false
   def receive_gossip(cache, key, value) do
@@ -238,7 +231,7 @@ defmodule Logflare.ContextCache do
     # Incoming cache broadcasts check this tombstone cache to determine if their payload could be stale.
     Enum.each(context_pkeys, fn context_pkey ->
       if tombstone = to_tombstone(context_pkey) do
-        Cachex.put(@wal_tombstones, tombstone, true)
+        Tombstones.Cache.put_tombstone(tombstone)
       end
     end)
   end
@@ -253,6 +246,9 @@ defmodule Logflare.ContextCache do
           {cache_name(context), id}
         end
 
+      {context, %{id: id}} ->
+        {cache_name(context), id}
+
       _other ->
         nil
     end
@@ -260,10 +256,7 @@ defmodule Logflare.ContextCache do
 
   defp tombstoned?(cache, value) do
     pkeys = extract_pkeys(value)
-
-    Enum.any?(pkeys, fn pkey ->
-      Cachex.exists?(@wal_tombstones, {cache, pkey}) == {:ok, true}
-    end)
+    Enum.any?(pkeys, fn pkey -> Tombstones.Cache.tombstoned?(cache, pkey) end)
   end
 
   defp extract_pkeys(values) when is_list(values) do

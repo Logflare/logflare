@@ -4,6 +4,7 @@ defmodule Logflare.ContextCacheTest do
   alias Ecto.Adapters.SQL
   alias Logflare.ContextCache
   alias Logflare.ContextCache.TransactionBroadcaster
+  alias Logflare.ContextCache.Tombstones
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Backends
@@ -90,7 +91,7 @@ defmodule Logflare.ContextCacheTest do
     end
 
     setup do
-      Cachex.clear!(:wal_tombstones)
+      Cachex.clear!(Tombstones.Cache)
       Cachex.clear!(Sources.Cache)
 
       telemetry_ref =
@@ -106,18 +107,19 @@ defmodule Logflare.ContextCacheTest do
     test "record_tombstones/1 writes primary keys and :not_found to the tombstone cache" do
       ContextCache.record_tombstones([
         {Sources, 123},
-        {Sources, "uuid-456"},
-        {Sources, id: 234, other: :info}
+        {Sources, id: 234, other: :info},
+        {Sources, %{id: 345, other: :info}},
+        {Sources, "uuid-456"}
       ])
 
-      assert {:ok, true} == Cachex.exists?(:wal_tombstones, {Sources.Cache, 123})
-      assert {:ok, true} == Cachex.exists?(:wal_tombstones, {Sources.Cache, "uuid-456"})
-      assert {:ok, true} == Cachex.exists?(:wal_tombstones, {Sources.Cache, 234})
+      assert Tombstones.Cache.tombstoned?(Sources.Cache, 123)
+      assert Tombstones.Cache.tombstoned?(Sources.Cache, 234)
+      assert Tombstones.Cache.tombstoned?(Sources.Cache, 345)
+      assert Tombstones.Cache.tombstoned?(Sources.Cache, "uuid-456")
     end
 
     test "record_tombstones/1 ignores unsupported types gracefully" do
-      ContextCache.record_tombstones([{Sources, %{id: 123}}])
-      assert Cachex.size(:wal_tombstones) == {:ok, _size = 0}
+      ContextCache.record_tombstones([{Sources, make_ref()}])
     end
 
     test "maybe_gossip/3 emits telemetry on cache miss", %{
