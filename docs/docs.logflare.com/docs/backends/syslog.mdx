@@ -72,6 +72,11 @@ To integrate Logflare with [Better Stack](https://betterstack.com), follow these
         -H "content-type: application/json" \
         -H "x-api-key: $LOGFLARE_DEMO_API_KEY" \
         -d '"Hello from Logflare to Better Stack via Syslog!"'
+
+   curl -X POST "$LOGFLARE_DEMO_ENDPOINT/logs/json?source=$LOGFLARE_DEMO_SOURCE_ID" \
+        -H "content-type: application/json" \
+        -H "x-api-key: $LOGFLARE_DEMO_API_KEY" \
+        -d '{"more": "structure", "level": "info", "app": "my-app", "mood": "😀"}'
    ```
 
    <img
