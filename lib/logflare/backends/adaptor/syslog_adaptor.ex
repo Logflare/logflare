@@ -37,7 +37,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     pipeline_name = Logflare.Backends.via_source(source, Pipeline, backend)
 
     children = [
-      {Pool, backend_id: backend.id, name: pool_name},
+      {Pool, backend_id: backend.id, name: pool_name, worker_idle_timeout: to_timeout(minute: 1)},
       {Pipeline, source: source, backend: backend, pool: pool_name, name: pipeline_name}
     ]
 
