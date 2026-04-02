@@ -29,11 +29,11 @@ defmodule Logflare.ContextCache do
   In the case functions don't return a response with a primary key, or something else we can
   bust the cache on, it will get reverse indexed with `select_key/1` as `:unknown`.
 
-  ## Broadcasts
+  ## Gossip
 
   Cache misses are optionally multicast to peer nodes via `:erpc` to warm the cluster.
-  To prevent race conditions  from delayed broadcasts, WAL invalidations write short-lived
-  tombstones that filter out stale incoming broadcasts.
+  To prevent race conditions, WAL invalidations write short-lived tombstones that
+  filter out stale incoming messages.
   """
 
   @doc """
