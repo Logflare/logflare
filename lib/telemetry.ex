@@ -238,16 +238,15 @@ defmodule Logflare.Telemetry do
         unit: {:native, :millisecond},
         description: "Latency of dispatching the cache gossip multicast"
       ),
-      counter("logflare.context_cache_gossip.receive_multicast.count",
-        event_name: "logflare.context_cache_gossip.receive_multicast.stop",
+      counter("logflare.context_cache_gossip.receive.count",
+        event_name: "logflare.context_cache_gossip.receive.stop",
         tags: [:cache, :action],
-        description:
-          "Total cache gossip multicasts received and their outcome (cached or dropped)"
+        description: "Total cache gossip casts received and their outcome (cached or dropped)"
       ),
-      distribution("logflare.context_cache_gossip.receive_multicast.stop.duration",
+      distribution("logflare.context_cache_gossip.receive.stop.duration",
         tags: [:cache, :action],
         unit: {:native, :millisecond},
-        description: "Latency of processing an incoming cache gossip multicast"
+        description: "Latency of processing an incoming cache gossip cast"
       )
     ]
 

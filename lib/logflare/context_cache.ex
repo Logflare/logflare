@@ -140,7 +140,7 @@ defmodule Logflare.ContextCache do
            {:commit, {:cached, getter_fn.()}}
          end) do
       {:commit, {:cached, value}} ->
-        maybe_multicast(cache, cache_key, value)
+        maybe_gossip(cache, cache_key, value)
         value
 
       {:ok, {:cached, value}} ->
@@ -169,22 +169,22 @@ defmodule Logflare.ContextCache do
 
   require Cachex.Spec
 
-  # Negative lookups (`nil` or `[]`) are not broadcasted. If Node A caches `nil`,
-  # and the record is immediately created, a delayed `nil` broadcast to Node B
+  # Negative lookups (`nil` or `[]`) are not gossiped. If Node A caches `nil`,
+  # and the record is immediately created, a delayed `nil` cast to Node B
   # would cause phantom "not found" lookups while the record actually exists in the database.
-  defp maybe_multicast(_cache, _key, nil), do: :ok
-  defp maybe_multicast(_cache, _key, []), do: :ok
+  defp maybe_gossip(_cache, _key, nil), do: :ok
+  defp maybe_gossip(_cache, _key, []), do: :ok
 
   # Explicitly ignore high-volume/ephemeral caches
-  defp maybe_multicast(Logflare.Logs.LogEvents.Cache, _key, _value), do: :ok
-  defp maybe_multicast(Logflare.Logs.RejectedLogEvents, _key, _value), do: :ok
-  defp maybe_multicast(Logflare.PubSubRates.Cache, _key, _value), do: :ok
+  defp maybe_gossip(Logflare.Logs.LogEvents.Cache, _key, _value), do: :ok
+  defp maybe_gossip(Logflare.Logs.RejectedLogEvents, _key, _value), do: :ok
+  defp maybe_gossip(Logflare.PubSubRates.Cache, _key, _value), do: :ok
 
-  defp maybe_multicast(Cachex.Spec.cache(name: cache), key, value) do
-    maybe_multicast(cache, key, value)
+  defp maybe_gossip(Cachex.Spec.cache(name: cache), key, value) do
+    maybe_gossip(cache, key, value)
   end
 
-  defp maybe_multicast(cache, key, value) when is_atom(cache) do
+  defp maybe_gossip(cache, key, value) when is_atom(cache) do
     meta = %{cache: cache}
 
     :telemetry.span([:logflare, :context_cache_gossip, :multicast], meta, fn ->
@@ -193,7 +193,7 @@ defmodule Logflare.ContextCache do
 
       if enabled do
         peers = Logflare.Cluster.Utils.peer_list_partial(ratio, max_nodes)
-        :erpc.multicast(peers, __MODULE__, :receive_multicast, [cache, key, value])
+        :erpc.multicast(peers, __MODULE__, :receive_gossip, [cache, key, value])
       end
 
       {:ok, Map.merge(config, meta)}
@@ -206,10 +206,10 @@ defmodule Logflare.ContextCache do
   def wal_tombstones_cache_name, do: @wal_tombstones
 
   @doc false
-  def receive_multicast(cache, key, value) do
+  def receive_gossip(cache, key, value) do
     meta = %{cache: cache}
 
-    :telemetry.span([:logflare, :context_cache_gossip, :receive_multicast], meta, fn ->
+    :telemetry.span([:logflare, :context_cache_gossip, :receive], meta, fn ->
       action =
         cond do
           # do nothing if the node already has this cache key
