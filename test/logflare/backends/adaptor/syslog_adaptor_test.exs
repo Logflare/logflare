@@ -422,4 +422,42 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     |> SyslogAdaptor.cast_config()
     |> SyslogAdaptor.validate_config()
   end
+
+  describe "test_connection/1" do
+    test "for valid plaintext connection" do
+      {_, backend} = start_syslog(%{host: "localhost", port: 6514})
+      assert :ok = SyslogAdaptor.test_connection(backend)
+    end
+
+    test "for valid TLS connection" do
+      {_, backend} =
+        start_syslog(%{
+          host: "localhost",
+          port: 6515,
+          tls: true,
+          ca_cert: File.read!("priv/telegraf/ca.crt"),
+          client_cert: File.read!("priv/telegraf/client.crt"),
+          client_key: File.read!("priv/telegraf/client.key")
+        })
+
+      assert :ok = SyslogAdaptor.test_connection(backend)
+    end
+
+    test "for invalid host" do
+      {_, backend} = start_syslog(%{host: "invalid-host", port: 6514})
+      assert {:error, "non-existing domain"} = SyslogAdaptor.test_connection(backend)
+    end
+
+    test "for unreachable port" do
+      {_, backend} = start_syslog(%{host: "localhost", port: probably_closed_port()})
+      assert {:error, "connection refused"} = SyslogAdaptor.test_connection(backend)
+    end
+  end
+
+  defp probably_closed_port do
+    {:ok, socket} = :gen_tcp.listen(0, active: false)
+    {:ok, {_address, port}} = :inet.sockname(socket)
+    :ok = :gen_tcp.close(socket)
+    port
+  end
 end
