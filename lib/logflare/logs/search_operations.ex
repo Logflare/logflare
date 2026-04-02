@@ -166,34 +166,33 @@ defmodule Logflare.Logs.SearchOperations do
     end
   end
 
-  def put_chart_data_shape_id(%SO{} = so) do
-    flat_type_map =
-      SourceSchemas.Cache.get_source_schema_by(source_id: so.source.id)
-      |> case do
-        %_{schema_flat_map: flatmap} -> flatmap || %{}
-        _ -> %{}
-      end
+  def put_chart_data_shape_id(
+        %SO{
+          source: source,
+          chart_rules: [%ChartRule{path: "timestamp", aggregate: :count, value_type: :datetime}]
+        } = so
+      ) do
+    flat_type_map = SourceSchemas.source_schema_flatmap_or_default(source)
 
-    chart_data_shape_id =
-      cond do
-        Map.has_key?(flat_type_map, "metadata.status_code") ->
-          :netlify_status_codes
+    cond do
+      Map.has_key?(flat_type_map, "metadata.status_code") ->
+        %{so | chart_data_shape_id: :netlify_status_codes}
 
-        Map.has_key?(flat_type_map, "metadata.response.status_code") ->
-          :cloudflare_status_codes
+      Map.has_key?(flat_type_map, "metadata.response.status_code") ->
+        %{so | chart_data_shape_id: :cloudflare_status_codes}
 
-        Map.has_key?(flat_type_map, "metadata.proxy.statusCode") ->
-          :vercel_status_codes
+      Map.has_key?(flat_type_map, "metadata.proxy.statusCode") ->
+        %{so | chart_data_shape_id: :vercel_status_codes}
 
-        Map.has_key?(flat_type_map, "metadata.level") ->
-          :elixir_logger_levels
+      Map.has_key?(flat_type_map, "metadata.level") ->
+        %{so | chart_data_shape_id: :elixir_logger_levels}
 
-        true ->
-          nil
-      end
-
-    Map.put(so, :chart_data_shape_id, chart_data_shape_id)
+      true ->
+        so
+    end
   end
+
+  def put_chart_data_shape_id(%SO{} = so), do: so
 
   def put_stats(%SO{stats: stats} = so) do
     stats =
