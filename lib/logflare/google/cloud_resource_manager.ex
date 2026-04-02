@@ -3,12 +3,14 @@ defmodule Logflare.Google.CloudResourceManager do
 
   alias GoogleApi.CloudResourceManager.V1.Api
   alias GoogleApi.CloudResourceManager.V1.Model
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Users
   alias Logflare.User
   alias Logflare.TeamUsers
   alias Logflare.Utils.Tasks
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Utils
 
   require Logger
 
@@ -167,17 +169,17 @@ defmodule Logflare.Google.CloudResourceManager do
       if result == :noop do
         Logger.error(
           "Could find user #{captured} in the database. Set IAM policy error: #{message}",
-          error_string: Jason.decode!(response.body)
+          error_string: Jason.decode!(response.body) |> Utils.stringify()
         )
       else
         Logger.info(
           "Google account #{captured} was marked as invalid and excluded from IAM policy",
-          error_string: Jason.decode!(response.body)
+          error_string: Jason.decode!(response.body) |> Utils.stringify()
         )
       end
     else
       Logger.error("Set IAM policy unknown API error: #{message}",
-        error_string: Jason.decode!(response.body)
+        error_string: Jason.decode!(response.body) |> Utils.stringify()
       )
 
       :noop
@@ -196,7 +198,7 @@ defmodule Logflare.Google.CloudResourceManager do
 
     for {member, roles} <-
           [
-            {env_service_account(),
+            {GCPConfig.service_account(),
              [
                "roles/bigquery.admin",
                "roles/resourcemanager.projectIamAdmin",
@@ -265,7 +267,6 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   defp env_project_number, do: Application.get_env(:logflare, Logflare.Google)[:project_number]
-  defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account]
   defp env_api_sa, do: Application.get_env(:logflare, Logflare.Google)[:api_sa]
   defp env_cloud_build_sa, do: Application.get_env(:logflare, Logflare.Google)[:cloud_build_sa]
 
@@ -288,7 +289,7 @@ defmodule Logflare.Google.CloudResourceManager do
 
       value ->
         member =
-          if String.starts_with?(value, "user:") do
+          if String.starts_with?(value, "user:") or String.starts_with?(value, "group:") do
             value
           else
             "user:" <> value

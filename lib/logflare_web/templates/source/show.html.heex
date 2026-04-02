@@ -21,6 +21,7 @@
             <i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span>
           </.team_link>
         </li>
+        <li><a href="#" data-toggle="modal" data-target="#sourceSchemaModal"><i class="fas fa-database"></i><span class="hide-on-mobile"> schema</span></a></li>
         <%= unless @source.system_source do %>
           <li><a href="#" data-toggle="modal" data-target="#sourceHelpModal"><i class="fas fa-info-circle"></i><span class="hide-on-mobile"> setup</span></a></li>
         <% end %>
@@ -83,6 +84,21 @@
   </div>
 </div>
 <!-- Modal -->
+<div class="modal fade bd-example-modal-lg" id="sourceSchemaModal" tabindex="-1" role="dialog" aria-labelledby="sourceSchemaModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sourceSchemaModalLabel">Source Schema</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        {BqSchema.format_bq_schema(@bq_schema)}
+      </div>
+    </div>
+  </div>
+</div>
 {render(LogflareWeb.SourceView, "no_logs_modal.html", user: @user, source: @source, conn: @conn)}
 <div id="__phx-assigns__" data-source-token={@source.token} data-logs={Poison.encode!(@logs)}></div>
 <script src={Routes.static_path(@conn, "/js/source.js")}>

@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter
   alias Logflare.Backends.Backend
+  alias Logflare.Utils
 
   @behaviour Adaptor
   @behaviour HttpBased.Client
@@ -35,13 +36,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   end
 
   @impl Adaptor
-  def cast_config(params) do
-    defaults = %{
-      gzip: true,
-      protocol: "http/protobuf",
-      headers: %{}
-    }
-
+  def cast_config(params, existing_config \\ %{}) do
     types = %{
       endpoint: :string,
       protocol: :string,
@@ -49,9 +44,11 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
       headers: {:map, :string}
     }
 
-    {%{}, types}
-    |> Ecto.Changeset.change(defaults)
+    {existing_config, types}
     |> Ecto.Changeset.cast(params, Map.keys(types))
+    |> Utils.default_field_value(:gzip, true)
+    |> Utils.default_field_value(:protocol, "http/protobuf")
+    |> Utils.default_field_value(:headers, %{})
   end
 
   @impl Adaptor

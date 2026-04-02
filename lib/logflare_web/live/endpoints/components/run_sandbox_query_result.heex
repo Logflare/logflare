@@ -8,7 +8,7 @@
       <div class="tw-flex tw-justify-between tw-mb-2">
         <h5 class="tw-text-white">Sandbox Query Results</h5>
 
-        <QueryComponents.query_cost :if={@sandbox_total_bytes_processed} bytes={@sandbox_total_bytes_processed} />
+        <QueryComponents.query_cost :if={is_integer(@sandbox_total_bytes_processed)} bytes={@sandbox_total_bytes_processed} />
       </div>
 
       <code class="tw-whitespace-pre-wrap tw-overflow-x-auto tw-block tw-text-white tw-bg-zinc-800 tw-rounded tw-p-2 tw-text-xs">

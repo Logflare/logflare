@@ -380,6 +380,30 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                }
              }
     end
+
+    test "partial config update preserves existing fields", %{conn: conn, user: user} do
+      backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://example.com", gzip: true, http: "http2"}
+        )
+
+      conn
+      |> add_access_token(user, "private")
+      |> patch("/api/backends/#{backend.token}", %{config: %{gzip: false, http: "http1"}})
+      |> response(204)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> get("/api/backends/#{backend.token}")
+        |> json_response(200)
+
+      assert response["config"]["url"] == "http://example.com"
+      assert response["config"]["gzip"] == false
+      assert response["config"]["http"] == "http1"
+    end
   end
 
   describe "delete/2" do

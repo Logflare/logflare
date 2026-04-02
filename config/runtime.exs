@@ -235,6 +235,7 @@ config :logflare,
        Logflare.Google,
        filter_nil_kv_pairs.(
          dataset_id_append: System.get_env("GOOGLE_DATASET_ID_APPEND"),
+         default_dataset_location: System.get_env("GOOGLE_DATASET_LOCATION"),
          project_number: System.get_env("GOOGLE_PROJECT_NUMBER"),
          project_id: System.get_env("GOOGLE_PROJECT_ID"),
          service_account: System.get_env("GOOGLE_SERVICE_ACCOUNT"),
@@ -443,10 +444,12 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
     otlp_protocol: :http_protobuf,
     otlp_endpoint: System.get_env("LOGFLARE_OTEL_ENDPOINT"),
     otlp_compression: :gzip,
-    otlp_headers: [
-      {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
-      {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
-    ],
+    otlp_headers:
+      [
+        {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
+        {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
+      ]
+      |> filter_nil_kv_pairs.(),
     max_batch_size: 250
 end
 

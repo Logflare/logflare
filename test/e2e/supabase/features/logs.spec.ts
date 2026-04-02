@@ -76,5 +76,3 @@ test('receives logs from Cron', async ({ page }) => {
   await expect(page.getByRole('table')).toContainText('LOG: cron job 1 completed: 1 row');
   await expect(page.getByRole('table')).toContainText('LOG: cron job 1 starting: SELECT auth.email()');
 });
-
-
