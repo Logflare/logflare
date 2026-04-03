@@ -96,9 +96,9 @@ defmodule Logflare.ContextCache.Gossip do
   end
 
   defp tombstoned?(cache, value) do
-    pkeys = extract_pkeys(value)
-
-    Enum.any?(pkeys, fn pkey -> Tombstones.Cache.tombstoned?(cache, pkey) end)
+    value
+    |> extract_pkeys()
+    |> Enum.any?(fn pkey -> Tombstones.Cache.tombstoned?(cache, pkey) end)
   end
 
   defp extract_pkeys(values) when is_list(values) do
