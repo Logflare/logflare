@@ -34,19 +34,26 @@ defmodule Logflare.ContextCache.Supervisor do
     |> Supervisor.init(strategy: :one_for_one)
   end
 
-  defp get_children(:test),
-    do:
-      list_caches() ++
-        [
-          {GenSingleton, child_spec: cainophile_child_spec()}
-        ]
+  defp get_children(env) do
+    caches = list_caches()
+    cainophile = List.wrap(maybe_cainophile_singleton())
 
-  defp get_children(_env) do
-    list_caches() ++
-      [
-        ContextCache.TransactionBroadcaster,
-        {GenSingleton, child_spec: cainophile_child_spec()}
-      ] ++ buster_specs()
+    extra =
+      if env == :test do
+        cainophile
+      else
+        [
+          ContextCache.TransactionBroadcaster,
+          cainophile
+        ] ++ buster_specs()
+      end
+
+    caches ++ extra
+  end
+
+  defp maybe_cainophile_singleton do
+    enable_cainophile = Application.get_env(:logflare, :enable_cainophile, true)
+    if enable_cainophile, do: {GenSingleton, child_spec: cainophile_child_spec()}
   end
 
   def buster_specs do

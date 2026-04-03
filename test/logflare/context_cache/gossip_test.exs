@@ -105,6 +105,7 @@ defmodule Logflare.ContextCache.GossipClusterTest do
     end
 
     :erpc.call(node, Application, :put_env, [:logflare, LogflareWeb.Endpoint, [server: false]])
+    :erpc.call(node, Application, :put_env, [:logflare, :enable_cainophile, false])
     :erpc.call(node, Application, :ensure_all_started, [:logflare])
 
     node
