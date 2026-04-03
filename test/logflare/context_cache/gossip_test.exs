@@ -9,8 +9,6 @@ defmodule Logflare.ContextCache.GossipClusterTest do
   @moduletag :cluster
 
   setup_all do
-    System.cmd("epmd", ["-daemon"])
-
     if not Node.alive?() do
       {:ok, _} = :net_kernel.start(:"test@127.0.0.1", %{})
     end
@@ -24,7 +22,7 @@ defmodule Logflare.ContextCache.GossipClusterTest do
     Application.put_env(
       :logflare,
       :context_cache_gossip,
-      _guaranteed_multicast = %{enabled: true, ratio: 1.0, max_nodes: 5}
+      _guaranteed_hit = %{enabled: true, ratio: 1.0, max_nodes: 5}
     )
 
     on_exit(fn ->
