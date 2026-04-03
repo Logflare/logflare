@@ -2,7 +2,7 @@ defmodule Logflare.Mapper.MappingConfig.InferCondition do
   @moduledoc """
   A single condition within an `InferRule`.
 
-  Evaluates a JSONPath (`:path`) against the input document using a `:predicate`.
+  Evaluates a dot-notation path (`:path`) against the input map using a `:predicate`.
   Some predicates require `:comparison_value` or `:comparison_values`.
 
   See `Logflare.Mapper.MappingConfig.FieldConfig` for the full list of predicates.
