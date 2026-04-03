@@ -73,6 +73,8 @@ defmodule Logflare.Logs.SearchOperations do
     backend = postgres_backend(so)
 
     PostgresAdaptor.execute_query(backend, so.query, query_type: :search)
+  rescue
+    error -> {:error, error}
   end
 
   defp execute_backend_query(%SO{} = so) do
