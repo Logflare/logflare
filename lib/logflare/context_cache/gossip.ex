@@ -29,17 +29,44 @@ defmodule Logflare.ContextCache.Gossip do
   end
 
   @doc false
-  def handle_telemetry_event(event, _measurements, metadata, _config) do
-    case {event, metadata} do
-      {[:logflare, :context_cache_gossip, :receive, :stop], %{action: :dropped_no_pkey} = meta} ->
-        %{cache: cache, key: key} = meta
+  def handle_telemetry_event(event, measurements, metadata, _config) do
+    duration = System.convert_time_unit(measurements.duration, :native, :millisecond)
 
-        Logger.warning(
-          "Dropped gossip for #{cache} #{inspect(key)}: no primary keys could be extracted from the value, so staleness cannot be determined"
-        )
+    case event do
+      [:logflare, :context_cache_gossip, :multicast, :stop] ->
+        %{enabled: enabled, cache: cache, key: key} = metadata
 
-      _ ->
-        :ok
+        msg =
+          if enabled do
+            "Multicasted gossip for #{cache} #{inspect(key)} to peer nodes in #{duration}ms"
+          else
+            "Context cache gossip is disabled, skipping multicast for #{cache} #{inspect(key)} in #{duration}ms"
+          end
+
+        Logger.debug(msg)
+
+      [:logflare, :context_cache_gossip, :receive, :stop] ->
+        %{action: action, cache: cache, key: key} = metadata
+
+        case action do
+          :dropped_no_pkey ->
+            Logger.warning("""
+            Dropped gossip for #{cache} #{inspect(key)} in #{duration}ms: no primary keys \
+            could be extracted from the value, so staleness cannot be determined\
+            """)
+
+          :dropped_stale ->
+            Logger.warning("""
+            Dropped gossip for #{cache} #{inspect(key)} in #{duration}ms: tombstone cache indicates \
+            this record was recently updated or deleted, so the incoming gossip is likely stale\
+            """)
+
+          :cached ->
+            Logger.debug("Cached gossip for #{cache} #{inspect(key)} in #{duration}ms")
+
+          :refreshed ->
+            Logger.debug("Refreshed gossip for #{cache} #{inspect(key)} in #{duration}ms")
+        end
     end
   end
 
