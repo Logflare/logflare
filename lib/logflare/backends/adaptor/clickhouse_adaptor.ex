@@ -169,20 +169,36 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Simple GRANT check to indicate if the configured user has the ClickHouse permissions it needs for the configured database.
+  GRANT checks to verify the configured user has the required ClickHouse permissions.
+
+  Always checks the ingest cluster (primary `url`) for full write permissions.
+  When `read_only_url` is configured, additionally checks the read cluster for `SELECT` permission.
   """
   @impl Logflare.Backends.Adaptor
-  @spec test_connection(Backend.t()) :: :ok | {:error, :permissions_missing} | {:error, term()}
-  def test_connection(%Backend{} = backend) do
+  @spec test_connection(Backend.t()) ::
+          :ok
+          | {:error, :permissions_missing}
+          | {:error, :read_permissions_missing}
+          | {:error, term()}
+  def test_connection(%Backend{config: config} = backend) do
+    with :ok <- check_ingest_grants(backend, config),
+         :ok <- maybe_check_read_grants(backend, config) do
+      :ok
+    end
+  end
+
+  @spec check_ingest_grants(Backend.t(), map()) ::
+          :ok | {:error, :permissions_missing} | {:error, term()}
+  defp check_ingest_grants(%Backend{} = backend, config) do
     sql_statement = QueryTemplates.grant_check_statement()
 
-    case execute_ch_query(backend, sql_statement) do
+    case execute_direct_query(config.url, config, sql_statement) do
       {:ok, [%{"result" => 1}]} ->
         :ok
 
       {:ok, [%{"result" => 0}]} ->
         Logger.warning(
-          "ClickHouse GRANT check failed. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
+          "ClickHouse ingest cluster GRANT check failed. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
           backend_id: backend.id
         )
 
@@ -190,7 +206,40 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
       {:error, _} = error_result ->
         Logger.warning(
-          "ClickHouse GRANT check failed. Unexpected error #{inspect(error_result)}",
+          "ClickHouse ingest cluster GRANT check failed. Unexpected error #{inspect(error_result)}",
+          backend_id: backend.id
+        )
+
+        error_result
+    end
+  end
+
+  @spec maybe_check_read_grants(Backend.t(), map()) ::
+          :ok | {:error, :read_permissions_missing} | {:error, term()}
+  defp maybe_check_read_grants(_backend, %{read_only_url: url}) when not is_non_empty_binary(url),
+    do: :ok
+
+  defp maybe_check_read_grants(_backend, config) when not is_map_key(config, :read_only_url),
+    do: :ok
+
+  defp maybe_check_read_grants(%Backend{} = backend, %{read_only_url: _}) do
+    sql_statement = QueryTemplates.read_grant_check_statement()
+
+    case execute_ch_query(backend, sql_statement) do
+      {:ok, [%{"result" => 1}]} ->
+        :ok
+
+      {:ok, [%{"result" => 0}]} ->
+        Logger.warning(
+          "ClickHouse read cluster GRANT check failed. Required: `SELECT`",
+          backend_id: backend.id
+        )
+
+        {:error, :read_permissions_missing}
+
+      {:error, _} = error_result ->
+        Logger.warning(
+          "ClickHouse read cluster GRANT check failed. Unexpected error #{inspect(error_result)}",
           backend_id: backend.id
         )
 
@@ -298,6 +347,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         {:error, _} ->
           {:error, "Error executing ClickHouse query"}
       end
+    end
+  end
+
+  @spec execute_direct_query(String.t(), map(), String.t()) :: {:ok, list()} | {:error, term()}
+  defp execute_direct_query(url, config, statement) do
+    uri = URI.parse(url)
+    timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 30_000
+
+    ch_opts = [
+      scheme: uri.scheme,
+      hostname: uri.host,
+      port: uri.port || Map.get(config, :port),
+      database: config.database,
+      username: config.username,
+      password: config.password,
+      pool_size: 1,
+      settings: [],
+      timeout: timeout
+    ]
+
+    case Ch.start_link(ch_opts) do
+      {:ok, pid} ->
+        try do
+          case Ch.query(pid, statement, [], decode: false, timeout: timeout) do
+            {:ok, %Ch.Result{} = result} ->
+              {:ok, decode_ch_result(result)}
+
+            {:error, _} = error ->
+              error
+          end
+        after
+          GenServer.stop(pid)
+        end
+
+      {:error, _} = error ->
+        error
     end
   end
 
