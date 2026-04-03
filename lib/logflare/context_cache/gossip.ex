@@ -110,7 +110,7 @@ defmodule Logflare.ContextCache.Gossip do
 
     if enabled do
       peers = ClusterUtils.peer_list_partial(ratio, max_nodes)
-      :erpc.multicast(peers, __MODULE__, :receive_gossip, [cache, key, value])
+      :erpc.multicast(peers, __MODULE__, :receive, [cache, key, value])
       :done
     else
       :disabled
@@ -118,16 +118,16 @@ defmodule Logflare.ContextCache.Gossip do
   end
 
   @doc false
-  def receive_gossip(cache, key, value) do
+  def receive(cache, key, value) do
     meta = %{cache: cache, key: key, value: value}
 
     :telemetry.span([:logflare, :context_cache_gossip, :receive], meta, fn ->
-      action = do_receive_gossip(cache, key, value)
+      action = do_receive(cache, key, value)
       {:ok, Map.put(meta, :action, action)}
     end)
   end
 
-  defp do_receive_gossip(cache, key, value) do
+  defp do_receive(cache, key, value) do
     if Cachex.exists?(cache, key) == {:ok, true} do
       # refresh if the node already has this cache key
       Cachex.refresh(cache, key)
