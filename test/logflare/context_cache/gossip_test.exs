@@ -41,14 +41,19 @@ defmodule Logflare.ContextCache.GossipClusterTest do
       Application.put_env(:logflare, :context_cache_gossip, original_context_cache_gossip)
     end)
 
+    :ok
+  end
+
+  setup do
+    peer = start_peer()
+
+    Cachex.clear!(Sources.Cache)
+    :erpc.call(peer, Cachex, :clear!, [Sources.Cache])
+
     unboxed_insert_then_delete_on_exit(:plan, name: "Free")
     user = unboxed_insert_then_delete_on_exit(:user)
     source = unboxed_insert_then_delete_on_exit(:source, user: user)
 
-    {:ok, source: source}
-  end
-
-  setup do
     telemetry_ref =
       :telemetry_test.attach_event_handlers(self(), [
         [:logflare, :context_cache_gossip, :receive, :stop]
@@ -56,18 +61,13 @@ defmodule Logflare.ContextCache.GossipClusterTest do
 
     on_exit(fn -> :telemetry.detach(telemetry_ref) end)
 
-    peer = start_peer()
-
-    Cachex.clear!(Sources.Cache)
-    :erpc.call(peer, Cachex, :clear!, [Sources.Cache])
-
-    {:ok, telemetry_ref: telemetry_ref, peer: peer}
+    {:ok, peer: peer, source: source, telemetry_ref: telemetry_ref}
   end
 
   test "cache miss on peer gossips to local node", %{
     peer: peer,
-    telemetry_ref: telemetry_ref,
-    source: source
+    source: source,
+    telemetry_ref: telemetry_ref
   } do
     # trigger cache miss on the peer
     :erpc.call(peer, Sources.Cache, :get_by, [[token: source.token]])
@@ -85,8 +85,8 @@ defmodule Logflare.ContextCache.GossipClusterTest do
 
   test "local node drops peer gossip if record is tombstoned", %{
     peer: peer,
-    telemetry_ref: telemetry_ref,
-    source: source
+    source: source,
+    telemetry_ref: telemetry_ref
   } do
     # write tombstone LOCALLY
     Tombstones.Cache.put_tombstone({Sources.Cache, source.id})
