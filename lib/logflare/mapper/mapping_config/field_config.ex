@@ -8,7 +8,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
   ## Common Options (all types)
 
-    * `:path` — single JSONPath source (e.g. `"$.trace_id"`)
+    * `:path` — single dot-notation path source (e.g. `"$.trace_id"`, `"$.resource.service.name"`)
     * `:paths` — coalesce paths; first non-nil value wins (e.g. `["$.trace_id", "$.traceId"]`).
       For string fields, empty strings are also skipped during coalesce.
     * `:from_output` — read from an already-resolved field in the output map instead of the
