@@ -33,8 +33,8 @@ fn is_array_type(field_type: &FieldType) -> bool {
 
 /// Execute the mapping on a single document, returning the mapped output map.
 ///
-/// When `flat_keys` is true, dotted JSONPaths are resolved as literal flat-key
-/// lookups instead of nested map navigation.
+/// When `flat_keys` is true, dotted paths are resolved as literal flat-key
+/// lookups on the input map instead of nested map navigation.
 pub fn map_single<'a>(
     env: Env<'a>,
     body: Term<'a>,
