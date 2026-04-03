@@ -41,7 +41,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncode
   @spec encode_block_body([column()], non_neg_integer()) :: iodata()
   def encode_block_body(columns, negotiated_rev) do
     num_columns = length(columns)
-    num_rows = columns |> List.first() |> elem(2) |> length()
+    [{_, _, values} | _] = columns
+    num_rows = length(values)
     include_custom_serialization? = negotiated_rev >= 54_454 and num_rows > 0
 
     [
