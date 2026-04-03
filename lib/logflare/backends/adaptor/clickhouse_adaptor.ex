@@ -374,15 +374,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
             {:ok, %Ch.Result{} = result} ->
               {:ok, decode_ch_result(result)}
 
-            {:error, _} = error ->
-              error
+            {:error, _} ->
+              {:error, "Error executing ClickHouse query"}
           end
         after
           GenServer.stop(pid)
         end
 
-      {:error, _} = error ->
-        error
+      {:error, _} ->
+        {:error, "Error executing ClickHouse query"}
     end
   end
 
