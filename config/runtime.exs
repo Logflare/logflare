@@ -485,13 +485,17 @@ cache_gossip_enabled? =
   System.get_env("LOGFLARE_CACHE_GOSSIP_ENABLED", default_cache_gossip_enabled) == "true"
 
 # LOGFLARE_CACHE_GOSSIP_RATIO: Ratio of nodes to gossip cache updates to
-cache_gossip_ratio =
-  "LOGFLARE_CACHE_GOSSIP_RATIO" |> System.get_env("0.05") |> String.to_float()
+raw_cache_gossip_ratio = System.get_env("LOGFLARE_CACHE_GOSSIP_RATIO", "0.05")
 
-if cache_gossip_ratio <= 0.0 or cache_gossip_ratio > 1.0 do
-  raise ArgumentError,
-        "Invalid LOGFLARE_CACHE_GOSSIP_RATIO: #{cache_gossip_ratio}. Must be between 0 and 1."
-end
+cache_gossip_ratio =
+  case Float.parse(raw_cache_gossip_ratio) do
+    {ratio, ""} when ratio >= 0.0 and ratio <= 1.0 ->
+      ratio
+
+    _ ->
+      raise ArgumentError,
+            "Invalid LOGFLARE_CACHE_GOSSIP_RATIO: #{raw_cache_gossip_ratio}. Must be a float between 0 and 1."
+  end
 
 # LOGFLARE_CACHE_GOSSIP_MAX_NODES: Maximum number of nodes to gossip cache updates to
 cache_gossip_max_nodes =
