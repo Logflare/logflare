@@ -4,7 +4,6 @@ defmodule Logflare.ContextCacheTest do
   alias Ecto.Adapters.SQL
   alias Logflare.ContextCache
   alias Logflare.ContextCache.TransactionBroadcaster
-  alias Logflare.ContextCache.Tombstones
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Backends
@@ -79,93 +78,6 @@ defmodule Logflare.ContextCacheTest do
 
       :timer.sleep(500)
       assert_received %Cainophile.Changes.Transaction{}
-    end
-  end
-
-  describe "gossip" do
-    setup do
-      insert(:plan, name: "Free")
-      user = insert(:user)
-      source = insert(:source, user: user)
-      %{source: source, user: user}
-    end
-
-    setup do
-      Cachex.clear!(Tombstones.Cache)
-      Cachex.clear!(Sources.Cache)
-
-      telemetry_ref =
-        :telemetry_test.attach_event_handlers(self(), [
-          [:logflare, :context_cache_gossip, :multicast, :stop],
-          [:logflare, :context_cache_gossip, :receive, :stop]
-        ])
-
-      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
-      {:ok, telemetry_ref: telemetry_ref}
-    end
-
-    test "record_tombstones/1 writes primary keys and :not_found to the tombstone cache" do
-      ContextCache.Gossip.record_tombstones([
-        {Sources, 123},
-        {Sources, id: 234, other: :info},
-        {Sources, %{id: 345, other: :info}},
-        {Sources, "uuid-456"}
-      ])
-
-      assert Tombstones.Cache.tombstoned?(Sources.Cache, 123)
-      assert Tombstones.Cache.tombstoned?(Sources.Cache, 234)
-      assert Tombstones.Cache.tombstoned?(Sources.Cache, 345)
-      assert Tombstones.Cache.tombstoned?(Sources.Cache, "uuid-456")
-    end
-
-    test "record_tombstones/1 ignores unsupported types gracefully" do
-      ContextCache.Gossip.record_tombstones([{Sources, make_ref()}])
-    end
-
-    test "maybe_gossip/3 emits telemetry on cache miss", %{
-      source: source,
-      telemetry_ref: telemetry_ref
-    } do
-      Sources.Cache.get_by(token: source.token)
-
-      assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
-                      _measurements, %{cache: Sources.Cache} = metadata}
-
-      assert metadata.enabled == true
-      assert metadata.max_nodes == 3
-      assert metadata.ratio == 0.05
-    end
-
-    test "receive_gossip/3 caches received value", %{telemetry_ref: telemetry_ref} do
-      cache_key = {:get, [999]}
-      value = %{id: 999, name: "valid"}
-
-      ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, value)
-
-      assert Cachex.get!(Sources.Cache, cache_key) == {:cached, value}
-
-      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                      _measurements, metadata}
-
-      assert metadata.action == :cached
-      assert metadata.cache == Sources.Cache
-    end
-
-    test "receive_gossip/3 refreshes ttl wehn value is already cached", %{
-      telemetry_ref: telemetry_ref
-    } do
-      cache_key = {:get, [111]}
-      existing_value = {:cached, %{id: 111, name: "local_data"}}
-      Cachex.put(Sources.Cache, cache_key, existing_value)
-      ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, %{id: 111, name: "stale"})
-
-      assert Cachex.get!(Sources.Cache, cache_key) == existing_value
-
-      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                      _measurements, metadata}
-
-      assert metadata.action == :refreshed
-      assert metadata.cache == Sources.Cache
     end
   end
 end

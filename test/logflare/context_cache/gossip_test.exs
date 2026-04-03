@@ -1,133 +1,129 @@
-defmodule Logflare.ContextCache.GossipClusterTest do
-  use Logflare.DataCase, async: false
+defmodule Logflare.ContextCache.GossipTest do
+  use Logflare.DataCase, async: true
+  import ExUnit.CaptureLog
   import Logflare.Factory
-
-  alias Ecto.Adapters.SQL.Sandbox, as: EctoSandbox
+  alias Logflare.ContextCache
   alias Logflare.ContextCache.Tombstones
-  alias Logflare.Users
-
-  @moduletag :cluster
-
-  setup_all do
-    if not Node.alive?() do
-      case :net_kernel.start(:"test@127.0.0.1", %{}) do
-        {:ok, _} ->
-          :ok
-
-        {:error, reason} ->
-          raise """
-          =============================================
-          Failed to start distributed Erlang for tests.
-
-          Please make sure `epmd` is running:
-
-              epmd -daemon
-
-          =============================================
-          Underlying error: #{inspect(reason)}
-          """
-      end
-    end
-
-    original_context_cache_gossip = Application.get_env(:logflare, :context_cache_gossip)
-
-    Application.put_env(
-      :logflare,
-      :context_cache_gossip,
-      _guaranteed_hit = %{enabled: true, ratio: 1.0, max_nodes: 5}
-    )
-
-    on_exit(fn ->
-      Application.put_env(:logflare, :context_cache_gossip, original_context_cache_gossip)
-    end)
-
-    :ok
-  end
+  alias Logflare.Sources
 
   setup do
+    Cachex.clear!(Sources.Cache)
+
     telemetry_ref =
       :telemetry_test.attach_event_handlers(self(), [
+        [:logflare, :context_cache_gossip, :multicast, :stop],
         [:logflare, :context_cache_gossip, :receive, :stop]
       ])
 
     on_exit(fn -> :telemetry.detach(telemetry_ref) end)
-    {:ok, peer: start_peer(), telemetry_ref: telemetry_ref}
+    {:ok, telemetry_ref: telemetry_ref}
   end
 
-  test "cache miss on peer gossips to local node", %{peer: peer, telemetry_ref: telemetry_ref} do
-    user = unboxed_insert_then_delete_on_exit(:user)
-
-    # trigger cache miss on the peer
-    :erpc.call(peer, Users.Cache, :get_by, [[email: user.email]])
-
-    # wait for the local telemetry event indicating gossip was received
-    assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                    _measurements, %{cache: Users.Cache, action: :cached}},
-                   to_timeout(second: 10)
-
-    assert {:cached, %{} = cached} =
-             Cachex.get!(Users.Cache, {:get_by, [[email: user.email]]})
-
-    assert cached.id == user.id
-  end
-
-  test "local node drops peer gossip if record is tombstoned", %{
-    peer: peer,
-    telemetry_ref: telemetry_ref
-  } do
-    user = unboxed_insert_then_delete_on_exit(:user)
-
-    # write tombstone LOCALLY
-    Tombstones.Cache.put_tombstone({Users.Cache, user.id})
-
-    # trigger cache miss ON THE PEER
-    :erpc.call(peer, Users.Cache, :get_by, [[email: user.email]])
-
-    # wait for the local telemetry event
-    assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                    _measurements, %{cache: Users.Cache, action: :dropped_stale}},
-                   to_timeout(second: 10)
-
-    refute Cachex.get!(Users.Cache, {:get_by, [[email: user.email]]})
-  end
-
-  defp start_peer(name \\ :peer) do
-    {:ok, _peer, node} =
-      :peer.start_link(%{
-        name: name,
-        host: ~c"127.0.0.1",
-        env: [{~c"ERL_AFLAGS", ~c"-setcookie #{:erlang.get_cookie()}"}]
-      })
-
-    true = Node.connect(node)
-
-    :erpc.call(node, :code, :add_paths, [:code.get_path()])
-
-    for {app, _, _} <- Application.loaded_applications() do
-      for {key, val} <- Application.get_all_env(app) do
-        :erpc.call(node, Application, :put_env, [app, key, val, [persistent: true]])
-      end
+  describe "record_tombstones/1" do
+    setup do
+      Cachex.clear!(Tombstones.Cache)
+      :ok
     end
 
-    :erpc.call(node, Application, :put_env, [:logflare, LogflareWeb.Endpoint, [server: false]])
-    :erpc.call(node, Application, :put_env, [:logflare, :enable_cainophile, false])
-    :erpc.call(node, Application, :ensure_all_started, [:logflare])
+    test "writes primary keys to the tombstone cache" do
+      ContextCache.Gossip.record_tombstones([
+        {Sources, 123},
+        {Sources, id: 234, other: :info},
+        {Sources, %{id: 345, other: :info}},
+        {Sources, "uuid-456"}
+      ])
 
-    node
+      assert Tombstones.Cache.tombstoned?({Sources.Cache, 123})
+      assert Tombstones.Cache.tombstoned?({Sources.Cache, 234})
+      assert Tombstones.Cache.tombstoned?({Sources.Cache, 345})
+      assert Tombstones.Cache.tombstoned?({Sources.Cache, "uuid-456"})
+    end
+
+    test "ignores unsupported types gracefully" do
+      assert capture_log(fn ->
+               ContextCache.Gossip.record_tombstones([{Sources, make_ref()}])
+             end) =~ "[warning] Unable to create tombstone for context primary key:"
+    end
   end
 
-  defp unboxed_insert_then_delete_on_exit(kind, options \\ []) do
-    record =
-      EctoSandbox.unboxed_run(Logflare.Repo, fn ->
-        insert(kind, options)
-      end)
+  describe "maybe_gossip/3" do
+    setup do
+      telemetry_ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:logflare, :context_cache_gossip, :multicast, :stop]
+        ])
 
-    on_exit(fn ->
-      EctoSandbox.unboxed_run(Logflare.Repo, fn ->
-        Logflare.Repo.delete(record)
-      end)
-    end)
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+      {:ok, telemetry_ref: telemetry_ref}
+    end
 
-    record
+    test "emits telemetry on cache miss", %{telemetry_ref: telemetry_ref} do
+      insert(:plan, name: "Free")
+      source = insert(:source, user: build(:user))
+
+      cache_key = {:get_by, [[token: source.token]]}
+
+      Sources.Cache.get_by(token: source.token)
+
+      assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
+                      _measurements, %{cache: Sources.Cache, key: ^cache_key} = metadata}
+
+      assert Map.take(metadata, [:enabled, :max_nodes, :ratio]) == %{
+               enabled: true,
+               max_nodes: 3,
+               ratio: 0.05
+             }
+    end
+  end
+
+  describe "receive_gossip/3" do
+    setup do
+      telemetry_ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:logflare, :context_cache_gossip, :receive, :stop]
+        ])
+
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+      {:ok, telemetry_ref: telemetry_ref}
+    end
+
+    test "caches received value", %{telemetry_ref: telemetry_ref} do
+      cache_key = {:get, [999]}
+      value = %{id: 999, name: "valid"}
+
+      ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, value)
+
+      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
+                      _measurements, %{action: :cached, cache: Sources.Cache, key: ^cache_key}}
+
+      assert Cachex.get!(Sources.Cache, cache_key) == {:cached, value}
+    end
+
+    test "refreshes ttl when value is already cached", %{telemetry_ref: telemetry_ref} do
+      cache_key = {:get, [111]}
+      existing_value = {:cached, %{id: 111, name: "local_data"}}
+
+      Cachex.put(Sources.Cache, cache_key, existing_value)
+      ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, %{id: 111, name: "stale"})
+
+      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
+                      _measurements, %{action: :refreshed, cache: Sources.Cache, key: ^cache_key}}
+
+      assert Cachex.get!(Sources.Cache, cache_key) == existing_value
+    end
+
+    test "drops received value when record is tombstoned", %{telemetry_ref: telemetry_ref} do
+      cache_key = {:get, [222]}
+      value = %{id: 222, name: "stale_data"}
+
+      Tombstones.Cache.put_tombstone({Sources.Cache, 222})
+      ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, value)
+
+      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
+                      _measurements,
+                      %{action: :dropped_stale, cache: Sources.Cache, key: ^cache_key}}
+
+      refute Cachex.get!(Sources.Cache, cache_key)
+    end
   end
 end

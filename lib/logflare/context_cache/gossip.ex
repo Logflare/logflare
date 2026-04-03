@@ -16,6 +16,7 @@ defmodule Logflare.ContextCache.Gossip do
 
   # Explicitly ignore high-volume/ephemeral caches
   def maybe_gossip(Logflare.Logs.LogEvents.Cache, _key, _value), do: :ok
+  def maybe_gossip(Logflare.Auth.Cache, _key, _value), do: :ok
 
   def maybe_gossip(Cachex.Spec.cache(name: cache), key, value) do
     maybe_gossip(cache, key, value)
@@ -23,6 +24,10 @@ defmodule Logflare.ContextCache.Gossip do
 
   def maybe_gossip(cache, key, value) when is_atom(cache) do
     meta = %{cache: cache, key: key}
+
+    if extract_pkeys(value) == [] do
+      IO.puts("Unable to extract primary key from gossip value: #{inspect(value)}")
+    end
 
     :telemetry.span([:logflare, :context_cache_gossip, :multicast], meta, fn ->
       %{enabled: enabled, ratio: ratio, max_nodes: max_nodes} =
@@ -98,7 +103,7 @@ defmodule Logflare.ContextCache.Gossip do
   defp tombstoned?(cache, value) do
     value
     |> extract_pkeys()
-    |> Enum.any?(fn pkey -> Tombstones.Cache.tombstoned?(cache, pkey) end)
+    |> Enum.any?(fn pkey -> Tombstones.Cache.tombstoned?({cache, pkey}) end)
   end
 
   defp extract_pkeys(values) when is_list(values) do

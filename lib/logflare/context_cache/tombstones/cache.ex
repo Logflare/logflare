@@ -29,7 +29,7 @@ defmodule Logflare.ContextCache.Tombstones.Cache do
     Cachex.put(@name, tombstone, true)
   end
 
-  def tombstoned?(cache, pkey) do
-    Cachex.exists?(@name, {cache, pkey}) == {:ok, true}
+  def tombstoned?(tombstone) do
+    Cachex.exists?(@name, tombstone) == {:ok, true}
   end
 end
