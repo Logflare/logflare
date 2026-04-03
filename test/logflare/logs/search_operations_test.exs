@@ -428,7 +428,6 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert [{%DateTime{}, _}, {%DateTime{}, _}] = params
     end
 
-
     test "aggregate query uses filters and timestamp", %{base_so: base_so} do
       min = ~U[2026-01-29 04:13:48.748909Z]
       max = ~U[2026-01-29 06:13:48.748909Z]
