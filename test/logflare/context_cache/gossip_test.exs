@@ -4,7 +4,7 @@ defmodule Logflare.ContextCache.GossipClusterTest do
 
   alias Ecto.Adapters.SQL.Sandbox, as: EctoSandbox
   alias Logflare.ContextCache.Tombstones
-  alias Logflare.Sources
+  alias Logflare.Users
 
   @moduletag :cluster
 
@@ -45,61 +45,50 @@ defmodule Logflare.ContextCache.GossipClusterTest do
   end
 
   setup do
-    peer = start_peer()
-
-    Cachex.clear!(Sources.Cache)
-    :erpc.call(peer, Cachex, :clear!, [Sources.Cache])
-
-    unboxed_insert_then_delete_on_exit(:plan, name: "Free")
-    user = unboxed_insert_then_delete_on_exit(:user)
-    source = unboxed_insert_then_delete_on_exit(:source, user: user)
-
     telemetry_ref =
       :telemetry_test.attach_event_handlers(self(), [
         [:logflare, :context_cache_gossip, :receive, :stop]
       ])
 
     on_exit(fn -> :telemetry.detach(telemetry_ref) end)
-
-    {:ok, peer: peer, source: source, telemetry_ref: telemetry_ref}
+    {:ok, peer: start_peer(), telemetry_ref: telemetry_ref}
   end
 
-  test "cache miss on peer gossips to local node", %{
-    peer: peer,
-    source: source,
-    telemetry_ref: telemetry_ref
-  } do
+  test "cache miss on peer gossips to local node", %{peer: peer, telemetry_ref: telemetry_ref} do
+    user = unboxed_insert_then_delete_on_exit(:user)
+
     # trigger cache miss on the peer
-    :erpc.call(peer, Sources.Cache, :get_by, [[token: source.token]])
+    :erpc.call(peer, Users.Cache, :get_by, [[email: user.email]])
 
     # wait for the local telemetry event indicating gossip was received
     assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                    _measurements, %{cache: Sources.Cache, action: :cached}},
+                    _measurements, %{cache: Users.Cache, action: :cached}},
                    to_timeout(second: 10)
 
-    assert {:cached, %Sources.Source{id: id}} =
-             Cachex.get!(Sources.Cache, {:get_by, [[token: source.token]]})
+    assert {:cached, %{} = cached} =
+             Cachex.get!(Users.Cache, {:get_by, [[email: user.email]]})
 
-    assert id == source.id
+    assert cached.id == user.id
   end
 
   test "local node drops peer gossip if record is tombstoned", %{
     peer: peer,
-    source: source,
     telemetry_ref: telemetry_ref
   } do
+    user = unboxed_insert_then_delete_on_exit(:user)
+
     # write tombstone LOCALLY
-    Tombstones.Cache.put_tombstone({Sources.Cache, source.id})
+    Tombstones.Cache.put_tombstone({Users.Cache, user.id})
 
     # trigger cache miss ON THE PEER
-    :erpc.call(peer, Sources.Cache, :get_by, [[token: source.token]])
+    :erpc.call(peer, Users.Cache, :get_by, [[email: user.email]])
 
     # wait for the local telemetry event
     assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                    _measurements, %{cache: Sources.Cache, action: :dropped_stale}},
+                    _measurements, %{cache: Users.Cache, action: :dropped_stale}},
                    to_timeout(second: 10)
 
-    refute Cachex.get!(Sources.Cache, {:get_by, [[token: source.token]]})
+    refute Cachex.get!(Users.Cache, {:get_by, [[email: user.email]]})
   end
 
   defp start_peer(name \\ :peer) do
