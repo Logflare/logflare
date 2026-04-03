@@ -228,11 +228,11 @@ defmodule Logflare.Telemetry do
       ),
       counter("logflare.context_cache_gossip.multicast.count",
         event_name: "logflare.context_cache_gossip.multicast.stop",
-        tags: [:cache, :enabled],
+        tags: [:cache, :action],
         description: "Total cache gossip multicast attempts"
       ),
       distribution("logflare.context_cache_gossip.multicast.stop.duration",
-        tags: [:cache, :enabled],
+        tags: [:cache, :action],
         unit: {:native, :millisecond},
         description: "Latency of dispatching the cache gossip multicast"
       ),

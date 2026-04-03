@@ -142,7 +142,7 @@ defmodule Logflare.ContextCache do
            {:commit, {:cached, getter_fn.()}}
          end) do
       {:commit, {:cached, value}} ->
-        Gossip.maybe_gossip(cache, cache_key, value)
+        Gossip.multicast(cache, cache_key, value)
         value
 
       {:ok, {:cached, value}} ->
