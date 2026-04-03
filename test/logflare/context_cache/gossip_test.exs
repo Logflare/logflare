@@ -30,7 +30,7 @@ defmodule Logflare.ContextCache.GossipTest do
     end
   end
 
-  describe "maybe_gossip/3" do
+  describe "multicast/3" do
     setup do
       telemetry_ref =
         :telemetry_test.attach_event_handlers(self(), [
@@ -50,17 +50,11 @@ defmodule Logflare.ContextCache.GossipTest do
       Sources.Cache.get_by(token: source.token)
 
       assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
-                      _measurements, %{cache: Sources.Cache, key: ^cache_key} = metadata}
-
-      assert Map.take(metadata, [:enabled, :max_nodes, :ratio]) == %{
-               enabled: true,
-               max_nodes: 3,
-               ratio: 0.05
-             }
+                      _measurements, %{cache: Sources.Cache, key: ^cache_key}}
     end
   end
 
-  describe "receive_gossip/3" do
+  describe "receive/3" do
     setup do
       Cachex.clear!(Sources.Cache)
 
@@ -77,7 +71,7 @@ defmodule Logflare.ContextCache.GossipTest do
       cache_key = {:get, [999]}
       value = %{id: 999, name: "valid"}
 
-      ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, value)
+      ContextCache.Gossip.receive(Sources.Cache, cache_key, value)
 
       assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
                       _measurements, %{action: :cached, cache: Sources.Cache, key: ^cache_key}}
@@ -90,7 +84,7 @@ defmodule Logflare.ContextCache.GossipTest do
       existing_value = {:cached, %{id: 111, name: "local_data"}}
 
       Cachex.put(Sources.Cache, cache_key, existing_value)
-      ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, %{id: 111, name: "stale"})
+      ContextCache.Gossip.receive(Sources.Cache, cache_key, %{id: 111, name: "stale"})
 
       assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
                       _measurements, %{action: :refreshed, cache: Sources.Cache, key: ^cache_key}}
@@ -103,7 +97,7 @@ defmodule Logflare.ContextCache.GossipTest do
       value = %{id: 222, name: "stale_data"}
 
       ContextCache.Gossip.record_tombstones([{Sources, 222}])
-      ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, value)
+      ContextCache.Gossip.receive(Sources.Cache, cache_key, value)
 
       assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
                       _measurements,
