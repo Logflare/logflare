@@ -7,7 +7,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Ecto.Adapters.SQL
   alias Logflare.Backends
   alias Logflare.Google.BigQuery.SchemaUtils
-  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Utils.Tasks

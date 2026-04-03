@@ -14,7 +14,27 @@ defmodule Logflare.Logs.SearchOperationsTest do
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
-  alias Logflare.Sources.Source.BigQuery.Schema
+
+  @postgres_search_attrs %{
+    source: nil,
+    querystring: "",
+    query: nil,
+    chart_data_shape_id: nil,
+    tailing?: false,
+    tailing_initial?: nil,
+    partition_by: :timestamp,
+    type: :events,
+    backend_type: :postgres,
+    lql_rules: [],
+    lql_ts_filters: [],
+    lql_meta_and_msg_filters: []
+  }
+
+  setup do
+    insert(:plan)
+
+    [user: insert(:user)]
+  end
 
   @postgres_search_attrs %{
     source: nil,
@@ -65,23 +85,10 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
 
     test "unnest_recommended_fields/1 with metadata.level", %{so: so} do
-      GoogleApi.BigQuery.V2.Api.Tables
-      |> stub(:bigquery_tables_patch, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
-        {:ok, %{}}
-      end)
-
-      Logflare.Mailer
-      |> expect(:deliver, 1, fn _ -> :ok end)
-
-      pid =
-        start_supervised!(
-          {Schema,
-           source: so.source,
-           bigquery_project_id: "some-project",
-           bigquery_dataset_id: "some-dataset"}
-        )
-
-      Schema.update(pid, build(:log_event, metadata: %{"level" => "value"}), so.source)
+      insert(:source_schema,
+        source: so.source,
+        bigquery_schema: TestUtils.build_bq_schema(%{"metadata" => %{"level" => "value"}})
+      )
 
       TestUtils.retry_assert(fn ->
         Cachex.clear(Logflare.SourceSchemas.Cache)
@@ -421,9 +428,8 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert [{%DateTime{}, _}, {%DateTime{}, _}] = params
     end
 
-    test "aggregate query uses filters and timestamp", %{
-      base_so: base_so
-    } do
+
+    test "aggregate query uses filters and timestamp", %{base_so: base_so} do
       min = ~U[2026-01-29 04:13:48.748909Z]
       max = ~U[2026-01-29 06:13:48.748909Z]
 
@@ -572,6 +578,62 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
+  describe "put_chart_data_shape_id/1" do
+    setup %{user: user} do
+      source = insert(:source, user: user, bq_table_id: "test_table")
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema:
+          TestUtils.build_bq_schema(%{"metadata" => %{"response" => %{"status_code" => 200}}})
+      )
+
+      base_so = %SO{
+        source: source,
+        querystring: "",
+        chart_data_shape_id: nil,
+        tailing?: false,
+        partition_by: :timestamp,
+        type: :aggregates
+      }
+
+      [base_so: base_so]
+    end
+
+    test "sets custom data shape for count timestamp charts", %{base_so: base_so} do
+      so = %{
+        base_so
+        | chart_rules: [
+            %ChartRule{
+              path: "timestamp",
+              aggregate: :count,
+              period: :minute,
+              value_type: :datetime
+            }
+          ]
+      }
+
+      assert SearchOperations.put_chart_data_shape_id(so).chart_data_shape_id ==
+               :cloudflare_status_codes
+    end
+
+    test "nil custom data shape for non-count metric charts", %{base_so: base_so} do
+      so = %{
+        base_so
+        | chart_rules: [
+            %ChartRule{
+              path: "metadata.response.origin_time",
+              aggregate: :p99,
+              period: :minute,
+              value_type: :integer
+            }
+          ]
+      }
+
+      assert SearchOperations.put_chart_data_shape_id(so).chart_data_shape_id == nil
+    end
+  end
+
   describe "apply_select_rules/1" do
     setup %{user: user} do
       source = insert(:source, user: user, bq_table_id: "test_table")
@@ -607,33 +669,19 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
 
     test "applies suggested keys as SelectRules to query", %{so: so} do
-      GoogleApi.BigQuery.V2.Api.Tables
-      |> stub(:bigquery_tables_patch, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
-        {:ok, %{}}
-      end)
-
       source =
         so.source
         |> Ecto.Changeset.change(suggested_keys: "m.request_id, metadata.user_id")
         |> Logflare.Repo.update!()
 
-      pid =
-        start_supervised!(
-          {Schema,
-           source: source,
-           bigquery_project_id: "some-project",
-           bigquery_dataset_id: "some-dataset"}
-        )
-
       # Create schema with the suggested key fields as top-level fields
-      Schema.update(
-        pid,
-        build(:log_event, metadata: %{"request_id" => "req123", "user_id" => 123}),
-        so.source
+      insert(:source_schema,
+        source: source,
+        bigquery_schema:
+          TestUtils.build_bq_schema(%{
+            "metadata" => %{"request_id" => "req123", "user_id" => 123}
+          })
       )
-
-      Logflare.Mailer
-      |> expect(:deliver, 1, fn _ -> :ok end)
 
       TestUtils.retry_assert(fn ->
         Cachex.clear(Logflare.SourceSchemas.Cache)
@@ -657,32 +705,15 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
 
     test "strips trailing exclamation point when working with `suggested_keys`", %{so: so} do
-      GoogleApi.BigQuery.V2.Api.Tables
-      |> stub(:bigquery_tables_patch, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
-        {:ok, %{}}
-      end)
-
       source =
         so.source
         |> Ecto.Changeset.change(suggested_keys: "project!")
         |> Logflare.Repo.update!()
 
-      pid =
-        start_supervised!(
-          {Schema,
-           source: source,
-           bigquery_project_id: "some-project",
-           bigquery_dataset_id: "some-dataset"}
-        )
-
-      Schema.update(
-        pid,
-        build(:log_event, project: "my-project"),
-        so.source
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: TestUtils.build_bq_schema(%{"project" => "my-project"})
       )
-
-      Logflare.Mailer
-      |> expect(:deliver, 1, fn _ -> :ok end)
 
       TestUtils.retry_assert(fn ->
         Cachex.clear(Logflare.SourceSchemas.Cache)
