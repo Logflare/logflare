@@ -10,6 +10,7 @@ defmodule Logflare.ContextCache.Gossip do
 
   @telemetry_handler_id "context-cache-gossip-logger"
 
+  # this logger can be attached to provide visibility into gossip decisions and dropped multicasts
   def attach_logger do
     events = [
       [:logflare, :context_cache_gossip, :multicast, :stop],
