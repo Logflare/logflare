@@ -16,15 +16,14 @@ defmodule Logflare.ContextCache.GossipClusterTest do
 
         {:error, reason} ->
           raise """
-
-          ==================================================
+          =============================================
           Failed to start distributed Erlang for tests.
 
-          Maybe `epmd` is not running? Please make sure it's started by running:
+          Please make sure `epmd` is running:
 
               epmd -daemon
 
-          ==================================================
+          =============================================
           Underlying error: #{inspect(reason)}
           """
       end
