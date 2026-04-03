@@ -12,46 +12,35 @@ defmodule Logflare.ContextCache.GossipClusterTest do
     System.cmd("epmd", ["-daemon"])
 
     if not Node.alive?() do
-      {:ok, _} = :net_kernel.start([:"primary@127.0.0.1"])
+      {:ok, _} = :net_kernel.start(:"test@127.0.0.1", %{})
     end
 
     :ok
   end
 
   setup do
-    prev = Application.get_env(:logflare, :context_cache_gossip)
+    original_context_cache_gossip = Application.get_env(:logflare, :context_cache_gossip)
 
-    Application.put_env(:logflare, :context_cache_gossip, %{
-      enabled: true,
-      ratio: 1.0,
-      max_nodes: 5
-    })
+    Application.put_env(
+      :logflare,
+      :context_cache_gossip,
+      _guaranteed_multicast = %{enabled: true, ratio: 1.0, max_nodes: 5}
+    )
+
+    on_exit(fn ->
+      Application.put_env(:logflare, :context_cache_gossip, original_context_cache_gossip)
+    end)
 
     telemetry_ref =
       :telemetry_test.attach_event_handlers(self(), [
         [:logflare, :context_cache_gossip, :receive, :stop]
       ])
 
-    on_exit(fn ->
-      Application.put_env(:logflare, :context_cache_gossip, prev)
-      :telemetry.detach(telemetry_ref)
-    end)
+    on_exit(fn -> :telemetry.detach(telemetry_ref) end)
 
-    {plan, user, source} =
-      EctoSandbox.unboxed_run(Logflare.Repo, fn ->
-        plan = insert(:plan, name: "Free")
-        user = insert(:user)
-        source = insert(:source, user: user)
-        {plan, user, source}
-      end)
-
-    on_exit(fn ->
-      EctoSandbox.unboxed_run(Logflare.Repo, fn ->
-        Logflare.Repo.delete(source)
-        Logflare.Repo.delete(user)
-        Logflare.Repo.delete(plan)
-      end)
-    end)
+    unboxed_insert_then_delete_on_exit(:plan, name: "Free")
+    user = unboxed_insert_then_delete_on_exit(:user)
+    source = unboxed_insert_then_delete_on_exit(:source, user: user)
 
     {:ok, telemetry_ref: telemetry_ref, source: source, user: user}
   end
@@ -109,21 +98,32 @@ defmodule Logflare.ContextCache.GossipClusterTest do
 
     true = Node.connect(node)
 
-    :ok = :erpc.call(node, :code, :add_paths, [:code.get_path()])
+    :erpc.call(node, :code, :add_paths, [:code.get_path()])
 
-    for {app_name, _, _} <- Application.loaded_applications() do
-      for {key, val} <- Application.get_all_env(app_name) do
-        :ok = :erpc.call(node, Application, :put_env, [app_name, key, val, [persistent: true]])
+    for {app, _, _} <- Application.loaded_applications() do
+      for {key, val} <- Application.get_all_env(app) do
+        :erpc.call(node, Application, :put_env, [app, key, val, [persistent: true]])
       end
     end
 
-    :ok =
-      :erpc.call(node, Application, :put_env, [:logflare, LogflareWeb.Endpoint, [server: false]])
-
-    {:ok, _} = :erpc.call(node, Application, :ensure_all_started, [:mix])
-    :ok = :erpc.call(node, Mix, :env, [Mix.env()])
-    {:ok, _} = :erpc.call(node, Application, :ensure_all_started, [:logflare])
+    :erpc.call(node, Application, :put_env, [:logflare, LogflareWeb.Endpoint, [server: false]])
+    :erpc.call(node, Application, :ensure_all_started, [:logflare])
 
     node
+  end
+
+  defp unboxed_insert_then_delete_on_exit(kind, options \\ []) do
+    record =
+      EctoSandbox.unboxed_run(Logflare.Repo, fn ->
+        insert(kind, options)
+      end)
+
+    on_exit(fn ->
+      EctoSandbox.unboxed_run(Logflare.Repo, fn ->
+        Logflare.Repo.delete(record)
+      end)
+    end)
+
+    record
   end
 end
