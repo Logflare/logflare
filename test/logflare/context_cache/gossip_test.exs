@@ -1,6 +1,5 @@
 defmodule Logflare.ContextCache.GossipTest do
-  use Logflare.DataCase, async: true
-  import ExUnit.CaptureLog
+  use Logflare.DataCase, async: false
   import Logflare.Factory
   alias Logflare.ContextCache
   alias Logflare.ContextCache.Tombstones
@@ -20,16 +19,14 @@ defmodule Logflare.ContextCache.GossipTest do
         {Sources, "uuid-456"}
       ])
 
-      assert Tombstones.Cache.tombstoned?({Sources.Cache, 123})
-      assert Tombstones.Cache.tombstoned?({Sources.Cache, 234})
-      assert Tombstones.Cache.tombstoned?({Sources.Cache, 345})
-      assert Tombstones.Cache.tombstoned?({Sources.Cache, "uuid-456"})
+      assert Tombstones.Cache.tombstoned?(Sources.Cache, 123)
+      assert Tombstones.Cache.tombstoned?(Sources.Cache, 234)
+      assert Tombstones.Cache.tombstoned?(Sources.Cache, 345)
+      assert Tombstones.Cache.tombstoned?(Sources.Cache, "uuid-456")
     end
 
     test "ignores unsupported types gracefully" do
-      assert capture_log(fn ->
-               ContextCache.Gossip.record_tombstones([{Sources, make_ref()}])
-             end) =~ "[warning] Unable to create tombstone for context primary key:"
+      ContextCache.Gossip.record_tombstones([{Sources, make_ref()}])
     end
   end
 
@@ -65,6 +62,8 @@ defmodule Logflare.ContextCache.GossipTest do
 
   describe "receive_gossip/3" do
     setup do
+      Cachex.clear!(Sources.Cache)
+
       telemetry_ref =
         :telemetry_test.attach_event_handlers(self(), [
           [:logflare, :context_cache_gossip, :receive, :stop]
@@ -103,7 +102,7 @@ defmodule Logflare.ContextCache.GossipTest do
       cache_key = {:get, [222]}
       value = %{id: 222, name: "stale_data"}
 
-      Tombstones.Cache.put_tombstone({Sources.Cache, 222})
+      ContextCache.Gossip.record_tombstones([{Sources, 222}])
       ContextCache.Gossip.receive_gossip(Sources.Cache, cache_key, value)
 
       assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,

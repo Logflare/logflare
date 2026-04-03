@@ -3,8 +3,7 @@ defmodule Logflare.ContextCache.Gossip.DistributedTest do
   import Logflare.Factory
 
   alias Ecto.Adapters.SQL.Sandbox, as: EctoSandbox
-  alias Logflare.ContextCache.Tombstones
-  alias Logflare.Users
+  alias Logflare.{ContextCache, Users}
 
   @moduletag :cluster
 
@@ -78,7 +77,7 @@ defmodule Logflare.ContextCache.Gossip.DistributedTest do
     user = unboxed_insert_then_delete_on_exit(:user)
 
     # write tombstone LOCALLY
-    Tombstones.Cache.put_tombstone({Users.Cache, user.id})
+    ContextCache.Gossip.record_tombstones([{Users, user.id}])
 
     # trigger cache miss ON THE PEER
     :erpc.call(peer, Users.Cache, :get_by, [[email: user.email]])

@@ -25,11 +25,11 @@ defmodule Logflare.ContextCache.Tombstones.Cache do
     Supervisor.child_spec({Cachex, [@name, options]}, id: @name)
   end
 
-  def put_tombstone(tombstone) do
-    Cachex.put(@name, tombstone, true)
+  def put_tombstone(cache, tombstone) do
+    Cachex.put(@name, {cache, tombstone}, true)
   end
 
-  def tombstoned?(tombstone) do
-    Cachex.exists?(@name, tombstone) == {:ok, true}
+  def tombstoned?(cache, tombstone) do
+    Cachex.exists?(@name, {cache, tombstone}) == {:ok, true}
   end
 end
