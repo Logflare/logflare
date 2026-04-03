@@ -1,10 +1,12 @@
 defmodule Logflare.ContextCache.Gossip do
   @moduledoc false
 
+  require Logger
+  require Cachex.Spec
+
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.ContextCache
   alias Logflare.ContextCache.Tombstones
-  require Cachex.Spec
 
   # Negative lookups (`nil` or `[]`) are not gossiped. If Node A caches `nil`,
   # and the record is immediately created, a delayed `nil` cast to Node B
@@ -85,12 +87,17 @@ defmodule Logflare.ContextCache.Gossip do
         {ContextCache.cache_name(context), id}
 
       _other ->
+        Logger.warning(
+          "Unable to create tombstone for context primary key: #{inspect(context_pkey)}"
+        )
+
         nil
     end
   end
 
   defp tombstoned?(cache, value) do
     pkeys = extract_pkeys(value)
+
     Enum.any?(pkeys, fn pkey -> Tombstones.Cache.tombstoned?(cache, pkey) end)
   end
 
@@ -100,5 +107,9 @@ defmodule Logflare.ContextCache.Gossip do
 
   defp extract_pkeys({:ok, value}), do: extract_pkeys(value)
   defp extract_pkeys(%{id: id}), do: [id]
-  defp extract_pkeys(_), do: []
+
+  defp extract_pkeys(v) do
+    Logger.warning("Unable to extract primary key from gossip value: #{inspect(v)}")
+    []
+  end
 end
