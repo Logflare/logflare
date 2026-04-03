@@ -477,3 +477,37 @@ config :logflare, Oban,
   ]
 
 config :logflare, Logflare.Alerting, enabled: enable_alerting?
+
+# LOGFLARE_CACHE_GOSSIP_ENABLED: Enable or disable cache gossip
+default_cache_gossip_enabled = if config_env() == :test, do: "true", else: "false"
+
+cache_gossip_enabled? =
+  System.get_env("LOGFLARE_CACHE_GOSSIP_ENABLED", default_cache_gossip_enabled) == "true"
+
+# LOGFLARE_CACHE_GOSSIP_RATIO: Ratio of nodes to gossip cache updates to
+raw_cache_gossip_ratio = System.get_env("LOGFLARE_CACHE_GOSSIP_RATIO", "0.05")
+
+cache_gossip_ratio =
+  case Float.parse(raw_cache_gossip_ratio) do
+    {ratio, ""} when ratio >= 0.0 and ratio <= 1.0 ->
+      ratio
+
+    _ ->
+      raise ArgumentError,
+            "Invalid LOGFLARE_CACHE_GOSSIP_RATIO: #{raw_cache_gossip_ratio}. Must be a float between 0 and 1."
+  end
+
+# LOGFLARE_CACHE_GOSSIP_MAX_NODES: Maximum number of nodes to gossip cache updates to
+cache_gossip_max_nodes =
+  "LOGFLARE_CACHE_GOSSIP_MAX_NODES" |> System.get_env("3") |> String.to_integer()
+
+if cache_gossip_max_nodes <= 0 do
+  raise ArgumentError,
+        "Invalid LOGFLARE_CACHE_GOSSIP_MAX_NODES: #{cache_gossip_max_nodes}. Must be a positive integer."
+end
+
+config :logflare, :context_cache_gossip, %{
+  enabled: cache_gossip_enabled?,
+  ratio: cache_gossip_ratio,
+  max_nodes: cache_gossip_max_nodes
+}
