@@ -10,7 +10,24 @@ defmodule Logflare.ContextCache.GossipClusterTest do
 
   setup_all do
     if not Node.alive?() do
-      {:ok, _} = :net_kernel.start(:"test@127.0.0.1", %{})
+      case :net_kernel.start(:"test@127.0.0.1", %{}) do
+        {:ok, _} ->
+          :ok
+
+        {:error, reason} ->
+          raise """
+
+          ==================================================
+          Failed to start distributed Erlang for tests.
+
+          Maybe `epmd` is not running? Please make sure it's started by running:
+
+              epmd -daemon
+
+          ==================================================
+          Underlying error: #{inspect(reason)}
+          """
+      end
     end
 
     :ok
