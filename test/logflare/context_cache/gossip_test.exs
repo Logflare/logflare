@@ -6,19 +6,6 @@ defmodule Logflare.ContextCache.GossipTest do
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Sources
 
-  setup do
-    Cachex.clear!(Sources.Cache)
-
-    telemetry_ref =
-      :telemetry_test.attach_event_handlers(self(), [
-        [:logflare, :context_cache_gossip, :multicast, :stop],
-        [:logflare, :context_cache_gossip, :receive, :stop]
-      ])
-
-    on_exit(fn -> :telemetry.detach(telemetry_ref) end)
-    {:ok, telemetry_ref: telemetry_ref}
-  end
-
   describe "record_tombstones/1" do
     setup do
       Cachex.clear!(Tombstones.Cache)
