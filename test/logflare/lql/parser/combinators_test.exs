@@ -131,6 +131,12 @@ defmodule Logflare.Lql.Parser.CombinatorsTest do
     test "datetime parser" do
       result = test_datetime("2023-01-15T10:30:00Z")
       assert match?({:ok, [~N[2023-01-15 10:30:00]], "", _, _, _}, result)
+
+      result = test_datetime("2023-01-15T10:30:00.1234+02:00")
+      assert match?({:ok, [~N[2023-01-15 08:30:00.1234]], "", _, _, _}, result)
+
+      result = test_datetime("2023-01-15T10:30:00-02:00")
+      assert match?({:ok, [~N[2023-01-15 12:30:00]], "", _, _, _}, result)
     end
 
     test "timestamp shorthand value parser" do
@@ -155,6 +161,12 @@ defmodule Logflare.Lql.Parser.CombinatorsTest do
 
       result = test_timestamp_value("now")
       assert match?({:ok, [value: %{shorthand: "now"}], "", _, _, _}, result)
+
+      result = test_timestamp_value("1710683222000")
+      assert match?({:ok, [value: ~N[2024-03-17 13:47:02.000]], "", _, _, _}, result)
+
+      result = test_timestamp_value("1710683222000000")
+      assert match?({:ok, [value: ~N[2024-03-17 13:47:02.000]], "", _, _, _}, result)
     end
   end
 
@@ -165,6 +177,9 @@ defmodule Logflare.Lql.Parser.CombinatorsTest do
 
       result = test_timestamp_clause("t:>2023-01-15T10:00:00Z")
       assert match?({:ok, [%{path: "timestamp", operator: :>}], "", _, _, _}, result)
+
+      result = test_timestamp_clause("t:1710683222..1710684222")
+      assert match?({:ok, [%{path: "timestamp", operator: :range}], "", _, _, _}, result)
     end
 
     test "metadata clause parser" do

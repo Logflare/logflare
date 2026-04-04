@@ -310,9 +310,16 @@ defmodule Logflare.Lql.Parser do
   end
 
   defp maybe_cast_value(c, :string), do: c
-  defp maybe_cast_value(c, :datetime), do: c
-  # questionable if this can be reached
-  defp maybe_cast_value(c, :naive_datetime), do: c
+
+  defp maybe_cast_value(%{value: value} = c, type) when type in [:datetime, :naive_datetime] do
+    case parse_datetime_literal(value) do
+      {:ok, parsed_value} ->
+        %{c | value: parsed_value}
+
+      {:error, _reason} ->
+        throw("Query syntax error: expected datetime for #{c.path}, got: '#{value}'")
+    end
+  end
 
   # also questionable if this can be reached
   defp maybe_cast_value(c, nil) do

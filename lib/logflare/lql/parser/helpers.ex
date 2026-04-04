@@ -164,6 +164,9 @@ defmodule Logflare.Lql.Parser.Helpers do
     [lv, rv] =
       result
       |> Enum.reduce([%{}, %{}], fn
+        {:timezone, timezone}, [lacc, racc] ->
+          [Map.put(lacc, :timezone, timezone), Map.put(racc, :timezone, timezone)]
+
         {k, v}, [lacc, racc] ->
           [lv, rv] =
             case v do
@@ -173,20 +176,7 @@ defmodule Logflare.Lql.Parser.Helpers do
 
           [Map.put(lacc, k, lv), Map.put(racc, k, rv)]
       end)
-      |> Enum.map(fn
-        %{second: _, minute: _, hour: _} = dt ->
-          dt =
-            Map.update(dt, :microsecond, {0, 0}, fn us ->
-              {float, ""} = Float.parse("0." <> us)
-
-              {round(float * 1_000_000), 6}
-            end)
-
-          struct!(NaiveDateTime, dt)
-
-        d ->
-          struct!(Date, d)
-      end)
+      |> Enum.map(&build_date_or_datetime_from_parts/1)
 
     if lv == rv do
       [lv]
@@ -196,27 +186,50 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   @spec parse_date_or_datetime([{:date | :datetime, String.t()}]) :: Date.t() | NaiveDateTime.t()
-  def parse_date_or_datetime([{tag, result}]) do
-    mod =
-      case tag do
-        :date -> Date
-        :datetime -> NaiveDateTime
-      end
+  def parse_date_or_datetime([{tag, result}]), do: parse_iso8601_value!(tag, result)
 
-    case mod.from_iso8601(result) do
-      {:ok, dt, _offset} ->
-        dt
+  @spec parse_datetime_literal(term()) :: {:ok, Date.t() | NaiveDateTime.t()} | {:error, term()}
+  def parse_datetime_literal(%Date{} = value), do: {:ok, value}
+  def parse_datetime_literal(%NaiveDateTime{} = value), do: {:ok, value}
 
-      {:ok, dt} ->
-        dt
+  def parse_datetime_literal(%DateTime{} = value) do
+    {:ok, value |> DateTime.shift_zone!("Etc/UTC") |> DateTime.to_naive()}
+  end
+
+  def parse_datetime_literal(value) when is_integer(value) do
+    value
+    |> Integer.to_string()
+    |> parse_unix_timestamp()
+  end
+
+  def parse_datetime_literal(value) when is_binary(value) do
+    cond do
+      String.match?(value, ~r/^\d+$/) ->
+        parse_unix_timestamp(value)
+
+      String.contains?(value, "T") ->
+        parse_iso8601_datetime(value)
+
+      true ->
+        parse_iso8601_date(value)
+    end
+  end
+
+  def parse_datetime_literal(_value), do: {:error, :invalid_format}
+
+  @spec parse_unix_timestamp_literal([String.t()]) :: NaiveDateTime.t()
+  def parse_unix_timestamp_literal([value]) do
+    case parse_unix_timestamp(value) do
+      {:ok, parsed} ->
+        parsed
 
       {:error, :invalid_format} ->
         throw(
-          "Error while parsing timestamp #{tag} value: expected ISO8601 string, got '#{result}'"
+          "Error while parsing timestamp: '#{value}' is not a valid Unix timestamp (expected 10, 13, or 16 digits)"
         )
 
-      {:error, e} ->
-        throw(e)
+      {:error, error} ->
+        throw(error)
     end
   end
 
@@ -316,7 +329,7 @@ defmodule Logflare.Lql.Parser.Helpers do
         :timestamp
       ) do
     throw(
-      "Error while parsing timestamp filter value: expected ISO8601 string or range or shorthand, got '#{v}'"
+      "Error while parsing timestamp filter value: expected ISO8601 string, Unix timestamp, range or shorthand, got '#{v}'"
     )
   end
 
@@ -338,4 +351,138 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def check_for_invalid_blank_select_alias(args), do: args
+
+  defp build_date_or_datetime_from_parts(%{second: _, minute: _, hour: _} = dt) do
+    {timezone, dt} = Map.pop(dt, :timezone)
+    microseconds = Map.get(dt, :microsecond)
+
+    if is_binary(timezone) do
+      dt
+      |> datetime_parts_to_iso8601(microseconds, timezone)
+      |> then(&parse_iso8601_value!(:datetime, &1))
+    else
+      dt =
+        Map.update(dt, :microsecond, {0, 0}, fn us ->
+          {float, ""} = Float.parse("0." <> us)
+
+          {round(float * 1_000_000), 6}
+        end)
+
+      struct!(NaiveDateTime, dt)
+    end
+  end
+
+  defp build_date_or_datetime_from_parts(d), do: struct!(Date, d)
+
+  defp datetime_parts_to_iso8601(dt, microseconds, timezone) do
+    datetime =
+      "#{dt.year}-#{pad_int(dt.month)}-#{pad_int(dt.day)}T#{pad_int(dt.hour)}:#{pad_int(dt.minute)}:#{pad_int(dt.second)}"
+
+    case microseconds do
+      nil ->
+        datetime <> timezone
+
+      us ->
+        datetime <> "." <> us <> timezone
+    end
+  end
+
+  defp pad_int(value), do: String.pad_leading(to_string(value), 2, "0")
+
+  defp parse_iso8601_value!(:date, value) do
+    case parse_iso8601_date(value) do
+      {:ok, parsed} ->
+        parsed
+
+      {:error, :invalid_format} ->
+        throw("Error while parsing timestamp date value: expected ISO8601 string, got '#{value}'")
+
+      {:error, error} ->
+        throw(error)
+    end
+  end
+
+  defp parse_iso8601_value!(:datetime, value) do
+    case parse_iso8601_datetime(value) do
+      {:ok, parsed} ->
+        parsed
+
+      {:error, :invalid_format} ->
+        throw(
+          "Error while parsing timestamp datetime value: expected ISO8601 string, got '#{value}'"
+        )
+
+      {:error, error} ->
+        throw(error)
+    end
+  end
+
+  defp parse_iso8601_date(value) do
+    case Date.from_iso8601(value) do
+      {:ok, date} -> {:ok, date}
+      {:error, :invalid_format} -> {:error, :invalid_format}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  defp parse_iso8601_datetime(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} ->
+        {:ok, DateTime.to_naive(datetime)}
+
+      {:error, :missing_offset} ->
+        case NaiveDateTime.from_iso8601(value) do
+          {:ok, datetime} -> {:ok, datetime}
+          {:error, :invalid_format} -> {:error, :invalid_format}
+          {:error, error} -> {:error, error}
+        end
+
+      {:error, :invalid_format} ->
+        {:error, :invalid_format}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp parse_unix_timestamp(value) when is_binary(value) do
+    case normalize_unix_timestamp(value) do
+      {timestamp, unit} when is_integer(timestamp) ->
+        case DateTime.from_unix(timestamp, unit) do
+          {:ok, datetime} -> {:ok, DateTime.to_naive(datetime)}
+          {:error, error} -> {:error, error}
+        end
+
+      :error ->
+        {:error, :invalid_format}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp normalize_unix_timestamp(value) do
+    case byte_size(value) do
+      10 ->
+        case Integer.parse(value) do
+          {timestamp, ""} -> {timestamp, :second}
+          _ -> :error
+        end
+
+      13 ->
+        case Integer.parse(value) do
+          {timestamp, ""} -> {timestamp, :millisecond}
+          _ -> :error
+        end
+
+      16 ->
+        case Integer.parse(value) do
+          {timestamp, ""} -> {div(timestamp, 1_000), :millisecond}
+          _ -> :error
+        end
+
+      _ ->
+        {:error, :invalid_format}
+    end
+  end
 end
