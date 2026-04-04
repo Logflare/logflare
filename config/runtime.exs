@@ -96,7 +96,8 @@ config :logflare,
          encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED"),
          metadata: logflare_metadata,
          health: logflare_health,
-         http_connection_pools: http_connection_pools
+         http_connection_pools: http_connection_pools,
+         bq_write_api_pool_size: System.get_env("LOGFLARE_BQ_WRITE_API_POOL_SIZE")
        ]
        |> filter_nil_kv_pairs.()
 
