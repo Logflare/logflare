@@ -184,7 +184,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   # copied from mint: https://github.com/elixir-mint/mint/blob/0bfcc869b53b83989c24ba681d66d0a447b5a1c3/lib/mint/transport_error.ex#L86-L101
   defp format_connection_error(:closed), do: "socket closed"
   defp format_connection_error(:timeout), do: "timeout"
-  defp format_connection_error(:badarg), do: "invalid arguments"
 
   defp format_connection_error(reason) do
     case :ssl.format_error(reason) do
