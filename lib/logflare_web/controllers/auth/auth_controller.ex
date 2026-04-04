@@ -13,8 +13,6 @@ defmodule LogflareWeb.AuthController do
 
   require Logger
 
-  @max_age 86_400
-
   def logout(conn, _params) do
     conn
     |> configure_session(drop: true)
@@ -41,7 +39,7 @@ defmodule LogflareWeb.AuthController do
         signin(conn, auth_params)
 
       invite_token ->
-        case Auth.verify_email_token(invite_token, @max_age) do
+        case Auth.verify_email_token(invite_token) do
           {:ok, invited_by_team_id} ->
             invited_signin(conn, auth_params, invited_by_team_id)
 
@@ -140,7 +138,7 @@ defmodule LogflareWeb.AuthController do
     signin(conn, auth_params)
   end
 
-  def signin(conn, auth_params) do
+  defp signin(conn, auth_params) do
     team_users = TeamUsers.list_team_users_by_and_preload(email: auth_params.email)
     user = Users.get_by(email: auth_params.email)
     handle_sign_in(team_users, user, conn, auth_params)
@@ -198,15 +196,7 @@ defmodule LogflareWeb.AuthController do
             redirect_for_oauth(conn, user)
 
           vercel_setup_params ->
-            auth_params = vercel_setup_params["auth_params"]
-            installation_id = auth_params["installation_id"]
-
-            {:ok, _auth} =
-              Vercel.find_by_or_create_auth([installation_id: installation_id], user, auth_params)
-
-            conn
-            |> put_session(:vercel_setup, nil)
-            |> redirect(external: vercel_setup_params["next"])
+            redirect_for_vercel(conn, user)
 
           true ->
             conn
