@@ -1,4 +1,4 @@
-/// Path segment types for JSONPath evaluation.
+/// Path segment types for dot-notation path evaluation against Elixir maps.
 ///
 /// Supports:
 /// - Simple keys: `$.firstName` -> `[Key("firstName")]`
@@ -13,7 +13,7 @@ pub enum PathSegment {
     Index(usize),
 }
 
-/// Parses a JSONPath string into a vector of PathSegments.
+/// Parses a `$`-prefixed dot-notation path into a vector of PathSegments.
 ///
 /// Expects paths starting with `$` or `$.`.
 /// Returns an error string if the path is malformed.
