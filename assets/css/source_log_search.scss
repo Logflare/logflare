@@ -57,6 +57,13 @@
   }
 }
 
+// Prevent live_monaco_editor auto-resize from expanding the single-line editor
+.lql-editor-wrapper [phx-hook="CodeEditorHook"] {
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+}
+
 .message {
   font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
 }

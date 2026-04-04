@@ -11,7 +11,6 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   alias Logflare.Utils
   alias Logflare.Sources.Source
 
-  attr :form, Phoenix.HTML.Form, required: true
   attr :lql_rules, :list, required: true
   attr :chart_aggregate_enabled?, :boolean, required: true
 
@@ -22,33 +21,29 @@ defmodule LogflareWeb.SearchLive.FormComponents do
         Chart period:
       </div>
       <div class="pr-3 pt-1 pb-1">
-        {select(@form, :chart_period, ["day", "hour", "minute", "second"],
-          selected: Rules.get_chart_period(@lql_rules, "minute"),
-          class: "form-control form-control-sm"
-        )}
+        <select id="search_chart_period" name="chart_period" class="form-control form-control-sm">
+          {Phoenix.HTML.Form.options_for_select(
+            ["day", "hour", "minute", "second"],
+            Rules.get_chart_period(@lql_rules, "minute")
+          )}
+        </select>
       </div>
       <div class="pr-3 pt-1 pb-1 hide-on-mobile">
         Aggregate:
       </div>
       <div class="pr-3 pt-1 pb-1">
         <%= if @chart_aggregate_enabled? do %>
-          {select(
-            @form,
-            :chart_aggregate,
-            ["sum", "avg", "max", "p50", "p95", "p99", "count"],
-            selected: Rules.get_chart_aggregate(@lql_rules, "count"),
-            class: "form-control form-control-sm"
-          )}
+          <select id="search_chart_aggregate" name="chart_aggregate" class="form-control form-control-sm">
+            {Phoenix.HTML.Form.options_for_select(
+              ["sum", "avg", "max", "p50", "p95", "p99", "count"],
+              Rules.get_chart_aggregate(@lql_rules, "count")
+            )}
+          </select>
         <% else %>
           <span class="d-inline-block" tabindex="0" data-toggle="tooltip" title="Chart aggregate setting requires usage of chart: operator" trigger="hover click" delay="0">
-            {select(
-              @form,
-              :chart_aggregate,
-              ["count"],
-              selected: "count",
-              class: "form-control form-control-sm",
-              style: "pointer-events: none;"
-            )}
+            <select id="search_chart_aggregate" name="chart_aggregate" class="form-control form-control-sm" style="pointer-events: none;">
+              {Phoenix.HTML.Form.options_for_select(["count"], "count")}
+            </select>
           </span>
         <% end %>
       </div>
@@ -92,7 +87,12 @@ defmodule LogflareWeb.SearchLive.FormComponents do
               required
             </span>
           </div>
-          <input id={"#{@id_prefix}-#{field.name}"} name={input_name(:fields, field.name)} class="form-control" type="text" />
+          <input
+            id={"#{@id_prefix}-#{field.name}"}
+            name={input_name(:fields, field.name)}
+            class="form-control tw-h-8 tw-min-h-8 tw-max-h-8 tw-border-[#282c34] tw-bg-[#282c34] tw-py-[3px] tw-text-sm tw-font-mono tw-text-[#c4cad6] placeholder:tw-text-[#8c92a3] focus:tw-border-[#3e4451] focus:tw-bg-[#282c34] focus:tw-text-[#c4cad6]"
+            type="text"
+          />
         </div>
       </div>
     </div>
@@ -128,10 +128,8 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     end
   end
 
-  attr :search_form, :any, required: true
   attr :querystring, :string, required: true
-  attr :search_history, :list, required: true
-  attr :search_timezone, :string, required: true
+  attr :saved_searches, :list, required: true
   attr :loading, :boolean, required: true
   attr :tailing?, :boolean, required: true
   attr :uri_params, :map, required: true
@@ -142,43 +140,37 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   attr :has_results?, :boolean
   attr :source, Logflare.Sources.Source, required: true
   attr :last_query_completed_at, :any, default: nil
+  attr :lql_schema_flat_map, :map, required: true
 
   def search_controls(assigns) do
+    assigns =
+      assigns
+      |> assign(:saved_searches_json, JSON.encode!(assigns.saved_searches))
+      |> assign(
+        :lql_schema_fields_json,
+        assigns.lql_schema_flat_map |> lql_schema_fields() |> Jason.encode!()
+      )
+
     ~H"""
     <div class="search-control tw-mt-1" id="source-logs-search-control" phx-hook="SourceLogsSearch">
-      <.form :let={f} for={@search_form} action="#" phx-submit="start_search" phx-change="form_update" class="form-group">
+      <div class="form-group">
         <div class="form-group form-text">
           <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-2">
             <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
 
             <div class="tw-order-2 tw-basis-full tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
-              {text_input(f, :querystring,
-                phx_focus: :form_focus,
-                phx_blur: :form_blur,
-                value: @querystring,
-                class: "form-control tw-mt-0",
-                list: "matches"
-              )}
+              <div id="lql-editor-hook" phx-hook="LqlEditorWrapper" phx-update="ignore" data-querystring={@querystring} data-schema-fields-json={@lql_schema_fields_json} data-suggested-searches-json={@saved_searches_json} class="lql-editor-wrapper tw-mt-0">
+                <LiveMonacoEditor.code_editor value={@querystring} path="lql_query" class="tw-w-full tw-h-8" opts={lql_editor_opts()} />
+              </div>
             </div>
           </div>
-
-          {text_input(f, :search_timezone,
-            class: "d-none",
-            value: @search_timezone,
-            id: "search-timezone"
-          )}
-          <datalist id="matches">
-            <%= for s <- @search_history do %>
-              <option value={s.querystring}>{s.querystring}</option>
-            <% end %>
-          </datalist>
         </div>
 
         <div class="d-flex flex-wrap align-items-center form-text">
           <div class="pr-2 pt-1 pb-1">
-            <%= submit disabled: @loading, id: "search", class: "btn btn-primary" do %>
+            <button type="button" disabled={@loading} id="search" class="btn btn-primary" phx-click={Phoenix.LiveView.JS.dispatch("lql:submit", to: "#lql-editor-hook")}>
               <i class="fas fa-search"></i><span class="fas-in-button hide-on-mobile">Search</span>
-            <% end %>
+            </button>
           </div>
 
           <.navigation_buttons tailing?={@tailing?} uri_params={@uri_params} />
@@ -186,14 +178,48 @@ defmodule LogflareWeb.SearchLive.FormComponents do
           <.action_buttons source={@source} user={@user} has_results?={@has_results?} />
         </div>
 
-        <.chart_controls form={f} lql_rules={@lql_rules} chart_aggregate_enabled?={search_agg_controls_enabled?(@lql_rules)} />
+        <.chart_controls lql_rules={@lql_rules} chart_aggregate_enabled?={search_agg_controls_enabled?(@lql_rules)} />
 
         <div id="observer-target"></div>
-      </.form>
+      </div>
 
       <.query_timing last_query_completed_at={@last_query_completed_at} />
     </div>
     """
+  end
+
+  defp lql_editor_opts do
+    Map.merge(
+      LiveMonacoEditor.default_opts(),
+      %{
+        "language" => "lql",
+        "lineNumbers" => "off",
+        "glyphMargin" => false,
+        "folding" => false,
+        "lineDecorationsWidth" => 0,
+        "lineNumbersMinChars" => 0,
+        "wordWrap" => "off",
+        "scrollbar" => %{
+          "horizontal" => "hidden",
+          "vertical" => "hidden",
+          "handleMouseWheel" => false
+        },
+        "overviewRulerLanes" => 0,
+        "overviewRulerBorder" => false,
+        "hideCursorInOverviewRuler" => true,
+        "contextmenu" => false,
+        "fixedOverflowWidgets" => true,
+        "suggest" => %{"enabled" => true, "showWords" => false},
+        "parameterHints" => %{"enabled" => false},
+        "quickSuggestions" => true,
+        "matchBrackets" => "never",
+        "tabIndex" => 0,
+        "fontFamily" =>
+          "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+        "padding" => %{"top" => 5, "bottom" => 5},
+        "automaticLayout" => true
+      }
+    )
   end
 
   defp search_agg_controls_enabled?(lql_rules) do
@@ -202,6 +228,17 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     |> Map.get(:value_type)
     |> Kernel.in([:integer, :float])
   end
+
+  defp lql_schema_fields(flat_map) when is_map(flat_map) do
+    for {name, type} <- flat_map, into: %{} do
+      {name, format_schema_type(type)}
+    end
+  end
+
+  defp lql_schema_fields(_), do: %{}
+
+  defp format_schema_type({type, inner}), do: "#{type}[#{inner}]"
+  defp format_schema_type(type), do: to_string(type)
 
   attr :tailing?, :boolean, required: true
   attr :play_event, :string, values: ["soft_play", "hard_play"]
