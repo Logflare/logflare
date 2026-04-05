@@ -26,11 +26,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
   end
 
-  @spec send(NimblePool.pool(), iodata) :: :ok | {:error, reason}
+  @spec send(NimblePool.pool(), iodata, map) :: :ok | {:error, reason}
         when reason: :closed | :timeout | :inet.posix() | :ssl.reason()
-  def send(pool, message) do
+  def send(pool, message, meta \\ %{}) do
     NimblePool.checkout!(pool, :checkout, fn {pid, _ref}, conn ->
-      with {:ok, conn, socket} <- ensure_connected(conn, pid),
+      with {:ok, conn, socket} <- ensure_connected(conn, pid, meta),
            :ok <- Socket.send(socket, message) do
         {:ok, conn}
       else
@@ -39,15 +39,35 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     end)
   end
 
-  defp ensure_connected({:connected, socket}, _owner), do: {:ok, :keep, socket}
+  defp ensure_connected({:connected, socket}, _owner, meta) do
+    :telemetry.execute(
+      [:logflare, :syslog_pool, :reused_connection],
+      %{system_time: System.system_time()},
+      meta
+    )
 
-  defp ensure_connected({:idle, backend_id}, owner) do
+    {:ok, :keep, socket}
+  end
+
+  defp ensure_connected({:idle, backend_id}, owner, meta) do
     config = current_backend_config(backend_id)
+    meta = Map.put(meta, :config, config)
 
-    case connect_and_transfer(config, owner) do
-      {:ok, socket} -> {:ok, {:connected, socket, config}, socket}
-      {:error, _reason} = error -> error
-    end
+    :telemetry.span([:logflare, :syslog_pool, :connect], meta, fn ->
+      result =
+        case connect_and_transfer(config, owner) do
+          {:ok, socket} -> {:ok, {:connected, socket, config}, socket}
+          {:error, _reason} = error -> error
+        end
+
+      meta =
+        case result do
+          {:ok, _conn, _socket} -> meta
+          {:error, reason} -> Map.merge(meta, %{kind: :error, reason: reason})
+        end
+
+      {result, meta}
+    end)
   end
 
   defp current_backend_config(backend_id) do
@@ -73,6 +93,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
   @impl NimblePool
   def init_pool(backend_id) do
+    Process.set_label({:syslog_pool, backend_id})
     {:ok, backend_id}
   end
 
@@ -130,12 +151,24 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   end
 
   def handle_info(_message, :idle) do
+    # Consume async :tcp and :ssl messages that arrive for :idle conns.
+    # These can occure when the socket is closed right after connection during the checkout process.
+    # The dead socket will be cleaned up on the next checkout attempt.
     {:ok, :idle}
   end
 
   @impl NimblePool
-  def terminate_worker(_reason, conn, backend_id) do
-    with {:connected, socket, _config} <- conn, do: Socket.close(socket)
+  def terminate_worker(reason, conn, backend_id) do
+    with {:connected, socket, config} <- conn do
+      :telemetry.execute(
+        [:logflare, :syslog_pool, :disconnect],
+        %{system_time: System.system_time()},
+        %{backend_id: backend_id, config: config, reason: reason}
+      )
+
+      Socket.close(socket)
+    end
+
     {:ok, backend_id}
   end
 end

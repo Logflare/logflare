@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   import Ecto.Changeset
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
+  require Logger
   alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Socket, Pipeline}
   @behaviour Logflare.Backends.Adaptor
 
@@ -197,4 +198,66 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   def execute_query(_id, _query, _opts) do
     {:error, :not_implemented}
   end
+
+  @logger_handler "logflare-syslog-logger"
+
+  def attach_logger do
+    :telemetry.attach_many(
+      @logger_handler,
+      [
+        [:logflare, :syslog_pool, :connect, :stop],
+        [:logflare, :syslog_pool, :connect, :exception],
+        [:logflare, :syslog_pool, :reused_connection],
+        [:logflare, :syslog_pool, :disconnect]
+      ],
+      &__MODULE__.handle_syslog_event/4,
+      _no_config = []
+    )
+  end
+
+  def detach_logger do
+    :telemetry.detach(@logger_handler)
+  end
+
+  @doc false
+  def handle_syslog_event(event, measurements, metadata, _config) do
+    case {event, metadata} do
+      {[:logflare, :syslog_pool, :connect, stop_or_exception], %{kind: _, reason: _}} ->
+        %{backend_id: backend_id, config: %{host: host}} = metadata
+
+        log_warning_or_error(fn ->
+          "[Syslog] Backend #{backend_id} failed to connect to #{host}: #{format_exception(metadata)}"
+        end)
+
+      {[:logflare, :syslog_pool, :connect, :stop], _} ->
+        %{backend_id: backend_id, config: %{host: host}} = metadata
+
+        Logger.debug(fn ->
+          duration = System.convert_time_unit(measurements.duration, :native, :millisecond)
+          "[Syslog] Backend #{backend_id} connected to #{host} in #{duration}ms"
+        end)
+
+      {[:logflare, :syslog_pool, :reused_connection], _} ->
+        %{backend_id: backend_id} = metadata
+        Logger.debug(fn -> "[Syslog] Backend #{backend_id} reused connection" end)
+
+      {[:logflare, :syslog_pool, :disconnect], _} ->
+        %{backend_id: backend_id, config: %{host: host}, reason: reason} = metadata
+
+        Logger.debug(fn ->
+          "[Syslog] Backend #{backend_id} disconnected from #{host}. Reason: #{format_connection_error(reason)}"
+        end)
+    end
+  end
+
+  defp format_exception(%{kind: kind, reason: reason, stacktrace: stacktrace}) do
+    Exception.format(kind, reason, stacktrace)
+  end
+
+  defp format_exception(%{kind: kind, reason: reason}) do
+    Exception.format(kind, reason)
+  end
+
+  defp log_warning_or_error(:exception, message_or_fun), do: Logger.error(message_or_fun)
+  defp log_warning_or_error(:stop, message_or_fun), do: Logger.warning(message_or_fun)
 end
