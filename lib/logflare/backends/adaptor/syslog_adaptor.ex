@@ -225,7 +225,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
       {[:logflare, :syslog_pool, :connect, stop_or_exception], %{kind: _, reason: _}} ->
         %{backend_id: backend_id, config: %{host: host}} = metadata
 
-        log_warning_or_error(fn ->
+        log_warning_or_error(stop_or_exception, fn ->
           "[Syslog] Backend #{backend_id} failed to connect to #{host}: #{format_exception(metadata)}"
         end)
 
