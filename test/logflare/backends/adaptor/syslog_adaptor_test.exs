@@ -486,6 +486,18 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
                ~r"\[notice\] \[Syslog\] Backend #{backend.id} connected to localhost:6514 in \d+ms"
     end
 
+    test "logs reused connection" do
+      {source, backend} = start_syslog(%{host: "localhost", port: 6514})
+
+      log =
+        capture_log(fn ->
+          ingest_syslog([build(:log_event, message: "first message")], source)
+          ingest_syslog([build(:log_event, message: "second message")], source)
+        end)
+
+      assert log =~ "[notice] [Syslog] Backend #{backend.id} reused connection"
+    end
+
     test "logs connection errror" do
       {source, backend} = start_syslog(%{host: "invalid-host", port: 6514})
 
