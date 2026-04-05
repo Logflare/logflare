@@ -1,5 +1,6 @@
 defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   use Logflare.DataCase, async: false
+  import ExUnit.CaptureLog
 
   alias Logflare.Backends.Adaptor.SyslogAdaptor
   alias Logflare.Backends.IngestEventQueue
@@ -421,5 +422,129 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     backend_config
     |> SyslogAdaptor.cast_config()
     |> SyslogAdaptor.validate_config()
+  end
+
+  describe "test_connection/1" do
+    test "for valid plaintext connection" do
+      {_, backend} = start_syslog(%{host: "localhost", port: 6514})
+      assert :ok = SyslogAdaptor.test_connection(backend)
+    end
+
+    test "for valid TLS connection" do
+      {_, backend} =
+        start_syslog(%{
+          host: "localhost",
+          port: 6515,
+          tls: true,
+          ca_cert: File.read!("priv/telegraf/ca.crt"),
+          client_cert: File.read!("priv/telegraf/client.crt"),
+          client_key: File.read!("priv/telegraf/client.key")
+        })
+
+      assert :ok = SyslogAdaptor.test_connection(backend)
+    end
+
+    test "for invalid host" do
+      {_, backend} = start_syslog(%{host: "invalid-host", port: 6514})
+      assert {:error, "non-existing domain"} = SyslogAdaptor.test_connection(backend)
+    end
+
+    test "for unreachable port" do
+      {_, backend} = start_syslog(%{host: "localhost", port: probably_closed_port()})
+      assert {:error, "connection refused"} = SyslogAdaptor.test_connection(backend)
+    end
+  end
+
+  defp probably_closed_port do
+    {:ok, socket} = :gen_tcp.listen(0, active: false)
+    {:ok, {_address, port}} = :inet.sockname(socket)
+    :ok = :gen_tcp.close(socket)
+    port
+  end
+
+  describe "telemetry logging" do
+    setup do
+      prev_level = Logger.level()
+      Logger.configure(level: :notice)
+      on_exit(fn -> Logger.configure(level: prev_level) end)
+    end
+
+    setup do
+      SyslogAdaptor.attach_logger()
+      on_exit(fn -> SyslogAdaptor.detach_logger() end)
+    end
+
+    test "logs successful connection" do
+      {source, backend} = start_syslog(%{host: "localhost", port: 6514})
+
+      log =
+        capture_log(fn ->
+          ingest_syslog([build(:log_event, message: "trigger connect")], source)
+        end)
+
+      assert log =~
+               ~r"\[notice\] \[Syslog\] Backend #{backend.id} connected to localhost:6514 in \d+ms"
+    end
+
+    test "logs reused connection" do
+      {source, backend} = start_syslog(%{host: "localhost", port: 6514})
+
+      log =
+        capture_log(fn ->
+          ingest_syslog([build(:log_event, message: "first message")], source)
+          ingest_syslog([build(:log_event, message: "second message")], source)
+        end)
+
+      assert log =~ "[notice] [Syslog] Backend #{backend.id} reused connection"
+    end
+
+    test "logs connection errror" do
+      {source, backend} = start_syslog(%{host: "invalid-host", port: 6514})
+
+      telemetry_ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:logflare, :syslog_pool, :connect, :stop]
+        ])
+
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+      log =
+        capture_log(fn ->
+          Logflare.Backends.ingest_logs([build(:log_event, message: "trigger connect")], source)
+
+          assert_receive {[:logflare, :syslog_pool, :connect, :stop], ^telemetry_ref,
+                          _measurements, _metadata},
+                         to_timeout(second: 5)
+        end)
+
+      assert log =~
+               "[warning] [Syslog] Backend #{backend.id} failed to connect to invalid-host:6514: non-existing domain"
+    end
+
+    test "logs disconnect on backend config change" do
+      {source, backend} = start_syslog(%{host: "localhost", port: 6514})
+
+      log =
+        capture_log(fn ->
+          ingest_syslog([build(:log_event, message: "init connect")], source)
+
+          Logflare.Backends.update_backend(backend, %{
+            "config" => %{
+              "port" => 6515,
+              "tls" => true,
+              "ca_cert" => File.read!("priv/telegraf/ca.crt"),
+              "client_cert" => File.read!("priv/telegraf/client.crt"),
+              "client_key" => File.read!("priv/telegraf/client.key")
+            }
+          })
+
+          Logflare.ContextCache.bust_keys([{Logflare.Backends, backend.id}])
+
+          ingest_syslog([build(:log_event, message: "trigger disconnect and reconnect")], source)
+        end)
+
+      assert log =~
+               "[notice] [Syslog] Backend #{backend.id} disconnected from localhost:6514. Reason: :stale_config"
+    end
   end
 end

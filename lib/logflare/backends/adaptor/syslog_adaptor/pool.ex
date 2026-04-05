@@ -3,13 +3,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
   import Kernel, except: [send: 2]
   alias Logflare.Backends.Cache, as: BackendsCache
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.Socket
 
   @behaviour NimblePool
 
   @connect_timeout to_timeout(second: 15)
-
-  # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
-  @default_transport_opts mode: :binary, packet: :raw, active: true, nodelay: true
 
   def start_link(opts) do
     backend_id = Keyword.fetch!(opts, :backend_id)
@@ -28,12 +26,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
   end
 
-  @spec send(NimblePool.pool(), iodata) :: :ok | {:error, error_reason}
-        when error_reason: :closed | :timeout | :badarg | :inet.posix() | :ssl.reason()
-  def send(pool, message) do
+  @spec send(NimblePool.pool(), iodata, map) :: :ok | {:error, reason}
+        when reason: :closed | :timeout | :inet.posix() | :ssl.reason()
+  def send(pool, message, meta \\ %{}) do
     NimblePool.checkout!(pool, :checkout, fn {pid, _ref}, conn ->
-      with {:ok, conn, socket} <- ensure_connected(conn, pid),
-           :ok <- send_data(socket, message) do
+      with {:ok, conn, socket} <- ensure_connected(conn, pid, meta),
+           :ok <- Socket.send(socket, message) do
         {:ok, conn}
       else
         {:error, reason} = error -> {error, {:remove, reason}}
@@ -41,19 +39,61 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     end)
   end
 
-  defp ensure_connected({:connected, socket}, _owner), do: {:ok, :keep, socket}
+  defp ensure_connected({:connected, socket}, _owner, meta) do
+    :telemetry.execute(
+      [:logflare, :syslog_pool, :reused_connection],
+      %{system_time: System.system_time()},
+      meta
+    )
 
-  defp ensure_connected({:idle, backend_id}, owner) do
+    {:ok, :keep, socket}
+  end
+
+  defp ensure_connected({:idle, backend_id}, owner, meta) do
     config = current_backend_config(backend_id)
+    meta = Map.put(meta, :config, config)
 
-    case connect(config, owner) do
-      {:ok, socket} -> {:ok, {:connected, socket, config}, socket}
-      {:error, _reason} = error -> error
+    :telemetry.span([:logflare, :syslog_pool, :connect], meta, fn ->
+      result =
+        case connect_and_transfer(config, owner) do
+          {:ok, socket} -> {:ok, {:connected, socket, config}, socket}
+          {:error, _reason} = error -> error
+        end
+
+      meta =
+        case result do
+          {:ok, _conn, _socket} -> meta
+          {:error, reason} -> Map.merge(meta, %{kind: :error, reason: reason})
+        end
+
+      {result, meta}
+    end)
+  end
+
+  defp current_backend_config(backend_id) do
+    if backend = BackendsCache.get_backend(backend_id) do
+      backend.config
+    else
+      raise "missing backend #{backend_id}"
+    end
+  end
+
+  defp connect_and_transfer(config, owner) do
+    with {:ok, socket} <- Socket.connect(config, @connect_timeout) do
+      case Socket.controlling_process(socket, owner) do
+        :ok ->
+          {:ok, socket}
+
+        {:error, _reason} = error ->
+          Socket.close(socket)
+          error
+      end
     end
   end
 
   @impl NimblePool
   def init_pool(backend_id) do
+    Process.set_label({:syslog_pool, backend_id})
     {:ok, backend_id}
   end
 
@@ -103,123 +143,32 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   @impl NimblePool
   def handle_info(message, conn)
 
-  # close and remove sockets on any error
-  def handle_info({tag, socket, reason}, {:connected, socket, _config})
-      when tag in [:tcp_error, :ssl_error] do
-    # mint closes on error, so do we: https://github.com/elixir-mint/mint/blob/e28c85aad15d1f0cfcb1d5e4f4abada5f37f0f11/lib/mint/http1.ex#L533-L535
-    close(socket)
-    {:remove, reason}
+  def handle_info(message, {:connected, socket, _config} = conn) do
+    case Socket.stream(socket, message) do
+      {:error, reason} -> {:remove, reason}
+      :ignore -> {:ok, conn}
+    end
   end
 
-  # handle normal closure
-  def handle_info({tag, socket}, {:connected, socket, _config})
-      when tag in [:tcp_closed, :ssl_closed] do
-    {:remove, :closed}
-  end
-
-  def handle_info(_message, conn) do
-    {:ok, conn}
+  def handle_info(_message, :idle) do
+    # Consume async :tcp and :ssl messages that arrive for :idle conns.
+    # These can occure when the socket is closed right after connection during the checkout process.
+    # The dead socket will be cleaned up on the next checkout attempt.
+    {:ok, :idle}
   end
 
   @impl NimblePool
-  def terminate_worker(_reason, conn, backend_id) do
-    with {:connected, socket, _config} <- conn, do: close(socket)
+  def terminate_worker(reason, conn, backend_id) do
+    with {:connected, socket, config} <- conn do
+      :telemetry.execute(
+        [:logflare, :syslog_pool, :disconnect],
+        %{system_time: System.system_time()},
+        %{backend_id: backend_id, config: config, reason: reason}
+      )
+
+      Socket.close(socket)
+    end
+
     {:ok, backend_id}
-  end
-
-  defp connect(backend_config, owner) do
-    host = Map.fetch!(backend_config, :host)
-    port = Map.fetch!(backend_config, :port)
-    transport = if Map.get(backend_config, :tls), do: :ssl, else: :gen_tcp
-    opts = maybe_configure_ssl(@default_transport_opts, transport, backend_config, host)
-    host = String.to_charlist(host)
-
-    with {:ok, socket} <- transport.connect(host, port, opts, @connect_timeout) do
-      case transport.controlling_process(socket, owner) do
-        :ok ->
-          {:ok, socket}
-
-        {:error, _reason} = error ->
-          close(socket)
-          error
-      end
-    end
-  catch
-    :exit, :badarg -> {:error, :badarg}
-  end
-
-  defp send_data(socket, data) when is_port(socket), do: :gen_tcp.send(socket, data)
-  defp send_data(socket, data), do: :ssl.send(socket, data)
-
-  defp close(socket) when is_port(socket), do: :gen_tcp.close(socket)
-  defp close(socket), do: :ssl.close(socket)
-
-  defp current_backend_config(backend_id) do
-    if backend = BackendsCache.get_backend(backend_id) do
-      backend.config
-    else
-      raise "missing backend #{backend_id}"
-    end
-  end
-
-  defp maybe_configure_ssl(opts, :gen_tcp, _config, _host), do: opts
-
-  defp maybe_configure_ssl(opts, :ssl, config, host) do
-    ssl_opts = [
-      server_name_indication: String.to_charlist(host),
-      verify: :verify_peer,
-      depth: 100,
-      customize_hostname_check: [
-        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
-    ]
-
-    ca_cert = Map.get(config, :ca_cert)
-    client_cert = Map.get(config, :client_cert)
-    client_key = Map.get(config, :client_key)
-
-    ssl_opts =
-      ssl_opts
-      |> add_cacerts(ca_cert)
-      |> add_key_cert(client_cert, client_key)
-
-    opts ++ ssl_opts
-  end
-
-  defp add_cacerts(opts, nil) do
-    [{:cacerts, :public_key.cacerts_get()} | opts]
-  end
-
-  defp add_cacerts(opts, pem_str) do
-    certs =
-      pem_str
-      |> :public_key.pem_decode()
-      |> Enum.map(fn {_, der, _} -> der end)
-
-    if certs == [] do
-      raise "CA Cert PEM contained no certificates"
-    end
-
-    [{:cacerts, certs} | opts]
-  end
-
-  defp add_key_cert(opts, nil, nil), do: opts
-  defp add_key_cert(_opts, nil, _key), do: raise("client_key provided without client_cert")
-  defp add_key_cert(_opts, _cert, nil), do: raise("client_cert provided without client_key")
-
-  defp add_key_cert(opts, cert_pem, key_pem) do
-    cert_der =
-      case :public_key.pem_decode(cert_pem) do
-        [{_type, der, _} | _] -> der
-        [] -> raise "Client Certificate is invalid (no PEM entries found)."
-      end
-
-    key =
-      case :public_key.pem_decode(key_pem) do
-        [{type, der, _} | _] -> {type, der}
-        [] -> raise "Client Key is invalid (no PEM entries found)."
-      end
-
-    [{:cert, cert_der}, {:key, key} | opts]
   end
 end

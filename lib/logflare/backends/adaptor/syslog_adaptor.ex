@@ -8,7 +8,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   import Ecto.Changeset
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
-  alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Pipeline}
+  require Logger
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Socket, Pipeline}
   @behaviour Logflare.Backends.Adaptor
 
   typedstruct enforce: true do
@@ -169,7 +170,98 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  def test_connection(backend) do
+    result =
+      with {:ok, socket} <- Socket.connect(backend.config, to_timeout(second: 3)) do
+        Socket.close(socket)
+        :ok
+      end
+
+    with {:error, reason} <- result do
+      {:error, format_connection_error(reason)}
+    end
+  end
+
+  # copied from mint: https://github.com/elixir-mint/mint/blob/0bfcc869b53b83989c24ba681d66d0a447b5a1c3/lib/mint/transport_error.ex#L86-L101
+  defp format_connection_error(:closed), do: "socket closed"
+  defp format_connection_error(:timeout), do: "timeout"
+  defp format_connection_error(:badarg), do: "invalid arguments"
+
+  defp format_connection_error(reason) do
+    case :ssl.format_error(reason) do
+      ~c"Unexpected error:" ++ _ -> inspect(reason)
+      message -> List.to_string(message)
+    end
+  end
+
+  @impl Logflare.Backends.Adaptor
   def execute_query(_id, _query, _opts) do
     {:error, :not_implemented}
   end
+
+  @logger_handler "logflare-syslog-logger"
+
+  def attach_logger do
+    :telemetry.attach_many(
+      @logger_handler,
+      [
+        [:logflare, :syslog_pool, :connect, :stop],
+        [:logflare, :syslog_pool, :connect, :exception],
+        [:logflare, :syslog_pool, :reused_connection],
+        [:logflare, :syslog_pool, :disconnect]
+      ],
+      &__MODULE__.handle_syslog_event/4,
+      _no_config = []
+    )
+  end
+
+  def detach_logger do
+    :telemetry.detach(@logger_handler)
+  end
+
+  @doc false
+  def handle_syslog_event([:logflare | event], measurements, metadata, _config) do
+    case {event, metadata} do
+      {[:syslog_pool, :connect, stop_or_exception], %{kind: _, reason: _}} ->
+        %{backend_id: backend_id, config: %{host: host, port: port}} = metadata
+
+        log_warning_or_error(stop_or_exception, fn ->
+          "[Syslog] Backend #{backend_id} failed to connect to #{host}:#{port}: #{format_exception(metadata)}"
+        end)
+
+      {[:syslog_pool, :connect, :stop], _} ->
+        %{backend_id: backend_id, config: %{host: host, port: port}} = metadata
+
+        Logger.notice(fn ->
+          duration = System.convert_time_unit(measurements.duration, :native, :millisecond)
+          "[Syslog] Backend #{backend_id} connected to #{host}:#{port} in #{duration}ms"
+        end)
+
+      {[:syslog_pool, :reused_connection], _} ->
+        %{backend_id: backend_id} = metadata
+        Logger.notice(fn -> "[Syslog] Backend #{backend_id} reused connection" end)
+
+      {[:syslog_pool, :disconnect], _} ->
+        %{backend_id: backend_id, config: %{host: host, port: port}, reason: reason} = metadata
+
+        Logger.notice(fn ->
+          "[Syslog] Backend #{backend_id} disconnected from #{host}:#{port}. Reason: #{format_connection_error(reason)}"
+        end)
+    end
+  end
+
+  defp format_exception(%{kind: kind, reason: reason, stacktrace: stacktrace}) do
+    Exception.format(kind, reason, stacktrace)
+  end
+
+  defp format_exception(%{kind: :error, reason: reason}) do
+    format_connection_error(reason)
+  end
+
+  defp format_exception(%{kind: kind, reason: reason}) do
+    Exception.format(kind, reason)
+  end
+
+  defp log_warning_or_error(:exception, message_or_fun), do: Logger.error(message_or_fun)
+  defp log_warning_or_error(:stop, message_or_fun), do: Logger.warning(message_or_fun)
 end
