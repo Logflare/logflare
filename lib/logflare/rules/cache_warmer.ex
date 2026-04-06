@@ -23,7 +23,7 @@ defmodule Logflare.Rules.CacheWarmer do
         {{:list_by_source_id, [s.id]}, {:cached, s.rules}}
       end
 
-    # Also warm `{:rules_tree_by_source_id, [id]}` keys used by the ingestion hot path (SourceRouter.RulesTree.matching_rules)
+    # Also warm `{:rules_tree_by_source_id, [id]}` keys used by the ingestion hot path
     tree_entries =
       for s <- sources do
         tree = RulesTree.build(s.rules)
