@@ -6,6 +6,7 @@ defmodule Logflare.Backends.SourceSupWorker do
   alias Logflare.Sources
   alias Logflare.Backends
   alias Logflare.Rules
+  alias Logflare.Sources.Source
   alias Logflare.Backends.SourceSup
 
   @default_interval 30_000
@@ -30,9 +31,12 @@ defmodule Logflare.Backends.SourceSupWorker do
 
   defp do_check(nil), do: :noop
 
-  defp do_check(source) do
-    backends = Backends.list_backends(source_id: source.id)
-    rules = Rules.list_rules_with_backend(source)
+  defp do_check(%Source{} = source) do
+    backends = Backends.Cache.list_backends(source_id: source.id)
+
+    rules =
+      Rules.Cache.list_by_source_id(source.id)
+      |> Enum.filter(& &1.backend_id)
 
     # start rules source-backends
     rules_backend_ids =
