@@ -124,7 +124,6 @@ defmodule Logflare.Rules.CacheTest do
 
     test "cache warming" do
       assert Cachex.warm!(@subject, wait: true) == [Logflare.Rules.CacheWarmer]
-      # Warmer produces both list_by_source_id and rules_tree_by_source_id per source
       assert Cachex.size!(@subject) == 2
     end
   end
