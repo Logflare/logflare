@@ -12,7 +12,7 @@ mod atoms {
 ///
 /// Returns a 16-byte binary in little-endian order (lo64 ++ hi64),
 /// matching ClickHouse's on-wire representation for compression checksums.
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyCpu")]
 fn hash128<'a>(env: Env<'a>, data: Binary) -> Binary<'a> {
     let hash: u128 = cityhash_102_128(data.as_slice());
 
@@ -31,7 +31,7 @@ fn hash128<'a>(env: Env<'a>, data: Binary) -> Binary<'a> {
 /// Compresses data using LZ4 raw block format.
 ///
 /// Returns `{:ok, compressed_binary}` or `{:error, reason}`.
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyCpu")]
 fn lz4_compress<'a>(env: Env<'a>, data: Binary) -> (Atom, Binary<'a>) {
     let compressed = lz4_flex::compress_prepend_size(data.as_slice());
 
@@ -48,7 +48,7 @@ fn lz4_compress<'a>(env: Env<'a>, data: Binary) -> (Atom, Binary<'a>) {
 ///
 /// Requires the uncompressed size to allocate the output buffer.
 /// Returns `{:ok, decompressed_binary}` or `{:error, reason}`.
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyCpu")]
 fn lz4_decompress<'a>(env: Env<'a>, data: Binary, uncompressed_size: usize) -> (Atom, Binary<'a>) {
     match lz4_flex::decompress(data.as_slice(), uncompressed_size) {
         Ok(decompressed) => {

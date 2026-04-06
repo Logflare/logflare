@@ -17,6 +17,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
     end
   end
 
+  describe "read_grant_check_statement/1" do
+    test "generates a SELECT-only grant check statement with no arguments" do
+      assert QueryTemplates.read_grant_check_statement() ==
+               "CHECK GRANT SELECT ON *"
+    end
+
+    test "produces a database-scoped grant check statement when the `database` option is provided" do
+      assert QueryTemplates.read_grant_check_statement(database: "foo") ==
+               "CHECK GRANT SELECT ON foo.*"
+    end
+  end
+
   describe "create_table_statement/3" do
     test "dispatches to logs for :log event type" do
       ddl = QueryTemplates.create_table_statement("otel_logs_test", :log, [])

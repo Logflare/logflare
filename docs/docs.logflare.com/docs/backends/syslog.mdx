@@ -4,8 +4,9 @@ sidebar_position: 12
 
 import BetterStackNewSource from "./syslog/00_betterstack_new_source.png";
 import LogflareNewBackend from "./syslog/01_logflare_new_backend.png";
-import LogflareEnableBackend from "./syslog/02_logflare_enable_backend.png";
-import BetterStackLogs from "./syslog/03_betterstack_logs.png";
+import LogflareTestConnection from "./syslog/02_logflare_test_connection.png";
+import LogflareEnableBackend from "./syslog/03_logflare_enable_backend.png";
+import BetterStackLogs from "./syslog/04_betterstack_logs.png";
 
 # Syslog
 
@@ -45,7 +46,7 @@ To integrate Logflare with [Better Stack](https://betterstack.com), follow these
      style={{ maxHeight: "none" }}
    />
 
-2. In Logflare, create a new Syslog backend using the source token and host from Better Stack. Make sure to enable TLS and use port 6514.
+1. In Logflare, create a new Syslog backend using the source token and host from Better Stack. Make sure to enable TLS and use port 6514.
 
    <img
      src={LogflareNewBackend}
@@ -53,7 +54,15 @@ To integrate Logflare with [Better Stack](https://betterstack.com), follow these
      style={{ maxHeight: "none", maxWidth: "100%" }}
    />
 
-3. Enable the backend for your source to start sending logs to Better Stack.
+1. Click **Test connection** on your Logflare backend page to verify connectivity to Better Stack.
+
+   <img
+     src={LogflareTestConnection}
+     alt="Test the connection on Logflare"
+     style={{ maxHeight: "none", maxWidth: "100%" }}
+   />
+
+1. Enable the backend for your source to start sending logs to Better Stack.
 
    <img
      src={LogflareEnableBackend}
@@ -61,7 +70,7 @@ To integrate Logflare with [Better Stack](https://betterstack.com), follow these
      style={{ maxHeight: "none", maxWidth: "100%" }}
    />
 
-4. Test the integration by sending some log messages to your Logflare source. You should see the logs appear in Better Stack within a few seconds.
+1. Test the integration by sending some log messages to your Logflare source. You should see the logs appear in Better Stack within a few seconds.
 
    ```console
    export LOGFLARE_DEMO_ENDPOINT="http://localhost:4000"

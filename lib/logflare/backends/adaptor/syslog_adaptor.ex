@@ -8,7 +8,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   import Ecto.Changeset
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
-  alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Pipeline}
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Socket, Pipeline}
   @behaviour Logflare.Backends.Adaptor
 
   typedstruct enforce: true do
@@ -166,6 +166,30 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
           [structured_data: "invalid format"]
       end
     end)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def test_connection(backend) do
+    result =
+      with {:ok, socket} <- Socket.connect(backend.config, to_timeout(second: 3)) do
+        Socket.close(socket)
+        :ok
+      end
+
+    with {:error, reason} <- result do
+      {:error, format_connection_error(reason)}
+    end
+  end
+
+  # copied from mint: https://github.com/elixir-mint/mint/blob/0bfcc869b53b83989c24ba681d66d0a447b5a1c3/lib/mint/transport_error.ex#L86-L101
+  defp format_connection_error(:closed), do: "socket closed"
+  defp format_connection_error(:timeout), do: "timeout"
+
+  defp format_connection_error(reason) do
+    case :ssl.format_error(reason) do
+      ~c"Unexpected error:" ++ _ -> inspect(reason)
+      message -> List.to_string(message)
+    end
   end
 
   @impl Logflare.Backends.Adaptor

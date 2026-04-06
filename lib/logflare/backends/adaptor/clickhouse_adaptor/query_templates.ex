@@ -86,6 +86,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   end
 
   @doc """
+  Generates a `CHECK GRANT` statement for read-only permissions (`SELECT` only).
+
+  Used to validate read-only cluster connectivity when a separate `read_only_url` is configured.
+
+  ## Options
+
+  - `:database` - (Optional) Will produce a fully qualified `<database>.*` string when provided with a value. Defaults to `nil`.
+
+  """
+  @spec read_grant_check_statement(opts :: Keyword.t()) :: String.t()
+  def read_grant_check_statement(opts \\ []) when is_list(opts) do
+    database = Keyword.get(opts, :database, nil)
+
+    grant_target_string =
+      if is_non_empty_binary(database) do
+        "#{database}.*"
+      else
+        "*"
+      end
+
+    "CHECK GRANT SELECT ON #{grant_target_string}"
+  end
+
+  @doc """
   Dispatches to the correct type-specific DDL function based on `event_type`.
   """
   @spec create_table_statement(
