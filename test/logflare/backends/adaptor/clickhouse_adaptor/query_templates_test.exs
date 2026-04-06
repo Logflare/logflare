@@ -64,6 +64,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
       assert ddl =~ "`id` UUID"
       assert ddl =~ "`severity_text` LowCardinality(String)"
       assert ddl =~ "`event_message` String CODEC(ZSTD(1))"
+      assert ddl =~ "`ingested_at` Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1))"
       assert ddl =~ "`timestamp` DateTime64(9)"
       assert ddl =~ "`timestamp_time` DateTime DEFAULT toDateTime(timestamp)"
       assert ddl =~ "idx_trace_id"
@@ -100,6 +101,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
       assert ddl =~ "`metric_type` Enum8"
       assert ddl =~ "`value` Float64"
       assert ddl =~ "`bucket_counts` Array(UInt64)"
+      assert ddl =~ "`ingested_at` Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1))"
       assert ddl =~ "PRIMARY KEY (project, source_name, toDateTime(timestamp))"
       assert ddl =~ "ORDER BY (project, source_name, toDateTime(timestamp), timestamp)"
       refute ddl =~ "timestamp_hour"
@@ -138,6 +140,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
       ddl = QueryTemplates.create_traces_table_statement("otel_traces_test")
       assert ddl =~ "`duration` UInt64"
       assert ddl =~ "`span_name` LowCardinality(String)"
+      assert ddl =~ "`ingested_at` Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1))"
       assert ddl =~ "idx_trace_id"
       assert ddl =~ "idx_duration"
       assert ddl =~ "PRIMARY KEY (project, source_name, toDateTime(timestamp))"

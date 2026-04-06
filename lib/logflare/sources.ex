@@ -648,14 +648,14 @@ defmodule Logflare.Sources do
 
   @spec has_recent_logs_within?(Source.t(), non_neg_integer()) :: boolean()
   defp has_recent_logs_within?(%Source{} = source, minutes) when is_integer(minutes) do
-    cutoff_time = NaiveDateTime.utc_now() |> NaiveDateTime.add(-minutes * 60, :second)
+    cutoff_time = DateTime.utc_now() |> DateTime.add(-minutes * 60, :second)
 
     case Backends.list_recent_logs_local(source, 1) do
       [] ->
         false
 
       [%LogEvent{ingested_at: ingested_at} | _] ->
-        NaiveDateTime.compare(ingested_at, cutoff_time) == :gt
+        DateTime.compare(ingested_at, cutoff_time) == :gt
     end
   end
 

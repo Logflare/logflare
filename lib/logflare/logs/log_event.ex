@@ -82,7 +82,7 @@ defmodule Logflare.LogEvent do
         source_uuid: source.token,
         source_name: source.name,
         valid: changeset.valid?,
-        ingested_at: NaiveDateTime.utc_now(),
+        ingested_at: DateTime.utc_now(),
         id: changeset.changes.body["id"],
         event_type: TypeDetection.detect(params),
         timestamp_inferred: mapped["timestamp_inferred"]
