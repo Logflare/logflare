@@ -265,6 +265,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
   end
 
+  describe "test_connection/1 with dual cluster config" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "passes when both ingest and read_only_url point to valid clusters" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{read_only_url: "http://localhost:8123"})
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when ingest URL is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{url: "http://localhost:19999"})
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when read_only_url is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{read_only_url: "http://localhost:19999"})
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+  end
+
   describe "log event insertion and retrieval" do
     setup do
       insert(:plan, name: "Free")
