@@ -125,7 +125,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
          id: id,
          body: body,
          source_uuid: source_uuid,
-         source_name: source_name
+         source_name: source_name,
+         ingested_at: ingested_at
        }) do
     source_uuid_str = Atom.to_string(source_uuid)
 
@@ -149,6 +150,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       RowBinaryEncoder.map_string_string(body["scope_attributes"] || %{}),
       RowBinaryEncoder.map_string_string(body["log_attributes"] || %{}),
       RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      RowBinaryEncoder.nullable(ingested_at, &RowBinaryEncoder.datetime64(&1, 6)),
       RowBinaryEncoder.int64(body["timestamp"])
     ]
   end
@@ -158,7 +160,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
          id: id,
          body: body,
          source_uuid: source_uuid,
-         source_name: source_name
+         source_name: source_name,
+         ingested_at: ingested_at
        }) do
     source_uuid_str = Atom.to_string(source_uuid)
 
@@ -209,6 +212,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       RowBinaryEncoder.array_string(body["exemplars.span_id"] || []),
       RowBinaryEncoder.array_string(body["exemplars.trace_id"] || []),
       RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      RowBinaryEncoder.nullable(ingested_at, &RowBinaryEncoder.datetime64(&1, 6)),
       RowBinaryEncoder.int64(body["timestamp"])
     ]
   end
@@ -218,7 +222,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
          id: id,
          body: body,
          source_uuid: source_uuid,
-         source_name: source_name
+         source_name: source_name,
+         ingested_at: ingested_at
        }) do
     source_uuid_str = Atom.to_string(source_uuid)
 
@@ -256,6 +261,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         &RowBinaryEncoder.map_string_string/1
       ),
       RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      RowBinaryEncoder.nullable(ingested_at, &RowBinaryEncoder.datetime64(&1, 6)),
       RowBinaryEncoder.int64(body["timestamp"])
     ]
   end

@@ -220,6 +220,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   defp extract_value(%LogEvent{body: body}, "mapping_config_id"),
     do: uuid_to_raw(body["mapping_config_id"])
 
+  defp extract_value(%LogEvent{ingested_at: %DateTime{} = dt}, "ingested_at"),
+    do: DateTime.to_unix(dt, :microsecond)
+
+  defp extract_value(%LogEvent{}, "ingested_at"), do: nil
+
   defp extract_value(%LogEvent{body: body}, name), do: body[name]
 
   @spec default_for_type(String.t()) :: term()
