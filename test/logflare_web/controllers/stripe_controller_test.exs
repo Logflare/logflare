@@ -240,10 +240,8 @@ defmodule LogflareWeb.StripeControllerTest do
 
       assert json_response(conn, 202) == %{"message" => "event type not implimented"}
 
-      assert Billing.get_billing_account_by(stripe_customer: ba.stripe_customer).id == ba.id
-
-      assert Billing.get_billing_account_by(stripe_customer: ba.stripe_customer).lifetime_plan ==
-               ba.lifetime_plan
+      assert Billing.get_billing_account_by(stripe_customer: ba.stripe_customer) ==
+               TestUtils.reset_associations(ba)
     end
 
     test "returns not implemented for unknown event in previous_attributes clause", %{
@@ -266,10 +264,8 @@ defmodule LogflareWeb.StripeControllerTest do
 
       assert json_response(conn, 202) == %{"message" => "event type not implimented"}
 
-      assert Billing.get_billing_account_by(stripe_customer: ba.stripe_customer).id == ba.id
-
-      assert Billing.get_billing_account_by(stripe_customer: ba.stripe_customer).lifetime_plan ==
-               ba.lifetime_plan
+      assert Billing.get_billing_account_by(stripe_customer: ba.stripe_customer) ==
+               TestUtils.reset_associations(ba)
     end
 
     test "returns not implemented for completely unhandled event", %{
@@ -289,10 +285,8 @@ defmodule LogflareWeb.StripeControllerTest do
 
       assert json_response(conn, 202) == %{"message" => "event type not implimented"}
 
-      assert Billing.get_billing_account_by(stripe_customer: ba.stripe_customer).id == ba.id
-
-      assert Billing.get_billing_account_by(stripe_customer: ba.stripe_customer).lifetime_plan ==
-               ba.lifetime_plan
+      assert Billing.get_billing_account_by(stripe_customer: ba.stripe_customer) ==
+               TestUtils.reset_associations(ba)
     end
   end
 
