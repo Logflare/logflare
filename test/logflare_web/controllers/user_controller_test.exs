@@ -140,8 +140,7 @@ defmodule LogflareWeb.UserControllerTest do
         )
 
       TestUtils.retry_assert(fn ->
-        u_id = to_string(u1_id)
-        assert_received {{:user_id, :project_id}, {^u_id, ^bq_project_id}}
+        assert_received {{:user_id, :project_id}, {^u1_id, ^bq_project_id}}
       end)
 
       TestUtils.retry_assert(fn ->
