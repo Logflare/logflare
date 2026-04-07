@@ -1,6 +1,7 @@
 defmodule Logflare.Rules.CacheWarmer do
   alias Logflare.Repo
   alias Logflare.Sources.Source
+  alias Logflare.Sources.SourceRouter.RulesTree
 
   import Ecto.Query
 
@@ -22,6 +23,13 @@ defmodule Logflare.Rules.CacheWarmer do
         {{:list_by_source_id, [s.id]}, {:cached, s.rules}}
       end
 
-    {:ok, entries}
+    # Also warm `{:rules_tree_by_source_id, [id]}` keys used by the ingestion hot path
+    tree_entries =
+      for s <- sources do
+        tree = RulesTree.build(s.rules)
+        {{:rules_tree_by_source_id, [s.id]}, {:cached, tree}}
+      end
+
+    {:ok, entries ++ tree_entries}
   end
 end
