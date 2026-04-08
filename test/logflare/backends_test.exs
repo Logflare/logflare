@@ -649,11 +649,6 @@ defmodule Logflare.BackendsTest do
       # one source-backend from rules
       insert_pair(:rule, source: source, backend: rule_backend)
 
-      # Bust caches so the worker sees newly inserted data
-      # (in production, WAL-driven cache busting handles this automatically)
-      Cachex.clear(Backends.Cache)
-      Cachex.clear(Rules.Cache)
-
       # start an out-of-tree SourceSupWorker
       start_supervised({SourceSupWorker, [source: source, interval: 100]})
       :timer.sleep(200)
@@ -664,10 +659,6 @@ defmodule Logflare.BackendsTest do
       Logflare.Repo.delete_all(Logflare.Rules.Rule)
       Logflare.Repo.delete_all(Logflare.Backends.SourcesBackend)
       Logflare.Repo.delete_all(Logflare.Backends.Backend)
-
-      # Bust caches after deletions
-      Cachex.clear(Backends.Cache)
-      Cachex.clear(Rules.Cache)
 
       :timer.sleep(200)
       # removal
