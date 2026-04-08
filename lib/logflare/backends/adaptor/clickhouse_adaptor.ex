@@ -350,7 +350,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  @spec execute_direct_query(String.t(), map(), String.t()) :: {:ok, list()} | {:error, term()}
+  @spec execute_direct_query(url :: String.t(), config :: map(), statement :: String.t()) ::
+          {:ok, list()} | {:error, term()}
   defp execute_direct_query(url, config, statement) do
     uri = URI.parse(url)
     timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 30_000
@@ -439,7 +440,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   Creates one table per log type: `_logs`, `_metrics`, and `_traces`.
   """
   @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, Exception.t()}
-  def provision_ingest_tables(%Backend{} = backend) do
+  def provision_ingest_tables(%Backend{config: config} = backend) do
     cloud? = clickhouse_cloud?(backend)
 
     Enum.reduce_while([:log, :metric, :trace], :ok, fn event_type, :ok ->
@@ -447,7 +448,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       ddl_opts = build_ddl_opts(event_type, cloud?)
       statement = QueryTemplates.create_table_statement(table_name, event_type, ddl_opts)
 
-      case execute_ch_query(backend, statement) do
+      case execute_direct_query(config.url, config, statement) do
         {:ok, _} -> {:cont, :ok}
         {:error, _} = error -> {:halt, error}
       end
