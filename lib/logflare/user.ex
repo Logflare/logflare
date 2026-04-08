@@ -16,6 +16,8 @@ defmodule Logflare.User do
   alias Logflare.Partners.Partner
   alias Logflare.Alerting.AlertQuery
 
+  @type id :: pos_integer()
+
   @derive {Jason.Encoder,
            only: [
              :email,
@@ -228,8 +230,6 @@ defmodule Logflare.User do
 
   def validate_gcp_project(changeset, field, options \\ []) do
     validate_change(changeset, field, fn _, bigquery_project_id ->
-      user_id = Integer.to_string(options[:user_id])
-
       dataset_id =
         changeset.changes[:bigquery_dataset_id] ||
           "#{options[:user_id]}" <> GCPConfig.dataset_id_append()
@@ -239,7 +239,7 @@ defmodule Logflare.User do
       project_id = bigquery_project_id || bq_project_id()
 
       case BigQuery.create_dataset(
-             user_id,
+             options[:user_id],
              dataset_id,
              location,
              project_id
