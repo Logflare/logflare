@@ -126,8 +126,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           events =
             Enum.map(messages, fn %{data: %LogEvent{} = event} ->
               mapped_body =
-                event.flattened_body
-                |> Mapper.map(compiled, flat_keys: true)
+                event.body
+                |> Mapper.map(compiled)
                 |> Map.put("mapping_config_id", config_id)
                 |> maybe_replace_inferred_timestamp(event, event_type)
                 |> maybe_compute_duration(event_type)
