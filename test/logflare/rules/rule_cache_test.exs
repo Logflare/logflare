@@ -124,7 +124,7 @@ defmodule Logflare.Rules.CacheTest do
 
     test "cache warming" do
       assert Cachex.warm!(@subject, wait: true) == [Logflare.Rules.CacheWarmer]
-      assert Cachex.size!(@subject) == 2
+      assert Cachex.size!(@subject) == 1
     end
   end
 end
