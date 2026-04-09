@@ -204,7 +204,7 @@ defmodule LogflareWeb.SourceController do
     env = Application.get_env(:logflare, :env)
 
     plans =
-      if env == :dev || :staging do
+      if env in [:dev, :staging] do
         Billing.list_plans() ++
           [Billing.legacy_plan()] ++ [%Billing.Plan{limit_alert_freq: 60_000}]
       else
