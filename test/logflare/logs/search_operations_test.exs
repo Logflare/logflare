@@ -36,27 +36,6 @@ defmodule Logflare.Logs.SearchOperationsTest do
     [user: insert(:user)]
   end
 
-  @postgres_search_attrs %{
-    source: nil,
-    querystring: "",
-    query: nil,
-    chart_data_shape_id: nil,
-    tailing?: false,
-    tailing_initial?: nil,
-    partition_by: :timestamp,
-    type: :events,
-    backend_type: :postgres,
-    lql_rules: [],
-    lql_ts_filters: [],
-    lql_meta_and_msg_filters: []
-  }
-
-  setup do
-    insert(:plan)
-
-    [user: insert(:user)]
-  end
-
   describe "unnesting metadata if present" do
     setup %{user: user} do
       source = insert(:source, user: user, bq_table_id: "1")
