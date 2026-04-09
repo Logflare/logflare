@@ -265,6 +265,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
   end
 
+  describe "test_connection/1 with dual cluster config" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "passes when both ingest and read_only_url point to valid clusters" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{read_only_url: "http://localhost:8123"})
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when ingest URL is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{url: "http://localhost:19999"})
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when read_only_url is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{read_only_url: "http://localhost:19999"})
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+  end
+
   describe "log event insertion and retrieval" do
     setup do
       insert(:plan, name: "Free")
@@ -401,11 +432,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {:ok, rows} =
         ClickHouseAdaptor.execute_ch_query(
           query_backend,
-          "SELECT event_message FROM #{table_name}"
+          "SELECT event_message, ingested_at FROM #{table_name}"
         )
 
       assert length(rows) == 1
       assert Enum.at(rows, 0)["event_message"] == "native route test"
+      assert %NaiveDateTime{} = Enum.at(rows, 0)["ingested_at"]
 
       on_exit(fn ->
         NativePoolSup.stop_pool(native_backend)
@@ -433,7 +465,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {:ok, [row]} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT event_message, resource_attributes, scope_attributes, log_attributes FROM #{table_name}"
+          "SELECT event_message, resource_attributes, scope_attributes, log_attributes, ingested_at FROM #{table_name}"
         )
 
       assert row["event_message"] == "Map log insert"
@@ -442,6 +474,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert is_map(row["log_attributes"])
       assert row["log_attributes"]["level"] == "warn"
       assert row["log_attributes"]["region"] == "us-west-2"
+      assert %NaiveDateTime{} = row["ingested_at"]
     end
 
     test "insert_log_events/3 inserts metrics with Map attributes", %{
@@ -463,13 +496,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {:ok, [row]} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT event_message, resource_attributes, scope_attributes, attributes FROM #{table_name}"
+          "SELECT event_message, resource_attributes, scope_attributes, attributes, ingested_at FROM #{table_name}"
         )
 
       assert row["event_message"] == "Map metric insert"
       assert is_map(row["resource_attributes"])
       assert is_map(row["scope_attributes"])
       assert is_map(row["attributes"])
+      assert %NaiveDateTime{} = row["ingested_at"]
     end
 
     test "insert_log_events/3 inserts traces with Map attributes", %{
@@ -491,12 +525,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {:ok, [row]} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT event_message, resource_attributes, span_attributes FROM #{table_name}"
+          "SELECT event_message, resource_attributes, span_attributes, ingested_at FROM #{table_name}"
         )
 
       assert row["event_message"] == "Map trace insert"
       assert is_map(row["resource_attributes"])
       assert is_map(row["span_attributes"])
+      assert %NaiveDateTime{} = row["ingested_at"]
     end
 
     test "insert_log_events/3 inserts into type-specific table", %{

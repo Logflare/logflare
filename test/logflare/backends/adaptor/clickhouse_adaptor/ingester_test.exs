@@ -223,6 +223,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert "resource_attributes" in columns
       assert "scope_attributes" in columns
       assert "log_attributes" in columns
+      assert "ingested_at" in columns
       assert "timestamp" in columns
     end
 
@@ -257,6 +258,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert "zero_count" in columns
       assert "positive_offset" in columns
       assert "negative_offset" in columns
+      assert "ingested_at" in columns
       assert "timestamp" in columns
     end
 
@@ -282,6 +284,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert "scope_version" in columns
       assert "resource_attributes" in columns
       assert "span_attributes" in columns
+      assert "ingested_at" in columns
     end
   end
 
