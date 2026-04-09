@@ -72,7 +72,15 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
 
   defp handle_disconnection(%{idx: idx, registry: registry, channel: channel} = state) do
     Registry.unregister(registry, idx)
-    if channel, do: GRPC.Stub.disconnect(channel)
+
+    if channel do
+      try do
+        GRPC.Stub.disconnect(channel)
+      catch
+        :exit, {:noproc, _call} -> :ok
+      end
+    end
+
     connect_after(0)
     %{state | backoff: @min_backoff, channel: nil}
   end

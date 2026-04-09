@@ -40,7 +40,12 @@ defmodule Logflare.Networking.GrpcPool do
 
   @spec get_channel(module()) :: {:ok, GRPC.Channel.t()} | {:error, :not_connected}
   def get_channel(name) do
-    ref = :persistent_term.get({name, :counter})
+    ref = :persistent_term.get({name, :counter}, nil)
+
+    if is_nil(ref) do
+      raise ArgumentError, "No GrpcPool started with a name #{inspect(name)}"
+    end
+
     size = :persistent_term.get({name, :size})
     idx = rem(:atomics.add_get(ref, 1, 1), size)
 
