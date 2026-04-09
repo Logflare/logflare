@@ -500,19 +500,24 @@ defmodule Logflare.Logs.SearchOperationsTest do
       refute result_so.error
     end
 
-    test "do_query/1 stores postgres backend errors", %{backend: backend, base_so: base_so} do
+    test "do_query/1 propagates postgres backend errors", %{backend: backend, base_so: base_so} do
       Backends
       |> expect(:get_default_backend, fn _user -> backend end)
 
       PostgresAdaptor
       |> expect(:execute_query, fn ^backend, %Ecto.Query{}, [query_type: :search] ->
         raise Postgrex.Error,
-          postgres: %{code: :invalid_sql_statement_name, message: "connection refused"}
+          postgres: %{
+            code: "26000",
+            pg_code: :invalid_sql_statement_name,
+            message: "connection refused",
+            severity: "ERROR"
+          }
       end)
 
-      result_so = SearchOperations.do_query(base_so)
-
-      assert %Postgrex.Error{} = result_so.error
+      assert_raise Postgrex.Error, fn ->
+        SearchOperations.do_query(base_so)
+      end
     end
 
     test "do_query/1 renames count to value for aggregates and process_query_result/1 adds datetime",
