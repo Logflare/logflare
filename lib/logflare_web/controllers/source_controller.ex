@@ -5,12 +5,14 @@ defmodule LogflareWeb.SourceController do
 
   alias Logflare.Billing
   alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.JSON
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Repo
   alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Sources.Source.SlackHookServer
   alias Logflare.Sources.Source.WebhookNotificationServer
   alias Logflare.Sources.Source.Supervisor
@@ -18,11 +20,6 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.SourceSchemas
   alias LogflareWeb.AuthController
   alias Logflare.Backends
-
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-
-  defp env_dataset_id_append,
-    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   @lql_dialect :routing
 
@@ -69,12 +66,14 @@ defmodule LogflareWeb.SourceController do
     render_show_with_assigns(conn, user, source, source.metrics.avg)
   end
 
-  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate <= 5 do
+  def render_show_with_assigns(conn, _user, source, avg_rate) do
     search_tip = SearchUtils.gen_search_tip()
 
-    render(
-      conn,
+    conn
+    |> maybe_put_high_rate_flash(source, avg_rate)
+    |> render(
       "show.html",
+      bq_schema: get_bigquery_schema(source),
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
@@ -83,9 +82,7 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 5 do
-    search_tip = SearchUtils.gen_search_tip()
-
+  defp maybe_put_high_rate_flash(conn, source, avg_rate) when avg_rate > 5 do
     search_path =
       Routes.live_path(conn, LogflareWeb.Source.SearchLV, source,
         querystring: "c:count(*) c:group_by(t::minute)",
@@ -101,18 +98,16 @@ defmodule LogflareWeb.SourceController do
     ]
 
     conn
-    |> put_flash(
-      :info,
-      message
-    )
-    |> render(
-      "show.html",
-      logs: get_and_encode_logs(source),
-      source: source,
-      public_token: source.public_token,
-      search_tip: search_tip,
-      team: Map.get(conn.assigns, :team)
-    )
+    |> put_flash(:info, message)
+  end
+
+  defp maybe_put_high_rate_flash(conn, _source, _avg_rate), do: conn
+
+  defp get_bigquery_schema(source) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      nil -> SchemaBuilder.initial_table_schema()
+      %_{bigquery_schema: schema} -> schema
+    end
   end
 
   def explore(%{assigns: %{plan: %{name: "Free"}, source: source}} = conn, _params) do
@@ -132,8 +127,10 @@ defmodule LogflareWeb.SourceController do
           conn,
         _params
       ) do
-    bigquery_project_id = user.bigquery_project_id || env_project_id()
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
+    bigquery_project_id = user.bigquery_project_id || GCPConfig.default_project_id()
+
+    dataset_id =
+      user.bigquery_dataset_id || Integer.to_string(user.id) <> GCPConfig.dataset_id_append()
 
     explore_link =
       generate_explore_link(team_user.email, source.token, bigquery_project_id, dataset_id)
@@ -157,8 +154,10 @@ defmodule LogflareWeb.SourceController do
   end
 
   def explore(%{assigns: %{user: %{provider: "google"} = user, source: source}} = conn, _params) do
-    bigquery_project_id = user.bigquery_project_id || env_project_id()
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
+    bigquery_project_id = user.bigquery_project_id || GCPConfig.default_project_id()
+
+    dataset_id =
+      user.bigquery_dataset_id || Integer.to_string(user.id) <> GCPConfig.dataset_id_append()
 
     explore_link =
       generate_explore_link(user.email, source.token, bigquery_project_id, dataset_id)
@@ -205,7 +204,7 @@ defmodule LogflareWeb.SourceController do
     env = Application.get_env(:logflare, :env)
 
     plans =
-      if env == :dev || :staging do
+      if env in [:dev, :staging] do
         Billing.list_plans() ++
           [Billing.legacy_plan()] ++ [%Billing.Plan{limit_alert_freq: 60_000}]
       else

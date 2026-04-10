@@ -3,12 +3,13 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  alias Logflare.Backends
+  alias Logflare.Backends.DynamicPipeline
+  alias Logflare.Sources.Source.BigQuery.Pipeline, as: BigQueryPipeline
   alias Logflare.Sources.Source
   alias LogflareWeb.ModalLiveHelpers
   alias LogflareWeb.SearchLive.SavedSearchesModalComponent
   alias Phoenix.LiveView.JS
-
-  @description_truncate_at 280
 
   attr :source, Source, required: true
   attr :metrics, Source.Metrics, required: true
@@ -78,15 +79,12 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
     assigns =
       assigns
       |> assign(:description, description)
-      |> assign(:truncate_description?, truncate_description?(description))
+      |> assign(:tooltip_description, description_to_html(description))
 
     ~H"""
     <div :if={@description} class="tw-py-1 tw-text-sm">
-      <span :if={not @truncate_description?}>
+      <.tooltip id={"source-#{@source.token}-description"} title={@tooltip_description} tooltip_class="max-w-640 tw-text-left" class="tw-block tw-truncate" html={true}>
         {@description}
-      </span>
-      <.tooltip :if={@truncate_description?} id={"source-#{@source.token}-description"} title={@description} tooltip_class="max-w-640" class="tw-inline">
-        {truncate_description(@description)}&hellip;
       </.tooltip>
     </div>
     """
@@ -183,12 +181,13 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   attr :placement, :string, default: "top"
   attr :class, :string, default: ""
   attr :tooltip_class, :string, default: ""
+  attr :html, :boolean, default: false
   attr :rest, :global
   slot :inner_block
 
   def tooltip(assigns) do
     ~H"""
-    <span class={["logflare-tooltip", @class]} id={@id} data-placement={@placement} data-title={@title} data-custom-class={@tooltip_class} {@rest}>
+    <span class={["logflare-tooltip", @class]} id={@id} data-placement={@placement} data-title={@title} data-custom-class={@tooltip_class} data-html={@html && "true"} {@rest}>
       {render_slot(@inner_block)}
     </span>
     """
@@ -196,10 +195,10 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
   @spec pipeline_count(Source.t()) :: non_neg_integer()
   def pipeline_count(source) do
-    name = Logflare.Backends.via_source(source.id, Logflare.Sources.Source.BigQuery.Pipeline, nil)
+    name = Backends.via_source(source.id, BigQueryPipeline, nil)
 
     if GenServer.whereis(name) do
-      Logflare.Backends.DynamicPipeline.pipeline_count(name)
+      DynamicPipeline.pipeline_count(name)
     else
       0
     end
@@ -209,19 +208,12 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   defp rate_limit_warning?(source, limit), do: source.metrics.avg >= 0.80 * limit
   defp fields_limit_warning?(source, limit), do: source.metrics.fields > limit
 
-  defp truncate_description?(description) when is_binary(description) do
-    String.length(description) > @description_truncate_at
+  defp description_to_html(description) when is_binary(description) do
+    description
+    |> Phoenix.HTML.html_escape()
+    |> Phoenix.HTML.safe_to_string()
+    |> String.replace("\n", "<br>")
   end
 
-  defp truncate_description?(_), do: false
-
-  defp truncate_description(description) when is_binary(description) do
-    if truncate_description?(description) do
-      description
-      |> String.slice(0, @description_truncate_at)
-      |> String.trim_trailing()
-    else
-      description
-    end
-  end
+  defp description_to_html(_), do: nil
 end

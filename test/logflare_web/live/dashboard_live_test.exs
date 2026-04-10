@@ -3,6 +3,7 @@ defmodule LogflareWeb.DashboardLiveTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Repo
+  alias Logflare.Sources.UserMetricsPoller
 
   setup %{conn: conn} do
     insert(:plan)
@@ -36,7 +37,7 @@ defmodule LogflareWeb.DashboardLiveTest do
              |> render() =~ description
     end
 
-    test "truncates long source descriptions and exposes the full value in a tooltip", %{
+    test "truncates long source descriptions and expose the full value in a tooltip", %{
       conn: conn,
       user: user
     } do
@@ -51,15 +52,11 @@ defmodule LogflareWeb.DashboardLiveTest do
         |> render()
         |> Floki.parse_fragment!()
 
-      assert rendered
-             |> Floki.find("#source-#{source.token}-description")
-             |> Floki.text()
-             |> String.trim()
-             |> String.length() == 281
+      tooltip_el = Floki.find(rendered, "#source-#{source.token}-description")
 
-      assert rendered
-             |> Floki.find("#source-#{source.token}-description")
-             |> Floki.attribute("data-title") == [description]
+      assert tooltip_el |> Floki.text() |> String.trim() == description
+      assert Floki.attribute(tooltip_el, "data-title") == [description]
+      assert Floki.attribute(tooltip_el, "data-html") == ["true"]
     end
 
     test "sources have a saved searches modal", %{conn: conn, source: source} do
@@ -212,12 +209,12 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       # The UserMetricsPoller should be registered and running after mount
       TestUtils.retry_assert(fn ->
-        assert {poller_pid, _} = :syn.lookup(:ui, {Logflare.Sources.UserMetricsPoller, user.id})
+        assert {poller_pid, _} = :syn.lookup(:ui, {UserMetricsPoller, user.id})
         assert Process.alive?(poller_pid)
       end)
 
       # Should have one subscriber (the LiveView process)
-      assert [_subscriber] = Logflare.Sources.UserMetricsPoller.list_subscribers(user.id)
+      assert [_subscriber] = UserMetricsPoller.list_subscribers(user.id)
     end
 
     test "renders source metrics ", %{conn: conn, source: source} do
@@ -265,7 +262,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       {:ok, view, _html} = live(conn, "/dashboard")
 
       TestUtils.retry_assert(fn ->
-        assert {poller_pid, _} = :syn.lookup(:ui, {Logflare.Sources.UserMetricsPoller, user.id})
+        assert {poller_pid, _} = :syn.lookup(:ui, {UserMetricsPoller, user.id})
         send(poller_pid, :poll_metrics)
       end)
 

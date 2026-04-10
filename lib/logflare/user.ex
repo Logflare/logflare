@@ -10,10 +10,13 @@ defmodule Logflare.User do
   alias Logflare.Teams.Team
   alias Logflare.Billing.BillingAccount
   alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Users.UserPreferences
   alias Logflare.Vercel
   alias Logflare.Partners.Partner
   alias Logflare.Alerting.AlertQuery
+
+  @type id :: pos_integer()
 
   @derive {Jason.Encoder,
            only: [
@@ -59,9 +62,6 @@ defmodule Logflare.User do
     "asia-southeast1",
     "australia-southeast1"
   ]
-
-  defp env_dataset_id_append,
-    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   typed_schema "users" do
     field :email, :string
@@ -230,18 +230,16 @@ defmodule Logflare.User do
 
   def validate_gcp_project(changeset, field, options \\ []) do
     validate_change(changeset, field, fn _, bigquery_project_id ->
-      user_id = Integer.to_string(options[:user_id])
-
       dataset_id =
         changeset.changes[:bigquery_dataset_id] ||
-          "#{options[:user_id]}" <> env_dataset_id_append()
+          "#{options[:user_id]}" <> GCPConfig.dataset_id_append()
 
       location = changeset.changes[:bigquery_dataset_location] || @default_dataset_location
 
       project_id = bigquery_project_id || bq_project_id()
 
       case BigQuery.create_dataset(
-             user_id,
+             options[:user_id],
              dataset_id,
              location,
              project_id
@@ -276,12 +274,12 @@ defmodule Logflare.User do
   end
 
   def bq_project_id do
-    Application.get_env(:logflare, Logflare.Google)[:project_id]
+    GCPConfig.default_project_id()
   end
 
   def generate_bq_dataset_id(%__MODULE__{id: id}), do: generate_bq_dataset_id(id)
 
   def generate_bq_dataset_id(id) do
-    "#{id}" <> env_dataset_id_append()
+    "#{id}" <> GCPConfig.dataset_id_append()
   end
 end

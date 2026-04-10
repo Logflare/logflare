@@ -81,9 +81,6 @@ defmodule LogflareWeb.Sources.RulesLive do
             put_flash(socket, :error, error_message)
         end
       else
-        {:error, :field_not_found, _suggested_querystring, error} ->
-          put_flash(socket, :error, error)
-
         {:error, error} ->
           put_flash(socket, :error, error)
 

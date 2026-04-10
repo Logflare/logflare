@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints.Query
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
@@ -55,6 +56,14 @@ defmodule Logflare.Backends.Adaptor do
   def cast_and_validate_config(mod, params) when is_atom(mod) do
     params
     |> mod.cast_config()
+    |> mod.validate_config()
+  end
+
+  @spec cast_and_validate_config(module(), map(), map()) :: Ecto.Changeset.t()
+  def cast_and_validate_config(mod, params, existing_config)
+      when is_atom(mod) and is_map(existing_config) do
+    params
+    |> mod.cast_config(existing_config)
     |> mod.validate_config()
   end
 
@@ -137,6 +146,7 @@ defmodule Logflare.Backends.Adaptor do
   Typecasts config params.
   """
   @callback cast_config(param :: map()) :: Ecto.Changeset.t()
+  @callback cast_config(param :: map(), existing_config :: map()) :: Ecto.Changeset.t()
 
   @doc """
   Optional callback to convert an Ecto query to the backend's native SQL format.
@@ -148,16 +158,11 @@ defmodule Logflare.Backends.Adaptor do
   Queries the backend using an endpoint query.
 
   The `opts` parameter can be used to include backend-specific options.
-
-  Depending on the backend, this will return a list of rows or
-  a map with rows and optional metadata (e.g., total_bytes_processed).
   """
   @callback execute_query(query_identifier(), query(), opts :: Keyword.t()) ::
-              {:ok, [term()]} | {:ok, map()} | {:error, :not_implemented} | {:error, term()}
+              {:ok, QueryResult.t()} | {:error, :not_implemented} | {:error, term()}
 
   @doc """
-  Optional callback to map query parameters from the original query context to the backend's expected format.
-
   This is useful for adaptors that need special parameter handling, such as PostgreSQL which needs
   to map `@param` style parameters from the original BigQuery query to $1, $2, etc. style parameters
   in the translated PostgreSQL query.

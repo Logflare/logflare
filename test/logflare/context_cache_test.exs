@@ -1,7 +1,9 @@
 defmodule Logflare.ContextCacheTest do
   use Logflare.DataCase, async: false
 
+  alias Ecto.Adapters.SQL
   alias Logflare.ContextCache
+  alias Logflare.ContextCache.TransactionBroadcaster
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Backends
@@ -105,7 +107,7 @@ defmodule Logflare.ContextCacheTest do
   describe "unboxed transaction" do
     setup do
       on_exit(fn ->
-        Ecto.Adapters.SQL.Sandbox.unboxed_run(Logflare.Repo, fn ->
+        SQL.Sandbox.unboxed_run(Logflare.Repo, fn ->
           for u <- Logflare.Repo.all(Logflare.User) do
             Logflare.Repo.delete(u)
           end
@@ -117,10 +119,10 @@ defmodule Logflare.ContextCacheTest do
 
     test "TransactionBroadcaster subscribes to wal and broadcasts cache_updates" do
       ContextCache.CacheBuster.subscribe_updates()
-      start_supervised!({ContextCache.TransactionBroadcaster, interval: 100})
+      start_supervised!({TransactionBroadcaster, interval: 100})
       :timer.sleep(200)
 
-      Ecto.Adapters.SQL.Sandbox.unboxed_run(Logflare.Repo, fn ->
+      SQL.Sandbox.unboxed_run(Logflare.Repo, fn ->
         insert(:user)
       end)
 

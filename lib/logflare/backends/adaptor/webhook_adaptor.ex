@@ -2,7 +2,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @moduledoc """
   Backend adaptor for webhooks / HTTP posts.
 
-  A number of other adaptors (_ClickHouse, DataDog, Elastic, Loki, etc_) leverage this to handle the final HTTP transaction.
+  A number of other adaptors (_DataDog, Elastic, Loki, etc_) leverage this to handle the final HTTP transaction.
 
   ### Finch Pool Selection
 
@@ -15,8 +15,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   This adaptor performs a merge on config that will prevent you from leveraging a dynamically generated URL configuration at runtime.
   To bypass this behavior, you can use the optional `:url_override` attribute.
-
-  See the `Logflare.Backends.Adaptor.ClickHouseWebhookAdaptor` for an example that utilizes this.
   """
 
   use GenServer
@@ -44,8 +42,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{}, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
     |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip])
     |> Logflare.Utils.default_field_value(:http, "http2")
     |> Logflare.Utils.default_field_value(:gzip, true)

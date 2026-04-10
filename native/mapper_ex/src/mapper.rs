@@ -32,7 +32,15 @@ fn is_array_type(field_type: &FieldType) -> bool {
 }
 
 /// Execute the mapping on a single document, returning the mapped output map.
-pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -> Term<'a> {
+///
+/// When `flat_keys` is true, dotted paths are resolved as literal flat-key
+/// lookups on the input map instead of nested map navigation.
+pub fn map_single<'a>(
+    env: Env<'a>,
+    body: Term<'a>,
+    mapping: &CompiledMapping,
+    flat_keys: bool,
+) -> Term<'a> {
     let nil = atoms::nil().encode(env);
     let field_count = mapping.fields.len();
 
@@ -47,9 +55,9 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
         let is_enum8 = matches!(&field.field_type, FieldType::Enum8 { .. });
 
         let value = if is_enum8 {
-            resolve_value_raw(env, body, field, &values, nil)
+            resolve_value_raw(env, body, field, &values, nil, flat_keys)
         } else {
-            resolve_value(env, body, field, &values, nil)
+            resolve_value(env, body, field, &values, nil, flat_keys)
         };
 
         // Array types skip transform, allowed_values, value_map, enum8, and json operations
@@ -96,7 +104,7 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
 
         // For Enum8 fields, handle enum resolution (string->int lookup + inference + default)
         let value = if is_enum8 {
-            resolve_enum8(env, body, field, value, nil)
+            resolve_enum8(env, body, field, value, nil, flat_keys)
         } else {
             value
         };
@@ -104,14 +112,23 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
         // For Json and FlatMap fields, apply exclude/elevate/pick
         let value = if field.field_type == FieldType::Json || field.field_type == FieldType::FlatMap
         {
-            apply_json_operations(env, body, field, value, nil)
+            if flat_keys {
+                apply_json_operations_flat(env, body, field, value, nil)
+            } else {
+                apply_json_operations(env, body, field, value, nil, flat_keys)
+            }
         } else {
             value
         };
 
-        // For FlatMap fields, flatten and stringify the resolved map
+        // For FlatMap fields, flatten and stringify the resolved map.
+        // When flat_keys is true, input is already flat — just stringify values.
         let value = if field.field_type == FieldType::FlatMap {
-            flatten_and_stringify(env, value, nil)
+            if flat_keys {
+                stringify_values(env, value, nil)
+            } else {
+                flatten_and_stringify(env, value, nil)
+            }
         } else {
             value
         };
@@ -140,11 +157,14 @@ fn resolve_value_raw<'a>(
     field: &CompiledField,
     output_values: &[Term<'a>],
     nil: Term<'a>,
+    flat_keys: bool,
 ) -> Term<'a> {
     match &field.path_source {
         PathSource::Root => body,
-        PathSource::Single(segments) => query::evaluate(env, body, segments, nil),
-        PathSource::Coalesce(paths) => query::evaluate_first(env, body, paths, false, None, nil),
+        PathSource::Single(segments) => query::evaluate(env, body, segments, nil, flat_keys),
+        PathSource::Coalesce(paths) => {
+            query::evaluate_first(env, body, paths, false, None, nil, flat_keys)
+        }
         PathSource::FromOutput(idx) => {
             let v = output_values[*idx];
             if v != nil {
@@ -164,13 +184,14 @@ fn resolve_value<'a>(
     field: &CompiledField,
     output_values: &[Term<'a>],
     nil: Term<'a>,
+    flat_keys: bool,
 ) -> Term<'a> {
     let skip_empty = field.field_type == FieldType::String;
 
     match &field.path_source {
         PathSource::Root => body,
         PathSource::Single(segments) => {
-            let v = query::evaluate(env, body, segments, nil);
+            let v = query::evaluate(env, body, segments, nil, flat_keys);
             if v == nil {
                 coerce::encode_default(env, &field.default, nil)
             } else if skip_empty {
@@ -196,7 +217,8 @@ fn resolve_value<'a>(
         }
         PathSource::Coalesce(paths) => {
             let string_filters = field.filters.as_ref();
-            let result = query::evaluate_first(env, body, paths, skip_empty, string_filters, nil);
+            let result =
+                query::evaluate_first(env, body, paths, skip_empty, string_filters, nil, flat_keys);
             if result == nil {
                 coerce::encode_default(env, &field.default, nil)
             } else {
@@ -222,6 +244,7 @@ fn resolve_enum8<'a>(
     field: &CompiledField,
     resolved_value: Term<'a>,
     nil: Term<'a>,
+    flat_keys: bool,
 ) -> Term<'a> {
     let enum8_data = match &field.enum8_data {
         Some(data) => data,
@@ -241,7 +264,7 @@ fn resolve_enum8<'a>(
     }
 
     // Step 2: Try inference rules
-    if let Some(result_val) = evaluate_infer_rules(env, body, enum8_data, nil) {
+    if let Some(result_val) = evaluate_infer_rules(env, body, enum8_data, nil, flat_keys) {
         return (result_val as i64).encode(env);
     }
 
@@ -256,10 +279,11 @@ fn apply_json_operations<'a>(
     field: &CompiledField,
     value: Term<'a>,
     nil: Term<'a>,
+    flat_keys: bool,
 ) -> Term<'a> {
     // Pick-first: if pick is defined, try to build a sparse map
     let value = if !field.pick.is_empty() {
-        let pick_result = build_pick_map(env, body, field, nil);
+        let pick_result = build_pick_map(env, body, field, nil, flat_keys);
         if pick_result != nil {
             pick_result
         } else {
@@ -297,12 +321,13 @@ fn build_pick_map<'a>(
     body: Term<'a>,
     field: &CompiledField,
     nil: Term<'a>,
+    flat_keys: bool,
 ) -> Term<'a> {
     let mut keys: Vec<Term<'a>> = Vec::with_capacity(field.pick.len());
     let mut values: Vec<Term<'a>> = Vec::with_capacity(field.pick.len());
 
     for entry in &field.pick {
-        let value = query::evaluate_first(env, body, &entry.paths, false, None, nil);
+        let value = query::evaluate_first(env, body, &entry.paths, false, None, nil, flat_keys);
         if value != nil {
             keys.push(entry.key.encode(env));
             values.push(value);
@@ -389,12 +414,147 @@ fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>]) -> T
     result
 }
 
+/// Apply JSON operations for flat-key input.
+///
+/// Flat-key variants of exclude/elevate operate on dot-notation prefixes
+/// rather than exact key matches on nested maps.
+fn apply_json_operations_flat<'a>(
+    env: Env<'a>,
+    body: Term<'a>,
+    field: &CompiledField,
+    value: Term<'a>,
+    nil: Term<'a>,
+) -> Term<'a> {
+    // Pick still works the same — evaluate_first with flat_keys=true
+    let value = if !field.pick.is_empty() {
+        let pick_result = build_pick_map(env, body, field, nil, true);
+        if pick_result != nil {
+            pick_result
+        } else {
+            value
+        }
+    } else {
+        value
+    };
+
+    if value == nil || !value.is_map() {
+        return value;
+    }
+
+    let value = if !field.exclude_keys.is_empty() {
+        apply_exclude_keys_flat(env, value, &field.exclude_keys)
+    } else {
+        value
+    };
+
+    let value = if !field.elevate_keys.is_empty() {
+        apply_elevate_keys_flat(env, value, &field.elevate_keys)
+    } else {
+        value
+    };
+
+    value
+}
+
+/// Remove keys that match exactly OR start with `"<exclude_key>."`.
+fn apply_exclude_keys_flat<'a>(env: Env<'a>, map: Term<'a>, exclude: &[Vec<u8>]) -> Term<'a> {
+    let iter = match MapIterator::new(map) {
+        Some(it) => it,
+        None => return map,
+    };
+
+    let mut keys: Vec<Term<'a>> = Vec::with_capacity(32);
+    let mut values: Vec<Term<'a>> = Vec::with_capacity(32);
+
+    for (k, v) in iter {
+        if let Ok(b) = k.decode::<Binary>() {
+            let key_bytes = b.as_slice();
+            let excluded = exclude.iter().any(|ek| {
+                key_bytes == ek.as_slice()
+                    || (key_bytes.len() > ek.len()
+                        && key_bytes.starts_with(ek.as_slice())
+                        && key_bytes[ek.len()] == b'.')
+            });
+            if excluded {
+                continue;
+            }
+        }
+        keys.push(k);
+        values.push(v);
+    }
+
+    Term::map_from_term_arrays(env, &keys, &values).unwrap_or_else(|_| Term::map_new(env))
+}
+
+/// Elevate flat keys: keys starting with `"<elevate_key>."` get their prefix
+/// stripped. The elevate key itself (exact match) is dropped. Top-level keys
+/// (those not starting with any elevate prefix) win over elevated children.
+fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>]) -> Term<'a> {
+    let iter = match MapIterator::new(map) {
+        Some(it) => it,
+        None => return map,
+    };
+
+    let mut top_entries: Vec<(Term<'a>, Term<'a>)> = Vec::with_capacity(32);
+    let mut elevated_keys: Vec<Term<'a>> = Vec::with_capacity(16);
+    let mut elevated_values: Vec<Term<'a>> = Vec::with_capacity(16);
+
+    for (k, v) in iter {
+        if let Ok(b) = k.decode::<Binary>() {
+            let key_bytes = b.as_slice();
+
+            // Check if this key matches an elevate prefix
+            let mut matched = false;
+            for ek in elevate {
+                if key_bytes == ek.as_slice() {
+                    // Exact match — drop the key entirely
+                    matched = true;
+                    break;
+                }
+                if key_bytes.len() > ek.len()
+                    && key_bytes.starts_with(ek.as_slice())
+                    && key_bytes[ek.len()] == b'.'
+                {
+                    // Strip prefix: "metadata.level" -> "level"
+                    let suffix = &key_bytes[ek.len() + 1..];
+                    let suffix_term = std::str::from_utf8(suffix).unwrap_or("").encode(env);
+                    elevated_keys.push(suffix_term);
+                    elevated_values.push(v);
+                    matched = true;
+                    break;
+                }
+            }
+            if !matched {
+                top_entries.push((k, v));
+            }
+        } else {
+            top_entries.push((k, v));
+        }
+    }
+
+    // Build base map from elevated children
+    let mut result = if elevated_keys.is_empty() {
+        Term::map_new(env)
+    } else {
+        Term::map_from_term_arrays(env, &elevated_keys, &elevated_values)
+            .unwrap_or_else(|_| Term::map_new(env))
+    };
+
+    // Top-level keys overwrite elevated children
+    for (k, v) in top_entries {
+        result = result.map_put(k, v).unwrap_or(result);
+    }
+
+    result
+}
+
 /// Evaluate inference conditions and return the matching rule's result.
 pub fn evaluate_infer_rules<'a>(
     env: Env<'a>,
     body: Term<'a>,
     enum8_data: &Enum8Data,
     nil: Term<'a>,
+    flat_keys: bool,
 ) -> Option<i8> {
     for rule in &enum8_data.infer_rules {
         let any_match = if rule.any.is_empty() {
@@ -402,7 +562,7 @@ pub fn evaluate_infer_rules<'a>(
         } else {
             rule.any
                 .iter()
-                .any(|cond| evaluate_condition(env, body, cond, nil))
+                .any(|cond| evaluate_condition(env, body, cond, nil, flat_keys))
         };
 
         let all_match = if rule.all.is_empty() {
@@ -410,7 +570,7 @@ pub fn evaluate_infer_rules<'a>(
         } else {
             rule.all
                 .iter()
-                .all(|cond| evaluate_condition(env, body, cond, nil))
+                .all(|cond| evaluate_condition(env, body, cond, nil, flat_keys))
         };
 
         if any_match && all_match {
@@ -430,8 +590,9 @@ fn evaluate_condition<'a>(
     body: Term<'a>,
     cond: &crate::mapping::InferCondition,
     nil: Term<'a>,
+    flat_keys: bool,
 ) -> bool {
-    let value = query::evaluate(env, body, &cond.path, nil);
+    let value = query::evaluate(env, body, &cond.path, nil, flat_keys);
 
     match &cond.predicate {
         Predicate::Exists => value != nil,
@@ -596,6 +757,48 @@ pub fn flatten_and_stringify<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -
             result = result.map_put(k, v).unwrap_or(result);
         }
         result
+    }
+}
+
+/// Stringify values in an already-flat map without recursive flattening.
+///
+/// Used when `flat_keys` is true — the input is already single-level with
+/// dot-notation keys, so we only need to coerce values to strings.
+/// nil values are omitted. Lists are JSON-encoded.
+pub fn stringify_values<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -> Term<'a> {
+    if value == nil || !value.is_map() {
+        return Term::map_new(env);
+    }
+
+    let iter = match MapIterator::new(value) {
+        Some(it) => it,
+        None => return Term::map_new(env),
+    };
+
+    let mut keys: Vec<Term<'a>> = Vec::new();
+    let mut values: Vec<Term<'a>> = Vec::new();
+
+    for (k, v) in iter {
+        if v == nil {
+            continue;
+        }
+
+        // If value is already a string, pass through without allocation
+        if v.is_binary() {
+            keys.push(k);
+            values.push(v);
+            continue;
+        }
+
+        let str_val = term_to_string(env, v);
+        keys.push(k);
+        values.push(str_val.encode(env));
+    }
+
+    if keys.is_empty() {
+        Term::map_new(env)
+    } else {
+        Term::map_from_term_arrays(env, &keys, &values).unwrap_or_else(|_| Term::map_new(env))
     }
 }
 

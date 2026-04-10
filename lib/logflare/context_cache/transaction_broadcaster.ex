@@ -9,6 +9,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
   alias Cainophile.Changes.Transaction
+  alias Cainophile.Adapters.Postgres
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
@@ -56,7 +57,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
     cainophile_pid = GenServer.whereis(name)
 
     if cainophile_pid != state.subscribed_pid do
-      Cainophile.Adapters.Postgres.subscribe(cainophile_pid, self(), 15_000)
+      Postgres.subscribe(cainophile_pid, self(), 15_000)
       cainophile_pid
     end
   catch

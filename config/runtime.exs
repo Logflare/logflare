@@ -235,6 +235,7 @@ config :logflare,
        Logflare.Google,
        filter_nil_kv_pairs.(
          dataset_id_append: System.get_env("GOOGLE_DATASET_ID_APPEND"),
+         default_dataset_location: System.get_env("GOOGLE_DATASET_LOCATION"),
          project_number: System.get_env("GOOGLE_PROJECT_NUMBER"),
          project_id: System.get_env("GOOGLE_PROJECT_ID"),
          service_account: System.get_env("GOOGLE_SERVICE_ACCOUNT"),
@@ -443,10 +444,12 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
     otlp_protocol: :http_protobuf,
     otlp_endpoint: System.get_env("LOGFLARE_OTEL_ENDPOINT"),
     otlp_compression: :gzip,
-    otlp_headers: [
-      {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
-      {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
-    ],
+    otlp_headers:
+      [
+        {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
+        {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
+      ]
+      |> filter_nil_kv_pairs.(),
     max_batch_size: 250
 end
 
@@ -457,29 +460,20 @@ config :syn,
   scopes: [:core, :ui] ++ syn_endpoints_partitions,
   event_handler: Logflare.SynEventHandler
 
-if System.get_env("LOGFLARE_ALERTS_ENABLED", "true") == "true" do
-  config :logflare, Oban,
-    queues: [default: 10, alerts: 5],
-    plugins: [
-      {Oban.Plugins.Pruner, max_age: 86_400},
-      {Oban.Plugins.Cron,
-       crontab: [
-         {"* * * * *", Logflare.Alerting.AlertSchedulerWorker},
-         {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker}
-       ]}
-    ]
+enable_alerting? = System.get_env("LOGFLARE_ALERTS_ENABLED", "true") == "true"
 
-  config :logflare, Logflare.Alerting, enabled: true
-else
-  config :logflare, Oban,
-    queues: [default: 10],
-    plugins: [
-      {Oban.Plugins.Pruner, max_age: 86_400},
-      {Oban.Plugins.Cron,
-       crontab: [
-         {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker}
-       ]}
-    ]
+config :logflare, Oban,
+  queues: [default: 10] ++ if(enable_alerting?, do: [alerts: 5], else: []),
+  plugins: [
+    {Oban.Plugins.Pruner, max_age: 86_400},
+    # crontab must be shared across all nodes, in case leader is set on a node/cluster where alerting is disabled
+    # oban internal cron scheduler performs scheduling only if is leader and if crontab configuration is present
+    # https://github.com/oban-bg/oban/blob/584e86a8515b7cb8d6eff2f148fb880529fc68f8/lib/oban/plugins/cron.ex#L198
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"* * * * *", Logflare.Alerting.AlertSchedulerWorker},
+       {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker}
+     ]}
+  ]
 
-  config :logflare, Logflare.Alerting, enabled: false
-end
+config :logflare, Logflare.Alerting, enabled: enable_alerting?

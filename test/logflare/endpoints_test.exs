@@ -3,6 +3,7 @@ defmodule Logflare.EndpointsTest do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
 
@@ -297,7 +298,7 @@ defmodule Logflare.EndpointsTest do
 
       expect(ClickHouseAdaptor, :execute_query, fn backend, _query, _opts ->
         send(test_pid, {:backend_used, backend.id})
-        {:ok, [%{"testing" => "123"}]}
+        {:ok, QueryResult.new([%{"testing" => "123"}])}
       end)
 
       query_string = "SELECT 1 as testing"
@@ -319,7 +320,7 @@ defmodule Logflare.EndpointsTest do
 
       expect(ClickHouseAdaptor, :execute_query, fn backend, _query, _opts ->
         send(test_pid, {:backend_used, backend.id})
-        {:ok, [%{"testing" => "123"}]}
+        {:ok, QueryResult.new([%{"testing" => "123"}])}
       end)
 
       query_string = "SELECT 1 as testing"
@@ -611,6 +612,32 @@ defmodule Logflare.EndpointsTest do
 
       # In supabase mode, postgres should return :bq_sql
       assert Endpoints.derive_language_from_backend_id(backend.id) == :pg_sql
+    end
+  end
+
+  describe "enable_dynamic_reservation" do
+    test "changeset/2 casts enable_dynamic_reservation" do
+      user = insert(:user)
+
+      changeset =
+        Endpoints.change_query(%Query{user: user}, %{
+          "name" => "test-endpoint",
+          "query" => "select 1",
+          "enable_dynamic_reservation" => true
+        })
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_change(changeset, :enable_dynamic_reservation) == true
+    end
+
+    test "enable_dynamic_reservation defaults to false" do
+      endpoint = insert(:endpoint)
+      assert endpoint.enable_dynamic_reservation == false
+    end
+
+    test "enable_dynamic_reservation can be persisted as true" do
+      endpoint = insert(:endpoint, enable_dynamic_reservation: true)
+      assert endpoint.enable_dynamic_reservation == true
     end
   end
 end

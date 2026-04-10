@@ -4,6 +4,7 @@ defmodule Logflare.PubSubRates.Cache do
 
   alias Logflare.Sources.Source
   alias Logflare.Cluster
+  alias Logflare.Users.Cache, as: UsersCache
   alias Logflare.Utils
 
   @cache __MODULE__
@@ -89,7 +90,7 @@ defmodule Logflare.PubSubRates.Cache do
   @doc """
   Returns a node mapping of buffer lengths across the cluster.
   """
-  @spec get_buffers(non_neg_integer() | :consolidated, non_neg_integer() | nil) :: map()
+  @spec get_buffers(non_neg_integer() | :consolidated, non_neg_integer() | nil) :: {atom(), map()}
   def get_buffers(source_id, backend_id) do
     Cachex.get(__MODULE__, {source_id, backend_id, "buffers"})
   end
@@ -107,7 +108,7 @@ defmodule Logflare.PubSubRates.Cache do
   Returns the sum of all buffers across the cluster for a given source and backend combination.
   """
   @spec get_cluster_buffers(non_neg_integer()) :: non_neg_integer()
-  @spec get_cluster_buffers(non_neg_integer(), non_neg_integer()) :: non_neg_integer()
+  @spec get_cluster_buffers(non_neg_integer(), non_neg_integer() | nil) :: non_neg_integer()
   def get_cluster_buffers(source_id, backend_id \\ nil) when is_integer(source_id) do
     case get_buffers(source_id, backend_id) do
       {:ok, node_buffers} when node_buffers != nil -> merge_buffers(node_buffers)
@@ -198,8 +199,8 @@ defmodule Logflare.PubSubRates.Cache do
   def get_all_local_metrics(user_id) do
     %{sources: sources} =
       user_id
-      |> Logflare.Users.Cache.get()
-      |> Logflare.Users.Cache.preload_sources()
+      |> UsersCache.get()
+      |> UsersCache.preload_sources()
 
     sources
     |> Enum.map(fn source ->

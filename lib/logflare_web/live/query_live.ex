@@ -93,8 +93,8 @@ defmodule LogflareWeb.QueryLive do
     <section :if={@query_result_rows} class="container mx-auto">
       <div class="tw-flex tw-justify-between tw-items-end">
         <h3>Query result</h3>
-        <div class="tw-mb-1">
-          <QueryComponents.query_cost bytes={@total_bytes_processed} />
+        <div :if={@total_bytes_processed} class="tw-mb-1">
+          <QueryComponents.query_cost :if={is_integer(@total_bytes_processed)} bytes={@total_bytes_processed} />
         </div>
       </div>
       <p :if={@query_result_rows == []}>
@@ -297,7 +297,7 @@ defmodule LogflareWeb.QueryLive do
            use_query_cache: false
          ) do
       {:ok, %{rows: rows} = result} ->
-        total_bytes_processed = Map.get(result, :total_bytes_processed, 0)
+        total_bytes_processed = Map.get(result, :total_bytes_processed)
 
         socket
         |> put_flash(:info, "Ran query successfully")

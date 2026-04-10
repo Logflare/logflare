@@ -7,6 +7,8 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.LogEvents
+  alias Logflare.SourceSchemas
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias LogflareWeb.Helpers.BqSchema
   alias LogflareWeb.LogView
   alias LogflareWeb.SharedView
@@ -20,7 +22,6 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     socket =
       assign(socket, :log_event, log_event_result)
       |> assign_defaults(assigns)
-      |> assign(:lql, assigns.params["lql"])
 
     {:ok, socket}
   end
@@ -108,11 +109,14 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
     LogView.render("log_event_body.html",
       source: source,
+      source_schema_flat_map: assigns.source_schema_flat_map,
+      search_params: assigns.search_params,
       body: body,
       fmt_body: BqSchema.encode_metadata(body),
       message: body["event_message"],
       id: le.id,
       lql: assigns.lql,
+      lql_schema: get_lql_schema(source),
       timestamp: timestamp,
       local_timezone: tz,
       local_timestamp: local_timestamp
@@ -129,7 +133,13 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     team_user = socket.assigns[:team_user] || assigns[:team_user]
     source = socket.assigns[:source] || assigns[:source]
     timestamp = socket.assigns[:timestamp] || assigns[:timestamp]
-    lql = socket.assigns[:lql] || assigns[:lql] || ""
+    lql = socket.assigns[:lql] || assigns[:lql] || assigns.params["lql"] || ""
+
+    source_schema_flat_map =
+      socket.assigns[:source_schema_flat_map] || assigns[:source_schema_flat_map]
+
+    search_params =
+      socket.assigns[:search_params] || extract_search_params(assigns)
 
     socket
     |> assign(:user, user)
@@ -137,6 +147,8 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     |> assign(:source, source)
     |> assign(:timestamp, timestamp)
     |> assign(:lql, lql)
+    |> assign(:source_schema_flat_map, source_schema_flat_map)
+    |> assign(:search_params, search_params)
     |> assign(:error, nil)
   end
 
@@ -149,4 +161,16 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
   defp maybe_put_timestamp(opts, timestamp) when is_list(opts),
     do: Keyword.put(opts, :timestamp, DateTime.truncate(timestamp, :second))
+
+  defp get_lql_schema(source) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      %_{bigquery_schema: schema} when not is_nil(schema) -> schema
+      _ -> SchemaBuilder.initial_table_schema()
+    end
+  end
+
+  defp extract_search_params(%{params: params}) when is_map(params),
+    do: Map.take(params, ["tz"])
+
+  defp extract_search_params(_assigns), do: %{}
 end

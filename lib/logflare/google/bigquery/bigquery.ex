@@ -5,19 +5,13 @@ defmodule Logflare.Google.BigQuery do
 
   require Logger
 
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-
-  defp env_dataset_id_append,
-    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
-
-  defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account]
-
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Api.Tabledata
   alias GoogleApi.BigQuery.V2.Api.Tables
   alias GoogleApi.BigQuery.V2.Model
 
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Users
   alias Logflare.User
   alias Logflare.Billing
@@ -28,7 +22,7 @@ defmodule Logflare.Google.BigQuery do
 
   @type ok_err_tup :: {:ok, term} | {:error, term}
 
-  @spec init_table!(pos_integer(), atom(), String.t(), integer(), String.t(), String.t()) ::
+  @spec init_table!(User.id(), atom(), String.t(), integer(), String.t(), String.t()) ::
           ok_err_tup
   def init_table!(user_id, source, project_id, ttl, dataset_location, dataset_id)
       when is_integer(user_id) and is_atom(source) and is_binary(project_id) and is_integer(ttl) and
@@ -79,7 +73,7 @@ defmodule Logflare.Google.BigQuery do
     conn
     |> Api.Tables.bigquery_tables_delete(
       project_id,
-      dataset_id || Integer.to_string(user_id) <> env_dataset_id_append(),
+      dataset_id || Integer.to_string(user_id) <> GCPConfig.dataset_id_append(),
       table_name
     )
     |> GenUtils.maybe_parse_google_api_result()
@@ -134,7 +128,7 @@ defmodule Logflare.Google.BigQuery do
   def patch_table_ttl(source_id, table_ttl, dataset_id, project_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
-    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> GCPConfig.dataset_id_append()
 
     {:ok, table} = get_table(source_id)
     timepartitioning_type = table.timePartitioning.type
@@ -156,7 +150,7 @@ defmodule Logflare.Google.BigQuery do
   def patch_table_clustering(source_id, clustering, dataset_id, project_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
-    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> GCPConfig.dataset_id_append()
 
     clustering_model = %Model.Clustering{
       fields: clustering
@@ -173,7 +167,7 @@ defmodule Logflare.Google.BigQuery do
   def patch_table(source_id, schema, dataset_id, project_id) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
-    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> GCPConfig.dataset_id_append()
 
     conn
     |> Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
@@ -192,7 +186,7 @@ defmodule Logflare.Google.BigQuery do
       bigquery_dataset_id: dataset_id
     } = GenUtils.get_bq_user_info(source_id)
 
-    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> GCPConfig.dataset_id_append()
 
     conn
     |> Api.Tables.bigquery_tables_get(
@@ -234,9 +228,14 @@ defmodule Logflare.Google.BigQuery do
   @doc """
   Creates dataset, accepts user_id, dataset_id, dataset_location, project_id
   """
-  @spec create_dataset(String.t(), String.t(), String.t(), String.t()) ::
+  @spec create_dataset(User.id(), String.t(), String.t(), String.t()) ::
           {:ok, Model.Dataset.t()} | {:error, Tesla.Env.t()}
-  def create_dataset(user_id, dataset_id, dataset_location, project_id \\ env_project_id()) do
+  def create_dataset(
+        user_id,
+        dataset_id,
+        dataset_location,
+        project_id \\ GCPConfig.default_project_id()
+      ) do
     conn = GenUtils.get_conn()
 
     %User{email: email, provider: provider} = user = Users.get_by(id: user_id)
@@ -264,7 +263,7 @@ defmodule Logflare.Google.BigQuery do
           },
           %Model.DatasetAccess{
             role: "OWNER",
-            userByEmail: env_service_account()
+            userByEmail: GCPConfig.service_account()
           },
           %Model.DatasetAccess{
             role: "READER",
@@ -325,8 +324,11 @@ defmodule Logflare.Google.BigQuery do
   @spec delete_dataset(User.t()) :: ok_err_tup
   def delete_dataset(user) do
     conn = GenUtils.get_conn()
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
-    project_id = user.bigquery_project_id || env_project_id()
+
+    dataset_id =
+      user.bigquery_dataset_id || Integer.to_string(user.id) <> GCPConfig.dataset_id_append()
+
+    project_id = user.bigquery_project_id || GCPConfig.default_project_id()
 
     conn
     |> Api.Datasets.bigquery_datasets_delete(project_id, dataset_id, deleteContents: true)
@@ -336,8 +338,11 @@ defmodule Logflare.Google.BigQuery do
   @spec patch_dataset_labels(User.t()) :: {:ok, :patched} | {:error, :not_patched}
   def patch_dataset_labels(%User{} = user) do
     conn = GenUtils.get_conn()
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
-    project_id = user.bigquery_project_id || env_project_id()
+
+    dataset_id =
+      user.bigquery_dataset_id || Integer.to_string(user.id) <> GCPConfig.dataset_id_append()
+
+    project_id = user.bigquery_project_id || GCPConfig.default_project_id()
 
     %Plan{name: plan} =
       user
@@ -379,7 +384,7 @@ defmodule Logflare.Google.BigQuery do
 
   defp patch(dataset_id, emails, project_id, user_id) do
     conn = GenUtils.get_conn()
-    dataset_id = dataset_id || Integer.to_string(user_id) <> env_dataset_id_append()
+    dataset_id = dataset_id || Integer.to_string(user_id) <> GCPConfig.dataset_id_append()
 
     access_emails =
       Enum.map(emails, fn x ->
@@ -400,7 +405,7 @@ defmodule Logflare.Google.BigQuery do
       },
       %GoogleApi.BigQuery.V2.Model.DatasetAccess{
         role: "OWNER",
-        userByEmail: env_service_account()
+        userByEmail: GCPConfig.service_account()
       },
       %GoogleApi.BigQuery.V2.Model.DatasetAccess{
         role: "READER",
@@ -425,7 +430,10 @@ defmodule Logflare.Google.BigQuery do
     }
 
     {:ok, _response} =
-      Api.Datasets.bigquery_datasets_patch(conn, project_id || env_project_id(), dataset_id,
+      Api.Datasets.bigquery_datasets_patch(
+        conn,
+        project_id || GCPConfig.default_project_id(),
+        dataset_id,
         body: body
       )
 

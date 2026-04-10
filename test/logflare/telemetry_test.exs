@@ -1,6 +1,8 @@
 defmodule Logflare.TelemetryTest do
   use Logflare.DataCase, async: true
 
+  alias Logflare.SystemMetrics.Observer
+  alias Logflare.SystemMetrics.Schedulers
   alias Logflare.Telemetry
   alias Logflare.TestUtils
 
@@ -69,7 +71,7 @@ defmodule Logflare.TelemetryTest do
       ])
 
     on_exit(fn -> :telemetry.detach(ref) end)
-    Logflare.SystemMetrics.Observer.dispatch_stats()
+    Observer.dispatch_stats()
 
     assert_receive {[:logflare, :system, :observer, :metrics], ^ref, metrics_measurements,
                     metrics_metadata}
@@ -132,7 +134,7 @@ defmodule Logflare.TelemetryTest do
     on_exit(fn -> :telemetry.detach(ref) end)
 
     sample_duration = to_timeout(millisecond: 10)
-    Logflare.SystemMetrics.Schedulers.async_dispatch_stats(sample_duration)
+    Schedulers.async_dispatch_stats(sample_duration)
 
     assert_receive {^event, ^ref, %{utilization: _}, %{name: "total", type: "total"}}
     assert_receive {^event, ^ref, %{utilization: _}, %{name: "weighted", type: "weighted"}}

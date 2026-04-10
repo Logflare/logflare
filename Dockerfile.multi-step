@@ -4,6 +4,11 @@ ENV MIX_ENV=prod
 
 WORKDIR /app
 
+COPY ./VERSION mix.exs mix.lock ./
+RUN mix do deps.get + deps.compile
+
+COPY . ./
+
 # release
 RUN mix release  && \
     npm run --prefix assets deploy && \

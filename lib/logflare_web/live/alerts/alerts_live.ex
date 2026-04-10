@@ -9,6 +9,7 @@ defmodule LogflareWeb.AlertsLive do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
   alias Logflare.Repo
   alias LogflareWeb.AuthLive
@@ -199,12 +200,16 @@ defmodule LogflareWeb.AlertsLive do
   def handle_event(
         "run-query",
         params,
-        %{assigns: %{alert: %_{} = alert}} = socket
+        %{assigns: %{alert: alert, user: user}} = socket
       ) do
-    query = get_in(params, ["query"]) || socket.assigns.query_string || alert.query
-    test_alert = %{alert | query: query}
+    query = get_in(params, ["query"]) || socket.assigns.query_string || (alert && alert.query)
 
-    with {:ok, %{rows: [_ | _]} = result} <-
+    test_alert =
+      if alert,
+        do: %{alert | query: query},
+        else: %AlertQuery{query: query, language: :bq_sql, user: user, user_id: user.id}
+
+    with {:ok, %QueryResult{rows: [_ | _]} = result} <-
            Alerting.execute_alert_query(test_alert, use_query_cache: false) do
       {:noreply,
        socket
@@ -212,7 +217,7 @@ defmodule LogflareWeb.AlertsLive do
        |> assign(:total_bytes_processed, result.total_bytes_processed)
        |> put_flash(:info, "Query executed successfully. Alert will fire.")}
     else
-      {:ok, %{rows: []} = result} ->
+      {:ok, %QueryResult{rows: []} = result} ->
         {:noreply,
          socket
          |> assign(:query_result_rows, [])
@@ -234,7 +239,8 @@ defmodule LogflareWeb.AlertsLive do
         _params,
         %{assigns: %{alert: %_{} = alert}} = socket
       ) do
-    with {:ok, result} <- Alerting.execute_alert_query(alert, use_query_cache: false) do
+    with {:ok, %QueryResult{} = result} <-
+           Alerting.execute_alert_query(alert, use_query_cache: false) do
       {:noreply,
        socket
        |> assign(:query_result_rows, result.rows)

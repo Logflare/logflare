@@ -50,7 +50,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
     |> Protobuf.encode_to_iodata()
   end
 
-  defp build_resource() do
+  defp build_resource do
     attributes =
       [
         name: "Logflare",
@@ -78,7 +78,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   end
 
   defp build_log_record(%LogEvent{} = ev) do
-    observed_ts = (ev.ingested_at || 0) |> Timex.to_datetime() |> DateTime.to_unix(:nanosecond)
+    observed_ts =
+      if ev.ingested_at, do: DateTime.to_unix(ev.ingested_at, :nanosecond), else: 0
 
     {known_entries, body} =
       Map.split(ev.body, [

@@ -39,8 +39,8 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
   end
 
   @impl Adaptor
-  def cast_config(params) do
-    {%{}, %{dsn: :string}}
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config, %{dsn: :string}}
     |> Ecto.Changeset.cast(params, [:dsn])
   end
 

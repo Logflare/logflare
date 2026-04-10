@@ -5,6 +5,8 @@ defmodule Logflare.AlertingTest do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
+  alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Utils.Tasks
 
   doctest Logflare.SynEventHandler
 
@@ -12,7 +14,7 @@ defmodule Logflare.AlertingTest do
     insert(:plan, name: "Free")
 
     on_exit(fn ->
-      Logflare.Utils.Tasks.kill_all_tasks()
+      Tasks.kill_all_tasks()
     end)
 
     {:ok, user: insert(:user)}
@@ -234,7 +236,11 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: _}} =
+      assert {:ok,
+              %QueryResult{
+                rows: [%{"testing" => "123"}],
+                total_bytes_processed: _
+              }} =
                Alerting.execute_alert_query(alert_query)
 
       #  no reservation set by user
@@ -253,7 +259,11 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: _}} =
+      assert {:ok,
+              %QueryResult{
+                rows: [%{"testing" => "123"}],
+                total_bytes_processed: _
+              }} =
                Alerting.execute_alert_query(alert_query)
 
       assert_receive {:reservation, reservation}
@@ -278,7 +288,7 @@ defmodule Logflare.AlertingTest do
         insert(:alert, user: user, query: "select testing from `my.date`")
         |> Logflare.Repo.preload([:user])
 
-      assert {:ok, %{rows: [%{"testing" => "123"}]}} =
+      assert {:ok, %QueryResult{rows: [%{"testing" => "123"}]}} =
                Alerting.execute_alert_query(alert_query)
     end
 

@@ -141,4 +141,17 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     assert Logflare.TeamUsers.get_team_user!(member2_team_user.id)
   end
+
+  test "update with invalid params shows error", %{conn: conn} do
+    member_user = insert(:user)
+    team = insert(:team)
+    team_user = insert(:team_user, team: team, email: member_user.email)
+
+    conn =
+      conn
+      |> login_user(member_user, team_user)
+      |> put(~p"/profile/edit?t=#{team.id}", %{"team_user" => %{"email" => ""}})
+
+    assert html_response(conn, 200) =~ "Something went wrong!"
+  end
 end

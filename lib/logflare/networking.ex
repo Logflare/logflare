@@ -39,8 +39,9 @@ defmodule Logflare.Networking do
            count: max(base, 20),
            start_pool_metrics?: true,
            conn_opts: [
-             # a larger default window size ensures that the number of packages exchanges is smaller, thus speeding up the requests
-             # by reducing the amount of networks round trip, with the cost of having larger packages reaching the server per connection.
+             # a larger default window size ensures that the number of packages exchanges is smaller, thus speeding up
+             # the requests by reducing the amount of networks round trip, with the cost of having larger packages
+             # reaching the server per connection.
              client_settings: [
                initial_window_size: 8_000_000,
                max_frame_size: 8_000_000
@@ -98,8 +99,11 @@ defmodule Logflare.Networking do
            protocols: [:http1],
            size: min(base * 2, 15),
            count: min(max(div(base, 2), 1), 4),
-           conn_max_idle_time: 9_500,
-           start_pool_metrics?: true
+           conn_max_idle_time: 5_000,
+           start_pool_metrics?: true,
+           conn_opts: [
+             transport_opts: [timeout: 10_000]
+           ]
          ]
        }}
     ]

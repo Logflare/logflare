@@ -8,6 +8,7 @@ defmodule Logflare.Logs.LogEvents do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Billing
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
@@ -56,19 +57,19 @@ defmodule Logflare.Logs.LogEvents do
       |> partition_query([min, max], partition_type)
       |> where([t], t.id == ^id)
       |> Lql.apply_filter_rules(lql_rules)
-      |> select([t], fragment("*"))
+      |> select([t], fragment("?.*", t))
 
     BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, query,
       query_type: :search
     )
     |> case do
-      {:ok, %{rows: []}} ->
+      {:ok, %QueryResult{rows: []}} ->
         {:error, :not_found}
 
-      {:ok, %{rows: [row]}} ->
+      {:ok, %QueryResult{rows: [row]}} ->
         row
 
-      {:ok, %{rows: _rows}} ->
+      {:ok, %QueryResult{rows: _rows}} ->
         {:error, "Multiple rows returned, expected one"}
 
       {:error, error} ->

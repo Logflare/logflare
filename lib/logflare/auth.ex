@@ -22,8 +22,10 @@ defmodule Logflare.Auth do
 
   @doc "Generates an email token, accepting either an email or id"
   @spec gen_email_token(String.t() | number) :: String.t()
-  def gen_email_token(email_or_id) when is_binary(email_or_id) or is_integer(email_or_id) do
-    Token.sign(LogflareWeb.Endpoint, env_salt(), email_or_id)
+  @spec gen_email_token(String.t() | number, Keyword.t()) :: String.t()
+  def gen_email_token(email_or_id, opts \\ [])
+      when is_binary(email_or_id) or is_integer(email_or_id) do
+    Token.sign(LogflareWeb.Endpoint, env_salt(), email_or_id, opts)
   end
 
   @doc "Verifies the email token"
