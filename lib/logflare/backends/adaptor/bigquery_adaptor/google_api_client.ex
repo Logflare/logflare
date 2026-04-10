@@ -65,12 +65,24 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   end
 
   defp try_call(requests, retry_attempt \\ 0) do
-    with {:ok, channel} <- GrpcPool.get_channel(connetion_pool_name()),
-         {:ok, stream} <- send_requests(requests, channel),
-         {:ok, responses} <- GRPC.Stub.recv(stream),
-         [] <- handle_responses(requests, responses) do
-      :ok
-    else
+    OpenTelemetry.Tracer.with_span "ingest.call_attempt", %{
+      attributes: %{retry_attempt: retry_attempt}
+    } do
+      with {:ok, channel} <- GrpcPool.get_channel(connetion_pool_name()),
+           {:ok, stream} <- send_requests(requests, channel),
+           {:ok, responses} <- GRPC.Stub.recv(stream),
+           [] <- handle_responses(requests, responses) do
+        :ok
+      else
+        err ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(err))
+          err
+      end
+    end
+    |> case do
+      :ok ->
+        :ok
+
       failed_reqs when is_list(failed_reqs) and retry_attempt < 5 ->
         retry_call(failed_reqs, retry_attempt)
 
@@ -127,7 +139,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
 
       {_request, {:ok, %AppendRowsResponse{row_errors: errors}}}, acc when is_list(errors) ->
         Logger.warning("Storage Write API AppendRows row errors - #{inspect(errors)}")
-        # TODO: Maybe set telemetry attribute with error count
+        OpenTelemetry.Tracer.set_attribute("row_errors_present", true)
+        # TODO: This will override previous, but most of the time there's only one request
+        OpenTelemetry.Tracer.set_attribute("row_errors_count", length(errors))
         acc
     end)
   end
