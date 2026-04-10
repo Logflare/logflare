@@ -95,22 +95,20 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   end
 
   defp send_requests(requests, channel) do
-    try do
-      stream = BigQueryWrite.Stub.append_rows(channel)
+    stream = BigQueryWrite.Stub.append_rows(channel)
 
-      stream =
-        Enum.reduce(
-          requests,
-          stream,
-          fn request, stream ->
-            GRPC.Stub.send_request(stream, request)
-          end
-        )
+    stream =
+      Enum.reduce(
+        requests,
+        stream,
+        fn request, stream ->
+          GRPC.Stub.send_request(stream, request)
+        end
+      )
 
-      {:ok, GRPC.Stub.end_stream(stream)}
-    catch
-      :exit, reason -> {:error, Exception.format_exit(reason)}
-    end
+    {:ok, GRPC.Stub.end_stream(stream)}
+  catch
+    :exit, reason -> {:error, Exception.format_exit(reason)}
   end
 
   defp retry_call(requests, retry_attempt) do

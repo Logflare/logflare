@@ -9,7 +9,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClientTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Networking.GrpcPool
 
-  defp call_append_rows() do
+  defp call_append_rows do
     context = [project_id: "my-project", dataset_id: "my-dataset"]
     GoogleApiClient.append_rows({:arrow, [%{}]}, context, "my-table")
   end

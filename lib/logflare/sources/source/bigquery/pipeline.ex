@@ -157,6 +157,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
         end
     end
+
+    :ok
   end
 
   @impl Broadway
