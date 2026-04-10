@@ -99,8 +99,11 @@ defmodule Logflare.Networking do
            protocols: [:http1],
            size: min(base * 2, 15),
            count: min(max(div(base, 2), 1), 4),
-           conn_max_idle_time: 9_500,
-           start_pool_metrics?: true
+           conn_max_idle_time: 5_000,
+           start_pool_metrics?: true,
+           conn_opts: [
+             transport_opts: [timeout: 10_000]
+           ]
          ]
        }}
     ]

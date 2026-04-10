@@ -811,6 +811,79 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "ConnectionManager process reuse" do
+    setup do
+      insert(:plan, name: "Free")
+      {source, backend} = setup_clickhouse_test()
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      Process.sleep(100)
+      [source: source, backend: backend]
+    end
+
+    test "reuses the same ConnectionManager and connection pool for sequential queries", %{
+      backend: backend
+    } do
+      via = Backends.via_backend(backend, ConnectionManager)
+
+      # First query lazily starts the ConnectionManager and pool
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as result")
+
+      manager_pid = GenServer.whereis(via)
+      pool_via = ConnectionManager.connection_pool_via(backend)
+      pool_pid = GenServer.whereis(pool_via)
+
+      assert is_pid(manager_pid)
+      assert is_pid(pool_pid)
+      assert ConnectionManager.pool_active?(backend)
+
+      # Subsequent queries reuse the same ConnectionManager and pool
+      for i <- 2..5 do
+        {:ok, [%{"result" => ^i}]} =
+          ClickHouseAdaptor.execute_ch_query(backend, "SELECT #{i} as result")
+
+        assert GenServer.whereis(via) == manager_pid,
+               "ConnectionManager PID should be reused across queries"
+
+        assert GenServer.whereis(pool_via) == pool_pid,
+               "Connection pool PID should be reused across queries"
+      end
+
+      assert ConnectionManager.pool_active?(backend)
+    end
+
+    test "reuses the same ConnectionManager for concurrent queries", %{backend: backend} do
+      via = Backends.via_backend(backend, ConnectionManager)
+
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 0 as result")
+      manager_pid = GenServer.whereis(via)
+      pool_via = ConnectionManager.connection_pool_via(backend)
+      pool_pid = GenServer.whereis(pool_via)
+
+      assert is_pid(manager_pid)
+      assert is_pid(pool_pid)
+
+      results =
+        for i <- 1..10 do
+          Task.async(fn ->
+            ClickHouseAdaptor.execute_ch_query(backend, "SELECT #{i} as result")
+          end)
+        end
+        |> Task.await_many(5_000)
+
+      assert Enum.all?(results, &match?({:ok, _}, &1))
+
+      # ConnectionManager and pool should be the same processes
+      assert GenServer.whereis(via) == manager_pid,
+             "ConnectionManager PID should be reused across concurrent queries"
+
+      assert GenServer.whereis(pool_via) == pool_pid,
+             "Connection pool PID should be reused across concurrent queries"
+
+      assert ConnectionManager.pool_active?(backend)
+    end
+  end
+
   defp modify_backend_with_long_token(%Backend{} = backend) do
     long_token = random_string(200)
 
