@@ -49,7 +49,7 @@ defmodule Logflare.ContextCache.Gossip do
               "Skipped gossip for #{cache} #{inspect(key)} in #{duration}ms"
           end
 
-        Logger.debug(msg)
+        Logger.notice(msg)
 
       [:logflare, :context_cache_gossip, :receive, :stop] ->
         %{action: action, cache: cache, key: key} = metadata
@@ -70,10 +70,10 @@ defmodule Logflare.ContextCache.Gossip do
             """)
 
           :cached ->
-            Logger.debug("Cached gossip for #{cache} #{inspect(key)} in #{duration}ms")
+            Logger.notice("Cached gossip for #{cache} #{inspect(key)} in #{duration}ms")
 
           :refreshed ->
-            Logger.debug("Refreshed gossip for #{cache} #{inspect(key)} in #{duration}ms")
+            Logger.notice("Refreshed gossip for #{cache} #{inspect(key)} in #{duration}ms")
         end
     end
   end
