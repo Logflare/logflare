@@ -10,10 +10,6 @@ services:
     volumes:
       - ./priv/setup.sql:/docker-entrypoint-initdb.d/setup.sql
       - pg-data:/var/lib/postgresql/data
-  stripe-mock:
-    image: stripe/stripe-mock:latest
-    ports:
-      - "12111:12111"
   base:
     build:
       dockerfile: ./Dockerfile.base
@@ -68,12 +64,12 @@ services:
       # - filebeat:/usr/share/filebeat/data
       # - /var/log/audit/:/var/log/audit/:ro
     # environment:
-      # - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-node1}
-      # - KIBANA_HOST=${KIBANA_HOST:-node1}
-      # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
-      # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-changeme}
-      # disable strict permission checks
-    command: [ "--strict.perms=false" ]
+    # - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-node1}
+    # - KIBANA_HOST=${KIBANA_HOST:-node1}
+    # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
+    # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-changeme}
+    # disable strict permission checks
+    command: ["--strict.perms=false"]
   loki:
     image: grafana/loki:3.1.0
     ports:
@@ -139,7 +135,7 @@ services:
       resources:
         limits:
           memory: 1500M
-          cpus: '1.0'
+          cpus: "1.0"
         reservations:
           memory: 512M
     shm_size: 256M
