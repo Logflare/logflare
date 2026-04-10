@@ -2,6 +2,8 @@ defmodule Logflare.Sources.Source.WebhookNotificationServer.DiscordClient do
   @moduledoc false
   require Logger
 
+  import Logflare.Utils.Guards
+
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
 
@@ -99,7 +101,7 @@ defmodule Logflare.Sources.Source.WebhookNotificationServer.DiscordClient do
 
     event_message =
       case x.body["event_message"] do
-        msg when is_binary(msg) and msg != "" -> msg
+        msg when is_non_empty_binary(msg) -> msg
         _ -> Jason.encode!(x.body, pretty: true)
       end
 
