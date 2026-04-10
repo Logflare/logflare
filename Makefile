@@ -186,7 +186,10 @@ migrate:
 	@env $$(cat .dev.env | xargs) mix ecto.migrate
 
 
-.PHONY: __start__ migrate start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink
+stripe:
+	stripe listen --forward-to localhost:4000/webhooks/stripe
+
+.PHONY: __start__ migrate stripe start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink
 
 # Encryption and decryption of secrets
 # Usage:
