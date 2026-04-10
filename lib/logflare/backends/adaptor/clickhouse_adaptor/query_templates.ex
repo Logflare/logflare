@@ -31,7 +31,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   @log_columns ~w(id source_uuid source_name project trace_id span_id trace_flags
     severity_text severity_number service_name event_message scope_name scope_version
     scope_schema_url resource_schema_url resource_attributes scope_attributes
-    log_attributes mapping_config_id timestamp)
+    log_attributes mapping_config_id ingested_at timestamp)
 
   @metric_columns ~w(id source_uuid source_name project time_unix start_time_unix
     metric_name metric_description metric_unit metric_type service_name event_message
@@ -41,14 +41,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
     bucket_counts explicit_bounds positive_bucket_counts negative_bucket_counts
     quantile_values quantiles exemplars.filtered_attributes exemplars.time_unix
     exemplars.value exemplars.span_id exemplars.trace_id
-    mapping_config_id timestamp)
+    mapping_config_id ingested_at timestamp)
 
   @trace_columns ~w(id source_uuid source_name project trace_id span_id
     parent_span_id trace_state span_name span_kind service_name event_message duration
     status_code status_message scope_name scope_version resource_attributes span_attributes
     events.timestamp events.name events.attributes
     links.trace_id links.span_id links.trace_state links.attributes
-    mapping_config_id timestamp)
+    mapping_config_id ingested_at timestamp)
 
   @doc """
   Returns the column names for a given event type.
@@ -83,6 +83,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       end
 
     "CHECK GRANT CREATE TABLE, ALTER TABLE, INSERT, SELECT, DROP TABLE, CREATE VIEW, DROP VIEW ON #{grant_target_string}"
+  end
+
+  @doc """
+  Generates a `CHECK GRANT` statement for read-only permissions (`SELECT` only).
+
+  Used to validate read-only cluster connectivity when a separate `read_only_url` is configured.
+
+  ## Options
+
+  - `:database` - (Optional) Will produce a fully qualified `<database>.*` string when provided with a value. Defaults to `nil`.
+
+  """
+  @spec read_grant_check_statement(opts :: Keyword.t()) :: String.t()
+  def read_grant_check_statement(opts \\ []) when is_list(opts) do
+    database = Keyword.get(opts, :database, nil)
+
+    grant_target_string =
+      if is_non_empty_binary(database) do
+        "#{database}.*"
+      else
+        "*"
+      end
+
+    "CHECK GRANT SELECT ON #{grant_target_string}"
   end
 
   @doc """
@@ -132,6 +156,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `scope_attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
         `log_attributes` Map(String, String) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
+        `ingested_at` Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
         `timestamp_time` DateTime DEFAULT toDateTime(timestamp),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1
@@ -203,6 +228,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `exemplars.span_id` Array(String) CODEC(ZSTD(1)),
         `exemplars.trace_id` Array(String) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
+        `ingested_at` Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1))
       )
       ENGINE = #{engine}
@@ -259,6 +285,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `links.trace_state` Array(String) CODEC(ZSTD(1)),
         `links.attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
+        `ingested_at` Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
         INDEX idx_duration duration TYPE minmax GRANULARITY 1

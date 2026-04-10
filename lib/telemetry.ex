@@ -248,13 +248,36 @@ defmodule Logflare.Telemetry do
       )
     ]
 
+    finch_metrics = [
+      distribution("finch.request.stop.duration",
+        tags: [:name],
+        unit: {:native, :millisecond},
+        description: "Finch end-to-end request duration"
+      ),
+      distribution("finch.connect.stop.duration",
+        tags: [:name],
+        unit: {:native, :millisecond},
+        description: "Finch TCP connection establishment duration"
+      ),
+      distribution("finch.queue.stop.duration",
+        tags: [:name],
+        unit: {:native, :millisecond},
+        description: "Finch pool checkout queue duration"
+      ),
+      counter("finch.conn_max_idle_time_exceeded.idle_time",
+        tags: [:host, :port],
+        description: "Count of connections discarded due to exceeding max idle time"
+      )
+    ]
+
     Enum.concat([
       phoenix_metrics,
       database_metrics,
       vm_metrics,
       cache_metrics,
       broadway_metrics,
-      application_metrics
+      application_metrics,
+      finch_metrics
     ])
   end
 

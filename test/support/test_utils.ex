@@ -581,4 +581,9 @@ defmodule Logflare.TestUtils do
     ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(id) end)
     id
   end
+
+  @spec reset_associations(Ecto.Schema.t()) :: Ecto.Schema.t()
+  def reset_associations(%schema{} = struct) do
+    Ecto.reset_fields(struct, schema.__schema__(:associations))
+  end
 end

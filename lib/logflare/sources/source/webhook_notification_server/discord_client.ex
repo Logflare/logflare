@@ -2,6 +2,8 @@ defmodule Logflare.Sources.Source.WebhookNotificationServer.DiscordClient do
   @moduledoc false
   require Logger
 
+  import Logflare.Utils.Guards
+
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
 
@@ -96,7 +98,14 @@ defmodule Logflare.Sources.Source.WebhookNotificationServer.DiscordClient do
 
   defp discord_event_message(x) do
     timestamp = DateTime.from_unix!(x.body["timestamp"], :microsecond) |> DateTime.to_string()
-    {message, _} = String.split_at(x.body["event_message"], 1018)
+
+    event_message =
+      case x.body["event_message"] do
+        msg when is_non_empty_binary(msg) -> msg
+        _ -> Jason.encode!(x.body, pretty: true)
+      end
+
+    {message, _} = String.split_at(event_message, 1018)
 
     %{name: timestamp, value: "```#{message}```"}
   end

@@ -1979,6 +1979,125 @@ defmodule Logflare.MapperTest do
     end
   end
 
+  # ── flat_keys option ─────────────────────────────────────────────────
+
+  describe "flat_keys option" do
+    defp compile_and_map_flat(fields, document) do
+      config = MappingConfig.new(fields)
+      compiled = Mapper.compile!(config)
+      Mapper.map(document, compiled, flat_keys: true)
+    end
+
+    test "resolves dotted paths as literal flat-key lookups, ignoring nested maps" do
+      result =
+        compile_and_map_flat(
+          [
+            Field.string("svc", path: "$.resource.service.name"),
+            Field.string("level", path: "$.level"),
+            Field.string("missing", path: "$.not.here", default: "fallback")
+          ],
+          %{
+            "resource.service.name" => "my-service",
+            "resource" => %{"service" => %{"name" => "nested-service"}},
+            "level" => "info"
+          }
+        )
+
+      # Dotted path resolves against the flat key, not the nested structure
+      assert result["svc"] == "my-service"
+      # Single-segment path works normally
+      assert result["level"] == "info"
+      # Missing flat key falls back to default
+      assert result["missing"] == "fallback"
+    end
+
+    test "coalesce and type coercion work with flat keys" do
+      result =
+        compile_and_map_flat(
+          [
+            Field.string("id", paths: ["$.trace_id", "$.span_id"]),
+            Field.uint32("count", path: "$.request.count"),
+            Field.datetime64("ts", path: "$.event.timestamp", precision: 9),
+            Field.bool("flag", path: "$.config.enabled")
+          ],
+          %{
+            "span_id" => "abc",
+            "request.count" => 42,
+            "event.timestamp" => 1_769_018_088,
+            "config.enabled" => "true"
+          }
+        )
+
+      # Coalesce skips missing first path, picks second
+      assert result["id"] == "abc"
+      # Type coercions apply normally
+      assert result["count"] == 42
+      assert result["ts"] == 1_769_018_088_000_000_000
+      assert result["flag"] == true
+    end
+
+    test "json field resolves flat-key path and supports exclude_keys" do
+      result =
+        compile_and_map_flat(
+          [
+            Field.json("resource", path: "$.resource.attributes"),
+            Field.json("attrs",
+              path: "$",
+              exclude_keys: ["id", "timestamp", "resource.attributes"]
+            )
+          ],
+          %{
+            "id" => "uuid",
+            "timestamp" => 123,
+            "level" => "info",
+            "resource.attributes" => %{"service" => "web"}
+          }
+        )
+
+      assert result["resource"] == %{"service" => "web"}
+      refute Map.has_key?(result["attrs"], "id")
+      refute Map.has_key?(result["attrs"], "timestamp")
+      assert result["attrs"]["level"] == "info"
+    end
+
+    test "flat_map type stringifies values without re-flattening" do
+      result =
+        compile_and_map_flat(
+          [Field.flat_map("attrs", path: "$.body")],
+          %{
+            "body" => %{
+              "string_val" => "hello",
+              "int_val" => 42,
+              "bool_val" => true,
+              "absent" => nil,
+              "tags" => [1, 2, 3]
+            }
+          }
+        )
+
+      attrs = result["attrs"]
+      assert attrs["string_val"] == "hello"
+      assert attrs["int_val"] == "42"
+      assert attrs["bool_val"] == "true"
+      # nil values omitted
+      refute Map.has_key?(attrs, "absent")
+      # Lists are JSON-encoded
+      assert attrs["tags"] == "[1,2,3]"
+    end
+
+    test "root path returns entire document" do
+      doc = %{"a.b" => 1, "c" => 2}
+
+      result =
+        compile_and_map_flat(
+          [Field.json("body", path: "$")],
+          doc
+        )
+
+      assert result["body"] == doc
+    end
+  end
+
   # ── ArrayFlatMap type ──────────────────────────────────────────────────
 
   describe "array_flat_map type" do
