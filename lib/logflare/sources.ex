@@ -326,6 +326,7 @@ defmodule Logflare.Sources do
     Source
     |> Logflare.Teams.filter_by_user_access(user)
     |> where([query], query.name == ^name)
+    |> limit(1)
     |> Logflare.Repo.one()
   end
 

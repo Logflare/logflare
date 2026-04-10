@@ -6,6 +6,8 @@ defmodule LogflareWeb.QueryLive do
   alias Logflare.Alerting
   alias Logflare.Backends
   alias Logflare.Endpoints
+  alias Logflare.Sources
+  alias Logflare.Sql
   alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
 
@@ -216,8 +218,16 @@ defmodule LogflareWeb.QueryLive do
 
   defp maybe_assign_team_context(socket, _params, nil), do: socket
 
-  defp maybe_assign_team_context(socket, _params, _query_string) do
-    AuthLive.assign_context_by_team(socket, socket.assigns.team, socket.assigns.user.email)
+  defp maybe_assign_team_context(socket, _params, query_string) do
+    effective_user = socket.assigns[:team_user] || socket.assigns.user
+
+    with {:ok, [source_name | _]} <- Sql.extract_table_names(query_string),
+         %Sources.Source{} = source <-
+           Sources.get_by_name_and_user_access(effective_user, source_name) do
+      AuthLive.assign_context_by_resource(socket, source, socket.assigns.user.email)
+    else
+      _ -> socket
+    end
   end
 
   def handle_info(:parse_query, socket) do

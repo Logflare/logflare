@@ -728,5 +728,21 @@ defmodule Logflare.SourcesTest do
       assert is_nil(result),
              "Expected nil when querying for non-existent source name, got: #{inspect(result)}"
     end
+
+    test "returns a single result when multiple teams have sources with the same name" do
+      insert(:plan)
+      [team_owner1, team_owner2] = insert_pair(:user)
+      team1 = insert(:team, user: team_owner1)
+      insert(:source, user: team_owner1, name: "shared_source")
+
+      _team2 = insert(:team, user: team_owner2)
+      insert(:source, user: team_owner2, name: "shared_source")
+
+      team_user = insert(:team_user, email: team_owner2.email, team: team1)
+
+      result = Sources.get_by_name_and_user_access(team_user, "shared_source")
+
+      assert %Logflare.Sources.Source{name: "shared_source"} = result
+    end
   end
 end
