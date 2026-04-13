@@ -93,8 +93,7 @@ defmodule LogflareWeb.StripeController do
         }
 
         with nil <- Billing.get_payment_method_by(stripe_id: stripe_id),
-             {:ok, pm} <-
-               Billing.create_payment_method(params) do
+             {:ok, pm} <- Billing.create_payment_method(params) do
           Phoenix.PubSub.broadcast(
             Logflare.PubSub,
             "billing",

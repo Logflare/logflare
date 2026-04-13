@@ -1,13 +1,18 @@
 defmodule LogflareWeb.SourceControllerTest do
   use LogflareWeb.ConnCase
 
-  alias Logflare.Teams
-  alias Logflare.Sources
-  alias Logflare.Repo
-  alias Logflare.Backends.SourceSup
   alias Logflare.Backends
-  alias Logflare.TestUtils
+  alias Logflare.Backends.SourceSup
+  alias Logflare.Repo
+  alias Logflare.Sources
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.Source.SlackHookServer
+  alias Logflare.Sources.Source.Supervisor, as: SourceSupervisor
+  alias Logflare.Sources.Source.WebhookNotificationServer
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Teams
+  alias Logflare.TestUtils
+  alias Phoenix.HTML
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -738,6 +743,302 @@ defmodule LogflareWeb.SourceControllerTest do
 
       assert html =~ ~r/sources\/#{source.id}\/rules/ or html =~ ~r/RulesLive/
       assert html =~ "?t=#{team_user.team_id}" or html =~ "&amp;t=#{team_user.team_id}"
+    end
+  end
+
+  describe "test_alerts" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user, webhook_notification_url: "https://example.com/hook")
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "success", %{conn: conn, source: source} do
+      expect(WebhookNotificationServer, :test_post, fn %{id: id} ->
+        assert id == source.id
+        {:ok, %Tesla.Env{status: 200}}
+      end)
+
+      conn = get(conn, ~p"/sources/#{source}/test-alerts")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Webhook test successful!"
+    end
+
+    test "error with Tesla.Env response", %{conn: conn, source: source} do
+      expect(WebhookNotificationServer, :test_post, fn _ -> {:error, %Tesla.Env{status: 500}} end)
+
+      conn = get(conn, ~p"/sources/#{source}/test-alerts")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "status code was 500"
+    end
+
+    test "error with non-Tesla response", %{conn: conn, source: source} do
+      expect(WebhookNotificationServer, :test_post, fn _ -> {:error, "connection refused"} end)
+
+      conn = get(conn, ~p"/sources/#{source}/test-alerts")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "connection refused"
+    end
+  end
+
+  describe "test_slack_hook" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user, slack_hook_url: "https://hooks.slack.com/test")
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "success", %{conn: conn, source: source} do
+      expect(SlackHookServer, :test_post, fn %{id: id} ->
+        assert id == source.id
+        {:ok, %Tesla.Env{status: 200}}
+      end)
+
+      conn = get(conn, ~p"/sources/#{source}/test-slack-hook")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Slack hook test successful!"
+    end
+
+    test "error with Tesla.Env response", %{conn: conn, source: source} do
+      expect(SlackHookServer, :test_post, fn _ -> {:error, %Tesla.Env{status: 403}} end)
+
+      conn = get(conn, ~p"/sources/#{source}/test-slack-hook")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "status code was 403"
+    end
+  end
+
+  describe "delete_slack_hook" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user, slack_hook_url: "https://hooks.slack.com/test")
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "success", %{conn: conn, source: source} do
+      conn = get(conn, ~p"/sources/#{source}/delete-slack-hook")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Slack hook deleted!"
+
+      updated = Sources.get_by(id: source.id)
+      assert updated.slack_hook_url == nil
+    end
+  end
+
+  describe "delete with recent events check" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "redirects with error when events are less than 24h old", %{conn: conn, source: source} do
+      recent_timestamp = DateTime.utc_now() |> DateTime.to_unix(:microsecond)
+      Counters.create(source.token)
+      Counters.increment_source_changed_at_unix_ts(source.token, recent_timestamp)
+
+      conn = delete(conn, ~p"/sources/#{source}")
+
+      assert redirected_to(conn, 302) =~ "/dashboard"
+      flash = Phoenix.Flash.get(conn.assigns.flash, :error)
+      assert is_list(flash)
+      assert Enum.any?(flash, &(is_binary(&1) and &1 =~ "less than 24 hours"))
+    end
+
+    test "deletes source when events are older than 24h", %{conn: conn, source: source} do
+      Counters.create(source.token)
+      expect(SourceSupervisor, :delete_source, fn _ -> {:ok, source.token} end)
+
+      conn = delete(conn, ~p"/sources/#{source}")
+
+      assert redirected_to(conn, 302) =~ "/dashboard"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source deleted!"
+      refute Sources.get(source.id)
+    end
+  end
+
+  describe "clear_logs" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "clears logs and redirects", %{conn: conn, source: source} do
+      expect(SourceSupervisor, :reset_source, fn _ -> {:ok, source.token} end)
+
+      conn = get(conn, ~p"/sources/#{source}/clear")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Logs cleared!"
+    end
+  end
+
+  describe "rejected_logs" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "renders rejected logs page", %{conn: conn, source: source} do
+      conn = get(conn, ~p"/sources/#{source}/rejected")
+
+      html = html_response(conn, 200)
+      assert html =~ source.name
+      assert html =~ "clear cache"
+    end
+  end
+
+  describe "explore" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user, provider: "email")
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "free plan user gets upgrade message", %{conn: conn, source: source} do
+      conn = get(conn, ~p"/sources/#{source}/explore")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}"
+      flash = Phoenix.Flash.get(conn.assigns.flash, :error)
+      assert is_list(flash)
+      flash_text = flash |> HTML.Safe.to_iodata() |> IO.iodata_to_binary()
+      assert flash_text =~ "upgrade to explore"
+    end
+
+    test "non-google provider user gets sign-in message", %{conn: conn, user: user} do
+      plan = insert(:plan, name: "Paid", stripe_id: "stripe-paid")
+      insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
+      source = insert(:source, user: user)
+
+      conn = get(conn, ~p"/sources/#{source}/explore")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}"
+      flash = Phoenix.Flash.get(conn.assigns.flash, :error)
+      assert is_list(flash)
+      flash_text = flash |> HTML.Safe.to_iodata() |> IO.iodata_to_binary()
+      assert flash_text =~ "Sign in with Google"
+    end
+  end
+
+  describe "update with notifications_every" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "updates notification frequency", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{"source" => %{"notifications_every" => "3600000"}})
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+    end
+
+    test "returns upgrade error when frequency exceeds plan limit", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{"source" => %{"notifications_every" => "1000"}})
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      flash = Phoenix.Flash.get(conn.assigns.flash, :error)
+      assert is_list(flash)
+      flash_text = flash |> HTML.Safe.to_iodata() |> IO.iodata_to_binary()
+      assert flash_text =~ "upgrade"
+    end
+  end
+
+  describe "update with drop_lql_string" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+      insert(:source_schema, source: source)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "updates drop LQL filters successfully", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{
+          "source" => %{"drop_lql_string" => "event_message:~\"test\""}
+        })
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+    end
+
+    test "shows error for unknown field in LQL", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{
+          "source" => %{"drop_lql_string" => "nonexistent_field:value"}
+        })
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error)
+    end
+  end
+
+  describe "create with session params" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+
+      [conn: login_user(conn, user), user: user]
+    end
+
+    test "redirects for oauth when oauth_params in session", %{conn: conn, user: _user} do
+      conn =
+        conn
+        |> Plug.Conn.put_session(:oauth_params, %{some: "params"})
+        |> post(~p"/sources", %{"source" => %{"name" => "OAuth Source"}})
+
+      assert redirected_to(conn, 302)
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source created!"
+      assert Sources.get_by(name: "OAuth Source")
     end
   end
 
