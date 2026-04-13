@@ -123,6 +123,19 @@ defmodule Logflare.Lql.Parser.HelpersTest do
       assert result.value == ~N[2023-01-01 12:00:00]
       assert is_nil(result.shorthand)
     end
+
+    test "merges explicit timezone modifier for timestamp datetime values" do
+      args = [
+        path: "timestamp",
+        operator: :=,
+        value: {:with_modifiers, ~N[2023-01-01 12:00:00], %{explicit_timezone: true}}
+      ]
+
+      result = Helpers.to_rule(args, :filter)
+
+      assert result.value == ~N[2023-01-01 12:00:00]
+      assert result.modifiers == %{explicit_timezone: true}
+    end
   end
 
   describe "to_rule/1 for metadata_level_clause" do
@@ -273,9 +286,29 @@ defmodule Logflare.Lql.Parser.HelpersTest do
       assert result == ~N[2023-01-15 08:30:00]
     end
 
+    test "parse_timestamp_datetime preserves explicit timezone modifier for Z suffixes" do
+      assert {:with_modifiers, ~N[2023-01-15 10:30:00], %{explicit_timezone: true}} =
+               Helpers.parse_timestamp_datetime([{:datetime_tz, "2023-01-15T10:30:00Z"}])
+    end
+
+    test "parse_timestamp_datetime preserves explicit timezone modifier for UTC offsets" do
+      assert {:with_modifiers, ~N[2023-01-15 08:30:00], %{explicit_timezone: true}} =
+               Helpers.parse_timestamp_datetime([{:datetime_tz, "2023-01-15T10:30:00+02:00"}])
+    end
+
+    test "parse_timestamp_datetime leaves naive datetimes unmodified" do
+      assert ~N[2023-01-15 10:30:00] =
+               Helpers.parse_timestamp_datetime([{:datetime, "2023-01-15T10:30:00"}])
+    end
+
     test "parse_datetime_literal handles Unix timestamps in seconds and milliseconds" do
       assert {:ok, ~N[2024-03-17 13:47:02]} = Helpers.parse_datetime_literal("1710683222")
       assert {:ok, ~N[2024-03-17 13:47:02.000]} = Helpers.parse_datetime_literal("1710683222000")
+    end
+
+    test "parse_unix_timestamp_literal marks Unix timestamps as explicit timezone" do
+      assert {:with_modifiers, ~N[2024-03-17 13:47:02], %{explicit_timezone: true}} =
+               Helpers.parse_unix_timestamp_literal(["1710683222"])
     end
 
     test "parse_datetime_literal truncates Unix microseconds to milliseconds" do
@@ -310,7 +343,9 @@ defmodule Logflare.Lql.Parser.HelpersTest do
           timezone: "+02:00"
         )
 
-      assert result == [~N[2023-01-15 08:30:00]]
+      assert result == [
+               {:with_modifiers, ~N[2023-01-15 08:30:00], %{explicit_timezone: true}}
+             ]
     end
 
     test "timestamp_shorthand_to_value handles 'now'" do

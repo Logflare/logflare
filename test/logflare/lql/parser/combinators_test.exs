@@ -25,6 +25,7 @@ defmodule Logflare.Lql.Parser.CombinatorsTest do
   defparsec(:test_datetime_abbreviations, Combinators.datetime_abbreviations())
   defparsec(:test_date, Combinators.date())
   defparsec(:test_datetime, Combinators.datetime())
+  defparsec(:test_timestamp_datetime, Combinators.timestamp_datetime())
   defparsec(:test_timestamp_shorthand_value, Combinators.timestamp_shorthand_value())
   defparsec(:test_timestamp_value, Combinators.timestamp_value())
 
@@ -163,10 +164,24 @@ defmodule Logflare.Lql.Parser.CombinatorsTest do
       assert match?({:ok, [value: %{shorthand: "now"}], "", _, _, _}, result)
 
       result = test_timestamp_value("1710683222000")
-      assert match?({:ok, [value: ~N[2024-03-17 13:47:02.000]], "", _, _, _}, result)
+
+      assert {:ok,
+              [value: {:with_modifiers, ~N[2024-03-17 13:47:02.000], %{explicit_timezone: true}}],
+              "", _, _, _} = result
 
       result = test_timestamp_value("1710683222000000")
-      assert match?({:ok, [value: ~N[2024-03-17 13:47:02.000]], "", _, _, _}, result)
+
+      assert {:ok,
+              [value: {:with_modifiers, ~N[2024-03-17 13:47:02.000], %{explicit_timezone: true}}],
+              "", _, _, _} = result
+    end
+
+    test "timestamp datetime parser distinguishes timezone-bearing datetimes" do
+      assert {:ok, [{:with_modifiers, ~N[2023-01-15 10:00:00], %{explicit_timezone: true}}], "",
+              _, _, _} = test_timestamp_datetime("2023-01-15T10:00:00Z")
+
+      assert {:ok, [~N[2023-01-15 10:00:00]], "", _, _, _} =
+               test_timestamp_datetime("2023-01-15T10:00:00")
     end
   end
 
@@ -176,10 +191,15 @@ defmodule Logflare.Lql.Parser.CombinatorsTest do
       assert match?({:ok, [%{path: "timestamp"}], "", _, _, _}, result)
 
       result = test_timestamp_clause("t:>2023-01-15T10:00:00Z")
-      assert match?({:ok, [%{path: "timestamp", operator: :>}], "", _, _, _}, result)
+
+      assert {:ok, [%{path: "timestamp", operator: :>, modifiers: %{explicit_timezone: true}}],
+              "", _, _, _} = result
 
       result = test_timestamp_clause("t:1710683222..1710684222")
-      assert match?({:ok, [%{path: "timestamp", operator: :range}], "", _, _, _}, result)
+
+      assert {:ok,
+              [%{path: "timestamp", operator: :range, modifiers: %{explicit_timezone: true}}], "",
+              _, _, _} = result
     end
 
     test "metadata clause parser" do

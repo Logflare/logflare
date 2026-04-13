@@ -373,7 +373,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> reduce(:parse_date_or_datetime)
   end
 
-  defp iso_datetime_string do
+  defp iso_datetime_parts do
     iso_date_string()
     |> string("T")
     |> ascii_string([?0..?9], 2)
@@ -385,7 +385,20 @@ defmodule Logflare.Lql.Parser.Combinators do
       string(".")
       |> ascii_string([?0..?9], min: 1, max: 6)
     )
-    |> optional(timezone())
+  end
+
+  defp iso_datetime_string_with_timezone do
+    iso_datetime_parts()
+    |> concat(timezone())
+    |> reduce({Enum, :join, [""]})
+  end
+
+  defp iso_datetime_string do
+    choice([
+      iso_datetime_string_with_timezone(),
+      iso_datetime_parts()
+      |> reduce({Enum, :join, [""]})
+    ])
     |> reduce({Enum, :join, [""]})
   end
 
@@ -399,6 +412,18 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> unwrap_and_tag(:datetime)
     |> label("ISO8601 datetime")
     |> reduce(:parse_date_or_datetime)
+  end
+
+  def timestamp_datetime do
+    choice([
+      iso_datetime_string_with_timezone()
+      |> unwrap_and_tag(:datetime_tz),
+      iso_datetime_parts()
+      |> reduce({Enum, :join, [""]})
+      |> unwrap_and_tag(:datetime)
+    ])
+    |> label("ISO8601 datetime")
+    |> reduce(:parse_timestamp_datetime)
   end
 
   def timezone do
@@ -513,6 +538,12 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> label("date, datetime, or Unix timestamp value")
   end
 
+  def timestamp_date_or_datetime_or_unix do
+    [timestamp_datetime(), date(), unix_timestamp()]
+    |> choice()
+    |> label("date, datetime, or Unix timestamp value")
+  end
+
   def timestamp_shorthand_value do
     choice([
       string("now"),
@@ -531,9 +562,9 @@ defmodule Logflare.Lql.Parser.Combinators do
 
   def timestamp_value do
     choice([
-      range_operator(date_or_datetime_or_unix()),
+      range_operator(timestamp_date_or_datetime_or_unix()),
       datetime_with_range(),
-      date_or_datetime_or_unix(),
+      timestamp_date_or_datetime_or_unix(),
       timestamp_shorthand_value(),
       invalid_match_all_value()
     ])

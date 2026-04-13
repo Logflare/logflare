@@ -85,7 +85,11 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def to_rule(args, :filter) when is_list(args) do
-    filter = struct!(FilterRule, Map.new(args))
+    filter =
+      args
+      |> Map.new()
+      |> then(&struct!(FilterRule, &1))
+      |> maybe_merge_value_modifiers()
 
     cond do
       match?({:quoted, _}, filter.value) ->
@@ -100,10 +104,19 @@ defmodule Logflare.Lql.Parser.Helpers do
 
         case value do
           [[_, _] = v] ->
-            %{filter | value: nil, values: v, operator: :range}
+            {values, modifiers} = unwrap_values_modifiers(v)
+
+            %{
+              filter
+              | value: nil,
+                values: values,
+                operator: :range,
+                modifiers: Map.merge(filter.modifiers, modifiers)
+            }
 
           [[v]] ->
-            %{filter | value: v}
+            {value, modifiers} = unwrap_value_modifiers(v)
+            %{filter | value: value, modifiers: Map.merge(filter.modifiers, modifiers)}
         end
 
       true ->
@@ -159,8 +172,15 @@ defmodule Logflare.Lql.Parser.Helpers do
   # DateTime Helper Functions
   # ============================================================================
 
-  @spec parse_date_or_datetime_with_range(list()) :: [Date.t() | NaiveDateTime.t()]
+  @spec parse_date_or_datetime_with_range(list()) ::
+          [Date.t() | NaiveDateTime.t() | {:with_modifiers, NaiveDateTime.t(), map()}]
   def parse_date_or_datetime_with_range(result) when is_list(result) do
+    explicit_timezone =
+      Enum.any?(result, fn
+        {:timezone, _timezone} -> true
+        _ -> false
+      end)
+
     [lv, rv] =
       result
       |> Enum.reduce([%{}, %{}], fn
@@ -177,6 +197,7 @@ defmodule Logflare.Lql.Parser.Helpers do
           [Map.put(lacc, k, lv), Map.put(racc, k, rv)]
       end)
       |> Enum.map(&build_date_or_datetime_from_parts/1)
+      |> maybe_mark_explicit_timezone(explicit_timezone)
 
     if lv == rv do
       [lv]
@@ -187,6 +208,18 @@ defmodule Logflare.Lql.Parser.Helpers do
 
   @spec parse_date_or_datetime([{:date | :datetime, String.t()}]) :: Date.t() | NaiveDateTime.t()
   def parse_date_or_datetime([{tag, result}]), do: parse_iso8601_value!(tag, result)
+
+  @spec parse_timestamp_datetime([{:datetime | :datetime_tz, String.t()}]) ::
+          NaiveDateTime.t() | {:with_modifiers, NaiveDateTime.t(), map()}
+  def parse_timestamp_datetime([{tag, result}]) when tag in [:datetime, :datetime_tz] do
+    value = parse_iso8601_value!(:datetime, result)
+
+    if tag == :datetime_tz do
+      {:with_modifiers, value, %{explicit_timezone: true}}
+    else
+      value
+    end
+  end
 
   @spec parse_datetime_literal(term()) :: {:ok, Date.t() | NaiveDateTime.t()} | {:error, term()}
   def parse_datetime_literal(%Date{} = value), do: {:ok, value}
@@ -217,11 +250,11 @@ defmodule Logflare.Lql.Parser.Helpers do
 
   def parse_datetime_literal(_value), do: {:error, :invalid_format}
 
-  @spec parse_unix_timestamp_literal([String.t()]) :: NaiveDateTime.t()
+  @spec parse_unix_timestamp_literal([String.t()]) :: {:with_modifiers, NaiveDateTime.t(), map()}
   def parse_unix_timestamp_literal([value]) do
     case parse_unix_timestamp(value) do
       {:ok, parsed} ->
-        parsed
+        {:with_modifiers, parsed, %{explicit_timezone: true}}
 
       {:error, :invalid_format} ->
         throw(
@@ -485,4 +518,40 @@ defmodule Logflare.Lql.Parser.Helpers do
         {:error, :invalid_format}
     end
   end
+
+  defp maybe_merge_value_modifiers(%FilterRule{} = rule) do
+    {value, modifiers} = unwrap_value_modifiers(rule.value)
+
+    %{
+      rule
+      | value: value,
+        modifiers: Map.merge(rule.modifiers, modifiers)
+    }
+  end
+
+  defp unwrap_value_modifiers({:with_modifiers, value, modifiers}),
+    do: {value, modifiers}
+
+  defp unwrap_value_modifiers({:range_operator, [lvalue, rvalue]}) do
+    {lvalue, lmodifiers} = unwrap_value_modifiers(lvalue)
+    {rvalue, rmodifiers} = unwrap_value_modifiers(rvalue)
+
+    {{:range_operator, [lvalue, rvalue]}, Map.merge(lmodifiers, rmodifiers)}
+  end
+
+  defp unwrap_value_modifiers(value), do: {value, %{}}
+
+  defp unwrap_values_modifiers(values) when is_list(values) do
+    Enum.reduce(values, {[], %{}}, fn value, {acc, modifiers} ->
+      {value, value_modifiers} = unwrap_value_modifiers(value)
+      {[value | acc], Map.merge(modifiers, value_modifiers)}
+    end)
+    |> then(fn {values, modifiers} -> {Enum.reverse(values), modifiers} end)
+  end
+
+  defp maybe_mark_explicit_timezone(values, true) when is_list(values) do
+    Enum.map(values, &{:with_modifiers, &1, %{explicit_timezone: true}})
+  end
+
+  defp maybe_mark_explicit_timezone(values, false), do: values
 end
