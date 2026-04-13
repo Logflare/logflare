@@ -19,10 +19,17 @@ defmodule LogflareWeb.BillingController do
             }), customer} do
       success_and_redirect(conn, "Billing account created!")
     else
-      {err, customer} ->
+      {{:error, _changeset} = err, customer} ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
-        {:ok, _response} = Stripe.delete_customer(customer["id"])
+        {:ok, _response} = Stripe.delete_customer(customer.id)
+
+        conn
+        |> put_flash(:error, @default_error_message)
+        |> redirect(to: Routes.user_path(conn, :edit))
+
+      err ->
+        Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         conn
         |> put_flash(:error, @default_error_message)
