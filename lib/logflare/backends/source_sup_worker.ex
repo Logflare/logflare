@@ -8,7 +8,7 @@ defmodule Logflare.Backends.SourceSupWorker do
   alias Logflare.Rules
   alias Logflare.Backends.SourceSup
 
-  @default_interval 30_000
+  @default_interval :timer.minutes(10)
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
