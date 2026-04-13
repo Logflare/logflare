@@ -168,7 +168,7 @@ defmodule Logflare.Telemetry do
       ),
       distribution("logflare.backends.pipeline.handle_batch.batch_size",
         tags: [:backend_type],
-        reporter_opts: batch_size_reporter_opts(),
+        reporter_options: batch_size_reporter_opts(),
         description: "Distribution of batch sizes for broadway pipeline by backend type"
       ),
       sum("logflare.backends.pipeline.handle_batch.batch_size",
