@@ -8,6 +8,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
@@ -802,8 +803,13 @@ defmodule Logflare.BackendsTest do
       assert Backends.fetch_latest_timestamp(source) == 0
       le = build(:log_event, source: source, some: "event")
       assert {:ok, _} = Backends.ingest_logs([le], source)
+      {:ok, cacher_pid} = Backends.lookup(RecentInsertsCacher, source)
 
       TestUtils.retry_assert(fn ->
+        # This function call is needed to avoid waiting for the RecentInsertsCacher's
+        # periodic cache update, which may not have occurred yet.
+        RecentInsertsCacher.do_cache(cacher_pid)
+
         assert Backends.fetch_latest_timestamp(source) != 0
       end)
     end
