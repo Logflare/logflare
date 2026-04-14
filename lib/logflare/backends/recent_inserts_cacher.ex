@@ -12,7 +12,7 @@ defmodule Logflare.Backends.RecentInsertsCacher do
 
   require Logger
 
-  @cache_every if Application.compile_env(:logflare, :env) == :test, do: 100, else: 5_000
+  @cache_every 5_000
 
   ## Server
   def start_link(args) do
@@ -114,6 +114,11 @@ defmodule Logflare.Backends.RecentInsertsCacher do
   end
 
   defp schedule_cache do
-    Process.send_after(self(), :do_cache, @cache_every + :rand.uniform(1000))
+    jitter =
+      if Application.get_env(:logflare, :env) == :test,
+        do: 0,
+        else: @cache_every + :rand.uniform(1000)
+
+    Process.send_after(self(), :do_cache, jitter)
   end
 end
