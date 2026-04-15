@@ -98,39 +98,14 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     ]
 
     message = Jason.encode_to_iodata!(body)
-
     headers_length = IO.iodata_length(headers)
     message_length = IO.iodata_length(message)
-
-    max_message_length =
-      if max_length do
-        max_message_length = max(max_length - headers_length, 0)
-
-        if cipher_key do
-          # Base64 expansion is 4/3. IV + Tag is 28 bytes.
-          max(div(max_message_length, 4) * 3 - 28, 0)
-        else
-          max_message_length
-        end
-      else
-        message_length
-      end
+    allowed_length = allowed_length(max_length, headers_length, _base64? = cipher_key != nil)
 
     {message, message_length} =
-      if message_length > max_message_length do
-        message = truncate(message, max_message_length)
-        {message, IO.iodata_length(message)}
-      else
-        {message, message_length}
-      end
-
-    {message, message_length} =
-      if cipher_key do
-        message = encrypt(message, cipher_key)
-        {message, IO.iodata_length(message)}
-      else
-        {message, message_length}
-      end
+      {message, message_length}
+      |> maybe_truncate(allowed_length)
+      |> maybe_encrypt(cipher_key)
 
     [Integer.to_string(headers_length + message_length), ?\s, headers | message]
   end
@@ -154,15 +129,36 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     value |> to_string() |> format_header_value(length)
   end
 
+  defp allowed_length(_no_max_length = nil, _headers_length, _base64?), do: :infinity
+
+  defp allowed_length(max_length, headers_length, base64?) do
+    max = max(max_length - headers_length, 0)
+    # Base64 expansion is 4/3. IV + Tag is 28 bytes.
+    if base64?, do: max(div(max, 4) * 3 - 28, 0), else: max
+  end
+
+  defp maybe_truncate({_message, _message_length} = keep, :infinity), do: keep
+
+  defp maybe_truncate({_message, message_length} = keep, allowed_length)
+       when message_length <= allowed_length do
+    keep
+  end
+
+  defp maybe_truncate({message, _message_length}, allowed_length) do
+    truncated = message |> IO.iodata_to_binary() |> binary_part(0, allowed_length)
+    {truncated, allowed_length}
+  end
+
+  defp maybe_encrypt({_message, _message_length} = keep, _no_cipher_key = nil), do: keep
+
+  defp maybe_encrypt({message, _message_length}, key) do
+    encrypted = encrypt(message, key)
+    {encrypted, byte_size(encrypted)}
+  end
+
   defp encrypt(data, key) do
     iv = :crypto.strong_rand_bytes(12)
     {ciphertext, tag} = :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, data, "syslog", true)
     Base.encode64(iv <> tag <> ciphertext)
-  end
-
-  defp truncate(message, size) do
-    message
-    |> IO.iodata_to_binary()
-    |> binary_part(0, size)
   end
 end

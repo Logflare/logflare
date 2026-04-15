@@ -82,7 +82,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     |> validate_certificate(:client_cert)
     |> validate_private_key(:client_key)
     |> validate_structured_data()
-    |> validate_number(:max_message_bytes, greater_than: 1)
+    |> validate_number(:max_message_bytes, greater_than: 0)
   end
 
   @impl Logflare.Backends.Adaptor
