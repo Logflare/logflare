@@ -2,16 +2,16 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
+  import Logflare.Factory
+
   alias Logflare.Backends.Adaptor.SyslogAdaptor.Syslog
-  alias Logflare.LogEvent
 
   describe "message truncation" do
     test "truncates plaintext message to exactly max_message_bytes" do
       body_text = String.duplicate("a", 200)
 
       [length_str, syslog_msg] =
-        body_text
-        |> build_log_event()
+        build(:log_event, message: body_text)
         |> format_to_binary(%{max_message_bytes: 150})
         |> unframe()
 
@@ -23,8 +23,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
       check all max_bytes <- integer(200..65_535),
                 body_text <- string(:utf8, min_length: 10, max_length: 100_000) do
         [length_str, syslog_msg] =
-          body_text
-          |> build_log_event()
+          build(:log_event, message: body_text)
           |> format_to_binary(%{max_message_bytes: max_bytes})
           |> unframe()
 
@@ -38,8 +37,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
                 body_text <- string(:utf8, min_length: 10, max_length: 100_000),
                 cipher_key <- binary(length: 32) do
         [length_str, syslog_msg] =
-          body_text
-          |> build_log_event()
+          build(:log_event, message: body_text)
           |> format_to_binary(%{max_message_bytes: max_bytes, cipher_key: cipher_key})
           |> unframe()
 
@@ -47,20 +45,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
         assert byte_size(syslog_msg) <= max_bytes
       end
     end
-  end
-
-  defp build_log_event(msg) do
-    %LogEvent{
-      id: Ecto.UUID.generate(),
-      body: %{
-        "timestamp" => System.system_time(:microsecond),
-        "message" => msg,
-        "level" => "info",
-        "host" => "localhost",
-        "app_name" => "test_app",
-        "procid" => "1234"
-      }
-    }
   end
 
   defp format_to_binary(log_event, config) do

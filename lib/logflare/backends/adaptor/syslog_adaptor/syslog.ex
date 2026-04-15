@@ -129,7 +129,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     value |> to_string() |> format_header_value(length)
   end
 
-  defp allowed_length(_no_max_length = nil, _headers_length, _base64?), do: :infinity
+  defp allowed_length(nil = _no_max_length, _headers_length, _base64?), do: :infinity
 
   defp allowed_length(max_length, headers_length, base64?) do
     max = max(max_length - headers_length, 0)
@@ -149,7 +149,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     {truncated, allowed_length}
   end
 
-  defp maybe_encrypt({_message, _message_length} = keep, _no_cipher_key = nil), do: keep
+  defp maybe_encrypt({_message, _message_length} = keep, nil = _no_cipher_key), do: keep
 
   defp maybe_encrypt({message, _message_length}, key) do
     encrypted = encrypt(message, key)
