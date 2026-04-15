@@ -157,6 +157,8 @@ defmodule Logflare.Lql.Parser.Combinators do
 
   def field_value do
     choice([
+      range_operator(date_or_datetime_literal()),
+      date_or_datetime_literal(),
       range_operator(number()),
       number(),
       null(),
@@ -350,20 +352,29 @@ defmodule Logflare.Lql.Parser.Combinators do
     ])
   end
 
-  def date do
+  defp iso_date_string do
     ascii_string([?0..?9], 4)
     |> string("-")
     |> ascii_string([?0..?9], 2)
     |> string("-")
     |> ascii_string([?0..?9], 2)
     |> reduce({Enum, :join, [""]})
+  end
+
+  def date_literal_string do
+    iso_date_string()
+    |> label("ISO8601 date")
+  end
+
+  def date do
+    iso_date_string()
     |> unwrap_and_tag(:date)
     |> label("ISO8601 date")
     |> reduce(:parse_date_or_datetime)
   end
 
-  def datetime do
-    date()
+  defp iso_datetime_parts do
+    iso_date_string()
     |> string("T")
     |> ascii_string([?0..?9], 2)
     |> string(":")
@@ -372,21 +383,69 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> ascii_string([?0..?9], 2)
     |> optional(
       string(".")
-      |> ascii_string([?0..?9], 6)
+      |> ascii_string([?0..?9], min: 1, max: 6)
     )
-    |> optional(
-      choice([
-        string("Z"),
-        string("+")
-        |> ascii_string([?0..?9], 2)
-        |> string(":")
-        |> ascii_string([?0..?9], 2)
-      ])
-    )
+  end
+
+  defp iso_datetime_string_with_timezone do
+    iso_datetime_parts()
+    |> concat(timezone())
     |> reduce({Enum, :join, [""]})
+  end
+
+  defp iso_datetime_string do
+    choice([
+      iso_datetime_string_with_timezone(),
+      iso_datetime_parts()
+      |> reduce({Enum, :join, [""]})
+    ])
+    |> reduce({Enum, :join, [""]})
+  end
+
+  def datetime_literal_string do
+    iso_datetime_string()
+    |> label("ISO8601 datetime")
+  end
+
+  def datetime do
+    iso_datetime_string()
     |> unwrap_and_tag(:datetime)
     |> label("ISO8601 datetime")
     |> reduce(:parse_date_or_datetime)
+  end
+
+  def timestamp_datetime do
+    choice([
+      iso_datetime_string_with_timezone()
+      |> unwrap_and_tag(:datetime_tz),
+      iso_datetime_parts()
+      |> reduce({Enum, :join, [""]})
+      |> unwrap_and_tag(:datetime)
+    ])
+    |> label("ISO8601 datetime")
+    |> reduce(:parse_timestamp_datetime)
+  end
+
+  def timezone do
+    choice([
+      string("Z") |> replace("Z"),
+      choice([string("+"), string("-")])
+      |> concat(ascii_string([?0..?9], 2))
+      |> concat(string(":"))
+      |> concat(ascii_string([?0..?9], 2))
+      |> reduce({Enum, :join, [""]})
+    ])
+  end
+
+  def unix_timestamp do
+    choice([
+      ascii_string([?0..?9], 16),
+      ascii_string([?0..?9], 13),
+      ascii_string([?0..?9], 10)
+    ])
+    |> lookahead_not(ascii_char([?0..?9]))
+    |> label("Unix timestamp")
+    |> reduce(:parse_unix_timestamp_literal)
   end
 
   def integer_with_range(combinator \\ empty(), number) do
@@ -455,14 +514,8 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> lookahead_not(string(".."))
     |> concat(
       optional(
-        choice([
-          ignore(string("Z")),
-          string("+")
-          |> ascii_string([?0..?9], 2)
-          |> string(":")
-          |> ascii_string([?0..?9], 2)
-        ])
-        # |> tag(:timezone)
+        timezone()
+        |> unwrap_and_tag(:timezone)
       )
     )
   end
@@ -471,6 +524,24 @@ defmodule Logflare.Lql.Parser.Combinators do
     [datetime(), date()]
     |> choice()
     |> label("date or datetime value")
+  end
+
+  def date_or_datetime_literal do
+    [datetime_literal_string(), date_literal_string()]
+    |> choice()
+    |> label("date or datetime literal")
+  end
+
+  def date_or_datetime_or_unix do
+    [datetime(), date(), unix_timestamp()]
+    |> choice()
+    |> label("date, datetime, or Unix timestamp value")
+  end
+
+  def timestamp_date_or_datetime_or_unix do
+    [timestamp_datetime(), date(), unix_timestamp()]
+    |> choice()
+    |> label("date, datetime, or Unix timestamp value")
   end
 
   def timestamp_shorthand_value do
@@ -491,9 +562,9 @@ defmodule Logflare.Lql.Parser.Combinators do
 
   def timestamp_value do
     choice([
-      range_operator(date_or_datetime()),
+      range_operator(timestamp_date_or_datetime_or_unix()),
       datetime_with_range(),
-      date_or_datetime(),
+      timestamp_date_or_datetime_or_unix(),
       timestamp_shorthand_value(),
       invalid_match_all_value()
     ])

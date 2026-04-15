@@ -2,6 +2,7 @@ defmodule Logflare.Google.CloudResourceManagerTest do
   use Logflare.DataCase
 
   alias Logflare.Google.CloudResourceManager
+  alias GoogleApi.CloudResourceManager.V1.Model
   alias GoogleApi.CloudResourceManager.V1.Model.Binding
 
   setup do
@@ -171,6 +172,141 @@ defmodule Logflare.Google.CloudResourceManagerTest do
       refute ExUnit.CaptureLog.capture_log(fn ->
                CloudResourceManager.set_iam_policy(async: false)
              end) =~ "marked as invalid"
+    end
+  end
+
+  describe "append_managed_sa_to_all_iam_projects/1" do
+    setup do
+      original_pool_size =
+        Application.get_env(:logflare, :bigquery_backend_adaptor)[
+          :managed_service_account_pool_size
+        ]
+
+      Application.put_env(:logflare, :bigquery_backend_adaptor,
+        managed_service_account_pool_size: 1
+      )
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :bigquery_backend_adaptor,
+          managed_service_account_pool_size: original_pool_size
+        )
+      end)
+
+      stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok,
+           %{
+             accounts: [
+               %GoogleApi.IAM.V1.Model.ServiceAccount{
+                 email: "logflare-managed-0@some-project.iam.gserviceaccount.com",
+                 name:
+                   "projects/some-project/serviceAccounts/logflare-managed-0@some-project.iam.gserviceaccount.com"
+               }
+             ],
+             nextPageToken: nil
+           }}
+      end)
+
+      :ok
+    end
+
+    test "calls set_iam_policy for primary project and each additional project" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_additional_projects: "extra-a, extra-b"
+        )
+
+      pid = self()
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, project_id, [body: _body] ->
+          send(pid, {:get_policy, project_id})
+          {:ok, %Model.Policy{bindings: []}}
+        end
+      )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, project_id, [body: body] ->
+          send(pid, {:set_policy, project_id})
+          {:ok, body.policy}
+        end
+      )
+
+      result = CloudResourceManager.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:ok, _} = result.primary
+      assert length(result.additional) == 2
+      assert Enum.all?(result.additional, fn {_, res} -> match?({:ok, _}, res) end)
+
+      assert_receive {:set_policy, "primary-project"}
+      assert_receive {:set_policy, "extra-a"}
+      assert_receive {:set_policy, "extra-b"}
+    end
+
+    test "with nil additional_projects only processes primary" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_additional_projects: nil
+        )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _project_id, [body: _body] ->
+          {:ok, %Model.Policy{bindings: []}}
+        end
+      )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_id, [body: body] ->
+          {:ok, body.policy}
+        end
+      )
+
+      result = CloudResourceManager.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:ok, _} = result.primary
+      assert [] = result.additional
+    end
+
+    test "with empty string additional_projects only processes primary" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_additional_projects: "  ,  "
+        )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _project_id, [body: _body] ->
+          {:ok, %Model.Policy{bindings: []}}
+        end
+      )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_id, [body: body] ->
+          {:ok, body.policy}
+        end
+      )
+
+      result = CloudResourceManager.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:ok, _} = result.primary
+      assert [] = result.additional
     end
   end
 

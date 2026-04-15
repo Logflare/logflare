@@ -65,7 +65,11 @@
         <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-2">
           <LogflareWeb.SearchLive.FormComponents.recommended_field_inputs fields={Logflare.Sources.Source.recommended_query_fields(@source)} id_prefix="recent-logs-field" />
           <div class="tw-order-2 tw-basis-full tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
-            {text_input(f, :querystring, placeholder: "404", class: "form-control tw-mt-0", autofocus: true)}
+            {text_input(f, :querystring,
+              placeholder: "404",
+              class: "form-control tw-mt-0 tw-border-[#282c34] tw-text-sm tw-h-8 tw-min-h-8 tw-max-h-8 tw-py-[3px] tw-bg-[#282c34] tw-font-mono tw-text-[#c4cad6] placeholder:tw-text-[#8c92a3] focus:tw-border-[#3e4451] focus:tw-bg-[#282c34] focus:tw-text-[#c4cad6]",
+              autofocus: true
+            )}
           </div>
         </div>
         {hidden_input(f, :tailing?, value: "true")}

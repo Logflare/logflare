@@ -104,7 +104,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   def insert_log_events_via_storage_write_api(log_events, opts) do
-    # convert log events to table rows
     context =
       Keyword.validate!(opts, [
         :project_id,
@@ -115,7 +114,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         :backend_id
       ])
 
-    # get table id
     table_id = format_table_name(opts[:source_token])
 
     arrow_data =
@@ -143,14 +141,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     OpenTelemetry.Tracer.with_span "ingest.bq_api_call", %{
       attributes: %{insert_method: :bq_storage_write}
     } do
-      GoogleApiClient.append_rows({:arrow, arrow_data}, context, table_id)
-      |> tap(fn
+      case GoogleApiClient.append_rows({:arrow, arrow_data}, context, table_id) do
         {:error, reason} ->
           OpenTelemetry.Tracer.set_status(:error, inspect(reason))
 
         _ ->
           :ok
-      end)
+      end
     end
   end
 
@@ -476,15 +473,18 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def update_iam_policy(user \\ nil) do
     CloudResourceManager.set_iam_policy(async: false)
 
-    if Map.get(user || %{}, :bigquery_project_id) do
-      # byob project, maybe append managed SA to policy
-      append_managed_sa_to_iam_policy(user)
+    if Map.get(user || %{}, :bigquery_project_id) ||
+         Map.get(user || %{}, :bigquery_additional_projects) do
+      # byob project or additional IAM projects, append managed SA to all policies
+      append_managed_sa_to_all_iam_projects(user)
     end
   end
 
   defdelegate get_iam_policy(user), to: CloudResourceManager
 
   defdelegate append_managed_sa_to_iam_policy(user), to: CloudResourceManager
+
+  defdelegate append_managed_sa_to_all_iam_projects(user), to: CloudResourceManager
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
   defdelegate get_conn(conn_type), to: GenUtils
