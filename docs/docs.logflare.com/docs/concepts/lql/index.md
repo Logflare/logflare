@@ -31,7 +31,7 @@ You can use data in metadata fields to limit your search. Reference your schema 
 | Field    | Filter                                  | Syntax                                                                      | Example                                                                                                           |
 | -------- | --------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Metadata | exact match                             | `path:value`                                                                | `m.response.status_code:500`                                                                                      |
-| Metadata | match float, integer or datetime values | `path:>=value` <br/> `path:>value` <br/> `path:<=value` <br/> `path:<value` | `m.response.status_code:>300` <br/> `m.response.status_code:<=400` <br/> `m.user.created_at:>2019-07-01T00:15:00` |
+| Metadata | match float, integer or datetime values | `path:>=value` <br/> `path:>value` <br/> `path:<=value` <br/> `path:<value` | `m.response.status_code:>300` <br/> `m.response.status_code:<=400` <br/> `m.user.created_at:>2019-07-01T00:15:00` <br/> `m.user.created_at:>=2026-03-17T14:47:02.000Z` <br/> `m.user.created_at:>=2026-03-17T14:47:02+02:00` <br/> `m.user.created_at:>=1710683222000` |
 | Metadata | match regex                             | `path:~regex`                                                               | `m.browser:~"Firefox 5\d"`                                                                                        |
 | Metadata | match regex or                          | <code>path:~"value1&#124;value2&#124;value3"</code>                         | <code>m.url:~"jpg$&#124;jpeg$&#124;png$"</code>                                                                   |
 | Metadata | match array includes                    | `path:@>value`                                                              | `m.user.roles:@>"new" subscriber"`                                                                                |
@@ -54,6 +54,9 @@ Timestamps will be automatically converted to UTC if Logflare is set to display 
 | Timestamp | date range                     | `t:2022-04-{07..09}`                                            |
 | Timestamp | datetime range                 | `t:2022-04-{07..09}T00:{00..40}:00`                             |
 | Timestamp | datetime range with subseconds | `t:2022-04-{07..09}T00:{00..40}:00.{001..314}`                  |
+| Timestamp | UTC ISO 8601 datetime          | `t:>2026-03-17T14:47:02.000Z`                                   |
+| Timestamp | offset ISO 8601 datetime       | `t:>2026-03-17T14:47:02+02:00` <br/> `t:<2026-03-17T14:47:02-02:00` |
+| Timestamp | Unix timestamp                 | `t:1710683222..1710684222` <br/> `t:1710683222000..1710684222000` <br/> `t:1710683222000000` _(microseconds are truncated to milliseconds; only 10, 13, and 16 digit Unix timestamps are accepted)_ |
 
 #### Chart Aggregations
 

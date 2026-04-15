@@ -296,6 +296,60 @@ defmodule Logflare.Lql.ParserTest do
                |> String.trim()
     end
 
+    test "timestamp filters support UTC offsets, Z suffixes, and Unix timestamps" do
+      qs = ~S|
+      t:>2026-03-17T14:47:02.000Z
+      t:>=2026-03-17T14:47:02+02:00
+      t:<2026-03-17T14:47:02-02:00
+      t:1710683222..1710683822
+      t:1710683222000..1710683822000
+      t:<=1710683222000000
+      |
+
+      {:ok, result} = Parser.parse(qs, @default_schema)
+      rules = Enum.filter(result, &(&1.path == "timestamp"))
+
+      assert Enum.map(rules, & &1.value) == [
+               ~N[2026-03-17 14:47:02.000],
+               ~N[2026-03-17 12:47:02],
+               ~N[2026-03-17 16:47:02],
+               nil,
+               nil,
+               ~N[2024-03-17 13:47:02.000]
+             ]
+
+      assert Enum.map(rules, & &1.values) == [
+               nil,
+               nil,
+               nil,
+               [~N[2024-03-17 13:47:02], ~N[2024-03-17 13:57:02]],
+               [~N[2024-03-17 13:47:02.000], ~N[2024-03-17 13:57:02.000]],
+               nil
+             ]
+
+      assert Enum.map(rules, & &1.modifiers) == [
+               %{explicit_timezone: true},
+               %{explicit_timezone: true},
+               %{explicit_timezone: true},
+               %{explicit_timezone: true},
+               %{explicit_timezone: true},
+               %{explicit_timezone: true}
+             ]
+
+      assert Lql.encode!(result) ==
+               "t:>2026-03-17T14:47:02 t:>=2026-03-17T12:47:02 t:<2026-03-17T16:47:02 t:2024-03-17T13:{47..57}:02 t:2024-03-17T13:{47..57}:02 t:<=2024-03-17T13:47:02"
+    end
+
+    test "timestamp filters reject ambiguous 14 and 15 digit Unix timestamps" do
+      assert {:error,
+              "Error while parsing timestamp filter value: expected ISO8601 string, Unix timestamp, range or shorthand, got '17106832220000'"} =
+               Parser.parse("t:17106832220000", @default_schema)
+
+      assert {:error,
+              "Error while parsing timestamp filter value: expected ISO8601 string, Unix timestamp, range or shorthand, got '171068322200000'"} =
+               Parser.parse("t:171068322200000", @default_schema)
+    end
+
     test "timestamp shorthands" do
       assert {:ok,
               [
@@ -308,7 +362,8 @@ defmodule Logflare.Lql.ParserTest do
               ]} = Parser.parse("timestamp:now", @default_schema)
 
       # use diff to reduce test flakiness
-      assert DateTime.diff(now_ndt(), now_out, :millisecond) |> abs() <= 150
+      assert NaiveDateTime.diff(to_naive(now_ndt()), to_naive(now_out), :millisecond) |> abs() <=
+               150
 
       for {qs, shorthand, start_value, end_value} <- [
             {"t:today", "today", today_dt(),
@@ -378,8 +433,12 @@ defmodule Logflare.Lql.ParserTest do
                 ]} = Parser.parse(qs, @default_schema)
 
         # use diff to reduce test flakiness
-        assert DateTime.diff(start_value, start_out, :millisecond) |> abs() <= 1500
-        assert DateTime.diff(end_value, end_out, :millisecond) |> abs() <= 1500
+        assert NaiveDateTime.diff(to_naive(start_value), to_naive(start_out), :millisecond)
+               |> abs() <=
+                 1500
+
+        assert NaiveDateTime.diff(to_naive(end_value), to_naive(end_out), :millisecond) |> abs() <=
+                 1500
       end
     end
 
@@ -621,7 +680,7 @@ defmodule Logflare.Lql.ParserTest do
                Parser.parse("m.nonexistent:value", @default_schema)
     end
 
-    test "handles naive_datetime fields without casting" do
+    test "casts naive_datetime fields from ISO8601 and Unix literals" do
       schema = build_schema(%{"metadata" => %{"test_field" => "value"}})
       mocked_typemap = %{"metadata.test_field" => :naive_datetime}
 
@@ -629,8 +688,64 @@ defmodule Logflare.Lql.ParserTest do
         mocked_typemap
       end)
 
-      assert {:ok, [%FilterRule{path: "metadata.test_field", value: "test_value"}]} =
+      assert {:ok,
+              [
+                %FilterRule{
+                  path: "metadata.test_field",
+                  operator: :>=,
+                  value: ~N[2026-03-17 12:47:02]
+                },
+                %FilterRule{
+                  path: "metadata.test_field",
+                  operator: :range,
+                  values: [~N[2024-03-17 13:47:02], ~N[2024-03-17 13:57:02]]
+                },
+                %FilterRule{
+                  path: "metadata.test_field",
+                  operator: :<=,
+                  value: ~N[2024-03-17 13:47:02.000]
+                }
+              ]} =
+               Parser.parse(
+                 "m.test_field:>=2026-03-17T14:47:02+02:00 m.test_field:1710683222..1710683822 m.test_field:<=1710683222000000",
+                 schema
+               )
+    end
+
+    test "returns error for invalid naive_datetime field values" do
+      schema = build_schema(%{"metadata" => %{"test_field" => "value"}})
+      mocked_typemap = %{"metadata.test_field" => :naive_datetime}
+
+      stub(Logflare.Google.BigQuery.SchemaUtils, :bq_schema_to_flat_typemap, fn _ ->
+        mocked_typemap
+      end)
+
+      assert {:error,
+              "Query syntax error: expected datetime for metadata.test_field, got: 'test_value'"} =
                Parser.parse("m.test_field:test_value", schema)
+    end
+
+    test "casts datetime fields and encodes them canonically" do
+      schema = build_schema(%{"metadata" => %{"created_at" => "value"}})
+      mocked_typemap = %{"metadata.created_at" => :datetime}
+
+      stub(Logflare.Google.BigQuery.SchemaUtils, :bq_schema_to_flat_typemap, fn _ ->
+        mocked_typemap
+      end)
+
+      assert {:ok, rules} =
+               Parser.parse(
+                 "m.created_at:>=2026-03-17T14:47:02.000Z m.created_at:<=1710683222000",
+                 schema
+               )
+
+      assert Enum.map(rules, & &1.value) == [
+               ~N[2026-03-17 14:47:02.000],
+               ~N[2024-03-17 13:47:02.000]
+             ]
+
+      assert Lql.encode!(rules) ==
+               "m.created_at:>=2026-03-17T14:47:02 m.created_at:<=2024-03-17T13:47:02"
     end
 
     test "returns field not found error for nil type fields" do
@@ -1052,6 +1167,9 @@ defmodule Logflare.Lql.ParserTest do
   def today_dt do
     Timex.today() |> Timex.to_datetime()
   end
+
+  def to_naive(%DateTime{} = value), do: DateTime.to_naive(value)
+  def to_naive(%NaiveDateTime{} = value), do: value
 
   def now_ndt do
     %{Timex.now() | microsecond: {0, 0}}
