@@ -1,1 +1,1 @@
-import_if_available Logflare.Utils.Debugging
+import_if_available(Logflare.Utils.Debugging)
