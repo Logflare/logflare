@@ -129,7 +129,7 @@ defmodule Logflare.TelemetryTest do
   end
 
   test "scheduler metrics" do
-    event = [:logflare, :system, :scheduler, :utilization]
+    event = [:logflare, :system, :scheduler]
     ref = :telemetry_test.attach_event_handlers(self(), [event])
     on_exit(fn -> :telemetry.detach(ref) end)
 
