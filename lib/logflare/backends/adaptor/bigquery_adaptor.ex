@@ -104,7 +104,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   def insert_log_events_via_storage_write_api(log_events, opts) do
-    # convert log events to table rows
     context =
       Keyword.validate!(opts, [
         :project_id,
@@ -115,7 +114,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         :backend_id
       ])
 
-    # get table id
     table_id = format_table_name(opts[:source_token])
 
     arrow_data =
@@ -143,14 +141,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     OpenTelemetry.Tracer.with_span "ingest.bq_api_call", %{
       attributes: %{insert_method: :bq_storage_write}
     } do
-      GoogleApiClient.append_rows({:arrow, arrow_data}, context, table_id)
-      |> tap(fn
+      case GoogleApiClient.append_rows({:arrow, arrow_data}, context, table_id) do
         {:error, reason} ->
           OpenTelemetry.Tracer.set_status(:error, inspect(reason))
 
         _ ->
           :ok
-      end)
+      end
     end
   end
 

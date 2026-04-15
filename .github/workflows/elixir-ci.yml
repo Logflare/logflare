@@ -8,6 +8,7 @@ on:
   pull_request:
     branches: ["**"]
     paths:
+      - "assets/**"
       - "lib/**"
       - "config/**"
       - "*.exs"
@@ -164,3 +165,22 @@ jobs:
 
       - name: Run ${{ matrix.commands.name }}
         run: ${{ matrix.commands.run }}
+
+  frontend:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix assets
+
+      - name: Run frontend unit tests
+        run: npm test --prefix assets

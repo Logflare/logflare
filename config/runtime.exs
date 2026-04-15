@@ -2,11 +2,14 @@ import Config
 
 alias Logflare.Utils
 
-active? = fn key ->
-  System.get_env(key, "false") in ["true", "1"]
+defmodule Env do
+  def get_boolean(env, default \\ false) when is_boolean(default) do
+    value = System.get_env(env)
+    if value, do: value |> String.downcase() |> String.to_existing_atom(), else: default
+  end
 end
 
-if config_env() == :test and active?.("E2E") do
+if config_env() == :test and Env.get_boolean("E2E") do
   # This configuration file is loaded only for the
   # end-to-end test environment and is executed
   # at runtime.
@@ -16,9 +19,9 @@ if config_env() == :test and active?.("E2E") do
     playwright: [
       browser: :chromium,
       executable_path: System.get_env("PLAYWRIGHT_CHROMIUM_PATH", ""),
-      trace: active?.("PW_TRACE"),
-      screenshot: active?.("PW_SCREENSHOT"),
-      js_logger: if(active?.("PW_JS_LOGGER"), do: :default, else: false),
+      trace: Env.get_boolean("PW_TRACE"),
+      screenshot: Env.get_boolean("PW_SCREENSHOT"),
+      js_logger: if(Env.get_boolean("PW_JS_LOGGER"), do: :default, else: false),
       timeout: :timer.seconds(40),
       browser_launch_timeout: 10_000
     ]
@@ -77,8 +80,7 @@ cache_stats =
   case System.get_env("LOGFLARE_CACHE_STATS") do
     # Keep the compile time value
     nil -> nil
-    "false" -> false
-    "true" -> true
+    val -> val |> String.downcase() |> String.to_existing_atom()
   end
 
 config :logflare,
@@ -86,8 +88,8 @@ config :logflare,
          node_shutdown_code: System.get_env("LOGFLARE_NODE_SHUTDOWN_CODE"),
          recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET"),
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
-         single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true",
-         supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE", "false") == "true",
+         single_tenant: Env.get_boolean("LOGFLARE_SINGLE_TENANT"),
+         supabase_mode: Env.get_boolean("LOGFLARE_SUPABASE_MODE"),
          public_access_token:
            System.get_env("LOGFLARE_PUBLIC_ACCESS_TOKEN") || System.get_env("LOGFLARE_API_KEY"),
          private_access_token: System.get_env("LOGFLARE_PRIVATE_ACCESS_TOKEN"),
@@ -96,7 +98,8 @@ config :logflare,
          encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED"),
          metadata: logflare_metadata,
          health: logflare_health,
-         http_connection_pools: http_connection_pools
+         http_connection_pools: http_connection_pools,
+         bq_write_api_pool_size: System.get_env("LOGFLARE_BQ_WRITE_API_POOL_SIZE")
        ]
        |> filter_nil_kv_pairs.()
 
@@ -142,7 +145,7 @@ config :logflare,
          live_view:
            [signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")]
            |> filter_nil_kv_pairs.(),
-         live_dashboard: System.get_env("LOGFLARE_ENABLE_LIVE_DASHBOARD", "false") == "true"
+         live_dashboard: Env.get_boolean("LOGFLARE_ENABLE_LIVE_DASHBOARD")
        )
 
 config :logflare,
@@ -195,7 +198,7 @@ config :logger,
         do: LogflareLogger.HttpBackend,
         else: nil
       ),
-      if(System.get_env("LOGFLARE_LOGGER_JSON") == "true", do: LoggerJSON, else: nil)
+      if(Env.get_boolean("LOGFLARE_LOGGER_JSON"), do: LoggerJSON, else: nil)
     ]
     |> Enum.filter(&(&1 != nil))
 
@@ -308,7 +311,7 @@ socket_options_for_url = fn
 end
 
 cond do
-  System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true" &&
+  Env.get_boolean("LOGFLARE_SINGLE_TENANT") &&
       not is_nil(System.get_env("POSTGRES_BACKEND_URL")) ->
     config :logflare,
            :postgres_backend_adapter,
@@ -331,7 +334,7 @@ cond do
 end
 
 if(
-  System.get_env("LOGFLARE_ENABLE_GRPC_SSL") == "true" &&
+  Env.get_boolean("LOGFLARE_ENABLE_GRPC_SSL") &&
     File.exists?("cert.pem") && File.exists?("cert.key")
 ) do
   config :logflare,
@@ -342,7 +345,7 @@ if(
 end
 
 if(
-  System.get_env("DB_SSL") == "true" && File.exists?("db-server-ca.pem") &&
+  Env.get_boolean("DB_SSL") && File.exists?("db-server-ca.pem") &&
     File.exists?("db-client-ca.pem") && File.exists?("db-client-key.pem")
 ) do
   config :logflare, Logflare.Repo,
@@ -460,7 +463,7 @@ config :syn,
   scopes: [:core, :ui] ++ syn_endpoints_partitions,
   event_handler: Logflare.SynEventHandler
 
-enable_alerting? = System.get_env("LOGFLARE_ALERTS_ENABLED", "true") == "true"
+enable_alerting? = Env.get_boolean("LOGFLARE_ALERTS_ENABLED", true)
 
 config :logflare, Oban,
   queues: [default: 10] ++ if(enable_alerting?, do: [alerts: 5], else: []),
