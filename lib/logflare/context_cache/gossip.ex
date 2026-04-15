@@ -2,14 +2,13 @@ defmodule Logflare.ContextCache.Gossip do
   @moduledoc """
   Distributes cache entries across cluster nodes.
 
-  When a local cache miss occurs and the value is fetched, this module multicasts
-  the data to peer nodes via `:erpc`. This populates peer caches to improve
-  cluster-wide hit rates and reduce database load. It includes logic to prevent
-  stale data from overwriting newer local records.
+  When a local cache miss occurs and the value is fetched, this module can be
+  used to multicast the data to a subset of peer nodes. This populates peer caches
+  to improve cluster-wide hit rates and reduce database load.
 
   ### Default Logging Handler
 
-  This module provides a default Telemetry handler that logs multicast and receive
+  This module provides a default Telemetry handler that logs "multicast" and "receive"
   events at appropriate log levels. To enable this logging, call `attach_logger/0`.
   To disable it, call `detach_logger/0`.
   """
@@ -102,7 +101,7 @@ defmodule Logflare.ContextCache.Gossip do
   It filters out:
   - `nil` or empty list values to prevent phantom "not found" states.
   - High-volume or ephemeral caches.
-  - Caches without clear primary key structures.
+  - Caches without clear primary key structures (auth and rules).
   """
   def multicast(cache, key, value)
 
