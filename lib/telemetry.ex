@@ -225,6 +225,26 @@ defmodule Logflare.Telemetry do
       ),
       counter("thousand_island.acceptor.spawn_error",
         description: "Count of client connection spawn errors"
+      ),
+      counter("logflare.context_cache_gossip.multicast.count",
+        event_name: "logflare.context_cache_gossip.multicast.stop",
+        tags: [:cache, :action],
+        description: "Total cache gossip multicast attempts"
+      ),
+      distribution("logflare.context_cache_gossip.multicast.stop.duration",
+        tags: [:cache, :action],
+        unit: {:native, :millisecond},
+        description: "Latency of dispatching the cache gossip multicast"
+      ),
+      counter("logflare.context_cache_gossip.receive.count",
+        event_name: "logflare.context_cache_gossip.receive.stop",
+        tags: [:cache, :action],
+        description: "Total cache gossip casts received and their outcome (cached or dropped)"
+      ),
+      distribution("logflare.context_cache_gossip.receive.stop.duration",
+        tags: [:cache, :action],
+        unit: {:native, :millisecond},
+        description: "Latency of processing an incoming cache gossip cast"
       )
     ]
 

@@ -58,7 +58,8 @@ jobs:
           - name: Compilation Warnings
             run: mix test.compile
           - name: Tests
-            run: mix do ecto.create + ecto.migrate + test.coverage.ci
+            # we start epmd for clustered tests
+            run: epmd -daemon; mix do ecto.create + ecto.migrate + test.coverage.ci
           # - name: Security - Sobelow Code Scan
           #   run: mix test.security
           - name: Typing check
