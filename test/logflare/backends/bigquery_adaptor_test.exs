@@ -277,10 +277,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         {:ok, %GRPC.Client.Stream{}}
       end)
 
-      GRPC.Stub
-      |> stub(:connect, fn _url, _keywords ->
+      Logflare.Networking.GrpcPool
+      |> stub(:get_channel, fn _name ->
         {:ok, %GRPC.Channel{}}
       end)
+
+      GRPC.Stub
       |> stub(:send_request, fn stream, _request ->
         {:ok, stream}
       end)

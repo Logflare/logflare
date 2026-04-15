@@ -22,7 +22,7 @@ defmodule LogflareWeb.Endpoint do
   plug(Plug.Static,
     at: "/",
     from: :logflare,
-    gzip: !code_reloading?,
+    gzip: !code_reloading? and Application.compile_env(:logflare, :static_gzip, true),
     only: ~w(css fonts images js favicon.ico robots.txt worker.js manifest.json),
     only_matching: ~w(manifest)
   )
