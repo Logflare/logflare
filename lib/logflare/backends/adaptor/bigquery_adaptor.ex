@@ -473,15 +473,18 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def update_iam_policy(user \\ nil) do
     CloudResourceManager.set_iam_policy(async: false)
 
-    if Map.get(user || %{}, :bigquery_project_id) do
-      # byob project, maybe append managed SA to policy
-      append_managed_sa_to_iam_policy(user)
+    if Map.get(user || %{}, :bigquery_project_id) ||
+         Map.get(user || %{}, :bigquery_additional_projects) do
+      # byob project or additional IAM projects, append managed SA to all policies
+      append_managed_sa_to_all_iam_projects(user)
     end
   end
 
   defdelegate get_iam_policy(user), to: CloudResourceManager
 
   defdelegate append_managed_sa_to_iam_policy(user), to: CloudResourceManager
+
+  defdelegate append_managed_sa_to_all_iam_projects(user), to: CloudResourceManager
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
   defdelegate get_conn(conn_type), to: GenUtils

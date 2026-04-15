@@ -217,4 +217,41 @@ defmodule Logflare.UsersTest do
       assert {:error, "Missing email or provider_uid"} = Users.insert_or_update_user(params)
     end
   end
+
+  describe "User.parse_bigquery_additional_projects/1" do
+    test "returns empty list for nil" do
+      user = %User{bigquery_additional_projects: nil}
+      assert [] = User.parse_bigquery_additional_projects(user)
+    end
+
+    test "parses comma-separated project IDs" do
+      user = %User{bigquery_additional_projects: "proj-a,proj-b,proj-c"}
+      assert ["proj-a", "proj-b", "proj-c"] = User.parse_bigquery_additional_projects(user)
+    end
+
+    test "trims whitespace around project IDs" do
+      user = %User{bigquery_additional_projects: " proj-a , proj-b "}
+      assert ["proj-a", "proj-b"] = User.parse_bigquery_additional_projects(user)
+    end
+
+    test "filters empty entries from extra commas or whitespace" do
+      user = %User{bigquery_additional_projects: "proj-a,,  ,proj-b"}
+      assert ["proj-a", "proj-b"] = User.parse_bigquery_additional_projects(user)
+    end
+  end
+
+  describe "User.user_allowed_changeset/2 bigquery_additional_projects" do
+    test "accepts bigquery_additional_projects", %{user: user} do
+      changeset =
+        User.user_allowed_changeset(user, %{bigquery_additional_projects: "proj-a, proj-b"})
+
+      assert changeset.changes[:bigquery_additional_projects] == "proj-a, proj-b"
+    end
+
+    test "clears bigquery_additional_projects when set to nil from non-nil value", %{user: user} do
+      user = %{user | bigquery_additional_projects: "proj-a"}
+      changeset = User.user_allowed_changeset(user, %{bigquery_additional_projects: nil})
+      assert changeset.changes[:bigquery_additional_projects] == nil
+    end
+  end
 end

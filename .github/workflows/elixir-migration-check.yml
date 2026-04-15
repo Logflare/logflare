@@ -15,9 +15,9 @@ jobs:
     name: Get versions
     runs-on: ubuntu-latest
     outputs:
-      elixir:  ${{ steps.v.outputs.elixir }}
-      erlang:  ${{ steps.v.outputs.erlang }}
-      rust:    ${{ steps.v.outputs.rust }}
+      elixir: ${{ steps.v.outputs.elixir }}
+      erlang: ${{ steps.v.outputs.erlang }}
+      rust: ${{ steps.v.outputs.rust }}
     steps:
       - uses: actions/checkout@v6
       - name: Read versions from .tool-versions
@@ -33,7 +33,7 @@ jobs:
     needs: versions
     services:
       postgres:
-        image: bitnamilegacy/postgresql:13.15.0
+        image: bitnamilegacy/postgresql:15
         ports:
           - 5432:5432
         env:
@@ -73,6 +73,15 @@ jobs:
       SHELL: /bin/bash
     steps:
       - uses: actions/checkout@v6
+
+      - name: Prepare Telegraf Output Dir
+        run: |
+          mkdir -p db/telegraf_output
+          touch db/telegraf_output/metrics.out
+          chmod 666 db/telegraf_output/metrics.out
+
+      - name: Start Telegraf
+        run: docker compose up -d telegraf
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1

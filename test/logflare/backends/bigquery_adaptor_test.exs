@@ -773,6 +773,152 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
              end)
     end
 
+    test "append_managed_sa_to_all_iam_projects/1 appends managed SAs to primary and additional projects" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_additional_projects: "extra-project-1, extra-project-2"
+        )
+
+      pid = self()
+
+      # Expect get_iam_policy called 3 times (primary + 2 additional)
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, project_id, [body: _body] ->
+          send(pid, {:get_policy, project_id})
+
+          {:ok,
+           %Model.Policy{
+             bindings: [
+               %Model.Binding{members: ["user:original@user.com"], role: "roles/bigquery.jobUser"}
+             ]
+           }}
+        end
+      )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, project_id, [body: body] ->
+          send(pid, {:set_policy, project_id})
+          {:ok, body.policy}
+        end
+      )
+
+      stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok,
+           %{
+             accounts: [
+               %GoogleApi.IAM.V1.Model.ServiceAccount{
+                 email: "logflare-managed-0@some-project.iam.gserviceaccount.com",
+                 name:
+                   "projects/some-project/serviceAccounts/logflare-managed-0@some-project.iam.gserviceaccount.com"
+               }
+             ],
+             nextPageToken: nil
+           }}
+      end)
+
+      result = BigQueryAdaptor.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:ok, _} = result.primary
+
+      additional_project_ids =
+        result.additional |> Enum.map(fn {project_id, _} -> project_id end)
+
+      assert "extra-project-1" in additional_project_ids
+      assert "extra-project-2" in additional_project_ids
+
+      assert Enum.all?(result.additional, fn {_, res} -> match?({:ok, _}, res) end)
+
+      # verify set_iam_policy was called for all three projects
+      assert_receive {:set_policy, "primary-project"}
+      assert_receive {:set_policy, "extra-project-1"}
+      assert_receive {:set_policy, "extra-project-2"}
+    end
+
+    test "append_managed_sa_to_all_iam_projects/1 with nil additional_projects only calls primary" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_additional_projects: nil
+        )
+
+      pid = self()
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _project_id, [body: _body] ->
+          {:ok,
+           %Model.Policy{
+             bindings: []
+           }}
+        end
+      )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, project_id, [body: body] ->
+          send(pid, {:set_policy, project_id})
+          {:ok, body.policy}
+        end
+      )
+
+      stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok,
+           %{
+             accounts: [
+               %GoogleApi.IAM.V1.Model.ServiceAccount{
+                 email: "logflare-managed-0@some-project.iam.gserviceaccount.com",
+                 name:
+                   "projects/some-project/serviceAccounts/logflare-managed-0@some-project.iam.gserviceaccount.com"
+               }
+             ],
+             nextPageToken: nil
+           }}
+      end)
+
+      result = BigQueryAdaptor.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:ok, _} = result.primary
+      assert [] = result.additional
+
+      assert_receive {:set_policy, "primary-project"}
+      refute_receive {:set_policy, _}
+    end
+
+    test "append_managed_sa_to_all_iam_projects/1 skips additional projects when managed SAs disabled" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: false,
+          bigquery_additional_projects: "extra-project-1"
+        )
+
+      reject(
+        &GoogleApi.CloudResourceManager.V1.Api.Projects.cloudresourcemanager_projects_get_iam_policy/3
+      )
+
+      reject(
+        &GoogleApi.CloudResourceManager.V1.Api.Projects.cloudresourcemanager_projects_set_iam_policy/3
+      )
+
+      result = BigQueryAdaptor.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:error, :managed_service_accounts_disabled} = result.primary
+
+      assert [{"extra-project-1", {:error, :managed_service_accounts_disabled}}] =
+               result.additional
+    end
+
     test "gen_utils get_conn/1 when managed sa pool is enabled and user has managed sa enabled" do
       pid = self()
 
