@@ -1,5 +1,18 @@
 defmodule Logflare.ContextCache.Gossip do
-  @moduledoc false
+  @moduledoc """
+  Distributes cache entries across cluster nodes.
+
+  When a local cache miss occurs and the value is fetched, this module multicasts
+  the data to peer nodes via `:erpc`. This populates peer caches to improve
+  cluster-wide hit rates and reduce database load. It includes logic to prevent
+  stale data from overwriting newer local records.
+
+  ### Default Logging Handler
+
+  This module provides a default Telemetry handler that logs multicast and receive
+  events at appropriate log levels. To enable this logging, call `attach_logger/0`.
+  To disable it, call `detach_logger/0`.
+  """
 
   require Logger
   require Cachex.Spec
@@ -10,7 +23,9 @@ defmodule Logflare.ContextCache.Gossip do
 
   @telemetry_handler_id "context-cache-gossip-logger"
 
-  # this logger can be attached to provide visibility into gossip decisions and dropped multicasts
+  @doc """
+  Attaches a default Telemetry handler for logging.
+  """
   def attach_logger do
     events = [
       [:logflare, :context_cache_gossip, :multicast, :stop],
@@ -25,6 +40,9 @@ defmodule Logflare.ContextCache.Gossip do
     )
   end
 
+  @doc """
+  Undoes `attach_logger/0` by detaching the attached logger.
+  """
   def detach_logger do
     :telemetry.detach(@telemetry_handler_id)
   end
@@ -77,6 +95,16 @@ defmodule Logflare.ContextCache.Gossip do
         end
     end
   end
+
+  @doc """
+  Distributes a cache key and value to a subset of cluster peers.
+
+  It filters out:
+  - `nil` or empty list values to prevent phantom "not found" states.
+  - High-volume or ephemeral caches.
+  - Caches without clear primary key structures.
+  """
+  def multicast(cache, key, value)
 
   def multicast(Cachex.Spec.cache(name: cache), key, value) do
     multicast(cache, key, value)
@@ -160,10 +188,11 @@ defmodule Logflare.ContextCache.Gossip do
   defp pkeys_from_cached_value(%{id: id}), do: [id]
   defp pkeys_from_cached_value(_value), do: []
 
-  @doc false
+  @doc """
+  Writes a short-lived marker for a primary key indicating it was recently updated or deleted.
+  Incoming cache multicasts check this tombstone cache to determine if their payload could be stale.
+  """
   def record_tombstones(context_pkeys) when is_list(context_pkeys) do
-    # Writes a short-lived marker for a primary key indicating it was recently updated or deleted.
-    # Incoming cache multicasts check this tombstone cache to determine if their payload could be stale.
     Enum.each(context_pkeys, fn
       # don't need to tombstone new records
       {_context, :not_found} ->
