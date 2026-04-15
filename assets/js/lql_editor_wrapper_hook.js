@@ -25,7 +25,7 @@ const LqlEditorWrapper = {
     this._editor = null;
     this._editorDisposables = [];
     this._pendingServerValue = null;
-    this._isSettingValueFromServer = false;
+    this._lastServerSetValue = null;
     this._handleSubmitRequest = () => {
       this.submitSearch();
     };
@@ -68,8 +68,12 @@ const LqlEditorWrapper = {
 
       this._editorDisposables = [
         standaloneEditor.onDidChangeModelContent(() => {
-          if (this._isSettingValueFromServer) return;
           const value = standaloneEditor.getValue();
+          if (this._lastServerSetValue !== null && value === this._lastServerSetValue) {
+            this._lastServerSetValue = null;
+            return;
+          }
+          this._lastServerSetValue = null;
           this.pushEvent("querystring_changed", { querystring: value });
         }),
         standaloneEditor.onDidFocusEditorText(() => {
@@ -123,7 +127,7 @@ const LqlEditorWrapper = {
       "editor.contrib.suggestController"
     );
 
-    // TDD check: temporarily remove guard to verify tests catch the bug
+    this._lastServerSetValue = value;
     this._editor.setValue(value);
 
     if (hadTextFocus && model) {
