@@ -30,6 +30,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
 
   @default_level Map.fetch!(@levels, "info")
 
+  @iv_bytes 12
+  @tag_bytes 16
+  @aes_overhead @iv_bytes + @tag_bytes
+
   def format(log_event, config) do
     cipher_key = config[:cipher_key]
     structured_data = config[:structured_data]
@@ -136,14 +140,13 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     # `maybe_truncate/2` will slice the body to "", resulting in
     # a valid syslog frame with an empty message body.
     max = max(max_length - headers_length, 0)
-    # Base64 expansion is 4/3. IV + Tag is 28 bytes.
-    if base64?, do: max(div(max, 4) * 3 - 28, 0), else: max
+    if base64?, do: max(div(max, 4) * 3 - @aes_overhead, 0), else: max
   end
 
   defp maybe_truncate({_message, _message_length} = keep, :infinity), do: keep
 
   defp maybe_truncate({_message, message_length} = keep, allowed_length)
-       when message_length <= allowed_length do
+       when is_integer(allowed_length) and message_length <= allowed_length do
     keep
   end
 
@@ -160,7 +163,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
   end
 
   defp encrypt(data, key) do
-    iv = :crypto.strong_rand_bytes(12)
+    iv = :crypto.strong_rand_bytes(@iv_bytes)
     {ciphertext, tag} = :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, data, "syslog", true)
     Base.encode64(iv <> tag <> ciphertext)
   end
