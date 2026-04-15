@@ -132,6 +132,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
   defp allowed_length(nil = _no_max_length, _headers_length, _base64?), do: :infinity
 
   defp allowed_length(max_length, headers_length, base64?) do
+    # If headers exceed the max length, `max` becomes 0.
+    # `maybe_truncate/2` will slice the body to "", resulting in
+    # a valid syslog frame with an empty message body.
     max = max(max_length - headers_length, 0)
     # Base64 expansion is 4/3. IV + Tag is 28 bytes.
     if base64?, do: max(div(max, 4) * 3 - 28, 0), else: max
