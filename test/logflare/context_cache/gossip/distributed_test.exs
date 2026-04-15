@@ -8,7 +8,9 @@ defmodule Logflare.ContextCache.Gossip.DistributedTest do
   @moduletag :cluster
 
   setup_all do
-    if not Node.alive?() do
+    start_net_kernel? = not Node.alive?()
+
+    if start_net_kernel? do
       case :net_kernel.start(:"test@127.0.0.1", %{}) do
         {:ok, _} ->
           :ok
@@ -27,6 +29,13 @@ defmodule Logflare.ContextCache.Gossip.DistributedTest do
           """
       end
     end
+
+    on_exit(fn ->
+      # only stop net_kernel if we were the ones who started it
+      if start_net_kernel? do
+        :net_kernel.stop()
+      end
+    end)
 
     original_context_cache_gossip = Application.get_env(:logflare, :context_cache_gossip)
 
