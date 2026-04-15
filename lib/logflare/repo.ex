@@ -5,6 +5,7 @@ defmodule Logflare.Repo do
 
   use Scrivener
   require Logger
+  alias Logflare.Repo.Replicas
 
   def get_uptime do
     query = "SELECT EXTRACT(epoch FROM (current_timestamp - pg_postmaster_start_time()));"
@@ -27,6 +28,29 @@ defmodule Logflare.Repo do
       {:error, err} ->
         Logger.warning("Could not get Postgres uptime, error: #{err}")
         0
+    end
+  end
+
+  defp fetch_read_replicas! do
+    Application.fetch_env!(:logflare, :read_replicas)
+  end
+
+  defp random_read_replica do
+    case fetch_read_replicas!() do
+      [_ | _] = replicas -> Enum.random(replicas)
+      [] -> nil
+    end
+  end
+
+  @doc """
+  Applies the given MFA using a randomly selected read replica connection pool.
+  Uses the primary database if no read replicas are configured.
+  """
+  def apply_with_read_replica(m, f, a) do
+    if replica = random_read_replica() do
+      Replicas.apply(replica, m, f, a)
+    else
+      apply(m, f, a)
     end
   end
 end

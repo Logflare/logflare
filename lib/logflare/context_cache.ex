@@ -50,7 +50,9 @@ defmodule Logflare.ContextCache do
     cache = cache_name(context)
     cache_key = {fun, args}
 
-    fetch(cache, cache_key, fn -> apply(context, fun, args) end)
+    fetch(cache, cache_key, fn ->
+      Logflare.Repo.apply_with_read_replica(context, fun, args)
+    end)
   end
 
   @doc """
