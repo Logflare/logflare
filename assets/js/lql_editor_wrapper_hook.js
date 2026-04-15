@@ -19,12 +19,13 @@ const LqlEditorWrapper = {
   mounted() {
     this._schemaFields = parseSchemaFields(this.el.dataset.schemaFieldsJson);
     this._suggestedSearches = parseSuggestedSearches(
-      this.el.dataset.suggestedSearchesJson,
+      this.el.dataset.suggestedSearchesJson
     );
     this._completionDisposable = null;
     this._editor = null;
     this._editorDisposables = [];
     this._pendingServerValue = null;
+    this._isSettingValueFromServer = false;
     this._handleSubmitRequest = () => {
       this.submitSearch();
     };
@@ -54,7 +55,7 @@ const LqlEditorWrapper = {
       this._completionDisposable = registerLqlCompletionProvider(
         monaco,
         () => this._schemaFields,
-        () => this._suggestedSearches,
+        () => this._suggestedSearches
       );
 
       standaloneEditor.addCommand(
@@ -62,11 +63,12 @@ const LqlEditorWrapper = {
         () => {
           this.submitSearch();
         },
-        "!suggestWidgetVisible",
+        "!suggestWidgetVisible"
       );
 
       this._editorDisposables = [
         standaloneEditor.onDidChangeModelContent(() => {
+          if (this._isSettingValueFromServer) return;
           const value = standaloneEditor.getValue();
           this.pushEvent("querystring_changed", { querystring: value });
         }),
@@ -86,7 +88,7 @@ const LqlEditorWrapper = {
   updated() {
     this._schemaFields = parseSchemaFields(this.el.dataset.schemaFieldsJson);
     this._suggestedSearches = parseSuggestedSearches(
-      this.el.dataset.suggestedSearchesJson,
+      this.el.dataset.suggestedSearchesJson
     );
     const value = this.el.dataset.querystring ?? "";
 
@@ -118,9 +120,10 @@ const LqlEditorWrapper = {
     const hadTextFocus = this._editor.hasTextFocus();
     const model = this._editor?.getModel?.();
     const suggestController = this._editor?.getContribution?.(
-      "editor.contrib.suggestController",
+      "editor.contrib.suggestController"
     );
 
+    // TDD check: temporarily remove guard to verify tests catch the bug
     this._editor.setValue(value);
 
     if (hadTextFocus && model) {
