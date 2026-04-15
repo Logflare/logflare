@@ -1,0 +1,76 @@
+defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
+  use ExUnit.Case, async: true
+  use ExUnitProperties
+
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.Syslog
+  alias Logflare.LogEvent
+
+  describe "message truncation" do
+    test "truncates plaintext message to exactly max_message_bytes" do
+      body_text = String.duplicate("a", 200)
+
+      [length_str, syslog_msg] =
+        body_text
+        |> build_log_event()
+        |> format_to_binary(%{max_message_bytes: 150})
+        |> unframe()
+
+      assert String.to_integer(length_str) == byte_size(syslog_msg)
+      assert byte_size(syslog_msg) == 150
+    end
+
+    property "plaintext truncation respects max_message_bytes" do
+      check all max_bytes <- integer(200..65_535),
+                body_text <- string(:utf8, min_length: 10, max_length: 100_000) do
+        [length_str, syslog_msg] =
+          body_text
+          |> build_log_event()
+          |> format_to_binary(%{max_message_bytes: max_bytes})
+          |> unframe()
+
+        assert String.to_integer(length_str) == byte_size(syslog_msg)
+        assert byte_size(syslog_msg) <= max_bytes
+      end
+    end
+
+    property "ciphertext truncation guarantees payload fits inside max_message_bytes" do
+      check all max_bytes <- integer(200..65_535),
+                body_text <- string(:utf8, min_length: 10, max_length: 100_000),
+                cipher_key <- binary(length: 32) do
+        [length_str, syslog_msg] =
+          body_text
+          |> build_log_event()
+          |> format_to_binary(%{max_message_bytes: max_bytes, cipher_key: cipher_key})
+          |> unframe()
+
+        assert String.to_integer(length_str) == byte_size(syslog_msg)
+        assert byte_size(syslog_msg) <= max_bytes
+      end
+    end
+  end
+
+  defp build_log_event(msg) do
+    %LogEvent{
+      id: Ecto.UUID.generate(),
+      body: %{
+        "timestamp" => System.system_time(:microsecond),
+        "message" => msg,
+        "level" => "info",
+        "host" => "localhost",
+        "app_name" => "test_app",
+        "procid" => "1234"
+      }
+    }
+  end
+
+  defp format_to_binary(log_event, config) do
+    log_event
+    |> Syslog.format(config)
+    |> IO.iodata_to_binary()
+  end
+
+  # splits octet-counting prefix (MSG-LEN and the space) from the actual message
+  defp unframe(payload) do
+    String.split(payload, " ", parts: 2)
+  end
+end
