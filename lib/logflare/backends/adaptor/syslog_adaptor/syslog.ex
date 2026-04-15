@@ -33,7 +33,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
   def format(log_event, config) do
     cipher_key = config[:cipher_key]
     structured_data = config[:structured_data]
+    max_message_length = config[:max_message_length]
+
     %LogEvent{id: id, body: body} = log_event
+
+    IO.inspect(log_event)
 
     timestamp =
       body
@@ -63,15 +67,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     procid = get_in(metadata["procid"]) || body["procid"]
     msgid = id |> Ecto.UUID.dump!() |> Base.encode32(padding: false)
 
-    msg = Jason.encode_to_iodata!(body)
-    msg = if cipher_key, do: encrypt(msg, cipher_key), else: msg
-
     structured_data = if structured_data, do: structured_data, else: @empty
 
     # https://datatracker.ietf.org/doc/html/rfc5424#section-6
     pri = 16 * 8 + severity_code(level)
 
-    syslog_msg = [
+    headers = [
       # PRI VERSION SP
       "<#{pri}>1 ",
       # TIMESTAMP
@@ -98,9 +99,23 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
       structured_data,
       # SP
       ?\s
-      # MSG
-      | msg
     ]
+
+    headers_length = IO.iodata_length(headers)
+
+    msg = Jason.encode_to_iodata!(body)
+
+    msg =
+      if max_message_length do
+        msg_length = IO.iodata_length(msg)
+        truncate_body(msg, max_message_length, headers_length, cipher_key != nil)
+      else
+        msg
+      end
+
+    msg = if cipher_key, do: encrypt(msg, cipher_key), else: msg
+
+    syslog_msg = [headers | msg]
 
     [Integer.to_string(IO.iodata_length(syslog_msg)), ?\s | syslog_msg]
   end
