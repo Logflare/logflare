@@ -33,9 +33,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
     end
 
     property "ciphertext truncation guarantees payload fits inside max_message_bytes" do
+      cipher_key = :crypto.strong_rand_bytes(32)
+
       check all max_bytes <- integer(200..65_535),
-                body_text <- string(:utf8, min_length: 10, max_length: 100_000),
-                cipher_key <- binary(length: 32) do
+                body_text <- string(:utf8, min_length: 10, max_length: 100_000) do
         [length_str, syslog_msg] =
           build(:log_event, message: body_text)
           |> format_to_binary(%{max_message_bytes: max_bytes, cipher_key: cipher_key})
@@ -43,6 +44,33 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
 
         assert String.to_integer(length_str) == byte_size(syslog_msg)
         assert byte_size(syslog_msg) <= max_bytes
+
+        # and now we ensure we can decrypt
+
+        assert [
+                 _pri_version,
+                 _timestamp,
+                 _hostname,
+                 _app_name,
+                 _procid,
+                 _msgid,
+                 _structured_data,
+                 encrypted_message
+               ] = String.split(syslog_msg, " ")
+
+        assert <<iv::12-bytes, tag::16-bytes, ciphertext::bytes>> =
+                 Base.decode64!(encrypted_message)
+
+        assert <<_::bytes>> =
+                 :crypto.crypto_one_time_aead(
+                   :aes_256_gcm,
+                   cipher_key,
+                   iv,
+                   ciphertext,
+                   "syslog",
+                   tag,
+                   false
+                 )
       end
     end
   end
