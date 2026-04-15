@@ -37,8 +37,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
 
     %LogEvent{id: id, body: body} = log_event
 
-    IO.inspect(log_event)
-
     timestamp =
       body
       |> Map.fetch!("timestamp")
@@ -67,8 +65,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     procid = get_in(metadata["procid"]) || body["procid"]
     msgid = id |> Ecto.UUID.dump!() |> Base.encode32(padding: false)
 
-    structured_data = if structured_data, do: structured_data, else: @empty
-
     # https://datatracker.ietf.org/doc/html/rfc5424#section-6
     pri = 16 * 8 + severity_code(level)
 
@@ -96,14 +92,15 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
       # SP
       ?\s,
       # STRUCTURED-DATA
-      structured_data,
+      structured_data || @empty,
       # SP
       ?\s
     ]
 
     message = Jason.encode_to_iodata!(body)
+
     headers_length = IO.iodata_length(headers)
-    message_length = IO.iodata_length(msg)
+    message_length = IO.iodata_length(message)
 
     {message, message_length} =
       if max_message_length do
