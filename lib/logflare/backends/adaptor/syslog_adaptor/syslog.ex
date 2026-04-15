@@ -101,23 +101,29 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
       ?\s
     ]
 
+    message = Jason.encode_to_iodata!(body)
     headers_length = IO.iodata_length(headers)
+    message_length = IO.iodata_length(msg)
 
-    msg = Jason.encode_to_iodata!(body)
-
-    msg =
+    {message, message_length} =
       if max_message_length do
-        msg_length = IO.iodata_length(msg)
-        truncate_body(msg, max_message_length, headers_length, cipher_key != nil)
+        allowed_length = max(max_message_length - headers_length, 0)
+
+        if message_length > allowed_length do
+          message = truncate(message, allowed_length, _will_be_base64 = cipher_key != nil)
+          {message, IO.iodata_length(message)}
+        end
+      end || {message, message_length}
+
+    {message, message_length} =
+      if cipher_key do
+        message = encrypt(message, cipher_key)
+        {message, IO.iodata_length(message)}
       else
-        msg
+        {message, message_length}
       end
 
-    msg = if cipher_key, do: encrypt(msg, cipher_key), else: msg
-
-    syslog_msg = [headers | msg]
-
-    [Integer.to_string(IO.iodata_length(syslog_msg)), ?\s | syslog_msg]
+    [Integer.to_string(headers_length + message_length), ?\s, headers | message]
   end
 
   defp severity_code(level) when level in 0..7, do: level
@@ -143,5 +149,19 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     iv = :crypto.strong_rand_bytes(12)
     {ciphertext, tag} = :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, data, "syslog", true)
     Base.encode64(iv <> tag <> ciphertext)
+  end
+
+  defp truncate(message, max_length, will_be_base64) do
+    size =
+      if will_be_base64 do
+        # Base64 expansion is 4/3. IV + Tag is 28 bytes.
+        max(div(max_length, 4) * 3 - 28, 0)
+      else
+        max_length
+      end
+
+    message
+    |> IO.iodata_to_binary()
+    |> binary_part(0, size)
   end
 end
