@@ -33,7 +33,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
   def format(log_event, config) do
     cipher_key = config[:cipher_key]
     structured_data = config[:structured_data]
-    max_message_length = config[:max_message_length]
+    max_length = config[:max_message_bytes]
 
     %LogEvent{id: id, body: body} = log_event
 
@@ -102,15 +102,27 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     headers_length = IO.iodata_length(headers)
     message_length = IO.iodata_length(message)
 
-    {message, message_length} =
-      if max_message_length do
-        allowed_length = max(max_message_length - headers_length, 0)
+    max_message_length =
+      if max_length do
+        max_message_length = max(max_length - headers_length, 0)
 
-        if message_length > allowed_length do
-          message = truncate(message, allowed_length, _will_be_base64 = cipher_key != nil)
-          {message, IO.iodata_length(message)}
+        if cipher_key do
+          # Base64 expansion is 4/3. IV + Tag is 28 bytes.
+          max(div(max_message_length, 4) * 3 - 28, 0)
+        else
+          max_message_length
         end
-      end || {message, message_length}
+      else
+        message_length
+      end
+
+    {message, message_length} =
+      if message_length > max_message_length do
+        message = truncate(message, max_message_length)
+        {message, IO.iodata_length(message)}
+      else
+        {message, message_length}
+      end
 
     {message, message_length} =
       if cipher_key do
@@ -148,15 +160,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     Base.encode64(iv <> tag <> ciphertext)
   end
 
-  defp truncate(message, max_length, will_be_base64) do
-    size =
-      if will_be_base64 do
-        # Base64 expansion is 4/3. IV + Tag is 28 bytes.
-        max(div(max_length, 4) * 3 - 28, 0)
-      else
-        max_length
-      end
-
+  defp truncate(message, size) do
     message
     |> IO.iodata_to_binary()
     |> binary_part(0, size)

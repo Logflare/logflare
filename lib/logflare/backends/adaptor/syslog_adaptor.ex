@@ -20,7 +20,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     field(:client_cert, String.t())
     field(:client_key, String.t())
     field(:structured_data, String.t())
-    field(:max_message_length, pos_integer())
+    field(:max_message_bytes, pos_integer())
   end
 
   @impl Logflare.Backends.Adaptor
@@ -57,7 +57,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
        client_cert: :string,
        client_key: :string,
        structured_data: :string,
-       max_message_length: :integer
+       max_message_bytes: :integer
      }}
     |> cast(params, [
       :tls,
@@ -68,7 +68,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
       :client_cert,
       :client_key,
       :structured_data,
-      :max_message_length
+      :max_message_bytes
     ])
   end
 
@@ -82,7 +82,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     |> validate_certificate(:client_cert)
     |> validate_private_key(:client_key)
     |> validate_structured_data()
-    |> validate_number(:max_message_length, greater_than: 1)
+    |> validate_number(:max_message_bytes, greater_than: 1)
   end
 
   @impl Logflare.Backends.Adaptor
