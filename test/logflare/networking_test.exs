@@ -8,12 +8,17 @@ defmodule Logflare.NetworkingTest do
     TestUtils.setup_single_tenant()
 
     test "returns bigquery and clickhouse connection pools" do
-      assert Enum.map(Networking.pools(), fn {Finch, opts} ->
-               Keyword.get(opts, :name)
-             end) == [
+      finch_names =
+        Networking.pools()
+        |> Enum.filter(fn
+          {mod, _} -> mod == Finch
+          _ -> false
+        end)
+        |> Enum.map(fn {Finch, opts} -> Keyword.get(opts, :name) end)
+
+      assert finch_names == [
                Logflare.FinchGoth,
                Logflare.FinchDefaultHttp1,
-               Logflare.FinchBQStorageWrite,
                Logflare.FinchIngest,
                Logflare.FinchQuery,
                Logflare.FinchDefault,
