@@ -427,6 +427,13 @@
             {checkbox(f_config, :tls, id: "tls")}
           </div>
           <div class="form-group">
+            {label(f_config, :max_message_bytes, "Max Message Size (Bytes)")}
+            {number_input(f_config, :max_message_bytes, class: "form-control")}
+            <small class="text-muted">
+              Optional maximum size of the syslog message in bytes. Prevents downstream receivers from rejecting large payloads (e.g., 65536).
+            </small>
+          </div>
+          <div class="form-group">
             {label(f_config, :structured_data, "Structured Data (RFC5424)")}
             {textarea(f_config, :structured_data, class: "form-control")}
             <small class="text-muted">
