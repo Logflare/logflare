@@ -44,4 +44,7 @@ RUN cargo version
 # pre-fetch cargo dependencies for layer caching
 COPY Cargo.toml Cargo.lock ./
 COPY --parents native/*/Cargo.toml ./
+# TODO: Instead of creating an empty src/lib.rs, replace `cargo fetch --locked` with `cargo build --dependencies-only`
+# once https://github.com/rust-lang/cargo/issues/2644 is resolved.
+RUN for dir in native/*/; do mkdir -p "$dir/src" && touch "$dir/src/lib.rs"; done
 RUN cargo fetch --locked
