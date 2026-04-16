@@ -533,7 +533,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   @spec negated?(map()) :: boolean()
   defp negated?(modifiers), do: Map.get(modifiers, :negate)
 
-  @spec field_expr(String.t()) :: Macro.t()
+  @spec field_expr(String.t()) :: Ecto.Query.dynamic_expr()
   defp field_expr(field_path) do
     case split_map_path(field_path) do
       {:map_access, column, key} ->
