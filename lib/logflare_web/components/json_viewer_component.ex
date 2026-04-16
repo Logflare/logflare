@@ -6,6 +6,12 @@ defmodule LogflareWeb.JSONViewerComponent do
 
   alias Phoenix.LiveView.JS
 
+  @promoted_fields %{
+    "id" => 0,
+    "timestamp" => 1,
+    "event_message" => 2
+  }
+
   @doc """
   ## Examples
 
@@ -15,63 +21,33 @@ defmodule LogflareWeb.JSONViewerComponent do
   attr :data, :any, required: true, doc: "List or map to render as a tree"
   attr :class, :string, default: "", doc: "Additional CSS classes"
   attr :id, :string, default: nil, doc: "Optional prefix for DOM ids"
-
-  attr :promoted_fields, :list,
-    default: ~w(id timestamp event_message),
-    doc: "Top-level fields to render first, in the given order"
-
   attr :rest, :global, doc: "Global attributes"
 
   slot :action
 
   def json_viewer(assigns) do
-    {promoted_entries, remaining_entries} =
+    data =
       case assigns.data do
         list when is_list(list) ->
-          {[], Enum.with_index(list, fn v, index -> {to_string(index), v} end)}
+          Enum.with_index(list, fn v, index -> {to_string(index), v} end)
 
         map when is_map(map) ->
-          partition_promoted_fields(map, assigns.promoted_fields)
+          last = @promoted_fields |> Map.keys() |> length
+
+          map
+          |> Enum.sort_by(fn {key, _value} ->
+            key = to_string(key)
+            {Map.get(@promoted_fields, key, last), key}
+          end)
       end
 
-    assigns =
-      assigns
-      |> assign(:promoted_entries, promoted_entries)
-      |> assign(:remaining_entries, remaining_entries)
+    assigns = assigns |> assign(:data, data)
 
     ~H"""
     <div id={@id} class={["tw-font-mono tw-text-sm", @class]} {@rest}>
-      <.tree_node :for={{k, v} <- @promoted_entries} key={k} label={k} value={v} path={[]} key_path={[]} id={@id} action={@action} />
-      <.tree_node :for={{k, v} <- @remaining_entries} key={k} label={k} value={v} path={[]} key_path={[]} id={@id} action={@action} />
+      <.tree_node :for={{k, v} <- @data} key={k} label={k} value={v} path={[]} key_path={[]} id={@id} action={@action} />
     </div>
     """
-  end
-
-  @spec partition_promoted_fields(map(), [String.t()]) ::
-          {[{String.t(), any()}], [{any(), any()}]}
-  defp partition_promoted_fields(map, promoted_fields)
-       when is_map(map) and is_list(promoted_fields) do
-    {promoted_lookup, remaining_entries} =
-      map
-      |> Map.to_list()
-      |> Enum.reduce({%{}, []}, fn {key, value}, {promoted, remaining} ->
-        if key in promoted_fields do
-          {Map.put(promoted, key, value), remaining}
-        else
-          {promoted, [{key, value} | remaining]}
-        end
-      end)
-
-    promoted_entries =
-      promoted_fields
-      |> Enum.flat_map(fn field ->
-        case Map.fetch(promoted_lookup, field) do
-          {:ok, value} -> [{field, value}]
-          :error -> []
-        end
-      end)
-
-    {promoted_entries, Enum.reverse(remaining_entries)}
   end
 
   defp tree_node(%{value: _value, kind: _kind, path: path, key: _key} = assigns) do

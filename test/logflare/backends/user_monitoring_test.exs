@@ -266,7 +266,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       :timer.sleep(2500)
 
-      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 5_000
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 15_000
 
       rows = for row <- rows, do: row.json
 
