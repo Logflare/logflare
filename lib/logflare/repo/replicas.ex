@@ -43,10 +43,7 @@ defmodule Logflare.Repo.Replicas do
   end
 
   @doc """
-  Applies the given MFA using the connection pool for `replica`.
-
-  Temporarily sets the process-local dynamic repo to the pool registered under
-  `replica`, restoring the previous value afterwards.
+  Applies the given MFA using the connection pool for a replica, identified by its URL.
   """
   def apply(url, m, f, a) do
     prev_repo = Logflare.Repo.get_dynamic_repo()

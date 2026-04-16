@@ -63,7 +63,7 @@ defmodule Logflare.RepoTest do
         Repo.apply_with_read_replica(Kernel, :/, [1, 0])
       end
 
-      # still back to the default
+      # and then it's back to the default
       assert Repo.get_dynamic_repo() == Repo
     end
   end
