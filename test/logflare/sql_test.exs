@@ -587,6 +587,44 @@ defmodule Logflare.SqlTest do
       assert String.downcase(err) =~ "table not found in cte"
     end
 
+    test "sandboxed LQL chart queries transform correctly through full pipeline" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_ch_table")
+      _backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+
+      cte_query = "with src as (select timestamp from my_ch_table) select timestamp from src"
+
+      for {lql, expected_fragment} <- [
+            {"c:count(*) c:group_by(t::hour)", "count"},
+            {"c:count(*) c:group_by(t::minute)", "count"},
+            {"c:count(*) c:group_by(t::second)", "count"},
+            {"c:count(*) c:group_by(t::day)", "count"},
+            {"c:avg(m.latency) c:group_by(t::minute)", "avg"},
+            {"c:sum(m.bytes) c:group_by(t::day)", "sum"},
+            {"c:max(m.response_time) c:group_by(t::second)", "max"},
+            {"c:p50(m.duration) c:group_by(t::minute)", "quantile"},
+            {"c:p95(m.duration) c:group_by(t::hour)", "quantile"},
+            {"c:p99(m.duration) c:group_by(t::day)", "quantile"}
+          ] do
+        {:ok, consumer_sql} = Logflare.Lql.to_sandboxed_sql(lql, "src", :clickhouse)
+
+        assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_sql}, user),
+               "Sql.transform failed for LQL: #{lql}\nConsumer SQL: #{consumer_sql}"
+
+        assert String.downcase(result) =~ "with src as",
+               "Missing CTE in transformed result for: #{lql}\nResult: #{result}"
+
+        assert String.downcase(result) =~ expected_fragment,
+               "Missing #{expected_fragment} in transformed result for: #{lql}\nResult: #{result}"
+
+        assert String.downcase(result) =~ "group by",
+               "Missing GROUP BY in transformed result for: #{lql}\nResult: #{result}"
+
+        assert String.downcase(result) =~ "order by",
+               "Missing ORDER BY in transformed result for: #{lql}\nResult: #{result}"
+      end
+    end
+
     test "sandboxed queries reject table references not in CTE" do
       user = insert(:user)
       source = insert(:source, user: user, name: "my_ch_table")
