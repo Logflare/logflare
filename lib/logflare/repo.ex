@@ -43,6 +43,17 @@ defmodule Logflare.Repo do
   end
 
   @doc """
+  Returns the current database role based on the dynamic repo state.
+  """
+  def current_role do
+    case get_dynamic_repo() do
+      __MODULE__ -> "primary"
+      pid when is_pid(pid) -> "replica"
+      _ -> "unknown"
+    end
+  end
+
+  @doc """
   Applies the given MFA using a randomly selected read replica connection pool.
   Uses the primary database if no read replicas are configured.
   """

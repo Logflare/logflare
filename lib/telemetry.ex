@@ -458,13 +458,6 @@ defmodule Logflare.Telemetry do
   end
 
   defp add_repo_role(metadata) do
-    role =
-      case Logflare.Repo.get_dynamic_repo() do
-        Logflare.Repo -> "primary"
-        pid when is_pid(pid) -> "replica"
-        _ -> "unknown"
-      end
-
-    Map.put(metadata, :role, role)
+    Map.put(metadata, :role, Logflare.Repo.current_role())
   end
 end
