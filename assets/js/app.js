@@ -94,7 +94,6 @@ let liveSocket = new LiveSocket("/live", Socket, {
   },
 });
 liveSocket.enableDebug()
-liveSocket.enableLatencySim(750)
 
 liveSocket.connect();
 window.initLiveReact = initLiveReact;
