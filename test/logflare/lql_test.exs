@@ -11,6 +11,7 @@ defmodule Logflare.LqlTest do
   alias Logflare.Lql.Rules.FromRule
   alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sql.Parser, as: SqlParser
 
   describe "apply_filter_rules/3" do
     test "applies filter rules to query using BigQuery backend transformer by default" do
@@ -736,6 +737,28 @@ defmodule Logflare.LqlTest do
       refute sql =~ ~r/SELECT.*\*/i
       assert String.downcase(sql) =~ "from"
       assert String.downcase(sql) =~ "my_table"
+    end
+
+    test "ClickHouse top-level schema field filters generate parseable SQL" do
+      for {lql, expected_fragments} <- [
+            {"severity_text:ERROR", ["severity_text", "'ERROR'"]},
+            {"source_name:edge_function_logs", ["source_name", "'edge_function_logs'"]},
+            {"severity_text:ERROR source_name:edge_function_logs",
+             ["severity_text", "source_name"]},
+            {"severity_number:>10", ["severity_number"]},
+            {"service_name:auth_service", ["service_name", "'auth_service'"]},
+            {"trace_id:abc123", ["trace_id", "'abc123'"]}
+          ] do
+        {:ok, sql} = Lql.to_sandboxed_sql(lql, "otel_logs", :clickhouse)
+
+        for fragment <- expected_fragments do
+          assert sql =~ fragment,
+                 "Missing `#{fragment}` in generated SQL for LQL `#{lql}`\nSQL: #{sql}"
+        end
+
+        assert {:ok, _ast} = SqlParser.parse("clickhouse", sql),
+               "Generated SQL failed to parse for LQL `#{lql}`\nSQL: #{sql}"
+      end
     end
 
     test "`FromRule` overrides `cte_table_name` parameter" do

@@ -528,6 +528,43 @@ defmodule Logflare.SqlTest do
       assert String.downcase(result) =~ "select b from cte2"
     end
 
+    test "sandboxed queries apply LQL filters on ClickHouse top-level schema fields" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_ch_table")
+      _backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+
+      cte_query =
+        "with src as (select timestamp, severity_text, source_name from my_ch_table) select timestamp, severity_text, source_name from src"
+
+      cases = [
+        {"severity_text:ERROR", "'ERROR'", :filter_only},
+        {"source_name:edge_function_logs", "'edge_function_logs'", :filter_only},
+        {"c:count(*) c:group_by(t::minute) severity_text:ERROR", "'ERROR'", :chart},
+        {"c:count(*) c:group_by(t::hour) source_name:edge_function_logs", "'edge_function_logs'",
+         :chart},
+        {"c:count(*) c:group_by(t::minute) severity_text:ERROR source_name:edge_function_logs",
+         "'edge_function_logs'", :chart}
+      ]
+
+      for {lql, expected_value_literal, shape} <- cases do
+        {:ok, consumer_sql} = Logflare.Lql.to_sandboxed_sql(lql, "src", :clickhouse)
+
+        assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_sql}, user),
+               "Sql.transform failed for LQL: #{lql}\nConsumer SQL: #{consumer_sql}"
+
+        assert String.downcase(result) =~ "with src as"
+        assert String.downcase(result) =~ "where"
+
+        assert result =~ expected_value_literal,
+               "Missing #{expected_value_literal} in transformed result for LQL: #{lql}\nResult: #{result}"
+
+        if shape == :chart do
+          assert String.downcase(result) =~ "group by",
+                 "Missing GROUP BY in transformed chart result for LQL: #{lql}\nResult: #{result}"
+        end
+      end
+    end
+
     test "sandboxed queries cannot access sources/tables outside of CTE scope" do
       user = insert(:user)
       source = insert(:source, user: user, name: "my_ch_table")
