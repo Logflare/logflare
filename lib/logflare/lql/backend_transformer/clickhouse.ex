@@ -17,6 +17,9 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
 
   @special_top_level ~w(event_message timestamp id)
 
+  # ClickHouse Map(String, String) columns that require bracket access syntax.
+  @map_columns ~w(log_attributes resource_attributes scope_attributes attributes span_attributes)
+
   # macros used for generating Ecto query fragments
   defmacrop ch_interval_second(ts_field) do
     quote do: fragment("toStartOfInterval(?, INTERVAL 1 second)", unquote(ts_field))
@@ -79,6 +82,16 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
     end)
   end
 
+  @doc false
+  @spec split_map_path(String.t()) ::
+          {:map_access, String.t(), String.t()} | {:column, String.t()}
+  def split_map_path(field_path) do
+    case String.split(field_path, ".", parts: 2) do
+      [column, key] when column in @map_columns -> {:map_access, column, key}
+      _ -> {:column, field_path}
+    end
+  end
+
   @impl true
   def handle_nested_field_access(query, _field_path) do
     # ClickHouse handles nested fields natively without joins
@@ -87,18 +100,17 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
 
   @impl true
   def transform_filter_rule(filter_rule, _transformation_data) do
-    field_path = filter_rule.path
-
     if not is_nil(filter_rule.values) and filter_rule.operator == :range do
       [lvalue, rvalue] = filter_rule.values
+      field = field_expr(filter_rule.path)
 
       dynamic(
         [l],
-        fragment("? BETWEEN ? AND ?", field(l, ^field_path), ^lvalue, ^rvalue)
+        fragment("? BETWEEN ? AND ?", ^field, ^lvalue, ^rvalue)
       )
     else
       dynamic_where_filter_rule(
-        field_path,
+        filter_rule.path,
         filter_rule.operator,
         filter_rule.value,
         filter_rule.modifiers
@@ -453,8 +465,8 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   defp where_match_filter_rule(query, rule) do
     if not is_nil(rule.values) and rule.operator == :range do
       [lvalue, rvalue] = rule.values
-      field_path = rule.path
-      where(query, [l], fragment("? BETWEEN ? AND ?", field(l, ^field_path), ^lvalue, ^rvalue))
+      field = field_expr(rule.path)
+      where(query, [l], fragment("? BETWEEN ? AND ?", ^field, ^lvalue, ^rvalue))
     else
       where(
         query,
@@ -470,50 +482,48 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
           modifiers :: map()
         ) :: Query.dynamic_expr()
   defp dynamic_where_filter_rule(field_path, operator, value, modifiers) do
+    field = field_expr(field_path)
+
     clause =
       case operator do
         :> ->
-          dynamic([l], field(l, ^field_path) > ^value)
+          dynamic([l], ^field > ^value)
 
         :>= ->
-          dynamic([l], field(l, ^field_path) >= ^value)
+          dynamic([l], ^field >= ^value)
 
         :< ->
-          dynamic([l], field(l, ^field_path) < ^value)
+          dynamic([l], ^field < ^value)
 
         :<= ->
-          dynamic([l], field(l, ^field_path) <= ^value)
+          dynamic([l], ^field <= ^value)
 
         := ->
           case value do
-            :NULL -> dynamic([l], fragment("? IS NULL", field(l, ^field_path)))
-            _ -> dynamic([l], field(l, ^field_path) == ^value)
+            :NULL -> dynamic([l], fragment("? IS NULL", ^field))
+            _ -> dynamic([l], ^field == ^value)
           end
 
         :"~" ->
-          # ClickHouse uses match() function for regex
-          dynamic([l], fragment("match(?, ?)", field(l, ^field_path), ^value))
+          dynamic([l], fragment("match(?, ?)", ^field, ^value))
 
         :string_contains ->
-          # ClickHouse uses position() function for string search
-          dynamic([l], fragment("position(?, ?) > 0", field(l, ^field_path), ^value))
+          dynamic([l], fragment("position(?, ?) > 0", ^field, ^value))
 
         :list_includes ->
-          # ClickHouse uses has() function for array membership
-          dynamic([l], fragment("has(?, ?)", field(l, ^field_path), ^value))
+          dynamic([l], fragment("has(?, ?)", ^field, ^value))
 
         :list_includes_regexp ->
-          # ClickHouse uses arrayExists with lambda for regex matching in arrays
           dynamic(
             [l],
-            fragment("arrayExists(x -> match(x, ?), ?)", ^value, field(l, ^field_path))
+            fragment("arrayExists(x -> match(x, ?), ?)", ^value, ^field)
           )
       end
 
     if negated?(modifiers) do
       case {operator, value} do
         {:=, :NULL} -> dynamic([l], not (^clause))
-        {_, _} -> dynamic([l], fragment("? IS NULL", field(l, ^field_path)) or not (^clause))
+        {_, _} -> dynamic([l], fragment("? IS NULL", ^field) or not (^clause))
       end
     else
       clause
@@ -523,11 +533,31 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   @spec negated?(map()) :: boolean()
   defp negated?(modifiers), do: Map.get(modifiers, :negate)
 
+  @spec field_expr(String.t()) :: Ecto.Query.dynamic_expr()
+  defp field_expr(field_path) do
+    case split_map_path(field_path) do
+      {:map_access, column, key} ->
+        dynamic([l], fragment("?[?]", field(l, ^column), ^key))
+
+      {:column, column} ->
+        dynamic([l], field(l, ^column))
+    end
+  end
+
   @spec build_combined_select(Query.t(), select_rules :: [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
     Enum.reduce(select_rules, query, fn %{path: path, alias: alias}, acc_query ->
       path_or_alias = if is_binary(alias), do: alias, else: String.replace(path, ".", "_")
-      select_merge(acc_query, [l], %{^path_or_alias => field(l, ^path)})
+
+      case split_map_path(path) do
+        {:map_access, column, key} ->
+          select_merge(acc_query, [l], %{
+            ^path_or_alias => fragment("?[?]", field(l, ^column), ^key)
+          })
+
+        {:column, _column} ->
+          select_merge(acc_query, [l], %{^path_or_alias => field(l, ^path)})
+      end
     end)
   end
 end

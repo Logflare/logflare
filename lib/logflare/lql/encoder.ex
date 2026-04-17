@@ -85,16 +85,16 @@ defmodule Logflare.Lql.Encoder do
          path: "timestamp",
          operator: :range,
          values: [lv, rv],
-         modifiers: _mods
+         modifiers: mods
        }) do
-    "t:#{to_datetime_with_range(lv, rv)}"
+    "t:#{to_datetime_with_range(lv, rv, mods)}"
   end
 
   defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: %Date{} = v}),
     do: "t:#{op}#{v}"
 
-  defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: v}) do
-    "t:#{op}#{format_filter_value(v)}"
+  defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: v, modifiers: mods}) do
+    "t:#{op}#{format_timestamp_filter_value(v, mods)}"
   end
 
   defp to_fragment(%FilterRule{
@@ -247,6 +247,18 @@ defmodule Logflare.Lql.Encoder do
     do: NaiveDateTime.to_iso8601(%{value | microsecond: {0, 0}})
 
   defp format_filter_value(%NaiveDateTime{} = value), do: NaiveDateTime.to_iso8601(value)
+
+  defp format_timestamp_filter_value(value, %{explicit_timezone: true}) do
+    format_filter_value(value) <> "Z"
+  end
+
+  defp format_timestamp_filter_value(value, _mods), do: format_filter_value(value)
+
+  def to_datetime_with_range(ldt, rdt, %{explicit_timezone: true}) do
+    to_datetime_with_range(ldt, rdt) <> "Z"
+  end
+
+  def to_datetime_with_range(ldt, rdt, _mods), do: to_datetime_with_range(ldt, rdt)
 
   def to_datetime_with_range(%Date{} = ldt, %Date{} = rdt) do
     mapper_fn = fn period -> timestamp_mapper(ldt, rdt, period) end
