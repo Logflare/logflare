@@ -1015,6 +1015,48 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert query =~ ~r"..\.testing"
     end
 
+    test "log event modal - inspect link", %{conn: conn, user: user} do
+      schema = TestUtils.build_bq_schema(%{"testing" => "string"})
+      source = insert(:source, user: user)
+      insert(:source_schema, source: source, bigquery_schema: schema)
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some modal message",
+           "testing" => "modal123",
+           "id" => "some-uuid"
+         })}
+      end)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "testing:modal123"}}")
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      view
+      |> TestUtils.wait_for_render("li:first-of-type a[phx-value-log-event-id='some-uuid']")
+
+      view
+      |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
+      |> render_click()
+
+      TestUtils.retry_assert(fn ->
+        assert render(view) =~ "inspect"
+      end)
+
+      view
+      |> element("#log-event-viewer a", "inspect")
+      |> render_click()
+
+      to = assert_patch(view)
+
+      assert to =~ ~r|^/sources/#{source.id}/search\?querystring=|
+      assert to =~ "tailing%3F=false"
+      refute has_element?(view, "#log-event-viewer")
+    end
+
     test "log event modal - quick filter button appends filter to search", %{
       conn: conn,
       source: source
@@ -1211,6 +1253,27 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert get_view_assigns(view).querystring =~ "error"
       assert get_view_assigns(view).querystring =~ "t:2020-04-20T00:{01..02}:00"
+    end
+
+    test "preserves Z suffixes from query params", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live(
+          conn,
+          Routes.live_path(conn, SearchLV, source,
+            querystring:
+              "t:>2026-04-10T03:18:15Z t:<2026-04-10T03:19:15Z c:count(*) c:group_by(t::second)",
+            tailing?: false
+          )
+        )
+
+      querystring =
+        view
+        |> TestUtils.wait_for_render("#lql-editor-hook")
+        |> render()
+        |> find_querystring()
+
+      assert querystring =~ "t:>2026-04-10T03:18:15Z"
+      assert querystring =~ "t:<2026-04-10T03:19:15Z"
     end
   end
 

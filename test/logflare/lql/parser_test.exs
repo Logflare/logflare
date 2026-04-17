@@ -301,43 +301,63 @@ defmodule Logflare.Lql.ParserTest do
       t:>2026-03-17T14:47:02.000Z
       t:>=2026-03-17T14:47:02+02:00
       t:<2026-03-17T14:47:02-02:00
-      t:1710683222..1710683822
-      t:1710683222000..1710683822000
       t:<=1710683222000000
       |
 
       {:ok, result} = Parser.parse(qs, @default_schema)
       rules = Enum.filter(result, &(&1.path == "timestamp"))
 
-      assert Enum.map(rules, & &1.value) == [
-               ~N[2026-03-17 14:47:02.000],
-               ~N[2026-03-17 12:47:02],
-               ~N[2026-03-17 16:47:02],
-               nil,
-               nil,
-               ~N[2024-03-17 13:47:02.000]
-             ]
-
-      assert Enum.map(rules, & &1.values) == [
-               nil,
-               nil,
-               nil,
-               [~N[2024-03-17 13:47:02], ~N[2024-03-17 13:57:02]],
-               [~N[2024-03-17 13:47:02.000], ~N[2024-03-17 13:57:02.000]],
-               nil
-             ]
-
-      assert Enum.map(rules, & &1.modifiers) == [
-               %{explicit_timezone: true},
-               %{explicit_timezone: true},
-               %{explicit_timezone: true},
-               %{explicit_timezone: true},
-               %{explicit_timezone: true},
-               %{explicit_timezone: true}
-             ]
+      assert [
+               %FilterRule{
+                 value: ~N[2026-03-17 14:47:02.000],
+                 values: nil,
+                 modifiers: %{explicit_timezone: true}
+               },
+               %FilterRule{
+                 value: ~N[2026-03-17 12:47:02],
+                 values: nil,
+                 modifiers: %{explicit_timezone: true}
+               },
+               %FilterRule{
+                 value: ~N[2026-03-17 16:47:02],
+                 values: nil,
+                 modifiers: %{explicit_timezone: true}
+               },
+               %FilterRule{
+                 value: ~N[2024-03-17 13:47:02.000],
+                 values: nil,
+                 modifiers: %{explicit_timezone: true}
+               }
+             ] = rules
 
       assert Lql.encode!(result) ==
-               "t:>2026-03-17T14:47:02 t:>=2026-03-17T12:47:02 t:<2026-03-17T16:47:02 t:2024-03-17T13:{47..57}:02 t:2024-03-17T13:{47..57}:02 t:<=2024-03-17T13:47:02"
+               "t:>2026-03-17T14:47:02Z t:>=2026-03-17T12:47:02Z t:<2026-03-17T16:47:02Z t:<=2024-03-17T13:47:02Z"
+    end
+
+    test "timestamp filters support Unix timestamp ranges" do
+      qs = ~S|
+      t:1710683222..1710683822
+      t:1710683222000..1710683822000
+      |
+
+      {:ok, result} = Parser.parse(qs, @default_schema)
+      rules = Enum.filter(result, &(&1.path == "timestamp"))
+
+      assert [
+               %FilterRule{
+                 value: nil,
+                 values: [~N[2024-03-17 13:47:02], ~N[2024-03-17 13:57:02]],
+                 modifiers: %{explicit_timezone: true}
+               },
+               %FilterRule{
+                 value: nil,
+                 values: [~N[2024-03-17 13:47:02.000], ~N[2024-03-17 13:57:02.000]],
+                 modifiers: %{explicit_timezone: true}
+               }
+             ] = rules
+
+      assert Lql.encode!(result) ==
+               "t:2024-03-17T13:{47..57}:02Z t:2024-03-17T13:{47..57}:02Z"
     end
 
     test "timestamp filters reject ambiguous 14 and 15 digit Unix timestamps" do

@@ -16,6 +16,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
+  alias Logflare.Lql.Rules.FilterRule
 
   doctest ClickHouseAdaptor
 
@@ -560,6 +562,64 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
         assert [%{"count" => 1}] = query_result
       end
+    end
+  end
+
+  describe "LQL query integration" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} =
+        setup_clickhouse_test()
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+      [source: source, backend: backend]
+    end
+
+    test "dot-key filter produces valid ClickHouse Map access query", %{
+      source: source,
+      backend: backend
+    } do
+      log_events = [
+        build_mapped_log_event(
+          source: source,
+          message: "dot-key match",
+          body: %{"metadata" => %{"parsed.backend_type" => "client"}}
+        ),
+        build_mapped_log_event(
+          source: source,
+          message: "dot-key no match",
+          body: %{"metadata" => %{"parsed.backend_type" => "server"}}
+        )
+      ]
+
+      :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
+      Process.sleep(100)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      filter_rule =
+        FilterRule.build(
+          path: "log_attributes.parsed.backend_type",
+          operator: :=,
+          value: "client",
+          modifiers: %{}
+        )
+
+      query =
+        from(l in table_name,
+          select: l.event_message
+        )
+        |> ClickHouseLQLTransformer.apply_filter_rules_to_query(
+          [filter_rule],
+          []
+        )
+
+      {:ok, %QueryResult{rows: rows}} = ClickHouseAdaptor.execute_query(backend, query, [])
+
+      assert [%{"event_message" => "dot-key match"}] = rows
     end
   end
 
