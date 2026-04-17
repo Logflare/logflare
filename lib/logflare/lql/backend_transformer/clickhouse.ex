@@ -339,7 +339,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
     query
     |> select([t], %{
       timestamp: ch_interval_second(field(t, ^timestamp_field)),
-      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+      count: fragment("quantile(?)(?)", ^percentile_value, field(t, ^field_path))
     })
     |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
     |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
@@ -352,7 +352,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
     query
     |> select([t], %{
       timestamp: ch_interval_minute(field(t, ^timestamp_field)),
-      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+      count: fragment("quantile(?)(?)", ^percentile_value, field(t, ^field_path))
     })
     |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
     |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
@@ -365,7 +365,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
     query
     |> select([t], %{
       timestamp: ch_interval_hour(field(t, ^timestamp_field)),
-      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+      count: fragment("quantile(?)(?)", ^percentile_value, field(t, ^field_path))
     })
     |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
     |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
@@ -378,7 +378,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
     query
     |> select([t], %{
       timestamp: ch_interval_day(field(t, ^timestamp_field)),
-      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+      count: fragment("quantile(?)(?)", ^percentile_value, field(t, ^field_path))
     })
     |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
     |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
