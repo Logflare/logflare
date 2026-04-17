@@ -535,24 +535,17 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   @spec negated?(map()) :: boolean()
   defp negated?(modifiers), do: Map.get(modifiers, :negate)
 
-  @spec field_expr(String.t()) :: Ecto.Query.dynamic_expr()
-  defp field_expr(field_path) do
-    case split_map_path(field_path) do
-      {:map_access, column, key} ->
-        dynamic([l], fragment("?[?]", field(l, ^column), ^key))
-
-      {:column, column} ->
-        dynamic([l], field(l, ^column))
-    end
-  end
+  @numeric_comparison_operators [:>, :<, :>=, :<=, :=]
 
   @spec coerced_field_expr(String.t(), atom(), any()) :: Ecto.Query.dynamic_expr()
   defp coerced_field_expr(field_path, operator, value) do
-    base = field_expr(field_path)
-
     case split_map_path(field_path) do
-      {:map_access, _column, _key} -> maybe_coerce_map_value(base, operator, value)
-      {:column, _column} -> base
+      {:map_access, column, key} ->
+        base = dynamic([l], fragment("?[?]", field(l, ^column), ^key))
+        maybe_coerce_map_value(base, operator, value)
+
+      {:column, column} ->
+        dynamic([l], field(l, ^column))
     end
   end
 
@@ -562,7 +555,8 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
     dynamic([l], fragment("toFloat64OrNull(?)", ^base))
   end
 
-  defp maybe_coerce_map_value(base, _operator, value) when is_number(value) do
+  defp maybe_coerce_map_value(base, operator, value)
+       when operator in @numeric_comparison_operators and is_number(value) do
     dynamic([l], fragment("toFloat64OrNull(?)", ^base))
   end
 

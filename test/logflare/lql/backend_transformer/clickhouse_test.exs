@@ -293,13 +293,14 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
 
     test "does not coerce when value is string or column is non-Map" do
       cases = [
-        {"string value on Map dot-key", "log_attributes.parsed.backend_type", "client"},
-        {"numeric value on non-Map column", "severity_number", 10}
+        {"string value on Map dot-key", "log_attributes.parsed.backend_type", :=, "client"},
+        {"numeric value on non-Map column", "severity_number", :>, 10},
+        {"regex operator with numeric value", "log_attributes.foo", :"~", 5},
+        {"string_contains with numeric value", "log_attributes.foo", :string_contains, 5},
+        {"list_includes with numeric value", "log_attributes.foo", :list_includes, 5}
       ]
 
-      for {label, path, value} <- cases do
-        op = if is_binary(value), do: :=, else: :>
-
+      for {label, path, op, value} <- cases do
         filter_rule =
           FilterRule.build(path: path, operator: op, value: value, modifiers: %{})
 
