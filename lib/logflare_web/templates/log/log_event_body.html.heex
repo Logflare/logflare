@@ -13,11 +13,8 @@
         </div>
         <div class="tw-text-xs">
           <%= if @local_timezone do %>
-            <.link to={
-              Routes.live_path(LogflareWeb.Endpoint, LogflareWeb.Source.SearchLV, @source,
-                querystring: "t:>#{Timex.format!(Timex.shift(@local_timestamp, seconds: -30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} t:<#{Timex.format!(Timex.shift(@local_timestamp, seconds: 30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} c:count(*) c:group_by(t::second)",
-                tailing?: false
-              )
+            <.link patch={
+              ~p"/sources/#{@source}/search?#{%{querystring: "t:>#{Timex.format!(Timex.shift(@local_timestamp, seconds: -30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} t:<#{Timex.format!(Timex.shift(@local_timestamp, seconds: 30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} c:count(*) c:group_by(t::second)", tailing?: false}}"
             }>
               <i class="fas fa-search tw-mr-1 tw-w-2"></i> inspect
             </.link>
