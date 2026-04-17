@@ -4,6 +4,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
   import Ecto.Query
 
   alias Ecto.Query.DynamicExpr
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Lql.BackendTransformer.ClickHouse
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
@@ -250,6 +251,99 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
     end
   end
 
+  describe "transform_filter_rule/2 with numeric values on Map column dot-keys" do
+    test "coerces Map value with toFloat64OrNull across comparison operators and int/float values" do
+      cases = [
+        {":> int", "log_attributes.response_time", :>, 100, "> 100"},
+        {":< int", "log_attributes.response_time", :<, 500, "< 500"},
+        {":>= int", "log_attributes.retries", :>=, 5, ">= 5"},
+        {":<= int", "log_attributes.retries", :<=, 5, "<= 5"},
+        {":> float", "log_attributes.ratio", :>, 0.95, "> 0.95"},
+        {":<= float", "log_attributes.score", :<=, 99.95, "<= 99.95"},
+        {"dotted-key :>=", "span_attributes.http.status_code", :>=, 500, ">= 500"}
+      ]
+
+      for {label, path, op, value, op_fragment} <- cases do
+        filter_rule =
+          FilterRule.build(path: path, operator: op, value: value, modifiers: %{})
+
+        result = ClickHouse.transform_filter_rule(filter_rule, %{})
+        assert %DynamicExpr{} = result
+
+        sql = filter_to_sql(result)
+
+        assert sql =~ "toFloat64OrNull", "[#{label}] missing coercion\nSQL: #{sql}"
+        assert sql =~ op_fragment, "[#{label}] missing `#{op_fragment}`\nSQL: #{sql}"
+      end
+    end
+
+    test "coerces Map value for :range BETWEEN with int and float bounds" do
+      for {label, path, values, between_fragment} <- [
+            {"int bounds", "log_attributes.response_time", [100, 500], "BETWEEN 100 AND 500"},
+            {"float bounds", "log_attributes.ratio", [0.1, 0.9], "BETWEEN 0.1 AND 0.9"}
+          ] do
+        filter_rule =
+          FilterRule.build(path: path, operator: :range, values: values, modifiers: %{})
+
+        sql = filter_to_sql(ClickHouse.transform_filter_rule(filter_rule, %{}))
+        assert sql =~ "toFloat64OrNull", "[#{label}] missing coercion\nSQL: #{sql}"
+        assert sql =~ between_fragment, "[#{label}] missing `#{between_fragment}`\nSQL: #{sql}"
+      end
+    end
+
+    test "does not coerce when value is string or column is non-Map" do
+      cases = [
+        {"string value on Map dot-key", "log_attributes.parsed.backend_type", "client"},
+        {"numeric value on non-Map column", "severity_number", 10}
+      ]
+
+      for {label, path, value} <- cases do
+        op = if is_binary(value), do: :=, else: :>
+
+        filter_rule =
+          FilterRule.build(path: path, operator: op, value: value, modifiers: %{})
+
+        sql = filter_to_sql(ClickHouse.transform_filter_rule(filter_rule, %{}))
+        refute sql =~ "toFloat64OrNull", "[#{label}] unexpected coercion\nSQL: #{sql}"
+      end
+    end
+  end
+
+  describe "transform_filter_rule/2 with boolean values on Map column dot-keys" do
+    test "coerces Map value with toBoolOrNull for true/false, negated, and dotted keys" do
+      cases = [
+        {"true", "log_attributes.is_error", true, %{}},
+        {"false", "log_attributes.is_error", false, %{}},
+        {"negated true", "log_attributes.is_error", true, %{negate: true}},
+        {"dotted key", "span_attributes.otel.status.ok", true, %{}}
+      ]
+
+      for {label, path, value, modifiers} <- cases do
+        filter_rule =
+          FilterRule.build(path: path, operator: :=, value: value, modifiers: modifiers)
+
+        sql = filter_to_sql(ClickHouse.transform_filter_rule(filter_rule, %{}))
+        assert sql =~ "toBoolOrNull", "[#{label}] missing coercion\nSQL: #{sql}"
+      end
+    end
+
+    test "does not coerce when value is not a boolean or column is non-Map" do
+      cases = [
+        {"non-Map Bool column", "is_monotonic", true},
+        {"quoted string on Map", "log_attributes.status", "true"},
+        {"NULL equality on Map", "log_attributes.optional_flag", :NULL}
+      ]
+
+      for {label, path, value} <- cases do
+        filter_rule =
+          FilterRule.build(path: path, operator: :=, value: value, modifiers: %{})
+
+        sql = filter_to_sql(ClickHouse.transform_filter_rule(filter_rule, %{}))
+        refute sql =~ "toBoolOrNull", "[#{label}] unexpected coercion\nSQL: #{sql}"
+      end
+    end
+  end
+
   describe "apply_filter_rules_to_query/3 with dot-key Map paths" do
     test "applies range filter on Map column dot-key to query" do
       query = from(l in "logs")
@@ -477,5 +571,12 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
         ClickHouse.where_timestamp_ago(query, datetime, 1, "INVALID")
       end
     end
+  end
+
+  @spec filter_to_sql(Ecto.Query.dynamic_expr()) :: String.t()
+  defp filter_to_sql(dynamic_expr) do
+    query = where(from(l in "logs"), ^dynamic_expr)
+    {:ok, {sql, _params}} = ClickHouseAdaptor.ecto_to_sql(query, inline_params: true)
+    sql
   end
 end
