@@ -25,7 +25,7 @@ const LqlEditorWrapper = {
     this._editor = null;
     this._editorDisposables = [];
     this._pendingServerValue = null;
-    this._lastServerSetValue = null;
+    this._lastServerQuerystring = this.el.dataset.querystring ?? "";
     this._handleSubmitRequest = () => {
       this.submitSearch();
     };
@@ -67,15 +67,7 @@ const LqlEditorWrapper = {
       );
 
       this._editorDisposables = [
-        standaloneEditor.onDidChangeModelContent(() => {
-          const value = standaloneEditor.getValue();
-          if (this._lastServerSetValue !== null && value === this._lastServerSetValue) {
-            this._lastServerSetValue = null;
-            return;
-          }
-          this._lastServerSetValue = null;
-          this.pushEvent("querystring_changed", { querystring: value });
-        }),
+        standaloneEditor.onDidChangeModelContent(() => {}),
         standaloneEditor.onDidFocusEditorText(() => {
           this.pushEvent("form_focus", { value: standaloneEditor.getValue() });
         }),
@@ -94,14 +86,21 @@ const LqlEditorWrapper = {
     this._suggestedSearches = parseSuggestedSearches(
       this.el.dataset.suggestedSearchesJson
     );
-    const value = this.el.dataset.querystring ?? "";
+    const serverValue = this.el.dataset.querystring ?? "";
+
+    // Only force-update the editor if the server pushed a genuinely new value
+    // (e.g. saved search click, URL param change), not an echo of user input
+    if (serverValue === this._lastServerQuerystring) {
+      return;
+    }
+    this._lastServerQuerystring = serverValue;
 
     if (!this._editor) {
-      this._pendingServerValue = value;
+      this._pendingServerValue = serverValue;
       return;
     }
 
-    this.setEditorValue(value);
+    this.setEditorValue(serverValue);
   },
 
   applyPendingEditorValue() {
@@ -127,7 +126,6 @@ const LqlEditorWrapper = {
       "editor.contrib.suggestController"
     );
 
-    this._lastServerSetValue = value;
     this._editor.setValue(value);
 
     if (hadTextFocus && model) {

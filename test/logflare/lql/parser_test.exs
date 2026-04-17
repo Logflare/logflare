@@ -331,7 +331,7 @@ defmodule Logflare.Lql.ParserTest do
              ] = rules
 
       assert Lql.encode!(result) ==
-               "t:>2026-03-17T14:47:02 t:>=2026-03-17T12:47:02 t:<2026-03-17T16:47:02 t:<=2024-03-17T13:47:02"
+               "t:>2026-03-17T14:47:02Z t:>=2026-03-17T12:47:02Z t:<2026-03-17T16:47:02Z t:<=2024-03-17T13:47:02Z"
     end
 
     test "timestamp filters support Unix timestamp ranges" do
@@ -357,7 +357,7 @@ defmodule Logflare.Lql.ParserTest do
              ] = rules
 
       assert Lql.encode!(result) ==
-               "t:2024-03-17T13:{47..57}:02 t:2024-03-17T13:{47..57}:02"
+               "t:2024-03-17T13:{47..57}:02Z t:2024-03-17T13:{47..57}:02Z"
     end
 
     test "timestamp filters reject ambiguous 14 and 15 digit Unix timestamps" do
