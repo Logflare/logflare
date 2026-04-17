@@ -121,6 +121,37 @@ defmodule Logflare.Lql.EncoderTest do
       assert result == "t:>=2026-03-17T12:47:02.123"
     end
 
+    test "preserves Z suffix for explicit UTC timestamp filters" do
+      lql_rules = [
+        %FilterRule{
+          operator: :>=,
+          path: "timestamp",
+          value: NaiveDateTime.from_iso8601!("2026-04-10T03:18:15"),
+          modifiers: %{explicit_timezone: true}
+        }
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "t:>=2026-04-10T03:18:15Z"
+    end
+
+    test "preserves Z suffix for explicit UTC timestamp ranges" do
+      lql_rules = [
+        %FilterRule{
+          operator: :range,
+          path: "timestamp",
+          values: [
+            NaiveDateTime.from_iso8601!("2026-04-10T03:18:15"),
+            NaiveDateTime.from_iso8601!("2026-04-10T03:19:15")
+          ],
+          modifiers: %{explicit_timezone: true}
+        }
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "t:2026-04-10T03:{18..19}:15Z"
+    end
+
     test "encodes quoted string filter" do
       lql_rules = [
         %FilterRule{

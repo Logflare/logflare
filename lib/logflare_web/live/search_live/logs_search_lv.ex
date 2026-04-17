@@ -431,8 +431,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("querystring_changed", %{"querystring" => qs}, socket) do
-    {:noreply, assign(socket, :querystring, qs)}
+  def handle_event("querystring_changed", %{"querystring" => _qs}, socket) do
+    {:noreply, socket}
   end
 
   def handle_event(
