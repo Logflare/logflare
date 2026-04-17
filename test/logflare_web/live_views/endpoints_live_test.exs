@@ -3,6 +3,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
   use LogflareWeb.ConnCase
 
+  import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
+  import Logflare.DataCase, only: [setup_clickhouse_test: 1]
+
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
@@ -873,6 +876,166 @@ defmodule LogflareWeb.EndpointsLiveTest do
       refute html =~ "field(e0"
       refute html =~ "from e0 in"
       refute html =~ "%Ecto.Query{"
+    end
+  end
+
+  describe "LQL sandbox query with ClickHouse backend" do
+    setup %{user: user} do
+      edge_source = insert(:source, user: user, name: "edge_function_logs")
+      other_source = insert(:source, user: user, name: "postgres_logs")
+
+      {edge_source, backend} = setup_clickhouse_test(source: edge_source, user: user)
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+      log_events = [
+        build_mapped_log_event(
+          source: edge_source,
+          message: "edge error",
+          body: %{"metadata" => %{"level" => "error"}}
+        ),
+        build_mapped_log_event(
+          source: edge_source,
+          message: "edge info",
+          body: %{"metadata" => %{"level" => "info"}}
+        ),
+        build_mapped_log_event(
+          source: edge_source,
+          message: "edge debug",
+          body: %{"metadata" => %{"level" => "debug"}}
+        ),
+        build_mapped_log_event(
+          source: other_source,
+          message: "postgres error",
+          body: %{"metadata" => %{"level" => "error"}}
+        ),
+        build_mapped_log_event(
+          source: other_source,
+          message: "postgres info",
+          body: %{"metadata" => %{"level" => "info"}}
+        )
+      ]
+
+      :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
+      Process.sleep(200)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          sandboxable: true,
+          query: """
+          WITH src AS (
+            SELECT timestamp, event_message, severity_text, source_name
+            FROM #{table_name}
+          )
+          SELECT timestamp, event_message, severity_text, source_name FROM src
+          """
+        )
+
+      # Guard against silent misrouting: the endpoint and backend must be wired
+      # to :ch_sql / :clickhouse, otherwise the LiveView could dispatch the
+      # sandbox query to BigQuery/Postgres without us noticing.
+      assert endpoint.language == :ch_sql
+      assert endpoint.backend_id == backend.id
+      assert backend.type == :clickhouse
+      assert String.starts_with?(table_name, "otel_logs_")
+
+      [endpoint: endpoint, backend: backend, table_name: table_name]
+    end
+
+    test "severity_text LQL filter runs against live ClickHouse without syntax error", %{
+      conn: conn,
+      endpoint: endpoint,
+      table_name: table_name
+    } do
+      {:ok, view, initial_html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      # Confirm the LiveView is serving the ClickHouse-language endpoint, not
+      # falling back to BigQuery SQL somewhere in the render path.
+      assert initial_html =~ "ClickHouse SQL"
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "lql",
+          sandbox_query: "severity_text:ERROR",
+          params: %{},
+          show_transformed: "true"
+        }
+      })
+
+      html = render(view)
+
+      refute html =~ "Error occurred when running sandbox query",
+             "Expected severity_text:ERROR LQL filter to succeed against live ClickHouse"
+
+      assert html =~ "Ran sandbox query successfully"
+      assert has_element?(view, "h5", "Sandbox Query Results")
+
+      assert html =~ table_name
+      assert html =~ ~r/&quot;severity_text&quot;/
+
+      # Fixture inserted 5 events across two sources; exactly 2 have
+      # severity_text=ERROR (edge + postgres). Filter must discriminate.
+      error_matches = Regex.scan(~r/&quot;severity_text&quot;:\s*&quot;ERROR&quot;/, html)
+
+      assert length(error_matches) == 2,
+             "Expected 2 rows for severity_text:ERROR, got #{length(error_matches)}"
+
+      refute html =~ ~r/&quot;severity_text&quot;:\s*&quot;INFO&quot;/,
+             "INFO-level rows leaked through severity_text:ERROR filter"
+
+      refute html =~ ~r/&quot;severity_text&quot;:\s*&quot;DEBUG&quot;/,
+             "DEBUG-level rows leaked through severity_text:ERROR filter"
+    end
+
+    test "source_name LQL filter runs against live ClickHouse without syntax error", %{
+      conn: conn,
+      endpoint: endpoint,
+      table_name: table_name
+    } do
+      {:ok, view, initial_html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      assert initial_html =~ "ClickHouse SQL"
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "lql",
+          sandbox_query: "source_name:edge_function_logs",
+          params: %{},
+          show_transformed: "true"
+        }
+      })
+
+      html = render(view)
+
+      refute html =~ "Error occurred when running sandbox query",
+             "Expected source_name:edge_function_logs LQL filter to succeed against live ClickHouse"
+
+      assert html =~ "Ran sandbox query successfully"
+      assert has_element?(view, "h5", "Sandbox Query Results")
+
+      assert html =~ table_name
+      assert html =~ ~r/&quot;source_name&quot;/
+
+      # Fixture inserted 5 events across two sources; exactly 3 have
+      # source_name=edge_function_logs. Postgres-sourced rows must not leak.
+      edge_matches =
+        Regex.scan(~r/&quot;source_name&quot;:\s*&quot;edge_function_logs&quot;/, html)
+
+      assert length(edge_matches) == 3,
+             "Expected 3 rows for source_name:edge_function_logs, got #{length(edge_matches)}"
+
+      refute html =~ ~r/&quot;source_name&quot;:\s*&quot;postgres_logs&quot;/,
+             "postgres_logs rows leaked through source_name:edge_function_logs filter"
     end
   end
 

@@ -829,6 +829,28 @@ defmodule Logflare.LqlTest do
       assert String.downcase(sql) =~ "my_table"
     end
 
+    test "ClickHouse top-level schema field filters generate parseable SQL" do
+      for {lql, expected_fragments} <- [
+            {"severity_text:ERROR", ["severity_text", "'ERROR'"]},
+            {"source_name:edge_function_logs", ["source_name", "'edge_function_logs'"]},
+            {"severity_text:ERROR source_name:edge_function_logs",
+             ["severity_text", "source_name"]},
+            {"severity_number:>10", ["severity_number"]},
+            {"service_name:auth_service", ["service_name", "'auth_service'"]},
+            {"trace_id:abc123", ["trace_id", "'abc123'"]}
+          ] do
+        {:ok, sql} = Lql.to_sandboxed_sql(lql, "otel_logs", :clickhouse)
+
+        for fragment <- expected_fragments do
+          assert sql =~ fragment,
+                 "Missing `#{fragment}` in generated SQL for LQL `#{lql}`\nSQL: #{sql}"
+        end
+
+        assert {:ok, _ast} = SqlParser.parse("clickhouse", sql),
+               "Generated SQL failed to parse for LQL `#{lql}`\nSQL: #{sql}"
+      end
+    end
+
     test "`FromRule` overrides `cte_table_name` parameter" do
       # When `f:second_cte` is specified, it should use `second_cte`
       # even though default `cte_table_name` parameter is "final_data"
