@@ -580,9 +580,9 @@ defmodule Logflare.SqlTest do
         {"log_attributes.ratio:>0.75", ["'ratio'", "toFloat64OrNull", "> 0.75"]},
         {"log_attributes.ratio:0.1..0.5", ["'ratio'", "toFloat64OrNull", "BETWEEN 0.1 AND 0.5"]},
         {"log_attributes.bla.foo:>=5", ["'bla.foo'", "toFloat64OrNull", ">= 5"]},
-        {"log_attributes.is_error:true", ["'is_error'", "toBoolOrNull"]},
-        {"log_attributes.is_error:false", ["'is_error'", "toBoolOrNull"]},
-        {"log_attributes.deep.nested.flag:true", ["'deep.nested.flag'", "toBoolOrNull"]}
+        {"log_attributes.is_error:true", ["'is_error'", "accurateCastOrNull"]},
+        {"log_attributes.is_error:false", ["'is_error'", "accurateCastOrNull"]},
+        {"log_attributes.deep.nested.flag:true", ["'deep.nested.flag'", "accurateCastOrNull"]}
       ]
 
       for {lql, expected_fragments} <- cases do

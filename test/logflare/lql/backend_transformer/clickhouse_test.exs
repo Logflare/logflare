@@ -310,7 +310,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
   end
 
   describe "transform_filter_rule/2 with boolean values on Map column dot-keys" do
-    test "coerces Map value with toBoolOrNull for true/false, negated, and dotted keys" do
+    test "coerces Map value with accurateCastOrNull for true/false, negated, and dotted keys" do
       cases = [
         {"true", "log_attributes.is_error", true, %{}},
         {"false", "log_attributes.is_error", false, %{}},
@@ -323,7 +323,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
           FilterRule.build(path: path, operator: :=, value: value, modifiers: modifiers)
 
         sql = filter_to_sql(ClickHouse.transform_filter_rule(filter_rule, %{}))
-        assert sql =~ "toBoolOrNull", "[#{label}] missing coercion\nSQL: #{sql}"
+        assert sql =~ "accurateCastOrNull", "[#{label}] missing coercion\nSQL: #{sql}"
       end
     end
 
@@ -339,7 +339,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
           FilterRule.build(path: path, operator: :=, value: value, modifiers: %{})
 
         sql = filter_to_sql(ClickHouse.transform_filter_rule(filter_rule, %{}))
-        refute sql =~ "toBoolOrNull", "[#{label}] unexpected coercion\nSQL: #{sql}"
+        refute sql =~ "accurateCastOrNull", "[#{label}] unexpected coercion\nSQL: #{sql}"
       end
     end
   end

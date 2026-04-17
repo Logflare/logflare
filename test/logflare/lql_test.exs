@@ -879,11 +879,11 @@ defmodule Logflare.LqlTest do
       end
     end
 
-    test "ClickHouse boolean filters on Map column dot-keys coerce values with toBoolOrNull" do
+    test "ClickHouse boolean filters on Map column dot-keys coerce values with accurateCastOrNull" do
       for {lql, expected_fragments} <- [
-            {"log_attributes.is_error:true", ["'is_error'", "toBoolOrNull"]},
-            {"log_attributes.is_error:false", ["'is_error'", "toBoolOrNull"]},
-            {"log_attributes.deep.nested.flag:true", ["'deep.nested.flag'", "toBoolOrNull"]}
+            {"log_attributes.is_error:true", ["'is_error'", "accurateCastOrNull"]},
+            {"log_attributes.is_error:false", ["'is_error'", "accurateCastOrNull"]},
+            {"log_attributes.deep.nested.flag:true", ["'deep.nested.flag'", "accurateCastOrNull"]}
           ] do
         {:ok, sql} = Lql.to_sandboxed_sql(lql, "otel_logs", :clickhouse)
 
@@ -910,7 +910,7 @@ defmodule Logflare.LqlTest do
         refute sql =~ "toFloat64OrNull",
                "[#{label}] unexpected numeric coercion for `#{lql}`\nSQL: #{sql}"
 
-        refute sql =~ "toBoolOrNull",
+        refute sql =~ "accurateCastOrNull",
                "[#{label}] unexpected boolean coercion for `#{lql}`\nSQL: #{sql}"
 
         assert {:ok, _ast} = SqlParser.parse("clickhouse", sql)
