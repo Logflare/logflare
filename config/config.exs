@@ -171,4 +171,6 @@ config :mime, :types, %{
 # use legacy artifacts for users on older CPUs or virtualized environments without advanced CPU features
 config :explorer, use_legacy_artifacts: true
 
+config :paper_trail, repo: Logflare.Repo
+
 import_config "#{Mix.env()}.exs"
