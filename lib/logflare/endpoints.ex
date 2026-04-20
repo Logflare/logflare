@@ -129,11 +129,6 @@ defmodule Logflare.Endpoints do
   @spec get_by(Keyword.t()) :: Query.t() | nil
   def get_by(kw), do: Repo.get_by(Query, kw)
 
-  @spec create_query(User.t(), map()) :: {:ok, Query.t()} | {:error, any()}
-  def create_query(%User{} = user, params) when is_map(params) do
-    create_query(user, params, user)
-  end
-
   @spec create_query(User.t(), map(), originator()) :: {:ok, Query.t()} | {:error, any()}
   def create_query(%User{} = user, params, originator) when is_map(params) do
     user

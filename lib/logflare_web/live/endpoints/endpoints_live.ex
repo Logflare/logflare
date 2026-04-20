@@ -37,8 +37,7 @@ defmodule LogflareWeb.EndpointsLive do
   def mount(%{}, _session, socket) do
     %{assigns: %{user: user}} = socket
 
-    # Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
-    allow_access = true
+    allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
 
     alerts = Endpoints.list_endpoints_by(user_id: user.id)
 

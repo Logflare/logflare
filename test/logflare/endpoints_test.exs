@@ -84,16 +84,16 @@ defmodule Logflare.EndpointsTest do
     assert String.downcase(mapped_query) == "select a from new"
   end
 
-  test "update_query/2 " do
+  test "update_query/3 " do
     user = insert(:user)
     insert(:source, user: user, name: "my_table")
     endpoint = insert(:endpoint, user: user, query: "select current_datetime() as date")
     sql = "select a from my_table"
-    assert {:ok, %{query: ^sql}} = Endpoints.update_query(endpoint, %{query: sql})
+    assert {:ok, %{query: ^sql}} = Endpoints.update_query(endpoint, %{query: sql}, user)
 
     # does not allow updating of query with unknown sources
     assert {:error, %Ecto.Changeset{}} =
-             Endpoints.update_query(endpoint, %{query: "select b from unknown"})
+             Endpoints.update_query(endpoint, %{query: "select b from unknown"}, user)
   end
 
   test "parse_query_string/1" do
@@ -113,11 +113,15 @@ defmodule Logflare.EndpointsTest do
     source = insert(:source, user: user, name: "mysource")
 
     assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
-             Endpoints.create_query(user, %{
-               name: "fully-qualified",
-               query: "select @test from #{source.name}",
-               language: :bq_sql
-             })
+             Endpoints.create_query(
+               user,
+               %{
+                 name: "fully-qualified",
+                 query: "select @test from #{source.name}",
+                 language: :bq_sql
+               },
+               user
+             )
 
     assert stored_sql =~ "mysource"
     assert mapping["mysource"] == Atom.to_string(source.token)
@@ -127,11 +131,15 @@ defmodule Logflare.EndpointsTest do
     user = insert(:user, bigquery_project_id: "myproject")
 
     assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
-             Endpoints.create_query(user, %{
-               name: "fully-qualified",
-               query: "select @test from `myproject.mydataset.mytable`",
-               language: :bq_sql
-             })
+             Endpoints.create_query(
+               user,
+               %{
+                 name: "fully-qualified",
+                 query: "select @test from `myproject.mydataset.mytable`",
+                 language: :bq_sql
+               },
+               user
+             )
 
     assert mapping == %{}
 
@@ -149,11 +157,15 @@ defmodule Logflare.EndpointsTest do
     )
 
     assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
-             Endpoints.create_query(user, %{
-               name: "fully-qualified.name",
-               query: "select testing from `my.date`",
-               language: :bq_sql
-             })
+             Endpoints.create_query(
+               user,
+               %{
+                 name: "fully-qualified.name",
+                 query: "select testing from `my.date`",
+                 language: :bq_sql
+               },
+               user
+             )
 
     assert mapping == %{}
     assert stored_sql =~ "my.date"
@@ -165,12 +177,16 @@ defmodule Logflare.EndpointsTest do
       backend = insert(:backend, user: user, type: :postgres)
 
       assert {:ok, endpoint} =
-               Endpoints.create_query(user, %{
-                 name: "postgres-endpoint",
-                 query: "select current_date as date",
-                 backend_id: backend.id
-                 # Note: no language specified - should be inferred
-               })
+               Endpoints.create_query(
+                 user,
+                 %{
+                   name: "postgres-endpoint",
+                   query: "select current_date as date",
+                   backend_id: backend.id
+                   # Note: no language specified - should be inferred
+                 },
+                 user
+               )
 
       assert endpoint.language == :pg_sql
       assert endpoint.backend_id == backend.id
@@ -181,11 +197,15 @@ defmodule Logflare.EndpointsTest do
       backend = insert(:backend, user: user, type: :bigquery)
 
       assert {:ok, endpoint} =
-               Endpoints.create_query(user, %{
-                 name: "bigquery-endpoint",
-                 query: "select current_date() as date",
-                 backend_id: backend.id
-               })
+               Endpoints.create_query(
+                 user,
+                 %{
+                   name: "bigquery-endpoint",
+                   query: "select current_date() as date",
+                   backend_id: backend.id
+                 },
+                 user
+               )
 
       assert endpoint.language == :bq_sql
       assert endpoint.backend_id == backend.id
@@ -196,12 +216,16 @@ defmodule Logflare.EndpointsTest do
       backend = insert(:backend, user: user, type: :bigquery)
 
       assert {:ok, endpoint} =
-               Endpoints.create_query(user, %{
-                 name: "bigquery-endpoint-lql-test",
-                 query: "select current_date() as date",
-                 backend_id: backend.id,
-                 language: :pg_sql
-               })
+               Endpoints.create_query(
+                 user,
+                 %{
+                   name: "bigquery-endpoint-lql-test",
+                   query: "select current_date() as date",
+                   backend_id: backend.id,
+                   language: :pg_sql
+                 },
+                 user
+               )
 
       assert endpoint.language == :pg_sql
       assert endpoint.backend_id == backend.id
@@ -454,7 +478,7 @@ defmodule Logflare.EndpointsTest do
           :enable_auth,
           :labels
         ] do
-      test "update_query/2 will kill all existing caches on field change (#{field_changed})" do
+      test "update_query/3 will kill all existing caches on field change (#{field_changed})" do
         expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _, _, _ ->
           {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
         end)
@@ -474,7 +498,7 @@ defmodule Logflare.EndpointsTest do
             key -> Map.new([{key, 123}])
           end
 
-        assert {:ok, updated} = Endpoints.update_query(endpoint, params)
+        assert {:ok, updated} = Endpoints.update_query(endpoint, params, user)
         # should kill the cache process
         :timer.sleep(500)
         refute Process.alive?(cache_pid)
