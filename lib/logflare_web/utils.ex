@@ -77,6 +77,20 @@ defmodule LogflareWeb.Utils do
 
   defp _to_string(val), do: to_string(val)
 
+  @spec time_ago(DateTime.t() | NaiveDateTime.t()) :: String.t()
+  def time_ago(datetime) do
+    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
+
+    cond do
+      diff < 15 -> "Just now"
+      diff < 60 -> "#{diff}s ago"
+      diff < 3_600 -> "#{div(diff, 60)}m ago"
+      diff < 86_400 -> "#{div(diff, 3600)}h ago"
+      diff < 604_800 -> "#{div(diff, 86400)}d ago"
+      true -> Calendar.strftime(datetime, "%Y-%m-%d")
+    end
+  end
+
   @doc """
   Converts a bytes count to human readable scale.
 

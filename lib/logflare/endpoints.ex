@@ -16,6 +16,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Lql
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.FromRule
+  alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sql
@@ -24,10 +25,29 @@ defmodule Logflare.Endpoints do
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Utils
+  alias PaperTrail.Version
 
   @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
+  @endpoint_version_snapshot_fields [
+    :token,
+    :name,
+    :query,
+    :description,
+    :language,
+    :source_mapping,
+    :sandboxable,
+    :cache_duration_seconds,
+    :proactive_requerying_seconds,
+    :max_limit,
+    :enable_auth,
+    :redact_pii,
+    :enable_dynamic_reservation,
+    :labels,
+    :backend_id
+  ]
 
   @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
+  @typep originator :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
            | {:error, String.t()}
@@ -111,11 +131,22 @@ defmodule Logflare.Endpoints do
 
   @spec create_query(User.t(), map()) :: {:ok, Query.t()} | {:error, any()}
   def create_query(%User{} = user, params) when is_map(params) do
+    create_query(user, params, user)
+  end
+
+  @spec create_query(User.t(), map(), originator()) :: {:ok, Query.t()} | {:error, any()}
+  def create_query(%User{} = user, params, originator) when is_map(params) do
     user
     |> Ecto.build_assoc(:endpoint_queries)
     |> Repo.preload(:user)
     |> Query.update_by_user_changeset(params)
-    |> Repo.insert()
+    |> then(fn changeset ->
+      PaperTrail.insert(changeset, paper_trail_opts(changeset, originator, 1))
+    end)
+    |> case do
+      {:ok, %{model: endpoint}} -> {:ok, endpoint}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc "returns an ecto changeset for changing an endpoint."
@@ -151,42 +182,187 @@ defmodule Logflare.Endpoints do
 
   def derive_language_from_backend_id(_), do: :bq_sql
 
-  @spec update_query(Query.t(), map()) :: {:ok, Query.t()} | {:error, any()}
-  def update_query(%Query{} = query, params) when is_map(params) do
-    with endpoint <- Repo.preload(query, :user),
-         changeset <- Query.update_by_user_changeset(endpoint, params),
-         {:ok, endpoint} <- Repo.update(changeset) do
-      changed_keys = Map.keys(changeset.changes)
+  @spec update_query(Query.t(), map(), originator()) :: {:ok, Query.t()} | {:error, any()}
+  def update_query(%Query{} = query, params, originator) when is_map(params) do
+    endpoint = Repo.preload(query, :user)
+    changeset = Query.update_by_user_changeset(endpoint, params)
 
-      should_kill_caches? =
-        Enum.any?(changed_keys, fn key ->
-          key in [
-            :query,
-            :sandboxable,
-            :cache_duration_seconds,
-            :proactive_requerying_seconds,
-            :max_limit,
-            :enable_auth,
-            :labels
-          ]
-        end)
+    Repo.transaction(fn ->
+      endpoint = lock_endpoint_query(query)
+      version_number = next_endpoint_version_number(endpoint.id)
+      changeset = %{changeset | data: endpoint}
 
-      if should_kill_caches? do
-        # kill all caches
-        for pid <- Resolver.list_caches(endpoint) do
-          Utils.Tasks.async(fn ->
-            ResultsCache.invalidate(pid)
-          end)
-        end
-        |> Task.await_many(30_000)
+      case PaperTrail.update(
+             changeset,
+             paper_trail_opts(changeset, originator, version_number)
+           ) do
+        {:ok, %{model: endpoint}} ->
+          {endpoint, should_kill_caches?(changeset.changes)}
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
       end
+    end)
+    |> case do
+      {:ok, {endpoint, should_kill_caches?}} ->
+        maybe_kill_endpoint_caches(endpoint, should_kill_caches?)
+        {:ok, endpoint}
 
-      {:ok, endpoint}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  @spec delete_query(Query.t()) :: {:ok, Query.t()} | {:error, any()}
-  def delete_query(query), do: Repo.delete(query)
+  @spec paper_trail_opts(Ecto.Changeset.t(), originator(), integer() | nil) :: keyword()
+  defp paper_trail_opts(changeset, originator, version_number) do
+    [origin: version_origin(originator), meta: version_meta(changeset, version_number)]
+  end
+
+  @spec version_meta(Ecto.Changeset.t(), integer() | nil) :: map()
+  defp version_meta(changeset, version_number) do
+    %{
+      endpoint_snapshot: endpoint_version_snapshot(changeset)
+    }
+    |> maybe_put_query_diff(changeset)
+    |> maybe_put_version_number(version_number)
+  end
+
+  @spec endpoint_version_snapshot(Ecto.Changeset.t()) :: map()
+  defp endpoint_version_snapshot(changeset) do
+    changeset
+    |> Ecto.Changeset.apply_changes()
+    |> Map.take(@endpoint_version_snapshot_fields)
+  end
+
+  @spec maybe_put_version_number(map(), integer()) :: map()
+  defp maybe_put_version_number(meta, version_number),
+    do: Map.put(meta, :version_number, version_number)
+
+  @spec maybe_put_query_diff(map(), Ecto.Changeset.t()) :: map()
+  defp maybe_put_query_diff(meta, changeset) do
+    case endpoint_version_query_diff(changeset) do
+      [] -> meta
+      query_diff -> Map.put(meta, :query_diff, query_diff)
+    end
+  end
+
+  @spec endpoint_version_query_diff(Ecto.Changeset.t()) ::
+          [%{required(:type) => String.t(), required(:value) => String.t()}]
+  defp endpoint_version_query_diff(changeset) do
+    previous_query = changeset.data.query
+    current_query = Ecto.Changeset.get_field(changeset, :query)
+
+    if previous_query != current_query do
+      previous_query
+      |> to_query_words()
+      |> List.myers_difference(to_query_words(current_query))
+      |> Enum.map(fn {type, words} ->
+        value = Enum.join(words, " ")
+
+        %{
+          type: Atom.to_string(type),
+          value: if(value == "", do: "", else: value <> " ")
+        }
+      end)
+      |> Enum.reject(&(&1.value == ""))
+    else
+      []
+    end
+  end
+
+  @spec to_query_words(String.t() | nil) :: [String.t()]
+  defp to_query_words(query) when is_binary(query), do: String.split(query)
+  defp to_query_words(nil), do: []
+
+  @spec version_origin(originator()) :: String.t() | nil
+  defp version_origin(%User{email: email}) when is_non_empty_binary(email), do: email
+  defp version_origin(%TeamUser{email: email}) when is_non_empty_binary(email), do: email
+
+  defp version_origin(%OauthAccessToken{description: description})
+       when is_non_empty_binary(description) do
+    "API: #{description}"
+  end
+
+  defp version_origin(%OauthAccessToken{}), do: "API: unknown"
+
+  @spec lock_endpoint_query(Query.t()) :: Query.t()
+  defp lock_endpoint_query(%Query{id: query_id}) do
+    from(query in Query,
+      where: query.id == ^query_id,
+      lock: "FOR UPDATE"
+    )
+    |> Repo.one!()
+    |> Repo.preload(:user)
+  end
+
+  @spec next_endpoint_version_number(integer()) :: integer()
+  defp next_endpoint_version_number(endpoint_id) do
+    from(version in Version,
+      where: version.item_type == "Query" and version.item_id == ^endpoint_id,
+      select: fragment("COALESCE(MAX((?->>'version_number')::integer), 0)", version.meta)
+    )
+    |> Repo.one()
+    |> Kernel.+(1)
+  end
+
+  @spec should_kill_caches?(map()) :: boolean()
+  defp should_kill_caches?(changes) when is_map(changes) do
+    Enum.any?(Map.keys(changes), fn key ->
+      key in [
+        :query,
+        :sandboxable,
+        :cache_duration_seconds,
+        :proactive_requerying_seconds,
+        :max_limit,
+        :enable_auth,
+        :labels
+      ]
+    end)
+  end
+
+  @spec maybe_kill_endpoint_caches(Query.t(), boolean()) :: :ok | [term()]
+  defp maybe_kill_endpoint_caches(_endpoint, false), do: :ok
+
+  defp maybe_kill_endpoint_caches(endpoint, true) do
+    for pid <- Resolver.list_caches(endpoint) do
+      Utils.Tasks.async(fn ->
+        ResultsCache.invalidate(pid)
+      end)
+    end
+    |> Task.await_many(30_000)
+  end
+
+  @spec get_endpoint_query_version_by_version_number(
+          integer() | String.t(),
+          integer() | String.t()
+        ) ::
+          Version.t() | nil
+  def get_endpoint_query_version_by_version_number(endpoint_id, version_number)
+      when is_integer_or_string(endpoint_id) and is_integer_or_string(version_number) do
+    version_number = to_string(version_number)
+
+    from(version in Version,
+      where:
+        version.item_type == "Query" and version.item_id == ^endpoint_id and
+          fragment("?->>'version_number' = ?", version.meta, ^version_number)
+    )
+    |> Repo.one()
+  end
+
+  @spec delete_query(Query.t(), originator()) :: {:ok, Query.t()} | {:error, any()}
+  def delete_query(%Query{} = query, originator) do
+    Repo.transact(fn ->
+      endpoint = lock_endpoint_query(query)
+      version_number = next_endpoint_version_number(endpoint.id)
+      changeset = Ecto.Changeset.change(endpoint)
+      opts = paper_trail_opts(changeset, originator, version_number)
+
+      case PaperTrail.delete(endpoint, opts) do
+        {:ok, %{model: deleted_endpoint}} -> deleted_endpoint
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
 
   @doc """
   Parses a query string without running it.

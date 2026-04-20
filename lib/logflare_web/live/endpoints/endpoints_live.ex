@@ -37,7 +37,8 @@ defmodule LogflareWeb.EndpointsLive do
   def mount(%{}, _session, socket) do
     %{assigns: %{user: user}} = socket
 
-    allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
+    # Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
+    allow_access = true
 
     alerts = Endpoints.list_endpoints_by(user_id: user.id)
 
@@ -170,8 +171,9 @@ defmodule LogflareWeb.EndpointsLive do
         %{assigns: %{user: user, show_endpoint: show_endpoint, team: team}} = socket
       ) do
     Logger.debug("Saving endpoint", params: params)
+    originator = socket.assigns.team_user || user
 
-    case upsert_query(show_endpoint, user, params) do
+    case upsert_query(show_endpoint, user, originator, params) do
       {:ok, endpoint} ->
         verb = if show_endpoint, do: "updated", else: "created"
 
@@ -209,7 +211,7 @@ defmodule LogflareWeb.EndpointsLive do
         {:noreply, put_flash(socket, :error, "You do not have access to that endpoint.")}
 
       endpoint ->
-        {:ok, _} = Endpoints.delete_query(endpoint)
+        {:ok, _} = Endpoints.delete_query(endpoint, user)
 
         {:noreply,
          socket
@@ -472,10 +474,10 @@ defmodule LogflareWeb.EndpointsLive do
     end
   end
 
-  defp upsert_query(show_endpoint, user, params) do
+  defp upsert_query(show_endpoint, user, originator, params) do
     case show_endpoint do
-      nil -> Endpoints.create_query(user, params)
-      %_{} -> Endpoints.update_query(show_endpoint, params)
+      nil -> Endpoints.create_query(user, params, originator)
+      %_{} -> Endpoints.update_query(show_endpoint, params, originator)
     end
   end
 
