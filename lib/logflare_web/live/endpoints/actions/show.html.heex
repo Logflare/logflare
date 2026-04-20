@@ -7,12 +7,6 @@
   <.subheader_link team={@team} live_patch to={~p"/endpoints/#{@show_endpoint.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
-  <div>
-    id: {@show_endpoint.token}
-  </div>
-
-  <p class="text-muted tw-whitespace-pre-wrap tw-text-sm">{@show_endpoint.description}</p>
-
   <div :if={@show_endpoint.enable_auth == false}>
     <.alert variant="warning">
       <strong>Authentication not enabled!</strong>
@@ -23,51 +17,14 @@
     </.alert>
   </div>
 
-  <div class="tw-w-full tw-bg-zinc-800 tw-p-4 tw-rounded-lg tw-min-h-[100px]">
-    <span class="tw-block">
-      {case @show_endpoint.language do
-        :bq_sql -> "BigQuery SQL"
-        :ch_sql -> "ClickHouse SQL"
-        :pg_sql -> "Postgres SQL"
-        :lql -> "Logflare Query Language"
-      end}
-    </span>
-    <code class="tw-whitespace-pre-wrap tw-text-sm tw-text-white">
-      {@show_endpoint.query}
-    </code>
+  <div>
+    id: {@show_endpoint.token}
   </div>
 
-  <div>
-    <ul class="list-group tw-text-sm">
-      <li class="list-group-item">
-        <strong>max rows:</strong> {@show_endpoint.max_limit}
-      </li>
-      <li class="list-group-item">
-        <strong>caching:</strong> {if @show_endpoint.cache_duration_seconds ==
-                                        0,
-                                      do: "disabled",
-                                      else:
-                                        inspect(@show_endpoint.cache_duration_seconds) <>
-                                          " seconds"}
-      </li>
-      <li class="list-group-item">
-        <span :if={@show_endpoint.cache_duration_seconds > 0}>
-          <strong>cache warming:</strong> {@show_endpoint.proactive_requerying_seconds} seconds
-        </span>
-      </li>
-      <li class="list-group-item">
-        <span><strong>query sandboxing:</strong> {if @show_endpoint.sandboxable, do: "enabled", else: "disabled"}</span>
-      </li>
-      <li class="list-group-item">
-        <span><strong>redact PII:</strong> {if @show_endpoint.redact_pii, do: "enabled", else: "disabled"}</span>
-      </li>
-      <li class="list-group-item">
-        <span><strong>dynamic BigQuery reservation:</strong> {if @show_endpoint.enable_dynamic_reservation, do: "enabled", else: "disabled"}</span>
-      </li>
-      <li :if={@show_endpoint.labels} class="list-group-item">
-        <span><strong>labels:</strong> {@show_endpoint.labels}</span>
-      </li>
-    </ul>
+  <p class="text-muted tw-whitespace-pre-wrap tw-text-sm">{@show_endpoint.description}</p>
+  <LogflareWeb.Endpoints.Components.endpoint_query_panel endpoint={@show_endpoint} />
+  <div class="tw-pr-96 tw-bg-dashboard-grey tw-rounded">
+    <LogflareWeb.Endpoints.Components.endpoint_settings_panel endpoint={@show_endpoint} />
   </div>
 
   <div :if={@parsed_result}>

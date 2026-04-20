@@ -58,7 +58,7 @@ defmodule LogflareWeb.Api.EndpointController do
   def create(%{assigns: %{user: user}} = conn, params) do
     with :ok <- authorize_backend_id(user, params),
          originator <- conn.assigns[:access_token] || user,
-         {:ok, query} <- Endpoints.create_query(user, params, user) do
+         {:ok, query} <- Endpoints.create_query(user, params, originator) do
       conn
       |> put_status(201)
       |> json(query)
