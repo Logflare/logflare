@@ -93,29 +93,13 @@ defmodule Logflare.Telemetry do
     ]
 
     database_metrics = [
-      distribution("logflare.repo.query.total_time",
-        unit: {:native, :millisecond},
-        tags: [:role],
-        tag_values: &add_repo_role/1
-      ),
+      distribution("logflare.repo.query.total_time", unit: {:native, :millisecond}),
       # TODO: decode_time is `nil` in some of the ecto queries
       # In most telemetry adapters this is fine, but it causes issues in OtelMetricExporter
       # distribution("logflare.repo.query.decode_time", unit: {:native, :millisecond}),
-      distribution("logflare.repo.query.query_time",
-        unit: {:native, :millisecond},
-        tags: [:role],
-        tag_values: &add_repo_role/1
-      ),
-      distribution("logflare.repo.query.queue_time",
-        unit: {:native, :millisecond},
-        tags: [:role],
-        tag_values: &add_repo_role/1
-      ),
-      distribution("logflare.repo.query.idle_time",
-        unit: {:native, :millisecond},
-        tags: [:role],
-        tag_values: &add_repo_role/1
-      )
+      distribution("logflare.repo.query.query_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.queue_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.idle_time", unit: {:native, :millisecond})
     ]
 
     vm_metrics = [
@@ -455,9 +439,5 @@ defmodule Logflare.Telemetry do
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]
-  end
-
-  defp add_repo_role(metadata) do
-    Map.put(metadata, :role, Logflare.Repo.current_role())
   end
 end

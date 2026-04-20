@@ -35,33 +35,20 @@ defmodule Logflare.Repo do
     Application.fetch_env!(:logflare, :read_replicas)
   end
 
-  defp random_read_replica do
+  defp primary_or_replica do
     case fetch_read_replicas!() do
-      [_ | _] = replicas -> Enum.random(replicas)
-      [] -> nil
+      [_ | _] = replicas -> Enum.random([__MODULE__ | replicas])
+      [] -> __MODULE__
     end
   end
 
   @doc """
-  Returns the current database role based on the dynamic repo state.
+  Applies the given MFA using a randomly selected repo (primary or read replica).
   """
-  def current_role do
-    case get_dynamic_repo() do
-      __MODULE__ -> "primary"
-      pid when is_pid(pid) -> "replica"
-      _ -> "unknown"
-    end
-  end
-
-  @doc """
-  Applies the given MFA using a randomly selected read replica connection pool.
-  Uses the primary database if no read replicas are configured.
-  """
-  def apply_with_read_replica(m, f, a) do
-    if replica = random_read_replica() do
-      Replicas.apply(replica, m, f, a)
-    else
-      apply(m, f, a)
+  def apply_with_random_repo(m, f, a) do
+    case primary_or_replica() do
+      __MODULE__ -> apply(m, f, a)
+      replica -> Replicas.apply(replica, m, f, a)
     end
   end
 end

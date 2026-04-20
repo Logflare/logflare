@@ -2,11 +2,11 @@ defmodule Logflare.Repo.Replicas do
   @moduledoc """
   Manages a pool of PostgreSQL read replica connections for `Logflare.Repo`.
 
-  When started with one or more replica URLs, this module supervises a separate
+  When started with one or more replica hostnames, this module supervises a separate
   `Logflare.Repo` connection pool for each replica, registered under a local
   `Registry`. If no replicas are configured, the supervisor is skipped entirely.
 
-  Replica pools are identified by their URL. Callers can temporarily redirect
+  Replica pools are identified by their hostname. Callers can temporarily redirect
   Ecto queries to a replica for the duration of a function call using `apply/4`,
   which swaps the dynamic repo and restores it afterwards.
   """
@@ -22,15 +22,15 @@ defmodule Logflare.Repo.Replicas do
   end
 
   def start_link(options) do
-    urls = Keyword.fetch!(options, :urls)
+    hostnames = Keyword.fetch!(options, :hostnames)
 
-    if urls == [] do
+    if hostnames == [] do
       :ignore
     else
       replicas =
-        Enum.map(urls, fn url ->
-          spec = {Logflare.Repo, url: url, name: {:via, Registry, {@registry, url}}}
-          Supervisor.child_spec(spec, id: url)
+        Enum.map(hostnames, fn hostname ->
+          config = [hostname: hostname, name: {:via, Registry, {@registry, hostname}}]
+          Supervisor.child_spec({Logflare.Repo, config}, id: hostname)
         end)
 
       children = [
@@ -43,15 +43,15 @@ defmodule Logflare.Repo.Replicas do
   end
 
   @doc """
-  Applies the given MFA using the connection pool for a replica, identified by its URL.
+  Applies the given MFA using the connection pool for a replica, identified by its hostname.
   """
-  def apply(url, m, f, a) do
+  def apply(hostname, m, f, a) do
     prev_repo = Logflare.Repo.get_dynamic_repo()
 
     pid =
-      case Registry.lookup(@registry, url) do
+      case Registry.lookup(@registry, hostname) do
         [{pid, _}] -> pid
-        [] -> raise "unknown replica #{inspect(url)}"
+        [] -> raise "unknown replica #{inspect(hostname)}"
       end
 
     Logflare.Repo.put_dynamic_repo(pid)

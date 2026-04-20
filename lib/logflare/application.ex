@@ -88,7 +88,7 @@ defmodule Logflare.Application do
         {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
-        {Logflare.Repo.Replicas, urls: read_replicas},
+        {Logflare.Repo.Replicas, hostnames: read_replicas},
         Logflare.Vault,
         {Oban, Application.fetch_env!(:logflare, Oban)},
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
