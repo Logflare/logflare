@@ -46,9 +46,12 @@ defmodule Logflare.Repo do
   Applies the given MFA using a randomly selected repo (primary or read replica).
   """
   def apply_with_random_repo(m, f, a) do
-    case primary_or_replica() do
-      __MODULE__ -> apply(m, f, a)
-      replica -> Replicas.apply(replica, m, f, a)
+    random = primary_or_replica()
+
+    if random == get_dynamic_repo() do
+      apply(m, f, a)
+    else
+      Replicas.apply(random, m, f, a)
     end
   end
 end
