@@ -5,6 +5,14 @@ defmodule Logflare.RepoTest do
   alias Logflare.Repo.Replicas
 
   defp start_read_replicas(hostnames) do
+    primary_hostname = Keyword.fetch!(Repo.config(), :hostname)
+
+    # sanity check that our test replicas are not the same as the primary
+    for hostname <- hostnames do
+      refute hostname == primary_hostname,
+             "replica hostname #{hostname} should be different from primary hostname"
+    end
+
     # we read the replicas from env in `apply_with_random_repo/3`, so we need to set it there for the test
     prev_read_replicas = Application.get_env(:logflare, :read_replicas)
     Application.put_env(:logflare, :read_replicas, hostnames)
@@ -14,12 +22,14 @@ defmodule Logflare.RepoTest do
     telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
     on_exit(fn -> :telemetry.detach(telemetry_ref) end)
 
-    start_supervised!({Replicas, hostnames: hostnames})
+    start_result = start_supervised!({Replicas, hostnames: hostnames})
 
     for hostname <- hostnames do
       assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
       assert Keyword.fetch!(opts, :hostname) == hostname
     end
+
+    start_result
   end
 
   describe "apply_with_random_repo/3" do
@@ -31,12 +41,7 @@ defmodule Logflare.RepoTest do
     end
 
     test "uses replica repo during execution and reverts afterward" do
-      replicas = ["127.0.0.1", "::1"]
-
-      # sanity check that our test replicas are not the same as the primary
-      refute Repo.config()[:hostname] in replicas
-
-      start_read_replicas(replicas)
+      start_read_replicas(["127.0.0.1", "::1"])
 
       # since random repo choice includes body primary and replicas,
       # we may need to retry our check until we hit a replica
