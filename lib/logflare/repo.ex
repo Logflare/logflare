@@ -38,8 +38,9 @@ defmodule Logflare.Repo do
     choices = [__MODULE__ | Application.fetch_env!(:logflare, :read_replicas)]
 
     new_repo =
-      with replica when is_binary(replica) <- Enum.random(choices) do
-        Replicas.lookup!(replica)
+      case Enum.random(choices) do
+        repo when is_atom(repo) -> repo
+        hostname when is_binary(hostname) -> Replicas.lookup!(hostname)
       end
 
     prev_repo = Logflare.Repo.get_dynamic_repo()
