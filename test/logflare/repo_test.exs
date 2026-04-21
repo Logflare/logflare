@@ -41,8 +41,7 @@ defmodule Logflare.RepoTest do
       # since random repo choice includes body primary and replicas,
       # we may need to retry our check until we hit a replica
       retry_until_true(fn ->
-        config = Repo.apply_with_random_repo(Repo, :config, [])
-        config[:hostname] in replicas
+        Repo != Repo.apply_with_random_repo(Repo, :get_dynamic_repo, [])
       end)
 
       # verify that after the call, we're back to the default repo
