@@ -31,27 +31,24 @@ defmodule Logflare.Repo do
     end
   end
 
-  defp fetch_read_replicas! do
-    Application.fetch_env!(:logflare, :read_replicas)
-  end
-
-  defp primary_or_replica do
-    case fetch_read_replicas!() do
-      [_ | _] = replicas -> Enum.random([__MODULE__ | replicas])
-      [] -> __MODULE__
-    end
-  end
-
   @doc """
   Applies the given MFA using a randomly selected repo (primary or read replica).
   """
   def apply_with_random_repo(m, f, a) do
-    random = primary_or_replica()
+    choices = [__MODULE__ | Application.fetch_env!(:logflare, :read_replicas)]
 
-    if random == get_dynamic_repo() do
+    new_repo =
+      with replica when is_binary(replica) <- Enum.random(choices) do
+        Replicas.lookup!(replica)
+      end
+
+    prev_repo = Logflare.Repo.get_dynamic_repo()
+    Logflare.Repo.put_dynamic_repo(new_repo)
+
+    try do
       apply(m, f, a)
-    else
-      Replicas.apply(random, m, f, a)
+    after
+      Logflare.Repo.put_dynamic_repo(prev_repo)
     end
   end
 end

@@ -43,23 +43,13 @@ defmodule Logflare.Repo.Replicas do
   end
 
   @doc """
-  Applies the given MFA using the connection pool for a replica, identified by its hostname.
+  Looks up the PID of the replica connection pool for the given hostname.
+  Raises if no such replica is found.
   """
-  def apply(hostname, m, f, a) do
-    prev_repo = Logflare.Repo.get_dynamic_repo()
-
-    pid =
-      case Registry.lookup(@registry, hostname) do
-        [{pid, _}] -> pid
-        [] -> raise "unknown replica #{inspect(hostname)}"
-      end
-
-    Logflare.Repo.put_dynamic_repo(pid)
-
-    try do
-      apply(m, f, a)
-    after
-      Logflare.Repo.put_dynamic_repo(prev_repo)
+  def lookup!(hostname) do
+    case Registry.lookup(@registry, hostname) do
+      [{pid, _}] -> pid
+      [] -> raise "unknown replica hostname: #{inspect(hostname)}"
     end
   end
 end
