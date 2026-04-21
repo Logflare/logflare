@@ -851,6 +851,72 @@ defmodule Logflare.LqlTest do
       end
     end
 
+    test "ClickHouse numeric/range filters on Map column dot-keys coerce values with toFloat64OrNull" do
+      for {lql, expected_fragments} <- [
+            {"log_attributes.foo:>5", ["'foo'", "toFloat64OrNull", "> 5"]},
+            {"log_attributes.bla.foo:>5", ["'bla.foo'", "toFloat64OrNull", "> 5"]},
+            {"log_attributes.count:>5.5", ["'count'", "toFloat64OrNull", "> 5.5"]},
+            {"log_attributes.score:<=99.95", ["'score'", "toFloat64OrNull", "<= 99.95"]},
+            {"log_attributes.tiny:>=0.001", ["'tiny'", "toFloat64OrNull", ">= 0.001"]},
+            {"resource_attributes.latency_ms:>100",
+             ["resource_attributes", "'latency_ms'", "toFloat64OrNull", "> 100"]},
+            {"span_attributes.http.status_code:>=500",
+             ["span_attributes", "'http.status_code'", "toFloat64OrNull", ">= 500"]},
+            {"log_attributes.response_time:100..500",
+             ["'response_time'", "toFloat64OrNull", "BETWEEN 100 AND 500"]},
+            {"log_attributes.ratio:0.1..0.9",
+             ["'ratio'", "toFloat64OrNull", "BETWEEN 0.1 AND 0.9"]}
+          ] do
+        {:ok, sql} = Lql.to_sandboxed_sql(lql, "otel_logs", :clickhouse)
+
+        for fragment <- expected_fragments do
+          assert sql =~ fragment,
+                 "Missing `#{fragment}` in generated SQL for LQL `#{lql}`\nSQL: #{sql}"
+        end
+
+        assert {:ok, _ast} = SqlParser.parse("clickhouse", sql),
+               "Generated SQL failed to parse for LQL `#{lql}`\nSQL: #{sql}"
+      end
+    end
+
+    test "ClickHouse boolean filters on Map column dot-keys coerce values with accurateCastOrNull" do
+      for {lql, expected_fragments} <- [
+            {"log_attributes.is_error:true", ["'is_error'", "accurateCastOrNull"]},
+            {"log_attributes.is_error:false", ["'is_error'", "accurateCastOrNull"]},
+            {"log_attributes.deep.nested.flag:true", ["'deep.nested.flag'", "accurateCastOrNull"]}
+          ] do
+        {:ok, sql} = Lql.to_sandboxed_sql(lql, "otel_logs", :clickhouse)
+
+        for fragment <- expected_fragments do
+          assert sql =~ fragment,
+                 "Missing `#{fragment}` in generated SQL for LQL `#{lql}`\nSQL: #{sql}"
+        end
+
+        assert {:ok, _ast} = SqlParser.parse("clickhouse", sql),
+               "Generated SQL failed to parse for LQL `#{lql}`\nSQL: #{sql}"
+      end
+    end
+
+    test "ClickHouse filters skip coercion for non-Map columns and quoted strings" do
+      cases = [
+        {"string equality on Map", "log_attributes.parsed.backend_type:client"},
+        {"top-level numeric column", "severity_number:>10"},
+        {"top-level Bool column", "is_monotonic:true"}
+      ]
+
+      for {label, lql} <- cases do
+        {:ok, sql} = Lql.to_sandboxed_sql(lql, "otel_logs", :clickhouse)
+
+        refute sql =~ "toFloat64OrNull",
+               "[#{label}] unexpected numeric coercion for `#{lql}`\nSQL: #{sql}"
+
+        refute sql =~ "accurateCastOrNull",
+               "[#{label}] unexpected boolean coercion for `#{lql}`\nSQL: #{sql}"
+
+        assert {:ok, _ast} = SqlParser.parse("clickhouse", sql)
+      end
+    end
+
     test "`FromRule` overrides `cte_table_name` parameter" do
       # When `f:second_cte` is specified, it should use `second_cte`
       # even though default `cte_table_name` parameter is "final_data"

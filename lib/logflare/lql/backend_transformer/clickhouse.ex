@@ -99,23 +99,25 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   end
 
   @impl true
-  def transform_filter_rule(filter_rule, _transformation_data) do
-    if not is_nil(filter_rule.values) and filter_rule.operator == :range do
-      [lvalue, rvalue] = filter_rule.values
-      field = field_expr(filter_rule.path)
+  def transform_filter_rule(
+        %{operator: :range, values: [lvalue, rvalue], path: path},
+        _transformation_data
+      ) do
+    field = coerced_field_expr(path, :range, lvalue)
 
-      dynamic(
-        [l],
-        fragment("? BETWEEN ? AND ?", ^field, ^lvalue, ^rvalue)
-      )
-    else
-      dynamic_where_filter_rule(
-        filter_rule.path,
-        filter_rule.operator,
-        filter_rule.value,
-        filter_rule.modifiers
-      )
-    end
+    dynamic(
+      [l],
+      fragment("? BETWEEN ? AND ?", ^field, ^lvalue, ^rvalue)
+    )
+  end
+
+  def transform_filter_rule(filter_rule, _transformation_data) do
+    dynamic_where_filter_rule(
+      filter_rule.path,
+      filter_rule.operator,
+      filter_rule.value,
+      filter_rule.modifiers
+    )
   end
 
   @doc """
@@ -462,17 +464,17 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
           query :: Query.t(),
           rule :: map()
         ) :: Query.t()
+  defp where_match_filter_rule(query, %{operator: :range, values: [lvalue, rvalue], path: path}) do
+    field = coerced_field_expr(path, :range, lvalue)
+    clause = dynamic([l], fragment("? BETWEEN ? AND ?", ^field, ^lvalue, ^rvalue))
+    where(query, ^clause)
+  end
+
   defp where_match_filter_rule(query, rule) do
-    if not is_nil(rule.values) and rule.operator == :range do
-      [lvalue, rvalue] = rule.values
-      field = field_expr(rule.path)
-      where(query, [l], fragment("? BETWEEN ? AND ?", ^field, ^lvalue, ^rvalue))
-    else
-      where(
-        query,
-        ^dynamic_where_filter_rule(rule.path, rule.operator, rule.value, rule.modifiers)
-      )
-    end
+    where(
+      query,
+      ^dynamic_where_filter_rule(rule.path, rule.operator, rule.value, rule.modifiers)
+    )
   end
 
   @spec dynamic_where_filter_rule(
@@ -482,7 +484,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
           modifiers :: map()
         ) :: Query.dynamic_expr()
   defp dynamic_where_filter_rule(field_path, operator, value, modifiers) do
-    field = field_expr(field_path)
+    field = coerced_field_expr(field_path, operator, value)
 
     clause =
       case operator do
@@ -533,16 +535,36 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   @spec negated?(map()) :: boolean()
   defp negated?(modifiers), do: Map.get(modifiers, :negate)
 
-  @spec field_expr(String.t()) :: Ecto.Query.dynamic_expr()
-  defp field_expr(field_path) do
+  @numeric_comparison_operators [:>, :<, :>=, :<=, :=]
+
+  @spec coerced_field_expr(String.t(), atom(), any()) :: Ecto.Query.dynamic_expr()
+  defp coerced_field_expr(field_path, operator, value) do
     case split_map_path(field_path) do
       {:map_access, column, key} ->
-        dynamic([l], fragment("?[?]", field(l, ^column), ^key))
+        base = dynamic([l], fragment("?[?]", field(l, ^column), ^key))
+        maybe_coerce_map_value(base, operator, value)
 
       {:column, column} ->
         dynamic([l], field(l, ^column))
     end
   end
+
+  @spec maybe_coerce_map_value(Ecto.Query.dynamic_expr(), atom(), any()) ::
+          Ecto.Query.dynamic_expr()
+  defp maybe_coerce_map_value(base, :range, lvalue) when is_number(lvalue) do
+    dynamic([l], fragment("toFloat64OrNull(?)", ^base))
+  end
+
+  defp maybe_coerce_map_value(base, operator, value)
+       when operator in @numeric_comparison_operators and is_number(value) do
+    dynamic([l], fragment("toFloat64OrNull(?)", ^base))
+  end
+
+  defp maybe_coerce_map_value(base, :=, value) when is_boolean(value) do
+    dynamic([l], fragment("accurateCastOrNull(?, 'Bool')", ^base))
+  end
+
+  defp maybe_coerce_map_value(base, _operator, _value), do: base
 
   @spec build_combined_select(Query.t(), select_rules :: [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do

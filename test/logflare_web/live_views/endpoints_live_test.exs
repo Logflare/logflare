@@ -892,28 +892,68 @@ defmodule LogflareWeb.EndpointsLiveTest do
       log_events = [
         build_mapped_log_event(
           source: edge_source,
-          message: "edge error",
-          body: %{"metadata" => %{"level" => "error"}}
+          message: "edge error event",
+          body: %{
+            "metadata" => %{
+              "level" => "error",
+              "response_time" => "500",
+              "http.status_code" => "500",
+              "is_error" => "true",
+              "ratio" => "1.5"
+            }
+          }
         ),
         build_mapped_log_event(
           source: edge_source,
-          message: "edge info",
-          body: %{"metadata" => %{"level" => "info"}}
+          message: "edge info event",
+          body: %{
+            "metadata" => %{
+              "level" => "info",
+              "response_time" => "150",
+              "http.status_code" => "200",
+              "is_error" => "false",
+              "ratio" => "0.75"
+            }
+          }
         ),
         build_mapped_log_event(
           source: edge_source,
-          message: "edge debug",
-          body: %{"metadata" => %{"level" => "debug"}}
+          message: "edge debug event",
+          body: %{
+            "metadata" => %{
+              "level" => "debug",
+              "response_time" => "50",
+              "http.status_code" => "200",
+              "is_error" => "false",
+              "ratio" => "0.1"
+            }
+          }
         ),
         build_mapped_log_event(
           source: other_source,
-          message: "postgres error",
-          body: %{"metadata" => %{"level" => "error"}}
+          message: "postgres error event",
+          body: %{
+            "metadata" => %{
+              "level" => "error",
+              "response_time" => "400",
+              "http.status_code" => "500",
+              "is_error" => "true",
+              "ratio" => "0.5"
+            }
+          }
         ),
         build_mapped_log_event(
           source: other_source,
-          message: "postgres info",
-          body: %{"metadata" => %{"level" => "info"}}
+          message: "postgres info event",
+          body: %{
+            "metadata" => %{
+              "level" => "info",
+              "response_time" => "100",
+              "http.status_code" => "200",
+              "is_error" => "false",
+              "ratio" => "0.25"
+            }
+          }
         )
       ]
 
@@ -930,10 +970,10 @@ defmodule LogflareWeb.EndpointsLiveTest do
           sandboxable: true,
           query: """
           WITH src AS (
-            SELECT timestamp, event_message, severity_text, source_name
+            SELECT timestamp, event_message, severity_text, source_name, log_attributes
             FROM #{table_name}
           )
-          SELECT timestamp, event_message, severity_text, source_name FROM src
+          SELECT timestamp, event_message, severity_text, source_name, log_attributes FROM src
           """
         )
 
@@ -1036,6 +1076,51 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       refute html =~ ~r/&quot;source_name&quot;:\s*&quot;postgres_logs&quot;/,
              "postgres_logs rows leaked through source_name:edge_function_logs filter"
+    end
+
+    test "Map column LQL filters coerce values and run against live ClickHouse", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
+      cases = [
+        {"numeric >", "log_attributes.response_time:>200",
+         ["edge error event", "postgres error event"],
+         ["edge info event", "edge debug event", "postgres info event"]},
+        {"numeric range", "log_attributes.response_time:100..300",
+         ["edge info event", "postgres info event"],
+         ["edge error event", "edge debug event", "postgres error event"]},
+        {"dotted numeric >=", "log_attributes.http.status_code:>=500",
+         ["edge error event", "postgres error event"],
+         ["edge info event", "edge debug event", "postgres info event"]},
+        {"float >", "log_attributes.ratio:>1.0", ["edge error event"],
+         ["edge info event", "edge debug event", "postgres error event", "postgres info event"]},
+        {"float range", "log_attributes.ratio:0.1..0.5",
+         ["edge debug event", "postgres error event", "postgres info event"],
+         ["edge error event", "edge info event"]},
+        {"boolean true", "log_attributes.is_error:true",
+         ["edge error event", "postgres error event"],
+         ["edge info event", "edge debug event", "postgres info event"]},
+        {"boolean false", "log_attributes.is_error:false",
+         ["edge info event", "edge debug event", "postgres info event"],
+         ["edge error event", "postgres error event"]}
+      ]
+
+      for {label, lql, expected, refuted} <- cases do
+        html = submit_sandbox_lql(conn, endpoint, lql)
+
+        refute html =~ "Error occurred when running sandbox query",
+               "[#{label}] expected `#{lql}` to succeed against live ClickHouse"
+
+        assert html =~ "Ran sandbox query successfully"
+
+        for msg <- expected do
+          assert html =~ msg, "[#{label}] missing `#{msg}` for `#{lql}`"
+        end
+
+        for msg <- refuted do
+          refute html =~ msg, "[#{label}] `#{msg}` leaked through `#{lql}`"
+        end
+      end
     end
   end
 
@@ -1171,5 +1256,24 @@ defmodule LogflareWeb.EndpointsLiveTest do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
     end
+  end
+
+  @spec submit_sandbox_lql(Plug.Conn.t(), struct(), String.t()) :: String.t()
+  defp submit_sandbox_lql(conn, endpoint, lql) do
+    {:ok, view, initial_html} = live(conn, "/endpoints/#{endpoint.id}")
+    assert initial_html =~ "ClickHouse SQL"
+
+    view
+    |> element("form", "Test Sandbox Query")
+    |> render_submit(%{
+      sandbox_form: %{
+        query_mode: "lql",
+        sandbox_query: "#{lql} s:event_message s:log_attributes",
+        params: %{},
+        show_transformed: "true"
+      }
+    })
+
+    render(view)
   end
 end

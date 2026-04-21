@@ -565,6 +565,42 @@ defmodule Logflare.SqlTest do
       end
     end
 
+    test "sandboxed queries preserve Map column coercion for ClickHouse LQL filters" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_ch_table")
+      _backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+
+      cte_query =
+        "with src as (select timestamp, event_message, log_attributes from my_ch_table) select timestamp, event_message, log_attributes from src"
+
+      cases = [
+        {"log_attributes.response_time:>100", ["'response_time'", "toFloat64OrNull", "> 100"]},
+        {"log_attributes.response_time:100..500",
+         ["'response_time'", "toFloat64OrNull", "BETWEEN 100 AND 500"]},
+        {"log_attributes.ratio:>0.75", ["'ratio'", "toFloat64OrNull", "> 0.75"]},
+        {"log_attributes.ratio:0.1..0.5", ["'ratio'", "toFloat64OrNull", "BETWEEN 0.1 AND 0.5"]},
+        {"log_attributes.bla.foo:>=5", ["'bla.foo'", "toFloat64OrNull", ">= 5"]},
+        {"log_attributes.is_error:true", ["'is_error'", "accurateCastOrNull"]},
+        {"log_attributes.is_error:false", ["'is_error'", "accurateCastOrNull"]},
+        {"log_attributes.deep.nested.flag:true", ["'deep.nested.flag'", "accurateCastOrNull"]}
+      ]
+
+      for {lql, expected_fragments} <- cases do
+        {:ok, consumer_sql} = Logflare.Lql.to_sandboxed_sql(lql, "src", :clickhouse)
+
+        assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_sql}, user),
+               "Sql.transform failed for LQL: #{lql}\nConsumer SQL: #{consumer_sql}"
+
+        assert String.downcase(result) =~ "with src as"
+        assert String.downcase(result) =~ "where"
+
+        for fragment <- expected_fragments do
+          assert result =~ fragment,
+                 "Missing `#{fragment}` in transformed result for LQL: #{lql}\nResult: #{result}"
+        end
+      end
+    end
+
     test "sandboxed queries cannot access sources/tables outside of CTE scope" do
       user = insert(:user)
       source = insert(:source, user: user, name: "my_ch_table")
