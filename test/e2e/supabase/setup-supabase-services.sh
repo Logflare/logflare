@@ -59,15 +59,26 @@ compose pull
 endgroup
 
 log "Starting Supabase stack (inside docker containers)..."
-if ! compose up -d; then
+if ! compose up -d --wait --wait-timeout 180; then
   if [ "$GITHUB_ACTIONS" = "true" ]; then
     endgroup
     echo -n "::group::"
   fi
-  error "Failed to start containers!"
+
+  exited=$(compose ps --all --format '{{.Service}} {{.State}}' | awk '$2 == "exited" || $2 == "dead" {print $1}')
+
+  if [ -n "$exited" ]; then
+    error "Services exited/dead: $exited"
+    for svc in $exited; do
+      warn "Logs for $svc:"
+      compose logs --no-log-prefix "$svc"
+    done
+    endgroup
+    exit 1
+  fi
+
+  warn "compose up --wait reported failure but no containers exited; continuing."
   compose logs --no-log-prefix analytics
-  endgroup
-  exit 1
 fi
 endgroup
 
