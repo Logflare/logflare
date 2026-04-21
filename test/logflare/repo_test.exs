@@ -44,7 +44,7 @@ defmodule Logflare.RepoTest do
       start_read_replicas(["127.0.0.1", "::1"])
 
       # since random repo choice includes both primary and replicas,
-      # we may need to retry our check until we hit a replica
+      # we may need to perform several calls to hit a replica
       repos = for _ <- 1..30, do: Repo.apply_with_random_repo(Repo, :get_dynamic_repo, [])
 
       assert Enum.any?(repos, fn repo -> repo != Repo end),
