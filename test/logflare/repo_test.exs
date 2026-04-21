@@ -45,9 +45,10 @@ defmodule Logflare.RepoTest do
 
       # since random repo choice includes body primary and replicas,
       # we may need to retry our check until we hit a replica
-      retry_until_true(fn ->
-        Repo != Repo.apply_with_random_repo(Repo, :get_dynamic_repo, [])
-      end)
+      repos = for _ <- 1..30, do: Repo.apply_with_random_repo(Repo, :get_dynamic_repo, [])
+
+      assert Enum.any?(repos, fn repo -> repo != Repo end),
+             "expected at least one call to use a replica"
 
       # verify that after the call, we're back to the default repo
       assert Repo.get_dynamic_repo() == Repo
@@ -61,13 +62,6 @@ defmodule Logflare.RepoTest do
       end
 
       assert Repo.get_dynamic_repo() == Repo
-    end
-  end
-
-  defp retry_until_true(fun) do
-    case fun.() do
-      true -> :ok
-      false -> retry_until_true(fun)
     end
   end
 end
