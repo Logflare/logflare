@@ -43,7 +43,7 @@ defmodule Logflare.RepoTest do
     test "uses replica repo during execution and reverts afterward" do
       start_read_replicas(["127.0.0.1", "::1"])
 
-      # since random repo choice includes body primary and replicas,
+      # since random repo choice includes both primary and replicas,
       # we may need to retry our check until we hit a replica
       repos = for _ <- 1..30, do: Repo.apply_with_random_repo(Repo, :get_dynamic_repo, [])
 
