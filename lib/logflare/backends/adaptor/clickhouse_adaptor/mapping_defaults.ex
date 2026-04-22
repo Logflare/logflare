@@ -38,16 +38,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.metadata.project",
           "$.metadata.tenant",
           "$.metadata.tenantId"
-        ],
-        default: ""
+        ]
       ),
       Field.string("trace_id",
-        paths: ["$.trace_id", "$.traceId", "$.otel_trace_id", "$.metadata.otel_trace_id"],
-        default: ""
+        paths: ["$.trace_id", "$.traceId", "$.otel_trace_id", "$.metadata.otel_trace_id"]
       ),
       Field.string("span_id",
-        paths: ["$.span_id", "$.spanId", "$.otel_span_id", "$.metadata.otel_span_id"],
-        default: ""
+        paths: ["$.span_id", "$.spanId", "$.otel_span_id", "$.metadata.otel_span_id"]
       ),
       Field.uint8("trace_flags",
         paths: ["$.trace_flags", "$.traceFlags", "$.flags", "$.metadata.otel_trace_flags"],
@@ -98,12 +95,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.metadata.context.service",
           "$.SYSLOG_IDENTIFIER",
           "$._SYSTEMD_UNIT"
-        ],
-        default: ""
+        ]
       ),
       Field.string("event_message",
-        paths: ["$.event_message", "$.message", "$.body", "$.msg"],
-        default: ""
+        paths: ["$.event_message", "$.message", "$.body", "$.msg"]
       ),
       Field.string("scope_name",
         paths: [
@@ -113,23 +108,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.instrumentation_library.name",
           "$.metadata.namespace",
           "$.metadata.module_path"
-        ],
-        default: ""
+        ]
       ),
       Field.string("scope_version",
         paths: [
           "$.scope.version",
           "$.instrumentation_library.version"
-        ],
-        default: ""
+        ]
       ),
       Field.string("scope_schema_url",
-        paths: ["$.scope.schema_url"],
-        default: ""
+        paths: ["$.scope.schema_url"]
       ),
       Field.string("resource_schema_url",
-        paths: ["$.resource.schema_url"],
-        default: ""
+        paths: ["$.resource.schema_url"]
       ),
       Field.flat_map("resource_attributes",
         paths: ["$.resource"],
@@ -190,20 +181,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.metadata.project",
           "$.metadata.tenant",
           "$.metadata.tenantId"
-        ],
-        default: ""
+        ]
       ),
       Field.string("metric_name",
-        paths: ["$.metric_name", "$.name", "$.event_message"],
-        default: ""
+        paths: ["$.metric_name", "$.name", "$.event_message"]
       ),
       Field.string("metric_description",
-        paths: ["$.metric_description", "$.description", "$.event_message"],
-        default: ""
+        paths: ["$.metric_description", "$.description", "$.event_message"]
       ),
       Field.string("metric_unit",
-        paths: ["$.metric_unit", "$.unit"],
-        default: ""
+        paths: ["$.metric_unit", "$.unit"]
       ),
       Field.enum8("metric_type",
         paths: ["$.metric_type"],
@@ -246,12 +233,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.service_name",
           "$.resource.name",
           "$.metadata.context.application"
-        ],
-        default: ""
+        ]
       ),
       Field.string("event_message",
-        paths: ["$.event_message", "$.message", "$.body", "$.msg"],
-        default: ""
+        paths: ["$.event_message", "$.message", "$.body", "$.msg"]
       ),
       Field.string("scope_name",
         paths: [
@@ -260,23 +245,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.metadata.context.application",
           "$.instrumentation_library.name",
           "$.metadata.namespace"
-        ],
-        default: ""
+        ]
       ),
       Field.string("scope_version",
         paths: [
           "$.scope.version",
           "$.instrumentation_library.version"
-        ],
-        default: ""
+        ]
       ),
       Field.string("scope_schema_url",
-        paths: ["$.scope.schema_url"],
-        default: ""
+        paths: ["$.scope.schema_url"]
       ),
       Field.string("resource_schema_url",
-        paths: ["$.resource.schema_url"],
-        default: ""
+        paths: ["$.resource.schema_url"]
       ),
       Field.flat_map("resource_attributes",
         paths: ["$.resource"],
@@ -307,8 +288,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         elevate_keys: ["metadata"]
       ),
       Field.string("aggregation_temporality",
-        paths: ["$.aggregation_temporality", "$.aggregationTemporality"],
-        default: ""
+        paths: ["$.aggregation_temporality", "$.aggregationTemporality"]
       ),
       Field.bool("is_monotonic",
         paths: ["$.is_monotonic", "$.isMonotonic"],
@@ -438,32 +418,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.metadata.project",
           "$.metadata.tenant",
           "$.metadata.tenantId"
-        ],
-        default: ""
+        ]
       ),
       Field.string("trace_id",
-        paths: ["$.trace_id", "$.traceId", "$.otel_trace_id"],
-        default: ""
+        paths: ["$.trace_id", "$.traceId", "$.otel_trace_id"]
       ),
       Field.string("span_id",
-        paths: ["$.span_id", "$.spanId", "$.otel_span_id"],
-        default: ""
+        paths: ["$.span_id", "$.spanId", "$.otel_span_id"]
       ),
       Field.string("parent_span_id",
-        paths: ["$.parent_span_id", "$.parentSpanId"],
-        default: ""
+        paths: ["$.parent_span_id", "$.parentSpanId"]
       ),
       Field.string("trace_state",
-        paths: ["$.trace_state", "$.traceState"],
-        default: ""
+        paths: ["$.trace_state", "$.traceState"]
       ),
       Field.string("span_name",
-        paths: ["$.span_name", "$.name", "$.operationName", "$.event_message"],
-        default: ""
+        paths: ["$.span_name", "$.name", "$.operationName", "$.event_message"]
       ),
       Field.string("span_kind",
-        paths: ["$.span_kind", "$.kind", "$.spanKind"],
-        default: ""
+        paths: ["$.span_kind", "$.kind", "$.spanKind"]
       ),
       Field.string("service_name",
         paths: [
@@ -471,12 +444,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.service_name",
           "$.resource.name",
           "$.metadata.context.application"
-        ],
-        default: ""
+        ]
       ),
       Field.string("event_message",
-        paths: ["$.event_message", "$.message", "$.body", "$.msg"],
-        default: ""
+        paths: ["$.event_message", "$.message", "$.body", "$.msg"]
       ),
       Field.datetime64("start_time",
         paths: [
@@ -501,12 +472,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         default: 0
       ),
       Field.string("status_code",
-        paths: ["$.status.code", "$.status_code", "$.statusCode"],
-        default: ""
+        paths: ["$.status.code", "$.status_code", "$.statusCode"]
       ),
       Field.string("status_message",
-        paths: ["$.status.message", "$.status_message", "$.statusMessage"],
-        default: ""
+        paths: ["$.status.message", "$.status_message", "$.statusMessage"]
       ),
       Field.string("scope_name",
         paths: [
@@ -515,15 +484,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.metadata.context.application",
           "$.instrumentation_library.name",
           "$.metadata.namespace"
-        ],
-        default: ""
+        ]
       ),
       Field.string("scope_version",
         paths: [
           "$.scope.version",
           "$.instrumentation_library.version"
-        ],
-        default: ""
+        ]
       ),
       Field.flat_map("resource_attributes",
         paths: ["$.resource"],
