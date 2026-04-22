@@ -173,9 +173,12 @@ defmodule Logflare.Lql.Parser.Helpers do
   # ============================================================================
 
   @spec parse_date_or_datetime_with_range(list()) ::
-          [Date.t() | NaiveDateTime.t() | {:with_modifiers, NaiveDateTime.t(), map()}]
+          [
+            {:with_modifiers, Date.t() | NaiveDateTime.t(),
+             %{timestamp_origin: :absolute | :local}}
+          ]
   def parse_date_or_datetime_with_range(result) when is_list(result) do
-    explicit_timezone =
+    absolute_timestamp =
       Enum.any?(result, fn
         {:timezone, _timezone} -> true
         _ -> false
@@ -197,7 +200,7 @@ defmodule Logflare.Lql.Parser.Helpers do
           [Map.put(lacc, k, lv), Map.put(racc, k, rv)]
       end)
       |> Enum.map(&build_date_or_datetime_from_parts/1)
-      |> maybe_mark_explicit_timezone(explicit_timezone)
+      |> set_timestamp_origin(absolute_timestamp)
 
     if lv == rv do
       [lv]
@@ -210,15 +213,10 @@ defmodule Logflare.Lql.Parser.Helpers do
   def parse_date_or_datetime([{tag, result}]), do: parse_iso8601_value!(tag, result)
 
   @spec parse_timestamp_datetime([{:datetime | :datetime_tz, String.t()}]) ::
-          NaiveDateTime.t() | {:with_modifiers, NaiveDateTime.t(), map()}
+          {:with_modifiers, NaiveDateTime.t(), map()}
   def parse_timestamp_datetime([{tag, result}]) when tag in [:datetime, :datetime_tz] do
-    value = parse_iso8601_value!(:datetime, result)
-
-    if tag == :datetime_tz do
-      {:with_modifiers, value, %{explicit_timezone: true}}
-    else
-      value
-    end
+    parse_iso8601_value!(:datetime, result)
+    |> set_timestamp_origin(tag == :datetime_tz)
   end
 
   @spec parse_datetime_literal(term()) :: {:ok, Date.t() | NaiveDateTime.t()} | {:error, term()}
@@ -254,7 +252,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   def parse_unix_timestamp_literal([value]) do
     case parse_unix_timestamp(value) do
       {:ok, parsed} ->
-        {:with_modifiers, parsed, %{explicit_timezone: true}}
+        set_timestamp_origin(parsed, true)
 
       {:error, :invalid_format} ->
         throw(
@@ -271,19 +269,24 @@ defmodule Logflare.Lql.Parser.Helpers do
           value: term()
         }
   def timestamp_shorthand_to_value(["now"]) do
-    %{value: %{Timex.now() | microsecond: {0, 0}}, shorthand: "now"}
+    value = %{Timex.now() | microsecond: {0, 0}} |> set_timestamp_origin(true)
+    %{value: value, shorthand: "now"}
   end
 
   def timestamp_shorthand_to_value(["today"]) do
     dt = Timex.today() |> Timex.to_datetime()
-    value = {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+
+    value =
+      {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)] |> set_timestamp_origin(true)}
 
     %{value: value, shorthand: "today"}
   end
 
   def timestamp_shorthand_to_value(["yesterday"]) do
     dt = Timex.today() |> Timex.shift(days: -1) |> Timex.to_datetime()
-    value = {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+
+    value =
+      {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)] |> set_timestamp_origin(true)}
 
     %{value: value, shorthand: "yesterday"}
   end
@@ -313,7 +316,8 @@ defmodule Logflare.Lql.Parser.Helpers do
           Timex.beginning_of_year(today_ndt)
       end
 
-    value = {:range_operator, [lvalue, now_ndt]}
+    value = {:range_operator, [lvalue, now_ndt] |> set_timestamp_origin(true)}
+
     %{value: value, shorthand: "this@#{period}"}
   end
 
@@ -347,7 +351,9 @@ defmodule Logflare.Lql.Parser.Helpers do
       end
 
     lvalue = Timex.shift(truncated, [{period, amount}])
-    value = {:range_operator, [lvalue, now_ndt]}
+
+    value = {:range_operator, [lvalue, now_ndt] |> set_timestamp_origin(true)}
+
     %{value: value, shorthand: "last@#{if amount < 0, do: -amount, else: amount}#{period}"}
   end
 
@@ -549,9 +555,16 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> then(fn {values, modifiers} -> {Enum.reverse(values), modifiers} end)
   end
 
-  defp maybe_mark_explicit_timezone(values, true) when is_list(values) do
-    Enum.map(values, &{:with_modifiers, &1, %{explicit_timezone: true}})
+  defp set_timestamp_origin(values, origin) when is_list(values) do
+    Enum.map(values, &set_timestamp_origin(&1, origin))
   end
 
-  defp maybe_mark_explicit_timezone(values, false), do: values
+  defp set_timestamp_origin(value, origin) do
+    modifiers =
+      if origin,
+        do: %{timestamp_origin: :absolute},
+        else: %{timestamp_origin: :local}
+
+    {:with_modifiers, value, modifiers}
+  end
 end

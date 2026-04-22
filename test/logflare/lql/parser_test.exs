@@ -225,7 +225,7 @@ defmodule Logflare.Lql.ParserTest do
           value: "a"
         },
         %FilterRule{
-          modifiers: %{negate: true},
+          modifiers: %{negate: true, timestamp_origin: :local},
           operator: :range,
           path: "timestamp",
           values: [~N[2019-01-01 00:13:37Z], ~N[2019-02-01 00:23:34Z]]
@@ -311,22 +311,22 @@ defmodule Logflare.Lql.ParserTest do
                %FilterRule{
                  value: ~N[2026-03-17 14:47:02.000],
                  values: nil,
-                 modifiers: %{explicit_timezone: true}
+                 modifiers: %{timestamp_origin: :absolute}
                },
                %FilterRule{
                  value: ~N[2026-03-17 12:47:02],
                  values: nil,
-                 modifiers: %{explicit_timezone: true}
+                 modifiers: %{timestamp_origin: :absolute}
                },
                %FilterRule{
                  value: ~N[2026-03-17 16:47:02],
                  values: nil,
-                 modifiers: %{explicit_timezone: true}
+                 modifiers: %{timestamp_origin: :absolute}
                },
                %FilterRule{
                  value: ~N[2024-03-17 13:47:02.000],
                  values: nil,
-                 modifiers: %{explicit_timezone: true}
+                 modifiers: %{timestamp_origin: :absolute}
                }
              ] = rules
 
@@ -347,12 +347,12 @@ defmodule Logflare.Lql.ParserTest do
                %FilterRule{
                  value: nil,
                  values: [~N[2024-03-17 13:47:02], ~N[2024-03-17 13:57:02]],
-                 modifiers: %{explicit_timezone: true}
+                 modifiers: %{timestamp_origin: :absolute}
                },
                %FilterRule{
                  value: nil,
                  values: [~N[2024-03-17 13:47:02.000], ~N[2024-03-17 13:57:02.000]],
-                 modifiers: %{explicit_timezone: true}
+                 modifiers: %{timestamp_origin: :absolute}
                }
              ] = rules
 
@@ -789,6 +789,7 @@ defmodule Logflare.Lql.ParserTest do
           ] do
         lql_rules = [
           %FilterRule{
+            modifiers: %{timestamp_origin: :local},
             operator: :range,
             path: "timestamp",
             values: [start_date, end_date]
@@ -805,6 +806,7 @@ defmodule Logflare.Lql.ParserTest do
 
       lql_rules = [
         %FilterRule{
+          modifiers: %{timestamp_origin: :local},
           operator: :>,
           path: "timestamp",
           value: ~N[2020-01-01 13:14:15.000500]
@@ -827,6 +829,7 @@ defmodule Logflare.Lql.ParserTest do
 
         lql_rules = [
           %FilterRule{
+            modifiers: %{timestamp_origin: :local},
             operator: :range,
             path: "timestamp",
             values: [
@@ -846,6 +849,7 @@ defmodule Logflare.Lql.ParserTest do
 
       lql_rules = [
         %FilterRule{
+          modifiers: %{timestamp_origin: :local},
           operator: :range,
           path: "timestamp",
           values: [
