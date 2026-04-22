@@ -51,62 +51,102 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
     project = context[:project_id]
     dataset = context[:dataset_id]
 
-    with {:ok, channel} <- GrpcPool.get_channel(connetion_pool_name()) do
-      stream = BigQueryWrite.Stub.append_rows(channel)
+    requests =
+      Enum.map(arrow_rows, fn rows_batch ->
+        %AppendRowsRequest{
+          write_stream:
+            "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
+          rows: {:arrow_rows, rows_batch},
+          default_missing_value_interpretation: :NULL_VALUE
+        }
+      end)
 
-      stream =
-        Enum.reduce(
-          arrow_rows,
-          stream,
-          fn arrow_data, stream ->
-            request =
-              %AppendRowsRequest{
-                write_stream:
-                  "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
-                rows: {:arrow_rows, arrow_data}
-              }
+    try_call(requests)
+  end
 
-            GRPC.Stub.send_request(stream, request)
-          end
-        )
-
-      GRPC.Stub.end_stream(stream)
-
-      GRPC.Stub.recv(stream)
-      |> case do
-        {:ok, responses} ->
-          insert_error_count =
-            Enum.reduce(responses, 0, fn
-              {:error, response}, acc ->
-                Logger.warning(
-                  "Storage Write API AppendRows response error - #{inspect(response)}"
-                )
-
-                acc
-
-              {:ok, %AppendRowsResponse{response: {:error, %{message: msg}}}}, acc ->
-                Logger.warning(
-                  "Storage Write API AppendRows response with error msg - #{inspect(msg)}"
-                )
-
-                acc
-
-              {:ok, %AppendRowsResponse{row_errors: []}}, acc ->
-                acc
-
-              {:ok, %AppendRowsResponse{row_errors: errors}}, acc when is_list(errors) ->
-                Logger.warning("Storage Write API AppendRows row errors - #{inspect(errors)}")
-                length(errors) + acc
-            end)
-
-          OpenTelemetry.Tracer.set_attribute(:insert_error_count, insert_error_count)
-
-          :ok
-
-        {:error, response} = err ->
-          Logger.warning("Storage Write API AppendRows error - #{inspect(response)}")
+  defp try_call(requests, retry_attempt \\ 0) do
+    OpenTelemetry.Tracer.with_span "ingest.call_attempt", %{
+      attributes: %{retry_attempt: retry_attempt}
+    } do
+      with {:ok, channel} <- GrpcPool.get_channel(connetion_pool_name()),
+           {:ok, stream} <- send_requests(requests, channel),
+           {:ok, responses} <- GRPC.Stub.recv(stream),
+           [] <- handle_responses(requests, responses) do
+        :ok
+      else
+        err ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(err))
           err
       end
     end
+    |> case do
+      :ok ->
+        :ok
+
+      failed_reqs when is_list(failed_reqs) and retry_attempt < 5 ->
+        retry_call(failed_reqs, retry_attempt)
+
+      _err when retry_attempt < 5 ->
+        retry_call(requests, retry_attempt)
+
+      err ->
+        err
+    end
+  end
+
+  defp send_requests(requests, channel) do
+    stream = BigQueryWrite.Stub.append_rows(channel)
+
+    stream =
+      Enum.reduce(
+        requests,
+        stream,
+        fn request, stream ->
+          GRPC.Stub.send_request(stream, request)
+        end
+      )
+
+    {:ok, GRPC.Stub.end_stream(stream)}
+  catch
+    :exit, reason -> {:error, Exception.format_exit(reason)}
+  end
+
+  defp retry_call(requests, retry_attempt) do
+    # 200, 400, 800, 1600, 2000, ...
+    retry_wait = min(2000, 200 * 2 ** retry_attempt)
+    sleep(retry_wait)
+    try_call(requests, retry_attempt + 1)
+  end
+
+  defp handle_responses(requests, responses) do
+    requests
+    |> Stream.zip(responses)
+    |> Enum.reduce([], fn
+      {request, {:error, response}}, acc ->
+        Logger.error("Storage Write API AppendRows response error - #{inspect(response)}")
+
+        [request | acc]
+
+      {request, {:ok, %AppendRowsResponse{response: {:error, %{message: msg}}}}}, acc ->
+        Logger.warning("Storage Write API AppendRows response with error msg - #{inspect(msg)}")
+
+        [request | acc]
+
+      {_request, {:ok, %AppendRowsResponse{row_errors: []}}}, acc ->
+        acc
+
+      {_request, {:ok, %AppendRowsResponse{row_errors: errors}}}, acc when is_list(errors) ->
+        Logger.warning("Storage Write API AppendRows row errors - #{inspect(errors)}")
+        OpenTelemetry.Tracer.set_attribute("row_errors_present", true)
+        # TODO: This will override previous, but most of the time there's only one request
+        OpenTelemetry.Tracer.set_attribute("row_errors_count", length(errors))
+        acc
+    end)
+  end
+
+  defp sleep(ms) do
+    Application.get_env(:logflare, __MODULE__, [])
+    |> Keyword.get(:sleep, &Process.sleep/1)
+    |> then(& &1.(ms))
   end
 end
