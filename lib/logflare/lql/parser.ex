@@ -9,6 +9,7 @@ defmodule Logflare.Lql.Parser do
   import NimbleParsec
   import Logflare.Lql.Parser.Combinators
   import Logflare.Lql.Parser.Helpers
+  import Logflare.Utils.Guards
 
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias Logflare.Google.BigQuery.SchemaUtils
@@ -209,6 +210,8 @@ defmodule Logflare.Lql.Parser do
     FromRule.build(keyword_list)
   end
 
+  @spec build_chart_rule([{:chart, Keyword.t()}], schema_flat_map(), String.t()) ::
+          ChartRule.t() | nil
   defp build_chart_rule(chart_rule_tokens, typemap, querystring) do
     if not Enum.empty?(chart_rule_tokens) do
       chart_rule =
@@ -220,6 +223,8 @@ defmodule Logflare.Lql.Parser do
     end
   end
 
+  @spec get_path_type(schema_flat_map(), String.t(), String.t()) ::
+          atom() | {:list, atom()}
   defp get_path_type(typemap, path, _querystring) do
     type = Map.get(typemap, path)
 
@@ -250,26 +255,35 @@ defmodule Logflare.Lql.Parser do
   end
 
   # cast without typing, best effort
+  @spec maybe_cast_value(FilterRule.t()) :: FilterRule.t()
   defp maybe_cast_value(%{value: "true"} = c), do: %{c | value: true}
   defp maybe_cast_value(%{value: "false"} = c), do: %{c | value: false}
-  defp maybe_cast_value(%{value: nil} = c), do: c
 
-  defp maybe_cast_value(%{value: v} = c) do
-    parsed =
-      case Integer.parse(v) do
-        {num, ""} ->
-          num
-
-        _ ->
-          case Float.parse(v) do
-            {num, ""} -> num
-            _ -> v
-          end
-      end
-
-    %{c | value: parsed}
+  defp maybe_cast_value(%{value: nil, values: [_ | _] = vals} = c) do
+    %{c | values: Enum.map(vals, &cast_scalar_value/1)}
   end
 
+  defp maybe_cast_value(%{value: nil} = c), do: c
+
+  defp maybe_cast_value(%{value: v} = c), do: %{c | value: cast_scalar_value(v)}
+
+  @spec cast_scalar_value(term()) :: term()
+  defp cast_scalar_value(v) when is_non_empty_binary(v) do
+    case Integer.parse(v) do
+      {num, ""} ->
+        num
+
+      _ ->
+        case Float.parse(v) do
+          {num, ""} -> num
+          _ -> v
+        end
+    end
+  end
+
+  defp cast_scalar_value(v), do: v
+
+  @spec maybe_cast_value(map(), atom() | {:list, atom()}) :: map()
   defp maybe_cast_value(c, {:list, type}), do: maybe_cast_value(c, type)
 
   defp maybe_cast_value(%{values: values, value: nil} = c, type) when values != [] do
@@ -293,7 +307,7 @@ defmodule Logflare.Lql.Parser do
     do: throw("Query syntax error: Expected boolean for #{p}, got: '#{v}'")
 
   defp maybe_cast_value(%{value: v, path: p} = c, type)
-       when is_binary(v) and type in [:integer, :float] do
+       when is_non_empty_binary(v) and type in [:integer, :float] do
     mod =
       case type do
         :integer -> Integer

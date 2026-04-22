@@ -528,6 +528,79 @@ defmodule Logflare.SqlTest do
       assert String.downcase(result) =~ "select b from cte2"
     end
 
+    test "sandboxed queries apply LQL filters on ClickHouse top-level schema fields" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_ch_table")
+      _backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+
+      cte_query =
+        "with src as (select timestamp, severity_text, source_name from my_ch_table) select timestamp, severity_text, source_name from src"
+
+      cases = [
+        {"severity_text:ERROR", "'ERROR'", :filter_only},
+        {"source_name:edge_function_logs", "'edge_function_logs'", :filter_only},
+        {"c:count(*) c:group_by(t::minute) severity_text:ERROR", "'ERROR'", :chart},
+        {"c:count(*) c:group_by(t::hour) source_name:edge_function_logs", "'edge_function_logs'",
+         :chart},
+        {"c:count(*) c:group_by(t::minute) severity_text:ERROR source_name:edge_function_logs",
+         "'edge_function_logs'", :chart}
+      ]
+
+      for {lql, expected_value_literal, shape} <- cases do
+        {:ok, consumer_sql} = Logflare.Lql.to_sandboxed_sql(lql, "src", :clickhouse)
+
+        assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_sql}, user),
+               "Sql.transform failed for LQL: #{lql}\nConsumer SQL: #{consumer_sql}"
+
+        assert String.downcase(result) =~ "with src as"
+        assert String.downcase(result) =~ "where"
+
+        assert result =~ expected_value_literal,
+               "Missing #{expected_value_literal} in transformed result for LQL: #{lql}\nResult: #{result}"
+
+        if shape == :chart do
+          assert String.downcase(result) =~ "group by",
+                 "Missing GROUP BY in transformed chart result for LQL: #{lql}\nResult: #{result}"
+        end
+      end
+    end
+
+    test "sandboxed queries preserve Map column coercion for ClickHouse LQL filters" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_ch_table")
+      _backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+
+      cte_query =
+        "with src as (select timestamp, event_message, log_attributes from my_ch_table) select timestamp, event_message, log_attributes from src"
+
+      cases = [
+        {"log_attributes.response_time:>100", ["'response_time'", "toFloat64OrNull", "> 100"]},
+        {"log_attributes.response_time:100..500",
+         ["'response_time'", "toFloat64OrNull", "BETWEEN 100 AND 500"]},
+        {"log_attributes.ratio:>0.75", ["'ratio'", "toFloat64OrNull", "> 0.75"]},
+        {"log_attributes.ratio:0.1..0.5", ["'ratio'", "toFloat64OrNull", "BETWEEN 0.1 AND 0.5"]},
+        {"log_attributes.bla.foo:>=5", ["'bla.foo'", "toFloat64OrNull", ">= 5"]},
+        {"log_attributes.is_error:true", ["'is_error'", "accurateCastOrNull"]},
+        {"log_attributes.is_error:false", ["'is_error'", "accurateCastOrNull"]},
+        {"log_attributes.deep.nested.flag:true", ["'deep.nested.flag'", "accurateCastOrNull"]}
+      ]
+
+      for {lql, expected_fragments} <- cases do
+        {:ok, consumer_sql} = Logflare.Lql.to_sandboxed_sql(lql, "src", :clickhouse)
+
+        assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_sql}, user),
+               "Sql.transform failed for LQL: #{lql}\nConsumer SQL: #{consumer_sql}"
+
+        assert String.downcase(result) =~ "with src as"
+        assert String.downcase(result) =~ "where"
+
+        for fragment <- expected_fragments do
+          assert result =~ fragment,
+                 "Missing `#{fragment}` in transformed result for LQL: #{lql}\nResult: #{result}"
+        end
+      end
+    end
+
     test "sandboxed queries cannot access sources/tables outside of CTE scope" do
       user = insert(:user)
       source = insert(:source, user: user, name: "my_ch_table")
@@ -585,6 +658,44 @@ defmodule Logflare.SqlTest do
                Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_other_source}, user)
 
       assert String.downcase(err) =~ "table not found in cte"
+    end
+
+    test "sandboxed LQL chart queries transform correctly through full pipeline" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_ch_table")
+      _backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+
+      cte_query = "with src as (select timestamp from my_ch_table) select timestamp from src"
+
+      for {lql, expected_fragment} <- [
+            {"c:count(*) c:group_by(t::hour)", "count"},
+            {"c:count(*) c:group_by(t::minute)", "count"},
+            {"c:count(*) c:group_by(t::second)", "count"},
+            {"c:count(*) c:group_by(t::day)", "count"},
+            {"c:avg(m.latency) c:group_by(t::minute)", "avg"},
+            {"c:sum(m.bytes) c:group_by(t::day)", "sum"},
+            {"c:max(m.response_time) c:group_by(t::second)", "max"},
+            {"c:p50(m.duration) c:group_by(t::minute)", "quantile"},
+            {"c:p95(m.duration) c:group_by(t::hour)", "quantile"},
+            {"c:p99(m.duration) c:group_by(t::day)", "quantile"}
+          ] do
+        {:ok, consumer_sql} = Logflare.Lql.to_sandboxed_sql(lql, "src", :clickhouse)
+
+        assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_sql}, user),
+               "Sql.transform failed for LQL: #{lql}\nConsumer SQL: #{consumer_sql}"
+
+        assert String.downcase(result) =~ "with src as",
+               "Missing CTE in transformed result for: #{lql}\nResult: #{result}"
+
+        assert String.downcase(result) =~ expected_fragment,
+               "Missing #{expected_fragment} in transformed result for: #{lql}\nResult: #{result}"
+
+        assert String.downcase(result) =~ "group by",
+               "Missing GROUP BY in transformed result for: #{lql}\nResult: #{result}"
+
+        assert String.downcase(result) =~ "order by",
+               "Missing ORDER BY in transformed result for: #{lql}\nResult: #{result}"
+      end
     end
 
     test "sandboxed queries reject table references not in CTE" do

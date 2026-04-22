@@ -77,6 +77,7 @@ defmodule Logflare.Application do
     ssl = Application.get_env(:logflare, :ssl)
     grpc_creds = if ssl, do: GRPC.Credential.new(ssl: ssl)
     pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
+    read_replicas = Application.get_env(:logflare, :read_replicas, [])
 
     # set goth early in the supervision tree
     Networking.pools() ++
@@ -87,6 +88,7 @@ defmodule Logflare.Application do
         {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
+        {Logflare.Repo.Replicas, hostnames: read_replicas},
         Logflare.Vault,
         {Oban, Application.fetch_env!(:logflare, Oban)},
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
