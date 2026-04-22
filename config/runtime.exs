@@ -506,3 +506,15 @@ config :logflare, :context_cache_gossip, %{
   ratio: cache_gossip_ratio,
   max_nodes: cache_gossip_max_nodes
 }
+
+# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replica hostnames to distribute
+# context cache queries across. If unset or empty, all queries go to the primary database.
+# Example: "replica1.example.com,replica2.example.com"
+read_replicas =
+  "LOGFLARE_READ_REPLICAS"
+  |> System.get_env("")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+  |> Enum.uniq()
+
+config :logflare, :read_replicas, read_replicas
