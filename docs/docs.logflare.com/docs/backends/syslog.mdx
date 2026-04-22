@@ -24,7 +24,7 @@ The following values are required when creating a Syslog backend:
 The following values are optional:
 
 - `tls`: (`boolean`) If true, connects via SSL/TLS. Defaults to false (TCP).
-- `max_message_bytes`: (`integer`) Maximum size of the syslog message frame in bytes. If a log exceeds this limit, the JSON body is truncated to fit. If the headers alone exceed this limit, the body is dropped entirely. Defaults to no limit.
+- `max_message_bytes`: (`integer`) Maximum size of the syslog message frame in bytes. If a log exceeds this limit, the JSON body is truncated to fit. If the headers alone exceed this limit, the body is dropped entirely. If not set, the message size is unlimited.
 - `structured_data`: (`string`) Static [RFC 5424 Structured Data](https://datatracker.ietf.org/doc/html/rfc5424#section-6.3) to include in every log frame (e.g., `[exampleSDID@32473 iut="3" eventSource="Application"]`).
 - `cipher_key`: (`string`) A base64-encoded 32-byte key. If provided, the log body is encrypted using AES-256-GCM.
 - `ca_cert`: (`string`) PEM encoded CA certificate for verifying the server. If not provided, the backend falls back to the system's default CA certificate bundle.
