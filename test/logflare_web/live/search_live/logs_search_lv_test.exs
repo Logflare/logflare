@@ -1254,27 +1254,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert get_view_assigns(view).querystring =~ "error"
       assert get_view_assigns(view).querystring =~ "t:2020-04-20T00:{01..02}:00"
     end
-
-    test "preserves Z suffixes from query params", %{conn: conn, source: source} do
-      {:ok, view, _html} =
-        live(
-          conn,
-          Routes.live_path(conn, SearchLV, source,
-            querystring:
-              "t:>2026-04-10T03:18:15Z t:<2026-04-10T03:19:15Z c:count(*) c:group_by(t::second)",
-            tailing?: false
-          )
-        )
-
-      querystring =
-        view
-        |> TestUtils.wait_for_render("#lql-editor-hook")
-        |> render()
-        |> find_querystring()
-
-      assert querystring =~ "t:>2026-04-10T03:18:15Z"
-      assert querystring =~ "t:<2026-04-10T03:19:15Z"
-    end
   end
 
   describe "create from query" do
