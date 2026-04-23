@@ -233,3 +233,12 @@ curl "https://api.logflare.app/api/endpoints/query/my-endpoint" \
   -H 'Content-Type: application/json; charset=utf-8'
 ```
 
+### Additional BigQuery Projects
+
+If the reservation is in a different GCP project than your primary BigQuery project, you must configure it as an additional BigQuery project under **Account > BigQuery Backend > Additional BigQuery Projects**.
+
+The main Logflare service account must be granted the following IAM roles on the additional project:
+
+- **Project IAM Admin** (`roles/resourcemanager.projectIamAdmin`) — required to set IAM policies for managed service accounts on the additional project
+- **BigQuery Admin** (`roles/bigquery.admin`) — required for managed service accounts to execute queries against reservations in the additional project
+

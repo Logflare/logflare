@@ -2,11 +2,14 @@ import Config
 
 alias Logflare.Utils
 
-active? = fn key ->
-  System.get_env(key, "false") in ["true", "1"]
+defmodule Env do
+  def get_boolean(env, default \\ false) when is_boolean(default) do
+    value = System.get_env(env)
+    if value, do: value |> String.downcase() |> String.to_existing_atom(), else: default
+  end
 end
 
-if config_env() == :test and active?.("E2E") do
+if config_env() == :test and Env.get_boolean("E2E") do
   # This configuration file is loaded only for the
   # end-to-end test environment and is executed
   # at runtime.
@@ -16,9 +19,9 @@ if config_env() == :test and active?.("E2E") do
     playwright: [
       browser: :chromium,
       executable_path: System.get_env("PLAYWRIGHT_CHROMIUM_PATH", ""),
-      trace: active?.("PW_TRACE"),
-      screenshot: active?.("PW_SCREENSHOT"),
-      js_logger: if(active?.("PW_JS_LOGGER"), do: :default, else: false),
+      trace: Env.get_boolean("PW_TRACE"),
+      screenshot: Env.get_boolean("PW_SCREENSHOT"),
+      js_logger: if(Env.get_boolean("PW_JS_LOGGER"), do: :default, else: false),
       timeout: :timer.seconds(40),
       browser_launch_timeout: 10_000
     ]
@@ -26,16 +29,6 @@ end
 
 filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
-end
-
-detect_ip_version = fn host ->
-  host = String.to_charlist(host)
-
-  cond do
-    match?({:ok, _}, :inet6_tcp.getaddr(host)) -> {:ok, :inet6}
-    match?({:ok, _}, :inet.gethostbyname(host)) -> {:ok, :inet}
-    true -> {:error, :nxdomain}
-  end
 end
 
 logflare_metadata =
@@ -77,8 +70,7 @@ cache_stats =
   case System.get_env("LOGFLARE_CACHE_STATS") do
     # Keep the compile time value
     nil -> nil
-    "false" -> false
-    "true" -> true
+    val -> val |> String.downcase() |> String.to_existing_atom()
   end
 
 config :logflare,
@@ -86,8 +78,8 @@ config :logflare,
          node_shutdown_code: System.get_env("LOGFLARE_NODE_SHUTDOWN_CODE"),
          recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET"),
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
-         single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true",
-         supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE", "false") == "true",
+         single_tenant: Env.get_boolean("LOGFLARE_SINGLE_TENANT"),
+         supabase_mode: Env.get_boolean("LOGFLARE_SUPABASE_MODE"),
          public_access_token:
            System.get_env("LOGFLARE_PUBLIC_ACCESS_TOKEN") || System.get_env("LOGFLARE_API_KEY"),
          private_access_token: System.get_env("LOGFLARE_PRIVATE_ACCESS_TOKEN"),
@@ -96,7 +88,9 @@ config :logflare,
          encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED"),
          metadata: logflare_metadata,
          health: logflare_health,
-         http_connection_pools: http_connection_pools
+         http_connection_pools: http_connection_pools,
+         bq_write_api_pool_size:
+           System.get_env("LOGFLARE_BQ_WRITE_API_POOL_SIZE", "10") |> String.to_integer()
        ]
        |> filter_nil_kv_pairs.()
 
@@ -142,7 +136,7 @@ config :logflare,
          live_view:
            [signing_salt: System.get_env("PHX_LIVE_VIEW_SIGNING_SALT")]
            |> filter_nil_kv_pairs.(),
-         live_dashboard: System.get_env("LOGFLARE_ENABLE_LIVE_DASHBOARD", "false") == "true"
+         live_dashboard: Env.get_boolean("LOGFLARE_ENABLE_LIVE_DASHBOARD")
        )
 
 config :logflare,
@@ -160,7 +154,8 @@ config :logflare,
          socket_options:
            case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
              nil -> []
-             version -> [version]
+             version when version in [:inet, :inet6] -> [version]
+             error -> raise "Failed to detect IP version for DB_HOSTNAME: #{error}"
            end,
          after_connect:
            if(System.get_env("DB_SCHEMA"),
@@ -195,7 +190,7 @@ config :logger,
         do: LogflareLogger.HttpBackend,
         else: nil
       ),
-      if(System.get_env("LOGFLARE_LOGGER_JSON") == "true", do: LoggerJSON, else: nil)
+      if(Env.get_boolean("LOGFLARE_LOGGER_JSON"), do: LoggerJSON, else: nil)
     ]
     |> Enum.filter(&(&1 != nil))
 
@@ -296,7 +291,8 @@ socket_options_for_url = fn
       %URI{host: host} ->
         case Utils.ip_version(host) do
           nil -> []
-          version -> [version]
+          version when version in [:inet, :inet6] -> [version]
+          reason -> raise "Failed to detect IP version for URL host: #{host}, reason: #{reason}"
         end
 
       _ ->
@@ -308,7 +304,7 @@ socket_options_for_url = fn
 end
 
 cond do
-  System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true" &&
+  Env.get_boolean("LOGFLARE_SINGLE_TENANT") &&
       not is_nil(System.get_env("POSTGRES_BACKEND_URL")) ->
     config :logflare,
            :postgres_backend_adapter,
@@ -331,7 +327,7 @@ cond do
 end
 
 if(
-  System.get_env("LOGFLARE_ENABLE_GRPC_SSL") == "true" &&
+  Env.get_boolean("LOGFLARE_ENABLE_GRPC_SSL") &&
     File.exists?("cert.pem") && File.exists?("cert.key")
 ) do
   config :logflare,
@@ -342,7 +338,7 @@ if(
 end
 
 if(
-  System.get_env("DB_SSL") == "true" && File.exists?("db-server-ca.pem") &&
+  Env.get_boolean("DB_SSL") && File.exists?("db-server-ca.pem") &&
     File.exists?("db-client-ca.pem") && File.exists?("db-client-key.pem")
 ) do
   config :logflare, Logflare.Repo,
@@ -460,7 +456,7 @@ config :syn,
   scopes: [:core, :ui] ++ syn_endpoints_partitions,
   event_handler: Logflare.SynEventHandler
 
-enable_alerting? = System.get_env("LOGFLARE_ALERTS_ENABLED", "true") == "true"
+enable_alerting? = Env.get_boolean("LOGFLARE_ALERTS_ENABLED", true)
 
 config :logflare, Oban,
   queues: [default: 10] ++ if(enable_alerting?, do: [alerts: 5], else: []),
@@ -477,3 +473,49 @@ config :logflare, Oban,
   ]
 
 config :logflare, Logflare.Alerting, enabled: enable_alerting?
+
+# LOGFLARE_CACHE_GOSSIP_ENABLED: Enable or disable cache gossip
+default_cache_gossip_enabled = if config_env() == :test, do: "true", else: "false"
+
+cache_gossip_enabled? =
+  System.get_env("LOGFLARE_CACHE_GOSSIP_ENABLED", default_cache_gossip_enabled) == "true"
+
+# LOGFLARE_CACHE_GOSSIP_RATIO: Ratio of nodes to gossip cache updates to
+raw_cache_gossip_ratio = System.get_env("LOGFLARE_CACHE_GOSSIP_RATIO", "0.05")
+
+cache_gossip_ratio =
+  case Float.parse(raw_cache_gossip_ratio) do
+    {ratio, ""} when ratio >= 0.0 and ratio <= 1.0 ->
+      ratio
+
+    _ ->
+      raise ArgumentError,
+            "Invalid LOGFLARE_CACHE_GOSSIP_RATIO: #{raw_cache_gossip_ratio}. Must be a float between 0 and 1."
+  end
+
+# LOGFLARE_CACHE_GOSSIP_MAX_NODES: Maximum number of nodes to gossip cache updates to
+cache_gossip_max_nodes =
+  "LOGFLARE_CACHE_GOSSIP_MAX_NODES" |> System.get_env("3") |> String.to_integer()
+
+if cache_gossip_max_nodes <= 0 do
+  raise ArgumentError,
+        "Invalid LOGFLARE_CACHE_GOSSIP_MAX_NODES: #{cache_gossip_max_nodes}. Must be a positive integer."
+end
+
+config :logflare, :context_cache_gossip, %{
+  enabled: cache_gossip_enabled?,
+  ratio: cache_gossip_ratio,
+  max_nodes: cache_gossip_max_nodes
+}
+
+# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replica hostnames to distribute
+# context cache queries across. If unset or empty, all queries go to the primary database.
+# Example: "replica1.example.com,replica2.example.com"
+read_replicas =
+  "LOGFLARE_READ_REPLICAS"
+  |> System.get_env("")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+  |> Enum.uniq()
+
+config :logflare, :read_replicas, read_replicas

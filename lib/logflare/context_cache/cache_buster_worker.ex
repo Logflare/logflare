@@ -44,8 +44,15 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
   def handle_cast({:apply, results}, state) do
     grouped = Enum.group_by(results, &elem(&1, 0), &elem(&1, 1))
 
-    ContextCache.refresh_keys(Map.get(grouped, :fetched, []))
-    ContextCache.bust_keys(Map.get(grouped, :bust, []))
+    fetched = Map.get(grouped, :fetched, [])
+    to_bust = Map.get(grouped, :bust, [])
+
+    tombstones =
+      Enum.map(fetched, fn {context, trigger, _actions} -> {context, trigger} end) ++ to_bust
+
+    ContextCache.Gossip.record_tombstones(tombstones)
+    ContextCache.refresh_keys(fetched)
+    ContextCache.bust_keys(to_bust)
 
     for {_tag, value} <- results do
       maybe_do_cross_cluster_syncing(value)

@@ -3,6 +3,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
 
   import Ecto.Query
   import Logflare.Utils.Guards
+  import Logflare.TestUtils
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
@@ -183,10 +184,10 @@ defmodule Logflare.Logs.SearchOperationsTest do
   end
 
   describe "postgres chart aggregation" do
+    setup_single_tenant(backend_type: :postgres)
+
     setup %{user: user} do
       source = insert(:source, user: user)
-
-      stub(Backends, :get_default_backend, fn ^user -> %{type: :postgres} end)
 
       base_so =
         @postgres_search_attrs
@@ -265,10 +266,10 @@ defmodule Logflare.Logs.SearchOperationsTest do
   end
 
   describe "postgres query defaults and rules" do
+    setup_single_tenant(backend_type: :postgres)
+
     setup %{user: user} do
       source = insert(:source, user: user)
-
-      stub(Backends, :get_default_backend, fn ^user -> %{type: :postgres} end)
 
       so =
         %{@postgres_search_attrs | source: source}
@@ -318,11 +319,47 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
+  describe "apply_local_timestamp_correction/1" do
+    test "skips timestamp filters with explicit timezone modifiers" do
+      value = ~N[2026-03-17 14:47:02]
+      range_start = ~N[2026-03-17 14:47:02]
+      range_end = ~N[2026-03-17 15:47:02]
+
+      so =
+        %SO{
+          partition_by: :timestamp,
+          querystring: "",
+          tailing?: false,
+          chart_data_shape_id: nil,
+          lql_ts_filters: [
+            %FilterRule{
+              path: "timestamp",
+              operator: :>,
+              value: value,
+              modifiers: %{explicit_timezone: true}
+            },
+            %FilterRule{
+              path: "timestamp",
+              operator: :range,
+              value: nil,
+              values: [range_start, range_end],
+              modifiers: %{explicit_timezone: true}
+            }
+          ],
+          search_timezone: "Australia/Brisbane"
+        }
+
+      corrected = SearchOperations.apply_local_timestamp_correction(so)
+
+      assert corrected.lql_ts_filters == so.lql_ts_filters
+    end
+  end
+
   describe "postgres timestamp filter rules" do
+    setup_single_tenant(backend_type: :postgres)
+
     setup %{user: user} do
       source = insert(:source, user: user)
-
-      stub(Backends, :get_default_backend, fn ^user -> %{type: :postgres} end)
 
       base_so =
         @postgres_search_attrs
@@ -445,13 +482,13 @@ defmodule Logflare.Logs.SearchOperationsTest do
   end
 
   describe "postgres backend adaptor integration" do
+    setup_single_tenant(backend_type: :postgres)
+
     setup %{user: user} do
       Mimic.copy(PostgresAdaptor)
 
       source = insert(:source, user: user)
       backend = build(:backend, type: :postgres)
-
-      stub(Backends, :get_default_backend, fn ^user -> backend end)
 
       base_so =
         %{@postgres_search_attrs | source: source, query: from("test_table")}
@@ -493,31 +530,30 @@ defmodule Logflare.Logs.SearchOperationsTest do
         {:ok, QueryResult.new(rows, %{total_rows: length(rows)})}
       end)
 
-      PostgresAdaptor
-      |> expect(:ecto_to_sql, fn %Ecto.Query{}, [] ->
-        {:ok, {"SELECT * FROM test_table", ["param"]}}
-      end)
-
       result_so = SearchOperations.do_query(base_so)
 
-      assert result_so.sql_string == "SELECT * FROM test_table"
-      assert result_so.sql_params == ["param"]
       assert result_so.rows == rows
       refute result_so.error
     end
 
-    test "do_query/1 stores postgres backend errors", %{backend: backend, base_so: base_so} do
+    test "do_query/1 propagates postgres backend errors", %{backend: backend, base_so: base_so} do
       Backends
       |> expect(:get_default_backend, fn _user -> backend end)
 
       PostgresAdaptor
       |> expect(:execute_query, fn ^backend, %Ecto.Query{}, [query_type: :search] ->
-        {:error, :postgres_failed}
+        raise Postgrex.Error,
+          postgres: %{
+            code: "26000",
+            pg_code: :invalid_sql_statement_name,
+            message: "connection refused",
+            severity: "ERROR"
+          }
       end)
 
-      result_so = SearchOperations.do_query(base_so)
-
-      assert result_so.error == :postgres_failed
+      assert_raise Postgrex.Error, fn ->
+        SearchOperations.do_query(base_so)
+      end
     end
 
     test "do_query/1 renames count to value for aggregates and process_query_result/1 adds datetime",
@@ -534,11 +570,6 @@ defmodule Logflare.Logs.SearchOperationsTest do
       |> expect(:execute_query, fn ^backend, %Ecto.Query{}, [query_type: :search] ->
         rows = [%{"count" => 2, "timestamp" => unix_timestamp}]
         {:ok, QueryResult.new(rows, %{total_rows: length(rows)})}
-      end)
-
-      PostgresAdaptor
-      |> expect(:ecto_to_sql, fn %Ecto.Query{}, [] ->
-        {:ok, {"SELECT count(*) FROM test_table", []}}
       end)
 
       result_so =

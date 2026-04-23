@@ -188,7 +188,7 @@ defmodule Logflare.Billing do
   def get_payment_method!(id), do: Repo.get!(PaymentMethod, id)
 
   @doc "get PaymentMethod by keyword"
-  @spec get_payment_method_by(keyword()) :: PaymentMethod.t()
+  @spec get_payment_method_by(keyword()) :: PaymentMethod.t() | nil
   def get_payment_method_by(kv), do: Repo.get_by(PaymentMethod, kv)
 
   @doc "Creates a payment_method."

@@ -461,6 +461,9 @@ defmodule Logflare.Logs.SearchOperations do
     lql_ts_filters =
       so.lql_ts_filters
       |> Enum.map(fn
+        %{path: "timestamp", modifiers: %{explicit_timezone: true}} = pvo ->
+          pvo
+
         %{path: "timestamp", values: values, operator: :range} = pvo ->
           values =
             for value <- values do

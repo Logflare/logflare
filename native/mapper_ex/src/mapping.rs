@@ -272,6 +272,7 @@ fn decode_default<'a>(
         Some(t) => t,
         None => {
             return Ok(match field_type {
+                FieldType::String => DefaultValue::Str(String::new()),
                 FieldType::Json | FieldType::FlatMap => DefaultValue::EmptyMap,
                 FieldType::ArrayString
                 | FieldType::ArrayUInt64

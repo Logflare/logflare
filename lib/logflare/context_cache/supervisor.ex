@@ -6,6 +6,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Backends
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.CacheBusterWorker
+  alias Logflare.ContextCache.Tombstones
   alias Logflare.Billing
   alias Logflare.ContextCache
   alias Logflare.Backends
@@ -33,19 +34,28 @@ defmodule Logflare.ContextCache.Supervisor do
     |> Supervisor.init(strategy: :one_for_one)
   end
 
-  defp get_children(:test),
-    do:
-      list_caches() ++
-        [
-          {GenSingleton, child_spec: cainophile_child_spec()}
-        ]
+  defp get_children(env) do
+    caches = list_caches()
 
-  defp get_children(_env) do
-    list_caches() ++
-      [
-        ContextCache.TransactionBroadcaster,
+    maybe_transaction_broadcaster =
+      if env != :test do
+        ContextCache.TransactionBroadcaster
+      end
+
+    maybe_cainophile =
+      if Application.get_env(:logflare, :enable_cainophile, true) do
         {GenSingleton, child_spec: cainophile_child_spec()}
-      ] ++ buster_specs()
+      end
+
+    maybe_busters =
+      if env != :test do
+        buster_specs()
+      end
+
+    caches ++
+      List.wrap(maybe_transaction_broadcaster) ++
+      List.wrap(maybe_cainophile) ++
+      List.wrap(maybe_busters)
   end
 
   def buster_specs do
@@ -68,7 +78,8 @@ defmodule Logflare.ContextCache.Supervisor do
       {Endpoints.Cache, :endpoints},
       {Rules.Cache, :rules},
       {KeyValues.Cache, :key_values},
-      {SavedSearches.Cache, :saved_searches}
+      {SavedSearches.Cache, :saved_searches},
+      {Tombstones.Cache, :context_cache_tombstones}
     ]
   end
 

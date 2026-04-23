@@ -202,7 +202,8 @@ plans = [
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
     limit_key_values: 10_000_000,
-    type: "metered"
+    type: "metered",
+    stripe_id: "price_1Jn5crLvvReWx3Fx09NdM5ki"
   },
   %{
     name: "Metered BYOB",
@@ -217,7 +218,8 @@ plans = [
     limit_source_fields_limit: 500,
     limit_source_ttl: 5_184_000_000,
     limit_key_values: 10_000_000,
-    type: "metered"
+    type: "metered",
+    stripe_id: "price_1Jn59kLvvReWx3FxPBXNS4Me"
   }
 ]
 
