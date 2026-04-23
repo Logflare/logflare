@@ -35,7 +35,10 @@ defmodule Logflare.Users.Cache do
   @behaviour Logflare.ContextCache
 
   @impl Logflare.ContextCache
-  def fetch_by_id(id) when is_integer(id), do: Users.get(id)
+  def bust_actions(action, id) when is_integer(id) do
+    value = if action == :update, do: Users.get(id), else: :bust
+    {:partial, %{{:get, [id]} => value, {:get_by, [[id: id]]} => value}}
+  end
 
   def update(user),
     do: Logflare.ContextCache.update(Users, :get, [user.id], user)

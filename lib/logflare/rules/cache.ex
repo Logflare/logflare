@@ -57,17 +57,30 @@ defmodule Logflare.Rules.Cache do
   def rules_tree_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
 
   @impl ContextCache
-  def keys_to_bust(kw) do
-    Enum.flat_map(kw, fn
-      {:id, id} ->
-        [{:get_rule, [id]}]
+  def bust_actions(action, kw) do
+    actions =
+      Enum.flat_map(kw, fn
+        {:id, id} ->
+          new_value =
+            case action do
+              :update -> Rules.get_rule(id)
+              :delete -> :bust
+            end
 
-      {:source_id, source_id} ->
-        [{:list_by_source_id, [source_id]}, {:rules_tree_by_source_id, [source_id]}]
+          [{{:get_rule, [id]}, new_value}]
 
-      {:backend_id, backend_id} ->
-        [{:list_by_backend_id, [backend_id]}]
-    end)
+        {:source_id, source_id} ->
+          # TODO: consider broadcasting list values or adding in-list update action
+          [
+            {{:list_by_source_id, [source_id]}, :bust},
+            {{:rules_tree_by_source_id, [source_id]}, :bust}
+          ]
+
+        {:backend_id, backend_id} ->
+          [{{:list_by_backend_id, [backend_id]}, :bust}]
+      end)
+
+    {:full, actions}
   end
 
   defp apply_repo_fun(fun, args) do

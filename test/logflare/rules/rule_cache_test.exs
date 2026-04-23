@@ -18,7 +18,7 @@ defmodule Logflare.Rules.CacheTest do
     [source: source, backend: backend, rule_ids: [r1.id, r2.id]]
   end
 
-  describe "rules cache" do
+  describe "Rules.Cache" do
     test "get rules", %{rule_ids: rule_ids} do
       assert rules = @subject.get_rules(rule_ids)
 
@@ -88,46 +88,58 @@ defmodule Logflare.Rules.CacheTest do
       assert [_r1, _r2] = @subject.list_rules(backend)
       assert %{hits: 2} = Cachex.stats!(@subject)
     end
+  end
 
-    test "source id key busting", %{source: source} do
+  describe "Rules.Cache key busting" do
+    test "by source id", %{source: source} do
       assert [_r1, _r2] = @subject.list_rules(source)
       assert _ = @subject.rules_tree_by_source_id(source.id)
       assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
 
-      assert :ok = ContextCache.bust_keys([{Rules, source_id: source.id}])
+      kw = [source_id: source.id]
+      actions = @subject.bust_actions(:update, kw)
+      assert :ok = ContextCache.refresh_keys([{Rules, kw, actions}])
+
       assert [_r1, _r2] = @subject.list_rules(source)
-      assert %{misses: 3, writes: 3} = Cachex.stats!(@subject)
+      assert %{misses: 3} = Cachex.stats!(@subject)
 
       assert _ = @subject.rules_tree_by_source_id(source.id)
-      assert %{misses: 4, writes: 4} = Cachex.stats!(@subject)
+      assert %{misses: 4} = Cachex.stats!(@subject)
     end
 
-    test "backend id key busting", %{backend: backend} do
+    test "by backend id", %{backend: backend} do
       assert [_r1, _r2] = @subject.list_rules(backend)
       assert %{misses: 1, writes: 1} = Cachex.stats!(@subject)
 
-      assert :ok = ContextCache.bust_keys([{Rules, backend_id: backend.id}])
-      assert [_r1, _r2] = @subject.list_rules(backend)
-      assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
-    end
+      kw = [backend_id: backend.id]
+      actions = @subject.bust_actions(:update, kw)
+      assert :ok = ContextCache.refresh_keys([{Rules, kw, actions}])
 
-    test "rule id key busting", %{rule_ids: [rid1, rid2]} do
+      assert [_r1, _r2] = @subject.list_rules(backend)
+      assert %{misses: 2} = Cachex.stats!(@subject)
+    end
+  end
+
+  describe "Rules.Cache key refreshing" do
+    test "by rule id", %{rule_ids: [rid1, rid2]} do
       assert _r1 = @subject.get_rule(rid1)
       assert %{misses: 1, writes: 1} = Cachex.stats!(@subject)
 
-      assert :ok = ContextCache.bust_keys([{Rules, id: rid1}])
+      kw = [id: rid1]
+      assert :ok = ContextCache.refresh_keys([{Rules, kw, @subject.bust_actions(:update, kw)}])
       assert _r1 = @subject.get_rule(rid1)
-      assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
+      assert %{hits: 1, misses: 1} = Cachex.stats!(@subject)
 
-      # Bust missing key
+      # Refresh missing key
       size_before = Cachex.size!(@subject)
-      assert :ok = ContextCache.bust_keys([{Rules, id: rid2}])
+      kw = [id: rid2]
+      assert :ok = ContextCache.refresh_keys([{Rules, kw, @subject.bust_actions(:update, kw)}])
       assert Cachex.size!(@subject) == size_before
     end
+  end
 
-    test "cache warming" do
-      assert Cachex.warm!(@subject, wait: true) == [Logflare.Rules.CacheWarmer]
-      assert Cachex.size!(@subject) == 1
-    end
+  test "cache warming" do
+    assert Cachex.warm!(@subject, wait: true) == [Logflare.Rules.CacheWarmer]
+    assert Cachex.size!(@subject) == 1
   end
 end

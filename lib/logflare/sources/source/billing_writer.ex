@@ -54,7 +54,7 @@ defmodule Logflare.Sources.Source.BillingWriter do
   end
 
   defp record_to_stripe(state, count) do
-    billing_account = Billing.Cache.get_billing_account_by(user_id: state.user_id)
+    billing_account = Billing.Cache.get_billing_account_by_user(state.user_id)
 
     with %{"id" => si_id} <-
            Billing.get_billing_account_stripe_subscription_item(billing_account),

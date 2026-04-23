@@ -38,6 +38,10 @@ defmodule Logflare.Billing do
   @spec get_billing_account_by(keyword()) :: BillingAccount.t() | nil
   def get_billing_account_by(kv), do: Repo.get_by(BillingAccount, kv)
 
+  @doc "Gets a single billing_account by user id."
+  @spec get_billing_account_by_user(integer()) :: BillingAccount.t() | nil
+  def get_billing_account_by_user(user_id), do: Repo.get_by(BillingAccount, user_id: user_id)
+
   @doc "Gets a single billing_account by id."
   @spec get_billing_account(number()) :: BillingAccount.t() | nil
   def get_billing_account(id), do: Repo.get(BillingAccount, id)

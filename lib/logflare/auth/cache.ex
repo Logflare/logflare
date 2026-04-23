@@ -33,9 +33,6 @@ defmodule Logflare.Auth.Cache do
 
   @behaviour Logflare.ContextCache
 
-  @impl Logflare.ContextCache
-  def fetch_by_id(id) when is_integer(id), do: Auth.get_access_token_by_id(id)
-
   @spec verify_access_token(OauthAccessToken.t() | String.t()) ::
           {:ok, OauthAccessToken.t(), User.t()} | {:error, term()}
   def verify_access_token(access_token_or_api_key),

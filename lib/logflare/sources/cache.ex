@@ -61,7 +61,10 @@ defmodule Logflare.Sources.Cache do
   @behaviour Logflare.ContextCache
 
   @impl Logflare.ContextCache
-  def fetch_by_id(id) when is_integer(id), do: Sources.get(id)
+  def bust_actions(action, id) when is_integer(id) do
+    value = if action == :update, do: Sources.get(id), else: :bust
+    {:partial, %{{:get_by, [[id: id]]} => value}}
+  end
 
   def get_by(kv), do: apply_repo_fun(__ENV__.function, [kv])
   def get_by_id(arg) when is_integer(arg), do: get_by(id: arg)

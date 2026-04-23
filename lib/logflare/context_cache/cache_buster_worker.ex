@@ -19,8 +19,11 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
     {PartitionSupervisor, child_spec: __MODULE__, name: @supervisor_name}
   end
 
-  @spec cast_apply([{:fetched, {module(), integer(), struct()}} | {:bust, {module(), term()}}]) ::
-          :ok
+  @spec cast_apply([
+          {:fetched,
+           {module(), ContextCache.bust_ctx(), {:full | :partial, ContextCache.actions()}}}
+          | {:bust, {module(), term()}}
+        ]) :: :ok
   def cast_apply(results) when is_list(results) do
     GenServer.cast(
       {:via, PartitionSupervisor, {@supervisor_name, results}},
@@ -64,7 +67,7 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
     end)
   end
 
-  defp maybe_do_cross_cluster_syncing({context, pkey, _struct}),
+  defp maybe_do_cross_cluster_syncing({context, pkey, _actions}),
     do: maybe_do_cross_cluster_syncing({context, pkey})
 
   defp maybe_do_cross_cluster_syncing(_), do: :noop

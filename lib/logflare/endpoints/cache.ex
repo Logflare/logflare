@@ -31,7 +31,15 @@ defmodule Logflare.Endpoints.Cache do
   @behaviour Logflare.ContextCache
 
   @impl Logflare.ContextCache
-  def fetch_by_id(id) when is_integer(id), do: Endpoints.get_endpoint_query(id)
+  def bust_actions(action, id) when is_integer(id) do
+    value =
+      case action do
+        :update -> Endpoints.get_endpoint_query(id)
+        :delete -> :bust
+      end
+
+    {:partial, %{{:get_endpoint_query, [id]} => value}}
+  end
 
   def get_endpoint_query(kw), do: apply_repo_fun(:get_endpoint_query, [kw])
   def get_by(kw), do: apply_repo_fun(:get_by, [kw])

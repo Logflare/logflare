@@ -29,10 +29,18 @@ defmodule Logflare.Billing.Cache do
   @behaviour Logflare.ContextCache
 
   @impl Logflare.ContextCache
-  def fetch_by_id(id) when is_integer(id), do: Billing.get_billing_account(id)
+  def bust_actions(action, id) when is_integer(id) do
+    value =
+      case action do
+        :update -> Billing.get_billing_account(id)
+        :delete -> :bust
+      end
 
-  def get_billing_account_by(keyword) do
-    apply_fun(__ENV__.function, [keyword])
+    {:partial, %{{:get_billing_account_by_user, [id]} => value}}
+  end
+
+  def get_billing_account_by_user(user_id) when is_integer(user_id) do
+    apply_fun(__ENV__.function, [user_id])
   end
 
   def get_plan_by_user(user), do: apply_fun(__ENV__.function, [user])

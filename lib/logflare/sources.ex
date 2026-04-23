@@ -361,7 +361,7 @@ defmodule Logflare.Sources do
   end
 
   def get_bq_schema(%Source{} = source) do
-    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+    case SourceSchemas.Cache.get_source_schema_by_source_id(source.id) do
       nil ->
         {:ok, SchemaBuilder.initial_table_schema()}
 

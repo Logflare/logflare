@@ -74,18 +74,22 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   @impl ContextCache
-  def keys_to_bust(kw) do
+  def bust_actions(action, kw) when action in [:update, :delete] and is_list(kw) do
     user_id = Keyword.get(kw, :user_id)
     key = Keyword.get(kw, :key)
 
-    entries = if user_id, do: [{:count, user_id}], else: []
+    actions =
+      cond do
+        user_id == nil -> []
+        key == nil -> [{:count, user_id}]
+        true -> [{:count, user_id} | find_lookup_keys(user_id, key)]
+      end
+      |> Map.new(fn
+        {:count, id} = k when action == :update -> {k, KeyValues.count_key_values(id)}
+        key -> {key, :bust}
+      end)
 
-    if user_id && key do
-      lookup_keys = find_lookup_keys(user_id, key)
-      lookup_keys ++ entries
-    else
-      entries
-    end
+    {:full, actions}
   end
 
   defp find_lookup_keys(user_id, key) do

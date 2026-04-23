@@ -6,19 +6,19 @@ defmodule Logflare.ContextCacheTest do
   alias Logflare.ContextCache.TransactionBroadcaster
   alias Logflare.Sources
   alias Logflare.Sources.Source
+  alias Logflare.Auth
   alias Logflare.Backends
   alias Logflare.Backends.Backend
-  alias Logflare.Rules
-  alias Logflare.Rules.Rule
-  alias Logflare.Auth
+
+  defp cache_setup(_ctx) do
+    insert(:plan, name: "Free")
+    user = insert(:user)
+    source = insert(:source, user: user)
+    %{source: source, user: user}
+  end
 
   describe "ContextCache" do
-    setup do
-      insert(:plan, name: "Free")
-      user = insert(:user)
-      source = insert(:source, user: user)
-      %{source: source, user: user}
-    end
+    setup :cache_setup
 
     test "bust_keys/1, does nothing for empty list" do
       assert :ok = ContextCache.bust_keys([])
@@ -60,47 +60,99 @@ defmodule Logflare.ContextCacheTest do
       assert Cachex.size!(Backends.Cache) == size_before - 1
       assert is_nil(Cachex.get!(Backends.Cache, cache_key))
     end
+  end
 
-    test "refresh_keys/1 list entry", %{source: source, user: user} do
+  describe "refresh_keys/1" do
+    setup :cache_setup
+
+    test "entry update on full keys list", %{source: source} do
+      Sources.Cache.get_by(id: source.id)
+      new_name = "NotHotdog"
+      cache_key = {:get_by, [[id: source.id]]}
+      assert {:cached, %Source{}} = Cachex.get!(Sources.Cache, cache_key)
+      missing_cache_key = {:get_by, [[public_token: "invalid"]]}
+
+      new_source = %{source | name: new_name}
+      actions = %{cache_key => new_source, missing_cache_key => new_source}
+      assert :ok = ContextCache.refresh_keys([{Sources, source.id, {:full, actions}}])
+      assert {:cached, %Source{name: ^new_name}} = Cachex.get!(Sources.Cache, cache_key)
+      assert Cachex.size!(Sources.Cache) == 1
+    end
+
+    test "handles multiple keys", %{source: source, user: user} do
+      backend = insert(:backend, sources: [source], user: user)
+      Backends.Cache.get_backend(backend.id)
+      new_name = "NotHotdog"
+      cache_key = {:get_backend, [backend.id]}
+      assert {:cached, %Backend{}} = Cachex.get!(Backends.Cache, cache_key)
+
+      new_backend = %{backend | name: new_name}
+      actions = %{cache_key => new_backend, {:get_backend, [backend.id + 999]} => :bust}
+      assert :ok = ContextCache.refresh_keys([{Backends, backend.id, {:full, actions}}])
+      assert {:cached, %Backend{name: ^new_name}} = Cachex.get!(Backends.Cache, cache_key)
+    end
+
+    test "bust action", %{source: source} do
+      Sources.Cache.get_by(id: source.id)
+      cache_key = {:get_by, [[id: source.id]]}
+      assert {:cached, %Source{}} = Cachex.get!(Sources.Cache, cache_key)
+
+      actions = %{cache_key => :bust}
+
+      assert :ok = ContextCache.refresh_keys([{Sources, source.id, {:full, actions}}])
+      assert Cachex.get!(Sources.Cache, cache_key) == nil
+      assert Cachex.size!(Backends.Cache) == 0
+    end
+
+    test "entry update and ETS scan on partial keys map", %{source: source, user: user} do
+      backend = insert(:backend, sources: [source], user: user)
+      Backends.Cache.get_backend(backend.id)
+      get_key = {:get_backend, [backend.id]}
+      assert {:cached, %Backend{}} = Cachex.get!(Backends.Cache, get_key)
+      Backends.Cache.list_backends(source_id: source.id)
+      list_key = {:list_backends, [[source_id: source.id]]}
+      assert {:cached, [%Backend{}]} = Cachex.get!(Backends.Cache, list_key)
+
+      new_name = "NotHotdog"
+      new_backend = %{backend | name: new_name}
+      actions = %{get_key => new_backend}
+      assert :ok = ContextCache.refresh_keys([{Backends, backend.id, {:partial, actions}}])
+
+      assert {:cached, %Backend{name: ^new_name}} = Cachex.get!(Backends.Cache, get_key)
+      assert Cachex.get!(Backends.Cache, list_key) == nil
+    end
+
+    test "no refresh of missing key on partial keys map", %{source: source, user: user} do
+      backend = insert(:backend, sources: [source], user: user)
+      # Only cache list_backends, NOT get_backend
+      Backends.Cache.list_backends(source_id: source.id)
+      list_key = {:list_backends, [[source_id: source.id]]}
+      get_key = {:get_backend, [backend.id]}
+      assert {:cached, [%Backend{}]} = Cachex.get!(Backends.Cache, list_key)
+      assert Cachex.get!(Backends.Cache, get_key) == nil
+
+      actions = %{get_key => backend}
+      assert :ok = ContextCache.refresh_keys([{Backends, backend.id, {:partial, actions}}])
+
+      # list_key should be busted by scan
+      # get_key was NOT present before — must not be inserted
+      assert Cachex.get!(Backends.Cache, get_key) == nil
+      assert Cachex.get!(Backends.Cache, list_key) == nil
+      assert Cachex.size!(Backends.Cache) == 0
+    end
+
+    test "replaces a cached list value", %{source: source, user: user} do
       backend = insert(:backend, sources: [source], user: user)
       Backends.Cache.list_backends(source_id: source.id)
       old_name = backend.name
       new_name = "NotHotdog"
-      change = Backend.changeset(backend, %{name: new_name})
-      assert {:ok, new_backend} = Repo.update(change)
-
       cache_key = {:list_backends, [[source_id: source.id]]}
       assert {:cached, [%Backend{name: ^old_name}]} = Cachex.get!(Backends.Cache, cache_key)
 
-      assert :ok = ContextCache.refresh_keys([{Backends, backend.id, new_backend}])
+      updated_backend = %{backend | name: new_name}
+      actions = %{cache_key => [updated_backend]}
+      assert :ok = ContextCache.refresh_keys([{Backends, backend.id, {:full, actions}}])
       assert {:cached, [%Backend{name: ^new_name}]} = Cachex.get!(Backends.Cache, cache_key)
-    end
-
-    test "refresh_keys/1 regular entry", %{source: source} do
-      old_name = source.name
-      new_name = "NotHotdog"
-      Sources.Cache.get_by(token: source.token)
-      change = Source.changeset(source, %{name: new_name})
-      assert {:ok, new_source} = Repo.update(change)
-
-      cache_key = {:get_by, [[token: source.token]]}
-      assert {:cached, %Source{name: ^old_name}} = Cachex.get!(Sources.Cache, cache_key)
-
-      assert :ok = ContextCache.refresh_keys([{Sources, source.id, new_source}])
-      assert {:cached, %Source{name: ^new_name}} = Cachex.get!(Sources.Cache, cache_key)
-    end
-
-    test "refresh_keys/1 with struct does in-place update for :ok tuple", %{user: user} do
-      {:ok, key} = Auth.create_access_token(user)
-      {:ok, token, _user} = Auth.Cache.verify_access_token(key.token)
-      cache_key = {:verify_access_token, [key.token]}
-      assert {:cached, {:ok, %_{id: _}, %_{id: _}}} = Cachex.get!(Auth.Cache, cache_key)
-
-      fresh = %{token | description: "InPlace"}
-      assert :ok = ContextCache.refresh_keys([{Auth, token.id, fresh}])
-
-      assert {:cached, {:ok, %_{description: "InPlace"}, %_{id: _}}} =
-               Cachex.get!(Auth.Cache, cache_key)
     end
   end
 

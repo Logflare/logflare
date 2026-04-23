@@ -33,7 +33,15 @@ defmodule Logflare.Backends.Cache do
   @behaviour Logflare.ContextCache
 
   @impl Logflare.ContextCache
-  def fetch_by_id(id) when is_integer(id), do: Backends.get_backend(id)
+  def bust_actions(action, id) when is_integer(id) do
+    value =
+      case action do
+        :update -> Backends.get_backend(id)
+        :delete -> :bust
+      end
+
+    {:partial, %{{:get_backend, [id]} => value}}
+  end
 
   def list_backends(arg), do: apply_repo_fun(__ENV__.function, [arg])
   def get_backend(arg), do: apply_repo_fun(__ENV__.function, [arg])

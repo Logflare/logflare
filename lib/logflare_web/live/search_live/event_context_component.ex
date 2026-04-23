@@ -44,7 +44,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
 
   @spec prepare_lql_rules(%Source{}, String.t(), DateTime.t()) :: Lql.Rules.lql_rules()
   def prepare_lql_rules(source, query_string, event_timestamp) do
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+    source_schema = SourceSchemas.Cache.get_source_schema_by_source_id(source.id)
 
     {:ok, lql_rules} =
       Lql.decode(

@@ -187,7 +187,7 @@ defmodule LogflareWeb.Api.SourceController do
 
   def show_schema(%{assigns: %{user: user}} = conn, %{"source_token" => token} = params) do
     with {:ok, source} <- Sources.fetch_source_by(token: token, user_id: user.id) do
-      schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+      schema = SourceSchemas.Cache.get_source_schema_by_source_id(source.id)
 
       data =
         if Map.get(params, "variant") == "dot" do
