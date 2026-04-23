@@ -95,6 +95,32 @@ defmodule Logflare.Lql.EncoderTest do
       assert result == "t:2020-01-01T{10..11}:{30..45}:00"
     end
 
+    test "drops zero milliseconds in timestamp" do
+      lql_rules = [
+        %FilterRule{
+          operator: :>=,
+          path: "timestamp",
+          value: NaiveDateTime.from_iso8601!("2026-03-17T12:47:02.000")
+        }
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "t:>=2026-03-17T12:47:02"
+    end
+
+    test "formats milliseconds in timestamp" do
+      lql_rules = [
+        %FilterRule{
+          operator: :>=,
+          path: "timestamp",
+          value: NaiveDateTime.from_iso8601!("2026-03-17T12:47:02.123")
+        }
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "t:>=2026-03-17T12:47:02.123"
+    end
+
     test "encodes quoted string filter" do
       lql_rules = [
         %FilterRule{

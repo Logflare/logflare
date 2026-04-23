@@ -28,7 +28,15 @@ defmodule Logflare.ContextCache do
 
   In the case functions don't return a response with a primary key, or something else we can
   bust the cache on, it will get reverse indexed with `select_key/1` as `:unknown`.
+
+  ## Gossip
+
+  Cache misses are optionally multicast to peer nodes via `:erpc` to warm the cluster.
+  To prevent race conditions, WAL invalidations write short-lived tombstones that
+  filter out stale incoming messages.
   """
+
+  alias Logflare.ContextCache.Gossip
 
   @doc """
   Optional callback implementing custom cache key busting by a keyword of values
@@ -42,7 +50,9 @@ defmodule Logflare.ContextCache do
     cache = cache_name(context)
     cache_key = {fun, args}
 
-    fetch(cache, cache_key, fn -> apply(context, fun, args) end)
+    fetch(cache, cache_key, fn ->
+      Logflare.Repo.apply_with_random_repo(context, fun, args)
+    end)
   end
 
   @doc """
@@ -134,6 +144,7 @@ defmodule Logflare.ContextCache do
            {:commit, {:cached, getter_fn.()}}
          end) do
       {:commit, {:cached, value}} ->
+        Gossip.multicast(cache, cache_key, value)
         value
 
       {:ok, {:cached, value}} ->

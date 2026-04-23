@@ -3,6 +3,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
   use LogflareWeb.ConnCase
 
+  import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
+  import Logflare.DataCase, only: [setup_clickhouse_test: 1]
+
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
@@ -876,6 +879,251 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
+  describe "LQL sandbox query with ClickHouse backend" do
+    setup %{user: user} do
+      edge_source = insert(:source, user: user, name: "edge_function_logs")
+      other_source = insert(:source, user: user, name: "postgres_logs")
+
+      {edge_source, backend} = setup_clickhouse_test(source: edge_source, user: user)
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+      log_events = [
+        build_mapped_log_event(
+          source: edge_source,
+          message: "edge error event",
+          body: %{
+            "metadata" => %{
+              "level" => "error",
+              "response_time" => "500",
+              "http.status_code" => "500",
+              "is_error" => "true",
+              "ratio" => "1.5"
+            }
+          }
+        ),
+        build_mapped_log_event(
+          source: edge_source,
+          message: "edge info event",
+          body: %{
+            "metadata" => %{
+              "level" => "info",
+              "response_time" => "150",
+              "http.status_code" => "200",
+              "is_error" => "false",
+              "ratio" => "0.75"
+            }
+          }
+        ),
+        build_mapped_log_event(
+          source: edge_source,
+          message: "edge debug event",
+          body: %{
+            "metadata" => %{
+              "level" => "debug",
+              "response_time" => "50",
+              "http.status_code" => "200",
+              "is_error" => "false",
+              "ratio" => "0.1"
+            }
+          }
+        ),
+        build_mapped_log_event(
+          source: other_source,
+          message: "postgres error event",
+          body: %{
+            "metadata" => %{
+              "level" => "error",
+              "response_time" => "400",
+              "http.status_code" => "500",
+              "is_error" => "true",
+              "ratio" => "0.5"
+            }
+          }
+        ),
+        build_mapped_log_event(
+          source: other_source,
+          message: "postgres info event",
+          body: %{
+            "metadata" => %{
+              "level" => "info",
+              "response_time" => "100",
+              "http.status_code" => "200",
+              "is_error" => "false",
+              "ratio" => "0.25"
+            }
+          }
+        )
+      ]
+
+      :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
+      Process.sleep(200)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          sandboxable: true,
+          query: """
+          WITH src AS (
+            SELECT timestamp, event_message, severity_text, source_name, log_attributes
+            FROM #{table_name}
+          )
+          SELECT timestamp, event_message, severity_text, source_name, log_attributes FROM src
+          """
+        )
+
+      # Guard against silent misrouting: the endpoint and backend must be wired
+      # to :ch_sql / :clickhouse, otherwise the LiveView could dispatch the
+      # sandbox query to BigQuery/Postgres without us noticing.
+      assert endpoint.language == :ch_sql
+      assert endpoint.backend_id == backend.id
+      assert backend.type == :clickhouse
+      assert String.starts_with?(table_name, "otel_logs_")
+
+      [endpoint: endpoint, backend: backend, table_name: table_name]
+    end
+
+    test "severity_text LQL filter runs against live ClickHouse without syntax error", %{
+      conn: conn,
+      endpoint: endpoint,
+      table_name: table_name
+    } do
+      {:ok, view, initial_html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      # Confirm the LiveView is serving the ClickHouse-language endpoint, not
+      # falling back to BigQuery SQL somewhere in the render path.
+      assert initial_html =~ "ClickHouse SQL"
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "lql",
+          sandbox_query: "severity_text:ERROR",
+          params: %{},
+          show_transformed: "true"
+        }
+      })
+
+      html = render(view)
+
+      refute html =~ "Error occurred when running sandbox query",
+             "Expected severity_text:ERROR LQL filter to succeed against live ClickHouse"
+
+      assert html =~ "Ran sandbox query successfully"
+      assert has_element?(view, "h5", "Sandbox Query Results")
+
+      assert html =~ table_name
+      assert html =~ ~r/&quot;severity_text&quot;/
+
+      # Fixture inserted 5 events across two sources; exactly 2 have
+      # severity_text=ERROR (edge + postgres). Filter must discriminate.
+      error_matches = Regex.scan(~r/&quot;severity_text&quot;:\s*&quot;ERROR&quot;/, html)
+
+      assert length(error_matches) == 2,
+             "Expected 2 rows for severity_text:ERROR, got #{length(error_matches)}"
+
+      refute html =~ ~r/&quot;severity_text&quot;:\s*&quot;INFO&quot;/,
+             "INFO-level rows leaked through severity_text:ERROR filter"
+
+      refute html =~ ~r/&quot;severity_text&quot;:\s*&quot;DEBUG&quot;/,
+             "DEBUG-level rows leaked through severity_text:ERROR filter"
+    end
+
+    test "source_name LQL filter runs against live ClickHouse without syntax error", %{
+      conn: conn,
+      endpoint: endpoint,
+      table_name: table_name
+    } do
+      {:ok, view, initial_html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      assert initial_html =~ "ClickHouse SQL"
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "lql",
+          sandbox_query: "source_name:edge_function_logs",
+          params: %{},
+          show_transformed: "true"
+        }
+      })
+
+      html = render(view)
+
+      refute html =~ "Error occurred when running sandbox query",
+             "Expected source_name:edge_function_logs LQL filter to succeed against live ClickHouse"
+
+      assert html =~ "Ran sandbox query successfully"
+      assert has_element?(view, "h5", "Sandbox Query Results")
+
+      assert html =~ table_name
+      assert html =~ ~r/&quot;source_name&quot;/
+
+      # Fixture inserted 5 events across two sources; exactly 3 have
+      # source_name=edge_function_logs. Postgres-sourced rows must not leak.
+      edge_matches =
+        Regex.scan(~r/&quot;source_name&quot;:\s*&quot;edge_function_logs&quot;/, html)
+
+      assert length(edge_matches) == 3,
+             "Expected 3 rows for source_name:edge_function_logs, got #{length(edge_matches)}"
+
+      refute html =~ ~r/&quot;source_name&quot;:\s*&quot;postgres_logs&quot;/,
+             "postgres_logs rows leaked through source_name:edge_function_logs filter"
+    end
+
+    test "Map column LQL filters coerce values and run against live ClickHouse", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
+      cases = [
+        {"numeric >", "log_attributes.response_time:>200",
+         ["edge error event", "postgres error event"],
+         ["edge info event", "edge debug event", "postgres info event"]},
+        {"numeric range", "log_attributes.response_time:100..300",
+         ["edge info event", "postgres info event"],
+         ["edge error event", "edge debug event", "postgres error event"]},
+        {"dotted numeric >=", "log_attributes.http.status_code:>=500",
+         ["edge error event", "postgres error event"],
+         ["edge info event", "edge debug event", "postgres info event"]},
+        {"float >", "log_attributes.ratio:>1.0", ["edge error event"],
+         ["edge info event", "edge debug event", "postgres error event", "postgres info event"]},
+        {"float range", "log_attributes.ratio:0.1..0.5",
+         ["edge debug event", "postgres error event", "postgres info event"],
+         ["edge error event", "edge info event"]},
+        {"boolean true", "log_attributes.is_error:true",
+         ["edge error event", "postgres error event"],
+         ["edge info event", "edge debug event", "postgres info event"]},
+        {"boolean false", "log_attributes.is_error:false",
+         ["edge info event", "edge debug event", "postgres info event"],
+         ["edge error event", "postgres error event"]}
+      ]
+
+      for {label, lql, expected, refuted} <- cases do
+        html = submit_sandbox_lql(conn, endpoint, lql)
+
+        refute html =~ "Error occurred when running sandbox query",
+               "[#{label}] expected `#{lql}` to succeed against live ClickHouse"
+
+        assert html =~ "Ran sandbox query successfully"
+
+        for msg <- expected do
+          assert html =~ msg, "[#{label}] missing `#{msg}` for `#{lql}`"
+        end
+
+        for msg <- refuted do
+          refute html =~ msg, "[#{label}] `#{msg}` leaked through `#{lql}`"
+        end
+      end
+    end
+  end
+
   describe "run query with dynamic BigQuery reservation" do
     setup %{user: user} do
       [
@@ -1008,5 +1256,24 @@ defmodule LogflareWeb.EndpointsLiveTest do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
     end
+  end
+
+  @spec submit_sandbox_lql(Plug.Conn.t(), struct(), String.t()) :: String.t()
+  defp submit_sandbox_lql(conn, endpoint, lql) do
+    {:ok, view, initial_html} = live(conn, "/endpoints/#{endpoint.id}")
+    assert initial_html =~ "ClickHouse SQL"
+
+    view
+    |> element("form", "Test Sandbox Query")
+    |> render_submit(%{
+      sandbox_form: %{
+        query_mode: "lql",
+        sandbox_query: "#{lql} s:event_message s:log_attributes",
+        params: %{},
+        show_transformed: "true"
+      }
+    })
+
+    render(view)
   end
 end

@@ -168,7 +168,7 @@ defmodule Logflare.Telemetry do
       ),
       distribution("logflare.backends.pipeline.handle_batch.batch_size",
         tags: [:backend_type],
-        reporter_opts: batch_size_reporter_opts(),
+        reporter_options: batch_size_reporter_opts(),
         description: "Distribution of batch sizes for broadway pipeline by backend type"
       ),
       sum("logflare.backends.pipeline.handle_batch.batch_size",
@@ -225,6 +225,26 @@ defmodule Logflare.Telemetry do
       ),
       counter("thousand_island.acceptor.spawn_error",
         description: "Count of client connection spawn errors"
+      ),
+      counter("logflare.context_cache_gossip.multicast.count",
+        event_name: "logflare.context_cache_gossip.multicast.stop",
+        tags: [:cache, :action],
+        description: "Total cache gossip multicast attempts"
+      ),
+      distribution("logflare.context_cache_gossip.multicast.stop.duration",
+        tags: [:cache, :action],
+        unit: {:native, :millisecond},
+        description: "Latency of dispatching the cache gossip multicast"
+      ),
+      counter("logflare.context_cache_gossip.receive.count",
+        event_name: "logflare.context_cache_gossip.receive.stop",
+        tags: [:cache, :action],
+        description: "Total cache gossip casts received and their outcome (cached or dropped)"
+      ),
+      distribution("logflare.context_cache_gossip.receive.stop.duration",
+        tags: [:cache, :action],
+        unit: {:native, :millisecond},
+        description: "Latency of processing an incoming cache gossip cast"
       )
     ]
 
@@ -418,6 +438,6 @@ defmodule Logflare.Telemetry do
   end
 
   defp batch_size_reporter_opts do
-    [buckets: [0, 1, 5, 10, 50, 100, 150, 250, 500, 1000, 2000]]
+    [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]
   end
 end

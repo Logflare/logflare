@@ -5,12 +5,13 @@ defmodule Logflare.LqlTest do
 
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql
-  alias Logflare.Lql.Parser
+  alias Logflare.Lql.Parser, as: LqlParser
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.FromRule
   alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sql.Parser, as: SqlParser
 
   describe "apply_filter_rules/3" do
     test "applies filter rules to query using BigQuery backend transformer by default" do
@@ -369,7 +370,7 @@ defmodule Logflare.LqlTest do
       ]
 
       for {query, path, aggregate, period} <- test_cases do
-        {:ok, [rule]} = Parser.parse(query)
+        {:ok, [rule]} = LqlParser.parse(query)
         assert %ChartRule{path: ^path, aggregate: ^aggregate, period: ^period} = rule
       end
     end
@@ -377,14 +378,14 @@ defmodule Logflare.LqlTest do
 
   describe "`FromRule` decode/encode" do
     test "decodes simple `FromRule`" do
-      {:ok, rules} = Parser.parse("f:my_table")
+      {:ok, rules} = LqlParser.parse("f:my_table")
 
       assert length(rules) == 1
       assert [%FromRule{table: "my_table"}] = rules
     end
 
     test "decodes `FromRule` with filters" do
-      {:ok, rules} = Parser.parse("f:logs m.status:error")
+      {:ok, rules} = LqlParser.parse("f:logs m.status:error")
 
       assert length(rules) == 2
       assert %FromRule{table: "logs"} = Enum.find(rules, &match?(%FromRule{}, &1))
@@ -394,7 +395,7 @@ defmodule Logflare.LqlTest do
     end
 
     test "decodes `FromRule` with select rules" do
-      {:ok, rules} = Parser.parse("f:events s:timestamp s:event_message")
+      {:ok, rules} = LqlParser.parse("f:events s:timestamp s:event_message")
 
       assert length(rules) == 3
       assert %FromRule{table: "events"} = Enum.find(rules, &match?(%FromRule{}, &1))
@@ -403,7 +404,7 @@ defmodule Logflare.LqlTest do
     end
 
     test "decodes `FromRule` with chart rule" do
-      {:ok, rules} = Parser.parse("f:metrics c:count(*) c:group_by(t::minute)")
+      {:ok, rules} = LqlParser.parse("f:metrics c:count(*) c:group_by(t::minute)")
 
       assert length(rules) == 2
       assert %FromRule{table: "metrics"} = Enum.find(rules, &match?(%FromRule{}, &1))
@@ -444,11 +445,11 @@ defmodule Logflare.LqlTest do
 
     test "round-trip decode/encode preserves from rule" do
       original = "f:my_source m.level:error s:event_message"
-      {:ok, rules} = Parser.parse(original)
+      {:ok, rules} = LqlParser.parse(original)
       {:ok, encoded} = Lql.encode(rules)
 
       # Re-parse to verify structure is preserved
-      {:ok, rules2} = Parser.parse(encoded)
+      {:ok, rules2} = LqlParser.parse(encoded)
 
       assert length(rules) == length(rules2)
       assert Enum.find(rules, &match?(%FromRule{table: "my_source"}, &1))
@@ -640,6 +641,96 @@ defmodule Logflare.LqlTest do
       assert String.downcase(sql) =~ "group by"
     end
 
+    test "converts chart count aggregation to ClickHouse SQL" do
+      lql = "c:count(*) c:group_by(t::hour)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "events", :clickhouse)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "tostartofinterval"
+      assert String.downcase(sql) =~ "count"
+      assert String.downcase(sql) =~ "group by"
+      assert String.downcase(sql) =~ "order by"
+      assert String.downcase(sql) =~ ~s|from "events"|
+    end
+
+    test "converts chart avg aggregation to ClickHouse SQL" do
+      lql = "c:avg(m.latency) c:group_by(t::hour)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "metrics", :clickhouse)
+
+      assert String.downcase(sql) =~ "avg"
+      assert String.downcase(sql) =~ "tostartofinterval"
+      assert String.downcase(sql) =~ "group by"
+      assert String.downcase(sql) =~ "hour"
+    end
+
+    test "converts chart sum aggregation to ClickHouse SQL" do
+      lql = "c:sum(m.bytes) c:group_by(t::day)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "traffic", :clickhouse)
+
+      assert String.downcase(sql) =~ "sum"
+      assert String.downcase(sql) =~ "tostartofinterval"
+      assert String.downcase(sql) =~ "group by"
+    end
+
+    test "converts chart max aggregation to ClickHouse SQL" do
+      lql = "c:max(m.response_time) c:group_by(t::second)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "requests", :clickhouse)
+
+      assert String.downcase(sql) =~ "max"
+      assert String.downcase(sql) =~ "tostartofinterval"
+      assert String.downcase(sql) =~ "second"
+    end
+
+    test "converts chart p50 percentile to ClickHouse SQL" do
+      lql = "c:p50(m.duration) c:group_by(t::minute)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "traces", :clickhouse)
+
+      assert String.downcase(sql) =~ "quantile"
+      assert String.downcase(sql) =~ "tostartofinterval"
+      assert String.downcase(sql) =~ "group by"
+    end
+
+    test "converts chart p95 percentile to ClickHouse SQL" do
+      lql = "c:p95(m.duration) c:group_by(t::minute)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "traces", :clickhouse)
+
+      assert String.downcase(sql) =~ "quantile"
+      assert String.downcase(sql) =~ "tostartofinterval"
+      assert String.downcase(sql) =~ "group by"
+    end
+
+    test "converts chart p99 percentile to ClickHouse SQL" do
+      lql = "c:p99(m.duration) c:group_by(t::minute)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "traces", :clickhouse)
+
+      assert String.downcase(sql) =~ "quantile"
+      assert String.downcase(sql) =~ "tostartofinterval"
+      assert String.downcase(sql) =~ "group by"
+    end
+
+    test "ClickHouse chart SQL round-trips through Rust parser" do
+      for {lql, aggregate_check} <- [
+            {"c:count(*) c:group_by(t::hour)", "count"},
+            {"c:avg(m.latency) c:group_by(t::minute)", "avg"},
+            {"c:sum(m.bytes) c:group_by(t::day)", "sum"},
+            {"c:max(m.response_time) c:group_by(t::second)", "max"},
+            {"c:p50(m.duration) c:group_by(t::minute)", "quantile"},
+            {"c:p95(m.duration) c:group_by(t::hour)", "quantile"},
+            {"c:p99(m.duration) c:group_by(t::day)", "quantile"}
+          ] do
+        {:ok, sql} = Lql.to_sandboxed_sql(lql, "events", :clickhouse)
+
+        assert {:ok, ast} = SqlParser.parse("clickhouse", sql),
+               "Failed to parse generated SQL for: #{lql}\nSQL: #{sql}"
+
+        assert {:ok, round_tripped} = SqlParser.to_string(ast),
+               "Failed to round-trip SQL for: #{lql}"
+
+        assert String.downcase(round_tripped) =~ aggregate_check,
+               "Round-tripped SQL missing #{aggregate_check} for: #{lql}\nSQL: #{round_tripped}"
+      end
+    end
+
     test "converts chart avg query to Postgres SQL" do
       lql = "c:avg(m.latency) c:group_by(t::hour)"
       {:ok, sql} = Lql.to_sandboxed_sql(lql, "metrics", :postgres)
@@ -736,6 +827,94 @@ defmodule Logflare.LqlTest do
       refute sql =~ ~r/SELECT.*\*/i
       assert String.downcase(sql) =~ "from"
       assert String.downcase(sql) =~ "my_table"
+    end
+
+    test "ClickHouse top-level schema field filters generate parseable SQL" do
+      for {lql, expected_fragments} <- [
+            {"severity_text:ERROR", ["severity_text", "'ERROR'"]},
+            {"source_name:edge_function_logs", ["source_name", "'edge_function_logs'"]},
+            {"severity_text:ERROR source_name:edge_function_logs",
+             ["severity_text", "source_name"]},
+            {"severity_number:>10", ["severity_number"]},
+            {"service_name:auth_service", ["service_name", "'auth_service'"]},
+            {"trace_id:abc123", ["trace_id", "'abc123'"]}
+          ] do
+        {:ok, sql} = Lql.to_sandboxed_sql(lql, "otel_logs", :clickhouse)
+
+        for fragment <- expected_fragments do
+          assert sql =~ fragment,
+                 "Missing `#{fragment}` in generated SQL for LQL `#{lql}`\nSQL: #{sql}"
+        end
+
+        assert {:ok, _ast} = SqlParser.parse("clickhouse", sql),
+               "Generated SQL failed to parse for LQL `#{lql}`\nSQL: #{sql}"
+      end
+    end
+
+    test "ClickHouse numeric/range filters on Map column dot-keys coerce values with toFloat64OrNull" do
+      for {lql, expected_fragments} <- [
+            {"log_attributes.foo:>5", ["'foo'", "toFloat64OrNull", "> 5"]},
+            {"log_attributes.bla.foo:>5", ["'bla.foo'", "toFloat64OrNull", "> 5"]},
+            {"log_attributes.count:>5.5", ["'count'", "toFloat64OrNull", "> 5.5"]},
+            {"log_attributes.score:<=99.95", ["'score'", "toFloat64OrNull", "<= 99.95"]},
+            {"log_attributes.tiny:>=0.001", ["'tiny'", "toFloat64OrNull", ">= 0.001"]},
+            {"resource_attributes.latency_ms:>100",
+             ["resource_attributes", "'latency_ms'", "toFloat64OrNull", "> 100"]},
+            {"span_attributes.http.status_code:>=500",
+             ["span_attributes", "'http.status_code'", "toFloat64OrNull", ">= 500"]},
+            {"log_attributes.response_time:100..500",
+             ["'response_time'", "toFloat64OrNull", "BETWEEN 100 AND 500"]},
+            {"log_attributes.ratio:0.1..0.9",
+             ["'ratio'", "toFloat64OrNull", "BETWEEN 0.1 AND 0.9"]}
+          ] do
+        {:ok, sql} = Lql.to_sandboxed_sql(lql, "otel_logs", :clickhouse)
+
+        for fragment <- expected_fragments do
+          assert sql =~ fragment,
+                 "Missing `#{fragment}` in generated SQL for LQL `#{lql}`\nSQL: #{sql}"
+        end
+
+        assert {:ok, _ast} = SqlParser.parse("clickhouse", sql),
+               "Generated SQL failed to parse for LQL `#{lql}`\nSQL: #{sql}"
+      end
+    end
+
+    test "ClickHouse boolean filters on Map column dot-keys coerce values with accurateCastOrNull" do
+      for {lql, expected_fragments} <- [
+            {"log_attributes.is_error:true", ["'is_error'", "accurateCastOrNull"]},
+            {"log_attributes.is_error:false", ["'is_error'", "accurateCastOrNull"]},
+            {"log_attributes.deep.nested.flag:true", ["'deep.nested.flag'", "accurateCastOrNull"]}
+          ] do
+        {:ok, sql} = Lql.to_sandboxed_sql(lql, "otel_logs", :clickhouse)
+
+        for fragment <- expected_fragments do
+          assert sql =~ fragment,
+                 "Missing `#{fragment}` in generated SQL for LQL `#{lql}`\nSQL: #{sql}"
+        end
+
+        assert {:ok, _ast} = SqlParser.parse("clickhouse", sql),
+               "Generated SQL failed to parse for LQL `#{lql}`\nSQL: #{sql}"
+      end
+    end
+
+    test "ClickHouse filters skip coercion for non-Map columns and quoted strings" do
+      cases = [
+        {"string equality on Map", "log_attributes.parsed.backend_type:client"},
+        {"top-level numeric column", "severity_number:>10"},
+        {"top-level Bool column", "is_monotonic:true"}
+      ]
+
+      for {label, lql} <- cases do
+        {:ok, sql} = Lql.to_sandboxed_sql(lql, "otel_logs", :clickhouse)
+
+        refute sql =~ "toFloat64OrNull",
+               "[#{label}] unexpected numeric coercion for `#{lql}`\nSQL: #{sql}"
+
+        refute sql =~ "accurateCastOrNull",
+               "[#{label}] unexpected boolean coercion for `#{lql}`\nSQL: #{sql}"
+
+        assert {:ok, _ast} = SqlParser.parse("clickhouse", sql)
+      end
     end
 
     test "`FromRule` overrides `cte_table_name` parameter" do

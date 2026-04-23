@@ -5,6 +5,9 @@ ENV MIX_ENV=prod
 WORKDIR /app
 
 COPY ./VERSION mix.exs mix.lock ./
+COPY config/config.exs config/
+COPY config/prod.exs config/
+COPY config/runtime.exs config/
 RUN mix do deps.get + deps.compile
 
 COPY . ./

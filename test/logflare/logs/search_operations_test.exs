@@ -319,6 +319,42 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
+  describe "apply_local_timestamp_correction/1" do
+    test "skips timestamp filters with explicit timezone modifiers" do
+      value = ~N[2026-03-17 14:47:02]
+      range_start = ~N[2026-03-17 14:47:02]
+      range_end = ~N[2026-03-17 15:47:02]
+
+      so =
+        %SO{
+          partition_by: :timestamp,
+          querystring: "",
+          tailing?: false,
+          chart_data_shape_id: nil,
+          lql_ts_filters: [
+            %FilterRule{
+              path: "timestamp",
+              operator: :>,
+              value: value,
+              modifiers: %{explicit_timezone: true}
+            },
+            %FilterRule{
+              path: "timestamp",
+              operator: :range,
+              value: nil,
+              values: [range_start, range_end],
+              modifiers: %{explicit_timezone: true}
+            }
+          ],
+          search_timezone: "Australia/Brisbane"
+        }
+
+      corrected = SearchOperations.apply_local_timestamp_correction(so)
+
+      assert corrected.lql_ts_filters == so.lql_ts_filters
+    end
+  end
+
   describe "postgres timestamp filter rules" do
     setup_single_tenant(backend_type: :postgres)
 

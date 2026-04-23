@@ -9,6 +9,7 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
   import LogflareWeb.LqlHelpers
   import LogflareWeb.ModalLiveHelpers, only: [modal_link: 1]
   alias Logflare.DateTimeUtils
+  alias Phoenix.LiveView.JS
 
   attr :user, Logflare.User, required: true
   attr :source, Logflare.Sources.Source, required: true
@@ -22,6 +23,12 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
     <div class="log-settings tw-justify-between tw-mt-2 tw-grow">
       <.timezone user_preferences={@user.preferences} search_timezone={@search_timezone} />
       <ul>
+        <li class={disabled_if_no_events(@search_op_log_events)}>
+          <.link href="#" phx-click={JS.dispatch("logflare:copy-logs-list", detail: %{selector: "#logs-list li"})} data-log-list-selector="#logs-list" data-toggle="tooltip" title="Copy events to clipboard" class="logflare-tooltip">
+            <i class="fas fa-copy"></i>
+            <span class="hide-on-mobile tw-pl-1">copy</span>
+          </.link>
+        </li>
         <li>
           <a href="javascript:Source.scrollOverflowBottom();">
             <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span>
@@ -106,6 +113,9 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
   def show_checkbox?(%{user_preferences: preferences, search_timezone: search_timezone}) do
     search_timezone != user_timezone(preferences)
   end
+
+  defp disabled_if_no_events(%{rows: rows}) when is_list(rows) and rows != [], do: nil
+  defp disabled_if_no_events(_), do: "tw-opacity-50 tw-pointer-events-none"
 
   defp user_timezone(preferences), do: preferences && Map.get(preferences, :timezone)
 

@@ -31,16 +31,6 @@ filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
 end
 
-detect_ip_version = fn host ->
-  host = String.to_charlist(host)
-
-  cond do
-    match?({:ok, _}, :inet6_tcp.getaddr(host)) -> {:ok, :inet6}
-    match?({:ok, _}, :inet.gethostbyname(host)) -> {:ok, :inet}
-    true -> {:error, :nxdomain}
-  end
-end
-
 logflare_metadata =
   [cluster: System.get_env("LOGFLARE_METADATA_CLUSTER")]
   |> filter_nil_kv_pairs.()
@@ -98,7 +88,9 @@ config :logflare,
          encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED"),
          metadata: logflare_metadata,
          health: logflare_health,
-         http_connection_pools: http_connection_pools
+         http_connection_pools: http_connection_pools,
+         bq_write_api_pool_size:
+           System.get_env("LOGFLARE_BQ_WRITE_API_POOL_SIZE", "10") |> String.to_integer()
        ]
        |> filter_nil_kv_pairs.()
 
@@ -162,7 +154,8 @@ config :logflare,
          socket_options:
            case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
              nil -> []
-             version -> [version]
+             version when version in [:inet, :inet6] -> [version]
+             error -> raise "Failed to detect IP version for DB_HOSTNAME: #{error}"
            end,
          after_connect:
            if(System.get_env("DB_SCHEMA"),
@@ -298,7 +291,8 @@ socket_options_for_url = fn
       %URI{host: host} ->
         case Utils.ip_version(host) do
           nil -> []
-          version -> [version]
+          version when version in [:inet, :inet6] -> [version]
+          reason -> raise "Failed to detect IP version for URL host: #{host}, reason: #{reason}"
         end
 
       _ ->
@@ -479,3 +473,49 @@ config :logflare, Oban,
   ]
 
 config :logflare, Logflare.Alerting, enabled: enable_alerting?
+
+# LOGFLARE_CACHE_GOSSIP_ENABLED: Enable or disable cache gossip
+default_cache_gossip_enabled = if config_env() == :test, do: "true", else: "false"
+
+cache_gossip_enabled? =
+  System.get_env("LOGFLARE_CACHE_GOSSIP_ENABLED", default_cache_gossip_enabled) == "true"
+
+# LOGFLARE_CACHE_GOSSIP_RATIO: Ratio of nodes to gossip cache updates to
+raw_cache_gossip_ratio = System.get_env("LOGFLARE_CACHE_GOSSIP_RATIO", "0.05")
+
+cache_gossip_ratio =
+  case Float.parse(raw_cache_gossip_ratio) do
+    {ratio, ""} when ratio >= 0.0 and ratio <= 1.0 ->
+      ratio
+
+    _ ->
+      raise ArgumentError,
+            "Invalid LOGFLARE_CACHE_GOSSIP_RATIO: #{raw_cache_gossip_ratio}. Must be a float between 0 and 1."
+  end
+
+# LOGFLARE_CACHE_GOSSIP_MAX_NODES: Maximum number of nodes to gossip cache updates to
+cache_gossip_max_nodes =
+  "LOGFLARE_CACHE_GOSSIP_MAX_NODES" |> System.get_env("3") |> String.to_integer()
+
+if cache_gossip_max_nodes <= 0 do
+  raise ArgumentError,
+        "Invalid LOGFLARE_CACHE_GOSSIP_MAX_NODES: #{cache_gossip_max_nodes}. Must be a positive integer."
+end
+
+config :logflare, :context_cache_gossip, %{
+  enabled: cache_gossip_enabled?,
+  ratio: cache_gossip_ratio,
+  max_nodes: cache_gossip_max_nodes
+}
+
+# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replica hostnames to distribute
+# context cache queries across. If unset or empty, all queries go to the primary database.
+# Example: "replica1.example.com,replica2.example.com"
+read_replicas =
+  "LOGFLARE_READ_REPLICAS"
+  |> System.get_env("")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+  |> Enum.uniq()
+
+config :logflare, :read_replicas, read_replicas
