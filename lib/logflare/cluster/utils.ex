@@ -6,6 +6,23 @@ defmodule Logflare.Cluster.Utils do
     [Node.self() | Node.list()]
   end
 
+  @doc """
+  Returns a random subset of the current cluster peers.
+  Does not include the local node.
+  """
+  @spec peer_list_partial(float, pos_integer) :: [Node.t()]
+  def peer_list_partial(ratio, max_nodes) do
+    peers = Node.list()
+    peer_count = length(peers)
+
+    if peer_count == 0 do
+      []
+    else
+      target_count = min(ceil(peer_count * ratio), max_nodes)
+      Enum.take_random(peers, target_count)
+    end
+  end
+
   @spec cluster_size() :: non_neg_integer()
   def cluster_size do
     max(actual_cluster_size(), min_cluster_size())

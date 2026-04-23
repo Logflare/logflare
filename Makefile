@@ -186,7 +186,10 @@ migrate:
 	@env $$(cat .dev.env | xargs) mix ecto.migrate
 
 
-.PHONY: __start__ migrate start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink
+stripe:
+	stripe listen --forward-to localhost:4000/webhooks/stripe
+
+.PHONY: __start__ migrate stripe start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink
 
 # Encryption and decryption of secrets
 # Usage:
@@ -444,4 +447,13 @@ $(TELEGRAF_KEYS_SENTINEL):
 docker.multi-step:
 	docker-compose build base runner
 
-.PHONY: $(addprefix ssl.,${envs}) ssl.telegraf docker.build.multistep
+ops.sign-export:
+	@if [ -z "$(PROJECT)" ]; then \
+		echo "Error: PROJECT env variable must be set. Usage: make ops.sign-export PROJECT=your_project"; \
+		exit 1; \
+	fi
+	@CLOUDSDK_PYTHON=python3 CLOUDSDK_PYTHON_SITEPACKAGES=1 gcloud storage sign-url 'gs://supabase-log-exports-prod/$(PROJECT)-*.json.gz' \
+		--private-key-file=.log-export.gcloud.json  \
+		--duration=5d > export-dl-$(PROJECT).txt
+
+.PHONY: $(addprefix ssl.,${envs}) ssl.telegraf docker.build.multistep ops.sign-export

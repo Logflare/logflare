@@ -5,7 +5,11 @@ defmodule Logflare.Networking do
   alias Logflare.SingleTenant
 
   def pools do
-    finch_pools(SingleTenant.postgres_backend?())
+    if SingleTenant.postgres_backend?() do
+      finch_pools(true)
+    else
+      finch_pools(false) ++ grpc_pools()
+    end
   end
 
   defp finch_pools(true = _postgres_backend?) do
@@ -31,24 +35,6 @@ defmodule Logflare.Networking do
       {Finch, name: Logflare.FinchGoth, pools: %{default: [protocols: [:http2], count: 1]}},
       {Finch,
        name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
-      {Finch,
-       name: GoogleApiClient.get_finch_instance_name(),
-       pools: %{
-         "https://bigquerystorage.googleapis.com" => [
-           protocols: [:http2],
-           count: max(base, 20),
-           start_pool_metrics?: true,
-           conn_opts: [
-             # a larger default window size ensures that the number of packages exchanges is smaller, thus speeding up
-             # the requests by reducing the amount of networks round trip, with the cost of having larger packages
-             # reaching the server per connection.
-             client_settings: [
-               initial_window_size: 8_000_000,
-               max_frame_size: 8_000_000
-             ]
-           ]
-         ]
-       }},
       {Finch,
        name: Logflare.FinchIngest,
        pools: %{
@@ -150,5 +136,19 @@ defmodule Logflare.Networking do
         start_pool_metrics?: true
       ]
     }
+  end
+
+  defp grpc_pools do
+    if Application.get_env(:logflare, :env) == :test do
+      []
+    else
+      [
+        GRPC.Client.Supervisor,
+        {Logflare.Networking.GrpcPool,
+         name: GoogleApiClient.connetion_pool_name(),
+         url: "https://bigquerystorage.googleapis.com",
+         size: Application.get_env(:logflare, :bq_write_api_pool_size)}
+      ]
+    end
   end
 end

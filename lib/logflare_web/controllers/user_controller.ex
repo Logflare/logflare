@@ -23,6 +23,7 @@ defmodule LogflareWeb.UserController do
     bigquery_reservation_search
     bigquery_processed_bytes_limit
     bigquery_enable_managed_service_accounts
+    bigquery_additional_projects
   )a
 
   def api_show(%{assigns: %{user: user}} = conn, _params) do
@@ -86,8 +87,11 @@ defmodule LogflareWeb.UserController do
         if updated_user.bigquery_project_id != user.bigquery_project_id,
           do: Supervisor.reset_all_user_sources(user)
 
-        if updated_user.bigquery_enable_managed_service_accounts do
-          # update iam policy
+        iam_projects_changed =
+          updated_user.bigquery_additional_projects != user.bigquery_additional_projects
+
+        if updated_user.bigquery_enable_managed_service_accounts or iam_projects_changed do
+          # update iam policy for primary and additional projects
           BigQueryAdaptor.update_iam_policy(updated_user)
         end
 

@@ -25,6 +25,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Utils
   require OpenTelemetry.Tracer
 
+  @behaviour Broadway.Acknowledger
+
   # BQ max is 10MB
   # https://cloud.google.com/bigquery/quotas#streaming_inserts
   @max_batch_length 6_000_000
@@ -88,6 +90,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   # pipeline name is sharded
+  @impl Broadway
   def process_name({:via, module, {registry, identifier}}, base_name) do
     {:via, module, {registry, {identifier, base_name}}}
   end
@@ -107,6 +110,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   # Ziinc: temporarily pass in source token until PubSubRates is refactored
+  @impl Broadway.Acknowledger
   def ack({queue, source_token}, successful, _failed) do
     # TODO: re-queue failed
     metrics = Sources.get_source_metrics_for_ingest(source_token)
@@ -153,9 +157,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
         end
     end
+
+    :ok
   end
 
-  @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
+  @impl Broadway
   def handle_message(_processor_name, message, context) do
     Logger.metadata(
       source_id: context.source_token,
@@ -169,6 +175,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     |> Message.put_batcher(:bq)
   end
 
+  @impl Broadway
   def handle_batch(:bq, messages, batch_info, context) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],

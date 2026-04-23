@@ -24,14 +24,13 @@ RUN apt-get update -y && apt-get install -y curl bash build-essential git gcc ma
 
 # app dependencies
 COPY ./VERSION mix.exs mix.lock ./
+COPY config/config.exs config/
+COPY config/prod.exs config/
+COPY config/runtime.exs config/
 RUN mix do local.rebar --force + local.hex --force + deps.get + deps.compile
 
 COPY assets/package.json assets/package-lock.json assets/
 RUN npm --prefix assets ci
-
-COPY config/config.exs config/
-COPY config/prod.exs config/
-COPY config/runtime.exs config/
 
 # rust bin path and release optimizations
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -44,4 +43,7 @@ RUN cargo version
 # pre-fetch cargo dependencies for layer caching
 COPY Cargo.toml Cargo.lock ./
 COPY --parents native/*/Cargo.toml ./
+# TODO: Instead of creating an empty src/lib.rs, replace `cargo fetch --locked` with `cargo build --dependencies-only`
+# once https://github.com/rust-lang/cargo/issues/2644 is resolved.
+RUN for dir in native/*/; do mkdir -p "$dir/src" && touch "$dir/src/lib.rs"; done
 RUN cargo fetch --locked
