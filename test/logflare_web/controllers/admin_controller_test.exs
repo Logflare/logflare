@@ -90,6 +90,32 @@ defmodule LogflareWeb.AdminControllerTest do
       refute html =~ admin_team.name
     end
 
+    test "admin can delete an account", %{conn: conn, admin: admin} do
+      target = insert(:user)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> delete(~p"/admin/accounts/#{target.id}")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Account deleted!"
+      refute Logflare.Users.get(target.id)
+    end
+
+    test "non-admin user cannot delete an account (403)", %{conn: conn, user: user} do
+      target = insert(:user)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> delete(~p"/admin/accounts/#{target.id}")
+
+      assert conn.halted == true
+      assert conn.status == 403
+      assert Logflare.Users.get(target.id)
+    end
+
     test "bug: become account clears last_switched_team_id from session", %{
       conn: conn,
       admin: admin

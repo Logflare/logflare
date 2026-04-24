@@ -113,9 +113,13 @@ defmodule LogflareWeb.Api.RuleController do
     Backends.fetch_backend_by(id: id, user_id: user.id)
   end
 
+  defp verify_backend_owner(_params, _user), do: {:ok, :not_present}
+
   defp verify_source_owner(%{"source_id" => id}, user) do
     Sources.fetch_source_by(id: id, user_id: user.id)
   end
+
+  defp verify_source_owner(_params, _user), do: {:ok, :not_present}
 
   operation(:update,
     summary: "Update rule",
@@ -130,6 +134,8 @@ defmodule LogflareWeb.Api.RuleController do
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
     with {:ok, rule} <- Rules.fetch_rule_by(token: token, user_id: user.id),
+         {:ok, _} <- verify_backend_owner(params, user),
+         {:ok, _} <- verify_source_owner(params, user),
          {:ok, updated} <- Rules.update_rule(rule, params) do
       conn
       |> case do

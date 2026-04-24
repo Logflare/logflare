@@ -50,9 +50,8 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
       user = insert(:user)
 
       {:ok, backend} =
-        Logflare.Backends.create_backend(%{
+        Logflare.Backends.create_backend(user, %{
           type: :clickhouse,
-          user_id: user.id,
           name: "Orphan Test Backend",
           config: %{
             url: "http://localhost",

@@ -13,11 +13,10 @@ defmodule Logflare.Backends.BackendTest do
         name: "Test BigQuery Backend",
         type: :bigquery,
         config: %{project_id: "test-project", dataset_id: "test-dataset"},
-        user_id: user.id,
         default_ingest?: true
       }
 
-      changeset = Backend.changeset(%Backend{}, attrs)
+      changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
       assert changeset.valid?
       assert get_change(changeset, :default_ingest?) == true
     end
@@ -27,11 +26,10 @@ defmodule Logflare.Backends.BackendTest do
         name: "Test ClickHouse Backend",
         type: :clickhouse,
         config: %{url: "http://localhost:8123", database: "default", port: 8123},
-        user_id: user.id,
         default_ingest?: true
       }
 
-      changeset = Backend.changeset(%Backend{}, attrs)
+      changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
       assert changeset.valid?
       assert get_change(changeset, :default_ingest?) == true
     end
@@ -41,11 +39,10 @@ defmodule Logflare.Backends.BackendTest do
         name: "Test Postgres Backend",
         type: :postgres,
         config: %{url: "postgres://localhost/test"},
-        user_id: user.id,
         default_ingest?: true
       }
 
-      changeset = Backend.changeset(%Backend{}, attrs)
+      changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
       assert changeset.valid?
       assert get_change(changeset, :default_ingest?) == true
     end
@@ -60,11 +57,10 @@ defmodule Logflare.Backends.BackendTest do
           s3_bucket: "test-bucket",
           storage_region: "us-east-1"
         },
-        user_id: user.id,
         default_ingest?: true
       }
 
-      changeset = Backend.changeset(%Backend{}, attrs)
+      changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
       assert changeset.valid?
       assert get_change(changeset, :default_ingest?) == true
     end
@@ -74,11 +70,10 @@ defmodule Logflare.Backends.BackendTest do
         name: "Test Webhook Backend",
         type: :webhook,
         config: %{url: "https://example.com/webhook"},
-        user_id: user.id,
         default_ingest?: true
       }
 
-      changeset = Backend.changeset(%Backend{}, attrs)
+      changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
       refute changeset.valid?
 
       assert errors_on(changeset)[:default_ingest?] == [
@@ -91,11 +86,10 @@ defmodule Logflare.Backends.BackendTest do
         name: "Test Datadog Backend",
         type: :datadog,
         config: %{api_key: "test-api-key", url: "https://api.datadoghq.com"},
-        user_id: user.id,
         default_ingest?: true
       }
 
-      changeset = Backend.changeset(%Backend{}, attrs)
+      changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
       refute changeset.valid?
 
       assert errors_on(changeset)[:default_ingest?] == [
@@ -108,11 +102,10 @@ defmodule Logflare.Backends.BackendTest do
         name: "Test Webhook Backend",
         type: :webhook,
         config: %{url: "https://example.com/webhook"},
-        user_id: user.id,
         default_ingest?: false
       }
 
-      changeset = Backend.changeset(%Backend{}, attrs)
+      changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
       assert changeset.valid?
       assert get_field(changeset, :default_ingest?) == false
     end
@@ -121,11 +114,10 @@ defmodule Logflare.Backends.BackendTest do
       attrs = %{
         name: "Test BigQuery Backend",
         type: :bigquery,
-        config: %{project_id: "test-project", dataset_id: "test-dataset"},
-        user_id: user.id
+        config: %{project_id: "test-project", dataset_id: "test-dataset"}
       }
 
-      changeset = Backend.changeset(%Backend{}, attrs)
+      changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
       assert changeset.valid?
       assert get_change(changeset, :default_ingest?) == nil
       assert get_field(changeset, :default_ingest?) == false
