@@ -154,17 +154,24 @@ defmodule LogflareWeb.AlertsLive do
   def handle_event(
         "delete",
         %{"alert_id" => id},
-        %{assigns: _assigns} = socket
+        %{assigns: assigns} = socket
       ) do
-    alert = Alerting.get_alert_query!(id)
-    {:ok, _} = Alerting.delete_alert_query(alert)
+    user = assigns[:team_user] || assigns[:user]
 
-    {:noreply,
-     socket
-     |> refresh()
-     |> assign(:alert, nil)
-     |> put_flash(:info, "#{alert.name} has been deleted")
-     |> push_patch(to: "/alerts")}
+    case Alerting.get_alert_query_by_user_access(user, id) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "You do not have access to that alert.")}
+
+      alert ->
+        {:ok, _} = Alerting.delete_alert_query(alert)
+
+        {:noreply,
+         socket
+         |> refresh()
+         |> assign(:alert, nil)
+         |> put_flash(:info, "#{alert.name} has been deleted")
+         |> push_patch(to: "/alerts")}
+    end
   end
 
   def handle_event(

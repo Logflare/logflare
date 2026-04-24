@@ -200,17 +200,24 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_event(
         "delete-endpoint",
         %{"endpoint_id" => id},
-        %{assigns: _assigns} = socket
+        %{assigns: assigns} = socket
       ) do
-    endpoint = Endpoints.get_endpoint_query(id)
-    {:ok, _} = Endpoints.delete_query(endpoint)
+    user = assigns[:team_user] || assigns[:user]
 
-    {:noreply,
-     socket
-     |> refresh_endpoints()
-     |> assign(:show_endpoint, nil)
-     |> put_flash(:info, "#{endpoint.name} has been deleted")
-     |> push_patch(to: "/endpoints")}
+    case Endpoints.get_endpoint_query_by_user_access(user, id) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "You do not have access to that endpoint.")}
+
+      endpoint ->
+        {:ok, _} = Endpoints.delete_query(endpoint)
+
+        {:noreply,
+         socket
+         |> refresh_endpoints()
+         |> assign(:show_endpoint, nil)
+         |> put_flash(:info, "#{endpoint.name} has been deleted")
+         |> push_patch(to: "/endpoints")}
+    end
   end
 
   def handle_event(

@@ -117,6 +117,26 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   def handle_event("save_rule", %{"rule" => params}, socket) do
+    %{assigns: %{user: user}} = socket
+
+    source = params["source_id"] && Sources.get_by_user_access(user, params["source_id"])
+
+    backend =
+      params["backend_id"] && Backends.get_backend_by_user_access(user, params["backend_id"])
+
+    cond do
+      source == nil ->
+        {:noreply, put_flash(socket, :error, "You do not have access to that source.")}
+
+      backend == nil ->
+        {:noreply, put_flash(socket, :error, "You do not have access to that backend.")}
+
+      true ->
+        do_save_rule(socket, params)
+    end
+  end
+
+  defp do_save_rule(socket, params) do
     socket =
       case Rules.create_rule(params) do
         {:ok, _rule} ->
@@ -255,20 +275,39 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   def handle_event("delete_rule", %{"rule_id" => rule_id}, socket) do
+    %{assigns: %{user: user, backend: current_backend}} = socket
     rule = Rules.get_rule(rule_id)
-    Rules.delete_rule(rule)
 
-    {:noreply,
-     socket
-     |> assign(:show_rule_form?, false)
-     |> refresh_backend(socket.assigns.backend.id)
-     |> put_flash(:info, "Rule has been deleted successfully")}
+    cond do
+      current_backend == nil or current_backend.user_id != user.id ->
+        {:noreply, put_flash(socket, :error, "You do not have access to this backend.")}
+
+      rule == nil or rule.backend_id != current_backend.id ->
+        {:noreply, put_flash(socket, :error, "Rule not found on this backend.")}
+
+      true ->
+        Rules.delete_rule(rule)
+
+        {:noreply,
+         socket
+         |> assign(:show_rule_form?, false)
+         |> refresh_backend(current_backend.id)
+         |> put_flash(:info, "Rule has been deleted successfully")}
+    end
   end
 
   def handle_event("delete", %{"backend_id" => id}, socket) do
     Logger.debug("Removing backend id: #{id}")
-    backend = Backends.get_backend(id)
+    backend = Backends.get_backend_by_user_access(socket.assigns.user, id)
 
+    if backend == nil do
+      {:noreply, put_flash(socket, :error, "You do not have access to that backend.")}
+    else
+      delete_backend(socket, backend)
+    end
+  end
+
+  defp delete_backend(socket, backend) do
     with {:ok, _backend} <- Backends.delete_backend(backend) do
       socket =
         socket
@@ -304,8 +343,24 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   def handle_event("add_alert", %{"alert" => %{"alert_id" => alert_id}}, socket) do
-    alert_query = Logflare.Alerting.get_alert_query!(alert_id)
+    %{assigns: %{user: user, backend: backend}} = socket
 
+    cond do
+      backend == nil or backend.user_id != user.id ->
+        {:noreply, put_flash(socket, :error, "You do not have access to this backend.")}
+
+      true ->
+        case Logflare.Alerting.get_alert_query_by_user_access(user, alert_id) do
+          nil ->
+            {:noreply, put_flash(socket, :error, "You do not have access to that alert.")}
+
+          alert_query ->
+            do_add_alert(socket, alert_query)
+        end
+    end
+  end
+
+  defp do_add_alert(socket, alert_query) do
     socket =
       case Logflare.Backends.update_backend(socket.assigns.backend, %{
              alert_queries: [alert_query | socket.assigns.backend.alert_queries]
@@ -325,6 +380,16 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   def handle_event("remove_alert", %{"alert_id" => alert_id}, socket) do
+    %{assigns: %{user: user, backend: backend}} = socket
+
+    if backend == nil or backend.user_id != user.id do
+      {:noreply, put_flash(socket, :error, "You do not have access to this backend.")}
+    else
+      do_remove_alert(socket, alert_id)
+    end
+  end
+
+  defp do_remove_alert(socket, alert_id) do
     alert_id = String.to_integer(alert_id)
 
     alert_queries =

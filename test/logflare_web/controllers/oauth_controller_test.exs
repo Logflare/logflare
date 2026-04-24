@@ -1,6 +1,7 @@
 defmodule LogflareWeb.OAuthControllerTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.Sources
   alias LogflareWeb.Auth.OauthController
 
   test "unrecognized provider handling", %{conn: conn} do
@@ -85,6 +86,43 @@ defmodule LogflareWeb.OAuthControllerTest do
     assert html_response(conn, 302)
     assert conn.assigns.flash["info"] =~ "Alert connected to Slack!"
     assert redirected_to(conn) == ~p"/alerts/#{alert_query.id}"
+  end
+
+  test "attacker cannot overwrite another user's source slack hook by tampering state",
+       %{conn: conn} do
+    insert(:plan, name: "Free")
+    attacker = insert(:user)
+    victim = insert(:user)
+    victim_source = insert(:source, user: victim)
+    slack_hook_url = "https://attacker.example/slack-hook"
+
+    conn =
+      conn
+      |> login_user(attacker)
+      |> bypass_through(LogflareWeb.Router, [:browser])
+      |> assign(:ueberauth_auth, %{
+        extra: %{
+          raw_info: %{
+            token: %{other_params: %{"incoming_webhook" => %{"url" => slack_hook_url}}}
+          }
+        }
+      })
+      |> get(~p"/auth/slack/callback")
+
+    OauthController.callback(conn, %{
+      "provider" => "slack",
+      "state" =>
+        Jason.encode!(%{
+          action: "save_hook_url",
+          source: %{
+            id: victim_source.id,
+            name: victim_source.name,
+            token: victim_source.token
+          }
+        })
+    })
+
+    refute Sources.get(victim_source.id).slack_hook_url == slack_hook_url
   end
 
   describe "bug: ueberauth port does not match url config" do

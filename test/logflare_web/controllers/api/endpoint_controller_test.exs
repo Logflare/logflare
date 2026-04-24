@@ -159,6 +159,26 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
 
       assert %{errors: %{"name" => ["is invalid"]}} = response
     end
+
+    test "attacker cannot update their endpoint to use another user's backend", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user)
+      endpoint = insert(:endpoint, user: attacker)
+
+      victim_backend =
+        insert(:backend,
+          user: victim,
+          type: :postgres,
+          config: %{url: "postgresql://victim.local/logflare"}
+        )
+
+      conn
+      |> add_access_token(attacker, "private")
+      |> patch(~p"/api/endpoints/#{endpoint.token}", %{backend_id: victim_backend.id})
+
+      assert %{backend_id: backend_id} = Logflare.Endpoints.get_endpoint_query(endpoint.id)
+      refute backend_id == victim_backend.id
+    end
   end
 
   describe "delete/2" do

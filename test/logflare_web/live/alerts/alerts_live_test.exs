@@ -38,6 +38,21 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       assert redirected_to(conn, 302) =~ "/alerts"
     end
+
+    test "attacker cannot delete another user's alert", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user)
+      alert = insert(:alert, user: victim)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live(~p"/alerts")
+
+      render_hook(view, "delete", %{"alert_id" => to_string(alert.id)})
+
+      assert Logflare.Alerting.get_alert_query!(alert.id)
+    end
   end
 
   describe "Index" do
