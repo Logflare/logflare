@@ -136,26 +136,6 @@ defmodule LogflareWeb.BackendsLive do
     end
   end
 
-  defp do_save_rule(socket, params) do
-    socket =
-      case Rules.create_rule(params) do
-        {:ok, _rule} ->
-          socket
-          |> refresh_backend(socket.assigns.backend.id)
-          |> assign(:show_rule_form?, false)
-          |> put_flash(:info, "Successfully created rule for #{socket.assigns.backend.name}")
-
-        {:error, changeset} ->
-          message = stringify_changeset_errors(changeset)
-
-          put_flash(socket, :error, "Encountered error when adding rule:\n#{message}")
-      end
-
-    socket = refresh_backends(socket)
-
-    {:noreply, socket}
-  end
-
   def handle_event("change_form_type", %{"backend" => %{"type" => type}}, socket) do
     {:noreply, assign(socket, form_type: type)}
   end
@@ -307,24 +287,6 @@ defmodule LogflareWeb.BackendsLive do
     end
   end
 
-  defp delete_backend(socket, backend) do
-    with {:ok, _backend} <- Backends.delete_backend(backend) do
-      socket =
-        socket
-        |> put_flash(:info, "Successfully deleted backend of type #{backend.type}")
-        |> refresh_backends()
-        |> push_patch(to: ~p"/backends")
-
-      {:noreply, socket}
-    else
-      {:error, changeset} ->
-        message = stringify_changeset_errors(changeset)
-
-        {:noreply,
-         put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")}
-    end
-  end
-
   def handle_event("toggle_alert_form", _params, socket) do
     socket =
       if socket.assigns.show_alert_form? do
@@ -345,38 +307,17 @@ defmodule LogflareWeb.BackendsLive do
   def handle_event("add_alert", %{"alert" => %{"alert_id" => alert_id}}, socket) do
     %{assigns: %{user: user, backend: backend}} = socket
 
-    cond do
-      backend == nil or backend.user_id != user.id ->
-        {:noreply, put_flash(socket, :error, "You do not have access to this backend.")}
+    if backend == nil or backend.user_id != user.id do
+      {:noreply, put_flash(socket, :error, "You do not have access to this backend.")}
+    else
+      case Logflare.Alerting.get_alert_query_by_user_access(user, alert_id) do
+        nil ->
+          {:noreply, put_flash(socket, :error, "You do not have access to that alert.")}
 
-      true ->
-        case Logflare.Alerting.get_alert_query_by_user_access(user, alert_id) do
-          nil ->
-            {:noreply, put_flash(socket, :error, "You do not have access to that alert.")}
-
-          alert_query ->
-            do_add_alert(socket, alert_query)
-        end
-    end
-  end
-
-  defp do_add_alert(socket, alert_query) do
-    socket =
-      case Logflare.Backends.update_backend(socket.assigns.backend, %{
-             alert_queries: [alert_query | socket.assigns.backend.alert_queries]
-           }) do
-        {:ok, _backend} ->
-          socket
-          |> assign(:show_alert_form?, false)
-          |> refresh_backend(socket.assigns.backend.id)
-          |> put_flash(:info, "Alert successfully added to backend")
-
-        {:error, changeset} ->
-          message = stringify_changeset_errors(changeset)
-          put_flash(socket, :error, "Encountered error when adding alert:\n#{message}")
+        alert_query ->
+          do_add_alert(socket, alert_query)
       end
-
-    {:noreply, socket}
+    end
   end
 
   def handle_event("remove_alert", %{"alert_id" => alert_id}, socket) do
@@ -519,5 +460,62 @@ defmodule LogflareWeb.BackendsLive do
         _ -> acc
       end
     end)
+  end
+
+  defp do_save_rule(socket, params) do
+    socket =
+      case Rules.create_rule(params) do
+        {:ok, _rule} ->
+          socket
+          |> refresh_backend(socket.assigns.backend.id)
+          |> assign(:show_rule_form?, false)
+          |> put_flash(:info, "Successfully created rule for #{socket.assigns.backend.name}")
+
+        {:error, changeset} ->
+          message = stringify_changeset_errors(changeset)
+
+          put_flash(socket, :error, "Encountered error when adding rule:\n#{message}")
+      end
+
+    socket = refresh_backends(socket)
+
+    {:noreply, socket}
+  end
+
+  defp do_add_alert(socket, alert_query) do
+    socket =
+      case Logflare.Backends.update_backend(socket.assigns.backend, %{
+             alert_queries: [alert_query | socket.assigns.backend.alert_queries]
+           }) do
+        {:ok, _backend} ->
+          socket
+          |> assign(:show_alert_form?, false)
+          |> refresh_backend(socket.assigns.backend.id)
+          |> put_flash(:info, "Alert successfully added to backend")
+
+        {:error, changeset} ->
+          message = stringify_changeset_errors(changeset)
+          put_flash(socket, :error, "Encountered error when adding alert:\n#{message}")
+      end
+
+    {:noreply, socket}
+  end
+
+  defp delete_backend(socket, backend) do
+    with {:ok, _backend} <- Backends.delete_backend(backend) do
+      socket =
+        socket
+        |> put_flash(:info, "Successfully deleted backend of type #{backend.type}")
+        |> refresh_backends()
+        |> push_patch(to: ~p"/backends")
+
+      {:noreply, socket}
+    else
+      {:error, changeset} ->
+        message = stringify_changeset_errors(changeset)
+
+        {:noreply,
+         put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")}
+    end
   end
 end

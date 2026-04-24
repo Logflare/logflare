@@ -78,33 +78,13 @@ defmodule LogflareWeb.Auth.OauthController do
         url = auth.extra.raw_info.token.other_params["incoming_webhook"]["url"]
         alert_query = current_user && Alerting.get_alert_query_by_user_access(current_user, id)
 
-        cond do
-          alert_query == nil ->
-            conn
-            |> put_flash(:error, "You do not have access to that alert.")
-            |> redirect(to: ~p"/dashboard")
-
-          true ->
-            alert_callback(conn, alert_query, url, id)
+        if alert_query == nil do
+          conn
+          |> put_flash(:error, "You do not have access to that alert.")
+          |> redirect(to: ~p"/dashboard")
+        else
+          alert_callback(conn, alert_query, url, id)
         end
-    end
-  end
-
-  defp alert_callback(conn, alert_query, url, id) do
-    case Alerting.update_alert_query(alert_query, %{slack_hook_url: url}) do
-      {:ok, _alert_query} ->
-        conn
-        |> put_flash(:info, "Alert connected to Slack!")
-        |> redirect(to: ~p"/alerts/#{id}")
-
-      {:error, _changeset} = err ->
-        Logger.error("Error when saving slack hook url for AlertQuery",
-          error_string: inspect(err)
-        )
-
-        conn
-        |> put_flash(:error, "Something went wrong!")
-        |> redirect(to: ~p"/alerts/#{id}")
     end
   end
 
@@ -171,6 +151,24 @@ defmodule LogflareWeb.Auth.OauthController do
       Integer.to_string(auth.uid)
     else
       auth.uid
+    end
+  end
+
+  defp alert_callback(conn, alert_query, url, id) do
+    case Alerting.update_alert_query(alert_query, %{slack_hook_url: url}) do
+      {:ok, _alert_query} ->
+        conn
+        |> put_flash(:info, "Alert connected to Slack!")
+        |> redirect(to: ~p"/alerts/#{id}")
+
+      {:error, _changeset} = err ->
+        Logger.error("Error when saving slack hook url for AlertQuery",
+          error_string: inspect(err)
+        )
+
+        conn
+        |> put_flash(:error, "Something went wrong!")
+        |> redirect(to: ~p"/alerts/#{id}")
     end
   end
 end
