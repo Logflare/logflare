@@ -97,7 +97,7 @@ defmodule LogflareWeb.BackendsLive do
     params = transform_params(params)
 
     socket =
-      case Logflare.Backends.create_backend(params) do
+      case Logflare.Backends.create_backend(socket.assigns.user, params) do
         {:ok, backend} ->
           socket
           |> assign(:show_rule_form?, false)
