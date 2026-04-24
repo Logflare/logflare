@@ -374,6 +374,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         |> Sources.preload_backends()
 
       refute Enum.any?(source.backends, &(&1.id == victim_backend.id))
+      assert source.backends == []
     end
 
     test "attacker cannot remove a backend from another user's source through the api",
@@ -394,6 +395,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         |> Sources.preload_backends()
 
       assert Enum.any?(source.backends, &(&1.id == victim_backend.id))
+      assert [_] = source.backends
     end
   end
 
