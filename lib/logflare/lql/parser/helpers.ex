@@ -269,26 +269,22 @@ defmodule Logflare.Lql.Parser.Helpers do
           value: term()
         }
   def timestamp_shorthand_to_value(["now"]) do
-    value = %{Timex.now() | microsecond: {0, 0}} |> set_timestamp_origin(true)
+    value = set_timestamp_origin(%{Timex.now() | microsecond: {0, 0}}, true)
     %{value: value, shorthand: "now"}
   end
 
   def timestamp_shorthand_to_value(["today"]) do
     dt = Timex.today() |> Timex.to_datetime()
+    range = set_timestamp_origin([dt, Timex.shift(dt, days: 1, seconds: -1)], true)
 
-    value =
-      {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)] |> set_timestamp_origin(true)}
-
-    %{value: value, shorthand: "today"}
+    %{value: {:range_operator, range}, shorthand: "today"}
   end
 
   def timestamp_shorthand_to_value(["yesterday"]) do
     dt = Timex.today() |> Timex.shift(days: -1) |> Timex.to_datetime()
+    range = set_timestamp_origin([dt, Timex.shift(dt, days: 1, seconds: -1)], true)
 
-    value =
-      {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)] |> set_timestamp_origin(true)}
-
-    %{value: value, shorthand: "yesterday"}
+    %{value: {:range_operator, range}, shorthand: "yesterday"}
   end
 
   def timestamp_shorthand_to_value(["this", period]) do
@@ -316,9 +312,9 @@ defmodule Logflare.Lql.Parser.Helpers do
           Timex.beginning_of_year(today_ndt)
       end
 
-    value = {:range_operator, [lvalue, now_ndt] |> set_timestamp_origin(true)}
+    range = set_timestamp_origin([lvalue, now_ndt], true)
 
-    %{value: value, shorthand: "this@#{period}"}
+    %{value: {:range_operator, range}, shorthand: "this@#{period}"}
   end
 
   def timestamp_shorthand_to_value(["last", amount, period]) do
@@ -352,9 +348,12 @@ defmodule Logflare.Lql.Parser.Helpers do
 
     lvalue = Timex.shift(truncated, [{period, amount}])
 
-    value = {:range_operator, [lvalue, now_ndt] |> set_timestamp_origin(true)}
+    range = set_timestamp_origin([lvalue, now_ndt], true)
 
-    %{value: value, shorthand: "last@#{if amount < 0, do: -amount, else: amount}#{period}"}
+    %{
+      value: {:range_operator, range},
+      shorthand: "last@#{if amount < 0, do: -amount, else: amount}#{period}"
+    }
   end
 
   # ============================================================================
