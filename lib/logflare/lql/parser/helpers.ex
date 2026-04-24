@@ -559,12 +559,9 @@ defmodule Logflare.Lql.Parser.Helpers do
     Enum.map(values, &set_timestamp_origin(&1, origin))
   end
 
-  defp set_timestamp_origin(value, origin) do
-    modifiers =
-      if origin,
-        do: %{timestamp_origin: :absolute},
-        else: %{timestamp_origin: :local}
+  defp set_timestamp_origin(value, true),
+    do: {:with_modifiers, value, %{timestamp_origin: :absolute}}
 
-    {:with_modifiers, value, modifiers}
-  end
+  defp set_timestamp_origin(value, false),
+    do: {:with_modifiers, value, %{timestamp_origin: :local}}
 end
