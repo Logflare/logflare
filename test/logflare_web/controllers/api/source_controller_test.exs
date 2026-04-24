@@ -355,6 +355,46 @@ defmodule LogflareWeb.Api.SourceControllerTest do
 
       refute Enum.any?(source.backends, &(&1.id == attacker_backend.id))
     end
+
+    test "attacker cannot attach another user's backend to their own source",
+         %{conn: conn} do
+      attacker = insert(:user)
+      victim = insert(:user)
+
+      victim_backend = insert(:backend, user: victim)
+      attacker_source = insert(:source, user: attacker)
+
+      conn
+      |> add_access_token(attacker, "private")
+      |> post(~p"/api/sources/#{attacker_source.token}/backends/#{victim_backend.token}")
+
+      source =
+        attacker_source.id
+        |> Sources.get()
+        |> Sources.preload_backends()
+
+      refute Enum.any?(source.backends, &(&1.id == victim_backend.id))
+    end
+
+    test "attacker cannot remove a backend from another user's source through the api",
+         %{conn: conn} do
+      attacker = insert(:user)
+      victim = insert(:user)
+
+      victim_source = insert(:source, user: victim)
+      victim_backend = insert(:backend, user: victim, sources: [victim_source])
+
+      conn
+      |> add_access_token(attacker, "private")
+      |> delete(~p"/api/sources/#{victim_source.token}/backends/#{victim_backend.token}")
+
+      source =
+        victim_source.id
+        |> Sources.get()
+        |> Sources.preload_backends()
+
+      assert Enum.any?(source.backends, &(&1.id == victim_backend.id))
+    end
   end
 
   describe "recent/2" do
