@@ -56,9 +56,7 @@ defmodule LogflareWeb.AdminController do
     AuthController.check_invite_token_and_signin(conn, auth_params)
   end
 
-  def delete_account(%{assigns: %{user: %User{email: "chase@logflare.app"}}} = conn, %{
-        "id" => user_id
-      }) do
+  def delete_account(conn, %{"id" => user_id}) do
     user = Users.get(user_id)
 
     case Users.delete_user(user) do
@@ -72,12 +70,6 @@ defmodule LogflareWeb.AdminController do
         |> put_flash(:error, "Something went wrong!")
         |> redirect(to: Routes.admin_path(conn, :accounts))
     end
-  end
-
-  def delete_account(conn, %{"id" => _user_id}) do
-    conn
-    |> put_flash(:error, "You are not chase@logflare.app!")
-    |> redirect(to: Routes.admin_path(conn, :accounts))
   end
 
   def shutdown_node(conn, params) do
