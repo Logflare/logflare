@@ -5,8 +5,8 @@ defmodule LogflareWeb.Auth.OauthController do
   plug Ueberauth
 
   alias Logflare.Alerting
-  alias Logflare.JSON
   alias Logflare.Sources
+  alias LogflareWeb.Auth.SlackOauthState
   alias LogflareWeb.AuthController
 
   require Logger
@@ -48,43 +48,12 @@ defmodule LogflareWeb.Auth.OauthController do
         %{"state" => state, "provider" => "slack"} = _params
       )
       when is_binary(state) do
-    state = JSON.decode!(state)
-
     current_user = conn.assigns[:team_user] || conn.assigns[:user]
 
-    case state do
-      %{"action" => "save_hook_url", "source" => source} ->
-        slack_hook_url = auth.extra.raw_info.token.other_params["incoming_webhook"]["url"]
-        owned_source = current_user && Sources.get_by_user_access(current_user, source["id"])
-
-        cond do
-          owned_source == nil ->
-            conn
-            |> put_flash(:error, "You do not have access to that source.")
-            |> redirect(to: ~p"/dashboard")
-
-          match?({:ok, _}, Sources.update_source(owned_source, %{slack_hook_url: slack_hook_url})) ->
-            conn
-            |> put_flash(:info, "Slack connected!")
-            |> redirect(to: Routes.source_path(conn, :edit, owned_source.id))
-
-          true ->
-            conn
-            |> put_flash(:error, "Something went wrong!")
-            |> redirect(to: Routes.source_path(conn, :edit, owned_source.id))
-        end
-
-      %{"action" => "save_hook_url", "alert_query_id" => id} ->
-        url = auth.extra.raw_info.token.other_params["incoming_webhook"]["url"]
-        alert_query = current_user && Alerting.get_alert_query_by_user_access(current_user, id)
-
-        if alert_query == nil do
-          conn
-          |> put_flash(:error, "You do not have access to that alert.")
-          |> redirect(to: ~p"/dashboard")
-        else
-          alert_callback(conn, alert_query, url, id)
-        end
+    with {:ok, payload} <- SlackOauthState.verify(current_user, state) do
+      handle_slack_callback(conn, current_user, auth, payload)
+    else
+      {:error, _reason} -> auth_error_redirect(conn)
     end
   end
 
@@ -134,6 +103,43 @@ defmodule LogflareWeb.Auth.OauthController do
     )
 
     auth_error_redirect(conn)
+  end
+
+  defp handle_slack_callback(conn, current_user, auth, payload) do
+    case payload do
+      %{"action" => "save_hook_url", "source" => source} ->
+        slack_hook_url = auth.extra.raw_info.token.other_params["incoming_webhook"]["url"]
+        owned_source = current_user && Sources.get_by_user_access(current_user, source["id"])
+
+        cond do
+          owned_source == nil ->
+            conn
+            |> put_flash(:error, "You do not have access to that source.")
+            |> redirect(to: ~p"/dashboard")
+
+          match?({:ok, _}, Sources.update_source(owned_source, %{slack_hook_url: slack_hook_url})) ->
+            conn
+            |> put_flash(:info, "Slack connected!")
+            |> redirect(to: Routes.source_path(conn, :edit, owned_source.id))
+
+          true ->
+            conn
+            |> put_flash(:error, "Something went wrong!")
+            |> redirect(to: Routes.source_path(conn, :edit, owned_source.id))
+        end
+
+      %{"action" => "save_hook_url", "alert_query_id" => id} ->
+        url = auth.extra.raw_info.token.other_params["incoming_webhook"]["url"]
+        alert_query = current_user && Alerting.get_alert_query_by_user_access(current_user, id)
+
+        if alert_query == nil do
+          conn
+          |> put_flash(:error, "You do not have access to that alert.")
+          |> redirect(to: ~p"/dashboard")
+        else
+          alert_callback(conn, alert_query, url, id)
+        end
+    end
   end
 
   defp auth_error_redirect(conn) do
