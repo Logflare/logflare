@@ -95,6 +95,31 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute Enum.any?(backend.alert_queries, &(&1.id == victim_alert.id))
       assert backend.alert_queries == []
     end
+
+    test "attacker cannot strip default ingest from another user's source", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user)
+
+      attacker_backend = insert(:backend, user: attacker)
+      victim_backend = insert(:backend, user: victim, default_ingest?: true)
+      victim_source = insert(:source, user: victim, backends: [victim_backend])
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live(~p"/backends/#{attacker_backend.id}")
+
+      render_hook(view, "remove_default_ingest", %{
+        "source_id" => to_string(victim_source.id)
+      })
+
+      source =
+        victim_source.id
+        |> Sources.get()
+        |> Sources.preload_backends()
+
+      assert Enum.any?(source.backends, &(&1.id == victim_backend.id))
+    end
   end
 
   describe "index" do

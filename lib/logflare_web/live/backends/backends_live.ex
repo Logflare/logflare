@@ -219,35 +219,37 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   def handle_event("remove_default_ingest", %{"source_id" => source_id}, socket) do
-    backend = socket.assigns.backend
-    source = Sources.get(source_id)
+    %{assigns: %{user: user, backend: backend}} = socket
+    source = Sources.get_by_user_access(user, source_id)
 
-    # Remove this backend from the source's backends
-    updated_backends =
-      source
-      |> Sources.preload_backends()
-      |> Map.get(:backends, [])
-      |> Enum.reject(&(&1.id == backend.id))
+    if source == nil do
+      {:noreply, put_flash(socket, :error, "Source not found")}
+    else
+      updated_backends =
+        source
+        |> Sources.preload_backends()
+        |> Map.get(:backends, [])
+        |> Enum.reject(&(&1.id == backend.id))
 
-    socket =
-      case Backends.update_source_backends(source, updated_backends) do
-        {:ok, _} ->
-          # If no more sources are using this backend, disable default_ingest flag
-          remaining_sources = Sources.list_sources(backend_id: backend.id)
+      socket =
+        case Backends.update_source_backends(source, updated_backends) do
+          {:ok, _} ->
+            remaining_sources = Sources.list_sources(backend_id: backend.id)
 
-          if Enum.empty?(remaining_sources) do
-            Backends.update_backend(backend, %{default_ingest?: false})
-          end
+            if Enum.empty?(remaining_sources) do
+              Backends.update_backend(backend, %{default_ingest?: false})
+            end
 
-          socket
-          |> refresh_backend(backend.id)
-          |> put_flash(:info, "Removed default ingest for source")
+            socket
+            |> refresh_backend(backend.id)
+            |> put_flash(:info, "Removed default ingest for source")
 
-        {:error, _} ->
-          put_flash(socket, :error, "Error removing default ingest")
-      end
+          {:error, _} ->
+            put_flash(socket, :error, "Error removing default ingest")
+        end
 
-    {:noreply, socket}
+      {:noreply, socket}
+    end
   end
 
   def handle_event("toggle_rule_form", _params, socket) do

@@ -275,9 +275,9 @@ defmodule LogflareWeb.AlertsLive do
   def handle_event(
         "add-backend",
         %{"backend" => %{"backend_id" => backend_id}},
-        %{assigns: %{alert: alert}} = socket
+        %{assigns: %{alert: alert, user: user}} = socket
       ) do
-    backend = Backends.get_backend(backend_id)
+    backend = Backends.get_backend_by_user_access(user, backend_id)
 
     socket =
       if backend do
@@ -306,9 +306,9 @@ defmodule LogflareWeb.AlertsLive do
   def handle_event(
         "remove-backend",
         %{"backend_id" => backend_id},
-        %{assigns: %{alert: alert}} = socket
+        %{assigns: %{alert: alert, user: user}} = socket
       ) do
-    backend = Backends.get_backend(backend_id)
+    backend = Backends.get_backend_by_user_access(user, backend_id)
 
     socket =
       if backend do
