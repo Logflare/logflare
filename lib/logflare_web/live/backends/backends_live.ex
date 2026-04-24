@@ -392,11 +392,20 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp refresh_backend(socket, id) do
-    backend = Backends.get_backend(id) |> Backends.preload_rules() |> Backends.preload_alerts()
+    case Backends.get_backend_by_user_access(socket.assigns.user, id) do
+      nil ->
+        raise LogflareWeb.ErrorsLive.InvalidResourceError
 
+      backend ->
+        backend = backend |> Backends.preload_rules() |> Backends.preload_alerts()
+        do_refresh_backend(socket, backend)
+    end
+  end
+
+  defp do_refresh_backend(socket, backend) do
     # Load sources that use this backend as default ingest
     default_ingest_sources =
-      if backend && backend.default_ingest? do
+      if backend.default_ingest? do
         Sources.list_sources(backend_id: backend.id)
         |> Enum.sort_by(& &1.name)
       else
