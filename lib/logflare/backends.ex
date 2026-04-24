@@ -30,6 +30,7 @@ defmodule Logflare.Backends do
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
+  alias Logflare.Users
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
@@ -168,8 +169,11 @@ defmodule Logflare.Backends do
   """
   @spec create_backend(map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
   def create_backend(attrs) do
+    {user, attrs} = pop_user!(attrs)
+
     backend =
-      %Backend{}
+      user
+      |> Ecto.build_assoc(:backends)
       |> Backend.changeset(attrs)
       |> Repo.insert()
 
@@ -317,6 +321,25 @@ defmodule Logflare.Backends do
 
   @spec validate_default_ingest_source(Changeset.t(), String.t() | integer() | nil) ::
           Changeset.t()
+  defp pop_user!(attrs) do
+    case attrs do
+      attrs when is_map_key(attrs, :user) ->
+        Map.pop(attrs, :user)
+
+      attrs when is_map_key(attrs, "user") ->
+        Map.pop(attrs, "user")
+
+      attrs when is_map_key(attrs, :user_id) ->
+        {Users.get(attrs.user_id) || %User{}, Map.delete(attrs, :user_id)}
+
+      attrs when is_map_key(attrs, "user_id") ->
+        {Users.get(attrs["user_id"]) || %User{}, Map.delete(attrs, "user_id")}
+
+      attrs ->
+        {%User{}, attrs}
+    end
+  end
+
   defp validate_default_ingest_source(%{changes: %{default_ingest?: true}} = changeset, source_id)
        when is_non_empty_binary(source_id) or is_integer(source_id) do
     case Sources.get(source_id) do
