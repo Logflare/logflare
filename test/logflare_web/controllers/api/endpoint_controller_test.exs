@@ -100,6 +100,28 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
 
       assert %{errors: %{"name" => _, "query" => _}} = response
     end
+
+    test "attacker cannot create an endpoint with another user's backend", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user)
+
+      victim_backend =
+        insert(:backend,
+          user: victim,
+          type: :postgres,
+          config: %{url: "postgresql://victim.local/logflare"}
+        )
+
+      assert conn
+             |> add_access_token(attacker, "private")
+             |> post(~p"/api/endpoints", %{
+               name: "test",
+               language: "pg_sql",
+               query: "select 1",
+               backend_id: victim_backend.id
+             })
+             |> json_response(404)
+    end
   end
 
   describe "update/2" do
