@@ -174,19 +174,12 @@ defmodule LogflareWeb.BackendsLive do
         %{"default_ingest" => %{"source_id" => source_id}},
         socket
       ) do
-    backend = socket.assigns.backend
+    %{assigns: %{backend: backend, user: user}} = socket
 
     socket =
-      case Backends.update_backend(backend, %{default_ingest?: true, source_id: source_id}) do
-        {:ok, _backend} ->
-          socket
-          |> refresh_backend(backend.id)
-          |> assign(:show_default_ingest_form?, false)
-          |> put_flash(:info, "Successfully marked backend as default ingest for source")
-
-        {:error, changeset} ->
-          message = stringify_changeset_errors(changeset)
-          put_flash(socket, :error, "Error setting default ingest:\n#{message}")
+      case Sources.get_by_user_access(user, source_id) do
+        nil -> put_flash(socket, :error, "Source not found.")
+        _source -> apply_default_ingest(socket, backend, source_id)
       end
 
     {:noreply, socket}
@@ -329,6 +322,20 @@ defmodule LogflareWeb.BackendsLive do
       {:noreply, put_flash(socket, :error, "You do not have access to this backend.")}
     else
       do_remove_alert(socket, alert_id)
+    end
+  end
+
+  defp apply_default_ingest(socket, backend, source_id) do
+    case Backends.update_backend(backend, %{default_ingest?: true, source_id: source_id}) do
+      {:ok, _backend} ->
+        socket
+        |> refresh_backend(backend.id)
+        |> assign(:show_default_ingest_form?, false)
+        |> put_flash(:info, "Successfully marked backend as default ingest for source")
+
+      {:error, changeset} ->
+        message = stringify_changeset_errors(changeset)
+        put_flash(socket, :error, "Error setting default ingest:\n#{message}")
     end
   end
 

@@ -926,6 +926,52 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "uses this backend as default ingest"
       refute html =~ "Remove All Sources"
     end
+
+    test "cannot set another user's source as default ingest", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, _} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123}
+        )
+
+      victim = insert(:user)
+
+      victim_source =
+        insert(:source, user: victim, default_ingest_backend_enabled?: true)
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      view
+      |> element("button", "Add a Source")
+      |> render_click()
+
+      html =
+        view
+        |> element("form#default_ingest")
+        |> render_submit(%{
+          default_ingest: %{
+            source_id: victim_source.id
+          }
+        })
+
+      refute html =~ "Successfully marked backend as default ingest for source"
+      assert html =~ "Source not found"
+
+      reloaded = Logflare.Backends.get_backend(backend.id)
+      refute reloaded.default_ingest?
+
+      victim_source_reloaded =
+        Logflare.Sources.get(victim_source.id) |> Logflare.Sources.preload_backends()
+
+      assert victim_source_reloaded.backends == []
+    end
   end
 
   describe "resolving team context" do
