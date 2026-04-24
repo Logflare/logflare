@@ -227,11 +227,7 @@ defmodule LogflareWeb.BackendsLive do
       socket =
         case Backends.update_source_backends(source, updated_backends) do
           {:ok, _} ->
-            remaining_sources = Sources.list_sources(backend_id: backend.id)
-
-            if Enum.empty?(remaining_sources) do
-              Backends.update_backend(backend, %{default_ingest?: false})
-            end
+            maybe_disable_default_ingest(backend)
 
             socket
             |> refresh_backend(backend.id)
@@ -336,6 +332,12 @@ defmodule LogflareWeb.BackendsLive do
       {:error, changeset} ->
         message = stringify_changeset_errors(changeset)
         put_flash(socket, :error, "Error setting default ingest:\n#{message}")
+    end
+  end
+
+  defp maybe_disable_default_ingest(backend) do
+    if Sources.list_sources(backend_id: backend.id) == [] do
+      Backends.update_backend(backend, %{default_ingest?: false})
     end
   end
 
