@@ -154,33 +154,57 @@ defmodule Logflare.Lql.Parser.CombinatorsTest do
     test "timestamp value parser" do
       result = test_timestamp_value("2023-01-15")
       # The timestamp value parser can return different formats depending on which parser matches
-      assert match?({:ok, [value: ~D[2023-01-15]], "", _, _, _}, result) or
+      assert match?(
+               {:ok, [value: {:with_modifiers, ~D[2023-01-15], %{timestamp_origin: :local}}], "",
+                _, _, _},
+               result
+             ) or
                match?(
-                 {:ok, [value: {:datetime_with_range, [[~D[2023-01-15]]]}], "", _, _, _},
+                 {:ok,
+                  [
+                    value:
+                      {:datetime_with_range,
+                       [[{:with_modifiers, ~D[2023-01-15], %{timestamp_origin: :local}}]]}
+                  ], "", _, _, _},
                  result
                )
 
       result = test_timestamp_value("now")
-      assert match?({:ok, [value: %{shorthand: "now"}], "", _, _, _}, result)
+
+      assert match?(
+               {:ok,
+                [
+                  value: %{
+                    shorthand: "now",
+                    value: {:with_modifiers, _, %{timestamp_origin: :absolute}}
+                  }
+                ], "", _, _, _},
+               result
+             )
 
       result = test_timestamp_value("1710683222000")
 
       assert {:ok,
-              [value: {:with_modifiers, ~N[2024-03-17 13:47:02.000], %{explicit_timezone: true}}],
-              "", _, _, _} = result
+              [
+                value:
+                  {:with_modifiers, ~N[2024-03-17 13:47:02.000], %{timestamp_origin: :absolute}}
+              ], "", _, _, _} = result
 
       result = test_timestamp_value("1710683222000000")
 
       assert {:ok,
-              [value: {:with_modifiers, ~N[2024-03-17 13:47:02.000], %{explicit_timezone: true}}],
-              "", _, _, _} = result
+              [
+                value:
+                  {:with_modifiers, ~N[2024-03-17 13:47:02.000], %{timestamp_origin: :absolute}}
+              ], "", _, _, _} = result
     end
 
     test "timestamp datetime parser distinguishes timezone-bearing datetimes" do
-      assert {:ok, [{:with_modifiers, ~N[2023-01-15 10:00:00], %{explicit_timezone: true}}], "",
-              _, _, _} = test_timestamp_datetime("2023-01-15T10:00:00Z")
+      assert {:ok, [{:with_modifiers, ~N[2023-01-15 10:00:00], %{timestamp_origin: :absolute}}],
+              "", _, _, _} = test_timestamp_datetime("2023-01-15T10:00:00Z")
 
-      assert {:ok, [~N[2023-01-15 10:00:00]], "", _, _, _} =
+      assert {:ok, [{:with_modifiers, ~N[2023-01-15 10:00:00], %{timestamp_origin: :local}}], "",
+              _, _, _} =
                test_timestamp_datetime("2023-01-15T10:00:00")
     end
   end
@@ -192,14 +216,25 @@ defmodule Logflare.Lql.Parser.CombinatorsTest do
 
       result = test_timestamp_clause("t:>2023-01-15T10:00:00Z")
 
-      assert {:ok, [%{path: "timestamp", operator: :>, modifiers: %{explicit_timezone: true}}],
-              "", _, _, _} = result
+      assert {:ok,
+              [
+                %{
+                  path: "timestamp",
+                  operator: :>,
+                  modifiers: %{timestamp_origin: :absolute}
+                }
+              ], "", _, _, _} = result
 
       result = test_timestamp_clause("t:1710683222..1710684222")
 
       assert {:ok,
-              [%{path: "timestamp", operator: :range, modifiers: %{explicit_timezone: true}}], "",
-              _, _, _} = result
+              [
+                %{
+                  path: "timestamp",
+                  operator: :range,
+                  modifiers: %{timestamp_origin: :absolute}
+                }
+              ], "", _, _, _} = result
     end
 
     test "metadata clause parser" do
