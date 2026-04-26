@@ -190,6 +190,22 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
              )
   end
 
+  test "truncates message to fit `max_message_bytes` constraint" do
+    {source, _backend} = start_syslog(%{host: "localhost", port: 6514, max_message_bytes: 200})
+
+    long_message = String.duplicate("a", 500)
+
+    assert [%{"fields" => %{"message" => telegraf_message}}] =
+             ingest_syslog(
+               [build(:log_event, message: long_message)],
+               source
+             )
+
+    # Telegraf receives the truncated raw string. It will be invalid JSON.
+    assert byte_size(telegraf_message) < 200
+    assert String.starts_with?(telegraf_message, ~s[{"event_message":])
+  end
+
   test "sends message over mTLS" do
     {source, _backend} =
       start_syslog(%{
@@ -414,6 +430,22 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
                client_cert: ["must be a valid PEM encoded string"],
                client_key: ["must be a valid PEM encoded string"]
              } = errors_on(changeset)
+    end
+
+    test "rejects invalid max message bytes" do
+      bad_examples = [0, -100]
+
+      for max_bytes <- bad_examples do
+        changeset =
+          syslog_changeset(%{
+            host: "localhost",
+            port: 6514,
+            max_message_bytes: max_bytes
+          })
+
+        refute changeset.valid?
+        assert %{max_message_bytes: ["must be greater than 0"]} = errors_on(changeset)
+      end
     end
   end
 
