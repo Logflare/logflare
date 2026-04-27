@@ -16,12 +16,16 @@ defmodule LogflareWeb.ChannelCase do
   """
 
   use ExUnit.CaseTemplate
+  use Mimic
 
   using do
     quote do
       # Import conveniences for testing with channels
       import Phoenix.ChannelTest
       import Logflare.Factory
+
+      use Mimic
+      setup :set_mimic_global
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint

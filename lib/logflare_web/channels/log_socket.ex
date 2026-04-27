@@ -1,6 +1,7 @@
 defmodule LogflareWeb.LogSocket do
   use Phoenix.Socket
 
+  alias Logflare.Auth
   alias Logflare.Users
 
   channel "logs:*", LogflareWeb.LogChannel
@@ -10,6 +11,13 @@ defmodule LogflareWeb.LogSocket do
   channel "logs:elixir:*", LogflareWeb.LogChannel
   channel "logs:elixir:logger:*", LogflareWeb.LogChannel
   channel "logs:javascript:node:*", LogflareWeb.LogChannel
+
+  def connect(%{"access_token" => access_token}, socket) do
+    case Auth.Cache.verify_access_token(access_token) do
+      {:ok, _token, user} -> {:ok, assign(socket, :user, user)}
+      {:error, _reason} -> :error
+    end
+  end
 
   def connect(%{"api_key" => api_key}, socket) do
     user = Users.get_by(api_key: api_key)
