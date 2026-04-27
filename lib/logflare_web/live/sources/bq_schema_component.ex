@@ -8,7 +8,7 @@ defmodule LogflareWeb.SourceBqSchemaComponent do
   @impl true
   def render(%{source: source}) do
     bq_schema =
-      SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+      SourceSchemas.Cache.get_source_schema_by_source_id(source.id)
       |> case do
         nil -> SchemaBuilder.initial_table_schema()
         %_{bigquery_schema: schema} -> schema

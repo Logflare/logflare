@@ -1181,7 +1181,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   @spec lql_schema_flat_map(Logflare.Sources.Source.t()) :: map()
   defp lql_schema_flat_map(source) do
-    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+    case SourceSchemas.Cache.get_source_schema_by_source_id(source.id) do
       %{schema_flat_map: flat_map} when is_map(flat_map) ->
         flat_map
 

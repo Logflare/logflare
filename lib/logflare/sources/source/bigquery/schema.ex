@@ -62,7 +62,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
       next_update: System.system_time(:millisecond)
     }
 
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source_id)
+    source_schema = SourceSchemas.Cache.get_source_schema_by_source_id(source_id)
     {:ok, state, {:continue, {:boot, source_schema}}}
   end
 
@@ -89,7 +89,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   def handle_cast({:update, %LogEvent{body: body, id: event_id}, _source}, state) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
+    source_schema = SourceSchemas.Cache.get_source_schema_by_source_id(state.source_id)
 
     db_schema =
       if source_schema,

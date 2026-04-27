@@ -2,7 +2,6 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   use Logflare.DataCase
 
   alias Cainophile.Changes.DeletedRecord
-  alias Cainophile.Changes.Transaction
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.Sources
@@ -29,13 +28,13 @@ defmodule Logflare.ContextCache.CacheBusterTest do
 
     test_pid = self()
 
-    Mimic.expect(ContextCache, :bust_keys, fn arg ->
-      Mimic.call_original(ContextCache, :bust_keys, [arg])
+    Mimic.expect(ContextCache, :refresh_keys, fn arg ->
+      Mimic.call_original(ContextCache, :refresh_keys, [arg])
       send(test_pid, arg)
     end)
 
-    send(CacheBuster, %Transaction{changes: [change]})
-    assert_receive [{Sources, ^source_id}], 500
+    CacheBuster.broadcast_cache_updates([change])
+    assert_receive [{Sources, ^source_id, {:partial, %{}}}], 500
     assert Cachex.size!(Sources.Cache) == 0
   end
 end

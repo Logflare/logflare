@@ -31,6 +31,8 @@ defmodule Logflare.Auth.Cache do
     }
   end
 
+  @behaviour Logflare.ContextCache
+
   @spec verify_access_token(OauthAccessToken.t() | String.t()) ::
           {:ok, OauthAccessToken.t(), User.t()} | {:error, term()}
   def verify_access_token(access_token_or_api_key),

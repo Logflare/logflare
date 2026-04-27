@@ -58,6 +58,14 @@ defmodule Logflare.Sources.Cache do
   def get_by_id_and_preload(arg) when is_integer(arg), do: get_by_and_preload(id: arg)
   def get_by_id_and_preload(arg) when is_atom(arg), do: get_by_and_preload(token: arg)
 
+  @behaviour Logflare.ContextCache
+
+  @impl Logflare.ContextCache
+  def bust_actions(action, id) when is_integer(id) do
+    value = if action == :update, do: Sources.get(id), else: :bust
+    {:partial, %{{:get_by, [[id: id]]} => value}}
+  end
+
   def get_by(kv), do: apply_repo_fun(__ENV__.function, [kv])
   def get_by_id(arg) when is_integer(arg), do: get_by(id: arg)
   def get_by_id(arg) when is_atom(arg), do: get_by(token: arg)
