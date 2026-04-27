@@ -1,15 +1,13 @@
 // CMD/CTRL+K source quick-switcher.
-// The keydown listener is bound at module load (independent of LV lifecycle)
-// so the shortcut works the moment the script runs. The hook only registers
-// the LV reference used to fetch sources lazily on first open.
+// The keydown listener is bound at module load so the shortcut works on
+// controller-rendered pages too, not only LV-mounted ones.
 
 const MAX_RESULTS = 50;
 
 const state = {
   hook: null,
   sources: null,
-  loading: false,
-  open: false,
+  fetching: false,
   query: "",
   activeIndex: 0,
   overlay: null,
@@ -17,16 +15,15 @@ const state = {
   list: null,
 };
 
+function isOpen() {
+  return state.overlay !== null;
+}
+
 function shouldIgnoreTrigger(e) {
   const t = e.target;
   if (document.querySelector(".modal.show")) return true;
   if (!t || !t.closest) return false;
   return !!t.closest('.monaco-editor, [contenteditable="true"]');
-}
-
-function teamId() {
-  const el = state.hook && state.hook.el;
-  return (el && el.dataset.teamId) || "";
 }
 
 function filterSources() {
@@ -139,7 +136,6 @@ function renderOverlay() {
 }
 
 function openPalette() {
-  state.open = true;
   state.query = "";
   state.activeIndex = 0;
   renderOverlay();
@@ -148,24 +144,16 @@ function openPalette() {
 }
 
 function maybeFetchSources() {
-  if (state.sources !== null || state.loading) {
-    renderResults();
-    return;
-  }
-  if (!state.hook) {
-    renderResults();
-    return;
-  }
-  state.loading = true;
+  if (state.sources !== null || state.fetching || !state.hook) return;
+  state.fetching = true;
   state.hook.pushEventTo(state.hook.el, "fetch_sources", {}, (reply) => {
-    state.loading = false;
+    state.fetching = false;
     state.sources = (reply && reply.sources) || [];
-    if (state.open) renderResults();
+    if (isOpen()) renderResults();
   });
 }
 
 function closePalette() {
-  state.open = false;
   if (state.overlay) {
     state.overlay.remove();
     state.overlay = null;
@@ -193,7 +181,8 @@ function selectActive() {
 
 function navigateTo(source) {
   const path = "/sources/" + source.id;
-  const t = teamId();
+  const el = state.hook && state.hook.el;
+  const t = (el && el.dataset.teamId) || "";
   window.location.href = t ? path + "?t=" + encodeURIComponent(t) : path;
 }
 
@@ -202,7 +191,7 @@ function onKeydown(e) {
     (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key && e.key.toLowerCase() === "k";
 
   if (isToggle) {
-    if (state.open) {
+    if (isOpen()) {
       e.preventDefault();
       closePalette();
       return;
@@ -213,7 +202,7 @@ function onKeydown(e) {
     return;
   }
 
-  if (!state.open) return;
+  if (!isOpen()) return;
 
   if (e.key === "Escape") {
     e.preventDefault();
@@ -235,7 +224,15 @@ document.addEventListener("keydown", onKeydown, true);
 const CommandPalette = {
   mounted() {
     state.hook = this;
-    if (state.open) maybeFetchSources();
+    this._teamId = this.el.dataset.teamId || "";
+    if (isOpen()) maybeFetchSources();
+  },
+  updated() {
+    const teamId = this.el.dataset.teamId || "";
+    if (teamId !== this._teamId) {
+      this._teamId = teamId;
+      state.sources = null;
+    }
   },
   destroyed() {
     if (state.hook === this) state.hook = null;
