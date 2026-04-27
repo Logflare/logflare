@@ -73,12 +73,20 @@ defmodule LogflareWeb.AdminController do
   end
 
   def shutdown_node(conn, params) do
-    if Map.get(params, "code") == env_node_shutdown_code() do
+    provided = conn |> get_req_header("x-shutdown-code") |> List.first()
+
+    if valid_shutdown_code?(env_node_shutdown_code(), provided) do
       do_authorized_code_shutdown(conn, params)
     else
       do_unauthorized_code_shutdown(conn, params)
     end
   end
+
+  defp valid_shutdown_code?(server, provided)
+       when is_binary(server) and server != "" and is_binary(provided),
+       do: Plug.Crypto.secure_compare(server, provided)
+
+  defp valid_shutdown_code?(_, _), do: false
 
   defp do_authorized_code_shutdown(conn, %{"node" => node}) do
     node_names = [Node.self() | Node.list()]

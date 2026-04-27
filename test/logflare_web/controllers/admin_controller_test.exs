@@ -143,4 +143,71 @@ defmodule LogflareWeb.AdminControllerTest do
       refute html =~ admin_team.name
     end
   end
+
+  describe "shutdown_node" do
+    @shutdown_code "test-shutdown-code"
+
+    setup do
+      prev = Application.get_env(:logflare, :node_shutdown_code)
+      on_exit(fn -> Application.put_env(:logflare, :node_shutdown_code, prev) end)
+      :ok
+    end
+
+    test "returns 401 when server code is nil and no header sent", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, nil)
+      conn = put(conn, "/admin/shutdown")
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when server code is nil even if header is sent (bypass regression)", %{
+      conn: conn
+    } do
+      Application.put_env(:logflare, :node_shutdown_code, nil)
+      conn = conn |> put_req_header("x-shutdown-code", "anything") |> put("/admin/shutdown")
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when server code is set but header is missing", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, @shutdown_code)
+      conn = put(conn, "/admin/shutdown")
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when server code is set but header is wrong", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, @shutdown_code)
+      conn = conn |> put_req_header("x-shutdown-code", "wrong") |> put("/admin/shutdown")
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when secret is sent as query param (old channel)", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, @shutdown_code)
+      conn = put(conn, "/admin/shutdown?code=#{@shutdown_code}")
+      assert json_response(conn, 401)
+    end
+
+    test "returns 200 and shuts down self when header matches and no node param", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, @shutdown_code)
+      expect(Logflare.Admin, :shutdown, fn -> :ok end)
+
+      conn =
+        conn
+        |> put_req_header("x-shutdown-code", @shutdown_code)
+        |> put("/admin/shutdown")
+
+      assert %{"message" => _} = json_response(conn, 200)
+    end
+
+    test "returns 200 and shuts down specified node when node param matches", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, @shutdown_code)
+      node_str = Atom.to_string(Node.self())
+      expect(Logflare.Admin, :shutdown, fn _node -> :ok end)
+
+      conn =
+        conn
+        |> put_req_header("x-shutdown-code", @shutdown_code)
+        |> put("/admin/shutdown", %{"node" => node_str})
+
+      assert %{"message" => _} = json_response(conn, 200)
+    end
+  end
 end
