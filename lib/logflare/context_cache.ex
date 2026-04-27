@@ -43,6 +43,10 @@ defmodule Logflare.ContextCache do
 
   @type bust_ctx() :: integer() | keyword(integer())
 
+  @type plan() :: {:full | :partial, actions()}
+
+  @type update_item() :: {context :: module(), bust_ctx(), plan()}
+
   @doc """
   Returns a tagged tuple of cache actions to perform when a DB change is detected.
 
@@ -90,42 +94,6 @@ defmodule Logflare.ContextCache do
   end
 
   @doc """
-  Busts cache entries based on context-primary-key pairs.
-
-  It is intended for following a WAL for cache busting. When a new record comes in from the WAL,
-  the CacheBuster process calls this function with either the primary keys extracted from those records
-  or a keyword list with fields useful for busting.
-
-  For primary key, the function then:
-
-  1. Queries the relevant context cache using a matchspec to find entries to bust
-  2. Handles both single records and lists of records containing matching IDs
-  3. Deletes matching cache entries
-  """
-  @spec bust_keys(list()) :: :ok
-  def bust_keys(values) when is_list(values) do
-    for {context, primary_key} <- values do
-      context_cache = cache_name(context)
-      bust_key(context_cache, primary_key)
-    end
-
-    :ok
-  end
-
-  defp bust_key(context_cache, pkey) when is_integer(pkey) do
-    Cachex.execute!(context_cache, fn cache ->
-      keys_with_id(cache, pkey)
-      |> delete_entries(cache)
-    end)
-  end
-
-  defp delete_entries(entries, cache) do
-    Enum.each(entries, fn key ->
-      Cachex.del(cache, key)
-    end)
-  end
-
-  @doc """
   Low level API for fetching from cache. Allows wrapping calls with
   `Cachex.execute/2` and accessing arbitrary key or calling any getter function.
   """
@@ -145,24 +113,66 @@ defmodule Logflare.ContextCache do
     end
   end
 
-  @spec refresh_keys([{module(), integer() | keyword(), {:full | :partial, actions()}}]) :: :ok
-  def refresh_keys(values) when is_list(values) do
-    Enum.each(values, fn {context, trigger, {tag, actions}} ->
-      cache = cache_name(context)
+  @doc """
+  Applies a list of cache updates produced by `CacheBuster` (or by direct callers
+  performing manual invalidation).
 
-      case {tag, trigger} do
-        {:partial, trigger} when is_integer(trigger) ->
-          # Remeber present keys to bring back only existing keys after busting
-          present_keys = present_action_keys(cache, actions)
-          bust_key(cache, trigger)
-          apply_partial_actions(cache, actions, present_keys)
+  Each item is `{context, trigger, plan}` where `plan` is one of:
 
-        _ ->
-          apply_actions(cache, actions)
-      end
-    end)
+  - `{:full, actions}` — the action map covers every cached function; apply
+    in-place (`Cachex.update`) to existing keys and `Cachex.del` for `:bust` values.
+  - `{:partial, actions}` — like `:full` but combined with an ETS scan over the
+    integer trigger so unlisted variants get evicted. Re-inserts only the keys
+    that were present before the scan to avoid warming the cache with unrequested data.
+    With a non-integer trigger no scan runs (the keyword shape carries enough
+    information for the action map to be authoritative).
 
+  Pass `{:partial, %{}}` to get a pure scan-and-delete by integer pkey;
+  `bust_keys/1` is the convenience wrapper for that case.
+  """
+  @spec refresh_keys([update_item()]) :: :ok
+  def refresh_keys(items) when is_list(items) do
+    Enum.each(items, &apply_update/1)
     :ok
+  end
+
+  @doc """
+  Convenience wrapper around `refresh_keys/1` for callers that just want to
+  evict all cache entries referencing a primary key.
+  """
+  @spec bust_keys([{module(), integer()}]) :: :ok
+  def bust_keys(values) when is_list(values) do
+    values
+    |> Enum.map(fn {context, pkey} -> {context, pkey, {:partial, %{}}} end)
+    |> refresh_keys()
+  end
+
+  defp apply_update({context, _trigger, {:full, actions}}) do
+    apply_actions(cache_name(context), actions)
+  end
+
+  defp apply_update({context, trigger, {:partial, actions}}) when is_integer(trigger) do
+    cache = cache_name(context)
+    present_keys = present_action_keys(cache, actions)
+    bust_key(cache, trigger)
+    apply_partial_actions(cache, actions, present_keys)
+  end
+
+  defp apply_update({context, _trigger, {:partial, actions}}) do
+    apply_actions(cache_name(context), actions)
+  end
+
+  defp bust_key(context_cache, pkey) when is_integer(pkey) do
+    Cachex.execute!(context_cache, fn cache ->
+      keys_with_id(cache, pkey)
+      |> delete_entries(cache)
+    end)
+  end
+
+  defp delete_entries(entries, cache) do
+    Enum.each(entries, fn key ->
+      Cachex.del(cache, key)
+    end)
   end
 
   defp present_action_keys(cache, actions) do

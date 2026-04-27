@@ -33,7 +33,7 @@ defmodule Logflare.KeyValues.CacheTest do
     assert nil == KeyValues.Cache.lookup(user.id, "nonexistent")
   end
 
-  test "keys_to_bust/1 includes cached lookup and all accessor variants", %{user: user} do
+  test "bust_actions/2 identifies cached lookup and all accessor variants", %{user: user} do
     value = %{"org" => %{"id" => "abc"}}
     insert(:key_value, user: user, key: "proj1", value: value)
 
@@ -41,14 +41,13 @@ defmodule Logflare.KeyValues.CacheTest do
     assert ^value = KeyValues.Cache.lookup(user.id, "proj1")
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
 
-    # keys to bust includes both lookups
-    context_keyword = [user_id: user.id, key: "proj1"]
-    assert keys = KeyValues.Cache.keys_to_bust(context_keyword)
-    assert {:lookup, [user.id, "proj1", nil]} in keys
-    assert {:lookup, [user.id, "proj1", "org.id"]} in keys
+    kw = [user_id: user.id, key: "proj1"]
+    {:full, actions} = KeyValues.Cache.bust_actions(:delete, kw)
+    assert Map.has_key?(actions, {:lookup, [user.id, "proj1", nil]})
+    assert Map.has_key?(actions, {:lookup, [user.id, "proj1", "org.id"]})
 
     assert Cachex.size!(KeyValues.Cache) == 2
-    assert ContextCache.bust_keys([{KeyValues, context_keyword}]) == :ok
+    assert ContextCache.refresh_keys([{KeyValues, kw, {:full, actions}}]) == :ok
     assert Cachex.size!(KeyValues.Cache) == 0
   end
 
@@ -62,19 +61,18 @@ defmodule Logflare.KeyValues.CacheTest do
       assert KeyValues.Cache.count(user.id) == 2
     end
 
-    test "bust_by/1 clears cached count", %{user: user} do
+    test "bust_actions/2 clears cached count", %{user: user} do
       insert(:key_value, user: user, key: "k1")
 
       # populate cache
       assert 1 = KeyValues.Cache.count(user.id)
 
-      # bust clears it
-      context_keyword = [user_id: user.id, key: "k1"]
-      assert keys = KeyValues.Cache.keys_to_bust(context_keyword)
-      assert {:count, user.id} in keys
+      kw = [user_id: user.id, key: "k1"]
+      {:full, actions} = KeyValues.Cache.bust_actions(:delete, kw)
+      assert Map.has_key?(actions, {:count, user.id})
 
       assert Cachex.size!(KeyValues.Cache) == 1
-      assert ContextCache.bust_keys([{KeyValues, context_keyword}]) == :ok
+      assert ContextCache.refresh_keys([{KeyValues, kw, {:full, actions}}]) == :ok
       assert Cachex.size!(KeyValues.Cache) == 0
     end
   end

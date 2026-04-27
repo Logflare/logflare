@@ -7,7 +7,8 @@ defmodule Logflare.ContextCache.CacheBuster do
   cache module, and broadcasts the result map cluster-wide via PubSub. Each node's CacheBuster
   GenServer receives the broadcast and applies updates to local caches without further DB queries.
 
-  Falls back to ETS scan bust for integer-pkey deletes and for modules not implementing the callback.
+  Modules without `bust_actions/2` fall through to a `{:partial, %{}}` plan that performs an
+  ETS scan by integer pkey.
   """
   use GenServer
 
@@ -77,10 +78,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   """
   @spec broadcast_cache_updates([cainophile_change()]) :: :ok
   def broadcast_cache_updates(changes) do
-    results =
-      changes
-      |> classify_changes()
-      |> Enum.map(&fetch_or_bust/1)
+    results = classify_changes(changes)
 
     if results != [] do
       :telemetry.execute([:logflare, :cache_buster, :to_bust], %{count: length(results)})
@@ -104,31 +102,28 @@ defmodule Logflare.ContextCache.CacheBuster do
     for record <- changes,
         record = handle_record(record),
         record != :noop do
-      record
+      map_to_update_plan(record)
     end
   end
 
-  defp fetch_or_bust({:refresh, {context, trigger}}) do
+  defp map_to_update_plan({record_action, {context, trigger}}) do
     cache_module = ContextCache.cache_name(context)
 
-    if function_exported?(cache_module, :bust_actions, 2) do
-      {:fetched, {context, trigger, cache_module.bust_actions(:update, trigger)}}
-    else
-      {:bust, {context, trigger}}
-    end
+    action =
+      case record_action do
+        :refresh -> :update
+        :bust -> :delete
+      end
+
+    plan =
+      if function_exported?(cache_module, :bust_actions, 2) do
+        cache_module.bust_actions(action, trigger)
+      else
+        {:partial, %{}}
+      end
+
+    {context, trigger, plan}
   end
-
-  defp fetch_or_bust({:bust, {context, kw}}) when is_list(kw) do
-    cache_module = ContextCache.cache_name(context)
-
-    if function_exported?(cache_module, :bust_actions, 2) do
-      {:fetched, {context, kw, cache_module.bust_actions(:delete, kw)}}
-    else
-      {:bust, {context, kw}}
-    end
-  end
-
-  defp fetch_or_bust({:bust, _} = bust), do: bust
 
   # WAL record classification
 

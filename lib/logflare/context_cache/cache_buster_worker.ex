@@ -19,11 +19,7 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
     {PartitionSupervisor, child_spec: __MODULE__, name: @supervisor_name}
   end
 
-  @spec cast_apply([
-          {:fetched,
-           {module(), ContextCache.bust_ctx(), {:full | :partial, ContextCache.actions()}}}
-          | {:bust, {module(), term()}}
-        ]) :: :ok
+  @spec cast_apply([ContextCache.update_item()]) :: :ok
   def cast_apply(results) when is_list(results) do
     GenServer.cast(
       {:via, PartitionSupervisor, {@supervisor_name, results}},
@@ -41,41 +37,31 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
   end
 
   @impl true
-  def handle_cast({:apply, results}, state) do
-    grouped = Enum.group_by(results, &elem(&1, 0), &elem(&1, 1))
-
-    fetched = Map.get(grouped, :fetched, [])
-    to_bust = Map.get(grouped, :bust, [])
-
-    tombstones =
-      Enum.map(fetched, fn {context, trigger, _actions} -> {context, trigger} end) ++ to_bust
+  def handle_cast({:apply, update_plan}, state) do
+    tombstones = Enum.map(update_plan, fn {context, trigger, _plan} -> {context, trigger} end)
 
     ContextCache.Gossip.record_tombstones(tombstones)
-    ContextCache.refresh_keys(fetched)
-    ContextCache.bust_keys(to_bust)
+    ContextCache.refresh_keys(update_plan)
 
-    for {_tag, value} <- results do
-      maybe_do_cross_cluster_syncing(value)
+    for item <- update_plan do
+      maybe_do_cross_cluster_syncing(item)
     end
 
     {:noreply, state}
   end
 
-  defp maybe_do_cross_cluster_syncing({Backends, backend_id})
+  defp maybe_do_cross_cluster_syncing({Backends, backend_id, _plan})
        when is_integer(backend_id) do
     Utils.Tasks.start_child(fn ->
       Backends.sync_backend_across_cluster(backend_id)
     end)
   end
 
-  defp maybe_do_cross_cluster_syncing({Rules, rule_id}) when is_integer(rule_id) do
+  defp maybe_do_cross_cluster_syncing({Rules, rule_id, _plan}) when is_integer(rule_id) do
     Utils.Tasks.start_child(fn ->
       Rules.sync_rule(rule_id)
     end)
   end
-
-  defp maybe_do_cross_cluster_syncing({context, pkey, _actions}),
-    do: maybe_do_cross_cluster_syncing({context, pkey})
 
   defp maybe_do_cross_cluster_syncing(_), do: :noop
 end
