@@ -1,8 +1,3 @@
-// CMD/CTRL+K source quick-switcher.
-// Self-contained: a top-level keydown listener mounts a React overlay on first
-// open, fetches sources from /command-palette/sources, and unmounts on close.
-// Each source carries its team; navigation uses ?t=<team.id>.
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -11,9 +6,8 @@ const SOURCES_URL = "/command-palette/sources";
 
 function shouldIgnoreTrigger(e) {
   const t = e.target;
-  if (document.querySelector(".modal.show")) return true;
   if (!t || !t.closest) return false;
-  return !!t.closest('.monaco-editor, [contenteditable="true"]');
+  return !!t.closest('.modal.show, .monaco-editor, [contenteditable="true"]');
 }
 
 function rankSources(sources, query) {
@@ -29,17 +23,37 @@ function rankSources(sources, query) {
 }
 
 function navigateTo(source) {
-  const path = "/sources/" + source.id;
-  const t = source.team && source.team.id;
-  window.location.href = t ? path + "?t=" + encodeURIComponent(t) : path;
+  window.location.href = source.path;
+}
+
+function ResultRow({ source, isActive, activeRef, onActivate, onSelect }) {
+  return (
+    <li
+      ref={isActive ? activeRef : null}
+      className={"lf-cmdk-item" + (isActive ? " lf-cmdk-active" : "")}
+      onMouseEnter={onActivate}
+      onClick={onSelect}
+    >
+      {source.favorite && <span className="lf-cmdk-favorite">★</span>}
+      <span className="lf-cmdk-name">{source.name}</span>
+      {source.service_name && (
+        <span className="lf-cmdk-service">{source.service_name}</span>
+      )}
+      {source.team && source.team.name && (
+        <span className="lf-cmdk-team">{source.team.name}</span>
+      )}
+    </li>
+  );
 }
 
 function CommandPalette({ onClose }) {
-  const [sources, setSources] = useState(null);
+  const [sources, setSources] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef(null);
   const activeRef = useRef(null);
+  const scrollOnNextRender = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +63,7 @@ function CommandPalette({ onClose }) {
       .then((reply) => {
         if (cancelled) return;
         setSources((reply && reply.sources) || []);
+        setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -59,18 +74,23 @@ function CommandPalette({ onClose }) {
     inputRef.current && inputRef.current.focus();
   }, []);
 
-  const results = useMemo(
-    () => (sources ? rankSources(sources, query) : []),
-    [sources, query],
-  );
-
-  const clampedIndex = results.length === 0
-    ? 0
-    : Math.min(Math.max(activeIndex, 0), results.length - 1);
+  const results = useMemo(() => rankSources(sources, query), [sources, query]);
 
   useEffect(() => {
+    if (activeIndex > 0 && activeIndex >= results.length) setActiveIndex(0);
+  }, [results, activeIndex]);
+
+  useEffect(() => {
+    if (!scrollOnNextRender.current) return;
+    scrollOnNextRender.current = false;
     activeRef.current && activeRef.current.scrollIntoView({ block: "nearest" });
-  }, [clampedIndex]);
+  }, [activeIndex]);
+
+  function moveActive(delta) {
+    if (results.length === 0) return;
+    scrollOnNextRender.current = true;
+    setActiveIndex((i) => (i + delta + results.length) % results.length);
+  }
 
   function onKeyDown(e) {
     if (e.key === "Escape") {
@@ -78,15 +98,38 @@ function CommandPalette({ onClose }) {
       onClose();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (results.length > 0) setActiveIndex((clampedIndex + 1) % results.length);
+      moveActive(1);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (results.length > 0) setActiveIndex((clampedIndex - 1 + results.length) % results.length);
+      moveActive(-1);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const source = results[clampedIndex];
+      const source = results[activeIndex];
       if (source) navigateTo(source);
     }
+  }
+
+  function renderBody() {
+    if (loading) return <li className="lf-cmdk-empty">Loading…</li>;
+    if (results.length === 0) {
+      return (
+        <li className="lf-cmdk-empty">
+          {sources.length === 0 ? "No sources" : "No matches"}
+        </li>
+      );
+    }
+    return results.map((source, idx) => (
+      <ResultRow
+        key={source.id}
+        source={source}
+        isActive={idx === activeIndex}
+        activeRef={activeRef}
+        onActivate={() => {
+          if (idx !== activeIndex) setActiveIndex(idx);
+        }}
+        onSelect={() => navigateTo(source)}
+      />
+    ));
   }
 
   return (
@@ -106,34 +149,7 @@ function CommandPalette({ onClose }) {
           }}
           onKeyDown={onKeyDown}
         />
-        <ul className="lf-cmdk-list">
-          {sources === null ? (
-            <li className="lf-cmdk-empty">Loading…</li>
-          ) : results.length === 0 ? (
-            <li className="lf-cmdk-empty">
-              {sources.length === 0 ? "No sources" : "No matches"}
-            </li>
-          ) : (
-            results.map((source, idx) => (
-              <li
-                key={source.id}
-                ref={idx === clampedIndex ? activeRef : null}
-                className={"lf-cmdk-item" + (idx === clampedIndex ? " lf-cmdk-active" : "")}
-                onMouseEnter={() => setActiveIndex(idx)}
-                onClick={() => navigateTo(source)}
-              >
-                {source.favorite && <span className="lf-cmdk-favorite">★</span>}
-                <span className="lf-cmdk-name">{source.name}</span>
-                {source.service_name && (
-                  <span className="lf-cmdk-service">{source.service_name}</span>
-                )}
-                {source.team && source.team.name && (
-                  <span className="lf-cmdk-team">{source.team.name}</span>
-                )}
-              </li>
-            ))
-          )}
-        </ul>
+        <ul className="lf-cmdk-list">{renderBody()}</ul>
       </div>
     </div>
   );
