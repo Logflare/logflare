@@ -59,7 +59,8 @@ defmodule Logflare.Rules.Cache do
   @impl ContextCache
   def bust_actions(action, kw) do
     actions =
-      Enum.flat_map(kw, fn
+      kw
+      |> Enum.flat_map(fn
         {:id, id} ->
           new_value =
             case action do
@@ -79,6 +80,7 @@ defmodule Logflare.Rules.Cache do
         {:backend_id, backend_id} ->
           [{{:list_by_backend_id, [backend_id]}, :bust}]
       end)
+      |> Map.new()
 
     {:full, actions}
   end
