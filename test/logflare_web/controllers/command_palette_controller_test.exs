@@ -9,7 +9,7 @@ defmodule LogflareWeb.CommandPaletteControllerTest do
   describe "GET /command-palette/sources" do
     test "aggregates sources across every team the user can access", %{conn: conn} do
       user = insert(:user)
-      _home_team = insert(:team, user: user, name: "Home")
+      home_team = insert(:team, user: user, name: "Home")
 
       other_owner = insert(:user)
       other_team = insert(:team, user: other_owner, name: "Other")
@@ -37,6 +37,12 @@ defmodule LogflareWeb.CommandPaletteControllerTest do
       assert by_name[home_source.name]["team"]["name"] == "Home"
       assert by_name[other_source.name]["team"]["name"] == "Other"
       assert is_integer(by_name[home_source.name]["team"]["id"])
+
+      assert by_name[home_source.name]["path"] ==
+               "/sources/#{home_source.id}?t=#{home_team.id}"
+
+      assert by_name[other_source.name]["path"] ==
+               "/sources/#{other_source.id}?t=#{other_team.id}"
     end
 
     test "returns an empty list when the user has no sources", %{conn: conn} do
