@@ -53,8 +53,9 @@ defmodule LogflareWeb.Auth.OauthController do
     with {:ok, payload} <- SlackOauthState.verify(current_user, state) do
       handle_slack_callback(conn, current_user, auth, payload)
     else
-      Logger.warning("Error verifying Slack OAuth state", error_string: inspect(error))
-      {:error, _reason} -> auth_error_redirect(conn)
+      {:error, error} ->
+        Logger.warning("Error verifying Slack OAuth state", error_string: inspect(error))
+        auth_error_redirect(conn)
     end
   end
 
