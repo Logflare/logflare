@@ -2,6 +2,7 @@ defmodule Logflare.Billing.Cache do
   @moduledoc false
 
   alias Logflare.Billing
+  alias Logflare.Billing.BillingAccount
   alias Logflare.Utils
 
   def child_spec(_) do
@@ -30,13 +31,13 @@ defmodule Logflare.Billing.Cache do
 
   @impl Logflare.ContextCache
   def bust_actions(action, id) when is_integer(id) do
-    value =
-      case action do
-        :update -> Billing.get_billing_account(id)
-        :delete -> :bust
-      end
-
-    {:partial, %{{:get_billing_account_by_user, [id]} => value}}
+    with :update <- action,
+         ba = Billing.get_billing_account(id),
+         %BillingAccount{user_id: user_id} <- ba do
+      {:partial, %{{:get_billing_account_by_user, [user_id]} => ba}}
+    else
+      _ -> {:partial, %{}}
+    end
   end
 
   def get_billing_account_by_user(user_id) when is_integer(user_id) do
