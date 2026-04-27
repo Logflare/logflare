@@ -1,0 +1,90 @@
+.lf-cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 6rem;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.lf-cmdk-card {
+  width: 100%;
+  max-width: 36rem;
+  background-color: $brand-black;
+  color: $brand-gray;
+  border: 1px solid $brand-light-black;
+  border-radius: 0.25rem;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.lf-cmdk-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: $brand-black;
+  color: $whitecolor;
+  border: 0;
+  border-bottom: 1px solid $brand-light-black;
+  font-size: 1rem;
+  outline: none;
+
+  &::placeholder {
+    color: $brand-gray;
+  }
+
+  &:focus {
+    outline: none;
+    border-bottom-color: $brand-green;
+  }
+}
+
+.lf-cmdk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.lf-cmdk-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  color: $brand-gray;
+
+  &:hover {
+    background-color: $brand-light-black;
+    color: $whitecolor;
+  }
+
+  &.lf-cmdk-active {
+    background-color: $brand-light-black;
+    color: $brand-green;
+  }
+}
+
+.lf-cmdk-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lf-cmdk-service {
+  font-size: 0.75rem;
+  color: $brand-gray;
+}
+
+.lf-cmdk-favorite {
+  color: $brand-yellow;
+}
+
+.lf-cmdk-empty {
+  padding: 0.75rem 1rem;
+  color: $brand-gray;
+  font-style: italic;
+}

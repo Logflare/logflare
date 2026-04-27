@@ -38,6 +38,9 @@
     <% end %>
   </head>
   <body>
+    <%= if assigns[:user] do %>
+      {live_render(@conn, LogflareWeb.CommandPaletteLive, sticky: true)}
+    <% end %>
     {render("navbar.html", assigns)}
 
     <%= if assigns[:banner] do %>
