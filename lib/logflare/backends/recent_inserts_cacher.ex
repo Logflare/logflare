@@ -96,6 +96,8 @@ defmodule Logflare.Backends.RecentInsertsCacher do
     reason
   end
 
+  def do_cache(pid), do: send(pid, :do_cache)
+
   ## Private Functions
 
   defp cache_count(%{source_token: source_token}) do
