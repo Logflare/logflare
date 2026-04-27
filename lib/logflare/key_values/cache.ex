@@ -92,6 +92,8 @@ defmodule Logflare.KeyValues.Cache do
     {:full, actions}
   end
 
+  # TODO: Only sees publisher-local keys; remote nodes with different cached accessor-path
+  # variants heal only via TTL. Proper fix: per-node structural scan.
   defp find_lookup_keys(user_id, key) do
     {:ok, keys} = Cachex.keys(__MODULE__)
 
