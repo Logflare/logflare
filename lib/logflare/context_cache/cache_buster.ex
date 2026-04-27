@@ -158,7 +158,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    # FIXME: This passes plan id as billing account.
+    # TODO: This passes plan id as billing account.
     # ETS scan will bust it, but will bust matching billing accounts as well
     # Proper solution requires migrating Billing to keyword busting
     {:delete, {Billing, String.to_integer(id)}}
