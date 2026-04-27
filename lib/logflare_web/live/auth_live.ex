@@ -14,7 +14,7 @@ defmodule LogflareWeb.AuthLive do
   require Logger
 
   def on_mount(:default, params, %{"current_email" => email} = session, socket) do
-    team_id = (is_map(params) && Map.get(params, "t")) || session["last_switched_team_id"]
+    team_id = Map.get(params, "t") || session["last_switched_team_id"]
 
     case TeamContext.resolve(team_id, email) do
       {:ok, %TeamContext{team: team, user: user, team_user: team_user}} ->

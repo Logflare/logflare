@@ -18,7 +18,7 @@ import { LiveSocket } from "phoenix_live_view";
 import LiveReact, { initLiveReact } from "phoenix_live_react";
 
 import sourceLiveViewHooks from "./source_lv_hooks";
-import CommandPaletteHook from "./command_palette_hook";
+import "./command_palette_hook";
 import $ from "jquery";
 import moment from "moment";
 import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_monaco_editor.esm"
@@ -49,7 +49,6 @@ const hooks = {
   ...sourceLiveViewHooks,
   ...LiveModalHooks,
   ...BillingHooks,
-  ...CommandPaletteHook,
   CodeEditorHook,
   LqlEditorWrapper,
 };

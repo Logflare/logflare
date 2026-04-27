@@ -1,11 +1,11 @@
 // CMD/CTRL+K source quick-switcher.
-// The keydown listener is bound at module load so the shortcut works on
-// controller-rendered pages too, not only LV-mounted ones.
+// Self-contained: bound at module load, fetches sources on first open from
+// /command-palette/sources. Each source carries its team; navigation uses ?t=<team.id>.
 
 const MAX_RESULTS = 50;
+const SOURCES_URL = "/command-palette/sources";
 
 const state = {
-  hook: null,
   sources: null,
   fetching: false,
   query: "",
@@ -87,6 +87,13 @@ function renderResults() {
       li.appendChild(svc);
     }
 
+    if (source.team && source.team.name) {
+      const team = document.createElement("span");
+      team.className = "lf-cmdk-team";
+      team.textContent = source.team.name;
+      li.appendChild(team);
+    }
+
     li.addEventListener("mouseenter", () => {
       if (state.activeIndex !== idx) {
         state.activeIndex = idx;
@@ -144,13 +151,16 @@ function openPalette() {
 }
 
 function maybeFetchSources() {
-  if (state.sources !== null || state.fetching || !state.hook) return;
+  if (state.sources !== null || state.fetching) return;
   state.fetching = true;
-  state.hook.pushEventTo(state.hook.el, "fetch_sources", {}, (reply) => {
-    state.fetching = false;
-    state.sources = (reply && reply.sources) || [];
-    if (isOpen()) renderResults();
-  });
+  fetch(SOURCES_URL, { credentials: "same-origin", headers: { Accept: "application/json" } })
+    .then((r) => (r.ok ? r.json() : { sources: [] }))
+    .catch(() => ({ sources: [] }))
+    .then((reply) => {
+      state.fetching = false;
+      state.sources = (reply && reply.sources) || [];
+      if (isOpen()) renderResults();
+    });
 }
 
 function closePalette() {
@@ -181,8 +191,7 @@ function selectActive() {
 
 function navigateTo(source) {
   const path = "/sources/" + source.id;
-  const el = state.hook && state.hook.el;
-  const t = (el && el.dataset.teamId) || "";
+  const t = source.team && source.team.id;
   window.location.href = t ? path + "?t=" + encodeURIComponent(t) : path;
 }
 
@@ -220,24 +229,3 @@ function onKeydown(e) {
 }
 
 document.addEventListener("keydown", onKeydown, true);
-
-const CommandPalette = {
-  mounted() {
-    state.hook = this;
-    this._teamId = this.el.dataset.teamId || "";
-    if (isOpen()) maybeFetchSources();
-  },
-  updated() {
-    const teamId = this.el.dataset.teamId || "";
-    if (teamId !== this._teamId) {
-      this._teamId = teamId;
-      state.sources = null;
-    }
-  },
-  destroyed() {
-    if (state.hook === this) state.hook = null;
-    closePalette();
-  },
-};
-
-export default { CommandPalette };
