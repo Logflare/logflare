@@ -77,15 +77,17 @@ defmodule LogflareWeb.Plugs.SetPlanFromCacheTest do
 
       insert(:backend, sources: [source], type: :webhook, config: %{url: "some url"})
 
-      # warm caches so the pipeline resolves user/source from cache
+      # warm caches so the pipeline resolves user/source/plan from cache
       Sources.Cache.get_by_and_preload_rules(token: Atom.to_string(source.token))
       Sources.Cache.get_source_by_token(source.token)
       Users.Cache.get(user.id)
       Users.Cache.get_by(api_key: user.api_key)
+      Billing.Cache.get_plan_by_user(user)
 
       on_exit(fn ->
         Cachex.clear(Users.Cache)
         Cachex.clear(Sources.Cache)
+        Cachex.clear(Billing.Cache)
       end)
 
       [plan: plan, user: user, source: source]
@@ -97,6 +99,8 @@ defmodule LogflareWeb.Plugs.SetPlanFromCacheTest do
       user: user,
       source: source
     } do
+      reject(&Billing.get_plan_by_user/1)
+
       conn =
         conn
         |> put_req_header("x-api-key", user.api_key)
