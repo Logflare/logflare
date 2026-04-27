@@ -360,6 +360,46 @@ defmodule Logflare.Lql.ParserTest do
                "t:2024-03-17T13:{47..57}:02 t:2024-03-17T13:{47..57}:02"
     end
 
+    test "timestamp filters support timestamp ranges with consistent timestamp origin" do
+      qs = ~S|
+      t:2024-03-01T03:23:45+02:00..2024-03-01T07:23:56-04:00
+      t:2024-03-02T01:23:45Z..2024-03-02T22:33:44Z
+      t:2024-03-03T00:11:22..2024-04-03T11:22:33
+      |
+
+      assert {:ok, result} = Parser.parse(qs, @default_schema)
+      rules = Enum.filter(result, &(&1.path == "timestamp"))
+
+      assert [
+               %Logflare.Lql.Rules.FilterRule{
+                 path: "timestamp",
+                 operator: :range,
+                 values: [~N[2024-03-01 01:23:45], ~N[2024-03-01 11:23:56]],
+                 modifiers: %{timestamp_origin: :absolute}
+               },
+               %Logflare.Lql.Rules.FilterRule{
+                 path: "timestamp",
+                 operator: :range,
+                 values: [~N[2024-03-02 01:23:45], ~N[2024-03-02 22:33:44]],
+                 modifiers: %{timestamp_origin: :absolute}
+               },
+               %Logflare.Lql.Rules.FilterRule{
+                 path: "timestamp",
+                 operator: :range,
+                 values: [~N[2024-03-03 00:11:22], ~N[2024-04-03 11:22:33]],
+                 modifiers: %{timestamp_origin: :local}
+               }
+             ] = rules
+    end
+
+    test "timestamp filters reject range with mixed timestamp origin" do
+      assert {:error, "Timestamp range cannot mix timestamps with and without timezone offsets"} =
+               Parser.parse(
+                 "t:2024-03-17T13:47:02+00:00..2024-03-17T13:57:02.000",
+                 @default_schema
+               )
+    end
+
     test "timestamp filters reject ambiguous 14 and 15 digit Unix timestamps" do
       assert {:error,
               "Error while parsing timestamp filter value: expected ISO8601 string, Unix timestamp, range or shorthand, got '17106832220000'"} =

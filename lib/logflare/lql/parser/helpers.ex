@@ -541,6 +541,10 @@ defmodule Logflare.Lql.Parser.Helpers do
     {lvalue, lmodifiers} = unwrap_value_modifiers(lvalue)
     {rvalue, rmodifiers} = unwrap_value_modifiers(rvalue)
 
+    if lmodifiers[:timestamp_origin] != rmodifiers[:timestamp_origin] do
+      throw("Timestamp range cannot mix timestamps with and without timezone offsets")
+    end
+
     {{:range_operator, [lvalue, rvalue]}, Map.merge(lmodifiers, rmodifiers)}
   end
 
