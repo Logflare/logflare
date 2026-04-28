@@ -123,7 +123,7 @@ defmodule LogflareWeb.Endpoints.Components do
       |> change()
 
   def change(%{change: %{field: field, value: value}} = assigns)
-      when field in [:cache_duration_seconds, :proactive_requerying_seconds],
+      when field in ["cache_duration_seconds", "proactive_requerying_seconds"],
       do: assigns |> assign(value: format_cache_duration(value)) |> change()
 
   def change(%{change: %{field: "source_mapping"}} = assigns) do

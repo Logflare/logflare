@@ -21,7 +21,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     ~H"""
     <.subheader>
       <:path>
-        ~/<.subheader_path_link live_patch to={~p"/endpoints"} team={@team}>endpoints</.subheader_path_link>/<.subheader_path_link live_patch to={~p"/endpoints/#{@endpoint.id}"}>
+        ~/<.subheader_path_link to={~p"/endpoints"} team={@team}>endpoints</.subheader_path_link>/<.subheader_path_link to={~p"/endpoints/#{@endpoint.id}"} team={@team}>
           {@endpoint.name}
         </.subheader_path_link>/versions
       </:path>
@@ -133,7 +133,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   end
 
   @impl true
-  def mount(%{"id" => endpoint_id}, _session, socket) do
+  def mount(%{"id" => endpoint_id} = params, _session, socket) do
     user = socket.assigns.team_user || socket.assigns.user
 
     socket =
@@ -149,6 +149,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
           |> assign(:current_version_id, current_version_id(versions))
           |> assign(:next_cursor_id, next_cursor_id)
           |> assign(:selected_version, nil)
+          |> maybe_assign_team_context(params, endpoint)
           |> stream(:versions, versions, reset: true)
       end
 
@@ -156,31 +157,24 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   end
 
   @impl true
-  def handle_params(params, _uri, socket) do
+  def handle_params(%{"version_number" => version_number}, _uri, socket) do
     endpoint = socket.assigns.endpoint
 
-    selected_version =
-      case Map.get(params, "version_number") do
-        nil ->
-          nil
-
-        version_number ->
-          case Integer.parse(version_number) do
-            {version_number, ""} ->
-              Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, version_number)
-
-            _ ->
-              nil
-          end
-      end
-
     socket =
-      socket
-      |> assign(:selected_version, selected_version)
-      |> maybe_assign_team_context(params, endpoint)
+      with {version_number, ""} <- Integer.parse(version_number),
+           selected_version when is_struct(selected_version) <-
+             Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, version_number) do
+        socket
+        |> assign(:selected_version, selected_version)
+      else
+        _ ->
+          socket
+      end
 
     {:noreply, socket}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("load-more", _params, socket) do
@@ -207,18 +201,6 @@ defmodule LogflareWeb.EndpointsVersionsLive do
        to:
          LogflareWeb.Utils.with_team_param(
            ~p"/endpoints/#{endpoint.id}/versions?#{%{version_number: version_number}}",
-           socket.assigns[:team]
-         )
-     )}
-  end
-
-  def handle_event("hide-version", _params, socket) do
-    {:noreply,
-     push_patch(
-       socket,
-       to:
-         LogflareWeb.Utils.with_team_param(
-           ~p"/endpoints/#{socket.assigns.endpoint.id}/versions",
            socket.assigns[:team]
          )
      )}

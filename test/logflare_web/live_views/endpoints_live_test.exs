@@ -120,6 +120,27 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
+  describe "endpoint versions" do
+    setup %{user: user} do
+      [endpoint: insert(:endpoint, user: user)]
+    end
+
+    test "show page versions link navigates with team param", %{
+      conn: conn,
+      endpoint: endpoint,
+      team: team
+    } do
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}")
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               view
+               |> element(".subhead a", "versions")
+               |> render_click()
+
+      assert to == "/endpoints/#{endpoint.id}/versions?t=#{team.id}"
+    end
+  end
+
   test "index -> new endpoint", %{conn: conn, team: team} do
     {:ok, view, _html} = live(conn, "/endpoints")
 

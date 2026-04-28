@@ -1,6 +1,6 @@
 defmodule LogflareWeb.Api.EndpointControllerTest do
-  alias LogflareWeb.Endpoint
   use LogflareWeb.ConnCase
+  alias Logflare.Endpoints
 
   setup do
     insert(:plan)
@@ -79,7 +79,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       assert response.name == name
       assert response.query == query
 
-      assert [version] = PaperTrail.get_versions(Endpoint.Query, response.id)
+      assert [version] = PaperTrail.get_versions(Endpoints.Query, response.id)
       assert version.origin =~ "API: id"
     end
 
