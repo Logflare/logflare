@@ -96,15 +96,15 @@ defmodule Logflare.EndpointsTest do
       [user: insert(:user)]
     end
 
-    test "create_query/3 stores originator", %{user: user} do
+    test "create_query/3 stores origin", %{user: user} do
       team_user = insert(:team_user, team: user.team)
 
       [user, team_user]
-      |> Enum.each(fn originator ->
+      |> Enum.each(fn origin ->
         assert {:ok, endpoint} =
-                 Endpoints.create_query(user, @endpoint_query_attrs, originator)
+                 Endpoints.create_query(user, @endpoint_query_attrs, origin)
 
-        assert_endpoint_version(endpoint, 1, originator.email)
+        assert_endpoint_version(endpoint, 1, origin.email)
       end)
     end
 

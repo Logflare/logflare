@@ -57,8 +57,8 @@ defmodule LogflareWeb.Api.EndpointController do
 
   def create(%{assigns: %{user: user}} = conn, params) do
     with :ok <- authorize_backend_id(user, params),
-         originator <- conn.assigns.access_token,
-         {:ok, query} <- Endpoints.create_query(user, params, originator) do
+         origin <- conn.assigns.access_token,
+         {:ok, query} <- Endpoints.create_query(user, params, origin) do
       conn
       |> put_status(201)
       |> json(query)
@@ -82,9 +82,9 @@ defmodule LogflareWeb.Api.EndpointController do
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
     with :ok <- authorize_backend_id(user, params),
-         originator <- conn.assigns[:access_token] || user,
+         origin <- conn.assigns[:access_token] || user,
          query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
-         {:ok, query} <- Endpoints.update_query(query, params, originator) do
+         {:ok, query} <- Endpoints.update_query(query, params, origin) do
       conn
       |> case do
         %{method: "PUT"} ->
@@ -115,10 +115,10 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    originator = conn.assigns[:access_token] || user
+    origin = conn.assigns[:access_token] || user
 
     with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
-         {:ok, _} <- Endpoints.delete_query(query, originator) do
+         {:ok, _} <- Endpoints.delete_query(query, origin) do
       conn
       |> put_status(204)
       |> text("")
