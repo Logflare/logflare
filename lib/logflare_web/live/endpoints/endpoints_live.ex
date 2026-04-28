@@ -170,9 +170,9 @@ defmodule LogflareWeb.EndpointsLive do
         %{assigns: %{user: user, show_endpoint: show_endpoint, team: team}} = socket
       ) do
     Logger.debug("Saving endpoint", params: params)
-    originator = socket.assigns.team_user || user
+    origin = socket.assigns.team_user || user
 
-    case upsert_query(show_endpoint, user, originator, params) do
+    case upsert_query(show_endpoint, user, origin, params) do
       {:ok, endpoint} ->
         verb = if show_endpoint, do: "updated", else: "created"
 
@@ -473,10 +473,10 @@ defmodule LogflareWeb.EndpointsLive do
     end
   end
 
-  defp upsert_query(show_endpoint, user, originator, params) do
+  defp upsert_query(show_endpoint, user, origin, params) do
     case show_endpoint do
-      nil -> Endpoints.create_query(user, params, originator)
-      %_{} -> Endpoints.update_query(show_endpoint, params, originator)
+      nil -> Endpoints.create_query(user, params, origin)
+      %_{} -> Endpoints.update_query(show_endpoint, params, origin)
     end
   end
 

@@ -47,7 +47,7 @@ defmodule Logflare.Endpoints do
   ]
 
   @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
-  @typep originator :: User.t() | TeamUser.t() | OauthAccessToken.t()
+  @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
            | {:error, String.t()}
@@ -129,15 +129,15 @@ defmodule Logflare.Endpoints do
   @spec get_by(Keyword.t()) :: Query.t() | nil
   def get_by(kw), do: Repo.get_by(Query, kw)
 
-  @spec create_query(User.t(), map(), originator()) :: {:ok, Query.t()} | {:error, any()}
-  def create_query(%User{} = user, params, originator) when is_map(params) do
+  @spec create_query(User.t(), map(), origin()) :: {:ok, Query.t()} | {:error, any()}
+  def create_query(%User{} = user, params, origin) when is_map(params) do
     changeset =
       user
       |> Ecto.build_assoc(:endpoint_queries)
       |> Repo.preload(:user)
       |> Query.update_by_user_changeset(params)
 
-    opts = paper_trail_opts(changeset, originator, 1)
+    opts = paper_trail_opts(changeset, origin, 1)
 
     changeset
     |> PaperTrail.insert(opts)
@@ -155,15 +155,15 @@ defmodule Logflare.Endpoints do
     |> Query.update_by_user_changeset(attrs)
   end
 
-  @spec update_query(Query.t(), map(), originator()) :: {:ok, Query.t()} | {:error, any()}
-  def update_query(%Query{} = query, params, originator) when is_map(params) do
+  @spec update_query(Query.t(), map(), origin()) :: {:ok, Query.t()} | {:error, any()}
+  def update_query(%Query{} = query, params, origin) when is_map(params) do
     query = Repo.preload(query, :user)
 
     Repo.transact(fn ->
       query = lock_endpoint_query(query)
       version_number = next_endpoint_version_number(query.id)
       changeset = Query.update_by_user_changeset(query, params)
-      opts = paper_trail_opts(changeset, originator, version_number)
+      opts = paper_trail_opts(changeset, origin, version_number)
 
       case PaperTrail.update(changeset, opts) do
         {:ok, %{model: query}} ->
@@ -208,9 +208,9 @@ defmodule Logflare.Endpoints do
 
   def derive_language_from_backend_id(_), do: :bq_sql
 
-  @spec paper_trail_opts(Ecto.Changeset.t(), originator(), integer() | nil) :: keyword()
-  defp paper_trail_opts(changeset, originator, version_number) do
-    [origin: version_origin(originator), meta: version_meta(changeset, version_number)]
+  @spec paper_trail_opts(Ecto.Changeset.t(), origin(), integer() | nil) :: keyword()
+  defp paper_trail_opts(changeset, origin, version_number) do
+    [origin: version_origin(origin), meta: version_meta(changeset, version_number)]
   end
 
   @spec version_meta(Ecto.Changeset.t(), integer() | nil) :: map()
@@ -265,14 +265,12 @@ defmodule Logflare.Endpoints do
   defp to_query_words(query) when is_binary(query), do: String.split(query)
   defp to_query_words(nil), do: []
 
-  @spec version_origin(originator()) :: String.t() | nil
+  @spec version_origin(origin()) :: String.t() | nil
   defp version_origin(%User{email: email}), do: email
   defp version_origin(%TeamUser{email: email}), do: email
 
   defp version_origin(%OauthAccessToken{description: description})
-       when is_non_empty_binary(description) do
-    "API: #{description}"
-  end
+       when is_non_empty_binary(description), do: "API: #{description}"
 
   defp version_origin(%OauthAccessToken{id: id}), do: "API: id #{id}"
 
@@ -334,13 +332,13 @@ defmodule Logflare.Endpoints do
     |> Repo.one()
   end
 
-  @spec delete_query(Query.t(), originator()) :: {:ok, Query.t()} | {:error, any()}
-  def delete_query(%Query{} = query, originator) do
+  @spec delete_query(Query.t(), origin()) :: {:ok, Query.t()} | {:error, any()}
+  def delete_query(%Query{} = query, origin) do
     Repo.transact(fn ->
       endpoint = lock_endpoint_query(query)
       version_number = next_endpoint_version_number(endpoint.id)
       changeset = Ecto.Changeset.change(endpoint)
-      opts = paper_trail_opts(changeset, originator, version_number)
+      opts = paper_trail_opts(changeset, origin, version_number)
 
       case PaperTrail.delete(endpoint, opts) do
         {:ok, %{model: deleted_endpoint}} -> {:ok, deleted_endpoint}
