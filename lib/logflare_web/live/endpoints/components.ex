@@ -68,7 +68,7 @@ defmodule LogflareWeb.Endpoints.Components do
       </div>
 
       <div :if={not sql_query?(@endpoint)} class="tw-rounded-md tw-p-4">
-        <pre class="tw-m-0 tw-whitespace-pre-wrap tw-break-words tw-font-mono tw-text-sm tw-text-zinc-200">{@endpoint.query}</pre>
+        <pre class="tw-m-0 tw-whitespace-pre-wrap tw-break-words tw-font-mono tw-text-sm tw-text-zinc-200"><code>{@endpoint.query}</code></pre>
       </div>
 
       <div :if={sql_query?(@endpoint)} class="tw-rounded-md tw-p-4">
@@ -146,11 +146,7 @@ defmodule LogflareWeb.Endpoints.Components do
   defp format_language(:ch_sql), do: "ClickHouse SQL"
   defp format_language(:pg_sql), do: "Postgres SQL"
   defp format_language(:lql), do: "Logflare Query Language"
-
-  defp format_language(language) when is_binary(language),
-    do: language |> String.to_existing_atom() |> format_language()
-
-  defp format_language(language), do: Phoenix.Naming.humanize(to_string(language))
+  defp format_language(language), do: language |> to_string() |> Phoenix.Naming.humanize()
 
   defp format_cache_duration(n) when n in [0, nil], do: "disabled"
   defp format_cache_duration(value), do: to_string(value) <> " seconds"
@@ -164,5 +160,5 @@ defmodule LogflareWeb.Endpoints.Components do
 
   defp format_label(field), do: @field_labels[field] || Phoenix.Naming.humanize(field)
 
-  defp sql_query?(%{language: language}), do: language in [:lql]
+  defp sql_query?(%{language: language}), do: language in [:bq_sql, :ch_sql, :pg_sql]
 end

@@ -209,4 +209,18 @@ defmodule Logflare.DataCase do
       :exit, _ -> :ok
     end
   end
+
+  def allow_context_cache_sandbox do
+    Logflare.ContextCache.Supervisor.list_caches()
+    |> Enum.each(fn cache ->
+      allow_sandbox(cache)
+      allow_sandbox(:"#{cache}_courier")
+    end)
+  end
+
+  defp allow_sandbox(process_name) do
+    if pid = Process.whereis(process_name) do
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), pid)
+    end
+  end
 end

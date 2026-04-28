@@ -6,6 +6,13 @@ defmodule Logflare.EndpointsTest do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
+  alias PaperTrail.Version
+
+  @endpoint_query_attrs %{
+    name: "history-endpoint",
+    query: "select current_date() as date",
+    language: :bq_sql
+  }
 
   setup do
     insert(:plan)
@@ -84,16 +91,284 @@ defmodule Logflare.EndpointsTest do
     assert String.downcase(mapped_query) == "select a from new"
   end
 
+  describe "version history" do
+    setup do
+      [user: insert(:user)]
+    end
+
+    test "create_query/3 stores originator", %{user: user} do
+      team_user = insert(:team_user, team: user.team)
+
+      [user, team_user]
+      |> Enum.each(fn originator ->
+        assert {:ok, endpoint} =
+                 Endpoints.create_query(user, @endpoint_query_attrs, originator)
+
+        assert_endpoint_version(endpoint, 1, originator.email)
+      end)
+    end
+
+    test "create_query/3 stores API token origin with description" do
+      access_token = insert(:access_token, description: "Acme")
+      owner = access_token.resource_owner
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(owner, @endpoint_query_attrs, access_token)
+
+      assert_endpoint_version(endpoint, 1, "API: Acme")
+    end
+
+    test "create_query/3 stores API token origin as access token id" do
+      access_token = insert(:access_token, description: "")
+      owner = access_token.resource_owner
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(owner, @endpoint_query_attrs, access_token)
+
+      assert_endpoint_version(endpoint, 1, "API: id #{access_token.id}")
+    end
+
+    test "update_query/3 increments the version number and stores the updated snapshot", %{
+      user: user
+    } do
+      insert(:source, user: user, name: "my_table")
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, @endpoint_query_attrs, user)
+
+      assert {:ok, updated} =
+               Endpoints.update_query(endpoint, %{query: "select a from my_table"}, user)
+
+      assert_endpoint_version(endpoint, 1, user.email)
+      assert_endpoint_version(updated, 2, user.email, endpoint.token)
+    end
+
+    test "update_query/3 does not create a version row when the update fails", %{user: user} do
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, @endpoint_query_attrs, user)
+
+      assert_endpoint_version(endpoint, 1, user.email)
+
+      assert {:error, %Ecto.Changeset{}} =
+               Endpoints.update_query(endpoint, %{query: "select b from unknown"}, user)
+
+      assert nil == Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 2)
+    end
+
+    test "delete_query/2 stores the next version after prior history", %{user: user} do
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, @endpoint_query_attrs, user)
+
+      assert {:ok, deleted_endpoint} = Endpoints.delete_query(endpoint, user)
+      assert_endpoint_version(endpoint, 1, user.email)
+      assert_endpoint_version(deleted_endpoint, 2, user.email, endpoint.token)
+    end
+
+    test "get_endpoint_query_version_by_version_number/2 returns the requested version", %{
+      user: user
+    } do
+      assert {:ok, endpoint} =
+               Endpoints.create_query(
+                 user,
+                 %{
+                   name: "history-endpoint",
+                   query: "select current_date() as date",
+                   language: :bq_sql
+                 },
+                 user
+               )
+
+      assert_endpoint_version(endpoint, 1, user.email)
+
+      requested_version_number = 1
+
+      assert %Version{meta: %{"version_number" => ^requested_version_number}} =
+               Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 1)
+
+      assert nil == Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 99)
+    end
+  end
+
   test "update_query/3 " do
     user = insert(:user)
-    insert(:source, user: user, name: "my_table")
+    source = insert(:source, user: user, name: "my_table")
     endpoint = insert(:endpoint, user: user, query: "select current_datetime() as date")
     sql = "select a from my_table"
+    allow_context_cache_sandbox()
+    warm_endpoint_query_validation_caches(source)
+
     assert {:ok, %{query: ^sql}} = Endpoints.update_query(endpoint, %{query: sql}, user)
 
     # does not allow updating of query with unknown sources
     assert {:error, %Ecto.Changeset{}} =
              Endpoints.update_query(endpoint, %{query: "select b from unknown"}, user)
+  end
+
+  describe "endpoint query history" do
+    setup do
+      [user: insert(:user), endpoint_params: valid_endpoint_params()]
+    end
+
+    test "create_query/3 writes version 1 with User origin", %{
+      user: user,
+      endpoint_params: endpoint_params
+    } do
+      assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, user)
+      origin = user.email
+
+      assert [
+               %Version{
+                 event: "insert",
+                 origin: ^origin,
+                 meta: %{"version_number" => 1} = version_meta
+               }
+             ] = versions_for_endpoint(endpoint)
+
+      assert version_meta["endpoint_snapshot"] ==
+               expected_endpoint_snapshot(endpoint, %{"token" => nil})
+    end
+
+    test "create_query/3 writes version 1 with TeamUser origin", %{
+      user: user,
+      endpoint_params: endpoint_params
+    } do
+      team_user = insert(:team_user, team: insert(:team, user: user))
+
+      assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, team_user)
+      origin = team_user.email
+
+      assert [
+               %Version{
+                 event: "insert",
+                 origin: ^origin,
+                 meta: %{"version_number" => 1} = version_meta
+               }
+             ] = versions_for_endpoint(endpoint)
+
+      assert version_meta["endpoint_snapshot"] ==
+               expected_endpoint_snapshot(endpoint, %{"token" => nil})
+    end
+
+    test "create_query/3 writes version 1 with the expected API token description origin", %{
+      user: user,
+      endpoint_params: endpoint_params
+    } do
+      access_token = build(:access_token, description: "Acme integration")
+
+      assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, access_token)
+
+      assert [
+               %Version{
+                 event: "insert",
+                 origin: "API: Acme integration",
+                 meta: %{"version_number" => 1} = version_meta
+               }
+             ] = versions_for_endpoint(endpoint)
+
+      assert version_meta["endpoint_snapshot"] ==
+               expected_endpoint_snapshot(endpoint, %{"token" => nil})
+    end
+
+    test "update_query/3 increments the version number and preserves the snapshot contract", %{
+      user: user,
+      endpoint_params: endpoint_params
+    } do
+      assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, user)
+
+      params = %{
+        name: "updated-endpoint",
+        query: "select current_datetime() as updated_date",
+        description: "updated description",
+        sandboxable: true,
+        cache_duration_seconds: 120,
+        proactive_requerying_seconds: 60,
+        max_limit: 250,
+        enable_auth: false,
+        redact_pii: true,
+        enable_dynamic_reservation: true,
+        labels: "environment"
+      }
+
+      assert {:ok, updated_endpoint} = Endpoints.update_query(endpoint, params, user)
+      origin = user.email
+
+      assert [
+               %Version{meta: %{"version_number" => 1}},
+               %Version{
+                 event: "update",
+                 origin: ^origin,
+                 meta: %{"version_number" => 2} = update_meta
+               }
+             ] = versions_for_endpoint(endpoint)
+
+      assert update_meta["endpoint_snapshot"] ==
+               expected_endpoint_snapshot(updated_endpoint)
+    end
+
+    test "update_query/3 rollback path leaves history unchanged when the update fails", %{
+      user: user,
+      endpoint_params: endpoint_params
+    } do
+      assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, user)
+
+      assert [%Version{id: create_version_id}] = versions_for_endpoint(endpoint)
+
+      assert {:error, %Ecto.Changeset{}} =
+               Endpoints.update_query(endpoint, %{query: "select b from unknown"}, user)
+
+      assert [
+               %Version{
+                 id: ^create_version_id,
+                 meta: %{"version_number" => 1}
+               }
+             ] = versions_for_endpoint(endpoint)
+    end
+
+    test "delete_query/2 writes the next version and preserves the final snapshot and origin", %{
+      user: user,
+      endpoint_params: endpoint_params
+    } do
+      assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, user)
+
+      assert {:ok, updated_endpoint} =
+               Endpoints.update_query(endpoint, %{labels: "environment"}, user)
+
+      assert {:ok, deleted_endpoint} = Endpoints.delete_query(updated_endpoint, user)
+      origin = user.email
+
+      assert [
+               %Version{meta: %{"version_number" => 1}},
+               %Version{meta: %{"version_number" => 2}},
+               %Version{
+                 event: "delete",
+                 origin: ^origin,
+                 meta: %{"version_number" => 3} = delete_meta
+               }
+             ] = versions_for_endpoint(endpoint)
+
+      assert delete_meta["endpoint_snapshot"] ==
+               expected_endpoint_snapshot(deleted_endpoint)
+    end
+
+    test "get_endpoint_query_version_by_version_number/2 resolves integer inputs", %{
+      user: user,
+      endpoint_params: endpoint_params
+    } do
+      assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, user)
+
+      assert {:ok, _updated_endpoint} =
+               Endpoints.update_query(endpoint, %{labels: "environment"}, user)
+
+      assert %Version{id: version_1_id} =
+               Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 1)
+
+      assert %Version{id: version_2_id} =
+               Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 2)
+
+      assert version_1_id != version_2_id
+      assert nil == Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 3)
+      assert nil == Endpoints.get_endpoint_query_version_by_version_number(endpoint.id + 1, 1)
+    end
   end
 
   test "parse_query_string/1" do
@@ -663,5 +938,73 @@ defmodule Logflare.EndpointsTest do
       endpoint = insert(:endpoint, enable_dynamic_reservation: true)
       assert endpoint.enable_dynamic_reservation == true
     end
+  end
+
+  defp valid_endpoint_params(attrs \\ %{}) do
+    Map.merge(
+      %{
+        name: "endpoint-#{System.unique_integer([:positive])}",
+        query: "select current_datetime() as date",
+        description: "endpoint description",
+        language: :bq_sql,
+        sandboxable: false,
+        cache_duration_seconds: 60,
+        proactive_requerying_seconds: 30,
+        max_limit: 100,
+        enable_auth: true,
+        redact_pii: false,
+        enable_dynamic_reservation: false,
+        labels: "env"
+      },
+      attrs
+    )
+  end
+
+  defp warm_endpoint_query_validation_caches(source) do
+    user = Logflare.Users.Cache.get(source.user_id)
+
+    Logflare.Billing.Cache.get_billing_account_by(user_id: user.id)
+    Logflare.Billing.Cache.get_plan_by(name: "Free")
+    Logflare.Billing.Cache.get_plan_by_user(user)
+  end
+
+  defp versions_for_endpoint(%Query{} = endpoint) do
+    endpoint
+    |> PaperTrail.get_versions()
+    |> Enum.sort_by(& &1.id)
+  end
+
+  defp expected_endpoint_snapshot(%Query{} = endpoint, overrides \\ %{}) do
+    %{
+      "backend_id" => endpoint.backend_id,
+      "cache_duration_seconds" => endpoint.cache_duration_seconds,
+      "description" => endpoint.description,
+      "enable_auth" => endpoint.enable_auth,
+      "enable_dynamic_reservation" => endpoint.enable_dynamic_reservation,
+      "labels" => endpoint.labels,
+      "language" => to_string(endpoint.language),
+      "max_limit" => endpoint.max_limit,
+      "name" => endpoint.name,
+      "proactive_requerying_seconds" => endpoint.proactive_requerying_seconds,
+      "query" => endpoint.query,
+      "redact_pii" => endpoint.redact_pii,
+      "sandboxable" => endpoint.sandboxable,
+      "source_mapping" => endpoint.source_mapping,
+      "token" => endpoint.token
+    }
+    |> Map.merge(overrides)
+  end
+
+  defp assert_endpoint_version(endpoint, version_number, expected_origin, expected_token \\ nil) do
+    assert version =
+             Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, version_number)
+
+    assert version.origin == expected_origin
+    assert version.meta["version_number"] == version_number
+
+    assert version.meta["endpoint_snapshot"] ==
+             expected_endpoint_snapshot(endpoint, %{"token" => expected_token})
+
+    version
   end
 end

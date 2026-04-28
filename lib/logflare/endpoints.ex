@@ -131,13 +131,16 @@ defmodule Logflare.Endpoints do
 
   @spec create_query(User.t(), map(), originator()) :: {:ok, Query.t()} | {:error, any()}
   def create_query(%User{} = user, params, originator) when is_map(params) do
-    user
-    |> Ecto.build_assoc(:endpoint_queries)
-    |> Repo.preload(:user)
-    |> Query.update_by_user_changeset(params)
-    |> then(fn changeset ->
-      PaperTrail.insert(changeset, paper_trail_opts(changeset, originator, 1))
-    end)
+    changeset =
+      user
+      |> Ecto.build_assoc(:endpoint_queries)
+      |> Repo.preload(:user)
+      |> Query.update_by_user_changeset(params)
+
+    opts = paper_trail_opts(changeset, originator, 1)
+
+    changeset
+    |> PaperTrail.insert(opts)
     |> case do
       {:ok, %{model: endpoint}} -> {:ok, endpoint}
       {:error, reason} -> {:error, reason}
@@ -150,6 +153,34 @@ defmodule Logflare.Endpoints do
     query
     |> Repo.preload(:user)
     |> Query.update_by_user_changeset(attrs)
+  end
+
+  @spec update_query(Query.t(), map(), originator()) :: {:ok, Query.t()} | {:error, any()}
+  def update_query(%Query{} = query, params, originator) when is_map(params) do
+    query = Repo.preload(query, :user)
+
+    Repo.transact(fn ->
+      query = lock_endpoint_query(query)
+      version_number = next_endpoint_version_number(query.id)
+      changeset = Query.update_by_user_changeset(query, params)
+      opts = paper_trail_opts(changeset, originator, version_number)
+
+      case PaperTrail.update(changeset, opts) do
+        {:ok, %{model: query}} ->
+          {:ok, {query, should_kill_caches?(changeset.changes)}}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
+    end)
+    |> case do
+      {:ok, {query, should_kill_caches?}} ->
+        maybe_kill_endpoint_caches(query, should_kill_caches?)
+        {:ok, query}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -177,37 +208,6 @@ defmodule Logflare.Endpoints do
 
   def derive_language_from_backend_id(_), do: :bq_sql
 
-  @spec update_query(Query.t(), map(), originator()) :: {:ok, Query.t()} | {:error, any()}
-  def update_query(%Query{} = query, params, originator) when is_map(params) do
-    endpoint = Repo.preload(query, :user)
-    changeset = Query.update_by_user_changeset(endpoint, params)
-
-    Repo.transaction(fn ->
-      endpoint = lock_endpoint_query(query)
-      version_number = next_endpoint_version_number(endpoint.id)
-      changeset = %{changeset | data: endpoint}
-
-      case PaperTrail.update(
-             changeset,
-             paper_trail_opts(changeset, originator, version_number)
-           ) do
-        {:ok, %{model: endpoint}} ->
-          {endpoint, should_kill_caches?(changeset.changes)}
-
-        {:error, changeset} ->
-          Repo.rollback(changeset)
-      end
-    end)
-    |> case do
-      {:ok, {endpoint, should_kill_caches?}} ->
-        maybe_kill_endpoint_caches(endpoint, should_kill_caches?)
-        {:ok, endpoint}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
   @spec paper_trail_opts(Ecto.Changeset.t(), originator(), integer() | nil) :: keyword()
   defp paper_trail_opts(changeset, originator, version_number) do
     [origin: version_origin(originator), meta: version_meta(changeset, version_number)]
@@ -216,10 +216,10 @@ defmodule Logflare.Endpoints do
   @spec version_meta(Ecto.Changeset.t(), integer() | nil) :: map()
   defp version_meta(changeset, version_number) do
     %{
+      version_number: version_number,
       endpoint_snapshot: endpoint_version_snapshot(changeset)
     }
     |> maybe_put_query_diff(changeset)
-    |> maybe_put_version_number(version_number)
   end
 
   @spec endpoint_version_snapshot(Ecto.Changeset.t()) :: map()
@@ -228,10 +228,6 @@ defmodule Logflare.Endpoints do
     |> Ecto.Changeset.apply_changes()
     |> Map.take(@endpoint_version_snapshot_fields)
   end
-
-  @spec maybe_put_version_number(map(), integer()) :: map()
-  defp maybe_put_version_number(meta, version_number),
-    do: Map.put(meta, :version_number, version_number)
 
   @spec maybe_put_query_diff(map(), Ecto.Changeset.t()) :: map()
   defp maybe_put_query_diff(meta, changeset) do
@@ -270,15 +266,15 @@ defmodule Logflare.Endpoints do
   defp to_query_words(nil), do: []
 
   @spec version_origin(originator()) :: String.t() | nil
-  defp version_origin(%User{email: email}) when is_non_empty_binary(email), do: email
-  defp version_origin(%TeamUser{email: email}) when is_non_empty_binary(email), do: email
+  defp version_origin(%User{email: email}), do: email
+  defp version_origin(%TeamUser{email: email}), do: email
 
   defp version_origin(%OauthAccessToken{description: description})
        when is_non_empty_binary(description) do
     "API: #{description}"
   end
 
-  defp version_origin(%OauthAccessToken{}), do: "API: unknown"
+  defp version_origin(%OauthAccessToken{id: id}), do: "API: id #{id}"
 
   @spec lock_endpoint_query(Query.t()) :: Query.t()
   defp lock_endpoint_query(%Query{id: query_id}) do
@@ -327,19 +323,13 @@ defmodule Logflare.Endpoints do
     |> Task.await_many(30_000)
   end
 
-  @spec get_endpoint_query_version_by_version_number(
-          integer() | String.t(),
-          integer() | String.t()
-        ) ::
-          Version.t() | nil
+  @spec get_endpoint_query_version_by_version_number(integer(), integer()) :: Version.t() | nil
   def get_endpoint_query_version_by_version_number(endpoint_id, version_number)
-      when is_integer_or_string(endpoint_id) and is_integer_or_string(version_number) do
-    version_number = to_string(version_number)
-
+      when is_integer(endpoint_id) and is_integer(version_number) do
     from(version in Version,
       where:
         version.item_type == "Query" and version.item_id == ^endpoint_id and
-          fragment("?->>'version_number' = ?", version.meta, ^version_number)
+          fragment("(?->>'version_number')::integer = ?", version.meta, ^version_number)
     )
     |> Repo.one()
   end
@@ -353,8 +343,8 @@ defmodule Logflare.Endpoints do
       opts = paper_trail_opts(changeset, originator, version_number)
 
       case PaperTrail.delete(endpoint, opts) do
-        {:ok, %{model: deleted_endpoint}} -> deleted_endpoint
-        {:error, reason} -> Repo.rollback(reason)
+        {:ok, %{model: deleted_endpoint}} -> {:ok, deleted_endpoint}
+        {:error, reason} -> {:error, reason}
       end
     end)
   end

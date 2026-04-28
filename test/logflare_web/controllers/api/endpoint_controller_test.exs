@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Api.EndpointControllerTest do
+  alias LogflareWeb.Endpoint
   use LogflareWeb.ConnCase
 
   setup do
@@ -77,6 +78,9 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
 
       assert response.name == name
       assert response.query == query
+
+      assert [version] = PaperTrail.get_versions(Endpoint.Query, response.id)
+      assert version.origin =~ "API: id"
     end
 
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
@@ -133,6 +137,8 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       name = TestUtils.random_string()
       token = endpoint.token
 
+      initial_versions = PaperTrail.get_versions(Endpoint.Query, endpoint.id)
+
       response =
         conn
         |> add_access_token(user, ~w(private))
@@ -152,6 +158,10 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> assert_schema("EndpointApiSchema")
 
       assert %{name: ^another_name, token: ^token} = response
+
+      assert_in_delta length(initial_versions),
+                      length(PaperTrail.get_versions(Endpoint.Query, endpoint.id)),
+                      2
     end
 
     test "returns not found if doesn't own the endpoint query", %{
@@ -222,6 +232,11 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       |> get(~p"/api/endpoints/#{endpoint.token}")
       |> json_response(404)
       |> assert_schema("NotFoundResponse")
+
+      assert [%_{meta: meta, event: "delete"}] =
+               PaperTrail.get_versions(Endpoint.Query, endpoint.id)
+
+      assert meta["endpoint_snapshot"]["query"] == endpoint.query
     end
 
     test "returns not found if doesn't own the endpoint query", %{

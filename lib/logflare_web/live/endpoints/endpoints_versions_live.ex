@@ -139,7 +139,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     socket =
       case Endpoints.get_endpoint_query_by_user_access(user, endpoint_id) do
         nil ->
-          redirect(socket, to: ~p"/endpoints/#{endpoint_id}")
+          redirect(socket, to: ~p"/endpoints")
 
         endpoint ->
           {versions, next_cursor_id} = fetch_page(endpoint.id)
@@ -165,12 +165,17 @@ defmodule LogflareWeb.EndpointsVersionsLive do
           nil
 
         version_number ->
-          Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, version_number)
+          case Integer.parse(version_number) do
+            {version_number, ""} ->
+              Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, version_number)
+
+            _ ->
+              nil
+          end
       end
 
     socket =
       socket
-      |> assign(:endpoint, endpoint)
       |> assign(:selected_version, selected_version)
       |> maybe_assign_team_context(params, endpoint)
 
@@ -311,10 +316,9 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     fields =
       ~w(token description enable_auth language query max_limit cache_duration_seconds proactive_requerying_seconds sandboxable redact_pii enable_dynamic_reservation labels)a
 
-    endpoint =
-      %Query{}
-      |> Ecto.Changeset.cast(snapshot, fields)
-      |> Ecto.Changeset.apply_changes()
+    %Query{}
+    |> Ecto.Changeset.cast(snapshot, fields)
+    |> Ecto.Changeset.apply_changes()
   end
 
   defp maybe_assign_team_context(socket, %{"t" => _team_id}, _endpoint), do: socket
