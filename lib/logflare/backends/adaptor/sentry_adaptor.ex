@@ -63,6 +63,17 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     end
   end
 
+  @impl Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    case HttpBased.Client.send_events(__MODULE__, [], backend) do
+      {:ok, %Tesla.Env{status: 200}} -> :ok
+      {:ok, %Tesla.Env{body: %{"detail" => detail}}} -> {:error, detail}
+      {:ok, env} -> {:error, "Unexpected response: #{env.status} #{inspect(env.body)}"}
+      {:error, reason} -> {:error, "Request error: #{inspect(reason)}"}
+    end
+  end
+
   defp validate_dsn(%{changes: %{dsn: dsn}} = changeset) do
     case DSN.parse(dsn) do
       {:ok, _parsed_dsn} ->
