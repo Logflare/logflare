@@ -62,7 +62,7 @@ defmodule LogflareWeb.Endpoints.Components do
 
   def endpoint_query_panel(assigns) do
     ~H"""
-    <section class="tw-rounded tw-bg-[#1d1d1d] tw-p-4">
+    <section class="tw-rounded tw-bg-dashboard-grey tw-p-4">
       <div class="tw-mb-2 tw-font-bold tw-text-sm tw-text-zinc-500">
         {format_language(@endpoint.language)}
       </div>
@@ -91,8 +91,6 @@ defmodule LogflareWeb.Endpoints.Components do
   end
 
   attr :change, :map, required: true
-  attr :field, :string
-  attr :value, :string
 
   def change(%{change: %{query_diff: _}} = assigns) do
     ~H"""
@@ -105,7 +103,9 @@ defmodule LogflareWeb.Endpoints.Components do
     """
   end
 
-  def change(%{value: _value} = assigns) do
+  def change(assigns) do
+    assigns = assign(assigns, :value, format_change_value(assigns.change))
+
     ~H"""
     <div class="tw-grid tw-w-full tw-grid-cols-[12rem_minmax(0,1fr)] tw-items-baseline tw-gap-2 tw-rounded-sm tw-px-2 tw-py-1 tw-text-sm tw-text-zinc-300">
       <span class="tw-pr-2 tw-font-medium tw-text-zinc-300">{format_label(@change.field)}:</span>
@@ -116,31 +116,18 @@ defmodule LogflareWeb.Endpoints.Components do
     """
   end
 
-  def change(%{change: %{value: value}} = assigns) when is_boolean(value),
-    do:
-      assigns
-      |> assign(value: format_toggle(value))
-      |> change()
+  defp format_change_value(%{value: value}) when is_boolean(value), do: format_toggle(value)
 
-  def change(%{change: %{field: field, value: value}} = assigns)
-      when field in ["cache_duration_seconds", "proactive_requerying_seconds"],
-      do: assigns |> assign(value: format_cache_duration(value)) |> change()
+  defp format_change_value(%{field: field, value: value})
+       when field in ["cache_duration_seconds", "proactive_requerying_seconds"],
+       do: format_cache_duration(value)
 
-  def change(%{change: %{field: "source_mapping"}} = assigns) do
-    value =
-      case assigns.change.value do
-        source when is_map(source) -> source |> Map.keys() |> Enum.join("")
-        other -> inspect(other)
-      end
+  defp format_change_value(%{field: "source_mapping", value: value}) when is_map(value),
+    do: value |> Map.keys() |> Enum.join("")
 
-    assigns |> assign(value: value) |> change()
-  end
-
-  def change(%{change: change} = assigns) do
-    assigns
-    |> assign(:value, if(change.value == nil, do: "—", else: to_string(change.value)))
-    |> change()
-  end
+  defp format_change_value(%{field: "source_mapping", value: value}), do: inspect(value)
+  defp format_change_value(%{value: nil}), do: "—"
+  defp format_change_value(%{value: value}), do: to_string(value)
 
   defp format_language(:bq_sql), do: "BigQuery SQL"
   defp format_language(:ch_sql), do: "ClickHouse SQL"
