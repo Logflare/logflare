@@ -266,7 +266,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   end
 
   defp version_query_diff(%Version{meta: meta}) when is_map(meta) do
-    case Map.get(meta, "query_diff", Map.get(meta, :query_diff)) do
+    case Map.get(meta, "query_diff") do
       query_diff when is_list(query_diff) -> Enum.map(query_diff, &normalize_query_diff_segment/1)
       _ -> []
     end
@@ -282,24 +282,15 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   defp normalize_query_diff_segment(%{"type" => type, "value" => value}),
     do: %{value: value, class: query_diff_class(type)}
 
-  defp normalize_query_diff_segment(%{type: type, value: value}),
-    do: %{value: value, class: query_diff_class(type)}
-
-  defp version_number(%Version{meta: meta}) when is_map(meta) do
-    Map.get(meta, "version_number", Map.get(meta, :version_number))
-  end
-
+  defp version_number(%Version{meta: %{"version_number" => version_number}}), do: version_number
   defp version_number(_version), do: nil
 
   @spec snapshot_to_endpoint(Version.t()) :: Query.t()
   defp snapshot_to_endpoint(version) do
     snapshot = Map.get(version.meta, "endpoint_snapshot", %{})
 
-    fields =
-      ~w(token description enable_auth language query max_limit cache_duration_seconds proactive_requerying_seconds sandboxable redact_pii enable_dynamic_reservation labels)a
-
     %Query{}
-    |> Ecto.Changeset.cast(snapshot, fields)
+    |> Ecto.Changeset.cast(snapshot, Endpoints.version_snapshot_fields())
     |> Ecto.Changeset.apply_changes()
   end
 

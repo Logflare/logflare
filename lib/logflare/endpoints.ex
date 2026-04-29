@@ -28,23 +28,6 @@ defmodule Logflare.Endpoints do
   alias PaperTrail.Version
 
   @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
-  @endpoint_version_snapshot_fields [
-    :token,
-    :name,
-    :query,
-    :description,
-    :language,
-    :source_mapping,
-    :sandboxable,
-    :cache_duration_seconds,
-    :proactive_requerying_seconds,
-    :max_limit,
-    :enable_auth,
-    :redact_pii,
-    :enable_dynamic_reservation,
-    :labels,
-    :backend_id
-  ]
 
   @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
   @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
@@ -157,8 +140,6 @@ defmodule Logflare.Endpoints do
 
   @spec update_query(Query.t(), map(), origin()) :: {:ok, Query.t()} | {:error, any()}
   def update_query(%Query{} = query, params, origin) when is_map(params) do
-    query = Repo.preload(query, :user)
-
     Repo.transact(fn ->
       query = lock_endpoint_query(query)
       version_number = next_endpoint_version_number(query.id)
@@ -222,11 +203,32 @@ defmodule Logflare.Endpoints do
     |> maybe_put_query_diff(changeset)
   end
 
+  @spec version_snapshot_fields() :: [atom()]
+  def version_snapshot_fields do
+    [
+      :token,
+      :name,
+      :query,
+      :description,
+      :language,
+      :source_mapping,
+      :sandboxable,
+      :cache_duration_seconds,
+      :proactive_requerying_seconds,
+      :max_limit,
+      :enable_auth,
+      :redact_pii,
+      :enable_dynamic_reservation,
+      :labels,
+      :backend_id
+    ]
+  end
+
   @spec endpoint_version_snapshot(Ecto.Changeset.t()) :: map()
   defp endpoint_version_snapshot(changeset) do
     changeset
     |> Ecto.Changeset.apply_changes()
-    |> Map.take(@endpoint_version_snapshot_fields)
+    |> Map.take(version_snapshot_fields())
   end
 
   @spec maybe_put_query_diff(map(), Ecto.Changeset.t()) :: map()
