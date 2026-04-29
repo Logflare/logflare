@@ -211,7 +211,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       when is_list(opts) do
     with {:ok, {bq_sql, bq_params}} <- ecto_to_sql(query, opts),
          %User{} = user <- Users.Cache.get(user_id) do
-      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", dataset_id)
+      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", "`#{dataset_id}`")
 
       execute_user_query(
         user,
@@ -245,9 +245,19 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> Changeset.cast(params, [:project_id, :dataset_id])
   end
 
+  @bq_identifier_pattern ~r/\A[a-zA-Z0-9_]+\z/
+  @gcp_project_id_pattern ~r/\A[a-z][a-z0-9\-]{4,28}[a-z0-9]\z/
+
   @impl Logflare.Backends.Adaptor
-  def validate_config(changeset),
-    do: changeset
+  def validate_config(changeset) do
+    changeset
+    |> Changeset.validate_format(:dataset_id, @bq_identifier_pattern,
+      message: "must contain only letters, numbers, and underscores"
+    )
+    |> Changeset.validate_format(:project_id, @gcp_project_id_pattern,
+      message: "must be a valid GCP project ID"
+    )
+  end
 
   @doc """
   Returns the email of a managed service account

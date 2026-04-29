@@ -352,7 +352,7 @@ defmodule Logflare.Sources.Source do
     dataset_id =
       source.user.bigquery_dataset_id || "#{source.user.id}" <> GCPConfig.dataset_id_append()
 
-    "`#{bq_project_id}`.#{dataset_id}.#{table}"
+    "`#{bq_project_id}`.`#{dataset_id}`.`#{table}`"
   end
 
   @spec format_table_name(atom) :: String.t()

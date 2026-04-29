@@ -204,6 +204,7 @@ defmodule Logflare.User do
     |> downcase_email_provider_uid(user)
     |> unique_constraint(:email, name: :users_lower_email_index)
     |> validate_bq_dataset_location()
+    |> validate_bq_dataset_id()
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
   end
 
@@ -270,6 +271,15 @@ defmodule Logflare.User do
           [{field, options[:message] || "#{error_message}"}]
       end
     end)
+  end
+
+  @bq_identifier_pattern ~r/\A[a-zA-Z0-9_]+\z/
+
+  @spec validate_bq_dataset_id(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def validate_bq_dataset_id(changeset) do
+    validate_format(changeset, :bigquery_dataset_id, @bq_identifier_pattern,
+      message: "must contain only letters, numbers, and underscores"
+    )
   end
 
   def validate_bq_dataset_location(changeset) do

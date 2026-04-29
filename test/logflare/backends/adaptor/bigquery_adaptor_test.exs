@@ -7,6 +7,36 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
 
+  describe "validate_config/1" do
+    test "accepts valid dataset_id and project_id" do
+      changeset = BigQueryAdaptor.cast_config(%{dataset_id: "my_dataset_1", project_id: "my-project-id"})
+      assert BigQueryAdaptor.validate_config(changeset).valid?
+    end
+
+    test "rejects dataset_id with injection characters" do
+      for bad <- ["evil;DROP", "evil`table", "evil.table", "evil-table", "evil table"] do
+        changeset = BigQueryAdaptor.cast_config(%{dataset_id: bad, project_id: "my-project-id"})
+        validated = BigQueryAdaptor.validate_config(changeset)
+        refute validated.valid?, "expected #{inspect(bad)} to be rejected"
+        assert Keyword.has_key?(validated.errors, :dataset_id)
+      end
+    end
+
+    test "rejects project_id with injection characters" do
+      for bad <- ["evil;drop", "evil`proj", "UPPERCASE_proj", "ab", "a" <> String.duplicate("b", 30)] do
+        changeset = BigQueryAdaptor.cast_config(%{dataset_id: "valid_dataset", project_id: bad})
+        validated = BigQueryAdaptor.validate_config(changeset)
+        refute validated.valid?, "expected #{inspect(bad)} to be rejected"
+        assert Keyword.has_key?(validated.errors, :project_id)
+      end
+    end
+
+    test "allows nil dataset_id and project_id" do
+      changeset = BigQueryAdaptor.cast_config(%{})
+      assert BigQueryAdaptor.validate_config(changeset).valid?
+    end
+  end
+
   describe "ecto_to_sql/2" do
     test "converts Ecto query to BigQuery SQL format" do
       query =
