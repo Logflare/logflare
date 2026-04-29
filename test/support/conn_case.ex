@@ -108,14 +108,14 @@ defmodule LogflareWeb.ConnCase do
 
   def add_access_token(conn, %Logflare.User{} = user, scopes) do
     scopes = if is_list(scopes), do: Enum.join(scopes, " "), else: scopes
-    {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: scopes})
+    {:ok, access_token} = Logflare.Auth.create_access_token(user, %{}, scopes: scopes)
 
     Plug.Conn.put_req_header(conn, "authorization", "Bearer #{access_token.token}")
   end
 
   def add_access_token(conn, %Partner{} = partner, scopes) do
     scopes = if is_list(scopes), do: Enum.join(scopes, " "), else: scopes
-    {:ok, access_token} = Logflare.Auth.create_access_token(partner, %{scopes: scopes})
+    {:ok, access_token} = Logflare.Auth.create_access_token(partner, %{}, scopes: scopes)
 
     Plug.Conn.put_req_header(conn, "authorization", "Bearer #{access_token.token}")
   end

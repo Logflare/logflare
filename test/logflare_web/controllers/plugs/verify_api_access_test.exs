@@ -178,7 +178,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
   end
 
   test "private scope", %{user: user} do
-    {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: "private"})
+    {:ok, access_token} = Logflare.Auth.create_access_token(user, %{}, scopes: "private")
 
     build_conn(:get, "/any", %{})
     |> put_req_header("x-api-key", access_token.token)
