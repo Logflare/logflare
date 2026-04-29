@@ -407,6 +407,14 @@
               Region of your cluster
             </small>
           </div>
+        <% "sentry" -> %>
+          <div class="form-group">
+            {label(f_config, :dsn, "DSN (Required)")}
+            {text_input(f_config, :dsn, class: "form-control")}
+            <small class="text-muted">
+              The DSN for Sentry SDK from the dashboard
+            </small>
+          </div>
         <% "syslog" -> %>
           <div class="form-group">
             {label(f_config, :host, "Host (Required)")}

@@ -14,7 +14,7 @@ defmodule LogflareWeb.SourceBackendsLive do
         <small class="badge badge-pill badge-success">connected: {Enum.count(@attached_backend_ids)}</small>
         <.form :let={f} as={:source} for={%{}} action="#" phx-submit="save">
           <% grouped = Enum.group_by(@backends, & &1.type) %>
-          <%= for type <- [:bigquery, :postgres, :syslog, :webhook, :datadog],
+          <%= for type <- [:bigquery, :postgres, :syslog, :webhook, :datadog, :sentry],
              backends = Map.get(grouped, type, []) do %>
             <div class="form-group">
               <strong>
@@ -24,6 +24,7 @@ defmodule LogflareWeb.SourceBackendsLive do
                   :syslog -> "Syslog"
                   :webhook -> "Webhook"
                   :datadog -> "Datadog"
+                  :sentry -> "Sentry"
                 end}
               </strong>
 
