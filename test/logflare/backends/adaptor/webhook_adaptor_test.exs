@@ -95,6 +95,98 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "cast_and_validate_config/1 SSRF protection" do
+    test "rejects loopback IPv4 addresses" do
+      for url <- [
+            "http://127.0.0.1/endpoint",
+            "http://127.1.2.3/endpoint",
+            "https://127.0.0.1:8080/metrics"
+          ] do
+        cs = Adaptor.cast_and_validate_config(@subject, %{url: url})
+        assert %Ecto.Changeset{valid?: false} = cs, "expected invalid for #{url}"
+
+        assert {"URL must not target private or reserved IP addresses", [validation: :ssrf]} in cs.errors[
+                 :url
+               ],
+               "expected SSRF error for #{url}"
+      end
+    end
+
+    test "rejects RFC1918 private IPv4 addresses" do
+      for url <- [
+            "http://10.0.0.1/internal",
+            "http://10.255.255.255/internal",
+            "http://172.16.0.1/internal",
+            "http://172.31.255.255/internal",
+            "http://192.168.1.1/internal",
+            "http://192.168.0.0/internal"
+          ] do
+        cs = Adaptor.cast_and_validate_config(@subject, %{url: url})
+        assert %Ecto.Changeset{valid?: false} = cs, "expected invalid for #{url}"
+
+        assert {"URL must not target private or reserved IP addresses", [validation: :ssrf]} in cs.errors[
+                 :url
+               ],
+               "expected SSRF error for #{url}"
+      end
+    end
+
+    test "rejects link-local and other reserved IPv4 addresses" do
+      for url <- [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://0.0.0.0/endpoint",
+            "http://100.64.0.1/endpoint",
+            "http://100.127.255.255/endpoint"
+          ] do
+        cs = Adaptor.cast_and_validate_config(@subject, %{url: url})
+        assert %Ecto.Changeset{valid?: false} = cs, "expected invalid for #{url}"
+
+        assert {"URL must not target private or reserved IP addresses", [validation: :ssrf]} in cs.errors[
+                 :url
+               ],
+               "expected SSRF error for #{url}"
+      end
+    end
+
+    test "rejects private IPv6 addresses" do
+      for url <- [
+            "http://[::1]/endpoint",
+            "http://[fe80::1]/endpoint",
+            "http://[fc00::1]/endpoint",
+            "http://[fd00::1]/endpoint"
+          ] do
+        cs = Adaptor.cast_and_validate_config(@subject, %{url: url})
+        assert %Ecto.Changeset{valid?: false} = cs, "expected invalid for #{url}"
+
+        assert {"URL must not target private or reserved IP addresses", [validation: :ssrf]} in cs.errors[
+                 :url
+               ],
+               "expected SSRF error for #{url}"
+      end
+    end
+
+    test "rejects hostname that resolves to loopback (localhost)" do
+      cs = Adaptor.cast_and_validate_config(@subject, %{url: "http://localhost/endpoint"})
+      assert %Ecto.Changeset{valid?: false} = cs
+      assert cs.errors[:url] != []
+    end
+
+    test "rejects 172.16.0.0/12 boundary correctly" do
+      # 172.15.x.x is NOT in the RFC1918 range — literal IP, no DNS
+      cs_outside = Adaptor.cast_and_validate_config(@subject, %{url: "http://172.15.0.1/endpoint"})
+      assert %Ecto.Changeset{valid?: true} = cs_outside
+
+      # 172.32.x.x is NOT in the RFC1918 range — literal IP, no DNS
+      cs_outside2 = Adaptor.cast_and_validate_config(@subject, %{url: "http://172.32.0.1/endpoint"})
+      assert %Ecto.Changeset{valid?: true} = cs_outside2
+
+      # 172.16.x.x IS in the RFC1918 range
+      cs_inside = Adaptor.cast_and_validate_config(@subject, %{url: "http://172.16.0.1/endpoint"})
+      assert %Ecto.Changeset{valid?: false} = cs_inside
+      assert {"URL must not target private or reserved IP addresses", [validation: :ssrf]} in cs_inside.errors[:url]
+    end
+  end
+
   test "cast_and_validate_config/1 for gzip" do
     assert %Ecto.Changeset{
              valid?: true,
