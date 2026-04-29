@@ -599,5 +599,26 @@ defmodule Logflare.Lql.BqIntegrationTest do
       assert sql =~ "metadata"
       assert sql =~ "user_id AS user"
     end
+
+    test "uses left join for select" do
+      select_rules = [
+        %SelectRule{
+          path: "metadata.level",
+          wildcard: false,
+          alias: "level"
+        }
+      ]
+
+      query =
+        from(@bq_table_id, select: [:timestamp, :metadata])
+        |> Lql.apply_select_rules(select_rules)
+
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
+
+      assert sql =~ "LEFT OUTER JOIN UNNEST"
+      assert sql =~ "metadata"
+      assert sql =~ "level AS level"
+      refute sql =~ "INNER JOIN UNNEST"
+    end
   end
 end
