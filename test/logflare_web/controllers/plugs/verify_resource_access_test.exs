@@ -27,7 +27,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccessTest do
             "public",
             "ingest"
           ] do
-        {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: scopes})
+        {:ok, access_token} = Logflare.Auth.create_access_token(user, %{}, scopes: scopes)
 
         conn =
           initial
@@ -40,7 +40,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccessTest do
 
     test "valid - ingest into one source", %{conn: conn, source: source, user: user} do
       {:ok, access_token} =
-        Logflare.Auth.create_access_token(user, %{scopes: "ingest:source:#{source.id}"})
+        Logflare.Auth.create_access_token(user, %{}, scopes: "ingest:source:#{source.id}")
 
       conn =
         conn
@@ -62,7 +62,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccessTest do
 
       # invalid scope check
       {:ok, access_token} =
-        Logflare.Auth.create_access_token(user, %{scopes: "ingest:source:#{source.id + 4}"})
+        Logflare.Auth.create_access_token(user, %{}, scopes: "ingest:source:#{source.id + 4}")
 
       conn =
         initial_conn
@@ -75,7 +75,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccessTest do
 
     test "invalid - specific source", %{conn: initial_conn, source: source, user: user} do
       {:ok, access_token} =
-        Logflare.Auth.create_access_token(user, %{scopes: "ingest:source:#{source.id + 4}"})
+        Logflare.Auth.create_access_token(user, %{}, scopes: "ingest:source:#{source.id + 4}")
 
       conn =
         initial_conn
@@ -99,7 +99,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccessTest do
 
     test "valid - query one", %{conn: conn, user: user, endpoint: endpoint} do
       {:ok, access_token} =
-        Logflare.Auth.create_access_token(user, %{scopes: "query:endpoint:#{endpoint.id}"})
+        Logflare.Auth.create_access_token(user, %{}, scopes: "query:endpoint:#{endpoint.id}")
 
       conn =
         conn
@@ -110,7 +110,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccessTest do
     end
 
     test "valid - query any", %{conn: conn, user: user} do
-      {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: "query"})
+      {:ok, access_token} = Logflare.Auth.create_access_token(user, %{}, scopes: "query")
 
       conn =
         conn
@@ -121,7 +121,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccessTest do
     end
 
     test "invalid - wrong scope action", %{conn: conn, user: user} do
-      {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: "ingest"})
+      {:ok, access_token} = Logflare.Auth.create_access_token(user, %{}, scopes: "ingest")
 
       conn =
         conn
@@ -133,7 +133,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccessTest do
 
     test "invalid - wrong resource scope", %{conn: conn, user: user, endpoint: endpoint} do
       {:ok, access_token} =
-        Logflare.Auth.create_access_token(user, %{scopes: "query:endpoint:#{endpoint.id + 4}"})
+        Logflare.Auth.create_access_token(user, %{}, scopes: "query:endpoint:#{endpoint.id + 4}")
 
       conn =
         conn
@@ -144,7 +144,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccessTest do
     end
 
     test "invalid - no scope", %{conn: conn, user: user} do
-      {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: ""})
+      {:ok, access_token} = Logflare.Auth.create_access_token(user, %{}, scopes: "")
 
       conn =
         conn

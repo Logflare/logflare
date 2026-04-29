@@ -145,11 +145,11 @@ defmodule Logflare.SingleTenant do
       end
 
       {:ok, _res} =
-        Auth.create_access_token(user, %{
-          token: public,
-          scopes: "public",
-          description: @public_env_var
-        })
+        Auth.create_access_token(
+          user,
+          %{token: public, description: @public_env_var},
+          scopes: "public"
+        )
     end
 
     if private != nil && !Auth.get_access_token(user, private) do
@@ -159,11 +159,11 @@ defmodule Logflare.SingleTenant do
       end
 
       {:ok, _res} =
-        Auth.create_access_token(user, %{
-          token: private,
-          scopes: "private",
-          description: @private_env_var
-        })
+        Auth.create_access_token(
+          user,
+          %{token: private, description: @private_env_var},
+          scopes: "private"
+        )
     end
 
     {:ok, Auth.list_valid_access_tokens(user)}

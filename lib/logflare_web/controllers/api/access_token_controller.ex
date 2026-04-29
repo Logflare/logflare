@@ -39,7 +39,10 @@ defmodule LogflareWeb.Api.AccessTokenController do
     scopes_input = Map.get(params, "scopes", "")
 
     with {:scopes, true} <- {:scopes, "partner" not in String.split(scopes_input)},
-         {:ok, access_token} <- Auth.create_access_token(user, params) do
+         {:ok, access_token} <-
+           Auth.create_access_token(user, Map.take(params, ["description"]),
+             scopes: scopes_input
+           ) do
       conn
       |> put_status(201)
       |> json(access_token)

@@ -18,7 +18,7 @@ defmodule Logflare.Auth.CacheTest do
     assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token)
 
     # scope is set
-    {:ok, key} = Auth.create_access_token(user, %{scopes: "public"})
+    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "public")
     assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token, ~w(public))
     assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token, "public")
     assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token)
@@ -30,11 +30,11 @@ defmodule Logflare.Auth.CacheTest do
     assert {:error, _} = Auth.Cache.verify_access_token(key.token, ~w(private))
 
     # public scope set
-    {:ok, key} = Auth.create_access_token(user, %{scopes: "public"})
+    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "public")
     assert {:error, _} = Auth.Cache.verify_access_token(key.token, ~w(private))
 
     # scope is set
-    {:ok, key} = Auth.create_access_token(user, %{scopes: "private"})
+    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "private")
     assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token, ~w(public))
     assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token, ~w(private))
   end

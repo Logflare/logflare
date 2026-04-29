@@ -127,36 +127,41 @@ defmodule Logflare.Auth do
   end
 
   @doc "Creates an Oauth access token with no expiry, linked to the given user or team's user."
-  @typep create_attrs :: %{description: String.t()} | map()
-  @spec create_access_token(Team.t() | User.t() | Partner.t(), create_attrs()) ::
+  @typep create_attrs :: %{optional(:description) => String.t()} | map()
+  @typep create_opts :: [scopes: String.t()]
+  @spec create_access_token(Team.t() | User.t() | Partner.t(), create_attrs(), create_opts()) ::
           {:ok, OauthAccessToken.t()} | {:error, term()}
-  def create_access_token(user_or_team_or_partner, attrs \\ %{})
+  def create_access_token(user_or_team_or_partner, attrs \\ %{}, opts \\ [])
 
-  def create_access_token(%Team{user_id: user_id}, attrs) do
+  def create_access_token(%Team{user_id: user_id}, attrs, opts) do
     user_id
     |> Logflare.Users.get()
-    |> create_access_token(attrs)
+    |> create_access_token(attrs, opts)
   end
 
-  def create_access_token(%User{} = user, attrs) do
+  def create_access_token(%User{} = user, attrs, opts) do
     with {:ok, token} <- ExOauth2Provider.AccessTokens.create_token(user, %{}, env_oauth_config()) do
       token
-      |> Changeset.cast(attrs, [:token, :scopes, :description])
+      |> Changeset.cast(attrs, [:token, :description])
+      |> maybe_put_scopes(Keyword.get(opts, :scopes))
       |> Changeset.unique_constraint(:token)
       |> Repo.update()
     end
   end
 
-  def create_access_token(%Partner{} = partner, attrs) do
+  def create_access_token(%Partner{} = partner, attrs, _opts) do
     with {:ok, token} <-
            ExOauth2Provider.AccessTokens.create_token(partner, %{}, env_partner_oauth_config()) do
       token
-      |> Changeset.cast(attrs, [:token, :scopes, :description])
-      |> Changeset.update_change(:scopes, fn scopes -> scopes <> " partner" end)
+      |> Changeset.cast(attrs, [:token, :description])
+      |> Changeset.put_change(:scopes, "partner")
       |> Changeset.unique_constraint(:token)
       |> Repo.update()
     end
   end
+
+  defp maybe_put_scopes(changeset, nil), do: changeset
+  defp maybe_put_scopes(changeset, scopes), do: Changeset.put_change(changeset, :scopes, scopes)
 
   @doc """
   Verifies a `%OauthAccessToken{}` or string access token.
