@@ -76,6 +76,7 @@ defmodule LogflareWeb.Router do
   pipeline :api do
     plug(Plug.RequestId)
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
+    plug(LogflareWeb.Plugs.VerifyApiAccess)
 
     plug(Plug.Parsers,
       parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
