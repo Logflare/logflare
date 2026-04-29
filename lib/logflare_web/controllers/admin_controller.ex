@@ -18,6 +18,17 @@ defmodule LogflareWeb.AdminController do
   ]
   defp env_node_shutdown_code, do: Application.get_env(:logflare, :node_shutdown_code)
 
+  defp valid_shutdown_code?(conn) do
+    configured = env_node_shutdown_code()
+
+    case {configured, get_req_header(conn, "x-logflare-shutdown-code")} do
+      {nil, _} -> false
+      {"", _} -> false
+      {_, []} -> false
+      {_, [provided | _]} -> Plug.Crypto.secure_compare(configured, provided)
+    end
+  end
+
   def dashboard(conn, _params) do
     conn
     |> render("dashboard.html")
@@ -73,7 +84,7 @@ defmodule LogflareWeb.AdminController do
   end
 
   def shutdown_node(conn, params) do
-    if Map.get(params, "code") == env_node_shutdown_code() do
+    if valid_shutdown_code?(conn) do
       do_authorized_code_shutdown(conn, params)
     else
       do_unauthorized_code_shutdown(conn, params)
