@@ -16,10 +16,11 @@ defmodule Logflare.AdminTest do
     other_team_user = insert(:team_user)
 
     assert Admin.admin?(user.email)
-    assert Admin.admin?(team_user.email)
 
     refute Admin.admin?("invalid@email.com")
     refute Admin.admin?(other_user.email)
+    # team members of an admin user must not inherit admin privileges
+    refute Admin.admin?(team_user.email)
     refute Admin.admin?(other_team_user.email)
   end
 end
