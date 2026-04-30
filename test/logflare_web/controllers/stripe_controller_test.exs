@@ -19,6 +19,29 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
   end
 
   describe "signature verification" do
+    test "rejects all requests when no webhook secret is configured", %{conn: conn} do
+      Application.put_env(:logflare, :stripe_webhook_secret, nil)
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :stripe_webhook_secret, @test_webhook_secret)
+      end)
+
+      payload_json = Jason.encode!(stripe_event("invoice.payment_succeeded", invoice_object("cus_test123")))
+
+      # Unsigned request
+      assert conn
+             |> put_req_header("content-type", "application/json")
+             |> post(~p"/webhooks/stripe", payload_json)
+             |> response(400)
+
+      # Request signed with the previously-valid secret should also be rejected
+      assert build_conn()
+             |> put_req_header("content-type", "application/json")
+             |> put_req_header("stripe-signature", stripe_sign(payload_json))
+             |> post(~p"/webhooks/stripe", payload_json)
+             |> response(400)
+    end
+
     test "rejects requests with missing stripe-signature header", %{conn: conn} do
       payload_json = Jason.encode!(stripe_event("invoice.payment_succeeded", invoice_object("cus_test123")))
 
