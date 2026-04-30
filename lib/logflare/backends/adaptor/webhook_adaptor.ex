@@ -21,6 +21,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   alias Logflare.Backends
   alias Logflare.Utils
+  alias Logflare.Utils.SSRF
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -82,7 +83,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
     case :inet.parse_address(charlist) do
       {:ok, addr} ->
-        if blocked_ip?(addr),
+        if SSRF.private_ip?(addr),
           do: {:error, "URL must not target private or reserved IP addresses"},
           else: :ok
 
@@ -95,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     ipv4_result =
       case :inet.getaddrs(charlist, :inet) do
         {:ok, addrs} ->
-          if Enum.any?(addrs, &blocked_ip?/1),
+          if Enum.any?(addrs, &SSRF.private_ip?/1),
             do: {:error, "URL must not target private or reserved IP addresses"},
             else: :ok
 
@@ -110,7 +111,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       _ ->
         case :inet.getaddrs(charlist, :inet6) do
           {:ok, addrs} ->
-            if Enum.any?(addrs, &blocked_ip6?/1),
+            if Enum.any?(addrs, &SSRF.private_ip?/1),
               do: {:error, "URL must not target private or reserved IP addresses"},
               else: :ok
 
@@ -122,44 +123,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         end
     end
   end
-
-  # Loopback 127.0.0.0/8
-  defguardp is_blocked_ipv4(a, b, c, d)
-            when (a == 127) or
-                   # All-zeros 0.0.0.0/8
-                   (a == 0) or
-                   # Link-local 169.254.0.0/16
-                   (a == 169 and b == 254) or
-                   # RFC1918 10.0.0.0/8
-                   (a == 10) or
-                   # RFC1918 172.16.0.0/12
-                   (a == 172 and b >= 16 and b <= 31) or
-                   # RFC1918 192.168.0.0/16
-                   (a == 192 and b == 168) or
-                   # CGNAT 100.64.0.0/10
-                   (a == 100 and b >= 64 and b <= 127) or
-                   # Broadcast
-                   (a == 255 and b == 255 and c == 255 and d == 255)
-
-  @spec blocked_ip?(:inet.ip_address()) :: boolean()
-  defp blocked_ip?({a, b, c, d}) when is_blocked_ipv4(a, b, c, d), do: true
-  defp blocked_ip?({_, _, _, _}), do: false
-  defp blocked_ip?(addr), do: blocked_ip6?(addr)
-
-  @spec blocked_ip6?(:inet.ip6_address()) :: boolean()
-  # Loopback ::1
-  defp blocked_ip6?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
-  # Unspecified ::
-  defp blocked_ip6?({0, 0, 0, 0, 0, 0, 0, 0}), do: true
-  # Link-local fe80::/10
-  defp blocked_ip6?({a, _, _, _, _, _, _, _}) when (a &&& 0xFFC0) == 0xFE80, do: true
-  # Unique local fc00::/7
-  defp blocked_ip6?({a, _, _, _, _, _, _, _}) when (a &&& 0xFE00) == 0xFC00, do: true
-  # IPv4-mapped ::ffff:0:0/96 — reuse IPv4 checks
-  defp blocked_ip6?({0, 0, 0, 0, 0, 0xFFFF, ab, cd}),
-    do: blocked_ip?({ab >>> 8, ab &&& 0xFF, cd >>> 8, cd &&& 0xFF})
-
-  defp blocked_ip6?({_, _, _, _, _, _, _, _}), do: false
 
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
