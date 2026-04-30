@@ -256,7 +256,16 @@ defmodule LogflareWeb.Source.SearchLV do
     <div class="container source-logs-search-container console-text">
       <div id="logs-list-container">
         <LogEventComponents.empty_result_list :if={not @loading} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
-        <LogEventComponents.results_list search_op={@search_op} search_op_log_events={@search_op_log_events} last_query_completed_at={@last_query_completed_at} search_timezone={@search_timezone} loading={@loading} tailing?={@tailing?} querystring={@querystring} />
+        <LogEventComponents.results_list
+          search_op={@search_op}
+          search_op_log_events={@search_op_log_events}
+          last_query_completed_at={@last_query_completed_at}
+          search_timezone={@search_timezone}
+          loading={@loading}
+          tailing?={@tailing?}
+          querystring={@querystring}
+          source_schema_flat_map={@source_schema_flat_map}
+        />
       </div>
       <div>
         {live_react_component(
