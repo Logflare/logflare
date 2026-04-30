@@ -14,7 +14,7 @@ defmodule LogflareWeb.AdminControllerTest do
 
       conn =
         conn
-        |> put_req_header("x-logflare-shutdown-code", "anything")
+        |> put_req_header("lf-shutdown-code", "anything")
         |> put(~p"/admin/shutdown")
 
       assert json_response(conn, 401)
@@ -26,7 +26,7 @@ defmodule LogflareWeb.AdminControllerTest do
 
       conn =
         conn
-        |> put_req_header("x-logflare-shutdown-code", "")
+        |> put_req_header("lf-shutdown-code", "")
         |> put(~p"/admin/shutdown")
 
       assert json_response(conn, 401)
@@ -47,7 +47,7 @@ defmodule LogflareWeb.AdminControllerTest do
 
       conn =
         conn
-        |> put_req_header("x-logflare-shutdown-code", "wrong-secret")
+        |> put_req_header("lf-shutdown-code", "wrong-secret")
         |> put(~p"/admin/shutdown")
 
       assert json_response(conn, 401)

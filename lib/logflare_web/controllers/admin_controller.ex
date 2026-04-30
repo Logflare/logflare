@@ -18,14 +18,14 @@ defmodule LogflareWeb.AdminController do
   ]
   defp env_node_shutdown_code, do: Application.get_env(:logflare, :node_shutdown_code)
 
-  defp valid_shutdown_code?(conn) do
+  defp valid_shutdown_code?(provided) do
     configured = env_node_shutdown_code()
 
-    case {configured, get_req_header(conn, "x-logflare-shutdown-code")} do
+    case {configured, provided} do
       {nil, _} -> false
       {"", _} -> false
-      {_, []} -> false
-      {_, [provided | _]} -> Plug.Crypto.secure_compare(configured, provided)
+      {_, nil} -> false
+      _ -> Plug.Crypto.secure_compare(configured, provided)
     end
   end
 
@@ -84,7 +84,9 @@ defmodule LogflareWeb.AdminController do
   end
 
   def shutdown_node(conn, params) do
-    if valid_shutdown_code?(conn) do
+    provided = conn |> get_req_header("lf-shutdown-code") |> List.first()
+
+    if valid_shutdown_code?(provided) do
       do_authorized_code_shutdown(conn, params)
     else
       do_unauthorized_code_shutdown(conn, params)
