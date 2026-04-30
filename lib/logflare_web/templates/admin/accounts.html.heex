@@ -33,6 +33,9 @@
         <li class="list-group-item">
           <div class="float-right">
             <small>{link("become", to: Routes.admin_path(@conn, :become_account, account.id), class: "btn btn-danger btn-sm")}</small>
+            <%= unless account.admin do %>
+              <small>{link("make admin", to: Routes.admin_path(@conn, :grant_admin, account.id), method: :post, data: [confirm: "Grant admin access to #{account.email}?"], class: "btn btn-warning btn-sm ml-1")}</small>
+            <% end %>
           </div>
           <div>{account.email}</div>
           <div>
