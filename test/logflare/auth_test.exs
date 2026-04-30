@@ -29,6 +29,22 @@ defmodule Logflare.AuthTest do
       assert Auth.list_valid_access_tokens(partner) |> length() == 2
     end
 
+    test "user token attrs cannot inject partner scope", %{user: user} do
+      {:ok, token} = Auth.create_access_token(user, %{"scopes" => "partner"})
+      refute token.scopes =~ "partner"
+
+      {:ok, token} = Auth.create_access_token(user, %{scopes: "partner"})
+      refute token.scopes =~ "partner"
+    end
+
+    test "partner token always receives partner scope regardless of opts", %{partner: partner} do
+      {:ok, token} = Auth.create_access_token(partner, %{})
+      assert token.scopes == "partner"
+
+      {:ok, token} = Auth.create_access_token(partner, %{}, scopes: "ingest")
+      assert token.scopes == "partner"
+    end
+
     test "can revoke access tokens", %{user: user} do
       key = access_token_fixture(user)
       :ok = Auth.revoke_access_token(key)
