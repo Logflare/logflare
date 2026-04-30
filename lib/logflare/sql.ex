@@ -28,6 +28,33 @@ defmodule Logflare.Sql do
     "session_user"
   ]
 
+  @pg_restricted_functions [
+    "current_database",
+    "current_schema",
+    "current_schemas",
+    "current_user",
+    "inet_client_addr",
+    "inet_client_port",
+    "inet_server_addr",
+    "inet_server_port",
+    "pg_backend_pid",
+    "pg_cancel_backend",
+    "pg_conf_load_time",
+    "pg_ls_dir",
+    "pg_postmaster_start_time",
+    "pg_read_binary_file",
+    "pg_read_file",
+    "pg_reload_conf",
+    "pg_rotate_logfile",
+    "pg_sleep",
+    "pg_start_backup",
+    "pg_stat_file",
+    "pg_stop_backup",
+    "pg_terminate_backend",
+    "session_user",
+    "version"
+  ]
+
   @ch_restricted_functions [
     "azureblobstorage",
     "buildid",
@@ -226,15 +253,20 @@ defmodule Logflare.Sql do
 
     Logger.metadata(query_string: query, user_id: user.id)
 
-    with {:ok, statements} <- Parser.parse(sql_dialect, query) do
+    with {:ok, statements} <- Parser.parse(sql_dialect, query),
+         data = %{
+           sources: sources,
+           source_mapping: source_mapping,
+           source_names: Map.keys(source_mapping),
+           dialect: sql_dialect,
+           ast: statements,
+           user_project_id: nil,
+           logflare_project_id: nil,
+           sandboxed_query_ast: nil
+         },
+         :ok <- validate_query(statements, data) do
       statements
-      |> do_transform(%{
-        sources: sources,
-        source_mapping: source_mapping,
-        source_names: Map.keys(source_mapping),
-        dialect: sql_dialect,
-        ast: statements
-      })
+      |> do_transform(data)
       |> Parser.to_string()
     end
   end
@@ -523,7 +555,7 @@ defmodule Logflare.Sql do
   end
 
   defp maybe_check_restricted_functions(ast, dialect, data)
-       when dialect in ~w(bigquery clickhouse),
+       when dialect in ~w(bigquery clickhouse postgres),
        do: has_restricted_functions(ast, data)
 
   defp maybe_check_restricted_functions(_ast, _dialect, _data), do: :ok
@@ -703,6 +735,7 @@ defmodule Logflare.Sql do
   @spec list_restricted_functions_for_dialect(String.t()) :: [String.t()]
   defp list_restricted_functions_for_dialect("bigquery"), do: @bq_restricted_functions
   defp list_restricted_functions_for_dialect("clickhouse"), do: @ch_restricted_functions
+  defp list_restricted_functions_for_dialect("postgres"), do: @pg_restricted_functions
   defp list_restricted_functions_for_dialect(_), do: []
 
   defp has_restricted_sources(cte_ast, ast) when is_list(ast) do
