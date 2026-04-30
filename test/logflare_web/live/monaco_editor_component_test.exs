@@ -38,6 +38,22 @@ defmodule LogflareWeb.MonacoEditorComponentTest do
       assert html =~ ~s(const completions = ["Source 1","Endpoint 1"])
     end
 
+    test "escapes </script> in completion names to prevent XSS", %{assigns: assigns} do
+      xss_name = ~s(</script><script>alert(document.domain)</script>)
+
+      html =
+        render_component(MonacoEditorComponent, %{
+          id: "test-editor",
+          field: assigns.form[:query],
+          endpoints: [],
+          sources: [%{id: "source1", name: xss_name}],
+          alerts: []
+        })
+
+      refute html =~ "</script><script>"
+      assert html =~ "\\u003c"
+    end
+
     test "renders with parser error message set", %{assigns: assigns} do
       html =
         render_component(MonacoEditorComponent, %{
