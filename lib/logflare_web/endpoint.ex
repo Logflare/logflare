@@ -37,6 +37,12 @@ defmodule LogflareWeb.Endpoint do
 
   plug(Plug.Logger, log: :debug)
 
+  plug(Stripe.WebhookPlug,
+    at: "/webhooks/stripe",
+    handler: LogflareWeb.StripeWebhookHandler,
+    secret: {Application, :get_env, [:logflare, :stripe_webhook_secret, ""]}
+  )
+
   plug(Plug.Parsers,
     parsers: [:urlencoded, :multipart],
     pass: ["*/*"]

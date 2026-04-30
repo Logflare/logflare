@@ -281,6 +281,8 @@ config :stripity_stripe,
          publishable_key: System.get_env("STRIPE_PUBLISHABLE_KEY")
        )
 
+config :logflare, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SECRET")
+
 if config_env() != :test do
   config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()
 end
