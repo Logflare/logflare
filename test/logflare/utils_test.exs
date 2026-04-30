@@ -408,6 +408,19 @@ defmodule Logflare.UtilsSyncTest do
               constant(%Tesla.Env{opts: opts ++ [req_headers: headers], headers: headers})
             end)
           end),
+          bind(headers_gen, fn headers ->
+            constant(%Tesla.Client{pre: [{Tesla.Middleware.Headers, :call, [headers]}]})
+          end),
+          bind(headers_gen, fn env_headers ->
+            bind(headers_gen, fn client_headers ->
+              constant(%Tesla.Env{
+                headers: env_headers,
+                __client__: %Tesla.Client{
+                  pre: [{Tesla.Middleware.Headers, :call, [client_headers]}]
+                }
+              })
+            end)
+          end),
           bind(string(:alphanumeric, min_length: 3), fn email ->
             constant(%User{api_key: @secret, old_api_key: @secret, email: email})
           end),
