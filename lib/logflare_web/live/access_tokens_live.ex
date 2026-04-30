@@ -201,11 +201,10 @@ defmodule LogflareWeb.AccessTokensLive do
 
     scopes = scopes_main ++ scopes_ingest_params ++ scopes_query_params
 
-    attrs =
-      Map.take(params, ["description"])
-      |> Map.put("scopes", Enum.join(scopes, " "))
+    attrs = Map.take(params, ["description"])
+    scopes_string = Enum.join(scopes, " ")
 
-    {:ok, token} = Auth.create_access_token(user, attrs)
+    {:ok, token} = Auth.create_access_token(user, attrs, scopes: scopes_string)
 
     socket =
       socket
