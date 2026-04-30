@@ -24,7 +24,7 @@ defmodule LogflareWeb.AdminController do
     case {configured, provided} do
       {nil, _} -> false
       {"", _} -> false
-      {_, nil} -> false
+      {_, provided} when provided in [nil, ""] -> false
       _ -> Plug.Crypto.secure_compare(configured, provided)
     end
   end
