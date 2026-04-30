@@ -2,6 +2,13 @@ defmodule LogflareWeb.AdminControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  setup do
+    prior = Application.get_env(:logflare, :node_shutdown_code)
+    Application.delete_env(:logflare, :node_shutdown_code)
+    on_exit(fn -> Application.put_env(:logflare, :node_shutdown_code, prior) end)
+    :ok
+  end
+
   describe "shutdown_node/2" do
     setup do
       insert(:plan)
@@ -9,9 +16,6 @@ defmodule LogflareWeb.AdminControllerTest do
     end
 
     test "returns 401 when shutdown code is not configured", %{conn: conn} do
-      Application.put_env(:logflare, :node_shutdown_code, nil)
-      on_exit(fn -> Application.delete_env(:logflare, :node_shutdown_code) end)
-
       conn =
         conn
         |> put_req_header("lf-shutdown-code", "anything")
@@ -22,7 +26,6 @@ defmodule LogflareWeb.AdminControllerTest do
 
     test "returns 401 when shutdown code env is empty string", %{conn: conn} do
       Application.put_env(:logflare, :node_shutdown_code, "")
-      on_exit(fn -> Application.delete_env(:logflare, :node_shutdown_code) end)
 
       conn =
         conn
@@ -34,7 +37,6 @@ defmodule LogflareWeb.AdminControllerTest do
 
     test "returns 401 when header is absent", %{conn: conn} do
       Application.put_env(:logflare, :node_shutdown_code, "secret")
-      on_exit(fn -> Application.delete_env(:logflare, :node_shutdown_code) end)
 
       conn = put(conn, ~p"/admin/shutdown")
 
@@ -43,7 +45,6 @@ defmodule LogflareWeb.AdminControllerTest do
 
     test "returns 401 when provided code does not match", %{conn: conn} do
       Application.put_env(:logflare, :node_shutdown_code, "correct-secret")
-      on_exit(fn -> Application.delete_env(:logflare, :node_shutdown_code) end)
 
       conn =
         conn
@@ -54,9 +55,6 @@ defmodule LogflareWeb.AdminControllerTest do
     end
 
     test "nil code in query param no longer bypasses auth when env var is unset", %{conn: conn} do
-      Application.put_env(:logflare, :node_shutdown_code, nil)
-      on_exit(fn -> Application.delete_env(:logflare, :node_shutdown_code) end)
-
       conn = put(conn, ~p"/admin/shutdown")
 
       assert json_response(conn, 401)
