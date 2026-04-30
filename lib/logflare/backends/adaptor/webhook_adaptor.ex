@@ -93,34 +93,29 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   end
 
   defp check_hostname_ssrf(charlist) do
-    ipv4_result =
-      case :inet.getaddrs(charlist, :inet) do
-        {:ok, addrs} ->
-          if Enum.any?(addrs, &SSRF.private_ip?/1),
-            do: {:error, "URL must not target private or reserved IP addresses"},
-            else: :ok
+    resolve_family(charlist, :inet)
+    |> check_ipv6_fallback(charlist)
+  end
 
-        {:error, _} ->
-          :unresolved
-      end
+  defp resolve_family(charlist, family) do
+    case :inet.getaddrs(charlist, family) do
+      {:ok, addrs} ->
+        if Enum.any?(addrs, &SSRF.private_ip?/1),
+          do: {:error, "URL must not target private or reserved IP addresses"},
+          else: :ok
 
-    case ipv4_result do
-      {:error, _} = err ->
-        err
+      {:error, _} ->
+        :unresolved
+    end
+  end
 
-      _ ->
-        case :inet.getaddrs(charlist, :inet6) do
-          {:ok, addrs} ->
-            if Enum.any?(addrs, &SSRF.private_ip?/1),
-              do: {:error, "URL must not target private or reserved IP addresses"},
-              else: :ok
+  defp check_ipv6_fallback({:error, _} = err, _charlist), do: err
 
-          {:error, _} when ipv4_result == :ok ->
-            :ok
-
-          {:error, _} ->
-            {:error, "could not resolve webhook destination host"}
-        end
+  defp check_ipv6_fallback(ipv4_result, charlist) do
+    case resolve_family(charlist, :inet6) do
+      :unresolved when ipv4_result == :ok -> :ok
+      :unresolved -> {:error, "could not resolve webhook destination host"}
+      result -> result
     end
   end
 
