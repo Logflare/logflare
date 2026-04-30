@@ -22,6 +22,61 @@ defmodule Logflare.Utils.SSRF do
   def private_ip?({_, _, _, _}), do: false
   def private_ip?(addr), do: private_ipv6?(addr)
 
+  @doc """
+  Resolves `host` and returns the first safe IP address, or an error if the
+  host resolves to any private/reserved address or cannot be resolved at all.
+
+  Used to obtain an IP to connect to directly, eliminating DNS re-resolution.
+  """
+  @spec safe_resolve(String.t() | nil) :: {:ok, :inet.ip_address()} | {:error, String.t()}
+  def safe_resolve(nil), do: {:error, "invalid host"}
+
+  def safe_resolve(host) do
+    charlist = String.to_charlist(host)
+
+    case :inet.parse_address(charlist) do
+      {:ok, addr} ->
+        if private_ip?(addr),
+          do: {:error, "URL must not target private or reserved IP addresses"},
+          else: {:ok, addr}
+
+      {:error, _} ->
+        resolve_hostname(charlist)
+    end
+  end
+
+  @doc "Formats an IP address tuple as a URL host component (IPv6 wrapped in brackets)."
+  @spec url_host(:inet.ip_address()) :: String.t()
+  def url_host(addr) when tuple_size(addr) == 8,
+    do: "[#{addr |> :inet.ntoa() |> List.to_string()}]"
+
+  def url_host(addr), do: addr |> :inet.ntoa() |> List.to_string()
+
+  defp resolve_hostname(charlist) do
+    ipv4 = safe_family(charlist, :inet)
+    ipv6 = safe_family(charlist, :inet6)
+
+    case {ipv4, ipv6} do
+      {{:error, _} = err, _} -> err
+      {_, {:error, _} = err} -> err
+      {{:ok, _} = ok, _} -> ok
+      {:unresolved, {:ok, _} = ok} -> ok
+      {:unresolved, :unresolved} -> {:error, "could not resolve webhook destination host"}
+    end
+  end
+
+  defp safe_family(charlist, family) do
+    case :inet.getaddrs(charlist, family) do
+      {:ok, addrs} ->
+        if Enum.any?(addrs, &private_ip?/1),
+          do: {:error, "URL must not target private or reserved IP addresses"},
+          else: {:ok, List.first(addrs)}
+
+      {:error, _} ->
+        :unresolved
+    end
+  end
+
   @spec private_ipv6?(ipv6()) :: boolean()
   defp private_ipv6?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
   defp private_ipv6?({0, 0, 0, 0, 0, 0, 0, 0}), do: true

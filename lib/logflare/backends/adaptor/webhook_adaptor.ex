@@ -68,54 +68,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       url ->
         host = URI.parse(url).host
 
-        case check_host_ssrf(host) do
-          :ok -> changeset
+        case SSRF.safe_resolve(host) do
+          {:ok, _} -> changeset
           {:error, reason} -> Ecto.Changeset.add_error(changeset, :url, reason, validation: :ssrf)
         end
-    end
-  end
-
-  @spec check_host_ssrf(String.t() | nil) :: :ok | {:error, String.t()}
-  defp check_host_ssrf(nil), do: {:error, "invalid host"}
-
-  defp check_host_ssrf(host) do
-    charlist = String.to_charlist(host)
-
-    case :inet.parse_address(charlist) do
-      {:ok, addr} ->
-        if SSRF.private_ip?(addr),
-          do: {:error, "URL must not target private or reserved IP addresses"},
-          else: :ok
-
-      {:error, _} ->
-        check_hostname_ssrf(charlist)
-    end
-  end
-
-  defp check_hostname_ssrf(charlist) do
-    resolve_family(charlist, :inet)
-    |> check_ipv6_fallback(charlist)
-  end
-
-  defp resolve_family(charlist, family) do
-    case :inet.getaddrs(charlist, family) do
-      {:ok, addrs} ->
-        if Enum.any?(addrs, &SSRF.private_ip?/1),
-          do: {:error, "URL must not target private or reserved IP addresses"},
-          else: :ok
-
-      {:error, _} ->
-        :unresolved
-    end
-  end
-
-  defp check_ipv6_fallback({:error, _} = err, _charlist), do: err
-
-  defp check_ipv6_fallback(ipv4_result, charlist) do
-    case resolve_family(charlist, :inet6) do
-      :unresolved when ipv4_result == :ok -> :ok
-      :unresolved -> {:error, "could not resolve webhook destination host"}
-      result -> result
     end
   end
 
@@ -137,6 +93,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   defmodule Client do
     @moduledoc false
     alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
+    alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
     use Tesla, docs: false
 
     defguardp is_possible_pool(value)
@@ -168,6 +125,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           Tesla.Middleware.Telemetry,
           Tesla.Middleware.JSON,
           if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
+          SSRFProtection,
           EgressTracer
         ]
         |> Enum.filter(& &1),
