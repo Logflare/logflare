@@ -271,7 +271,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
       {log_events, batch_count, batch_size} = collect_batch_events(triples)
 
-      if source && source.bq_storage_write_api do
+      if source &&
+           (source.bq_storage_write_api ||
+              Utils.flag("BigqueryStorageWriteApi", to_string(source.id))) do
         batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
