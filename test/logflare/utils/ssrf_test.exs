@@ -44,7 +44,9 @@ defmodule Logflare.Utils.SSRFTest do
         {0xFC00, 0, 0, 0, 0, 0, 0, 1},
         {0xFD00, 0, 0, 0, 0, 0, 0, 1},
         # IPv4-mapped ::ffff:192.168.1.1
-        {0, 0, 0, 0, 0, 0xFFFF, 0xC0A8, 0x0101}
+        {0, 0, 0, 0, 0, 0xFFFF, 0xC0A8, 0x0101},
+        # AWS IMDS IPv6 fd00:ec2::254
+        {0xFD00, 0x0EC2, 0, 0, 0, 0, 0, 0x00FE}
       ]
 
       for addr <- blocked do

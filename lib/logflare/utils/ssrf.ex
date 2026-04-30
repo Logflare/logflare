@@ -25,8 +25,12 @@ defmodule Logflare.Utils.SSRF do
   @spec private_ipv6?(ipv6()) :: boolean()
   defp private_ipv6?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
   defp private_ipv6?({0, 0, 0, 0, 0, 0, 0, 0}), do: true
+  # Link-local fe80::/10
   defp private_ipv6?({a, _, _, _, _, _, _, _}) when (a &&& 0xFFC0) == 0xFE80, do: true
+  # Unique local fc00::/7 (covers fd00::/8 which includes AWS IMDS fd00:ec2::254)
   defp private_ipv6?({a, _, _, _, _, _, _, _}) when (a &&& 0xFE00) == 0xFC00, do: true
+  # AWS EC2 IMDS IPv6 endpoint — explicit for auditability (already in fc00::/7)
+  defp private_ipv6?({0xFD00, 0x0EC2, 0, 0, 0, 0, 0, 0x00FE}), do: true
   defp private_ipv6?({0, 0, 0, 0, 0, 0xFFFF, ab, cd}),
     do: private_ip?({ab >>> 8, ab &&& 0xFF, cd >>> 8, cd &&& 0xFF})
 
