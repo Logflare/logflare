@@ -201,7 +201,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     } do
       source = Sources.Cache.get_by_id(context.source_id)
 
-      if source && source.bq_storage_write_api do
+      if source && (source.bq_storage_write_api || Utils.flag("BigqueryStorageWriteApi", to_string(source.id))) do
         log_events = messages |> Enum.map(& &1.data)
         batch_attrs = compute_batch_attrs(messages, :bq_storage_write)
 
