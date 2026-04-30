@@ -56,6 +56,22 @@ defmodule LogflareWeb.AdminController do
     AuthController.check_invite_token_and_signin(conn, auth_params)
   end
 
+  def grant_admin(conn, %{"id" => id}) do
+    user = Users.get(id)
+
+    case Admin.grant_admin(user) do
+      {:ok, _user} ->
+        conn
+        |> put_flash(:info, "Admin access granted!")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Something went wrong!")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+    end
+  end
+
   def delete_account(conn, %{"id" => user_id}) do
     user = Users.get(user_id)
 

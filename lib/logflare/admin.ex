@@ -24,6 +24,13 @@ defmodule Logflare.Admin do
     {:ok, task}
   end
 
+  @spec grant_admin(User.t()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
+  def grant_admin(%User{} = user) do
+    user
+    |> Ecto.Changeset.change(admin: true)
+    |> Repo.update()
+  end
+
   @spec admin?(String.t() | nil) :: boolean()
   def admin?(email) when is_binary(email) do
     from(u in User,

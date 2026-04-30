@@ -90,6 +90,32 @@ defmodule LogflareWeb.AdminControllerTest do
       refute html =~ admin_team.name
     end
 
+    test "admin can grant admin to another user", %{conn: conn, admin: admin} do
+      target = insert(:user, admin: false)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/#{target.id}/grant_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Admin access granted!"
+      assert Logflare.Users.get(target.id).admin == true
+    end
+
+    test "non-admin cannot grant admin (403)", %{conn: conn, user: user} do
+      target = insert(:user, admin: false)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> post(~p"/admin/accounts/#{target.id}/grant_admin")
+
+      assert conn.halted == true
+      assert conn.status == 403
+      refute Logflare.Users.get(target.id).admin
+    end
+
     test "admin can delete an account", %{conn: conn, admin: admin} do
       target = insert(:user)
 

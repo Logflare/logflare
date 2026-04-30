@@ -8,6 +8,18 @@ defmodule Logflare.AdminTest do
     :ok
   end
 
+  test "grant_admin/1 sets admin flag on a regular user" do
+    user = insert(:user, admin: false)
+    assert {:ok, updated} = Admin.grant_admin(user)
+    assert updated.admin == true
+  end
+
+  test "grant_admin/1 is idempotent for an existing admin" do
+    admin = insert(:user, admin: true)
+    assert {:ok, updated} = Admin.grant_admin(admin)
+    assert updated.admin == true
+  end
+
   test "admin?/1" do
     user = insert(:user, admin: true)
     home_team = insert(:team, user: user)
