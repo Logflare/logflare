@@ -8,16 +8,24 @@ defmodule Logflare.AdminTest do
     :ok
   end
 
-  test "grant_admin/1 sets admin flag on a regular user" do
+  test "grant_admin/2 sets admin flag on a regular user and is idempotent" do
+    granter = insert(:user, admin: true)
     user = insert(:user, admin: false)
-    assert {:ok, updated} = Admin.grant_admin(user)
+
+    assert {:ok, updated} = Admin.grant_admin(granter, user)
     assert updated.admin == true
+
+    already_admin = insert(:user, admin: true)
+    assert {:ok, still_admin} = Admin.grant_admin(granter, already_admin)
+    assert still_admin.admin == true
   end
 
-  test "grant_admin/1 is idempotent for an existing admin" do
-    admin = insert(:user, admin: true)
-    assert {:ok, updated} = Admin.grant_admin(admin)
-    assert updated.admin == true
+  test "grant_admin/2 returns unauthorized when granter is not an admin" do
+    non_admin = insert(:user, admin: false)
+    target = insert(:user, admin: false)
+
+    assert {:error, :unauthorized} = Admin.grant_admin(non_admin, target)
+    refute Logflare.Users.get(target.id).admin
   end
 
   test "admin?/1" do

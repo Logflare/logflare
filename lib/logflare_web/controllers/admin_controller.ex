@@ -57,9 +57,10 @@ defmodule LogflareWeb.AdminController do
   end
 
   def grant_admin(conn, %{"id" => id}) do
-    user = Users.get(id)
+    granter = conn.assigns.user
+    target = Users.get(id)
 
-    case Admin.grant_admin(user) do
+    case Admin.grant_admin(granter, target) do
       {:ok, _user} ->
         conn
         |> put_flash(:info, "Admin access granted!")
