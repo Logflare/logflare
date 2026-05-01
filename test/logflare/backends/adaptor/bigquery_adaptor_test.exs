@@ -22,7 +22,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
 
   describe "validate_config/1" do
     test "accepts valid dataset_id and project_id" do
-      changeset = BigQueryAdaptor.cast_config(%{dataset_id: "my_dataset_1", project_id: "my-project-id"})
+      changeset =
+        BigQueryAdaptor.cast_config(%{dataset_id: "my_dataset_1", project_id: "my-project-id"})
+
       assert BigQueryAdaptor.validate_config(changeset).valid?
     end
 
@@ -36,7 +38,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
     end
 
     test "rejects project_id with injection characters" do
-      for bad <- ["evil;drop", "evil`proj", "UPPERCASE_proj", "ab", "a" <> String.duplicate("b", 30)] do
+      for bad <- [
+            "evil;drop",
+            "evil`proj",
+            "UPPERCASE_proj",
+            "ab",
+            "a" <> String.duplicate("b", 30)
+          ] do
         changeset = BigQueryAdaptor.cast_config(%{dataset_id: "valid_dataset", project_id: bad})
         validated = BigQueryAdaptor.validate_config(changeset)
         refute validated.valid?
