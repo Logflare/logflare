@@ -30,9 +30,15 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
 
   @default_level Map.fetch!(@levels, "info")
 
+  @iv_bytes 12
+  @tag_bytes 16
+  @aes_overhead @iv_bytes + @tag_bytes
+
   def format(log_event, config) do
     cipher_key = config[:cipher_key]
     structured_data = config[:structured_data]
+    max_length = config[:max_message_bytes]
+
     %LogEvent{id: id, body: body} = log_event
 
     timestamp =
@@ -63,15 +69,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     procid = get_in(metadata["procid"]) || body["procid"]
     msgid = id |> Ecto.UUID.dump!() |> Base.encode32(padding: false)
 
-    msg = Jason.encode_to_iodata!(body)
-    msg = if cipher_key, do: encrypt(msg, cipher_key), else: msg
-
-    structured_data = if structured_data, do: structured_data, else: @empty
-
     # https://datatracker.ietf.org/doc/html/rfc5424#section-6
     pri = 16 * 8 + severity_code(level)
 
-    syslog_msg = [
+    headers = [
       # PRI VERSION SP
       "<#{pri}>1 ",
       # TIMESTAMP
@@ -95,14 +96,22 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
       # SP
       ?\s,
       # STRUCTURED-DATA
-      structured_data,
+      structured_data || @empty,
       # SP
       ?\s
-      # MSG
-      | msg
     ]
 
-    [Integer.to_string(IO.iodata_length(syslog_msg)), ?\s | syslog_msg]
+    message = Jason.encode_to_iodata!(body)
+    headers_length = IO.iodata_length(headers)
+    message_length = IO.iodata_length(message)
+    allowed_length = allowed_length(max_length, headers_length, _base64? = cipher_key != nil)
+
+    {message, message_length} =
+      {message, message_length}
+      |> maybe_truncate(allowed_length)
+      |> maybe_encrypt(cipher_key)
+
+    [Integer.to_string(headers_length + message_length), ?\s, headers | message]
   end
 
   defp severity_code(level) when level in 0..7, do: level
@@ -124,8 +133,37 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     value |> to_string() |> format_header_value(length)
   end
 
+  defp allowed_length(nil = _no_max_length, _headers_length, _base64?), do: :infinity
+
+  defp allowed_length(max_length, headers_length, base64?) do
+    # If headers exceed the max length, `max` becomes 0.
+    # `maybe_truncate/2` will slice the body to "", resulting in
+    # a valid syslog frame with an empty message body.
+    max = max(max_length - headers_length, 0)
+    if base64?, do: max(div(max, 4) * 3 - @aes_overhead, 0), else: max
+  end
+
+  defp maybe_truncate({_message, _message_length} = keep, :infinity), do: keep
+
+  defp maybe_truncate({_message, message_length} = keep, allowed_length)
+       when is_integer(allowed_length) and message_length <= allowed_length do
+    keep
+  end
+
+  defp maybe_truncate({message, _message_length}, allowed_length) do
+    truncated = message |> IO.iodata_to_binary() |> binary_part(0, allowed_length)
+    {truncated, allowed_length}
+  end
+
+  defp maybe_encrypt({_message, _message_length} = keep, nil = _no_cipher_key), do: keep
+
+  defp maybe_encrypt({message, _message_length}, key) do
+    encrypted = encrypt(message, key)
+    {encrypted, byte_size(encrypted)}
+  end
+
   defp encrypt(data, key) do
-    iv = :crypto.strong_rand_bytes(12)
+    iv = :crypto.strong_rand_bytes(@iv_bytes)
     {ciphertext, tag} = :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, data, "syslog", true)
     Base.encode64(iv <> tag <> ciphertext)
   end
