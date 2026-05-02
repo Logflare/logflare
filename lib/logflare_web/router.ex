@@ -62,6 +62,17 @@ defmodule LogflareWeb.Router do
     plug(:handle_logpush_headers)
   end
 
+  pipeline :browser_json do
+    plug(Plug.RequestId)
+    plug(:accepts, ["json"])
+    plug(:fetch_session)
+    plug(:fetch_flash)
+    plug(LogflareWeb.Plugs.SetTeamIfNil)
+    plug(LogflareWeb.Plugs.SetTeamContext)
+    plug(LogflareWeb.Plugs.SetPlan)
+    plug(LogflareWeb.Plugs.SetHeaders)
+  end
+
   pipeline :api do
     plug(Plug.RequestId)
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
@@ -190,6 +201,12 @@ defmodule LogflareWeb.Router do
     get("/event-analytics", MarketingController, :event_analytics_demo)
     get("/slack-app-setup", MarketingController, :slack_app_setup)
     get("/vercel-setup", MarketingController, :vercel_setup)
+  end
+
+  scope "/", LogflareWeb do
+    pipe_through([:browser_json, :require_auth])
+
+    get("/command-palette/sources", CommandPaletteController, :sources)
   end
 
   scope "/", LogflareWeb do

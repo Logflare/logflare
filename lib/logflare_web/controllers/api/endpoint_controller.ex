@@ -2,6 +2,7 @@ defmodule LogflareWeb.Api.EndpointController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  alias Logflare.Backends
   alias Logflare.Users
   alias Logflare.Endpoints
 
@@ -55,7 +56,8 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
-    with {:ok, query} <- Endpoints.create_query(user, params) do
+    with :ok <- authorize_backend_id(user, params),
+         {:ok, query} <- Endpoints.create_query(user, params) do
       conn
       |> put_status(201)
       |> json(query)
@@ -78,7 +80,8 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
-    with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
+    with :ok <- authorize_backend_id(user, params),
+         query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
          {:ok, query} <- Endpoints.update_query(query, params) do
       conn
       |> case do
@@ -118,6 +121,18 @@ defmodule LogflareWeb.Api.EndpointController do
     else
       nil -> {:error, :not_found}
       {:error, _} = err -> err
+    end
+  end
+
+  defp authorize_backend_id(user, params) do
+    case params["backend_id"] do
+      v when v in [nil, ""] ->
+        :ok
+
+      backend_id ->
+        if Backends.get_backend_by_user_access(user, backend_id),
+          do: :ok,
+          else: {:error, :not_found}
     end
   end
 end

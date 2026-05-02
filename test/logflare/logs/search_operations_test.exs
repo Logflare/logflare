@@ -80,7 +80,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
 
         {:ok, {sql, _}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
 
-        assert sql =~ "UNNEST(t0.metadata)"
+        assert sql =~ "LEFT OUTER JOIN UNNEST(t0.metadata)"
       end)
     end
   end

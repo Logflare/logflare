@@ -15,8 +15,11 @@ defmodule Logflare.Sources.Source.SlackHookServer do
     GenServer.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__))
   end
 
-  @spec test_post(Source.t()) :: {:ok, Tesla.Env.t()} | {:error, Tesla.Env.t()}
-  def test_post(%Source{} = source) when source.slack_hook_url != nil do
+  @spec test_post(Source.t()) ::
+          {:ok, Tesla.Env.t()} | {:error, :no_url} | {:error, Tesla.Env.t()} | {:error, any()}
+  def test_post(%Source{slack_hook_url: nil}), do: {:error, :no_url}
+
+  def test_post(%Source{} = source) do
     events = fetch_events(source, 3, false)
 
     SlackAdaptor.send_message(source, events, 3)
@@ -127,6 +130,11 @@ defmodule Logflare.Sources.Source.SlackHookServer do
         Logger.warning("Slack hook error!", slackhook_response: resp)
 
         {:error, response}
+
+      {:error, reason} ->
+        Logger.warning("Slack hook transport error!", slackhook_response: inspect(reason))
+
+        {:error, reason}
     end
   end
 

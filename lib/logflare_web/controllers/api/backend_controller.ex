@@ -49,9 +49,7 @@ defmodule LogflareWeb.Api.BackendController do
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
-    params = Map.put(params, "user_id", user.id)
-
-    with {:ok, backend} <- Backends.create_backend(params) do
+    with {:ok, backend} <- Backends.create_backend(user, params) do
       conn
       |> put_status(201)
       |> json(backend)

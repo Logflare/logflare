@@ -61,7 +61,7 @@ defmodule Logflare.Backends.Backend do
 
   def changeset(backend, attrs) do
     backend
-    |> cast(attrs, [:type, :config, :user_id, :name, :description, :metadata, :default_ingest?])
+    |> cast(attrs, [:type, :config, :name, :description, :metadata, :default_ingest?])
     |> validate_required([:user_id, :type, :config, :name])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
     |> validate_config()

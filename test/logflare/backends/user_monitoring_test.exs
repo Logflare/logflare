@@ -264,9 +264,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       assert {:ok, _} = Backends.ingest_logs([%{"message" => "test webhook egress"}], source)
 
-      :timer.sleep(2500)
-
-      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 5_000
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 15_000
 
       rows = for row <- rows, do: row.json
 

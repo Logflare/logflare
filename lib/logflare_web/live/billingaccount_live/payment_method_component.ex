@@ -86,11 +86,12 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    payment_method = Billing.get_payment_method!(id)
+    customer = socket.assigns.user.billing_account.stripe_customer
 
-    with {:ok, _resp} <-
+    with payment_method when not is_nil(payment_method) <-
+           Billing.get_payment_method_by(id: id, customer_id: customer),
+         {:ok, _resp} <-
            Billing.delete_payment_method_with_stripe(payment_method) do
-      customer = socket.assigns.user.billing_account.stripe_customer
       payment_methods = Billing.list_payment_methods_by(customer_id: customer)
 
       {:noreply,
@@ -100,6 +101,13 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
        |> put_flash(:info, "Payment method deleted!")
        |> push_patch(to: ~p"/billing/edit")}
     else
+      nil ->
+        {:noreply,
+         socket
+         |> clear_flash()
+         |> put_flash(:error, "Payment method not found.")
+         |> push_patch(to: ~p"/billing/edit")}
+
       {:error, message} ->
         {:noreply,
          socket
