@@ -172,6 +172,34 @@ defmodule LogflareWeb.QueryLiveTest do
       assert html =~ "my_source"
     end
 
+    test "switches team context when `t` param references a different team", %{conn: conn} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{}])}
+      end)
+
+      home_owner = insert(:user)
+      _home_team = insert(:team, user: home_owner)
+
+      other_owner = insert(:user)
+      other_team = insert(:team, user: other_owner)
+      insert(:source, user: other_owner, name: "other_team_source")
+
+      team_user = insert(:team_user, email: home_owner.email, team: other_team)
+
+      conn = login_user(conn, home_owner, team_user)
+
+      query = URI.encode("SELECT id, timestamp FROM `other_team_source`")
+      {:ok, view, _html} = live(conn, "/query?q=#{query}&t=#{other_team.id}")
+
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{})
+
+      assert html =~ "Ran query successfully"
+    end
+
     test "shows error when running query with non-existent source", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/query")
 
@@ -187,6 +215,38 @@ defmodule LogflareWeb.QueryLiveTest do
 
       assert html =~ "can&#39;t find source nonexistent_source",
              "Expected error 'can't find source nonexistent_source' after running query. Got: #{String.slice(html, 0, 2000)}"
+    end
+
+    test "does not crash when multiple teams have sources with the same name", %{conn: conn} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{}])}
+      end)
+
+      [team_owner1, team_owner2] = insert_pair(:user)
+      team1 = insert(:team, user: team_owner1)
+      insert(:source, user: team_owner1, name: "shared_source")
+
+      _team2 = insert(:team, user: team_owner2)
+      insert(:source, user: team_owner2, name: "shared_source")
+
+      team_user = insert(:team_user, email: team_owner2.email, team: team1)
+
+      conn = login_user(conn, team_owner1, team_user)
+
+      {:ok, view, _html} = live(conn, "/query")
+
+      view
+      |> render_hook("parse-query", %{
+        value: "SELECT id, timestamp FROM `shared_source`"
+      })
+
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{})
+
+      assert html =~ "Ran query successfully"
     end
   end
 
