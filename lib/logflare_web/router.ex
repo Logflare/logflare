@@ -411,8 +411,8 @@ defmodule LogflareWeb.Router do
   scope "/webhooks", LogflareWeb do
     pipe_through(:api)
     post("/cloudflare/v1", CloudflareControllerV1, :event)
-    post("/stripe", StripeController, :event)
     # post "/vercel", VercelController, :event
+    # Stripe webhooks are handled by Stripe.WebhookPlug in the endpoint
   end
 
   scope "/health", LogflareWeb do
