@@ -16,6 +16,52 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
     :ok
   end
 
+  describe "test_connection/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :loki,
+          sources: [source],
+          config: %{url: "https://loki.example.com/loki/api/v1/push"}
+        )
+
+      [backend: backend]
+    end
+
+    test "POSTs an empty `streams` body to the configured URL", %{backend: backend} do
+      @client
+      |> expect(:send, fn req ->
+        assert req[:url] == "https://loki.example.com/loki/api/v1/push"
+        assert req[:body] == %{streams: []}
+        {:ok, %Tesla.Env{status: 204, body: ""}}
+      end)
+
+      assert :ok = @subject.test_connection(backend)
+    end
+
+    test "returns error on non-2xx response", %{backend: backend} do
+      @client
+      |> expect(:send, fn _req ->
+        {:ok, %Tesla.Env{status: 401, body: "no auth"}}
+      end)
+
+      assert {:error, reason} = @subject.test_connection(backend)
+      assert reason =~ "401"
+    end
+
+    test "returns error on transport failure", %{backend: backend} do
+      @client
+      |> expect(:send, fn _req -> {:error, :nxdomain} end)
+
+      assert {:error, reason} = @subject.test_connection(backend)
+      assert reason =~ "nxdomain"
+    end
+  end
+
   describe "cast and validate" do
     test "API key is required" do
       changeset = Adaptor.cast_and_validate_config(@subject, %{})

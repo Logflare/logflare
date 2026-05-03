@@ -377,6 +377,7 @@ defmodule LogflareWeb.BackendsLive do
       {"ClickHouse", :clickhouse},
       {"Incident.io", :incidentio},
       {"S3", :s3},
+      {"Sentry", :sentry},
       {"Axiom", :axiom},
       {"OTLP", :otlp},
       {"Last9", :last9},

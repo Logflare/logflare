@@ -20,6 +20,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   use GenServer
 
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
   alias Logflare.Utils
 
   @behaviour Logflare.Backends.Adaptor
@@ -69,6 +70,42 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         end
       end
     end)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    test_connection(backend, [])
+  end
+
+  @doc """
+  Tests connectivity by sending a custom probe `body` to the configured URL.
+
+  Used by adaptors that wrap `WebhookAdaptor` (e.g. `LokiAdaptor`,
+  `IncidentioAdaptor`) to share HTTP plumbing while choosing a payload shape
+  the receiver will accept.
+  """
+  @spec test_connection(Backend.t(), term()) :: :ok | {:error, term()}
+  def test_connection(%Backend{config: config}, body) do
+    response =
+      __MODULE__.Client.send(
+        url: config.url,
+        body: body,
+        headers: Map.get(config, :headers, %{}),
+        http: Map.get(config, :http),
+        gzip: Map.get(config, :gzip, true)
+      )
+
+    case response do
+      {:ok, %Tesla.Env{status: status}} when status in 200..299 ->
+        :ok
+
+      {:ok, %Tesla.Env{status: status, body: resp_body}} ->
+        {:error, "Unexpected response: #{status} #{inspect(resp_body)}"}
+
+      {:error, reason} ->
+        {:error, "Request error: #{inspect(reason)}"}
+    end
   end
 
   # HTTP Client

@@ -11,8 +11,9 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
   """
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
-  alias Logflare.Utils
+  alias Logflare.Backends.Backend
   alias Logflare.Sources
+  alias Logflare.Utils
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -131,5 +132,12 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
     else
       config
     end
+  end
+
+  @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    backend = %{backend | config: transform_config(backend)}
+    WebhookAdaptor.test_connection(backend, %{streams: []})
   end
 end

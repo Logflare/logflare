@@ -76,6 +76,80 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "test_connection/1" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          sources: [source],
+          config: %{http: "http1", url: "https://example.com", headers: %{"x-key" => "v"}}
+        )
+
+      [backend: backend]
+    end
+
+    test "succeeds on 2xx response", %{backend: backend} do
+      @subject.Client
+      |> expect(:send, fn req ->
+        assert req[:url] == "https://example.com"
+        assert req[:body] == []
+        assert req[:headers] == %{"x-key" => "v"}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      assert :ok = @subject.test_connection(backend)
+    end
+
+    test "returns error on non-2xx response", %{backend: backend} do
+      @subject.Client
+      |> expect(:send, fn _req ->
+        {:ok, %Tesla.Env{status: 401, body: %{"error" => "unauthorized"}}}
+      end)
+
+      assert {:error, reason} = @subject.test_connection(backend)
+      assert reason =~ "401"
+    end
+
+    test "returns error on transport failure", %{backend: backend} do
+      @subject.Client
+      |> expect(:send, fn _req -> {:error, :nxdomain} end)
+
+      assert {:error, reason} = @subject.test_connection(backend)
+      assert reason =~ "nxdomain"
+    end
+  end
+
+  describe "test_connection/2" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          sources: [source],
+          config: %{http: "http1", url: "https://example.com"}
+        )
+
+      [backend: backend]
+    end
+
+    test "forwards a custom probe body", %{backend: backend} do
+      probe = %{streams: []}
+
+      @subject.Client
+      |> expect(:send, fn req ->
+        assert req[:body] == probe
+        {:ok, %Tesla.Env{status: 204, body: ""}}
+      end)
+
+      assert :ok = @subject.test_connection(backend, probe)
+    end
+  end
+
   test "cast_and_validate_config/1" do
     for valid <- [
           %{url: "http://example.com"},

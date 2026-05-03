@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   """
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
   # https://docs.datadoghq.com/api/latest/logs/#send-logs
   @api_url_mapping %{
@@ -66,6 +67,13 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
     Map.put(config, :api_key, "REDACTED")
+  end
+
+  @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    backend = %{backend | config: transform_config(backend)}
+    WebhookAdaptor.test_connection(backend)
   end
 
   defp translate_event(%Source{} = source, %Logflare.LogEvent{} = le) do
