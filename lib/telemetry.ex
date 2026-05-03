@@ -270,6 +270,29 @@ defmodule Logflare.Telemetry do
       )
     ]
 
+    syslog_metrics = [
+      distribution("logflare.syslog_pool.connect.duration",
+        event_name: "logflare.syslog_pool.connect.stop",
+        unit: {:native, :millisecond},
+        description: "Syslog pool connection latency"
+      ),
+      counter("logflare.syslog_pool.connect.error",
+        event_name: "logflare.syslog_pool.connect.stop",
+        keep: &error_kind?/1,
+        tags: [:reason],
+        tag_values: &low_cardinality_syslog_reason/1,
+        description: "Syslog pool initial connection errors during checkout"
+      ),
+      counter("logflare.syslog_pool.disconnect",
+        tags: [:reason],
+        tag_values: &low_cardinality_syslog_reason/1,
+        description: "Syslog pool disconnections for established connections"
+      ),
+      counter("logflare.syslog_pool.reused_connection",
+        description: "Syslog pool reused connections"
+      )
+    ]
+
     Enum.concat([
       phoenix_metrics,
       database_metrics,
@@ -277,7 +300,8 @@ defmodule Logflare.Telemetry do
       cache_metrics,
       broadway_metrics,
       application_metrics,
-      finch_metrics
+      finch_metrics,
+      syslog_metrics
     ])
   end
 
@@ -439,5 +463,21 @@ defmodule Logflare.Telemetry do
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]
+  end
+
+  defp error_kind?(%{kind: :error}), do: true
+  defp error_kind?(_metadata), do: false
+
+  defp low_cardinality_syslog_reason(%{reason: reason} = metadata) do
+    low_cardinality_reason =
+      case reason do
+        :timeout -> "timeout"
+        :closed -> "closed"
+        :econnrefused -> "econnrefused"
+        :nxdomain -> "nxdomain"
+        _ -> "other"
+      end
+
+    %{metadata | reason: low_cardinality_reason}
   end
 end
