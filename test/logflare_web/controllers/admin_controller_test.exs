@@ -54,7 +54,7 @@ defmodule LogflareWeb.AdminControllerTest do
       assert json_response(conn, 401)
     end
 
-    test "nil code in query param no longer bypasses auth when env var is unset", %{conn: conn} do
+    test "returns 401 when env is unset and no header sent", %{conn: conn} do
       conn = put(conn, ~p"/admin/shutdown")
 
       assert json_response(conn, 401)
