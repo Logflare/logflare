@@ -56,7 +56,11 @@ defmodule Logflare.Sql do
     "pg_backend_pid",
     "pg_cancel_backend",
     "pg_conf_load_time",
+    "pg_ls_archive_statusdir",
     "pg_ls_dir",
+    "pg_ls_logdir",
+    "pg_ls_tmpdir",
+    "pg_ls_waldir",
     "pg_postmaster_start_time",
     "pg_read_binary_file",
     "pg_read_file",
@@ -699,17 +703,23 @@ defmodule Logflare.Sql do
   end
 
   defp has_restricted_functions(
-         {"Table", %{"args" => [_ | _], "name" => [%{"value" => name} | _]}},
+         {"Table", %{"args" => [_ | _], "name" => [%{"value" => _} | _] = names}},
          :ok,
          %{dialect: dialect}
        ) do
     restricted_list = list_restricted_functions_for_dialect(dialect)
-    normalized = String.downcase(name)
 
-    if normalized in restricted_list do
-      {:error, "Restricted function #{normalized}"}
-    else
+    found_restricted =
+      for name <- names,
+          normalized = String.downcase(name["value"]),
+          normalized in restricted_list do
+        normalized
+      end
+
+    if Enum.empty?(found_restricted) do
       :ok
+    else
+      {:error, "Restricted function #{Enum.join(found_restricted, ", ")}"}
     end
   end
 

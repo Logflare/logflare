@@ -1010,6 +1010,48 @@ defmodule Logflare.SqlTest do
       assert msg =~ "Only SELECT queries allowed"
     end
 
+    test "rejects schema-qualified TVF pg_catalog.pg_ls_dir in FROM clause", %{
+      source: %{name: name},
+      user: user
+    } do
+      assert {:error, msg} =
+               Sql.transform(
+                 :pg_sql,
+                 "SELECT id FROM pg_catalog.pg_ls_dir('/'), #{name}",
+                 user
+               )
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects schema-qualified TVF pg_catalog.dblink in FROM clause", %{
+      source: %{name: name},
+      user: user
+    } do
+      assert {:error, msg} =
+               Sql.transform(
+                 :pg_sql,
+                 "SELECT id FROM pg_catalog.dblink('host=attacker', 'SELECT 1'), #{name}",
+                 user
+               )
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects pg_ls_logdir", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT id FROM pg_ls_logdir(), #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects pg_ls_waldir", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT id FROM pg_ls_waldir(), #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
     test "rejects unknown source tables", %{user: user} do
       assert {:error, msg} =
                Sql.transform(:pg_sql, "SELECT id FROM nonexistent_table", user)
