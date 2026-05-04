@@ -95,6 +95,52 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "cast_and_validate_config/1 SSRF protection" do
+    @ssrf_error {"URL must not target private or reserved IP addresses", [validation: :ssrf]}
+
+    test "rejects private/reserved IP addresses" do
+      blocked = [
+        # loopback
+        "http://127.0.0.1/",
+        "http://127.1.2.3/",
+        # RFC1918
+        "http://10.0.0.1/",
+        "http://172.16.0.1/",
+        "http://172.31.255.255/",
+        "http://192.168.1.1/",
+        # link-local / cloud metadata
+        "http://169.254.169.254/latest/meta-data/",
+        # all-zeros, CGNAT
+        "http://0.0.0.0/",
+        "http://100.64.0.1/",
+        # private IPv6
+        "http://[::1]/",
+        "http://[fe80::1]/",
+        "http://[fc00::1]/",
+        "http://[fd00::1]/"
+      ]
+
+      for url <- blocked do
+        cs = Adaptor.cast_and_validate_config(@subject, %{url: url})
+        assert @ssrf_error in cs.errors[:url], "expected SSRF block for #{url}"
+      end
+    end
+
+    test "allows public IP addresses (172.16.0.0/12 boundary)" do
+      for url <- ["http://172.15.0.1/", "http://172.32.0.1/"] do
+        assert %Ecto.Changeset{valid?: true} =
+                 Adaptor.cast_and_validate_config(@subject, %{url: url}),
+               "expected valid for #{url}"
+      end
+    end
+
+    test "rejects hostname resolving to loopback" do
+      cs = Adaptor.cast_and_validate_config(@subject, %{url: "http://localhost/"})
+      assert %Ecto.Changeset{valid?: false} = cs
+      assert cs.errors[:url] != []
+    end
+  end
+
   test "cast_and_validate_config/1 for gzip" do
     assert %Ecto.Changeset{
              valid?: true,
