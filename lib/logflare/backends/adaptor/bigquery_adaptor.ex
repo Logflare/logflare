@@ -211,7 +211,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       when is_list(opts) do
     with {:ok, {bq_sql, bq_params}} <- ecto_to_sql(query, opts),
          %User{} = user <- Users.Cache.get(user_id) do
-      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", "`#{escape_bq_identifier(dataset_id)}`")
+      bq_sql =
+        String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", "`#{escape_bq_identifier(dataset_id)}`")
 
       execute_user_query(
         user,
