@@ -20,6 +20,11 @@ defmodule Logflare.AdminTest do
     assert still_admin.admin == true
   end
 
+  test "grant_admin/2 returns not_found when target user does not exist" do
+    granter = insert(:user, admin: true)
+    assert {:error, :not_found} = Admin.grant_admin(granter, nil)
+  end
+
   test "grant_admin/2 returns unauthorized when granter is not an admin" do
     non_admin = insert(:user, admin: false)
     target = insert(:user, admin: false)
