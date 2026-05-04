@@ -366,6 +366,7 @@ defmodule LogflareWeb.Router do
 
     get("/dashboard", AdminController, :dashboard)
     get("/accounts", AdminController, :accounts)
+
     live_session :admin, on_mount: @common_on_mount_hooks ++ @admin_hooks do
       live("/cluster", Admin.ClusterLive, :index)
       live("/partner", Admin.PartnerLive, :index)

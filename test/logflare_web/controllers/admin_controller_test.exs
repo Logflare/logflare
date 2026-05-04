@@ -186,7 +186,10 @@ defmodule LogflareWeb.AdminControllerTest do
         |> post(~p"/admin/accounts/#{admin.id}/revoke_admin")
 
       assert redirected_to(conn) == ~p"/admin/accounts"
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Cannot revoke your own admin access."
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "Cannot revoke your own admin access."
+
       assert Logflare.Users.get(admin.id).admin
     end
 
