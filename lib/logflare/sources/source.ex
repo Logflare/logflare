@@ -7,7 +7,7 @@ defmodule Logflare.Sources.Source do
   alias Logflare.Billing
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Users
-
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   @default_source_api_quota 25
   @derive {Jason.Encoder,
            only: [
@@ -352,11 +352,8 @@ defmodule Logflare.Sources.Source do
     dataset_id =
       source.user.bigquery_dataset_id || "#{source.user.id}" <> GCPConfig.dataset_id_append()
 
-    "`#{escape_bq_identifier(bq_project_id)}`.`#{escape_bq_identifier(dataset_id)}`.`#{escape_bq_identifier(table)}`"
+    "`#{BigQueryAdaptor.escape_bq_identifier(bq_project_id)}`.`#{BigQueryAdaptor.escape_bq_identifier(dataset_id)}`.`#{BigQueryAdaptor.escape_bq_identifier(table)}`"
   end
-
-  @spec escape_bq_identifier(String.t()) :: String.t()
-  defp escape_bq_identifier(identifier), do: String.replace(identifier, "`", "\\`")
 
   @spec format_table_name(atom) :: String.t()
   def format_table_name(source_token) when is_atom(source_token) do

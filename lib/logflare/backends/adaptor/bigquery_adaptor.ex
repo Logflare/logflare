@@ -706,7 +706,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @spec escape_bq_identifier(String.t()) :: String.t()
-  defp escape_bq_identifier(identifier), do: String.replace(identifier, "`", "\\`")
+  def escape_bq_identifier(identifier), do: String.replace(identifier, "`", "\\`")
 
   @spec pg_param_to_bq_param(param :: any()) :: map()
   defp pg_param_to_bq_param(param) do
