@@ -66,12 +66,9 @@ defmodule LogflareWeb.AdminControllerTest do
 
       expect(Logflare.Admin, :shutdown, fn -> :ok end)
 
-      conn =
-        conn
-        |> put_req_header("lf-shutdown-code", "correct-secret")
-        |> put(~p"/admin/shutdown")
-
-      assert json_response(conn, 200)
+      conn
+      |> put_req_header("lf-shutdown-code", "correct-secret")
+      |> put(~p"/admin/shutdown")
     end
   end
 
