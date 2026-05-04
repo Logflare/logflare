@@ -314,7 +314,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
         {"SELECT dblink_exec('host=localhost', 'UPDATE users SET is_admin=true'), id FROM #{source.name}",
          "Restricted function"},
         {"SELECT set_config('search_path', 'attacker,public', false), id FROM #{source.name}",
-         "Restricted function"}
+         "Restricted function"},
+        {"WITH x AS (DELETE FROM #{source.name} WHERE id > 0 RETURNING id) SELECT id FROM x",
+         "Only SELECT queries allowed"},
+        {"WITH x AS (UPDATE #{source.name} SET id = 1 WHERE id = 0 RETURNING id) SELECT id FROM x",
+         "Only SELECT queries allowed"}
       ]
 
       for {query, expected} <- blocked_queries do

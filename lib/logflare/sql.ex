@@ -28,6 +28,8 @@ defmodule Logflare.Sql do
     "session_user"
   ]
 
+  @dml_statement_keys ~w(Delete Insert Update Truncate Merge Drop ShowVariable)
+
   @pg_restricted_functions [
     "current_database",
     "current_schema",
@@ -662,14 +664,17 @@ defmodule Logflare.Sql do
   defp check_single_query_only(_ast), do: {:error, "Only singular query allowed"}
 
   defp check_select_statement_only(ast) do
-    non_select = for statement <- ast, not match?(%{"Query" => _}, statement), do: statement
+    found = AstUtils.collect_from_ast(ast, &do_find_dml_statement/1)
 
-    if Enum.empty?(non_select) do
+    if Enum.empty?(found) do
       :ok
     else
       {:error, "Only SELECT queries allowed"}
     end
   end
+
+  defp do_find_dml_statement({key, _}) when key in @dml_statement_keys, do: {:collect, key}
+  defp do_find_dml_statement(_), do: :skip
 
   defp has_restricted_functions(ast, data) when is_list(ast),
     do: has_restricted_functions(ast, :ok, data)

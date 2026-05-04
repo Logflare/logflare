@@ -987,6 +987,29 @@ defmodule Logflare.SqlTest do
       assert msg =~ "Only SELECT queries allowed"
     end
 
+    test "rejects writable CTE with embedded DELETE", %{source: %{name: name}, user: user} do
+      query = "WITH x AS (DELETE FROM #{name} WHERE id > 0 RETURNING id) SELECT id FROM x"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects writable CTE with embedded INSERT", %{source: %{name: name}, user: user} do
+      query =
+        "WITH x AS (INSERT INTO #{name} (id) VALUES (1) RETURNING id) SELECT id FROM x"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects writable CTE with embedded UPDATE", %{source: %{name: name}, user: user} do
+      query =
+        "WITH x AS (UPDATE #{name} SET id = 1 WHERE id = 0 RETURNING id) SELECT id FROM x"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
     test "rejects unknown source tables", %{user: user} do
       assert {:error, msg} =
                Sql.transform(:pg_sql, "SELECT id FROM nonexistent_table", user)
