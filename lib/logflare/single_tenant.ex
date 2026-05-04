@@ -279,7 +279,7 @@ defmodule Logflare.SingleTenant do
     if count == 0 do
       endpoints =
         for params <- endpoint_params() do
-          {:ok, endpoint} = Endpoints.create_query(user, params)
+          {:ok, endpoint} = Endpoints.create_query(user, params, user)
           endpoint
         end
 

@@ -4,7 +4,7 @@ defmodule LogflareWeb.AlertsLive do
   use Phoenix.Component
 
   import Ecto.Query
-  import LogflareWeb.Utils, only: [stringify_changeset_errors: 2]
+  import LogflareWeb.Utils, only: [stringify_changeset_errors: 2, time_ago: 1]
 
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
@@ -478,19 +478,6 @@ defmodule LogflareWeb.AlertsLive do
       "discarded" -> "danger"
       "cancelled" -> "warning"
       _ -> "secondary"
-    end
-  end
-
-  defp time_ago(datetime) do
-    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
-
-    cond do
-      diff < 15 -> "Just now"
-      diff < 60 -> "#{diff}s ago"
-      diff < 3_600 -> "#{div(diff, 60)}m ago"
-      diff < 86_400 -> "#{div(diff, 3600)}h ago"
-      diff < 604_800 -> "#{div(diff, 86400)}d ago"
-      true -> Calendar.strftime(datetime, "%Y-%m-%d")
     end
   end
 

@@ -56,13 +56,13 @@ defmodule LogflareWeb.EndpointsLiveTest do
       |> render_click()
 
       assert_patched(view, "/endpoints/#{endpoint.id}?t=#{team.id}")
-      assert has_element?(view, "code", endpoint.query)
+      assert_query_displayed(view, endpoint.query)
     end
 
     test "show endpoint", %{conn: conn, endpoint: endpoint, team: team} do
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
-      assert has_element?(view, "code", endpoint.query)
+      assert_query_displayed(view, endpoint.query)
       assert has_element?(view, "p", endpoint.description)
 
       # link to edit
@@ -86,7 +86,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       })
 
       # show the endpoint
-      assert has_element?(view, "code", new_query)
+      assert_query_displayed(view, new_query)
     end
 
     test "edit endpoint with redact_pii checkbox", %{conn: conn, endpoint: endpoint} do
@@ -104,7 +104,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
         }
       })
 
-      assert render(view) =~ ~r/redact PII:.*enabled/
+      assert render(view) =~ ~r/Redact PII:.*enabled/
     end
 
     test "delete endpoint from edit", %{conn: conn, endpoint: endpoint} do
@@ -117,6 +117,27 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "*", "Endpoint Not Found")
+    end
+  end
+
+  describe "endpoint versions" do
+    setup %{user: user} do
+      [endpoint: insert(:endpoint, user: user)]
+    end
+
+    test "show page versions link navigates with team param", %{
+      conn: conn,
+      endpoint: endpoint,
+      team: team
+    } do
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}")
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               view
+               |> element(".subhead a", "versions")
+               |> render_click()
+
+      assert to == "/endpoints/#{endpoint.id}/versions?t=#{team.id}"
     end
   end
 
@@ -157,7 +178,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     }) =~ "created successfully"
 
     assert has_element?(view, "h1,h2,h3,h4,h5", "some query")
-    assert has_element?(view, "code", new_query)
+    assert_query_displayed(view, new_query)
     path = assert_patch(view)
     assert path =~ ~r/\/endpoints\/\S+\?t=#{team.id}/
     assert render(view) =~ "some description"
@@ -181,7 +202,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       }
     }) =~ "created successfully"
 
-    assert render(view) =~ ~r/redact PII:.*enabled/
+    assert render(view) =~ ~r/Redact PII:.*enabled/
   end
 
   describe "parse queries on change" do
@@ -244,7 +265,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
                }
              })
 
-      assert has_element?(view, "code", "select @my_param as valid")
+      assert_query_displayed(view, "select @my_param as valid")
 
       assert_patched(view, "/endpoints/#{endpoint.id}?t=#{team.id}")
       # no longer has the initail query string
@@ -285,7 +306,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
                }
              })
 
-      assert render(view) =~ "select @test as changed_again"
+      assert_query_displayed(view, "select @test as changed_again")
       assert render(view) =~ "changed"
     end
   end
@@ -400,9 +421,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
       # assert html =~ "test_param"
       assert html =~ endpoint.token
       assert html =~ inspect(endpoint.max_limit)
-      assert html =~ ~r/caching\:.+#{endpoint.cache_duration_seconds} seconds/
-      assert html =~ ~r/cache warming\:.+ #{endpoint.proactive_requerying_seconds} seconds/
-      assert html =~ ~r/query sandboxing\:.+ disabled/
+      assert html =~ ~r/Caching\:.+#{endpoint.cache_duration_seconds} seconds/
+      assert html =~ ~r/Cache warming\:.+#{endpoint.proactive_requerying_seconds} seconds/
+      assert html =~ ~r/Query sandboxing\:.+disabled/
 
       # test the query
       assert view
@@ -523,8 +544,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
 
-      assert render(view) =~ ~r/redact PII:.*enabled/
-      visible_code = view |> element("div.tw-w-full.tw-bg-zinc-800 code") |> render()
+      assert render(view) =~ ~r/Redact PII:.*enabled/
+      visible_code = view |> element("pre code") |> render()
       assert visible_code =~ "192.168.1.1"
       assert visible_code =~ "10.0.0.1"
 
@@ -1273,6 +1294,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
     end
+  end
+
+  defp assert_query_displayed(view, query) do
+    {:ok, formatted_query} = SqlFmt.format_query(query)
+
+    assert has_element?(view, "code", formatted_query)
   end
 
   @spec submit_sandbox_lql(Plug.Conn.t(), struct(), String.t()) :: String.t()
