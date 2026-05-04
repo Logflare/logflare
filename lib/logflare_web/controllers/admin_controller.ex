@@ -2,6 +2,7 @@ defmodule LogflareWeb.AdminController do
   use LogflareWeb, :controller
 
   import Ecto.Query, only: [from: 2]
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
   alias Logflare.Admin
   alias Logflare.Repo
@@ -18,16 +19,17 @@ defmodule LogflareWeb.AdminController do
   ]
   defp env_node_shutdown_code, do: Application.get_env(:logflare, :node_shutdown_code)
 
-  defp valid_shutdown_code?(provided) do
-    configured = env_node_shutdown_code()
+  defp valid_shutdown_code?(provided) when is_non_empty_binary(provided) do
+    case env_node_shutdown_code() do
+      configured when is_non_empty_binary(configured) ->
+        Plug.Crypto.secure_compare(configured, provided)
 
-    case {configured, provided} do
-      {nil, _} -> false
-      {"", _} -> false
-      {_, provided} when provided in [nil, ""] -> false
-      _ -> Plug.Crypto.secure_compare(configured, provided)
+      _ ->
+        false
     end
   end
+
+  defp valid_shutdown_code?(_provided), do: false
 
   def dashboard(conn, _params) do
     conn
