@@ -129,7 +129,7 @@ defmodule LogflareWeb.Utils do
         case type do
           "STRING" -> "'#{String.replace(value, "'", "''")}'"
           num when num in ["INTEGER", "FLOAT"] -> inspect(value)
-          _ -> inspect(value)
+          _ -> "'#{String.replace(to_string(value), "'", "''")}'"
         end
 
       String.replace(acc_sql, "?", replacement, global: false)

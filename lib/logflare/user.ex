@@ -6,15 +6,16 @@ defmodule Logflare.User do
 
   import Ecto.Changeset
 
-  alias Logflare.Sources.Source
-  alias Logflare.Teams.Team
+  alias Logflare.Alerting.AlertQuery
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Billing.BillingAccount
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.Partners.Partner
+  alias Logflare.Sources.Source
+  alias Logflare.Teams.Team
   alias Logflare.Users.UserPreferences
   alias Logflare.Vercel
-  alias Logflare.Partners.Partner
-  alias Logflare.Alerting.AlertQuery
 
   @type id :: pos_integer()
 
@@ -273,11 +274,9 @@ defmodule Logflare.User do
     end)
   end
 
-  @bq_identifier_pattern ~r/\A[a-zA-Z0-9_]+\z/
-
   @spec validate_bq_dataset_id(Ecto.Changeset.t()) :: Ecto.Changeset.t()
   def validate_bq_dataset_id(changeset) do
-    validate_format(changeset, :bigquery_dataset_id, @bq_identifier_pattern,
+    validate_format(changeset, :bigquery_dataset_id, BigQueryAdaptor.bq_identifier_pattern(),
       message: "must contain only letters, numbers, and underscores"
     )
   end

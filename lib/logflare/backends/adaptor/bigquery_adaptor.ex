@@ -248,6 +248,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @bq_identifier_pattern ~r/\A[a-zA-Z0-9_]+\z/
   @gcp_project_id_pattern ~r/\A[a-z][a-z0-9\-]{4,28}[a-z0-9]\z/
 
+  @spec bq_identifier_pattern() :: Regex.t()
+  def bq_identifier_pattern, do: @bq_identifier_pattern
+
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
     changeset
