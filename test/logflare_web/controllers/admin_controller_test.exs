@@ -12,6 +12,7 @@ defmodule LogflareWeb.AdminControllerTest do
   describe "shutdown_node/2" do
     setup do
       insert(:plan)
+      stub(Logflare.Admin, :shutdown, fn -> :ok end)
       :ok
     end
 
@@ -58,6 +59,19 @@ defmodule LogflareWeb.AdminControllerTest do
       conn = put(conn, ~p"/admin/shutdown")
 
       assert json_response(conn, 401)
+    end
+
+    test "shuts down node when secret matches header", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, "correct-secret")
+
+      expect(Logflare.Admin, :shutdown, fn -> :ok end)
+
+      conn =
+        conn
+        |> put_req_header("lf-shutdown-code", "correct-secret")
+        |> put(~p"/admin/shutdown")
+
+      assert json_response(conn, 200)
     end
   end
 
