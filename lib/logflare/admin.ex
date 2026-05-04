@@ -24,13 +24,15 @@ defmodule Logflare.Admin do
     {:ok, task}
   end
 
-  @spec grant_admin(User.t(), User.t()) ::
-          {:ok, User.t()} | {:error, :unauthorized} | {:error, Ecto.Changeset.t()}
+  @spec grant_admin(User.t(), User.t() | nil) ::
+          {:ok, User.t()} | {:error, :not_found | :unauthorized} | {:error, Ecto.Changeset.t()}
   def grant_admin(%User{admin: true}, %User{} = target) do
     target
     |> Ecto.Changeset.change(admin: true)
     |> Repo.update()
   end
+
+  def grant_admin(%User{}, nil), do: {:error, :not_found}
 
   def grant_admin(%User{}, %User{}), do: {:error, :unauthorized}
 
