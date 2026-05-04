@@ -377,6 +377,7 @@ defmodule LogflareWeb.Router do
     delete("/accounts/:id", AdminController, :delete_account)
     get("/accounts/:id/become", AdminController, :become_account)
     post("/accounts/:id/grant_admin", AdminController, :grant_admin)
+    post("/accounts/:id/revoke_admin", AdminController, :revoke_admin)
 
     live_dashboard("/livedashboard", ecto_repos: [], metrics: Logflare.Telemetry)
   end

@@ -68,6 +68,34 @@ defmodule Logflare.AdminTest do
     assert Admin.admin?(admin_user.email)
   end
 
+  test "revoke_admin/2 removes admin flag from an admin user" do
+    granter = insert(:user, admin: true)
+    target = insert(:user, admin: true)
+
+    assert {:ok, updated} = Admin.revoke_admin(granter, target)
+    refute updated.admin
+    refute Admin.admin?(target.email)
+  end
+
+  test "revoke_admin/2 prevents an admin from revoking their own privileges" do
+    admin = insert(:user, admin: true)
+    assert {:error, :self_revocation} = Admin.revoke_admin(admin, admin)
+    assert Admin.admin?(admin.email)
+  end
+
+  test "revoke_admin/2 returns not_found when target user does not exist" do
+    granter = insert(:user, admin: true)
+    assert {:error, :not_found} = Admin.revoke_admin(granter, nil)
+  end
+
+  test "revoke_admin/2 returns unauthorized when granter is not an admin" do
+    non_admin = insert(:user, admin: false)
+    target = insert(:user, admin: true)
+
+    assert {:error, :unauthorized} = Admin.revoke_admin(non_admin, target)
+    assert Admin.admin?(target.email)
+  end
+
   test "admin?/1" do
     user = insert(:user, admin: true)
     home_team = insert(:team, user: user)

@@ -26,7 +26,14 @@ defmodule Logflare.Admin do
 
   @spec grant_admin(User.t(), User.t() | nil) ::
           {:ok, User.t()} | {:error, :not_found | :unauthorized} | {:error, Ecto.Changeset.t()}
-  def grant_admin(%User{admin: true}, %User{} = target) do
+  def grant_admin(%User{admin: true} = granter, %User{} = target) do
+    Logger.info("Admin privilege granted",
+      granter_id: granter.id,
+      granter_email: granter.email,
+      target_id: target.id,
+      target_email: target.email
+    )
+
     target
     |> Ecto.Changeset.change(admin: true)
     |> Repo.update()
@@ -35,6 +42,31 @@ defmodule Logflare.Admin do
   def grant_admin(%User{}, nil), do: {:error, :not_found}
 
   def grant_admin(%User{}, %User{}), do: {:error, :unauthorized}
+
+  @spec revoke_admin(User.t(), User.t() | nil) ::
+          {:ok, User.t()}
+          | {:error, :not_found | :self_revocation | :unauthorized}
+          | {:error, Ecto.Changeset.t()}
+  def revoke_admin(%User{admin: true} = granter, %User{} = target) do
+    if granter.id == target.id do
+      {:error, :self_revocation}
+    else
+      Logger.info("Admin privilege revoked",
+        granter_id: granter.id,
+        granter_email: granter.email,
+        target_id: target.id,
+        target_email: target.email
+      )
+
+      target
+      |> Ecto.Changeset.change(admin: false)
+      |> Repo.update()
+    end
+  end
+
+  def revoke_admin(%User{}, nil), do: {:error, :not_found}
+
+  def revoke_admin(%User{}, %User{}), do: {:error, :unauthorized}
 
   @spec admin?(String.t() | nil) :: boolean()
   def admin?(email) when is_binary(email) do

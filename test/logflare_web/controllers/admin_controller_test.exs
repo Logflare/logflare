@@ -116,6 +116,56 @@ defmodule LogflareWeb.AdminControllerTest do
       refute Logflare.Users.get(target.id).admin
     end
 
+    test "become_account redirects with error flash for a non-existent user ID", %{
+      conn: conn,
+      admin: admin
+    } do
+      conn =
+        conn
+        |> login_user(admin)
+        |> get(~p"/admin/accounts/0/become")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Account not found."
+    end
+
+    test "admin can revoke admin from another admin", %{conn: conn, admin: admin} do
+      target = insert(:user, admin: true)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/#{target.id}/revoke_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Admin access revoked."
+      refute Logflare.Users.get(target.id).admin
+    end
+
+    test "admin cannot revoke their own admin access", %{conn: conn, admin: admin} do
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/#{admin.id}/revoke_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Cannot revoke your own admin access."
+      assert Logflare.Users.get(admin.id).admin
+    end
+
+    test "non-admin cannot revoke admin (403)", %{conn: conn, user: user} do
+      target = insert(:user, admin: true)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> post(~p"/admin/accounts/#{target.id}/revoke_admin")
+
+      assert conn.halted == true
+      assert conn.status == 403
+      assert Logflare.Users.get(target.id).admin
+    end
+
     test "admin can delete an account", %{conn: conn, admin: admin} do
       target = insert(:user)
 
