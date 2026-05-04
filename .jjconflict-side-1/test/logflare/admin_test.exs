@@ -77,6 +77,25 @@ defmodule Logflare.AdminTest do
     refute Admin.admin?(target.email)
   end
 
+  test "revoke_admin/2 prevents revoking the last admin" do
+    granter = insert(:user, admin: true)
+    # granter is the only admin — revoking target would leave zero admins
+    target = insert(:user, admin: true)
+    Logflare.Repo.update!(Ecto.Changeset.change(granter, admin: false))
+
+    assert {:error, :last_admin} = Admin.revoke_admin(granter, target)
+    assert Logflare.Users.get(target.id).admin
+  end
+
+  test "revoke_admin/2 succeeds when at least one other admin remains" do
+    _other_admin = insert(:user, admin: true)
+    granter = insert(:user, admin: true)
+    target = insert(:user, admin: true)
+
+    assert {:ok, updated} = Admin.revoke_admin(granter, target)
+    refute updated.admin
+  end
+
   test "revoke_admin/2 prevents an admin from revoking their own privileges" do
     admin = insert(:user, admin: true)
     assert {:error, :self_revocation} = Admin.revoke_admin(admin, admin)

@@ -49,32 +49,42 @@ defmodule Logflare.Admin do
 
   @spec revoke_admin(User.t() | nil, User.t() | nil) ::
           {:ok, User.t()}
-          | {:error, :not_found | :self_revocation | :unauthorized}
+          | {:error, :not_found | :last_admin | :self_revocation | :unauthorized}
           | {:error, Ecto.Changeset.t()}
   def revoke_admin(nil, _), do: {:error, :not_found}
 
   def revoke_admin(%User{admin: true} = granter, %User{} = target) do
-    if granter.id == target.id do
-      {:error, :self_revocation}
-    else
-      Logger.info("Admin privilege revoked",
-        audit: %{
-          admin_user_id: granter.id,
-          admin_email: granter.email,
-          target_user_id: target.id,
-          target_user_email: target.email
-        }
-      )
+    cond do
+      granter.id == target.id ->
+        {:error, :self_revocation}
 
-      target
-      |> Ecto.Changeset.change(admin: false)
-      |> Repo.update()
+      count_admins() <= 1 ->
+        {:error, :last_admin}
+
+      true ->
+        Logger.info("Admin privilege revoked",
+          audit: %{
+            admin_user_id: granter.id,
+            admin_email: granter.email,
+            target_user_id: target.id,
+            target_user_email: target.email
+          }
+        )
+
+        target
+        |> Ecto.Changeset.change(admin: false)
+        |> Repo.update()
     end
   end
 
   def revoke_admin(%User{}, nil), do: {:error, :not_found}
 
   def revoke_admin(%User{}, %User{}), do: {:error, :unauthorized}
+
+  @spec count_admins() :: non_neg_integer()
+  defp count_admins do
+    Repo.aggregate(from(u in User, where: u.admin == true), :count)
+  end
 
   @spec admin?(String.t() | nil) :: boolean()
   def admin?(email) when is_binary(email) do
