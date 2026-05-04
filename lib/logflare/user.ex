@@ -6,15 +6,16 @@ defmodule Logflare.User do
 
   import Ecto.Changeset
 
-  alias Logflare.Sources.Source
-  alias Logflare.Teams.Team
+  alias Logflare.Alerting.AlertQuery
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Billing.BillingAccount
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.Partners.Partner
+  alias Logflare.Sources.Source
+  alias Logflare.Teams.Team
   alias Logflare.Users.UserPreferences
   alias Logflare.Vercel
-  alias Logflare.Partners.Partner
-  alias Logflare.Alerting.AlertQuery
 
   @type id :: pos_integer()
 
@@ -204,6 +205,7 @@ defmodule Logflare.User do
     |> downcase_email_provider_uid(user)
     |> unique_constraint(:email, name: :users_lower_email_index)
     |> validate_bq_dataset_location()
+    |> validate_bq_dataset_id()
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
   end
 
@@ -270,6 +272,13 @@ defmodule Logflare.User do
           [{field, options[:message] || "#{error_message}"}]
       end
     end)
+  end
+
+  @spec validate_bq_dataset_id(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def validate_bq_dataset_id(changeset) do
+    validate_format(changeset, :bigquery_dataset_id, BigQueryAdaptor.bq_identifier_pattern(),
+      message: "must contain only letters, numbers, and underscores"
+    )
   end
 
   def validate_bq_dataset_location(changeset) do

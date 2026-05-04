@@ -7,6 +7,7 @@ defmodule Logflare.Sources.Source do
   alias Logflare.Billing
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Users
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   @default_source_api_quota 25
   @derive {Jason.Encoder,
@@ -352,7 +353,7 @@ defmodule Logflare.Sources.Source do
     dataset_id =
       source.user.bigquery_dataset_id || "#{source.user.id}" <> GCPConfig.dataset_id_append()
 
-    "`#{bq_project_id}`.#{dataset_id}.#{table}"
+    "`#{BigQueryAdaptor.escape_bq_identifier(bq_project_id)}`.`#{BigQueryAdaptor.escape_bq_identifier(dataset_id)}`.`#{BigQueryAdaptor.escape_bq_identifier(table)}`"
   end
 
   @spec format_table_name(atom) :: String.t()

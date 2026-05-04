@@ -1,5 +1,6 @@
 defmodule Logflare.UsersTest do
   use Logflare.DataCase, async: true
+  use ExUnitProperties
 
   alias Logflare.Sources
   alias Logflare.User
@@ -72,6 +73,38 @@ defmodule Logflare.UsersTest do
     assert Users.count_users() == 1
     insert(:user)
     assert Users.count_users() == 2
+  end
+
+  # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
+  # identifier-quoting characters, whitespace, and shell metacharacters.
+  @injection_chars ~c";`.'\" -/\\#!@$%^&*()+={}[]|<>?,~"
+
+  defp dataset_id_with_injection do
+    gen all prefix <- string(:alphanumeric, min_length: 1),
+            bad_char <- member_of(@injection_chars),
+            suffix <- string(:alphanumeric) do
+      prefix <> <<bad_char>> <> suffix
+    end
+  end
+
+  describe "validate_bq_dataset_id/1" do
+    test "accepts valid BigQuery dataset identifiers" do
+      user = insert(:user)
+
+      for valid <- ["my_dataset", "MyDataset1", "ALLCAPS", "abc123", "a_b_c"] do
+        changeset = User.changeset(user, %{bigquery_dataset_id: valid})
+        refute Keyword.has_key?(changeset.errors, :bigquery_dataset_id)
+      end
+    end
+
+    property "rejects dataset IDs containing any injection character" do
+      user = insert(:user)
+
+      check all bad <- dataset_id_with_injection() do
+        changeset = User.changeset(user, %{bigquery_dataset_id: bad})
+        assert Keyword.has_key?(changeset.errors, :bigquery_dataset_id)
+      end
+    end
   end
 
   describe "user_changeset" do

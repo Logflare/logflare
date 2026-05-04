@@ -127,9 +127,18 @@ defmodule LogflareWeb.Utils do
 
       replacement =
         case type do
-          "STRING" -> "'#{value}'"
-          num when num in ["INTEGER", "FLOAT"] -> inspect(value)
-          _ -> inspect(value)
+          "STRING" ->
+            escaped = value |> String.replace("\\", "\\\\") |> String.replace("'", "''")
+            "'#{escaped}'"
+
+          num when num in ["INTEGER", "FLOAT"] ->
+            inspect(value)
+
+          _ ->
+            escaped =
+              value |> to_string() |> String.replace("\\", "\\\\") |> String.replace("'", "''")
+
+            "'#{escaped}'"
         end
 
       String.replace(acc_sql, "?", replacement, global: false)
@@ -142,7 +151,7 @@ defmodule LogflareWeb.Utils do
         }) :: String.t()
   def replace_table_with_source_name(sql, %{bq_table_id: table_id, name: name})
       when is_binary(sql) and is_binary(table_id) and is_binary(name) do
-    quoted_name = "`#{name}`"
+    quoted_name = "`#{String.replace(name, "`", "\\`")}`"
 
     table_variants =
       [table_id, String.replace(table_id, "`", "")]
