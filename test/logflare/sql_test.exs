@@ -966,6 +966,27 @@ defmodule Logflare.SqlTest do
       assert msg =~ "Restricted function"
     end
 
+    test "rejects restricted function lo_import", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT lo_import('/etc/passwd'), id FROM #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects restricted function lo_export", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT lo_export(1234, '/tmp/out'), id FROM #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects COPY TO PROGRAM DDL statement", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "COPY (SELECT id FROM #{name}) TO PROGRAM 'id'", user)
+
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
     test "rejects unknown source tables", %{user: user} do
       assert {:error, msg} =
                Sql.transform(:pg_sql, "SELECT id FROM nonexistent_table", user)

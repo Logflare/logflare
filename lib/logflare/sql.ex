@@ -37,6 +37,8 @@ defmodule Logflare.Sql do
     "inet_client_port",
     "inet_server_addr",
     "inet_server_port",
+    "lo_export",
+    "lo_import",
     "pg_backend_pid",
     "pg_cancel_backend",
     "pg_conf_load_time",
@@ -647,37 +649,9 @@ defmodule Logflare.Sql do
   defp check_single_query_only(_ast), do: {:error, "Only singular query allowed"}
 
   defp check_select_statement_only(ast) do
-    check = fn input ->
-      case input do
-        %{"Insert" => _} ->
-          true
+    non_select = for statement <- ast, not match?(%{"Query" => _}, statement), do: statement
 
-        %{"Update" => _} ->
-          true
-
-        %{"Delete" => _} ->
-          true
-
-        %{"Truncate" => _} ->
-          true
-
-        %{"Merge" => _} ->
-          true
-
-        %{"Drop" => _} ->
-          true
-
-        %{"ShowVariable" => _} ->
-          true
-
-        _ ->
-          false
-      end
-    end
-
-    restricted = for statement <- ast, res = check.(statement), res, do: res
-
-    if Enum.empty?(restricted) do
+    if Enum.empty?(non_select) do
       :ok
     else
       {:error, "Only SELECT queries allowed"}

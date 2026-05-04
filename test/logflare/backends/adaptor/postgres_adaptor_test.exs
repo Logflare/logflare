@@ -297,11 +297,14 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
         {"UPDATE #{source.name} SET id = 1 WHERE id = 1", "Only SELECT queries allowed"},
         {"INSERT INTO #{source.name} (id) VALUES (1)", "Only SELECT queries allowed"},
         {"DELETE FROM #{source.name} WHERE id = 1", "Only SELECT queries allowed"},
+        {"COPY (SELECT id FROM #{source.name}) TO PROGRAM 'id'", "Only SELECT queries allowed"},
         {"SELECT id FROM #{source.name}; SELECT id FROM #{source.name}",
          "Only singular query allowed"},
         {"SELECT * FROM #{source.name}", "wildcard"},
         {"SELECT current_user, id FROM #{source.name}", "Restricted function"},
-        {"SELECT pg_read_file('/etc/passwd'), id FROM #{source.name}", "Restricted function"}
+        {"SELECT pg_read_file('/etc/passwd'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_import('/etc/passwd'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_export(1234, '/tmp/out'), id FROM #{source.name}", "Restricted function"}
       ]
 
       for {query, expected} <- blocked_queries do
