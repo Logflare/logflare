@@ -32,9 +32,14 @@ defmodule Logflare.Sql do
 
   @pg_restricted_functions [
     "current_database",
+    "current_setting",
     "current_schema",
     "current_schemas",
     "current_user",
+    "cursor_to_xml",
+    "database_to_xml",
+    "database_to_xml_and_xmlschema",
+    "database_to_xmlschema",
     "dblink",
     "dblink_connect",
     "dblink_connect_u",
@@ -71,8 +76,17 @@ defmodule Logflare.Sql do
     "pg_stat_file",
     "pg_stop_backup",
     "pg_terminate_backend",
+    "query_to_xml",
+    "query_to_xml_and_xmlschema",
+    "query_to_xmlschema",
+    "schema_to_xml",
+    "schema_to_xml_and_xmlschema",
+    "schema_to_xmlschema",
     "session_user",
     "set_config",
+    "table_to_xml",
+    "table_to_xml_and_xmlschema",
+    "table_to_xmlschema",
     "version"
   ]
 
