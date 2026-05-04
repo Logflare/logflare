@@ -304,7 +304,17 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
         {"SELECT current_user, id FROM #{source.name}", "Restricted function"},
         {"SELECT pg_read_file('/etc/passwd'), id FROM #{source.name}", "Restricted function"},
         {"SELECT lo_import('/etc/passwd'), id FROM #{source.name}", "Restricted function"},
-        {"SELECT lo_export(1234, '/tmp/out'), id FROM #{source.name}", "Restricted function"}
+        {"SELECT lo_export(1234, '/tmp/out'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_open(1234, 262144), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_read(1, 1024), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_write(1, 'data'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_unlink(1234), id FROM #{source.name}", "Restricted function"},
+        {"SELECT dblink('host=localhost', 'SELECT 1'), id FROM #{source.name}",
+         "Restricted function"},
+        {"SELECT dblink_exec('host=localhost', 'UPDATE users SET is_admin=true'), id FROM #{source.name}",
+         "Restricted function"},
+        {"SELECT set_config('search_path', 'attacker,public', false), id FROM #{source.name}",
+         "Restricted function"}
       ]
 
       for {query, expected} <- blocked_queries do
