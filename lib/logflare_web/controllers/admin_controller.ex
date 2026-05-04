@@ -22,7 +22,10 @@ defmodule LogflareWeb.AdminController do
   defp valid_shutdown_code?(provided) when is_non_empty_binary(provided) do
     case env_node_shutdown_code() do
       configured when is_non_empty_binary(configured) ->
-        Plug.Crypto.secure_compare(configured, provided)
+        Plug.Crypto.secure_compare(
+          :crypto.hash(:sha256, configured),
+          :crypto.hash(:sha256, provided)
+        )
 
       _ ->
         false
