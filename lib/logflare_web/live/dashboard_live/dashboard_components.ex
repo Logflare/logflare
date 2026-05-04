@@ -113,11 +113,17 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   attr :user, Logflare.User, required: true
   attr :team, Logflare.Teams.Team, required: true
   attr :team_user, Logflare.TeamUsers.TeamUser, default: nil
+  attr :home_team_exists?, :boolean, default: true
 
   def members(assigns) do
     ~H"""
     <div id="members">
       <h5 class="header-margin">Members</h5>
+      <div :if={@team_user && !@home_team_exists?} class="tw-mb-3">
+        <button type="button" phx-click="create_home_team" data-confirm="Create your own home team using this account?" class="btn btn-primary btn-sm">
+          Create your home team
+        </button>
+      </div>
       <ul id="team-members" class="tw-mb-4 tw-list-none tw-p-0">
         <li class="tw-mb-2">
           <img class="rounded-circle" width="35" height="35" src={@user.image || Auth.gen_gravatar_link(@user.email)} alt={@user.name || @user.email} />

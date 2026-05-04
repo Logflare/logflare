@@ -6,6 +6,7 @@ defmodule LogflareWeb.DashboardLive do
   alias Logflare.Sources
   alias Logflare.Sources.UserMetricsPoller
   alias Logflare.Teams
+  alias Logflare.Users
   alias LogflareWeb.DashboardLive.DashboardComponents
   alias LogflareWeb.DashboardLive.DashboardSourceComponents
   alias LogflareWeb.Helpers.Forms
@@ -14,6 +15,12 @@ defmodule LogflareWeb.DashboardLive do
   @impl true
   def mount(_, _session, socket) do
     %{user: user} = socket.assigns
+
+    home_team_exists? =
+      case socket.assigns[:team_user] do
+        nil -> true
+        team_user -> not is_nil(Teams.get_home_team(team_user))
+      end
 
     socket =
       socket
@@ -30,6 +37,7 @@ defmodule LogflareWeb.DashboardLive do
       |> assign(:plan, Billing.get_plan_by_user(user))
       |> assign(:fade_in, false)
       |> assign(:show_modal, false)
+      |> assign(:home_team_exists?, home_team_exists?)
 
     if connected?(socket) do
       %{user: user} = socket.assigns
@@ -69,6 +77,21 @@ defmodule LogflareWeb.DashboardLive do
 
     track_user_metrics(user.id)
     {:noreply, socket}
+  end
+
+  def handle_event("create_home_team", _params, socket) do
+    %{team_user: team_user} = socket.assigns
+
+    case Users.create_user(team_user) do
+      {:ok, _user} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Home team created. Welcome to your new team!")
+         |> redirect(to: ~p"/dashboard")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not create home team.")}
+    end
   end
 
   @impl true
@@ -117,7 +140,7 @@ defmodule LogflareWeb.DashboardLive do
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
-            <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
+            <DashboardComponents.members user={@user} team={@team} team_user={@team_user} home_team_exists?={@home_team_exists?} />
           </div>
           <div class="tw-col-span-7">
             <.source_list sources={@sources} source_metrics={@source_metrics} team={@team} plan={@plan} fade_in={@fade_in} />
