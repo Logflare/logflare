@@ -29,18 +29,31 @@ defmodule Logflare.Admin do
   def grant_admin(nil, _), do: {:error, :not_found}
 
   def grant_admin(%User{admin: true} = granter, %User{} = target) do
-    Logger.info("Admin privilege granted",
-      audit: %{
-        admin_user_id: granter.id,
-        admin_email: granter.email,
-        target_user_id: target.id,
-        target_user_email: target.email
-      }
-    )
+    Repo.transaction(fn ->
+      # Re-verify granter is still an admin from a consistent DB snapshot,
+      # closing the TOCTOU window between the controller fetch and this update.
+      granter_locked =
+        from(u in User, where: u.id == ^granter.id and u.admin == true, lock: "FOR UPDATE")
+        |> Repo.one()
 
-    target
-    |> Ecto.Changeset.change(admin: true)
-    |> Repo.update()
+      if granter_locked do
+        Logger.info("Admin privilege granted",
+          audit: %{
+            admin_user_id: granter.id,
+            admin_email: granter.email,
+            target_user_id: target.id,
+            target_user_email: target.email
+          }
+        )
+
+        case target |> Ecto.Changeset.change(admin: true) |> Repo.update() do
+          {:ok, user} -> user
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+      else
+        Repo.rollback(:unauthorized)
+      end
+    end)
   end
 
   def grant_admin(%User{}, nil), do: {:error, :not_found}
