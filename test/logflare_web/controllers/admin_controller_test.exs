@@ -116,6 +116,52 @@ defmodule LogflareWeb.AdminControllerTest do
       refute Logflare.Users.get(target.id).admin
     end
 
+    test "grant_admin identifies granter by session email, not team context user", %{
+      conn: conn,
+      admin: admin
+    } do
+      # Admin is a member of a non-admin's team; SetTeamContext will resolve
+      # conn.assigns.user = non_admin_owner (a non-admin), not the logged-in admin.
+      # Without the fix, granter = non_admin_owner → {:error, :unauthorized}.
+      non_admin_owner = insert(:user, admin: false)
+      team = insert(:team, user: non_admin_owner)
+      insert(:team_user, email: admin.email, team: team, valid_google_account: true)
+
+      target = insert(:user, admin: false)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> Plug.Test.init_test_session(%{last_switched_team_id: team.id})
+        |> post(~p"/admin/accounts/#{target.id}/grant_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Admin access granted!"
+      assert Logflare.Users.get(target.id).admin == true
+    end
+
+    test "revoke_admin identifies granter by session email, not team context user", %{
+      conn: conn,
+      admin: admin
+    } do
+      non_admin_owner = insert(:user, admin: false)
+      team = insert(:team, user: non_admin_owner)
+      insert(:team_user, email: admin.email, team: team, valid_google_account: true)
+
+      # A second admin must exist so the last-admin guard does not fire.
+      target = insert(:user, admin: true)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> Plug.Test.init_test_session(%{last_switched_team_id: team.id})
+        |> post(~p"/admin/accounts/#{target.id}/revoke_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Admin access revoked."
+      refute Logflare.Users.get(target.id).admin
+    end
+
     test "become_account redirects with error flash for a non-existent user ID", %{
       conn: conn,
       admin: admin

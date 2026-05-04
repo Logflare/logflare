@@ -58,33 +58,35 @@ defmodule Logflare.Admin do
       granter.id == target.id ->
         {:error, :self_revocation}
 
-      count_admins() <= 1 ->
-        {:error, :last_admin}
-
       true ->
-        Logger.info("Admin privilege revoked",
-          audit: %{
-            admin_user_id: granter.id,
-            admin_email: granter.email,
-            target_user_id: target.id,
-            target_user_email: target.email
-          }
-        )
+        Repo.transaction(fn ->
+          # Lock all admin rows so concurrent revocations are serialised.
+          admins = from(u in User, where: u.admin == true, lock: "FOR UPDATE") |> Repo.all()
 
-        target
-        |> Ecto.Changeset.change(admin: false)
-        |> Repo.update()
+          if length(admins) <= 1 do
+            Repo.rollback(:last_admin)
+          else
+            Logger.info("Admin privilege revoked",
+              audit: %{
+                admin_user_id: granter.id,
+                admin_email: granter.email,
+                target_user_id: target.id,
+                target_user_email: target.email
+              }
+            )
+
+            case target |> Ecto.Changeset.change(admin: false) |> Repo.update() do
+              {:ok, user} -> user
+              {:error, changeset} -> Repo.rollback(changeset)
+            end
+          end
+        end)
     end
   end
 
   def revoke_admin(%User{}, nil), do: {:error, :not_found}
 
   def revoke_admin(%User{}, %User{}), do: {:error, :unauthorized}
-
-  @spec count_admins() :: non_neg_integer()
-  defp count_admins do
-    Repo.aggregate(from(u in User, where: u.admin == true), :count)
-  end
 
   @spec admin?(String.t() | nil) :: boolean()
   def admin?(email) when is_binary(email) do

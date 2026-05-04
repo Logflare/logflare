@@ -71,7 +71,7 @@ defmodule LogflareWeb.AdminController do
   end
 
   def grant_admin(conn, %{"id" => id}) do
-    granter = Users.get(conn.assigns.user.id)
+    granter = Users.get_by(email: get_session(conn, :current_email))
     target = Users.get(id)
 
     case Admin.grant_admin(granter, target) do
@@ -93,7 +93,7 @@ defmodule LogflareWeb.AdminController do
   end
 
   def revoke_admin(conn, %{"id" => id}) do
-    granter = Users.get(conn.assigns.user.id)
+    granter = Users.get_by(email: get_session(conn, :current_email))
     target = Users.get(id)
 
     case Admin.revoke_admin(granter, target) do
