@@ -105,6 +105,7 @@ defmodule LogflareWeb.AdminController do
           Atom.to_string(nn) == node
         end)
 
+      Logger.info("Node shutdown initialized")
       Admin.shutdown(node_name)
 
       conn
@@ -124,6 +125,7 @@ defmodule LogflareWeb.AdminController do
   end
 
   defp do_authorized_code_shutdown(conn, _params) do
+    Logger.info("Node shutdown initialized")
     Admin.shutdown()
 
     conn

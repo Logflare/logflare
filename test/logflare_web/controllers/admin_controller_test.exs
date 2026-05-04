@@ -2,6 +2,8 @@ defmodule LogflareWeb.AdminControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  import ExUnit.CaptureLog
+
   setup do
     prior = Application.get_env(:logflare, :node_shutdown_code)
     Application.delete_env(:logflare, :node_shutdown_code)
@@ -64,11 +66,17 @@ defmodule LogflareWeb.AdminControllerTest do
     test "shuts down node when secret matches header", %{conn: conn} do
       Application.put_env(:logflare, :node_shutdown_code, "correct-secret")
 
-      expect(Logflare.Admin, :shutdown, fn -> :ok end)
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("lf-shutdown-code", "correct-secret")
+            |> put(~p"/admin/shutdown")
 
-      conn
-      |> put_req_header("lf-shutdown-code", "correct-secret")
-      |> put(~p"/admin/shutdown")
+          assert json_response(conn, 200)
+        end)
+
+      assert log =~ "Node shutdown initialized"
     end
   end
 
