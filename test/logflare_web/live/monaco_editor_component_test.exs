@@ -39,7 +39,7 @@ defmodule LogflareWeb.MonacoEditorComponentTest do
     end
 
     test "escapes </script> in completion names to prevent XSS", %{assigns: assigns} do
-      xss_name = ~s(</script><script>alert(document.domain)</script>)
+      xss_name = ~s|<script>alert(document.domain)</script>|
 
       html =
         render_component(MonacoEditorComponent, %{
