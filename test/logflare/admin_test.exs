@@ -28,6 +28,18 @@ defmodule Logflare.AdminTest do
     refute Logflare.Users.get(target.id).admin
   end
 
+  test "grant_admin/2 does not propagate admin access to the target's team members" do
+    granter = insert(:user, admin: true)
+    target = insert(:user, admin: false)
+    target_team = insert(:team, user: target)
+    team_member = insert(:team_user, email: "member@example.com", team: target_team)
+
+    assert {:ok, updated} = Admin.grant_admin(granter, target)
+    assert updated.admin == true
+
+    refute Admin.admin?(team_member.email)
+  end
+
   test "admin?/1" do
     user = insert(:user, admin: true)
     home_team = insert(:team, user: user)
