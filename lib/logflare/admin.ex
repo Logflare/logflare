@@ -30,10 +30,12 @@ defmodule Logflare.Admin do
 
   def grant_admin(%User{admin: true} = granter, %User{} = target) do
     Logger.info("Admin privilege granted",
-      granter_id: granter.id,
-      granter_email: granter.email,
-      target_id: target.id,
-      target_email: target.email
+      audit: [
+        admin_user_id: granter.id,
+        admin_email: granter.email,
+        target_user_id: target.id,
+        target_user_email: target.email
+      ]
     )
 
     target
@@ -56,10 +58,12 @@ defmodule Logflare.Admin do
       {:error, :self_revocation}
     else
       Logger.info("Admin privilege revoked",
-        granter_id: granter.id,
-        granter_email: granter.email,
-        target_id: target.id,
-        target_email: target.email
+        audit: [
+          admin_user_id: granter.id,
+          admin_email: granter.email,
+          target_user_id: target.id,
+          target_user_email: target.email
+        ]
       )
 
       target

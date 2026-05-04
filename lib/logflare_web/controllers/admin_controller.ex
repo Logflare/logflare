@@ -41,10 +41,12 @@ defmodule LogflareWeb.AdminController do
 
       user ->
         Logger.info("Admin impersonating user",
-          admin_id: conn.assigns.user.id,
-          admin_email: conn.assigns.user.email,
-          target_id: user.id,
-          target_email: user.email
+          audit: [
+            admin_user_id: conn.assigns.user.id,
+            admin_email: conn.assigns.user.email,
+            target_user_id: user.id,
+            target_user_email: user.email
+          ]
         )
 
         auth_params = %{
