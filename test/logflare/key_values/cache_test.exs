@@ -2,6 +2,7 @@ defmodule Logflare.KeyValues.CacheTest do
   @moduledoc false
   use Logflare.DataCase, async: false
 
+  alias Logflare.ContextCache
   alias Logflare.KeyValues
 
   setup do
@@ -32,7 +33,7 @@ defmodule Logflare.KeyValues.CacheTest do
     assert nil == KeyValues.Cache.lookup(user.id, "nonexistent")
   end
 
-  test "bust_by/1 clears cached lookup and all accessor variants", %{user: user} do
+  test "bust_actions/2 identifies cached lookup and all accessor variants", %{user: user} do
     value = %{"org" => %{"id" => "abc"}}
     insert(:key_value, user: user, key: "proj1", value: value)
 
@@ -40,15 +41,14 @@ defmodule Logflare.KeyValues.CacheTest do
     assert ^value = KeyValues.Cache.lookup(user.id, "proj1")
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
 
-    # bust clears both lookups + count entry (if cached)
-    assert {:ok, busted} = KeyValues.Cache.bust_by(user_id: user.id, key: "proj1")
-    assert busted >= 2
-    assert is_nil(Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", nil]}))
-    assert is_nil(Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", "org.id"]}))
-  end
+    kw = [user_id: user.id, key: "proj1"]
+    {:full, actions} = KeyValues.Cache.bust_actions(:delete, kw)
+    assert Map.has_key?(actions, {:lookup, [user.id, "proj1", nil]})
+    assert Map.has_key?(actions, {:lookup, [user.id, "proj1", "org.id"]})
 
-  test "bust_by/1 returns 0 when key not cached", %{user: user} do
-    assert {:ok, 0} = KeyValues.Cache.bust_by(user_id: user.id, key: "nonexistent")
+    assert Cachex.size!(KeyValues.Cache) == 2
+    assert ContextCache.refresh_keys([{KeyValues, kw, {:full, actions}}]) == :ok
+    assert Cachex.size!(KeyValues.Cache) == 0
   end
 
   describe "count/1" do
@@ -61,17 +61,19 @@ defmodule Logflare.KeyValues.CacheTest do
       assert KeyValues.Cache.count(user.id) == 2
     end
 
-    test "bust_by/1 clears cached count", %{user: user} do
+    test "bust_actions/2 clears cached count", %{user: user} do
       insert(:key_value, user: user, key: "k1")
 
       # populate cache
       assert 1 = KeyValues.Cache.count(user.id)
 
-      # bust clears it
-      KeyValues.Cache.bust_by(user_id: user.id, key: "k1")
+      kw = [user_id: user.id, key: "k1"]
+      {:full, actions} = KeyValues.Cache.bust_actions(:delete, kw)
+      assert Map.has_key?(actions, {:count, user.id})
 
-      cache_key = {:count, user.id}
-      assert is_nil(Cachex.get!(KeyValues.Cache, cache_key))
+      assert Cachex.size!(KeyValues.Cache) == 1
+      assert ContextCache.refresh_keys([{KeyValues, kw, {:full, actions}}]) == :ok
+      assert Cachex.size!(KeyValues.Cache) == 0
     end
   end
 end

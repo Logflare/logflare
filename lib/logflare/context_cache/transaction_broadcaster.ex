@@ -7,6 +7,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   require Logger
 
   alias Logflare.ContextCache
+  alias Logflare.ContextCache.CacheBuster
   alias Cainophile.Changes.Transaction
   alias Cainophile.Adapters.Postgres
 
@@ -45,10 +46,9 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
 
   def handle_info(%Transaction{changes: []}, state), do: {:noreply, state}
 
-  def handle_info(%Transaction{changes: _changes} = transaction, state) do
+  def handle_info(%Transaction{changes: changes} = transaction, state) do
     Logger.debug("WAL record received from cainophile: #{inspect(transaction)}")
-    # broadcast it
-    Phoenix.PubSub.local_broadcast(Logflare.PubSub, "wal_transactions", transaction)
+    CacheBuster.broadcast_cache_updates(changes)
     {:noreply, state}
   end
 

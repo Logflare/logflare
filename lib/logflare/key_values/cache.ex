@@ -74,30 +74,26 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   @impl ContextCache
-  def bust_by(kw) do
-    entries = bust_entries(kw)
-
-    Cachex.execute(__MODULE__, fn worker ->
-      Enum.reduce(entries, 0, fn k, acc ->
-        acc + delete_and_count(worker, k)
-      end)
-    end)
-  end
-
-  defp bust_entries(kw) do
+  def bust_actions(action, kw) when action in [:update, :delete] and is_list(kw) do
     user_id = Keyword.get(kw, :user_id)
     key = Keyword.get(kw, :key)
 
-    entries = if user_id, do: [{:count, user_id}], else: []
+    actions =
+      cond do
+        user_id == nil -> []
+        key == nil -> [{:count, user_id}]
+        true -> [{:count, user_id} | find_lookup_keys(user_id, key)]
+      end
+      |> Map.new(fn
+        {:count, id} = k when action == :update -> {k, KeyValues.count_key_values(id)}
+        key -> {key, :bust}
+      end)
 
-    if user_id && key do
-      lookup_keys = find_lookup_keys(user_id, key)
-      lookup_keys ++ entries
-    else
-      entries
-    end
+    {:full, actions}
   end
 
+  # TODO: Only sees publisher-local keys; remote nodes with different cached accessor-path
+  # variants heal only via TTL. Proper fix: per-node structural scan.
   defp find_lookup_keys(user_id, key) do
     {:ok, keys} = Cachex.keys(__MODULE__)
 
@@ -105,12 +101,5 @@ defmodule Logflare.KeyValues.Cache do
       {:lookup, [^user_id, ^key | _]} -> true
       _ -> false
     end)
-  end
-
-  defp delete_and_count(cache, key) do
-    case Cachex.take(cache, key) do
-      {:ok, nil} -> 0
-      {:ok, _value} -> 1
-    end
   end
 end

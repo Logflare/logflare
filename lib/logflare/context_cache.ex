@@ -12,8 +12,7 @@ defmodule Logflare.ContextCache do
   primary key checking within the matchspec. This approach queries across a narrower set of records,
   providing better performance compared to a reverse index approach.
 
-  If customization of busting is needed, cache module may implement `c:bust_by/1` callback expecting
-  a keyword list instead of primary key for entry.
+  If customization of busting is needed, cache module may implement `c:bust_actions/1` callback.
 
   ## List Busting
 
@@ -38,10 +37,39 @@ defmodule Logflare.ContextCache do
 
   alias Logflare.ContextCache.Gossip
 
+  @type key() :: {fun :: atom(), args :: list()}
+
+  @type actions() :: %{key() => any() | :bust}
+
+  @type bust_ctx() :: integer() | keyword(integer())
+
+  @type plan() :: {:full | :partial, actions()}
+
+  @type update_item() :: {context :: module(), bust_ctx(), plan()}
+
   @doc """
-  Optional callback implementing custom cache key busting by a keyword of values
+  Returns a tagged tuple of cache actions to perform when a DB change is detected.
+
+  The tag indicates coverage:
+  - `:full` — the map covers all cached functions in this module. Only the map is applied.
+  - `:partial` — the map covers some cached functions. The map is applied, and for integer
+    triggers an ETS scan also runs to bust any remaining entries containing the trigger ID.
+    This is a temporary state during migration; the goal is to reach `:full` coverage.
+
+  Each key in the map is a cache key (`{fun, args}` tuple). The value is either a fresh
+  value to store under that key, or `:bust` to delete the entry.
+
+  Used by `CacheBuster` to pre-fetch and broadcast cache updates cluster-wide.
   """
-  @callback bust_by(keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  @callback bust_actions(action, bust_ctx()) :: {:full | :partial, actions()}
+            when action: :update | :delete
+
+  @optional_callbacks [bust_actions: 2]
+
+  @spec cache_name(atom()) :: atom()
+  def cache_name(context) do
+    Module.concat(context, Cache)
+  end
 
   @spec apply_fun(module(), tuple() | atom(), list()) :: any()
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
@@ -66,73 +94,6 @@ defmodule Logflare.ContextCache do
   end
 
   @doc """
-  Busts cache entries based on context-primary-key pairs.
-
-  It is intended for following a WAL for cache busting. When a new record comes in from the WAL,
-  the CacheBuster process calls this function with either the primary keys extracted from those records
-  or a keyword list with fields useful for busting.
-
-  For primary key, the function then:
-
-  1. Queries the relevant context cache using a matchspec to find entries to bust
-  2. Handles both single records and lists of records containing matching IDs
-  3. Deletes matching cache entries
-
-  For keywords, it expects the cache to handle busting by implementing `c:bust_by/1`
-  """
-  @spec bust_keys(list()) :: {:ok, non_neg_integer()}
-  def bust_keys(values) when is_list(values) do
-    busted =
-      for {context, primary_key} <- values, reduce: 0 do
-        acc ->
-          {:ok, n} = bust_key({context, primary_key})
-          acc + n
-      end
-
-    {:ok, busted}
-  end
-
-  defp bust_key({context, kw}) when is_list(kw) do
-    context_cache = cache_name(context)
-    context_cache.bust_by(kw)
-  end
-
-  defp bust_key({context, pkey}) do
-    context_cache = cache_name(context)
-
-    filter =
-      {
-        # use orelse to prevent 2nd condition failing as value is not a map
-        :orelse,
-        {
-          :orelse,
-          # handle lists
-          {:is_list, {:element, 2, :value}},
-          # handle :ok tuples when struct with id is in 2nd element pos.
-          {:andalso, {:is_tuple, {:element, 2, :value}},
-           {:andalso, {:==, {:element, 1, {:element, 2, :value}}, :ok},
-            {:andalso, {:is_map, {:element, 2, {:element, 2, :value}}},
-             {:==, {:map_get, :id, {:element, 2, {:element, 2, :value}}}, pkey}}}}
-        },
-        # handle single maps
-        {:andalso, {:is_map, {:element, 2, :value}},
-         {:==, {:map_get, :id, {:element, 2, :value}}, pkey}}
-      }
-
-    query =
-      Cachex.Query.build(where: filter, output: {:key, :value})
-
-    context_cache
-    |> Cachex.stream!(query)
-    |> delete_matching_entries(context_cache, pkey)
-  end
-
-  @spec cache_name(atom()) :: atom()
-  def cache_name(context) do
-    Module.concat(context, Cache)
-  end
-
-  @doc """
   Low level API for fetching from cache. Allows wrapping calls with
   `Cachex.execute/2` and accessing arbitrary key or calling any getter function.
   """
@@ -152,22 +113,130 @@ defmodule Logflare.ContextCache do
     end
   end
 
-  defp delete_matching_entries(entries, context_cache, pkey) do
-    to_delete =
-      entries
-      |> Stream.filter(fn
-        {_k, {:cached, v}} when is_list(v) ->
-          Enum.any?(v, &(&1.id == pkey))
+  @doc """
+  Applies a list of cache updates produced by `CacheBuster` (or by direct callers
+  performing manual invalidation).
 
-        {_k, _v} ->
-          true
-      end)
+  Each item is `{context, trigger, plan}` where `plan` is one of:
 
-    Cachex.execute(context_cache, fn worker ->
-      Enum.reduce(to_delete, 0, fn {k, _v}, acc ->
-        Cachex.del(worker, k)
-        acc + 1
-      end)
+  - `{:full, actions}` — the action map covers every cached function; apply
+    in-place (`Cachex.update`) to existing keys and `Cachex.del` for `:bust` values.
+  - `{:partial, actions}` — like `:full` but combined with an ETS scan over the
+    integer trigger so unlisted variants get evicted. Re-inserts only the keys
+    that were present before the scan to avoid warming the cache with unrequested data.
+    With a non-integer trigger no scan runs (the keyword shape carries enough
+    information for the action map to be authoritative).
+
+  Pass `{:partial, %{}}` to get a pure scan-and-delete by integer pkey;
+  `bust_keys/1` is the convenience wrapper for that case.
+  """
+  @spec refresh_keys([update_item()]) :: :ok
+  def refresh_keys(items) when is_list(items) do
+    Enum.each(items, &apply_update/1)
+    :ok
+  end
+
+  @doc """
+  Convenience wrapper around `refresh_keys/1` for callers that just want to
+  evict all cache entries referencing a primary key.
+  """
+  @spec bust_keys([{module(), integer()}]) :: :ok
+  def bust_keys(values) when is_list(values) do
+    values
+    |> Enum.map(fn {context, pkey} -> {context, pkey, {:partial, %{}}} end)
+    |> refresh_keys()
+  end
+
+  defp apply_update({context, _trigger, {:full, actions}}) do
+    apply_actions(cache_name(context), actions)
+  end
+
+  defp apply_update({context, trigger, {:partial, actions}}) when is_integer(trigger) do
+    cache = cache_name(context)
+    present_keys = present_action_keys(cache, actions)
+    bust_key(cache, trigger)
+    apply_partial_actions(cache, actions, present_keys)
+  end
+
+  defp apply_update({context, _trigger, {:partial, actions}}) do
+    apply_actions(cache_name(context), actions)
+  end
+
+  defp bust_key(context_cache, pkey) when is_integer(pkey) do
+    Cachex.execute!(context_cache, fn cache ->
+      keys_with_id(cache, pkey)
+      |> delete_entries(cache)
+    end)
+  end
+
+  defp delete_entries(entries, cache) do
+    Enum.each(entries, fn key ->
+      Cachex.del(cache, key)
+    end)
+  end
+
+  defp present_action_keys(cache, actions) do
+    Cachex.execute!(cache, fn worker ->
+      for {cache_key, value} <- actions,
+          value != :bust,
+          {:ok, true} == Cachex.exists?(worker, cache_key),
+          into: MapSet.new() do
+        cache_key
+      end
+    end)
+  end
+
+  defp apply_actions(cache, actions) do
+    Enum.each(actions, fn
+      {cache_key, :bust} -> Cachex.del(cache, cache_key)
+      {cache_key, value} -> Cachex.update(cache, cache_key, {:cached, value})
+    end)
+  end
+
+  defp apply_partial_actions(cache, actions, present_keys) do
+    Enum.each(actions, fn
+      {cache_key, :bust} ->
+        Cachex.del(cache, cache_key)
+
+      {cache_key, value} ->
+        if MapSet.member?(present_keys, cache_key),
+          do: Cachex.put(cache, cache_key, {:cached, value})
+    end)
+  end
+
+  defp keys_with_id(cache, id) do
+    keys_with_id_stream(cache, id)
+    |> Stream.map(&elem(&1, 0))
+  end
+
+  defp keys_with_id_stream(cache, id) do
+    # match {_cached, %{id: ^pkey}}
+    direct_filter =
+      {:andalso, {:is_map, {:element, 2, :value}},
+       {:==, {:map_get, :id, {:element, 2, :value}}, id}}
+
+    # match {_cached, {:ok, %{id: ^pkey}}} and larger ok-tuples
+    tuple_filter =
+      {:andalso, {:is_tuple, {:element, 2, :value}},
+       {:andalso, {:==, {:element, 1, {:element, 2, :value}}, :ok},
+        {:andalso, {:is_map, {:element, 2, {:element, 2, :value}}},
+         {:==, {:map_get, :id, {:element, 2, {:element, 2, :value}}}, id}}}}
+
+    element_filter =
+      {:orelse, direct_filter, tuple_filter}
+
+    list_filter = {:is_list, {:element, 2, :value}}
+    filter = {:orelse, list_filter, element_filter}
+    query = Cachex.Query.build(where: filter, output: {:key, :value})
+
+    cache
+    |> Cachex.stream!(query)
+    |> Stream.filter(fn
+      {_k, {:cached, v}} when is_list(v) ->
+        Enum.any?(v, &(&1.id == id))
+
+      {_k, _v} ->
+        true
     end)
   end
 end

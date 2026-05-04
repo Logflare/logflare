@@ -35,7 +35,21 @@ defmodule Logflare.SourceSchemas.Cache do
     }
   end
 
-  def get_source_schema_by(kv), do: apply_fun(__ENV__.function, [kv])
+  @behaviour Logflare.ContextCache
+
+  @impl Logflare.ContextCache
+  def bust_actions(:update, kw) when is_list(kw) do
+    id = Keyword.fetch!(kw, :id)
+    schema = SourceSchemas.get_source_schema(id)
+    {:full, %{{:get_source_schema_by_source_id, [schema.source_id]} => schema}}
+  end
+
+  def bust_actions(:delete, kw) when is_list(kw) do
+    source_id = Keyword.fetch!(kw, :source_id)
+    {:full, %{{:get_source_schema_by_source_id, [source_id]} => :bust}}
+  end
+
+  def get_source_schema_by_source_id(s_id), do: apply_fun(__ENV__.function, [s_id])
 
   defp apply_fun(arg1, arg2) do
     Logflare.ContextCache.apply_fun(SourceSchemas, arg1, arg2)
