@@ -33,6 +33,17 @@ defmodule Logflare.AdminTest do
     refute Logflare.Users.get(target.id).admin
   end
 
+  test "grant_admin/2 rejects a stale granter whose admin was revoked in the DB" do
+    granter = insert(:user, admin: true)
+    target = insert(:user, admin: false)
+
+    # Revoke granter's admin in DB while holding the stale in-memory struct.
+    Logflare.Repo.update!(Ecto.Changeset.change(granter, admin: false))
+
+    assert {:error, :unauthorized} = Admin.grant_admin(granter, target)
+    refute Logflare.Users.get(target.id).admin
+  end
+
   test "grant_admin/2 does not propagate admin access to the target's team members" do
     granter = insert(:user, admin: true)
     target = insert(:user, admin: false)
