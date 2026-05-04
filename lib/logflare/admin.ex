@@ -37,18 +37,21 @@ defmodule Logflare.Admin do
         |> Repo.one()
 
       if granter_locked do
-        Logger.info("Admin privilege granted",
-          audit: %{
-            admin_user_id: granter.id,
-            admin_email: granter.email,
-            target_user_id: target.id,
-            target_user_email: target.email
-          }
-        )
-
         case target |> Ecto.Changeset.change(admin: true) |> Repo.update() do
-          {:ok, user} -> user
-          {:error, changeset} -> Repo.rollback(changeset)
+          {:ok, user} ->
+            Logger.info("Admin privilege granted",
+              audit: %{
+                admin_user_id: granter.id,
+                admin_email: granter.email,
+                target_user_id: target.id,
+                target_user_email: target.email
+              }
+            )
+
+            user
+
+          {:error, changeset} ->
+            Repo.rollback(changeset)
         end
       else
         Repo.rollback(:unauthorized)
@@ -85,18 +88,21 @@ defmodule Logflare.Admin do
               Repo.rollback(:last_admin)
 
             true ->
-              Logger.info("Admin privilege revoked",
-                audit: %{
-                  admin_user_id: granter.id,
-                  admin_email: granter.email,
-                  target_user_id: target.id,
-                  target_user_email: target.email
-                }
-              )
-
               case target |> Ecto.Changeset.change(admin: false) |> Repo.update() do
-                {:ok, user} -> user
-                {:error, changeset} -> Repo.rollback(changeset)
+                {:ok, user} ->
+                  Logger.info("Admin privilege revoked",
+                    audit: %{
+                      admin_user_id: granter.id,
+                      admin_email: granter.email,
+                      target_user_id: target.id,
+                      target_user_email: target.email
+                    }
+                  )
+
+                  user
+
+                {:error, changeset} ->
+                  Repo.rollback(changeset)
               end
           end
         end)
