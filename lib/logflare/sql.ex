@@ -699,9 +699,10 @@ defmodule Logflare.Sql do
   defp has_restricted_functions(ast, data) when is_list(ast),
     do: has_restricted_functions(ast, :ok, data)
 
-  defp has_restricted_functions({"Function", %{"name" => names}} when is_list(names), :ok, %{
+  defp has_restricted_functions({"Function", %{"name" => names}}, :ok, %{
          dialect: dialect
-       }) do
+       })
+       when is_list(names) do
     restricted_list = list_restricted_functions_for_dialect(dialect)
 
     found_restricted =
