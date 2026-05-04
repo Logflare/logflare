@@ -334,7 +334,7 @@ defmodule Logflare.Utils do
   iex> ip_version(nil)
   nil
   """
-  @spec ip_version(String.t() | nil) :: :inet | :inet6 | nil
+  @spec ip_version(String.t() | nil) :: :inet | :inet6 | :nxdomain | nil
   def ip_version(address) when is_binary(address) do
     address = String.to_charlist(address)
 
@@ -351,7 +351,7 @@ defmodule Logflare.Utils do
   @doc """
   Redacts sensitive headers from a list of Tesla.Env headers. Used for automatic redaction.
   """
-  @spec redact_sensitive_headers(map()) :: list(tuple())
+  @spec redact_sensitive_headers(map()) :: map()
   def redact_sensitive_headers(%{} = value) do
     # iteraptor does not handle structs as the main Enum, we need to wrap it
     List.wrap(value)
@@ -484,7 +484,7 @@ defmodule Logflare.Utils do
   @doc """
   Tries to stop a process gracefully. If it fails, it sends a signal to the process.
   """
-  @spec try_to_stop_process(pid(), atom()) :: :ok | :noop
+  @spec try_to_stop_process(pid(), term(), term()) :: :ok | :noop
   def try_to_stop_process(pid, signal \\ :shutdown, force_signal \\ :kill) do
     GenServer.stop(pid, signal, 5_000)
     :ok
