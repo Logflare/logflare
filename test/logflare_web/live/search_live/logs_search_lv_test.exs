@@ -59,9 +59,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   defp setup_team_user_session(%{conn: conn, user: user, plan: plan, team_user: team_user}) do
-    _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
-    user = user |> Logflare.Repo.preload(:billing_account)
-
+    [conn: conn] = setup_user_session(%{conn: conn, user: user, plan: plan})
     [conn: login_user(conn, user, team_user)]
   end
 
@@ -1489,6 +1487,83 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert view |> element("#logs-list-container") |> render() =~ matching_message
       refute view |> element("#logs-list-container") |> render() =~ non_matching_message
+    end
+  end
+
+  describe "single tenant postgres shorthand timestamp search" do
+    TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
+
+    setup do
+      start_supervised!(Logflare.SystemMetricsSup)
+
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user)
+      plan = SingleTenant.get_default_plan()
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: TestUtils.build_bq_schema(%{"event_message" => "test"})
+      )
+
+      %{user: user, source: source, plan: plan}
+    end
+
+    setup [:setup_user_session]
+
+    test "shorthand timestamp filters are not shifted by search timezone", %{
+      conn: conn,
+      source: source
+    } do
+      now = DateTime.utc_now()
+      today_start = DateTime.new!(DateTime.to_date(now), ~T[00:00:00], "Etc/UTC")
+      yesterday_start = DateTime.add(today_start, -1, :day)
+
+      cases = [
+        {"t:last@5m", :second, {DateTime.add(now, -1, :minute), DateTime.add(now, 30, :second)}},
+        {"t:this@day", :hour,
+         {DateTime.add(now, -1, :minute), DateTime.add(today_start, -1, :minute)}},
+        {"t:yesterday", :hour, {DateTime.add(yesterday_start, 12, :hour), now}}
+      ]
+
+      Enum.each(cases, fn {querystring, chart_period, {included_timestamp, excluded_timestamp}} ->
+        matching_message = "included-#{System.unique_integer([:positive])}"
+        non_matching_message = "excluded-#{System.unique_integer([:positive])}"
+
+        {:ok, 2} =
+          [
+            %{
+              "event_message" => matching_message,
+              "timestamp" => included_timestamp |> DateTime.to_iso8601()
+            },
+            %{
+              "event_message" => non_matching_message,
+              "timestamp" => excluded_timestamp |> DateTime.to_iso8601()
+            }
+          ]
+          |> Backends.ingest_logs(source)
+
+        Enum.each(["UTC", "Singapore"], fn timezone ->
+          {:ok, view, _html} =
+            live(
+              conn,
+              Routes.live_path(conn, SearchLV, source.id, tailing?: false, tz: timezone)
+            )
+
+          %{executor_pid: search_executor_pid} = get_view_assigns(view)
+          allow_sandbox(search_executor_pid)
+
+          TestUtils.retry_assert(fn ->
+            render_change(view, :start_search, %{
+              "querystring" => "#{querystring} c:count(*) c:group_by(t::#{chart_period})"
+            })
+
+            html = view |> element("#logs-list-container") |> render()
+
+            assert html =~ matching_message
+            refute html =~ non_matching_message
+          end)
+        end)
+      end)
     end
   end
 
