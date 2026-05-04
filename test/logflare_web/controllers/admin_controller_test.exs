@@ -129,6 +129,32 @@ defmodule LogflareWeb.AdminControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Account not found."
     end
 
+    test "grant_admin redirects with error flash for a non-existent target user ID", %{
+      conn: conn,
+      admin: admin
+    } do
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/0/grant_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Account not found."
+    end
+
+    test "revoke_admin redirects with error flash for a non-existent target user ID", %{
+      conn: conn,
+      admin: admin
+    } do
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/0/revoke_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Account not found."
+    end
+
     test "admin can revoke admin from another admin", %{conn: conn, admin: admin} do
       target = insert(:user, admin: true)
 

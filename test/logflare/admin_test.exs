@@ -96,6 +96,18 @@ defmodule Logflare.AdminTest do
     assert Admin.admin?(target.email)
   end
 
+  test "grant_admin/2 returns not_found when granter is nil" do
+    target = insert(:user, admin: false)
+    assert {:error, :not_found} = Admin.grant_admin(nil, target)
+    refute Logflare.Users.get(target.id).admin
+  end
+
+  test "revoke_admin/2 returns not_found when granter is nil" do
+    target = insert(:user, admin: true)
+    assert {:error, :not_found} = Admin.revoke_admin(nil, target)
+    assert Logflare.Users.get(target.id).admin
+  end
+
   test "admin?/1" do
     user = insert(:user, admin: true)
     home_team = insert(:team, user: user)

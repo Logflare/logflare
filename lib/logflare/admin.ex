@@ -24,8 +24,10 @@ defmodule Logflare.Admin do
     {:ok, task}
   end
 
-  @spec grant_admin(User.t(), User.t() | nil) ::
+  @spec grant_admin(User.t() | nil, User.t() | nil) ::
           {:ok, User.t()} | {:error, :not_found | :unauthorized} | {:error, Ecto.Changeset.t()}
+  def grant_admin(nil, _), do: {:error, :not_found}
+
   def grant_admin(%User{admin: true} = granter, %User{} = target) do
     Logger.info("Admin privilege granted",
       granter_id: granter.id,
@@ -43,10 +45,12 @@ defmodule Logflare.Admin do
 
   def grant_admin(%User{}, %User{}), do: {:error, :unauthorized}
 
-  @spec revoke_admin(User.t(), User.t() | nil) ::
+  @spec revoke_admin(User.t() | nil, User.t() | nil) ::
           {:ok, User.t()}
           | {:error, :not_found | :self_revocation | :unauthorized}
           | {:error, Ecto.Changeset.t()}
+  def revoke_admin(nil, _), do: {:error, :not_found}
+
   def revoke_admin(%User{admin: true} = granter, %User{} = target) do
     if granter.id == target.id do
       {:error, :self_revocation}
