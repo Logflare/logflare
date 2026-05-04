@@ -1,0 +1,252 @@
+defmodule Logflare.Application do
+  @moduledoc false
+  use Application
+
+  require Logger
+
+  alias Logflare.Alerting.AlertSchedulerWorker
+  alias Logflare.Networking
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.UserMonitoring
+  alias Logflare.ContextCache
+  alias Logflare.Logs
+  alias Logflare.SingleTenant
+  alias Logflare.SystemMetricsSup
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
+  alias Logflare.PubSubRates
+  alias Logflare.Utils
+
+  def start(_type, _args) do
+    Logflare.Readiness.initialize()
+
+    # set inspect function to redact sensitive information
+    prev = Inspect.Opts.default_inspect_fun()
+    Inspect.Opts.default_inspect_fun(&Utils.inspect_fun(prev, &1, &2))
+
+    set_global_logger_metadata()
+    start_user_log_interceptor()
+    add_logger_backends()
+    warn_if_stripe_webhook_secret_unset()
+
+    env = Application.get_env(:logflare, :env)
+    # TODO: Set node status in GCP when sigterm is received
+    :ok =
+      :gen_event.swap_sup_handler(
+        :erl_signal_server,
+        {:erl_signal_handler, []},
+        {Logflare.SigtermHandler, []}
+      )
+
+    # Routes user-specific logs to their respective system source, when appliable
+
+    children = get_children(env)
+
+    if Application.get_env(:logflare, :opentelemetry_enabled?) do
+      OpentelemetryBandit.setup()
+      OpentelemetryPhoenix.setup(adapter: :bandit)
+    end
+
+    # See https://hexdocs.pm/elixir/Supervisor.html
+    # for other strategies and supported options
+    opts = [strategy: :one_for_one, name: Logflare.Supervisor]
+
+    with {:ok, supervisor} <- Supervisor.start_link(children, opts) do
+      Logflare.Readiness.mark_ready()
+      {:ok, supervisor}
+    end
+  end
+
+  defp get_children(:test) do
+    Networking.pools() ++
+      [
+        Logflare.Repo,
+        Logflare.Vault,
+        ContextCache.Supervisor,
+        Logflare.LogEvent.DayBucket,
+        Counters,
+        RateCounters,
+        Logs.LogEvents.Cache,
+        {Phoenix.PubSub, name: Logflare.PubSub},
+        PubSubRates,
+        Logs.RejectedLogEvents,
+        Logflare.Backends,
+        {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
+        {PartitionSupervisor,
+         child_spec: DynamicSupervisor, name: Logflare.Endpoints.ResultsCache.PartitionSupervisor},
+        LogflareWeb.Endpoint,
+        {Logflare.ActiveUserTracker,
+         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]},
+        {Oban, Application.fetch_env!(:logflare, Oban)}
+      ]
+  end
+
+  defp get_children(_) do
+    topologies = Application.get_env(:libcluster, :topologies, [])
+    grpc_port = Application.get_env(:grpc, :port)
+    ssl = Application.get_env(:logflare, :ssl)
+    grpc_creds = if ssl, do: GRPC.Credential.new(ssl: ssl)
+    pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
+    read_replicas = Application.get_env(:logflare, :read_replicas, [])
+
+    # set goth early in the supervision tree
+    Networking.pools() ++
+      conditional_children() ++
+      UserMonitoring.get_otel_exporter() ++
+      [
+        Logflare.ErlSysMon,
+        {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
+        {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
+        Logflare.Repo,
+        {Logflare.Repo.Replicas, hostnames: read_replicas},
+        Logflare.Vault,
+        {Oban, Application.fetch_env!(:logflare, Oban)},
+        {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
+        ContextCache.Supervisor,
+        Logflare.LogEvent.DayBucket,
+        Logs.LogEvents.Cache,
+        PubSubRates,
+        Logs.RejectedLogEvents,
+        # init Counters before Supervisof as Supervisor calls Counters through table create
+        Counters,
+        RateCounters,
+        # Backends needs to be before Source.Supervisor
+        Logflare.Backends,
+        Logflare.Sources.Source.Supervisor,
+        LogflareWeb.Endpoint,
+        # If we get a log event and the Source.Supervisor is not up it will 500
+        {GRPC.Server.Supervisor,
+         endpoint: LogflareGrpc.Endpoint,
+         port: grpc_port,
+         start_server: true,
+         adapter_opts: [cred: grpc_creds],
+         exception_log_filter: {LogflareGrpc.ExceptionLogFilter, :emit_log?}},
+        # Monitor system level metrics
+        SystemMetricsSup,
+        Logflare.Telemetry,
+
+        # For Logflare Endpoints
+        {PartitionSupervisor,
+         child_spec: DynamicSupervisor, name: Logflare.Endpoints.ResultsCache.PartitionSupervisor},
+        # Startup tasks after v2 pipeline started
+        {Task, fn -> startup_tasks() end},
+        # active users tracking for UserMetricsPoller
+        {Logflare.ActiveUserTracker,
+         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
+      ]
+  end
+
+  defp warn_if_stripe_webhook_secret_unset do
+    unless Application.get_env(:logflare, :stripe_webhook_secret) do
+      Logger.warning(
+        "STRIPE_WEBHOOK_SECRET is not set — all Stripe webhook requests will be rejected"
+      )
+    end
+  end
+
+  @doc """
+  Global metadata attached to every log event (and the single source for it).
+
+  Combines the Logflare version with the configured `:logflare, :metadata`
+  (e.g. `cluster`). The same `:logflare, :metadata` env feeds OTel resource
+  attributes (see `Logflare.Telemetry`).
+  """
+  @spec global_logger_metadata() :: map()
+  def global_logger_metadata do
+    [logflare_version: Application.spec(:logflare, :vsn) |> to_string()]
+    |> Keyword.merge(Application.get_env(:logflare, :metadata, []))
+    |> Map.new()
+  end
+
+  defp set_global_logger_metadata do
+    :logger.update_primary_config(%{metadata: global_logger_metadata()})
+  end
+
+  defp start_user_log_interceptor do
+    if Application.get_env(:logflare, :env) == :test do
+      :ok
+    else
+      :logger.add_primary_filter(
+        :user_log_intercetor,
+        {&UserMonitoring.log_interceptor/2, []}
+      )
+    end
+  end
+
+  defp add_logger_backends do
+    for backend <- Application.get_env(:logflare, :logger_backends, []) do
+      {:ok, _pid} = LoggerBackends.add(backend)
+    end
+  end
+
+  def goth_partition_count, do: 5
+
+  def conditional_children do
+    goth =
+      case BigQueryAdaptor.partitioned_goth_child_spec() do
+        nil -> []
+        goth_child_spec -> [goth_child_spec]
+      end ++
+        BigQueryAdaptor.impersonated_goth_child_specs()
+
+    # only add in config cat to multi-tenant prod
+    config_cat =
+      case Application.get_env(:logflare, :config_cat_sdk_key) do
+        nil ->
+          []
+
+        config_cat_key ->
+          [
+            Logflare.ConfigCatCache,
+            {ConfigCat, [sdk_key: config_cat_key]}
+          ]
+      end
+
+    goth ++ config_cat
+  end
+
+  def prep_stop(state) do
+    Logflare.Readiness.begin_draining()
+    state
+  end
+
+  def config_change(changed, _new, removed) do
+    LogflareWeb.Endpoint.config_change(changed, removed)
+    :ok
+  end
+
+  def startup_tasks do
+    Logger.info("Executing startup tasks")
+
+    if !SingleTenant.postgres_backend?() do
+      BigQueryAdaptor.create_managed_service_accounts()
+      BigQueryAdaptor.update_iam_policy()
+    end
+
+    if SingleTenant.single_tenant?() do
+      Logger.info("Ensuring single tenant user is seeded...")
+      SingleTenant.create_default_plan()
+      SingleTenant.create_default_user()
+      SingleTenant.create_access_tokens()
+    end
+
+    if SingleTenant.supabase_mode?() do
+      SingleTenant.create_supabase_sources()
+      SingleTenant.create_supabase_endpoints()
+      SingleTenant.ensure_supabase_sources_started()
+
+      unless SingleTenant.postgres_backend?() do
+        # buffer time for all sources to init and create tables
+        # in case of latency.
+        :timer.sleep(3_000)
+
+        SingleTenant.update_supabase_source_schemas()
+      end
+    end
+
+    # Schedule all alerts immediately on startup
+    if Application.get_env(:logflare, Logflare.Alerting)[:enabled] do
+      AlertSchedulerWorker.new(%{}) |> Oban.insert()
+    end
+  end
+end

@@ -1,0 +1,45 @@
+services:
+  fake-gcs:
+    image: fsouza/fake-gcs-server:latest
+    ports:
+      - "4443:4443"   # GCS JSON API
+    command: ["-scheme", "http", "-port", "4443", "-public-host", "localhost:4443", "-filesystem-root", "/data"]
+    volumes:
+      - ./tmp/fake-gcs:/data
+
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
+    platform: linux/amd64
+    ports:
+      - "8085:8085"   # Pub/Sub API
+    command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085
+
+  setup-gcp:
+    image: curlimages/curl:latest
+    depends_on:
+      - fake-gcs
+      - pubsub-emulator
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo "Waiting for fake-gcs..."
+        until curl -sf http://fake-gcs:4443/storage/v1/b > /dev/null; do sleep 1; done
+        echo "Waiting for pubsub-emulator..."
+        until curl -sf http://pubsub-emulator:8085/v1/projects/logflare/topics > /dev/null; do sleep 1; done
+
+        echo "Creating GCS bucket..."
+        curl -sf -X POST http://fake-gcs:4443/storage/v1/b \
+          -H 'Content-Type: application/json' \
+          -d '{"name": "logflare-spool"}' > /dev/null || echo "  (already exists)"
+
+        echo "Creating PubSub topic..."
+        curl -sf -X PUT http://pubsub-emulator:8085/v1/projects/logflare/topics/logflare-spool \
+          -H 'Content-Type: application/json' -d '{}' > /dev/null || echo "  (already exists)"
+
+        echo "Creating PubSub subscription..."
+        curl -sf -X PUT http://pubsub-emulator:8085/v1/projects/logflare/subscriptions/logflare-spool-sub \
+          -H 'Content-Type: application/json' \
+          -d '{"topic": "projects/logflare/topics/logflare-spool"}' > /dev/null || echo "  (already exists)"
+
+        echo "GCP emulator setup complete."

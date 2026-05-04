@@ -1,0 +1,84 @@
+defmodule LogflareWeb.LogEventLive do
+  @moduledoc """
+  Handles all user interactions with a single event
+  """
+
+  use LogflareWeb, :live_view
+
+  alias Logflare.Logs.LogEvents
+  alias Logflare.SourceSchemas
+  alias Logflare.Sources
+
+  on_mount LogflareWeb.AuthLive
+
+  def mount(%{"source_id" => source_id} = params, _session, socket) do
+    source =
+      source_id |> String.to_integer() |> Sources.Cache.get_by_id()
+
+    timestamp =
+      if ts = Map.get(params, "timestamp") do
+        {:ok, dt, _} = DateTime.from_iso8601(ts)
+        dt
+      end
+
+    lql = params["lql"] || ""
+    is_tailing = params["tailing?"] == "true"
+
+    search_timezone = params["tz"] || preferred_timezone(socket.assigns)
+
+    opts =
+      [
+        source: source,
+        user: socket.assigns.user,
+        lql: lql
+      ]
+      |> maybe_put_timestamp(timestamp)
+
+    log_event =
+      case LogEvents.get_event_with_fallback(source.token, params["uuid"], opts) do
+        {:ok, le} -> le
+        {:error, _} -> nil
+      end
+
+    flat_map = SourceSchemas.source_schema_flatmap_or_default(source)
+
+    socket =
+      socket
+      |> assign(:source, source)
+      |> assign(:source_schema_flat_map, flat_map)
+      |> assign(:log_event, log_event)
+      |> assign(:origin, params["origin"])
+      |> assign(:log_event_id, params["uuid"])
+      |> assign(:lql, lql)
+      |> assign(:tailing?, is_tailing)
+      |> assign(:search_timezone, search_timezone)
+      |> assign(:timestamp, timestamp)
+
+    {:ok, socket}
+  end
+
+  def render(assigns) do
+    LogflareWeb.LogView.render("log_event.html", assigns)
+  end
+
+  def handle_info({:put_flash, type, msg}, socket) do
+    {:noreply, socket |> put_flash(type, msg)}
+  end
+
+  @spec maybe_put_timestamp(Keyword.t(), DateTime.t() | nil) :: Keyword.t()
+  defp maybe_put_timestamp(opts, nil), do: opts
+
+  defp maybe_put_timestamp(opts, timestamp),
+    do: Keyword.put(opts, :timestamp, DateTime.truncate(timestamp, :second))
+
+  @spec preferred_timezone(map()) :: String.t()
+  defp preferred_timezone(%{team_user: %{preferences: %{timezone: timezone}}})
+       when is_binary(timezone),
+       do: timezone
+
+  defp preferred_timezone(%{user: %{preferences: %{timezone: timezone}}})
+       when is_binary(timezone),
+       do: timezone
+
+  defp preferred_timezone(_assigns), do: "Etc/UTC"
+end

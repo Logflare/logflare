@@ -1,0 +1,24 @@
+{
+  "event_message": "[Lifecycle]: ObjectCreated:Post test-project/measurement/test-file.jpg",
+  "id": "00000000-0000-0000-0000-000000000000",
+  "metadata": {
+    "context": {
+      "host": "ip-10-10-20-79.eu-central-1.compute.internal",
+      "pid": 1,
+      "service": "worker",
+      "type": "event"
+    },
+    "event": "ObjectCreated:Post",
+    "jodId": "00000000-0000-0000-0000-000000000000",
+    "level": "info",
+    "objectPath": "test-project/measurement/test-file.jpg",
+    "payload": "{\"name\":\"test-file.jpg\",\"reqId\":\"test-req-id\",\"tenant\":{\"ref\":\"test-project\",\"host\":\"test-project.supabase.co\"},\"bucketId\":\"measurement\",\"metadata\":{\"size\":58734,\"mimetype\":\"image/jpeg\",\"cacheControl\":\"max-age=3600\",\"httpStatusCode\":200},\"uploadType\":\"standard\"}",
+    "project": "test-project",
+    "region": "eu-central-1",
+    "reqId": "test-req-id",
+    "resources": ["/test-project/measurement/test-file.jpg"],
+    "tenantId": "test-project"
+  },
+  "project": "test-project",
+  "timestamp": 0
+}

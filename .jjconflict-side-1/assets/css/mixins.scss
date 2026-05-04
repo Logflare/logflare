@@ -1,0 +1,33 @@
+// include only if below/above specified size
+// minmax - min or max
+// min -> include if above width (default)
+// max -> include if below width
+//
+// Example usage
+// .my-style {
+//   display: block; // for mobile and up
+//   @include tablet {
+//     display: inline-block; // for tablet and up
+//   }
+//   @include desktop {
+//     display: flex; // for desktop and up
+//   }
+// }
+
+@mixin mobile($minmax: min) {
+  @media screen and (#{$minmax}-width: 640px) {
+    @content;
+  }
+}
+
+@mixin tablet($minmax: min) {
+  @media screen and (#{$minmax}-width: 768px) {
+    @content;
+  }
+}
+
+@mixin desktop($minmax: min) {
+  @media screen and (#{$minmax}-width: 1024px) {
+    @content;
+  }
+}

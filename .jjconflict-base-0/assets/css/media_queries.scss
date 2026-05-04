@@ -1,0 +1,40 @@
+@import "mixins";
+
+@include tablet {
+  .value {
+    margin-right: 15%;
+    margin-left: 15%;
+  }
+
+  .live-pause {
+    width: 100px;
+  }
+}
+
+@include tablet(max) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  .container {
+    max-width: 100% !important;
+  }
+
+  .live-pause {
+    width: 45px;
+  }
+
+  .btn {
+    margin-right: 0;
+  }
+
+  .parent {
+    flex-direction: column;
+  }
+
+  #saved-searches {
+    float: none;
+    width: 100%;
+    margin-bottom: 2em;
+  }
+}

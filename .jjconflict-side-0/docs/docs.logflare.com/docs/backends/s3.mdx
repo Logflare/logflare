@@ -1,0 +1,39 @@
+---
+sidebar_position: 8
+---
+# S3
+
+The S3 backend is **ingest-only** to a S3 bucket, saving logs to a series of parquet files.
+
+:::warning
+S3 as a backend currently has limited functionality and support. Ingestion architecture and underlying storage mechanisms are subject to **breaking changes**.
+:::
+
+## Behavior and Configuration
+
+### Configuration
+
+The following values are required when creating a S3 backend:
+
+- `s3_bucket`: (`string`, required) the name of an existing S3 bucket.
+- `storage_region`: (`string`, required) the name of the region where the bucket is located.
+- `access_key_id`: (`string`, required) used for auth.
+- `secret_access_key`: (`string`, required) used for auth.
+- `batch_timeout`: (`integer`, required) the maximum time in milliseconds to wait before flushing the batch. Values between 2000 and 5000 are recommended.
+
+:::note
+Ensure the account tied to the `access_key_id` has the necessary permissions to write to the specified `s3_bucket`.
+:::
+
+
+## Implementation Details
+
+In order to optimize performance, the S3 backend will produce many _small_ parquet files.
+In heavy workloads, these files will be generated when the event batch reaches approximately 8MB in size _OR_ when the batch timeout is reached.
+
+The parquet file schema is as follows:
+
+- `id`: The log event `UUID`.
+- `event_message`: The provided or generated event message of the log event, stored as `String`
+- `body`: The processed log event, stored as serialized JSON in a `String` column.
+- `timestamp`: Unix microsecond, stored as `DateTime`

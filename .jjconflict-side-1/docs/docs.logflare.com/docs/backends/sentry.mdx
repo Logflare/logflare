@@ -1,0 +1,31 @@
+---
+sidebar_position: 6
+---
+
+# Sentry
+
+The Sentry backend is **ingest-only**, and sends log events to Sentry's [Logs](https://docs.sentry.io/product/explore/logs/) product.
+
+## Behaviour and configurations
+
+### Configuration
+
+The following value is required when creating a Sentry backend:
+
+- `dsn`: (`string`, required) a DSN (Data Source Name) string from your Sentry project. You can find your project's DSN in the Sentry dashboard under: **Settings** → **Projects** → **[Your Project]** → **Client Keys (DSN)**
+
+#### Example DSN
+
+```
+https://abc123@o123456.ingest.sentry.io/123456
+```
+
+### Implementation Details
+
+Implementation is based on the [webhook backend](/backends/webhook).
+
+Log events are transformed into Sentry's envelope format with the following behavior:
+
+- Log levels are normalized to Sentry's expected levels (`debug`, `info`, `warn`, `error`, `fatal`)
+- All log event metadata is flattened and included as Sentry log attributes
+- The source name and ID are included in the log attributes

@@ -1,0 +1,259 @@
+<div class="modal fade bd-example-modal-lg" id="sourceHelpModal" tabindex="-1" role="dialog"
+  aria-labelledby="sourceHelpModal" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sourceHelpModalLabel">Send Logs to this Source</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <h5 class="header-margin">Source ID</h5>
+        <p>You'll need this source ID for some integrations or libraries.</p>
+        <span class="pointer-cursor logflare-tooltip" id="source-id" data-toggle="tooltip" 
+          data-html="true" data-placement="top" title="<span id=copy-tooltip>Copy this</span>"
+          data-clipboard-text="<%= @source.token %>"><code><%= @source.token %></code> <i
+            class="fas fa-copy"></i></span>
+
+        <h5 class="header-margin"><svg width="97" height="22" viewBox="0 0 283 64" fill="none"
+            xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M141.04 16c-11.04 0-19 7.2-19 18s8.96 18 20 18c6.67 0 12.55-2.64 16.19-7.09l-7.65-4.42c-2.02 2.21-5.09 3.5-8.54 3.5-4.79 0-8.86-2.5-10.37-6.5h28.02c.22-1.12.35-2.28.35-3.5 0-10.79-7.96-17.99-19-17.99zm-9.46 14.5c1.25-3.99 4.67-6.5 9.45-6.5 4.79 0 8.21 2.51 9.45 6.5h-18.9zM248.72 16c-11.04 0-19 7.2-19 18s8.96 18 20 18c6.67 0 12.55-2.64 16.19-7.09l-7.65-4.42c-2.02 2.21-5.09 3.5-8.54 3.5-4.79 0-8.86-2.5-10.37-6.5h28.02c.22-1.12.35-2.28.35-3.5 0-10.79-7.96-17.99-19-17.99zm-9.45 14.5c1.25-3.99 4.67-6.5 9.45-6.5 4.79 0 8.21 2.51 9.45 6.5h-18.9zM200.24 34c0 6 3.92 10 10 10 4.12 0 7.21-1.87 8.8-4.92l7.68 4.43c-3.18 5.3-9.14 8.49-16.48 8.49-11.05 0-19-7.2-19-18s7.96-18 19-18c7.34 0 13.29 3.19 16.48 8.49l-7.68 4.43c-1.59-3.05-4.68-4.92-8.8-4.92-6.07 0-10 4-10 10zm82.48-29v46h-9V5h9zM36.95 0L73.9 64H0L36.95 0zm92.38 5l-27.71 48L73.91 5H84.3l17.32 30 17.32-30h10.39zm58.91 12v9.69c-1-.29-2.06-.49-3.2-.49-5.81 0-10 4-10 10V51h-9V17h9v9.2c0-5.08 5.91-9.2 13.2-9.2z"
+              fill="#fff" /></svg></h5>
+        <p>If you're hosted on Vercel setup our Vercel integration!</p>
+        <%= link "Install the Vercel integration", to: "https://vercel.com/integrations/logflare", class: "btn btn-primary form-button", target: "_blank" %>
+
+        <h5 class="header-margin">Gigalixir</h5>
+        <p>Install the Gigalixir command line tool, and navigate to your project directory.</p>
+        <pre class="py-3">
+          <code>
+    gigalixir drains:add "<%= log_url(:syslog) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
+        </pre>
+
+        <h5 class="header-margin">Cloudflare App</h5>
+        <p>Already on Cloudflare? Install the Cloudflare app and start sending logs now.</p>
+
+        <%= link to: "https://cloudflareapps.com/apps/logflare" do %>
+            <button class="btn btn-primary" title="Install the Cloudflare integration" style="height: 40px;">
+            <img src="<%= Routes.static_path(@conn, "/images/logos/cloudflare-white.svg")%>" style="width: 120px;height: 30px;" />
+            </button>
+        <% end %>
+
+        <h5 class="header-margin">Heroku</h5>
+        <p>Add our log drain with a simple command.</p>
+        <pre class="py-3">
+          <code>
+    heroku drains:add "<%= log_url(:syslog) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>"</code>
+        </pre>
+
+        <h5 class="header-margin">Elixir Logger</h5>
+        <p>Using Elixir? Use our Logger backend to send your structured logs.</p>
+        <%= link "Setup the Logger backend", to: "https://github.com/Logflare/logflare_logger_backend", class: "btn btn-primary form-button", target: "_blank" %>
+
+        <h5 class="header-margin">Elixir Agent</h5>
+        <p>Watch log files on a server with our Elixir agent.</p>
+        <%= link "Install the agent", to: "https://github.com/Logflare/logflare-agent", class: "btn btn-primary form-button", target: "_blank" %>
+
+        <h5 class="header-margin">Javascript</h5>
+        <p>Use our official Pino transport to send log events from your Javascript project.</p>
+        <%= link "Setup the Pino transport", to: "https://github.com/Logflare/pino-logflare", class: "btn btn-primary form-button", target: "_blank" %>
+
+         <h5 class="header-margin">Github Webhook</h5>
+        <p>Set your Github webhook to this Logflare endpoint and we'll ingest Github webhooks for you. This endpoint drops all keys ending in <code>_url</code> so it keeps your Github payloads in check.</p>
+
+        <pre class="px-4 py-3">
+        <code>
+        <%= log_url(:github) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %></code>
+        </pre>
+
+        <h5 class="header-margin">Github Action</h5>
+        <p>Use our Github Action (thanks <%= link "@gr2m", to: "https://twitter.com/gr2m" %>) to easily log events coming from your repositories.</p>
+        <%= link "Setup the Github Action", to: "https://github.com/marketplace/actions/logflare-log", class: "btn btn-primary form-button", target: "_blank" %>
+
+        <h5 class="header-margin">Fluent Bit</h5>
+        <p>Watch log files on a server with this <%= link "Fluent Bit", to: "https://fluentbit.io/", target: "_blank" %> output config.</p>
+        <pre class="py-3">
+          <code>
+    [INPUT]
+        Name        tail
+        Path        /var/log/syslog
+
+    [OUTPUT]
+        Name             http
+        Match            *
+        tls              On
+        Host             api.logflare.app
+        Port             443
+        URI              /logs/json?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %>
+        Format           json
+        Retry_Limit      5
+        json_date_format iso8601
+        json_date_key    timestamp
+          </code>
+        </pre>
+
+        <h5 class="header-margin">Generic Webhook</h5>
+        <p>Use the generic JSON ingest endpoint to generate log events from an external webhook.</p>
+        <p>e.g. you can set a Github webhook to send events to:</p>
+        <pre class="py-3 px-4">
+          <code>
+    <%= log_url(:generic_json) %>?api_key=<%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>&source=<%= @source.token %></code>
+        </pre>
+        <p>Or send generic JSON events yourself.</p>
+        <pre class="py-3">
+          <code>
+    curl -X "POST" "<%= log_url(:generic_json) %>?source=<%= @source.token %>" \
+         -H 'Content-Type: application/json; charset=utf-8' \
+         -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
+         -d $'[
+      {
+        "yellow": true,
+        "tags": [
+          "popular, tropical, organic"
+        ],
+        "store": {
+          "state": "AZ",
+          "city": "Phoenix",
+          "zip": 85016,
+          "address": "123 W Main St"
+        },
+        "type": "fruit",
+        "name": "banana",
+        "qty": 12
+      }
+    ]'</code>
+        </pre>
+
+        <h5 class="header-margin">Custom API Request</h5>
+        <p>Send logs via an HTTP request. This request body payload lets you send over a human readable event message in
+          the <code>message</code> field.</p>
+        <pre class="py-3">
+          <code>
+    curl -X "POST" "<%= log_url(:create) %>?source=<%= @source.token %>" \
+    -H 'Content-Type: application/json' \
+    -H 'X-API-KEY: <%= if @user do @user.api_key else "SIGN_IN_FIRST" end %>' \
+    -d $'{
+      "event_message": "This is another log message.",
+      "metadata": {
+        "ip_address": "100.100.100.100",
+        "request_method": "POST",
+        "custom_user_data": {
+          "vip": true,
+          "id": 38,
+          "login_count": 154,
+          "company": "Apple",
+          "address": {
+            "zip": "11111",
+            "st": "NY",
+            "street": "123 W Main St",
+            "city": "New York"
+          }
+        },
+        "datacenter": "aws",
+        "request_headers": {
+          "connection": "close",
+          "user_agent": "chrome"
+        }
+      }
+    }'
+          </code>
+        </pre>
+
+        <h5 class="header-margin">Custom Cloudflare Worker</h5>
+        <p>Customize the Cloudflare worker using the template below.</p>
+        <pre class="py-3">
+          <code>
+    const makeid = length => {
+        let text = ""
+        const possible = "ABCDEFGHIJKLMNPQRSTUVWXYZ0123456789"
+        for (let i = 0; i < length; i += 1) {
+            text += possible.charAt(Math.floor(Math.random() * possible.length))
+        }
+        return text
+    }
+
+    const buildMetadataFromHeaders = headers => {
+        const responseMetadata = {}
+        Array.from(headers).forEach(([key, value]) => {
+            responseMetadata[key.replace(/-/g, "_")] = value
+        })
+        return responseMetadata
+    }
+
+    const WORKER_ID = makeid(6)
+
+    async function handleRequest(event) {
+        const {
+            request
+        } = event;
+        const rMeth = request.method
+        const rUrl = request.url
+        const uAgent = request.headers.get("user-agent")
+        const rHost = request.headers.get("host")
+        const cfRay = request.headers.get("cf-ray")
+        const cIP = request.headers.get("cf-connecting-ip")
+        const rCf = request.cf
+
+        const requestMetadata = buildMetadataFromHeaders(request.headers)
+
+        const sourceKey = "<%= @source.token %>"
+        const apiKey = "<%= if @user do @user.api_key else "SIGN IN FIRST" end %>"
+
+        const t1 = Date.now()
+        const response = await fetch(request)
+        const originTimeMs = Date.now() - t1
+
+        const statusCode = response.status
+
+        const responseMetadata = buildMetadataFromHeaders(response.headers)
+
+        const logEntry = `${rMeth} | ${statusCode} | ${cIP} | ${cfRay} | ${rUrl} | ${uAgent}`
+
+        const logflareEventBody = {
+            source: sourceKey,
+            log_entry: logEntry,
+            metadata: {
+                response: {
+                    headers: responseMetadata,
+                    origin_time: originTimeMs,
+                    status_code: response.status,
+                },
+                request: {
+                    url: rUrl,
+                    method: rMeth,
+                    headers: requestMetadata,
+                    cf: rCf,
+                },
+                logflare_worker: {
+                    worker_id: WORKER_ID,
+                },
+            },
+        }
+
+        const init = {
+            method: "POST",
+            headers: {
+                "X-API-KEY": apiKey,
+                "Content-Type": "application/json",
+                "User-Agent": `Cloudflare Worker via ${rHost}`
+            },
+            body: JSON.stringify(logflareEventBody),
+        }
+
+        event.waitUntil(fetch("<%= log_url(:create) %>", init))
+
+        return response
+    }
+
+    addEventListener("fetch", event => {
+        event.passThroughOnException()
+
+        event.respondWith(handleRequest(event))
+    })
+          </code>
+        </pre>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,29 @@
+{
+    "event_message": "Subscribing to PostgreSQL failed: {:error, \"Subscription insert failed with 0 rows. Check that tables are part of publication supabase_realtime and subscription params are correct: %{\\\"event\\\" => \\\"INSERT\\\", \\\"filter\\\" => \\\"chat=eq.open\\\", \\\"schema\\\" => \\\"public\\\", \\\"table\\\" => \\\"chats\\\"}\"}",
+    "metadata": {
+      "context": {
+        "application": "realtime",
+        "domain": [
+          "elixir"
+        ],
+        "file": "lib/realtime_web/channels/realtime_channel.ex",
+        "function": "handle_info/2",
+        "gl": "<0.2769.0>",
+        "line": 293,
+        "mfa": [
+          "Elixir.RealtimeWeb.RealtimeChannel",
+          "handle_info",
+          "2"
+        ],
+        "module": "Elixir.RealtimeWeb.RealtimeChannel",
+        "pid": "<0.5049.81>",
+        "time": 1679582313259245,
+        "vm": {
+          "node": "realtime-prod@fdaa:0:cc:a7b:bada:5:2795:2"
+        }
+      },
+      "external_id": "default",
+      "level": "error",
+      "project": "default"
+    }
+  }

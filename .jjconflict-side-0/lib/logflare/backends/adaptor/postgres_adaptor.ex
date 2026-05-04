@@ -1,0 +1,383 @@
+defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
+  @moduledoc """
+  The backend adaptor for the Postgres database.
+
+  Config:
+  `:url` - the database connection string
+
+  On ingest, pipeline will insert it into the log event table for the given source.
+  """
+
+  @behaviour Logflare.Backends.Adaptor
+
+  use GenServer
+  use TypedStruct
+
+  import Ecto.Changeset
+  import Logflare.Utils.Guards
+
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.Ecto.SqlUtils
+  alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
+  alias Logflare.SingleTenant
+  alias Logflare.Sources.Source
+  alias Logflare.Sql
+
+  require Logger
+
+  typedstruct do
+    field(:config, %{
+      url: String.t(),
+      schema: String.t(),
+      username: String.t(),
+      password: String.t(),
+      hostname: String.t(),
+      port: non_neg_integer(),
+      pool_size: non_neg_integer()
+    })
+
+    field(:source, Source.t())
+    field(:backend, Backend.t())
+    field(:backend_token, String.t())
+    field(:source_token, atom())
+    field(:pipeline_name, tuple())
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def start_link({source, backend}) do
+    GenServer.start_link(__MODULE__, {source, backend},
+      name: Backends.via_source(source, __MODULE__, backend.id)
+    )
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config,
+     %{
+       url: :string,
+       username: :string,
+       password: :string,
+       hostname: :string,
+       database: :string,
+       schema: :string,
+       port: :integer,
+       pool_size: :integer
+     }}
+    |> cast(params, [:url, :schema, :username, :password, :hostname, :database, :port, :pool_size])
+  end
+
+  @doc """
+  Executes either an `Ecto.Query` or a sql string against the Postgres backend.
+
+  If a sql string is provided, one can also provide parameters to be passed.
+  Parameter placeholders should correspond to Postgres format, i.e. `$#`
+
+  ### Examples
+
+  ```elixir
+  iex> execute_query(source_backend, from(s in "log_event_..."))
+  {:ok, %QueryResult{rows: [%{...}]}}
+  iex> execute_query(backend, "select body from log_event_table")
+  {:ok, %QueryResult{rows: [%{...}]}}
+  iex> execute_query(backend, {"select $1 as c from log_event_table", ["value"]})
+  {:ok, %QueryResult{rows: [%{...}]}}
+  ```
+  """
+  @impl Logflare.Backends.Adaptor
+  def execute_query(%Backend{} = backend, %Ecto.Query{} = query, _opts) do
+    mod = PgRepo.create_repo(backend)
+
+    try do
+      result =
+        query
+        |> mod.all()
+        |> Enum.map(&nested_map_update/1)
+
+      {:ok, QueryResult.new(result, pg_meta(result))}
+    rescue
+      error in [Postgrex.Error, DBConnection.ConnectionError, Ecto.QueryError] ->
+        {:error, error |> to_query_error() |> log_query_error(backend)}
+    end
+  end
+
+  def execute_query(%Backend{} = backend, query_string, opts)
+      when is_non_empty_binary(query_string) and is_list(opts) do
+    execute_query(backend, {query_string, []}, opts)
+  end
+
+  def execute_query(%Backend{} = backend, {query_string, params}, _opts)
+      when is_non_empty_binary(query_string) and is_list(params) do
+    with {:ok, result} <-
+           SharedRepo.with_repo(backend, fn ->
+             SharedRepo.query(query_string, params)
+           end) do
+      rows =
+        for row <- result.rows do
+          result.columns
+          |> Enum.zip(row)
+          |> Map.new()
+          |> nested_map_update()
+        end
+
+      {:ok, QueryResult.new(rows, pg_meta(rows))}
+    else
+      {:error, error} ->
+        {:error, error |> to_query_error() |> log_query_error(backend)}
+    end
+  end
+
+  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, opts)
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    args = Enum.map(declared_params, fn param -> Map.get(input_params, param) end)
+    execute_query(backend, {query_string, args}, opts)
+  end
+
+  def execute_query(
+        %Backend{} = backend,
+        {query_string, declared_params, input_params, _endpoint_query},
+        opts
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    execute_query(backend, {query_string, declared_params, input_params}, opts)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    case execute_query(backend, "SELECT 1 AS result", []) do
+      {:ok, %QueryResult{rows: [%{"result" => 1}]}} ->
+        :ok
+
+      {:error, %QueryError{kind: kind}}
+      when kind in [:connection_error, :backend_error] ->
+        {:error, kind}
+
+      {:error, reason} ->
+        Logger.warning(
+          "Unexpected error when testing Postgres backend connection: #{inspect(reason)}",
+          backend_id: backend.id,
+          user_id: backend.user_id
+        )
+
+        {:error, :unknown_error}
+    end
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def ecto_to_sql(%Ecto.Query{} = query, _opts) do
+    SqlUtils.ecto_to_pg_sql(query)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def map_query_parameters(original_query, _transformed_query, _declared_params, input_params) do
+    {:ok, params} = Sql.parameter_positions(original_query)
+
+    params
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(fn {_pos, parameter} ->
+      Map.get(input_params, parameter)
+    end)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def supports_default_ingest?, do: true
+
+  @impl Logflare.Backends.Adaptor
+  def transform_query(query, :bq_sql, context) do
+    if should_transform_bigquery_to_postgres?() do
+      schema_prefix = Map.get(context, :schema_prefix)
+      Sql.translate(:bq_sql, :pg_sql, query, schema_prefix)
+    else
+      {:error, "BigQuery SQL not supported by this PostgreSQL backend"}
+    end
+  end
+
+  def transform_query(query, :pg_sql, _context) do
+    {:ok, query}
+  end
+
+  def transform_query(_query, from_language, _context) do
+    {:error, "Transformation from #{from_language} to PostgreSQL not supported"}
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def validate_config(changeset) do
+    changeset
+    |> validate_format(:url, ~r/(?:postgres|postgresql)\:\/\/.+/)
+    |> then(fn changeset ->
+      url = get_change(changeset, :url)
+      hostname = get_change(changeset, :hostname)
+
+      if url == nil and hostname == nil do
+        msg = "either connection url or separate connection credentials must be provided"
+
+        changeset
+        |> add_error(:url, msg)
+        |> add_error(:hostname, msg)
+      else
+        changeset
+      end
+    end)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    config
+    |> redact_url()
+    |> Map.replace(:password, "REDACTED")
+    |> Map.replace("password", "REDACTED")
+  end
+
+  defp redact_url(config) do
+    config
+    |> Map.replace_lazy(:url, &redact_url_string/1)
+    |> Map.replace_lazy("url", &redact_url_string/1)
+  end
+
+  defp redact_url_string(nil), do: nil
+  defp redact_url_string(url), do: String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
+
+  @spec to_query_error(
+          :cannot_connect
+          | Postgrex.Error.t()
+          | DBConnection.ConnectionError.t()
+          | %Ecto.QueryError{}
+        ) :: QueryError.t()
+  defp to_query_error(:cannot_connect) do
+    query_error(:connection_error, :cannot_connect)
+  end
+
+  defp to_query_error(%Postgrex.Error{} = error) do
+    error
+    |> postgres_query_error_kind()
+    |> query_error(error)
+  end
+
+  defp to_query_error(%DBConnection.ConnectionError{} = error) do
+    query_error(:connection_error, error)
+  end
+
+  defp to_query_error(%Ecto.QueryError{} = error) do
+    query_error(:backend_error, error)
+  end
+
+  @spec postgres_query_error_kind(Postgrex.Error.t()) :: QueryError.kind()
+  defp postgres_query_error_kind(%Postgrex.Error{postgres: %{code: code}})
+       when code in [:undefined_column, :syntax_error],
+       do: :invalid_query
+
+  defp postgres_query_error_kind(%Postgrex.Error{postgres: %{pg_code: pg_code}})
+       when pg_code in ["42703", "42601"],
+       do: :invalid_query
+
+  defp postgres_query_error_kind(%Postgrex.Error{} = error) do
+    message = Exception.message(error)
+
+    if message =~ "undefined_column" or message =~ "syntax_error" or
+         message =~ ~r/column\s+["'`]?([^"'`\s]+)["'`]?\s+does not exist/ do
+      :invalid_query
+    else
+      :backend_error
+    end
+  end
+
+  @spec query_error(QueryError.kind(), term()) :: QueryError.t()
+  defp query_error(kind, raw_error) do
+    %QueryError{
+      kind: kind,
+      raw_error: raw_error,
+      backend: __MODULE__
+    }
+  end
+
+  @spec log_query_error(QueryError.t(), Backend.t()) :: QueryError.t()
+  defp log_query_error(%QueryError{} = error, %Backend{} = backend) do
+    QueryError.log(error,
+      user_id: backend.user_id,
+      backend_id: backend.id,
+      backend_token: backend.token
+    )
+  end
+
+  # expose PgRepo functions
+  defdelegate create_repo(backend), to: PgRepo
+  defdelegate table_name(source), to: PgRepo
+  defdelegate create_events_table(source_backend), to: PgRepo
+  defdelegate destroy_instance(backend, timeout \\ 5000), to: PgRepo
+  defdelegate insert_log_event(source, backend, log_event), to: PgRepo
+  defdelegate insert_log_events(source, backend, log_events), to: PgRepo
+
+  # GenServer
+  @impl GenServer
+  def init({source, backend}) do
+    # try create migration table, might fail
+    res = create_events_table({source, backend})
+
+    if :ok != res do
+      Logger.warning("Failed to create events table: #{inspect(res)} ",
+        source_token: source.token,
+        backend_id: backend.id
+      )
+    end
+
+    state = %__MODULE__{
+      config: backend.config,
+      backend: backend,
+      backend_token: if(backend, do: backend.token, else: nil),
+      source_token: source.token,
+      source: source,
+      pipeline_name: Backends.via_source(source, Pipeline, backend.id)
+    }
+
+    {:ok, _pipeline_pid} = Pipeline.start_link(state)
+    {:ok, state}
+  end
+
+  @spec should_transform_bigquery_to_postgres?() :: boolean()
+  defp should_transform_bigquery_to_postgres? do
+    # Only transform BigQuery SQL -> PostgreSQL in SingleTenant Supabase mode with PostgreSQL backend enabled
+    SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?()
+  end
+
+  @spec pg_meta(list()) :: map()
+  defp pg_meta(rows) when is_list(rows) do
+    %{total_rows: length(rows)}
+  end
+
+  @spec nested_map_update(term()) :: term()
+  defp nested_map_update(%DateTime{} = value), do: DateTime.to_unix(value, :microsecond)
+
+  defp nested_map_update(%NaiveDateTime{} = value) do
+    value |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
+  end
+
+  defp nested_map_update(%Date{} = value), do: Date.to_iso8601(value)
+
+  defp nested_map_update(value) when is_struct(value), do: value
+
+  defp nested_map_update(value) when is_map(value),
+    do: Enum.reduce(value, %{}, &nested_map_update/2)
+
+  defp nested_map_update(value) when is_list(value), do: Enum.map(value, &nested_map_update/1)
+
+  defp nested_map_update(value), do: value
+
+  defp nested_map_update({key, value}, acc) when is_struct(value) do
+    Map.put(acc, to_string(key), nested_map_update(value))
+  end
+
+  defp nested_map_update({key, value}, acc) when is_map(value) do
+    Map.put(acc, to_string(key), [nested_map_update(value)])
+  end
+
+  defp nested_map_update({key, value}, acc) do
+    Map.put(acc, to_string(key), nested_map_update(value))
+  end
+end

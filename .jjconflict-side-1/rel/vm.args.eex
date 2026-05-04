@@ -1,0 +1,47 @@
+## Customize flags given to the VM: http://erlang.org/doc/man/erl.html
+## -mode/-name/-sname/-setcookie are configured via env vars, do not set them here
+
+## Number of dirty schedulers doing IO work (file, sockets, etc)
+##+SDio 5
+
+## Increase number of concurrent ports/sockets
+##+Q 65536
+
+## Tweak GC to run more often
+##-env ERL_FULLSWEEP_AFTER 10
+
+## Increase max ets tables allocation
+## https://www.erlang.org/doc/apps/stdlib/ets.html#module-table-traversal
+-env ERL_MAX_ETS_TABLES 250000
+
+## Set busy-wait. Options are: none|very_short|short|medium|long|very_long
++sbwt none
++sbwtdcpu none
++sbwtdio none
+
+## use utilization load balancing
++sub true
+
+## Reduce scheduler wake up threshold
++swt very_low
++swtdcpu very_low
++swtdio very_low
+
+
+## Set distribution buffer limit - default is 1024
++zdbbl 1028000
+
+## Set process limit
++P 8000000
++t 32000000
+
+## Set amount of dirty allocator instances used
+## https://www.erlang.org/doc/apps/erts/erts_alloc.html
++Mdai max
+
+## Disable overlapping partitions
+## https://github.com/erlang/otp/issues/6470#issuecomment-1337421210 
+-kernel prevent_overlapping_partitions false
+
+## Reduce net_ticktime from default 60 to 45 seconds for faster detection of disconnected nodes
+-kernel net_ticktime 45

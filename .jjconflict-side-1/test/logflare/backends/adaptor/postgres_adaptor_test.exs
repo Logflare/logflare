@@ -1,0 +1,466 @@
+defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
+  use Logflare.DataCase
+
+  import ExUnit.CaptureLog
+
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
+  alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
+  alias Logflare.Endpoints
+  alias Logflare.SystemMetrics.AllLogsLogged
+
+  setup do
+    start_supervised!(AllLogsLogged)
+    :ok
+  end
+
+  setup do
+    insert(:plan)
+    repo = Application.get_env(:logflare, Logflare.Repo)
+
+    url =
+      "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
+
+    config = %{
+      url: url,
+      schema: nil
+    }
+
+    source = insert(:source, user: insert(:user))
+
+    backend = insert(:backend, type: :postgres, sources: [source], config: config)
+
+    %{backend: backend, source: source, postgres_url: url}
+  end
+
+  describe "redact_config/1" do
+    test "redacts password in URL" do
+      config = %{url: "postgresql://user:secret123@localhost:5432/dbname"}
+
+      assert %{url: "postgresql://user:REDACTED@localhost:5432/dbname"} =
+               PostgresAdaptor.redact_config(config)
+    end
+
+    test "handles URL without password" do
+      config = %{url: "postgresql://localhost:5432/dbname"}
+      assert ^config = PostgresAdaptor.redact_config(config)
+    end
+
+    test "redacts standalone password field when configured via individual fields" do
+      config = %{hostname: "localhost", username: "user", password: "secret123", database: "db"}
+
+      assert %{password: "REDACTED"} = PostgresAdaptor.redact_config(config)
+    end
+
+    test "does not crash when config has no url" do
+      config = %{hostname: "localhost", username: "user", password: "secret123"}
+
+      assert %{hostname: "localhost"} = PostgresAdaptor.redact_config(config)
+    end
+
+    test "redacts both url-embedded and standalone passwords when both are present" do
+      config = %{
+        url: "postgresql://user:secret123@localhost:5432/dbname",
+        password: "secret123"
+      }
+
+      assert %{
+               url: "postgresql://user:REDACTED@localhost:5432/dbname",
+               password: "REDACTED"
+             } = PostgresAdaptor.redact_config(config)
+    end
+
+    test "redacts a string-keyed url in place, without leaving the atom key unredacted" do
+      config = %{"url" => "postgresql://user:secret123@localhost:5432/dbname"}
+
+      assert %{"url" => "postgresql://user:REDACTED@localhost:5432/dbname"} =
+               redacted =
+               PostgresAdaptor.redact_config(config)
+
+      refute Map.has_key?(redacted, :url)
+    end
+
+    test "redacts both key variants if a config has both :url and \"url\"" do
+      config = %{
+        "url" => "postgresql://user:othersecret@localhost:5432/otherdb",
+        url: "postgresql://user:secret123@localhost:5432/dbname"
+      }
+
+      assert %{
+               "url" => "postgresql://user:REDACTED@localhost:5432/otherdb",
+               url: "postgresql://user:REDACTED@localhost:5432/dbname"
+             } = PostgresAdaptor.redact_config(config)
+    end
+  end
+
+  describe "with postgres repo" do
+    setup %{backend: backend, source: source} do
+      start_supervised!({AdaptorSupervisor, {source, backend}})
+
+      on_exit(fn ->
+        PostgresAdaptor.destroy_instance({source, backend})
+      end)
+
+      :ok
+    end
+
+    test "ingest/2 and execute_query/2 dispatched message", %{
+      backend: backend,
+      source: source
+    } do
+      log_event = build(:log_event, source: source, test: "data")
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+
+      # query by Ecto.Query
+      query = from(l in PostgresAdaptor.table_name(source), select: l.body)
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, %QueryResult{rows: [%{"test" => "data"}], total_rows: 1}} =
+                 PostgresAdaptor.execute_query(backend, query, [])
+      end)
+
+      # query by string
+      assert {:ok, %QueryResult{rows: [%{"body" => [%{"test" => "data"}]}], total_rows: 1}} =
+               PostgresAdaptor.execute_query(
+                 backend,
+                 "select body from #{PostgresAdaptor.table_name(source)}",
+                 []
+               )
+
+      # query by string with parameter
+      assert {:ok, %QueryResult{rows: [%{"value" => "data"}], total_rows: 1}} =
+               PostgresAdaptor.execute_query(
+                 backend,
+                 {"select body ->> $1 as value from #{PostgresAdaptor.table_name(source)}",
+                  ["test"]},
+                 []
+               )
+    end
+
+    test "execute_query/3 normalizes Ecto query undefined column errors", %{
+      backend: backend,
+      source: source
+    } do
+      log_event = build(:log_event, source: source, test: "data")
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+
+      query =
+        from(l in PostgresAdaptor.table_name(source),
+          select: field(l, :notthere)
+        )
+
+      TestUtils.retry_assert(fn ->
+        assert {:error,
+                %QueryError{
+                  kind: :invalid_query,
+                  backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                  raw_error: %Postgrex.Error{},
+                  description: nil
+                } = error} = PostgresAdaptor.execute_query(backend, query, [])
+
+        assert Exception.message(error.raw_error) =~ "notthere"
+      end)
+    end
+
+    test "execute_query/3 normalizes raw SQL undefined column errors", %{
+      backend: backend,
+      source: source
+    } do
+      log_event = build(:log_event, source: source, test: "data")
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+
+      query = "select notthere from #{PostgresAdaptor.table_name(source)}"
+
+      TestUtils.retry_assert(fn ->
+        assert {:error,
+                %QueryError{
+                  kind: :invalid_query,
+                  backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                  raw_error: %Postgrex.Error{},
+                  description: nil
+                } = error} = PostgresAdaptor.execute_query(backend, query, [])
+
+        assert Exception.message(error.raw_error) =~ "notthere"
+      end)
+    end
+
+    test "execute_query/3 normalizes raw SQL syntax errors", %{backend: backend} do
+      TestUtils.retry_assert(fn ->
+        assert {:error,
+                %QueryError{
+                  kind: :invalid_query,
+                  backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                  raw_error: %Postgrex.Error{},
+                  description: nil
+                } = error} = PostgresAdaptor.execute_query(backend, "select from", [])
+
+        message = Exception.message(error.raw_error)
+        assert message =~ "syntax_error"
+        assert message =~ "syntax error"
+      end)
+    end
+
+    test "ingest/2 and execute_query/2 dispatched message with metadata transformation into list",
+         %{
+           backend: backend,
+           source: source
+         } do
+      log_event =
+        build(:log_event,
+          source: source,
+          message: "some msg",
+          nested: %{
+            "host" => "db-default",
+            "parsed" => %{
+              "elements" => [%{"meta" => %{"data" => "date"}}]
+            }
+          }
+        )
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+
+      TestUtils.retry_assert(fn ->
+        # query by string
+        assert {:ok,
+                %QueryResult{
+                  rows: [
+                    %{
+                      "body" => [
+                        %{
+                          "event_message" => "some msg",
+                          "nested" => [
+                            %{
+                              "host" => "db-default",
+                              "parsed" => [%{"elements" => [%{"meta" => [%{"data" => "date"}]}]}]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }} =
+                 PostgresAdaptor.execute_query(
+                   backend,
+                   "select body from #{PostgresAdaptor.table_name(source)}",
+                   []
+                 )
+      end)
+
+      # non map results are not impacted by metadata transformations
+      query = from(l in PostgresAdaptor.table_name(source), select: count(l.id))
+      assert {:ok, %QueryResult{rows: [1]}} = PostgresAdaptor.execute_query(backend, query, [])
+
+      # NaiveDateTime results are converted to unix microseconds
+      query = from(l in PostgresAdaptor.table_name(source), select: l.timestamp)
+
+      assert {:ok, %QueryResult{rows: [timestamp]}} =
+               PostgresAdaptor.execute_query(backend, query, [])
+
+      assert is_integer(timestamp)
+    end
+  end
+
+  describe "test_connection/1" do
+    test "test_connection/1 returns :ok", %{backend: backend} do
+      assert :ok = PostgresAdaptor.test_connection(backend)
+    end
+
+    test "returns error when connection fails", %{backend: backend} do
+      Mimic.expect(SharedRepo, :with_repo, fn _backend, _func ->
+        {:error, :cannot_connect}
+      end)
+
+      assert {:error, :connection_error} = PostgresAdaptor.test_connection(backend)
+    end
+
+    test "execute_query/3 returns error tuple on invalid query", %{backend: backend} do
+      assert {:error, %QueryError{kind: :backend_error, raw_error: %Postgrex.Error{}}} =
+               PostgresAdaptor.execute_query(backend, "select id from nonexistent_source", [])
+    end
+  end
+
+  describe "separate config fields" do
+    test "special characters as password", %{source: source} do
+      config = %{
+        schema: nil,
+        username: "some-invalid",
+        password: "!@#$",
+        database: "logflare_test",
+        hostname: "localhost",
+        port: 5432
+      }
+
+      backend = insert(:backend, type: :postgres, sources: [source], config: config)
+
+      capture_log(fn ->
+        assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
+      end) =~ "invalid_password"
+    end
+
+    test "cannot connect to invalid ", %{source: source} do
+      config = %{
+        username: "some-invalid",
+        password: "!@#$",
+        hostname: "localhost",
+        database: "other_db",
+        port: 1234
+      }
+
+      backend = insert(:backend, type: :postgres, sources: [source], config: config)
+      log_event = build(:log_event, source: source, test: "data")
+
+      capture_log(fn ->
+        assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
+
+        assert PostgresAdaptor.insert_log_event(source, backend, log_event) ==
+                 {:error, :cannot_connect}
+      end) =~ "invalid_password"
+    end
+  end
+
+  describe "repo module" do
+    test "custom schema", %{source: source, postgres_url: url} do
+      config = %{
+        url: url,
+        schema: "my_schema"
+      }
+
+      backend = insert(:backend, type: :postgres, sources: [source], config: config)
+      PostgresAdaptor.create_repo(backend)
+
+      assert {:ok, %QueryResult{rows: [%{"schema_name" => "my_schema"}]}} =
+               PostgresAdaptor.execute_query(
+                 backend,
+                 "select schema_name from information_schema.schemata where schema_name = 'my_schema'",
+                 []
+               )
+
+      assert :ok = PostgresAdaptor.create_events_table({source, backend})
+
+      log_event = build(:log_event, source: source, test: "data")
+      assert {:ok, 1} = PostgresAdaptor.insert_log_event(source, backend, log_event)
+    end
+
+    test "create_events_table/1 creates the table for a given source", %{
+      backend: backend,
+      source: source
+    } do
+      repo = PostgresAdaptor.create_repo(backend)
+      assert :ok = PostgresAdaptor.create_events_table({source, backend})
+      query = from(l in PostgresAdaptor.table_name(source), select: l.body)
+      assert repo.all(query) == []
+    end
+  end
+
+  describe "cast_and_validate_config" do
+    test "bug: postgresql url variations" do
+      assert cast_and_validate_config(url: "postgresql://localhost:5432").valid?
+      assert cast_and_validate_config(url: "postgres://localhost:5432").valid?
+
+      refute cast_and_validate_config(url: "://localhost:5432").valid?
+      refute cast_and_validate_config(url: "//localhost:5432").valid?
+      refute cast_and_validate_config(url: "/localhost:5432").valid?
+      refute cast_and_validate_config(url: "postgres//localhost:5432").valid?
+    end
+
+    test "requires either url or hostname" do
+      assert errors_on(cast_and_validate_config(url: "postgresql://localhost:5432")) == %{}
+      assert errors_on(cast_and_validate_config(hostname: "localhost"))
+
+      assert errors_on(cast_and_validate_config()) == %{
+               hostname: [
+                 "either connection url or separate connection credentials must be provided"
+               ],
+               url: ["either connection url or separate connection credentials must be provided"]
+             }
+    end
+  end
+
+  describe "DML query blocking via Sql.transform (:pg_sql)" do
+    setup do
+      cfg = Application.get_env(:logflare, Logflare.Repo)
+
+      url =
+        "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
+
+      user = insert(:user)
+      source = insert(:source, user: user, name: "dml_test_source")
+
+      backend =
+        insert(:backend,
+          type: :postgres,
+          config: %{url: url},
+          sources: [source],
+          user: user
+        )
+
+      PostgresAdaptor.create_repo(backend)
+      PostgresAdaptor.create_events_table({source, backend})
+
+      on_exit(fn -> PostgresAdaptor.destroy_instance({source, backend}) end)
+
+      %{source: source, user: user}
+    end
+
+    test "blocks DML and restricted queries", %{source: source, user: user} do
+      blocked_queries = [
+        {"UPDATE #{source.name} SET id = 1 WHERE id = 1", "Only SELECT queries allowed"},
+        {"INSERT INTO #{source.name} (id) VALUES (1)", "Only SELECT queries allowed"},
+        {"DELETE FROM #{source.name} WHERE id = 1", "Only SELECT queries allowed"},
+        {"COPY (SELECT id FROM #{source.name}) TO PROGRAM 'id'", "Only SELECT queries allowed"},
+        {"SELECT id FROM #{source.name}; SELECT id FROM #{source.name}",
+         "Only singular query allowed"},
+        {"SELECT * FROM #{source.name}", "wildcard"},
+        {"SELECT current_user, id FROM #{source.name}", "Restricted function"},
+        {"SELECT current_role, id FROM #{source.name}", "Restricted function"},
+        {"SELECT current_catalog, id FROM #{source.name}", "Restricted function"},
+        {"SELECT pg_total_relation_size('pg_shadow'), id FROM #{source.name}",
+         "Restricted function"},
+        {"SELECT has_table_privilege('pg_shadow', 'SELECT'), id FROM #{source.name}",
+         "Restricted function"},
+        {"SELECT pg_read_file('/etc/passwd'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_import('/etc/passwd'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_export(1234, '/tmp/out'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_open(1234, 262144), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_read(1, 1024), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_write(1, 'data'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_unlink(1234), id FROM #{source.name}", "Restricted function"},
+        {"SELECT dblink('host=localhost', 'SELECT 1'), id FROM #{source.name}",
+         "Restricted function"},
+        {"SELECT dblink_exec('host=localhost', 'UPDATE users SET is_admin=true'), id FROM #{source.name}",
+         "Restricted function"},
+        {"SELECT set_config('search_path', 'attacker,public', false), id FROM #{source.name}",
+         "Restricted function"},
+        {"WITH x AS (UPDATE #{source.name} SET id = 1 WHERE id = 0 RETURNING id) SELECT id FROM x",
+         "Only SELECT queries allowed"},
+        {"WITH x as (select 1) select a.data from (select pg_read_file('/etc/passwd') as data) as a",
+         "Restricted function"},
+        {"WITH x aS (select 1) select pg_read_file('/etc/passwd') as all from x",
+         "Restricted function"}
+      ]
+
+      for {query, expected} <- blocked_queries do
+        assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query}),
+               "failed at #{query}"
+
+        assert msg =~ expected
+      end
+    end
+
+    test "allows valid SELECT queries", %{source: source, user: user} do
+      query = "SELECT id FROM #{source.name}"
+      assert {:ok, %{rows: _}} = Endpoints.run_query_string(user, {:pg_sql, query})
+    end
+  end
+
+  defp cast_and_validate_config(attrs \\ []) when is_list(attrs) do
+    Adaptor.cast_and_validate_config(PostgresAdaptor, Map.new(attrs))
+  end
+end
