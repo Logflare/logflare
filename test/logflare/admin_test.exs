@@ -54,6 +54,20 @@ defmodule Logflare.AdminTest do
     refute Admin.admin?(team_member.email)
   end
 
+  test "admin?/1 is based solely on the user's own admin flag, not team membership" do
+    owner = insert(:user, admin: false)
+    team = insert(:team, user: owner)
+
+    non_admin_user = insert(:user, admin: false)
+    admin_user = insert(:user, admin: true)
+
+    insert(:team_user, email: non_admin_user.email, team: team)
+    insert(:team_user, email: admin_user.email, team: team)
+
+    refute Admin.admin?(non_admin_user.email)
+    assert Admin.admin?(admin_user.email)
+  end
+
   test "admin?/1" do
     user = insert(:user, admin: true)
     home_team = insert(:team, user: user)
