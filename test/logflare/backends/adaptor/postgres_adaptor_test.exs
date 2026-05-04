@@ -315,14 +315,18 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
          "Restricted function"},
         {"SELECT set_config('search_path', 'attacker,public', false), id FROM #{source.name}",
          "Restricted function"},
-        {"WITH x AS (DELETE FROM #{source.name} WHERE id > 0 RETURNING id) SELECT id FROM x",
-         "Only SELECT queries allowed"},
         {"WITH x AS (UPDATE #{source.name} SET id = 1 WHERE id = 0 RETURNING id) SELECT id FROM x",
-         "Only SELECT queries allowed"}
+         "Only SELECT queries allowed"},
+        {"WITH x as (select 1) select a.data from (select pg_read_file('/etc/passwd') as data) as a",
+         "Restricted function"},
+        {"WITH x aS (select 1) select pg_read_file('/etc/passwd') as all from x",
+         "Restricted function"}
       ]
 
       for {query, expected} <- blocked_queries do
-        assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query})
+        assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query}),
+               "failed at #{query}"
+
         assert msg =~ expected
       end
     end

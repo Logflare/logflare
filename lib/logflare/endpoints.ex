@@ -566,13 +566,16 @@ defmodule Logflare.Endpoints do
           transformation_context = build_transformation_context(backend)
 
           case adaptor.transform_query(transformed_query, sql_language, transformation_context) do
-            {:ok, adapted_query} -> adapted_query
+            {:ok, adapted_query} ->
+              adapted_query
+
             {:error, reason} ->
               Logger.warning("transform_query failed, falling back to pre-transform query",
                 reason: inspect(reason),
                 language: sql_language,
                 backend_id: backend.id
               )
+
               transformed_query
           end
         else

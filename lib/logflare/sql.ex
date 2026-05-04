@@ -28,7 +28,7 @@ defmodule Logflare.Sql do
     "session_user"
   ]
 
-  @dml_statement_keys ~w(Delete Insert Update Truncate Merge Drop ShowVariable)
+  @dml_statement_keys ~w(Delete Insert Update Truncate Merge Drop ShowVariable Copy)
 
   @pg_restricted_functions [
     "current_database",
@@ -691,7 +691,9 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp do_find_dml_statement({key, _}) when key in @dml_statement_keys, do: {:collect, key}
+  defp do_find_dml_statement({key, _}) when key in @dml_statement_keys,
+    do: {:collect, key}
+
   defp do_find_dml_statement(_), do: :skip
 
   defp has_restricted_functions(ast, data) when is_list(ast),
