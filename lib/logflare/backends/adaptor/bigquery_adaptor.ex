@@ -211,7 +211,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       when is_list(opts) do
     with {:ok, {bq_sql, bq_params}} <- ecto_to_sql(query, opts),
          %User{} = user <- Users.Cache.get(user_id) do
-      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", "`#{dataset_id}`")
+      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", "`#{escape_bq_identifier(dataset_id)}`")
 
       execute_user_query(
         user,
@@ -700,6 +700,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> String.replace(~r/FROM\s+"(.+?)"/, "FROM \\1")
     |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
   end
+
+  @spec escape_bq_identifier(String.t()) :: String.t()
+  defp escape_bq_identifier(identifier), do: String.replace(identifier, "`", "\\`")
 
   @spec pg_param_to_bq_param(param :: any()) :: map()
   defp pg_param_to_bq_param(param) do

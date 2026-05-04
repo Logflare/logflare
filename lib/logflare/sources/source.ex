@@ -352,8 +352,11 @@ defmodule Logflare.Sources.Source do
     dataset_id =
       source.user.bigquery_dataset_id || "#{source.user.id}" <> GCPConfig.dataset_id_append()
 
-    "`#{bq_project_id}`.`#{dataset_id}`.`#{table}`"
+    "`#{escape_bq_identifier(bq_project_id)}`.`#{escape_bq_identifier(dataset_id)}`.`#{escape_bq_identifier(table)}`"
   end
+
+  @spec escape_bq_identifier(String.t()) :: String.t()
+  defp escape_bq_identifier(identifier), do: String.replace(identifier, "`", "\\`")
 
   @spec format_table_name(atom) :: String.t()
   def format_table_name(source_token) when is_atom(source_token) do

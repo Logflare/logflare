@@ -35,5 +35,18 @@ defmodule Logflare.Sources.SourceTest do
       assert s.bq_table_id ==
                "`logflare-dev-238720`.`test_custom_dataset_1`.`44a6851a_9a6f_49ee_822f_12c6f17bedee`"
     end
+
+    test "generate_bq_table_id/1 escapes backticks in legacy dataset_id values from the database" do
+      u = insert(:user, bigquery_dataset_id: "evil`injection")
+      s = insert(:source, token: "44a6851a-9a6f-49ee-822f-12c6f17bedee", rules: [], user_id: u.id)
+
+      s =
+        Sources.get_by(id: s.id)
+        |> Sources.preload_defaults()
+
+      result = Source.generate_bq_table_id(s)
+      assert result =~ "\\`"
+      refute result =~ "``"
+    end
   end
 end
