@@ -914,6 +914,150 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, input, user)
       assert transformed =~ ~s("#{PostgresAdaptor.table_name(source)}")
     end
+
+    test "rejects DML UPDATE statements", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "UPDATE #{name} SET admin = true WHERE id = 1", user)
+
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects DML INSERT statements", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "INSERT INTO #{name} (col) VALUES ('val')", user)
+
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects DML DELETE statements", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "DELETE FROM #{name} WHERE id = 1", user)
+
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects multiple statements", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(
+                 :pg_sql,
+                 "SELECT id FROM #{name}; SELECT id FROM #{name}",
+                 user
+               )
+
+      assert msg =~ "Only singular query allowed"
+    end
+
+    test "rejects wildcard SELECT", %{source: %{name: name}, user: user} do
+      assert {:error, msg} = Sql.transform(:pg_sql, "SELECT * FROM #{name}", user)
+      assert msg =~ "wildcard"
+    end
+
+    test "rejects restricted function current_user", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT current_user, id FROM #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects restricted function pg_read_file", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT pg_read_file('/etc/passwd'), id FROM #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects restricted function lo_import", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT lo_import('/etc/passwd'), id FROM #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects restricted function lo_export", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT lo_export(1234, '/tmp/out'), id FROM #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects COPY TO PROGRAM DDL statement", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "COPY (SELECT id FROM #{name}) TO PROGRAM 'id'", user)
+
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects writable CTE with embedded DELETE", %{source: %{name: name}, user: user} do
+      query = "WITH x AS (DELETE FROM #{name} WHERE id > 0 RETURNING id) SELECT id FROM x"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects writable CTE with embedded INSERT", %{source: %{name: name}, user: user} do
+      query =
+        "WITH x AS (INSERT INTO #{name} (id) VALUES (1) RETURNING id) SELECT id FROM x"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects writable CTE with embedded UPDATE", %{source: %{name: name}, user: user} do
+      query =
+        "WITH x AS (UPDATE #{name} SET id = 1 WHERE id = 0 RETURNING id) SELECT id FROM x"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects schema-qualified TVF pg_catalog.pg_ls_dir in FROM clause", %{
+      source: %{name: name},
+      user: user
+    } do
+      assert {:error, msg} =
+               Sql.transform(
+                 :pg_sql,
+                 "SELECT id FROM pg_catalog.pg_ls_dir('/'), #{name}",
+                 user
+               )
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects schema-qualified TVF pg_catalog.dblink in FROM clause", %{
+      source: %{name: name},
+      user: user
+    } do
+      assert {:error, msg} =
+               Sql.transform(
+                 :pg_sql,
+                 "SELECT id FROM pg_catalog.dblink('host=attacker', 'SELECT 1'), #{name}",
+                 user
+               )
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects pg_ls_logdir", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT id FROM pg_ls_logdir(), #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects pg_ls_waldir", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT id FROM pg_ls_waldir(), #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects unknown source tables", %{user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT id FROM nonexistent_table", user)
+
+      assert msg =~ "can't find source"
+    end
   end
 
   describe "contains_cte?/2" do

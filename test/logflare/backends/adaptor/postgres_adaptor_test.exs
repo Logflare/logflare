@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Endpoints
   alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
@@ -262,6 +263,77 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                ],
                url: ["either connection url or separate connection credentials must be provided"]
              }
+    end
+  end
+
+  describe "DML query blocking via Sql.transform (:pg_sql)" do
+    setup do
+      cfg = Application.get_env(:logflare, Logflare.Repo)
+
+      url =
+        "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
+
+      user = insert(:user)
+      source = insert(:source, user: user, name: "dml_test_source")
+
+      backend =
+        insert(:backend,
+          type: :postgres,
+          config: %{url: url},
+          sources: [source],
+          user: user
+        )
+
+      PostgresAdaptor.create_repo(backend)
+      PostgresAdaptor.create_events_table({source, backend})
+
+      on_exit(fn -> PostgresAdaptor.destroy_instance({source, backend}) end)
+
+      %{source: source, user: user}
+    end
+
+    test "blocks DML and restricted queries", %{source: source, user: user} do
+      blocked_queries = [
+        {"UPDATE #{source.name} SET id = 1 WHERE id = 1", "Only SELECT queries allowed"},
+        {"INSERT INTO #{source.name} (id) VALUES (1)", "Only SELECT queries allowed"},
+        {"DELETE FROM #{source.name} WHERE id = 1", "Only SELECT queries allowed"},
+        {"COPY (SELECT id FROM #{source.name}) TO PROGRAM 'id'", "Only SELECT queries allowed"},
+        {"SELECT id FROM #{source.name}; SELECT id FROM #{source.name}",
+         "Only singular query allowed"},
+        {"SELECT * FROM #{source.name}", "wildcard"},
+        {"SELECT current_user, id FROM #{source.name}", "Restricted function"},
+        {"SELECT pg_read_file('/etc/passwd'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_import('/etc/passwd'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_export(1234, '/tmp/out'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_open(1234, 262144), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_read(1, 1024), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_write(1, 'data'), id FROM #{source.name}", "Restricted function"},
+        {"SELECT lo_unlink(1234), id FROM #{source.name}", "Restricted function"},
+        {"SELECT dblink('host=localhost', 'SELECT 1'), id FROM #{source.name}",
+         "Restricted function"},
+        {"SELECT dblink_exec('host=localhost', 'UPDATE users SET is_admin=true'), id FROM #{source.name}",
+         "Restricted function"},
+        {"SELECT set_config('search_path', 'attacker,public', false), id FROM #{source.name}",
+         "Restricted function"},
+        {"WITH x AS (UPDATE #{source.name} SET id = 1 WHERE id = 0 RETURNING id) SELECT id FROM x",
+         "Only SELECT queries allowed"},
+        {"WITH x as (select 1) select a.data from (select pg_read_file('/etc/passwd') as data) as a",
+         "Restricted function"},
+        {"WITH x aS (select 1) select pg_read_file('/etc/passwd') as all from x",
+         "Restricted function"}
+      ]
+
+      for {query, expected} <- blocked_queries do
+        assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query}),
+               "failed at #{query}"
+
+        assert msg =~ expected
+      end
+    end
+
+    test "allows valid SELECT queries", %{source: source, user: user} do
+      query = "SELECT id FROM #{source.name}"
+      assert {:ok, %{rows: _}} = Endpoints.run_query_string(user, {:pg_sql, query})
     end
   end
 
