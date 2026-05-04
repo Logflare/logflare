@@ -10,6 +10,8 @@ defmodule Logflare.Users do
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Backends
+  alias Logflare.Generators
+  alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
@@ -244,6 +246,31 @@ defmodule Logflare.Users do
     %User{}
     |> user_changeset(params)
     |> Repo.insert()
+  end
+
+  @doc "create user from team user"
+  @spec create_user(TeamUser.t()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
+  def create_user(%TeamUser{} = team_user) do
+    auth_params =
+      Map.take(team_user, [
+        :email,
+        :provider,
+        :provider_uid,
+        :name,
+        :image,
+        :phone,
+        :email_preferred,
+        :valid_google_account
+      ])
+
+    Repo.transaction(fn ->
+      with {:ok, user} <- insert_user(auth_params),
+           {:ok, _team} <- Teams.create_team(user, %{name: Generators.team_name()}) do
+        user
+      else
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
   end
 
   def insert_or_update_user(auth_params)
