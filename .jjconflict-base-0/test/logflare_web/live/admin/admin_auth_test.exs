@@ -13,20 +13,34 @@ defmodule LogflareWeb.AdminLive.AdminAuthTest do
 
   test "on_mount :ensure_admin allows an admin through" do
     admin = insert(:user, admin: true)
+
     assert {:cont, _socket} =
-             AdminAuth.on_mount(:ensure_admin, %{}, %{"current_email" => admin.email}, bare_socket())
+             AdminAuth.on_mount(
+               :ensure_admin,
+               %{},
+               %{"current_email" => admin.email},
+               bare_socket()
+             )
   end
 
   test "on_mount :ensure_admin redirects a non-admin to /" do
     user = insert(:user, admin: false)
+
     assert {:halt, socket} =
-             AdminAuth.on_mount(:ensure_admin, %{}, %{"current_email" => user.email}, bare_socket())
+             AdminAuth.on_mount(
+               :ensure_admin,
+               %{},
+               %{"current_email" => user.email},
+               bare_socket()
+             )
+
     assert socket.redirected == {:redirect, %{to: "/"}}
   end
 
   test "on_mount :ensure_admin redirects when session has no email" do
     assert {:halt, socket} =
              AdminAuth.on_mount(:ensure_admin, %{}, %{}, bare_socket())
+
     assert socket.redirected == {:redirect, %{to: "/"}}
   end
 
@@ -36,7 +50,13 @@ defmodule LogflareWeb.AdminLive.AdminAuthTest do
     Logflare.Repo.update!(Ecto.Changeset.change(admin, admin: false))
 
     assert {:halt, socket} =
-             AdminAuth.on_mount(:ensure_admin, %{}, %{"current_email" => admin.email}, bare_socket())
+             AdminAuth.on_mount(
+               :ensure_admin,
+               %{},
+               %{"current_email" => admin.email},
+               bare_socket()
+             )
+
     assert socket.redirected == {:redirect, %{to: "/"}}
   end
 end
