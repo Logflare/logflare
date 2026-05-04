@@ -8,6 +8,7 @@ defmodule Logflare.Sources.Source do
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Users
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+
   @default_source_api_quota 25
   @derive {Jason.Encoder,
            only: [
