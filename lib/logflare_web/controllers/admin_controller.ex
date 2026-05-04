@@ -107,6 +107,11 @@ defmodule LogflareWeb.AdminController do
         |> put_flash(:error, "Cannot revoke your own admin access.")
         |> redirect(to: Routes.admin_path(conn, :accounts))
 
+      {:error, :last_admin} ->
+        conn
+        |> put_flash(:error, "Cannot revoke the last admin account.")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "Account not found.")

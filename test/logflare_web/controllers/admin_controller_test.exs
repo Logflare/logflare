@@ -168,6 +168,17 @@ defmodule LogflareWeb.AdminControllerTest do
       refute Logflare.Users.get(target.id).admin
     end
 
+    test "revoke_admin is blocked when target is the last admin", %{conn: conn, admin: admin} do
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/#{admin.id}/revoke_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "last admin"
+      assert Logflare.Users.get(admin.id).admin
+    end
+
     test "admin cannot revoke their own admin access", %{conn: conn, admin: admin} do
       conn =
         conn
