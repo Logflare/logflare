@@ -45,6 +45,15 @@ defmodule Logflare.AdminTest do
     refute Admin.admin?(team_member.email)
   end
 
+  test "admin?/1 does not return true for team members of a non-admin user" do
+    owner = insert(:user, admin: false)
+    team = insert(:team, user: owner)
+    team_member = insert(:team_user, email: "member@example.com", team: team)
+
+    refute Admin.admin?(owner.email)
+    refute Admin.admin?(team_member.email)
+  end
+
   test "admin?/1" do
     user = insert(:user, admin: true)
     home_team = insert(:team, user: user)
