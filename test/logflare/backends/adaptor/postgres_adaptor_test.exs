@@ -292,46 +292,22 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       %{source: source, user: user}
     end
 
-    test "blocks UPDATE statements", %{source: source, user: user} do
-      query = "UPDATE #{source.name} SET id = 1 WHERE id = 1"
-      assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query})
-      assert msg =~ "Only SELECT queries allowed"
-    end
+    test "blocks DML and restricted queries", %{source: source, user: user} do
+      blocked_queries = [
+        {"UPDATE #{source.name} SET id = 1 WHERE id = 1", "Only SELECT queries allowed"},
+        {"INSERT INTO #{source.name} (id) VALUES (1)", "Only SELECT queries allowed"},
+        {"DELETE FROM #{source.name} WHERE id = 1", "Only SELECT queries allowed"},
+        {"SELECT id FROM #{source.name}; SELECT id FROM #{source.name}",
+         "Only singular query allowed"},
+        {"SELECT * FROM #{source.name}", "wildcard"},
+        {"SELECT current_user, id FROM #{source.name}", "Restricted function"},
+        {"SELECT pg_read_file('/etc/passwd'), id FROM #{source.name}", "Restricted function"}
+      ]
 
-    test "blocks INSERT statements", %{source: source, user: user} do
-      query = "INSERT INTO #{source.name} (id) VALUES (1)"
-      assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query})
-      assert msg =~ "Only SELECT queries allowed"
-    end
-
-    test "blocks DELETE statements", %{source: source, user: user} do
-      query = "DELETE FROM #{source.name} WHERE id = 1"
-      assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query})
-      assert msg =~ "Only SELECT queries allowed"
-    end
-
-    test "blocks multiple statements", %{source: source, user: user} do
-      query = "SELECT id FROM #{source.name}; SELECT id FROM #{source.name}"
-      assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query})
-      assert msg =~ "Only singular query allowed"
-    end
-
-    test "blocks wildcard SELECT", %{source: source, user: user} do
-      query = "SELECT * FROM #{source.name}"
-      assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query})
-      assert msg =~ "wildcard"
-    end
-
-    test "blocks restricted function current_user", %{source: source, user: user} do
-      query = "SELECT current_user, id FROM #{source.name}"
-      assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query})
-      assert msg =~ "Restricted function"
-    end
-
-    test "blocks restricted function pg_read_file", %{source: source, user: user} do
-      query = "SELECT pg_read_file('/etc/passwd'), id FROM #{source.name}"
-      assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query})
-      assert msg =~ "Restricted function"
+      for {query, expected} <- blocked_queries do
+        assert {:error, msg} = Endpoints.run_query_string(user, {:pg_sql, query})
+        assert msg =~ expected
+      end
     end
 
     test "allows valid SELECT queries", %{source: source, user: user} do
