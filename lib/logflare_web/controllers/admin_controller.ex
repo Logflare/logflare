@@ -40,13 +40,15 @@ defmodule LogflareWeb.AdminController do
         |> redirect(to: Routes.admin_path(conn, :accounts))
 
       user ->
+        admin = Users.get_by(email: get_session(conn, :current_email))
+
         Logger.info("Admin impersonating user",
-          audit: [
-            admin_user_id: conn.assigns.user.id,
-            admin_email: conn.assigns.user.email,
+          audit: %{
+            admin_user_id: admin.id,
+            admin_email: admin.email,
             target_user_id: user.id,
             target_user_email: user.email
-          ]
+          }
         )
 
         auth_params = %{

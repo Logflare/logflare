@@ -60,25 +60,31 @@ defmodule Logflare.Admin do
 
       true ->
         Repo.transaction(fn ->
-          # Lock all admin rows so concurrent revocations are serialised.
+          # Lock all admin rows so concurrent revocations are serialised and
+          # we can re-verify the granter's admin status from a consistent snapshot.
           admins = from(u in User, where: u.admin == true, lock: "FOR UPDATE") |> Repo.all()
 
-          if length(admins) <= 1 do
-            Repo.rollback(:last_admin)
-          else
-            Logger.info("Admin privilege revoked",
-              audit: %{
-                admin_user_id: granter.id,
-                admin_email: granter.email,
-                target_user_id: target.id,
-                target_user_email: target.email
-              }
-            )
+          cond do
+            not Enum.any?(admins, &(&1.id == granter.id)) ->
+              Repo.rollback(:unauthorized)
 
-            case target |> Ecto.Changeset.change(admin: false) |> Repo.update() do
-              {:ok, user} -> user
-              {:error, changeset} -> Repo.rollback(changeset)
-            end
+            length(admins) <= 1 ->
+              Repo.rollback(:last_admin)
+
+            true ->
+              Logger.info("Admin privilege revoked",
+                audit: %{
+                  admin_user_id: granter.id,
+                  admin_email: granter.email,
+                  target_user_id: target.id,
+                  target_user_email: target.email
+                }
+              )
+
+              case target |> Ecto.Changeset.change(admin: false) |> Repo.update() do
+                {:ok, user} -> user
+                {:error, changeset} -> Repo.rollback(changeset)
+              end
           end
         end)
     end

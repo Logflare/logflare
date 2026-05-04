@@ -31,6 +31,28 @@ defmodule LogflareWeb.AdminControllerTest do
       assert html_response(conn, 200) =~ "~/admin"
     end
 
+    test "become_account audit log uses session admin identity, not SetTeamContext user", %{
+      conn: conn,
+      admin: admin
+    } do
+      non_admin_owner = insert(:user, admin: false)
+      team = insert(:team, user: non_admin_owner)
+      insert(:team_user, email: admin.email, team: team, valid_google_account: true)
+
+      target = insert(:user, provider_uid: "google-audit-test")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn
+          |> login_user(admin)
+          |> Plug.Test.init_test_session(%{last_switched_team_id: team.id})
+          |> get(~p"/admin/accounts/#{target.id}/become")
+        end)
+
+      assert log =~ admin.email
+      refute log =~ non_admin_owner.email
+    end
+
     test "become functionality lets an admin turn into a google user", %{conn: conn, admin: admin} do
       user = insert(:user, provider_uid: "google")
 
