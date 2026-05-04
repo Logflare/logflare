@@ -127,9 +127,18 @@ defmodule LogflareWeb.Utils do
 
       replacement =
         case type do
-          "STRING" -> "'#{String.replace(value, "'", "''")}'"
-          num when num in ["INTEGER", "FLOAT"] -> inspect(value)
-          _ -> "'#{String.replace(to_string(value), "'", "''")}'"
+          "STRING" ->
+            escaped = value |> String.replace("\\", "\\\\") |> String.replace("'", "''")
+            "'#{escaped}'"
+
+          num when num in ["INTEGER", "FLOAT"] ->
+            inspect(value)
+
+          _ ->
+            escaped =
+              value |> to_string() |> String.replace("\\", "\\\\") |> String.replace("'", "''")
+
+            "'#{escaped}'"
         end
 
       String.replace(acc_sql, "?", replacement, global: false)
