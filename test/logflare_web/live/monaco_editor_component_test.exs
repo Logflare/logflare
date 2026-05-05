@@ -51,7 +51,7 @@ defmodule LogflareWeb.MonacoEditorComponentTest do
         })
 
       refute html =~ "</script><script>"
-      assert html =~ "\\u003c"
+      assert html =~ "\\u003Cscript>alert(document.domain)\\u003C\\/script>"
     end
 
     test "renders with parser error message set", %{assigns: assigns} do
