@@ -134,6 +134,7 @@ defmodule Logflare.Sources.Source do
     field :validate_schema, :boolean, default: true
     field :drop_lql_filters, Ecto.LqlRules, default: []
     field :drop_lql_string, :string
+    field :default_search_lql, :string, default: nil
     field :disable_tailing, :boolean, default: false
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
@@ -198,6 +199,7 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
+      :default_search_lql,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
@@ -232,6 +234,7 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
+      :default_search_lql,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,

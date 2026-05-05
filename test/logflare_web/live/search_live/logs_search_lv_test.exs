@@ -328,9 +328,14 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   describe "search tasks" do
-    setup do
+    setup context do
       user = insert(:user)
-      source = insert(:source, user: user, bigquery_clustering_fields: "user_id")
+
+      source_attrs =
+        [user: user, bigquery_clustering_fields: "user_id"]
+        |> Keyword.merge(Map.get(context, :source_attrs, []))
+
+      source = insert(:source, source_attrs)
       plan = insert(:plan)
 
       bq_schema = TestUtils.build_bq_schema(%{"user_id" => "some_value"})
@@ -496,6 +501,61 @@ defmodule LogflareWeb.Source.SearchLVTest do
       querystring = find_querystring(html)
 
       assert querystring =~ "c:count(*) c:group_by(t::minute)"
+    end
+
+    @tag source_attrs: [default_search_lql: "s:m.level"]
+    test "appends source default LQL to the initial search query", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      querystring = find_querystring(html)
+
+      assert querystring =~ "s:m.level"
+      assert querystring =~ "c:count(*) c:group_by(t::minute)"
+    end
+
+    @tag source_attrs: [default_search_lql: "s:m.level"]
+    test "appends source default LQL to an initial querystring param", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, html} =
+        live(conn, Routes.live_path(conn, SearchLV, source.id, querystring: "error"))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      querystring = find_querystring(html)
+
+      assert querystring =~ "error"
+      assert querystring =~ "s:m.level"
+    end
+
+    @tag source_attrs: [default_search_lql: "s:m.level"]
+    test "preserves source default LQL when starting a new search", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, html} =
+        live(conn, Routes.live_path(conn, SearchLV, source.id, querystring: "error"))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      assert find_querystring(html) =~ "s:m.level"
+
+      render_change(view, :start_search, %{
+        "querystring" => "c:count(*) c:group_by(t::minute) error s:m.level"
+      })
+
+      html = render(view)
+      assert find_querystring(html) =~ "s:m.level"
+      assert find_querystring(html) =~ "error"
     end
 
     test "query field has schema fields and saved searches", %{

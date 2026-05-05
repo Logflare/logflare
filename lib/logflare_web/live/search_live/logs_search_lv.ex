@@ -102,7 +102,7 @@ defmodule LogflareWeb.Source.SearchLV do
       uri: nil,
       lql_rules: [],
       saved_searches: saved_searches(source),
-      querystring: Map.get(params, "querystring", @default_qs),
+      querystring: querystring_param_or_default(params, source, flat_map),
       force_query: Map.get(params, "force", "false") == "true"
     )
     |> maybe_assign_user_timezone(team_user, user)
@@ -113,6 +113,14 @@ defmodule LogflareWeb.Source.SearchLV do
     params = Map.put(params, "t", socket.assigns.team.id)
 
     mount_with_source(socket, source, params, effective_user)
+  end
+
+  defp querystring_param_or_default(params, source, schema_flatmap) do
+    qs = params |> Map.get("querystring", @default_qs)
+
+    source
+    |> append_default_search_lql(qs)
+    |> normalize_querystring(schema_flatmap)
   end
 
   defp maybe_assign_user_timezone(socket, team_user, user) do
@@ -156,8 +164,10 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, push_patch(socket, to: path, replace: true)}
   end
 
-  def handle_params(%{"querystring" => qs} = params, uri, socket) do
+  def handle_params(%{"querystring" => _qs} = params, uri, socket) do
     source = socket.assigns.source
+    qs = querystring_param_or_default(params, source, socket.assigns.source_schema_flat_map)
+    params = %{params | "querystring" => qs}
 
     tailing? = Map.get(params, "tailing?", "true") != "false" and socket.assigns.tailing?
 
@@ -227,7 +237,12 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_params(%{"source_id" => source}, uri, socket) do
-    params = %{"source_id" => source, "querystring" => "", "tailing?" => "true"}
+    params = %{
+      "source_id" => source,
+      "querystring" => socket.assigns.querystring,
+      "tailing?" => "true"
+    }
+
     handle_params(params, uri, socket)
   end
 
@@ -1058,6 +1073,23 @@ defmodule LogflareWeb.Source.SearchLV do
       })
 
     {:noreply, socket}
+  end
+
+  defp append_default_search_lql(source, qs) do
+    "#{qs} #{source.default_search_lql}"
+    |> String.trim()
+  end
+
+  defp normalize_querystring(qs, schema_flatmap) do
+    case Lql.decode(qs, schema_flatmap) do
+      {:ok, lql_rules} ->
+        lql_rules
+        |> Rules.normalize_all_rules()
+        |> Lql.encode!()
+
+      _error ->
+        qs
+    end
   end
 
   defp check_suggested_keys(_lql_rules, _source, %{assigns: %{force_query: true}} = socket),

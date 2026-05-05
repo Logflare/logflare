@@ -322,6 +322,48 @@ defmodule LogflareWeb.SourceController do
   end
 
   def update(
+        %{assigns: %{source: source, user: _user, plan: _plan}} = conn,
+        %{"source" => %{"default_search_lql" => lqlstring} = params}
+      ) do
+    schema = get_bigquery_schema(source)
+
+    with {:ok, _lql_rules} <- Lql.Parser.parse(lqlstring, schema),
+         {:ok, _changeset} <- Sources.update_source_by_user(source, params) do
+      conn
+      |> put_flash(:info, "Source updated!")
+      |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        conn
+        |> put_status(406)
+        |> put_flash(:error, "Something went wrong!")
+        |> render(
+          "edit.html",
+          changeset: changeset,
+          source: source,
+          notifications_opts: notifications_options()
+        )
+
+      {:error, :field_not_found, _suggested_querystring, error} ->
+        conn
+        |> put_flash(:error, error)
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, error} when is_binary(error) ->
+        conn
+        |> put_flash(:error, "Default search LQL: #{error}")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      e ->
+        Logger.error("Error updating default search LQL.", error_string: inspect(e))
+
+        conn
+        |> put_flash(:error, "Something else went wrong. Contact support if this continues.")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    end
+  end
+
+  def update(
         %{assigns: %{source: source, user: _user, plan: plan}} = conn,
         %{"source" => %{"notifications_every" => _freq} = params}
       ) do
