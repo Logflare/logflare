@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Request } from '@playwright/test';
 import { searchLogs } from '../lib/utils';
 import supabase from '../lib/supabase';
 
@@ -8,7 +8,31 @@ test.setTimeout(60_000);
 expect.configure({ timeout: 15_000 });
 
 type ConsoleEntry = { type: string; text: string; ts: string };
+type NetworkEntry = {
+  method: string;
+  url: string;
+  status: number;
+  contentType: string;
+  durationMs?: number;
+  bodyPreview?: string;
+  ts: string;
+};
+
 const consoleByTest = new Map<string, ConsoleEntry[]>();
+const networkByTest = new Map<string, NetworkEntry[]>();
+
+const RELEVANT_URL_PATTERNS = [
+  /\/api\/platform\//,
+  /\/logs\b/,
+  /\/functions\/v1\//,
+  /\/auth\/v1\//,
+  /\/storage\/v1\//,
+  /\/realtime\/v1\//,
+  /\/rest\/v1\//,
+  /\/pg-meta\//,
+];
+const isRelevantUrl = (url: string) => RELEVANT_URL_PATTERNS.some(re => re.test(url));
+const MAX_BODY_PREVIEW = 4_000;
 
 test.beforeEach(async ({ page }, testInfo) => {
   const messages: ConsoleEntry[] = [];
@@ -24,11 +48,51 @@ test.beforeEach(async ({ page }, testInfo) => {
       ts: new Date().toISOString(),
     });
   });
+
+  const network: NetworkEntry[] = [];
+  networkByTest.set(testInfo.testId, network);
+  const requestStart = new WeakMap<Request, number>();
+
+  page.on('request', req => {
+    if (isRelevantUrl(req.url())) requestStart.set(req, Date.now());
+  });
+
+  page.on('response', async resp => {
+    const url = resp.url();
+    if (!isRelevantUrl(url)) return;
+    const req = resp.request();
+    const startedAt = requestStart.get(req);
+    const contentType = resp.headers()['content-type'] ?? '';
+
+    let bodyPreview: string | undefined;
+    if (contentType.includes('json') || contentType.includes('text')) {
+      try {
+        const body = await resp.text();
+        bodyPreview = body.length > MAX_BODY_PREVIEW
+          ? body.slice(0, MAX_BODY_PREVIEW) + `…[truncated ${body.length - MAX_BODY_PREVIEW} chars]`
+          : body;
+      } catch {
+        bodyPreview = '<unable to read body>';
+      }
+    }
+
+    network.push({
+      method: req.method(),
+      url,
+      status: resp.status(),
+      contentType,
+      durationMs: startedAt ? Date.now() - startedAt : undefined,
+      bodyPreview,
+      ts: new Date().toISOString(),
+    });
+  });
 });
 
 test.afterEach(async ({ page }, testInfo) => {
   const messages = consoleByTest.get(testInfo.testId) ?? [];
+  const network = networkByTest.get(testInfo.testId) ?? [];
   consoleByTest.delete(testInfo.testId);
+  networkByTest.delete(testInfo.testId);
 
   if (testInfo.status === testInfo.expectedStatus) return;
 
@@ -42,8 +106,26 @@ test.afterEach(async ({ page }, testInfo) => {
     });
   }
 
+  try {
+    const tableText = await page.getByRole('table').textContent({ timeout: 1_000 });
+    await testInfo.attach('table.txt', {
+      body: tableText ?? '',
+      contentType: 'text/plain',
+    });
+  } catch (e) {
+    await testInfo.attach('table-text-error.txt', {
+      body: `Failed to capture table text: ${(e as Error).message}`,
+      contentType: 'text/plain',
+    });
+  }
+
   await testInfo.attach('browser-console.json', {
     body: JSON.stringify(messages, null, 2),
+    contentType: 'application/json',
+  });
+
+  await testInfo.attach('network.json', {
+    body: JSON.stringify(network, null, 2),
     contentType: 'application/json',
   });
 
