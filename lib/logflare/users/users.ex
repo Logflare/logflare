@@ -4,21 +4,22 @@ defmodule Logflare.Users do
   import Ecto.Query
 
   alias Logflare.AccountEmail
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Endpoints
+  alias Logflare.Generators
   alias Logflare.Google.BigQuery
   alias Logflare.Mailer
   alias Logflare.Repo
-  alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Sources.Source
-  alias Logflare.Backends
-  alias Logflare.Generators
+  alias Logflare.Sources.Source.Supervisor
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
-  alias Logflare.Users.{Cache, UserPreferences}
-  alias Logflare.Endpoints
+  alias Logflare.Users.Cache
+  alias Logflare.Users.UserPreferences
 
   @max_limit 100
 
