@@ -323,12 +323,13 @@ defmodule LogflareWeb.SourceController do
 
   def update(
         %{assigns: %{source: source, user: _user, plan: _plan}} = conn,
-        %{"source" => %{"default_search_lql" => lqlstring} = params}
+        %{"source" => %{"default_search_lql" => lqlstring} = _params}
       ) do
     schema = get_bigquery_schema(source)
 
     with {:ok, _lql_rules} <- Lql.Parser.parse(lqlstring, schema),
-         {:ok, _changeset} <- Sources.update_source_by_user(source, %{"default_search_lql" => lqlstring}) do
+         {:ok, _changeset} <-
+           Sources.update_source_by_user(source, %{"default_search_lql" => lqlstring}) do
       conn
       |> put_flash(:info, "Source updated!")
       |> redirect(to: Routes.source_path(conn, :edit, source.id))
