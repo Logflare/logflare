@@ -100,7 +100,7 @@ export function scrollBottom() {
   window.scrollTo(0, y)
 }
 
-async function logTemplate(e) {
+export async function logTemplate(e) {
   const { via_rule_id, source_uuid, body } = e;
   const metadata = JSON.stringify(body, null, 2);
   const formatter = await userSelectedFormatter();
