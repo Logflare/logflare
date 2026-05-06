@@ -341,22 +341,33 @@ if(
   Env.get_boolean("DB_SSL") && File.exists?("db-server-ca.pem") &&
     File.exists?("db-client-cert.pem") && File.exists?("db-client-key.pem")
 ) do
-  config :logflare, Logflare.Repo,
-    ssl: [
-      #  ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
-      verify: :verify_peer,
-      cacertfile: Path.absname("db-server-ca.pem"),
-      certfile: Path.absname("db-client-cert.pem"),
-      keyfile: Path.absname("db-client-key.pem"),
-      depth: 3,
-      versions: [:"tlsv1.2", :"tlsv1.3"],
-      # otherwise bare IPv4s will fail
-      server_name_indication: :disable,
-      customize_hostname_check: [
-        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
-    ],
-    show_sensitive_data_on_connection_error: true
+  base_db_ssl_opts = [
+    # ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
+    verify: :verify_peer,
+    cacertfile: Path.absname("db-server-ca.pem"),
+    certfile: Path.absname("db-client-cert.pem"),
+    keyfile: Path.absname("db-client-key.pem"),
+    depth: 3,
+    versions: [:"tlsv1.2", :"tlsv1.3"],
+    customize_hostname_check: [
+      match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+    ]
+  ]
+
+  # RFC 6066 §3 forbids IP literals in SNI. For IP hosts, suppress the SNI
+  # extension but still verify the host against iPAddress SANs via the :https
+  # match_fun. For hostnames, let OTP default SNI to `host` so dNSName SANs
+  # are checked.
+  db_ssl_opts =
+    case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
+      v when v in [:inet, :inet6] ->
+        Keyword.put(base_db_ssl_opts, :server_name_indication, :disable)
+
+      _ ->
+        base_db_ssl_opts
+    end
+
+  config :logflare, Logflare.Repo, ssl: db_ssl_opts
 end
 
 case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
