@@ -359,12 +359,9 @@ if(
   # match_fun. For hostnames, let OTP default SNI to `host` so dNSName SANs
   # are checked.
   db_ssl_opts =
-    case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
-      v when v in [:inet, :inet6] ->
-        Keyword.put(base_db_ssl_opts, :server_name_indication, :disable)
-
-      _ ->
-        base_db_ssl_opts
+    case :inet.parse_address(String.to_charlist(System.get_env("DB_HOSTNAME", ""))) do
+      {:ok, _ip} -> Keyword.put(base_db_ssl_opts, :server_name_indication, :disable)
+      {:error, _} -> base_db_ssl_opts
     end
 
   config :logflare, Logflare.Repo, ssl: db_ssl_opts
