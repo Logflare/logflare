@@ -49,7 +49,6 @@
     </script>
     <%= if Application.get_env(:logflare, :env) == :dev do %>
       <script>
-        window.liveSocket.enableLatencySim(750)
       </script>
     <% end %>
     <%= if Application.get_env(:logflare, :env) == :prod do %>
