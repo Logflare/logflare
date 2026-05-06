@@ -16,23 +16,52 @@ defmodule Logflare.Auth do
 
   @max_age_default 86_400
 
-  defp env_salt, do: Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
+  @email_token_salt "logflare email auth token"
+  @user_socket_salt "logflare user socket auth"
+  @public_source_salt "logflare public source token"
+
   defp env_oauth_config, do: Application.get_env(:logflare, ExOauth2Provider)
   defp env_partner_oauth_config, do: Application.get_env(:logflare, ExOauth2ProviderPartner)
 
-  @doc "Generates an email token, accepting either an email or id"
+  @doc "Generates an email/invite token, accepting either an email or id"
   @spec gen_email_token(String.t() | number) :: String.t()
   @spec gen_email_token(String.t() | number, Keyword.t()) :: String.t()
   def gen_email_token(email_or_id, opts \\ [])
       when is_binary(email_or_id) or is_integer(email_or_id) do
-    Token.sign(LogflareWeb.Endpoint, env_salt(), email_or_id, opts)
+    Token.sign(LogflareWeb.Endpoint, @email_token_salt, email_or_id, opts)
   end
 
-  @doc "Verifies the email token"
+  @doc "Verifies an email/invite token"
   @spec verify_email_token(nil | binary, any) ::
           {:error, :expired | :invalid | :missing} | {:ok, any}
   def verify_email_token(token, max_age \\ @max_age_default) do
-    Token.verify(LogflareWeb.Endpoint, env_salt(), token, max_age: max_age)
+    Token.verify(LogflareWeb.Endpoint, @email_token_salt, token, max_age: max_age)
+  end
+
+  @doc "Generates a signed token for the UserSocket user-authenticated connection"
+  @spec gen_user_socket_token(integer()) :: String.t()
+  def gen_user_socket_token(user_id) when is_integer(user_id) do
+    Token.sign(LogflareWeb.Endpoint, @user_socket_salt, user_id)
+  end
+
+  @doc "Verifies a user socket token"
+  @spec verify_user_socket_token(String.t()) ::
+          {:ok, integer()} | {:error, :expired | :invalid | :missing}
+  def verify_user_socket_token(token) do
+    Token.verify(LogflareWeb.Endpoint, @user_socket_salt, token, max_age: @max_age_default)
+  end
+
+  @doc "Generates a signed token for a source public_token value"
+  @spec gen_public_source_token(String.t() | integer()) :: String.t()
+  def gen_public_source_token(public_token) do
+    Token.sign(LogflareWeb.Endpoint, @public_source_salt, public_token)
+  end
+
+  @doc "Verifies a signed public source token"
+  @spec verify_public_source_token(String.t()) ::
+          {:ok, String.t()} | {:error, :expired | :invalid | :missing}
+  def verify_public_source_token(token) do
+    Token.verify(LogflareWeb.Endpoint, @public_source_salt, token, max_age: @max_age_default)
   end
 
   @doc "Generates a gravatar link based on the user's email"

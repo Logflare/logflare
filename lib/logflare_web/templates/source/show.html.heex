@@ -1,6 +1,6 @@
 <%= if @public_token do %>
   <script>
-    window.publicToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @public_token) %>"
+    window.publicToken = "<%= Logflare.Auth.gen_public_source_token(@public_token) %>"
   </script>
 <% end %>
 <div class="subhead ">

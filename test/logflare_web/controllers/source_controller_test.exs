@@ -841,6 +841,26 @@ defmodule LogflareWeb.SourceControllerTest do
       updated = Sources.get_by(id: source.id)
       assert updated.slack_hook_url == nil
     end
+
+    test "does not delete a victim's slack hook when source_id query param points to an attacker-owned source",
+         %{conn: conn, source: attacker_source} do
+      victim = insert(:user)
+      insert(:team, user: victim)
+
+      victim_source =
+        insert(:source, user: victim, slack_hook_url: "https://hooks.slack.com/victim")
+
+      conn =
+        get(
+          conn,
+          ~p"/sources/#{attacker_source}/delete-slack-hook?source_id=#{victim_source.id}"
+        )
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{attacker_source}/edit"
+
+      assert Sources.get_by(id: victim_source.id).slack_hook_url ==
+               "https://hooks.slack.com/victim"
+    end
   end
 
   describe "delete with recent events check" do

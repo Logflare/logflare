@@ -393,6 +393,33 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       refute result == base_query
     end
 
+    test "uses left joins for nested field selection", %{base_query: base_query} do
+      select_rules = [%SelectRule{path: "metadata.level", alias: "level", wildcard: false}]
+      result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
+
+      assert %Query{joins: [join_clause]} = result
+      assert join_clause.qual == :left
+    end
+
+    test "uses inner joins for nested filters and left joins for select", %{
+      base_query: base_query
+    } do
+      filter_rules = [
+        %FilterRule{path: "metadata.status", operator: :=, value: "error", modifiers: %{}}
+      ]
+
+      select_rules = [%SelectRule{path: "metadata.level", alias: "level", wildcard: false}]
+
+      result =
+        base_query
+        |> BigQuery.apply_filter_rules_to_query(filter_rules, [])
+        |> BigQuery.apply_select_rules_to_query(select_rules, [])
+
+      assert %Query{joins: [filter_join, select_join]} = result
+      assert filter_join.qual == :inner
+      assert select_join.qual == :left
+    end
+
     test "handles empty normalized rules case", %{base_query: base_query} do
       select_rules = []
 

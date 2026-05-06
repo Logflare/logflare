@@ -33,7 +33,7 @@ defmodule LogflareWeb.QueryComponents do
   attr :search_params, :map, default: %{}
 
   def quick_filter(%{node: %{path: [path]}} = assigns)
-      when path in ["event_message", "timestamp"] and not is_map_key(assigns, :class) do
+      when path in ["id", "event_message", "timestamp"] and not is_map_key(assigns, :class) do
     assigns
     |> assign(:class, nil)
     |> quick_filter()

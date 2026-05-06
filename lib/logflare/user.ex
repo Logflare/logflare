@@ -100,6 +100,7 @@ defmodule Logflare.User do
     has_many :sources, Source
     has_many :endpoint_queries, Logflare.Endpoints.Query
     has_many :alert_queries, AlertQuery
+    has_many :backends, Logflare.Backends.Backend
     has_many :vercel_auths, Vercel.Auth
 
     has_one :team, Team

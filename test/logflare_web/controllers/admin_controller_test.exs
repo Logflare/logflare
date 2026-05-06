@@ -2,6 +2,84 @@ defmodule LogflareWeb.AdminControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  import ExUnit.CaptureLog
+
+  setup do
+    prior = Application.get_env(:logflare, :node_shutdown_code)
+    Application.delete_env(:logflare, :node_shutdown_code)
+    on_exit(fn -> Application.put_env(:logflare, :node_shutdown_code, prior) end)
+    :ok
+  end
+
+  describe "shutdown_node/2" do
+    setup do
+      insert(:plan)
+      stub(Logflare.Admin, :shutdown, fn -> :ok end)
+      :ok
+    end
+
+    test "returns 401 when shutdown code is not configured", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("lf-shutdown-code", "anything")
+        |> put(~p"/admin/shutdown")
+
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when shutdown code env is empty string", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, "")
+
+      conn =
+        conn
+        |> put_req_header("lf-shutdown-code", "")
+        |> put(~p"/admin/shutdown")
+
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when header is absent", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, "secret")
+
+      conn = put(conn, ~p"/admin/shutdown")
+
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when provided code does not match", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, "correct-secret")
+
+      conn =
+        conn
+        |> put_req_header("lf-shutdown-code", "wrong-secret")
+        |> put(~p"/admin/shutdown")
+
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when env is unset and no header sent", %{conn: conn} do
+      conn = put(conn, ~p"/admin/shutdown")
+
+      assert json_response(conn, 401)
+    end
+
+    test "shuts down node when secret matches header", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, "correct-secret")
+
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("lf-shutdown-code", "correct-secret")
+            |> put(~p"/admin/shutdown")
+
+          assert json_response(conn, 200)
+        end)
+
+      assert log =~ "Node shutdown initialized"
+    end
+  end
+
   describe "Admin controller" do
     setup do
       insert(:plan)
@@ -88,6 +166,32 @@ defmodule LogflareWeb.AdminControllerTest do
       assert html =~ user_team.name
       refute html =~ admin.name
       refute html =~ admin_team.name
+    end
+
+    test "admin can delete an account", %{conn: conn, admin: admin} do
+      target = insert(:user)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> delete(~p"/admin/accounts/#{target.id}")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Account deleted!"
+      refute Logflare.Users.get(target.id)
+    end
+
+    test "non-admin user cannot delete an account (403)", %{conn: conn, user: user} do
+      target = insert(:user)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> delete(~p"/admin/accounts/#{target.id}")
+
+      assert conn.halted == true
+      assert conn.status == 403
+      assert Logflare.Users.get(target.id)
     end
 
     test "bug: become account clears last_switched_team_id from session", %{

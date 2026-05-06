@@ -14,6 +14,23 @@ defmodule LogflareWeb.EndpointsLiveTest do
     {:ok, user: user, team: team, conn: conn}
   end
 
+  describe "unauthorized" do
+    test "attacker cannot delete another user's endpoint", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user, endpoints_beta: true)
+      endpoint = insert(:endpoint, user: victim)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live(~p"/endpoints")
+
+      render_hook(view, "delete-endpoint", %{"endpoint_id" => to_string(endpoint.id)})
+
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id)
+    end
+  end
+
   describe "with existing endpoint" do
     setup %{user: user} do
       {:ok, endpoint: insert(:endpoint, user: user)}

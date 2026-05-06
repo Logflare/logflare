@@ -329,6 +329,18 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       |> response(404)
     end
 
+    test "cannot transfer backend ownership via user_id param", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user)
+      victim = insert(:user)
+
+      conn
+      |> add_access_token(user, "private")
+      |> patch("/api/backends/#{backend.token}", %{user_id: victim.id})
+      |> response(204)
+
+      assert Logflare.Backends.get_backend(backend.id).user_id == user.id
+    end
+
     test "returns 422 on bad arguments", %{conn: conn, user: user} do
       backend = insert(:backend, user: user)
 

@@ -6,6 +6,12 @@ defmodule LogflareWeb.JSONViewerComponent do
 
   alias Phoenix.LiveView.JS
 
+  @promoted_fields %{
+    "id" => 0,
+    "timestamp" => 1,
+    "event_message" => 2
+  }
+
   @doc """
   ## Examples
 
@@ -26,10 +32,16 @@ defmodule LogflareWeb.JSONViewerComponent do
           Enum.with_index(list, fn v, index -> {to_string(index), v} end)
 
         map when is_map(map) ->
+          last = @promoted_fields |> Map.keys() |> length
+
           map
+          |> Enum.sort_by(fn {key, _value} ->
+            key = to_string(key)
+            {Map.get(@promoted_fields, key, last), key}
+          end)
       end
 
-    assigns = assign(assigns, :data, data)
+    assigns = assigns |> assign(:data, data)
 
     ~H"""
     <div id={@id} class={["tw-font-mono tw-text-sm", @class]} {@rest}>

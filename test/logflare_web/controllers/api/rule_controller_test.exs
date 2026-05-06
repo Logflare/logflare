@@ -119,6 +119,29 @@ defmodule LogflareWeb.Api.RuleControllerTest do
                |> json_response(200)
     end
 
+    test "attacker cannot repoint their rule to a victim's source or backend", %{
+      conn: conn,
+      backend: backend,
+      source: source
+    } do
+      rule = insert(:rule, lql_string: "initial", source: source, backend: backend)
+
+      victim = insert(:user)
+      victim_source = insert(:source, user: victim)
+      victim_backend = insert(:backend, user: victim)
+
+      conn
+      |> put(~p"/api/rules/#{rule.token}", %{
+        source_id: victim_source.id,
+        backend_id: victim_backend.id
+      })
+      |> json_response(404)
+
+      reloaded = Logflare.Rules.get_rule(rule.id)
+      assert reloaded.source_id == source.id
+      assert reloaded.backend_id == backend.id
+    end
+
     test "update rule with bad user", %{conn: conn, backend: backend, source: source} do
       user = insert(:user)
       rule = insert(:rule, lql_string: "initial", source: source, backend: backend)

@@ -73,6 +73,20 @@ defmodule LogflareWeb.JSONViewerComponentTest do
     |> Floki.text(sep: " ")
   end
 
+  defp extract_top_level_keys(html) do
+    html
+    |> Floki.parse_document!()
+    |> Floki.find("div > span.tw-text-json-tree-key")
+    |> Enum.map(fn {_, _, [key]} ->
+      key
+      |> String.trim_trailing(":")
+    end)
+  end
+
+  defp enumerated_keys(map) when is_map(map) do
+    Enum.map(map, fn {key, _value} -> to_string(key) end)
+  end
+
   describe "json_viewer/1" do
     test "renders simple map with string values" do
       data = %{"user" => %{"name" => "John", "age" => "30"}}
@@ -105,6 +119,50 @@ defmodule LogflareWeb.JSONViewerComponentTest do
       assert html =~ "apple"
       assert html =~ "banana"
       assert html =~ "cherry"
+    end
+
+    test "renders top-level promoted fields first" do
+      data = %{
+        "alpha" => 1,
+        "timestamp" => 123,
+        "event_message" => "hello",
+        "beta" => true,
+        "id" => "event-123",
+        "gamma" => nil
+      }
+
+      expected_remaining_keys =
+        data
+        |> enumerated_keys()
+        |> Enum.reject(&(&1 in ~w(id timestamp event_message)))
+
+      html = render_component(&json_viewer/1, data: data, id: "json-viewer")
+
+      assert extract_top_level_keys(html) == [
+               "id",
+               "timestamp",
+               "event_message"
+               | expected_remaining_keys
+             ]
+    end
+
+    test "renders only present promoted fields first" do
+      data = %{
+        "alpha" => 1,
+        "timestamp" => 123,
+        "beta" => true
+      }
+
+      expected_remaining_keys =
+        data
+        |> enumerated_keys()
+        |> Enum.reject(&(&1 in ~w(id timestamp event_message)))
+
+      html = render_component(&json_viewer/1, data: data, id: "json-viewer")
+
+      assert extract_top_level_keys(html) == [
+               "timestamp" | expected_remaining_keys
+             ]
     end
 
     test "renders deeply nested structure (3+ levels)" do

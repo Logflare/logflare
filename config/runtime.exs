@@ -339,7 +339,7 @@ end
 
 if(
   Env.get_boolean("DB_SSL") && File.exists?("db-server-ca.pem") &&
-    File.exists?("db-client-ca.pem") && File.exists?("db-client-key.pem")
+    File.exists?("db-client-cert.pem") && File.exists?("db-client-key.pem")
 ) do
   config :logflare, Logflare.Repo,
     ssl: true,

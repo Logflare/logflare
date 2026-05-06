@@ -33,7 +33,7 @@
     {csrf_meta_tag()}
     <%= if assigns[:user] do %>
       <script>
-        window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, assigns[:user].id) %>";
+        window.userToken = "<%= Logflare.Auth.gen_user_socket_token(assigns[:user].id) %>";
       </script>
     <% end %>
   </head>
