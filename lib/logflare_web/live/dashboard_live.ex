@@ -16,10 +16,10 @@ defmodule LogflareWeb.DashboardLive do
   def mount(_, _session, socket) do
     %{user: user} = socket.assigns
 
-    home_team_exists? =
+    can_create_home_team? =
       case socket.assigns[:team_user] do
-        nil -> true
-        team_user -> not is_nil(Teams.get_home_team(team_user))
+        nil -> false
+        team_user -> is_nil(Teams.get_home_team(team_user))
       end
 
     socket =
@@ -37,7 +37,7 @@ defmodule LogflareWeb.DashboardLive do
       |> assign(:plan, Billing.get_plan_by_user(user))
       |> assign(:fade_in, false)
       |> assign(:show_modal, false)
-      |> assign(:home_team_exists?, home_team_exists?)
+      |> assign(:can_create_home_team?, can_create_home_team?)
 
     if connected?(socket) do
       %{user: user} = socket.assigns
@@ -140,7 +140,7 @@ defmodule LogflareWeb.DashboardLive do
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
-            <DashboardComponents.members user={@user} team={@team} team_user={@team_user} home_team_exists?={@home_team_exists?} />
+            <DashboardComponents.members user={@user} team={@team} team_user={@team_user} can_create_home_team?={@can_create_home_team?} />
           </div>
           <div class="tw-col-span-7">
             <.source_list sources={@sources} source_metrics={@source_metrics} team={@team} plan={@plan} fade_in={@fade_in} />
