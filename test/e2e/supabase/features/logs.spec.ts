@@ -7,6 +7,52 @@ let uniqueId = '';
 test.setTimeout(60_000);
 expect.configure({ timeout: 15_000 });
 
+type ConsoleEntry = { type: string; text: string; ts: string };
+const consoleByTest = new Map<string, ConsoleEntry[]>();
+
+test.beforeEach(async ({ page }, testInfo) => {
+  const messages: ConsoleEntry[] = [];
+  consoleByTest.set(testInfo.testId, messages);
+
+  page.on('console', msg => {
+    messages.push({ type: msg.type(), text: msg.text(), ts: new Date().toISOString() });
+  });
+  page.on('pageerror', err => {
+    messages.push({
+      type: 'pageerror',
+      text: `${err.name}: ${err.message}${err.stack ? '\n' + err.stack : ''}`,
+      ts: new Date().toISOString(),
+    });
+  });
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  const messages = consoleByTest.get(testInfo.testId) ?? [];
+  consoleByTest.delete(testInfo.testId);
+
+  if (testInfo.status === testInfo.expectedStatus) return;
+
+  try {
+    const tableHtml = await page.getByRole('table').innerHTML({ timeout: 1_000 });
+    await testInfo.attach('table.html', { body: tableHtml, contentType: 'text/html' });
+  } catch (e) {
+    await testInfo.attach('table-error.txt', {
+      body: `Failed to capture table HTML: ${(e as Error).message}`,
+      contentType: 'text/plain',
+    });
+  }
+
+  await testInfo.attach('browser-console.json', {
+    body: JSON.stringify(messages, null, 2),
+    contentType: 'application/json',
+  });
+
+  await testInfo.attach('page-url.txt', {
+    body: page.url(),
+    contentType: 'text/plain',
+  });
+});
+
 test.beforeAll(async ({ request, browserName }) => {
   test.setTimeout(60_000);
 
