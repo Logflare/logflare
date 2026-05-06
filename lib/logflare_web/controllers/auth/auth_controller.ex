@@ -1,10 +1,8 @@
 defmodule LogflareWeb.AuthController do
   use LogflareWeb, :controller
 
-  alias Logflare.AccountEmail
   alias Logflare.Auth
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Mailer
   alias Logflare.TeamUsers
   alias Logflare.Teams
   alias Logflare.Users
