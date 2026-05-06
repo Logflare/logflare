@@ -525,10 +525,6 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  def handle_event("reset_search", _, socket) do
-    {:noreply, reset_search(socket)}
-  end
-
   def handle_event(
         "create_new",
         %{"kind" => kind, "resource" => resource},
@@ -1062,17 +1058,6 @@ defmodule LogflareWeb.Source.SearchLV do
       })
 
     {:noreply, socket}
-  end
-
-  defp reset_search(%{assigns: assigns} = socket) do
-    lql_rules =
-      Lql.decode!(@default_qs, SourceSchemas.source_schema_flatmap_or_default(assigns.source))
-
-    qs = Lql.encode!(lql_rules)
-
-    socket
-    |> assign(:querystring, qs)
-    |> assign(:lql_rules, lql_rules)
   end
 
   defp check_suggested_keys(_lql_rules, _source, %{assigns: %{force_query: true}} = socket),

@@ -1,26 +1,21 @@
 import { Page } from '@playwright/test';
 
-const SEARCH_TIMEOUT = 10_000;
-const SEARCH_INTERVAL = 1_000;
+const MAX_RETRIES = 10;
+const RETRY_INTERVAL = 1_000;
 
-// Searches for logs and retries until results appear or timeout is reached.
+// Searches for logs and retries until results appear or max retries is reached.
+// If expectedText is provided, retries until the table contains that specific text.
 export async function searchLogs(page: Page, searchText: string): Promise<void> {
   const searchInput = page.locator('input[placeholder="Search events"]');
   const table = page.getByRole('table');
 
-  await searchInput.fill(searchText);
-  await searchInput.press('Enter');
-
-  const deadline = Date.now() + SEARCH_TIMEOUT;
-
-  while (Date.now() < deadline) {
-    await page.waitForTimeout(SEARCH_INTERVAL);
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    await searchInput.fill(searchText);
+    await searchInput.press('Enter');
+    await page.waitForTimeout(RETRY_INTERVAL);
 
     const text = await table.textContent();
 
-    if (text && !text.includes('No results found')) return;
-
-    await searchInput.fill(searchText);
-    await searchInput.press('Enter');
+    if (text && !text.includes('No results found') && text.includes(searchText)) return;
   }
 }
