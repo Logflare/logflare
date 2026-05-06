@@ -1,10 +1,8 @@
 defmodule LogflareWeb.AuthController do
   use LogflareWeb, :controller
 
-  alias Logflare.AccountEmail
   alias Logflare.Auth
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Mailer
   alias Logflare.TeamUsers
   alias Logflare.Teams
   alias Logflare.Users
@@ -172,13 +170,6 @@ defmodule LogflareWeb.AuthController do
   defp handle_sign_in(_, _, conn, auth_params) do
     case Users.insert_or_update_user(auth_params) do
       {:ok, user} ->
-        user
-        |> AccountEmail.welcome()
-        |> Mailer.deliver()
-
-        BigQueryAdaptor.update_iam_policy(user)
-        BigQueryAdaptor.patch_dataset_access(user)
-
         conn
         |> put_flash(:info, "Thanks for signing up! Now create a source!")
         |> put_session(:current_email, user.email)

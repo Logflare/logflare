@@ -1,6 +1,8 @@
 defmodule Logflare.UsersTest do
   use Logflare.DataCase, async: true
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Mailer
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.Users
@@ -162,6 +164,35 @@ defmodule Logflare.UsersTest do
     end
   end
 
+  describe "create_user/1 with %TeamUser{}" do
+    test "creates a User with copied identity fields, fresh credentials, and an empty home team" do
+      expect_post_insert_user_side_effects()
+      team_user = insert(:team_user)
+
+      assert {:ok, user} = Users.create_user(team_user)
+      assert user.email == String.downcase(team_user.email)
+      assert user.provider == team_user.provider
+      assert user.provider_uid == team_user.provider_uid
+      assert user.name == team_user.name
+      assert user.image == team_user.image
+
+      assert user.api_key
+      assert user.token
+      assert user.token != team_user.token
+
+      user = Logflare.Repo.preload(user, :team)
+      assert user.team
+      assert is_binary(user.team.name) and user.team.name != ""
+    end
+
+    test "returns {:error, changeset} when a User with the same email already exists" do
+      team_user = insert(:team_user)
+      insert(:user, email: team_user.email)
+
+      assert {:error, %Ecto.Changeset{}} = Users.create_user(team_user)
+    end
+  end
+
   describe "insert_or_update_user/1" do
     test "if user exists with provider_uid, updates it", %{user: u1} do
       name = TestUtils.random_string()
@@ -196,6 +227,8 @@ defmodule Logflare.UsersTest do
     end
 
     test "if no user exists with given email or provider_uid creates a new one with given params" do
+      expect_post_insert_user_side_effects()
+
       params = %{
         name: TestUtils.random_string(),
         provider: "email",
@@ -253,5 +286,13 @@ defmodule Logflare.UsersTest do
       changeset = User.user_allowed_changeset(user, %{bigquery_additional_projects: nil})
       assert changeset.changes[:bigquery_additional_projects] == nil
     end
+  end
+
+  defp expect_post_insert_user_side_effects do
+    expect(Mailer, :deliver, fn _email -> {:ok, %{}} end)
+    expect(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
+    expect(BigQueryAdaptor, :patch_dataset_access, fn _user -> {:ok, :patch_attempted} end)
+
+    :ok
   end
 end
