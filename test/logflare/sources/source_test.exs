@@ -12,6 +12,17 @@ defmodule Logflare.Sources.SourceTest do
     :ok
   end
 
+  describe "default_search_lql" do
+    test "allows clearing default search LQL" do
+      source = %Source{name: "Test Source", default_search_lql: "s:m.level"}
+
+      changeset = Source.update_by_user_changeset(source, %{"default_search_lql" => ""})
+
+      assert changeset.valid?
+      assert apply_changes(changeset).default_search_lql == nil
+    end
+  end
+
   describe "Source" do
     test "generate_bq_table_id/1" do
       u = insert(:user)

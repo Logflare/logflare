@@ -145,6 +145,18 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_has("button > span", text: "Search", exact: true)
     end
 
+    test "show source uses default search LQL as search input value", %{conn: conn, user: user} do
+      source = insert(:source, user: user, default_search_lql: "level:error")
+
+      html =
+        conn
+        |> get(~p"/sources/#{source}")
+        |> html_response(200)
+
+      assert html =~ ~s|id="source-search-querystring"|
+      assert html =~ ~s|value="level:error "|
+    end
+
     test "show source's recent logs", %{conn: conn, source: source} do
       start_supervised!({SourceSup, source})
       le = build(:log_event, level: "debug", source: source)
@@ -1061,19 +1073,6 @@ defmodule LogflareWeb.SourceControllerTest do
       assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
       assert Repo.reload(source).default_search_lql == "s:m.level"
-    end
-
-    test "allows clearing default search LQL", %{conn: conn, user: user} do
-      source = insert(:source, user: user, default_search_lql: "s:m.level")
-
-      conn =
-        patch(conn, ~p"/sources/#{source}", %{
-          "source" => %{"default_search_lql" => ""}
-        })
-
-      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
-      assert Repo.reload(source).default_search_lql == nil
     end
 
     test "shows error for unknown field in default search LQL", %{conn: conn, source: source} do

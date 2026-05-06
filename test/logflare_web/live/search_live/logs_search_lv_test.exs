@@ -504,7 +504,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     @tag source_attrs: [default_search_lql: "s:m.level"]
-    test "appends source default LQL to the initial search query", %{
+    test "appends source default LQL when querystring param is absent", %{
       conn: conn,
       source: source
     } do
@@ -520,10 +520,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     @tag source_attrs: [default_search_lql: "s:m.level"]
-    test "appends source default LQL to an initial querystring param", %{
-      conn: conn,
-      source: source
-    } do
+    test "appends source default LQL to an empty querystring", %{conn: conn, source: source} do
+      {:ok, view, html} =
+        live(conn, Routes.live_path(conn, SearchLV, source.id, querystring: ""))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      querystring = find_querystring(html)
+
+      assert querystring =~ "s:m.level"
+      assert querystring =~ "c:count(*) c:group_by(t::minute)"
+    end
+
+    @tag source_attrs: [default_search_lql: "s:m.level"]
+    test "does not append default LQL to querystring param", %{conn: conn, source: source} do
       {:ok, view, html} =
         live(conn, Routes.live_path(conn, SearchLV, source.id, querystring: "error"))
 
@@ -533,16 +544,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
       querystring = find_querystring(html)
 
       assert querystring =~ "error"
-      assert querystring =~ "s:m.level"
+      refute querystring =~ "s:m.level"
     end
 
     @tag source_attrs: [default_search_lql: "s:m.level"]
-    test "preserves source default LQL when starting a new search", %{
-      conn: conn,
-      source: source
-    } do
-      {:ok, view, html} =
-        live(conn, Routes.live_path(conn, SearchLV, source.id, querystring: "error"))
+    test "does not append default LQL when removed from query", %{conn: conn, source: source} do
+      {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -550,11 +557,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert find_querystring(html) =~ "s:m.level"
 
       render_change(view, :start_search, %{
-        "querystring" => "c:count(*) c:group_by(t::minute) error s:m.level"
+        "querystring" => "c:count(*) c:group_by(t::minute) error"
       })
 
       html = render(view)
-      assert find_querystring(html) =~ "s:m.level"
+      refute find_querystring(html) =~ "s:m.level"
       assert find_querystring(html) =~ "error"
     end
 
