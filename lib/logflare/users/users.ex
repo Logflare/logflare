@@ -3,8 +3,10 @@ defmodule Logflare.Users do
 
   import Ecto.Query
 
+  alias Logflare.AccountEmail
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Google.BigQuery
+  alias Logflare.Mailer
   alias Logflare.Repo
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
@@ -271,7 +273,20 @@ defmodule Logflare.Users do
         {:error, changeset} -> Repo.rollback(changeset)
       end
     end)
+    |> post_insert_user()
   end
+
+  defp post_insert_user({:ok, user} = result) do
+    user
+    |> AccountEmail.welcome()
+    |> Mailer.deliver()
+
+    BigQueryAdaptor.update_iam_policy(user)
+    BigQueryAdaptor.patch_dataset_access(user)
+    result
+  end
+
+  defp post_insert_user(other), do: other
 
   def insert_or_update_user(auth_params)
       when not is_map_key(auth_params, :email) or not is_map_key(auth_params, :provider_uid) do
@@ -288,6 +303,7 @@ defmodule Logflare.Users do
 
       true ->
         insert_user(auth_params)
+        |> post_insert_user()
     end
   end
 

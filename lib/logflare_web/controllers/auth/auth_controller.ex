@@ -172,13 +172,6 @@ defmodule LogflareWeb.AuthController do
   defp handle_sign_in(_, _, conn, auth_params) do
     case Users.insert_or_update_user(auth_params) do
       {:ok, user} ->
-        user
-        |> AccountEmail.welcome()
-        |> Mailer.deliver()
-
-        BigQueryAdaptor.update_iam_policy(user)
-        BigQueryAdaptor.patch_dataset_access(user)
-
         conn
         |> put_flash(:info, "Thanks for signing up! Now create a source!")
         |> put_session(:current_email, user.email)

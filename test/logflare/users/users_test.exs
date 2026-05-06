@@ -1,6 +1,8 @@
 defmodule Logflare.UsersTest do
   use Logflare.DataCase, async: true
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Mailer
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.Users
@@ -164,6 +166,7 @@ defmodule Logflare.UsersTest do
 
   describe "create_user/1 with %TeamUser{}" do
     test "creates a User with copied identity fields, fresh credentials, and an empty home team" do
+      expect_post_insert_user_side_effects()
       team_user = insert(:team_user)
 
       assert {:ok, user} = Users.create_user(team_user)
@@ -224,6 +227,8 @@ defmodule Logflare.UsersTest do
     end
 
     test "if no user exists with given email or provider_uid creates a new one with given params" do
+      expect_post_insert_user_side_effects()
+
       params = %{
         name: TestUtils.random_string(),
         provider: "email",
@@ -281,5 +286,13 @@ defmodule Logflare.UsersTest do
       changeset = User.user_allowed_changeset(user, %{bigquery_additional_projects: nil})
       assert changeset.changes[:bigquery_additional_projects] == nil
     end
+  end
+
+  defp expect_post_insert_user_side_effects do
+    expect(Mailer, :deliver, fn _email -> {:ok, %{}} end)
+    expect(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
+    expect(BigQueryAdaptor, :patch_dataset_access, fn _user -> {:ok, :patch_attempted} end)
+
+    :ok
   end
 end
