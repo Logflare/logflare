@@ -35,46 +35,8 @@ defmodule LogflareWeb.QueryLive do
       </p>
     </section>
     <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
-      <.form for={%{}} phx-change="parse-query" phx-submit="run-query" class="tw-min-h-[80px] tw-flex tw-flex-col tw-gap-4">
-        <LogflareWeb.MonacoEditorComponentNew.code_editor name="value" value={@query_string} completions={@completions} />
-        <LiveMonacoEditor.code_editor
-          :if={false}
-          value={@query_string}
-          change="parse-query"
-          path="query"
-          id="query"
-          opts={
-            Map.merge(
-              LiveMonacoEditor.default_opts(),
-              %{
-                "wordWrap" => "on",
-                "language" => "sql",
-                "fontSize" => 12,
-                "padding" => %{
-                  "top" => 14,
-                  "bottom" => 14
-                },
-                "contextmenu" => false,
-                "hideCursorInOverviewRuler" => true,
-                "smoothScrolling" => true,
-                "scrollbar" => %{
-                  "vertical" => "auto",
-                  "horizontal" => "hidden",
-                  "verticalScrollbarSize" => 6,
-                  "alwaysConsumeMouseWheel" => false
-                },
-                "lineNumbers" => "off",
-                "glyphMargin" => false,
-                "lineNumbersMinChars" => 0,
-                "folding" => false,
-                "roundedSelection" => true,
-                "minimap" => %{
-                  "enabled" => false
-                }
-              }
-            )
-          }
-        />
+      <.form :let={f} for={query_form(@query_string)} phx-change="parse-query" phx-submit="run-query" class="tw-min-h-[80px] tw-flex tw-flex-col tw-gap-4">
+        <LogflareWeb.MonacoEditorComponentNew.code_editor id="monaco-hook" field={f[:value]} completions={@completions} />
         <div class="tw-ml-auto">
           <button type="submit" name="action" value="format" class="btn btn-secondary">
             Format
@@ -174,6 +136,11 @@ defmodule LogflareWeb.QueryLive do
       |> assign_completions()
 
     {:ok, socket}
+  end
+
+  defp query_form(query_string) do
+    %{"value" => query_string}
+    |> to_form()
   end
 
   def handle_params(params, _uri, socket) do

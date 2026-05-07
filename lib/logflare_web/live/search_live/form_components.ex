@@ -156,8 +156,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
               <div class="tw-order-2 tw-basis-full tw-px-2 tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
                 <MonacoEditorComponentNew.code_editor
                   id="lql-editor-hook"
-                  name={@search_form[:querystring].name}
-                  value={@search_form[:querystring].value}
+                  field={@search_form[:querystring]}
                   language="lql"
                   opts={MonacoEditorComponentNew.lql_editor_opts()}
                   schema_fields={@lql_schema_fields}

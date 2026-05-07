@@ -1,9 +1,8 @@
 defmodule LogflareWeb.MonacoEditorComponentNew do
   use Phoenix.Component
 
-  attr :value, :string, default: ""
+  attr :field, Phoenix.HTML.FormField, required: true
   attr :id, :string, default: "lf-monaco"
-  attr :name, :string, default: "query"
   attr :language, :string, default: "sql"
   attr :opts, :map, default: %{}
   attr :completions, :list, default: []
@@ -23,7 +22,7 @@ defmodule LogflareWeb.MonacoEditorComponentNew do
 
     ~H"""
     <div class={@class} id={@id} phx-hook="MonacoHook" data-language={@language} data-options={@opts_json} data-completions={@completions_json} data-schema-fields-json={@schema_fields_json} data-suggested-searches-json={@suggested_searches_json}>
-      <textarea name={@name} class="tw-hidden" phx-debounce={@debounce}>{@value}</textarea>
+      <input id={"#{@id}-input"} type="hidden" name={@field.name} value={@field.value} phx-debounce={@debounce} data-editor-input />
       <div id={"#{@id}-editor"} phx-update="ignore" class={@editor_class}>
         <div id={"#{@id}-editor-container"} data-editor-container></div>
       </div>

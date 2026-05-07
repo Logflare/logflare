@@ -12,8 +12,8 @@ window.MonacoEnvironment = {
   },
 };
 
-function dispatchInput(textarea) {
-  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+function dispatchInput(formField) {
+  formField.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function submitClosestForm(element) {
@@ -90,10 +90,10 @@ const minEditorHeight = 100;
 const MonacoHook = {
   mounted() {
     this.editorContainer = this.el.querySelector("[data-editor-container]");
-    this.textarea = this.el.querySelector("textarea");
+    this.formField = this.el.querySelector("[data-editor-input]");
     this.loadDataset();
     this.ignoreEditorChange = false;
-    this.localValue = this.textarea.value;
+    this.localValue = this.formField.value;
     this.disposables = [];
 
     if (!this.el.isConnected) return;
@@ -106,7 +106,7 @@ const MonacoHook = {
       ...editorOptions,
       ...configuredOptions,
       language: this.language,
-      value: this.textarea.value,
+      value: this.formField.value,
     });
 
     this.editorContainer.style.minHeight = `${this.minEditorHeight}px`;
@@ -120,8 +120,8 @@ const MonacoHook = {
         if (this.ignoreEditorChange) return;
 
         this.localValue = this.editor.getValue();
-        this.textarea.value = this.localValue;
-        dispatchInput(this.textarea);
+        this.formField.value = this.localValue;
+        dispatchInput(this.formField);
       }),
     );
 
@@ -134,11 +134,11 @@ const MonacoHook = {
   },
 
   updated() {
-    if (!this.editor || !this.textarea) return;
+    if (!this.editor || !this.formField) return;
 
     this.loadDataset();
 
-    const serverValue = this.textarea.value;
+    const serverValue = this.formField.value;
     const editorValue = this.editor.getValue();
 
     if (serverValue === editorValue) {
@@ -147,7 +147,7 @@ const MonacoHook = {
     }
 
     if (this.editor.hasTextFocus() && this.localValue === editorValue) {
-      this.textarea.value = editorValue;
+      this.formField.value = editorValue;
       return;
     }
 
@@ -182,7 +182,7 @@ const MonacoHook = {
     if (!model || model.getValue() === value) return;
 
     this.ignoreEditorChange = true;
-    this.textarea.value = value;
+    this.formField.value = value;
     this.localValue = value;
     this.editor.executeEdits("server_update", [
       {
@@ -265,8 +265,8 @@ const MonacoHook = {
       monaco.KeyCode.Enter,
       () => {
         this.localValue = this.editor.getValue();
-        this.textarea.value = this.localValue;
-        dispatchInput(this.textarea);
+        this.formField.value = this.localValue;
+        dispatchInput(this.formField);
         submitClosestForm(this.el);
       },
       "!suggestWidgetVisible",
