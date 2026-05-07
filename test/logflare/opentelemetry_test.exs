@@ -23,6 +23,8 @@ defmodule Logflare.OpenTelemetryTest do
   end
 
   describe "only ingest spans are emitted in" do
+    TestUtils.reset_feature_flag_overrides(setup: true)
+
     test "handle_batch (streaming insert)", %{source: source} do
       stub(Logflare.Google.BigQuery, :stream_batch!, fn _context, _rows ->
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
@@ -53,6 +55,8 @@ defmodule Logflare.OpenTelemetryTest do
     end
 
     test "handle_batch (storage write api)", %{source: source} do
+      TestUtils.put_feature_flag_overrides("BigqueryStorageWriteApi", true)
+
       source = insert(:source, user_id: source.user_id, bq_storage_write_api: true)
 
       stub(

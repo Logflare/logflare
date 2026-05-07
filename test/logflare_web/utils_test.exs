@@ -30,6 +30,8 @@ defmodule LogflareWeb.UtilsTest do
     test "returns true in test environment" do
       assert LogflareUtils.flag("some-feature") == true
       assert LogflareUtils.flag("another-feature", %Logflare.User{}) == true
+      # disabled in tests
+      assert LogflareUtils.flag("BigqueryStorageWriteApi") == false
     end
 
     @tag env: :prod
