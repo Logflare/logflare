@@ -1,6 +1,40 @@
-import { test, expect, type Request } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Request } from '@playwright/test';
 import { searchLogs } from '../lib/utils';
 import supabase from '../lib/supabase';
+
+// Poll the logs.all endpoint until at least one row matches `pattern` in `table`.
+// Replaces a fixed sleep that was racy when CI ingestion was slow. The endpoint
+// runs the supplied SQL through Logflare via Studio's BFF; `regexp_contains` is
+// used because `LIKE` returns 500 against this backend.
+async function waitForLogs(
+  request: APIRequestContext,
+  table: string,
+  pattern: string,
+  { timeoutMs = 90_000, intervalMs = 1_000 }: { timeoutMs?: number; intervalMs?: number } = {}
+): Promise<void> {
+  const sql = `select count(*) as c from ${table} where regexp_contains(event_message, '${pattern}')`;
+  const deadline = Date.now() + timeoutMs;
+  let lastError: string | undefined;
+
+  while (Date.now() < deadline) {
+    const start = new Date(Date.now() - 3_600_000).toISOString();
+    const end = new Date(Date.now() + 3_600_000).toISOString();
+    const resp = await request.get('/api/platform/projects/default/analytics/endpoints/logs.all', {
+      params: { iso_timestamp_start: start, iso_timestamp_end: end, sql },
+    });
+    if (resp.ok()) {
+      const data = await resp.json().catch(() => null);
+      const count = data?.result?.[0]?.c ?? 0;
+      if (count > 0) return;
+      lastError = undefined;
+    } else {
+      lastError = `${resp.status()} ${await resp.text().catch(() => '')}`;
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  const suffix = lastError ? ` last response: ${lastError}` : '';
+  throw new Error(`waitForLogs(${table}, "${pattern}") timed out after ${timeoutMs}ms.${suffix}`);
+}
 
 let uniqueId = '';
 
@@ -136,7 +170,9 @@ test.afterEach(async ({ page }, testInfo) => {
 });
 
 test.beforeAll(async ({ request, browserName }) => {
-  test.setTimeout(60_000);
+  // The polling below can take up to ~90s in worst case; bump the hook timeout
+  // to give it headroom on top of the synchronous setup work above.
+  test.setTimeout(180_000);
 
   uniqueId = `${Date.now()}_${browserName}`;
 
@@ -171,7 +207,22 @@ test.beforeAll(async ({ request, browserName }) => {
     query: `select cron.schedule('test_cron_${uniqueId}', '5 seconds', $$SELECT auth.email()$$);`
   }});
 
-  await new Promise(r => setTimeout(r, 30_000))
+  // Wait for ingestion of THIS test's setup events, in parallel. These are
+  // uniqueId-tagged so we can confirm our specific data made it through the
+  // (Vector → Logflare → backend → searchable) path before the test bodies
+  // run their searches. Replaces a fixed 30s sleep that was racy on slow CI
+  // runners.
+  //
+  // The other pipelines (postgrest "Config reloaded", realtime "Billing
+  // metrics", edge functions /home/deno/functions/hello, cron job)
+  // emit periodically or on infra events independent of our setup; the test
+  // bodies' date-windowed searches reliably hit historical entries, so we
+  // don't need to poll those in beforeAll.
+  await Promise.all([
+    waitForLogs(request, 'edge_logs', `function_${uniqueId}`),
+    waitForLogs(request, 'auth_logs', `example_${uniqueId}`),
+    waitForLogs(request, 'storage_logs', `avatars_${uniqueId}`),
+  ]);
 });
 
 test.afterAll(async ({ request }) => {
