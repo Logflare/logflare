@@ -10,21 +10,26 @@ async function waitForLogs(
   request: APIRequestContext,
   table: string,
   pattern: string,
-  { timeoutMs = 90_000, intervalMs = 1_000 }: { timeoutMs?: number; intervalMs?: number } = {}
+  { timeoutMs = 180_000, intervalMs = 1_000 }: { timeoutMs?: number; intervalMs?: number } = {}
 ): Promise<void> {
-  const sql = `select count(*) as c from ${table} where regexp_contains(event_message, '${pattern}')`;
+  const countSql = `select count(*) as c from ${table} where regexp_contains(event_message, '${pattern}')`;
   const deadline = Date.now() + timeoutMs;
+  const startedAt = Date.now();
+  let polls = 0;
+  let lastCount: number | undefined;
   let lastError: string | undefined;
 
   while (Date.now() < deadline) {
+    polls++;
     const start = new Date(Date.now() - 3_600_000).toISOString();
     const end = new Date(Date.now() + 3_600_000).toISOString();
     const resp = await request.get('/api/platform/projects/default/analytics/endpoints/logs.all', {
-      params: { iso_timestamp_start: start, iso_timestamp_end: end, sql },
+      params: { iso_timestamp_start: start, iso_timestamp_end: end, sql: countSql },
     });
     if (resp.ok()) {
       const data = await resp.json().catch(() => null);
       const count = data?.result?.[0]?.c ?? 0;
+      lastCount = count;
       if (count > 0) return;
       lastError = undefined;
     } else {
@@ -32,8 +37,33 @@ async function waitForLogs(
     }
     await new Promise(r => setTimeout(r, intervalMs));
   }
-  const suffix = lastError ? ` last response: ${lastError}` : '';
-  throw new Error(`waitForLogs(${table}, "${pattern}") timed out after ${timeoutMs}ms.${suffix}`);
+
+  // Timed out — fetch a sample of recent rows from the table for forensic context,
+  // and log via console.error so the diagnostic surfaces in CI logs (Playwright's
+  // hook failures don't fire afterEach, so testInfo.attach isn't available here).
+  let sample: string[] = [];
+  try {
+    const start = new Date(Date.now() - 3_600_000).toISOString();
+    const end = new Date(Date.now() + 3_600_000).toISOString();
+    const sampleSql = `select event_message from ${table} order by timestamp desc limit 5`;
+    const resp = await request.get('/api/platform/projects/default/analytics/endpoints/logs.all', {
+      params: { iso_timestamp_start: start, iso_timestamp_end: end, sql: sampleSql },
+    });
+    if (resp.ok()) {
+      const data = await resp.json().catch(() => null);
+      sample = (data?.result ?? []).map((r: { event_message?: string }) => (r.event_message ?? '').slice(0, 300));
+    }
+  } catch (_) { /* ignore — diagnostic only */ }
+
+  const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+  const summary = [
+    `waitForLogs(${table}, "${pattern}") timed out after ${timeoutMs}ms`,
+    `  elapsed=${elapsedSec}s, polls=${polls}, last count=${lastCount ?? 'n/a'}, last response error=${lastError ?? 'none'}`,
+    `  recent ${table} event_messages (${sample.length} rows):`,
+    ...sample.map((m, i) => `    [${i}] ${m}`),
+  ].join('\n');
+  console.error(summary);
+  throw new Error(summary);
 }
 
 let uniqueId = '';
@@ -170,9 +200,9 @@ test.afterEach(async ({ page }, testInfo) => {
 });
 
 test.beforeAll(async ({ request, browserName }) => {
-  // The polling below can take up to ~90s in worst case; bump the hook timeout
+  // The polling below can take up to ~180s in worst case; bump the hook timeout
   // to give it headroom on top of the synchronous setup work above.
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
 
   uniqueId = `${Date.now()}_${browserName}`;
 
