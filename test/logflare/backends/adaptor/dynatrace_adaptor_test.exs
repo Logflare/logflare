@@ -51,6 +51,17 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
       refute changeset.valid?
       assert {"must use HTTPS to protect API credentials", _} = changeset.errors[:url]
     end
+
+    test "rejects http:// urls that embed https:// later in the string" do
+      changeset =
+        Adaptor.cast_and_validate_config(@subject, %{
+          "url" => "http://attacker.example.com/?x=https://abc.live.dynatrace.com",
+          "api_token" => "dt0c01.abc"
+        })
+
+      refute changeset.valid?
+      assert {"must use HTTPS to protect API credentials", _} = changeset.errors[:url]
+    end
   end
 
   describe "redact_config/1" do

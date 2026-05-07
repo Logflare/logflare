@@ -62,7 +62,7 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptor do
   def validate_config(changeset) do
     changeset
     |> Changeset.validate_required([:url, :api_token])
-    |> Changeset.validate_format(:url, ~r/https\:\/\/.+/,
+    |> Changeset.validate_format(:url, ~r/\Ahttps:\/\/.+/,
       message: "must use HTTPS to protect API credentials"
     )
   end
