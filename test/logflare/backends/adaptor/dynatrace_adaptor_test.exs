@@ -40,6 +40,17 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
                "api_token" => "dt0c01.abc"
              }).valid?
     end
+
+    test "rejects http:// urls to prevent cleartext credential transmission" do
+      changeset =
+        Adaptor.cast_and_validate_config(@subject, %{
+          "url" => "http://abc.live.dynatrace.com",
+          "api_token" => "dt0c01.abc"
+        })
+
+      refute changeset.valid?
+      assert {"must use HTTPS to protect API credentials", _} = changeset.errors[:url]
+    end
   end
 
   describe "redact_config/1" do
@@ -89,6 +100,29 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
           sources: [source],
           config: %{
             url: "https://abc.live.dynatrace.com/",
+            api_token: "dt0c01.token"
+          }
+        )
+
+      @client
+      |> expect(:send, fn req ->
+        assert req[:url] == "https://abc.live.dynatrace.com/api/v2/logs/ingest"
+        {:ok, %Tesla.Env{status: 204, body: ""}}
+      end)
+
+      assert :ok = @subject.test_connection(backend)
+    end
+
+    test "url already ending in /api/v2/logs/ingest is not double-suffixed" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :dynatrace,
+          sources: [source],
+          config: %{
+            url: "https://abc.live.dynatrace.com/api/v2/logs/ingest",
             api_token: "dt0c01.token"
           }
         )

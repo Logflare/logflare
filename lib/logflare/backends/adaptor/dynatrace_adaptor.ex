@@ -62,7 +62,9 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptor do
   def validate_config(changeset) do
     changeset
     |> Changeset.validate_required([:url, :api_token])
-    |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> Changeset.validate_format(:url, ~r/https\:\/\/.+/,
+      message: "must use HTTPS to protect API credentials"
+    )
   end
 
   @impl Logflare.Backends.Adaptor
@@ -78,7 +80,13 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptor do
   end
 
   defp ingest_url(url) when is_binary(url) do
-    String.trim_trailing(url, "/") <> @log_ingest_path
+    trimmed = String.trim_trailing(url, "/")
+
+    if String.ends_with?(trimmed, @log_ingest_path) do
+      trimmed
+    else
+      trimmed <> @log_ingest_path
+    end
   end
 
   defp translate_event(%Source{} = source, %LogEvent{} = le) do
