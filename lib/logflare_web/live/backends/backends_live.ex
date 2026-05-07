@@ -381,7 +381,8 @@ defmodule LogflareWeb.BackendsLive do
       {"Axiom", :axiom},
       {"OTLP", :otlp},
       {"Last9", :last9},
-      {"Syslog", :syslog}
+      {"Syslog", :syslog},
+      {"Dynatrace", :dynatrace}
     ])
   end
 
