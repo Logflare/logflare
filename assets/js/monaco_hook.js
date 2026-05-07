@@ -1,5 +1,9 @@
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+import * as monaco from "monaco-editor/esm/vs/editor/edcore.main.js";
 import "monaco-editor/esm/vs/basic-languages/sql/sql.contribution.js";
+import {
+  registerLqlLanguage,
+  registerLqlCompletionProvider,
+} from "./lql_language";
 import { theme } from "./monaco_editor_theme";
 
 window.MonacoEnvironment = {
@@ -12,13 +16,25 @@ function dispatchInput(textarea) {
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-function parseCompletions(value) {
-  if (!value) return [];
+function submitClosestForm(element) {
+  const form = element.closest("form");
 
+  if (!form) return;
+
+  if (typeof form.requestSubmit === "function") {
+    form.requestSubmit();
+  } else {
+    form.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+  }
+}
+
+function parseJson(value) {
   try {
     return JSON.parse(value);
   } catch (_error) {
-    return [];
+    return null;
   }
 }
 
@@ -75,28 +91,36 @@ const MonacoHook = {
   mounted() {
     this.editorContainer = this.el.querySelector("[data-editor-container]");
     this.textarea = this.el.querySelector("textarea");
-    this.completions = parseCompletions(this.el.dataset.completions);
+    this.loadDataset();
     this.ignoreEditorChange = false;
+    this.localValue = this.textarea.value;
     this.disposables = [];
 
     if (!this.el.isConnected) return;
 
     monaco.editor.defineTheme("default", theme);
 
+    const { minHeight: _minHeight, ...configuredOptions } = this.options;
+
     this.editor = monaco.editor.create(this.editorContainer, {
       ...editorOptions,
+      ...configuredOptions,
+      language: this.language,
       value: this.textarea.value,
     });
 
-    this.editorContainer.style.minHeight = `${minEditorHeight}px`;
+    this.editorContainer.style.minHeight = `${this.minEditorHeight}px`;
     this.resizeToContent();
+    this.registerLanguage();
     this.registerCompletions();
+    this.registerSubmitCommand();
 
     this.disposables.push(
       this.editor.onDidChangeModelContent(() => {
         if (this.ignoreEditorChange) return;
 
-        this.textarea.value = this.editor.getValue();
+        this.localValue = this.editor.getValue();
+        this.textarea.value = this.localValue;
         dispatchInput(this.textarea);
       }),
     );
@@ -106,13 +130,26 @@ const MonacoHook = {
         this.resizeToContent();
       }),
     );
+
   },
 
   updated() {
     if (!this.editor || !this.textarea) return;
 
+    this.loadDataset();
+
     const serverValue = this.textarea.value;
     const editorValue = this.editor.getValue();
+
+    if (serverValue === editorValue) {
+      this.localValue = serverValue;
+      return;
+    }
+
+    if (this.editor.hasTextFocus() && this.localValue === editorValue) {
+      this.textarea.value = editorValue;
+      return;
+    }
 
     if (serverValue !== editorValue) {
       this.setValue(serverValue);
@@ -129,6 +166,16 @@ const MonacoHook = {
     }
   },
 
+  loadDataset() {
+    this.language = this.el.dataset.language || "sql";
+    this.options = parseJson(this.el.dataset.options) || {};
+    this.completions = parseJson(this.el.dataset.completions) || [];
+    this.schemaFields = parseJson(this.el.dataset.schemaFieldsJson) || {};
+    this.suggestedSearches =
+      parseJson(this.el.dataset.suggestedSearchesJson) || [];
+    this.minEditorHeight = this.options.minHeight || minEditorHeight;
+  },
+
   setValue(value) {
     const model = this.editor.getModel();
 
@@ -136,6 +183,7 @@ const MonacoHook = {
 
     this.ignoreEditorChange = true;
     this.textarea.value = value;
+    this.localValue = value;
     this.editor.executeEdits("server_update", [
       {
         range: model.getFullModelRange(),
@@ -148,19 +196,42 @@ const MonacoHook = {
   resizeToContent() {
     if (!this.editor || !this.editorContainer) return;
 
-    const height = Math.max(this.editor.getContentHeight(), minEditorHeight);
+    const height = Math.max(
+      this.editor.getContentHeight(),
+      this.minEditorHeight,
+    );
     this.editorContainer.style.height = `${height}px`;
     this.editor.layout();
   },
 
+  registerLanguage() {
+    if (this.language !== "lql") return;
+
+    registerLqlLanguage(monaco);
+    monaco.editor.setModelLanguage(this.editor.getModel(), "lql");
+  },
+
   registerCompletions() {
+    const editor = this.editor;
+
+    if (this.language === "lql") {
+      this.disposables.push(
+        registerLqlCompletionProvider(
+          monaco,
+          () => this.schemaFields,
+          () => this.suggestedSearches,
+        ),
+      );
+
+      return;
+    }
+
     if (this.completions.length === 0) return;
 
-    const editor = this.editor;
     const suggestions = this.completions;
 
     this.disposables.push(
-      monaco.languages.registerCompletionItemProvider("sql", {
+      monaco.languages.registerCompletionItemProvider(this.language, {
         provideCompletionItems(model, position) {
           if (model !== editor.getModel()) {
             return { suggestions: [] };
@@ -184,6 +255,21 @@ const MonacoHook = {
           };
         },
       }),
+    );
+  },
+
+  registerSubmitCommand() {
+    if (this.language !== "lql") return;
+
+    this.editor.addCommand(
+      monaco.KeyCode.Enter,
+      () => {
+        this.localValue = this.editor.getValue();
+        this.textarea.value = this.localValue;
+        dispatchInput(this.textarea);
+        submitClosestForm(this.el);
+      },
+      "!suggestWidgetVisible",
     );
   },
 };

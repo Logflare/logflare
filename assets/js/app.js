@@ -22,7 +22,6 @@ import "./command_palette_hook.jsx";
 import $ from "jquery";
 import moment from "moment";
 import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_monaco_editor.esm";
-import LqlEditorWrapper from "./lql_editor_wrapper_hook";
 import MonacoHook from "./monaco_hook";
 
 // set moment globally before daterangepicker
@@ -50,7 +49,6 @@ const hooks = {
   ...LiveModalHooks,
   ...BillingHooks,
   CodeEditorHook,
-  LqlEditorWrapper,
   MonacoHook,
 };
 
