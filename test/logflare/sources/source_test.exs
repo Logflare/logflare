@@ -7,7 +7,10 @@ defmodule Logflare.Sources.SourceTest do
 
   doctest Logflare.Sources.Source, import: true
 
-  @moduletag :failing
+  setup do
+    insert(:plan, name: "Free")
+    :ok
+  end
 
   describe "Source" do
     test "generate_bq_table_id/1" do
