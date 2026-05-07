@@ -171,7 +171,8 @@ defmodule Logflare.LogEvent do
   defp transform(%LE{valid: true} = le, %Source{} = source) do
     with {:ok, le} <- bigquery_spec(le),
          {:ok, le} <- copy_fields(le, source),
-         {:ok, le} <- kv_enrich(le, source) do
+         {:ok, le} <- kv_enrich(le, source),
+         {:ok, le} <- drop_fields(le, source) do
       le
     else
       {:error, message} ->
@@ -263,6 +264,36 @@ defmodule Logflare.LogEvent do
       _ -> body
     end
   end
+
+  @spec drop_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
+  defp drop_fields(%LE{} = le, %Source{transform_drop_fields: nil}), do: {:ok, le}
+  defp drop_fields(%LE{} = le, %Source{transform_drop_fields: ""}), do: {:ok, le}
+
+  defp drop_fields(le, source) do
+    paths = String.split(source.transform_drop_fields, "\n", trim: true)
+
+    new_body =
+      for raw <- paths, path = String.trim(raw), path != "", reduce: le.body do
+        acc ->
+          path = String.replace_prefix(path, "m.", "metadata.")
+          keys = String.split(path, ".")
+          drop_field_at(acc, keys)
+      end
+
+    {:ok, Map.put(le, :body, new_body)}
+  end
+
+  @spec drop_field_at(term(), [String.t()]) :: term()
+  defp drop_field_at(body, [leaf]) when is_map(body), do: Map.delete(body, leaf)
+
+  defp drop_field_at(body, [head | rest]) when is_map(body) do
+    case Map.fetch(body, head) do
+      {:ok, child} when is_map(child) -> Map.put(body, head, drop_field_at(child, rest))
+      _ -> body
+    end
+  end
+
+  defp drop_field_at(body, _), do: body
 
   @doc """
   Generates a custom event message from source settings.any()

@@ -271,6 +271,115 @@ defmodule Logflare.LogEventTest do
     end
   end
 
+  describe "drop_fields" do
+    test "nil config is a no-op", %{source: source} do
+      source = %{source | transform_drop_fields: nil}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"keep" => 1, "service" => "router"}, %{source: source})
+
+      assert body["keep"] == 1
+      assert body["service"] == "router"
+    end
+
+    test "drops a top-level field", %{source: source} do
+      source = %{source | transform_drop_fields: "service"}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router", "keep" => 1}, %{source: source})
+
+      refute Map.has_key?(body, "service")
+      assert body["keep"] == 1
+    end
+
+    test "drops a nested field via dot syntax", %{source: source} do
+      source = %{source | transform_drop_fields: "metadata.user.id"}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(
+                 %{"metadata" => %{"user" => %{"id" => 42, "name" => "ada"}}},
+                 %{source: source}
+               )
+
+      assert body["metadata"]["user"] == %{"name" => "ada"}
+    end
+
+    test "m. shorthand resolves to metadata.", %{source: source} do
+      source = %{source | transform_drop_fields: "m.routing.region"}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(
+                 %{"metadata" => %{"routing" => %{"region" => "us-east"}, "kept" => 1}},
+                 %{source: source}
+               )
+
+      refute get_in(body, ["metadata", "routing", "region"])
+      assert body["metadata"]["kept"] == 1
+    end
+
+    test "drops multiple fields", %{source: source} do
+      source = %{source | transform_drop_fields: "service\nnamespace\nm.routing.region"}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(
+                 %{
+                   "service" => "router",
+                   "namespace" => "default",
+                   "metadata" => %{"routing" => %{"region" => "us-east"}},
+                   "keep" => 1
+                 },
+                 %{source: source}
+               )
+
+      refute Map.has_key?(body, "service")
+      refute Map.has_key?(body, "namespace")
+      refute get_in(body, ["metadata", "routing", "region"])
+      assert body["keep"] == 1
+    end
+
+    test "missing fields are a silent no-op", %{source: source} do
+      source = %{source | transform_drop_fields: "absent\nmetadata.also.absent"}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"keep" => 1}, %{source: source})
+
+      assert body["keep"] == 1
+    end
+
+    test "blank and whitespace-only lines are ignored", %{source: source} do
+      source = %{source | transform_drop_fields: "\n  \nservice\n\n"}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router", "keep" => 1}, %{source: source})
+
+      refute Map.has_key?(body, "service")
+      assert body["keep"] == 1
+    end
+
+    test "non-map intermediate path is a silent no-op", %{source: source} do
+      source = %{source | transform_drop_fields: "service.region"}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router"}, %{source: source})
+
+      assert body["service"] == "router"
+    end
+
+    test "runs after copy_fields so users can copy then drop the source", %{source: source} do
+      source = %{
+        source
+        | transform_copy_fields: "service:m.routing.service",
+          transform_drop_fields: "service"
+      }
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router"}, %{source: source})
+
+      refute Map.has_key?(body, "service")
+      assert body["metadata"]["routing"]["service"] == "router"
+    end
+  end
+
   test "make/2 with metadata string", %{source: source} do
     assert %LogEvent{
              body: body,

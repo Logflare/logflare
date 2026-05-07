@@ -141,6 +141,7 @@ defmodule Logflare.Sources.Source do
     field :transform_copy_fields, :string
     field :transform_key_values, :string
     field :transform_key_values_parsed, {:array, :map}, virtual: true
+    field :transform_drop_fields, :string
     field :bigquery_clustering_fields, :string
     field :system_source, :boolean, default: false
     field :system_source_type, Ecto.Enum, values: @system_source_types
@@ -204,6 +205,7 @@ defmodule Logflare.Sources.Source do
       :retention_days,
       :transform_copy_fields,
       :transform_key_values,
+      :transform_drop_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,
@@ -239,6 +241,7 @@ defmodule Logflare.Sources.Source do
       :retention_days,
       :transform_copy_fields,
       :transform_key_values,
+      :transform_drop_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,

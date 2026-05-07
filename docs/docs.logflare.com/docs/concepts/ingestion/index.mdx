@@ -111,6 +111,8 @@ At ingestion, the pipeline will perform the following in sequence:
 
 4. If set, key-value enrichment will be applied. See [key-value enrichment](#key-value-enrichment) for more details.
 
+5. If set, configured fields will be dropped from the event body. See [drop fields](#drop-fields) for more details.
+
 ### Key Transformation
 
 When logging object, your object keys will be transformed automatically to comply with the respective backend in use. For example, BigQuery column requirements require that names only contain letters (a-z, A-Z), numbers (0-9), or underscores (\_), and it must start with a letter or underscore. This will be automatically handled for you when ingesting data.
@@ -219,6 +221,47 @@ Key-value pairs can be managed via the [Management API](https://logflare.app/swa
 
 :::note
 Key-value enrichment runs after field copying, so copied fields can be used as lookup sources.
+:::
+
+### Drop Fields
+
+A source can be configured to drop specific fields from the event body before it is persisted. This is useful for keys that are needed upstream — for example, by a log shipper for routing — but should not be stored.
+
+One field path per line. Dot syntax addresses nested paths, and `m.` is shorthand for `metadata.`. Missing paths and non-map intermediates are silently ignored.
+
+For example, given a Fluent Bit pipeline that uses `service` and `namespace` for routing but does not need them stored:
+
+```text
+service
+namespace
+```
+
+An incoming event:
+
+```json
+{ "service": "router", "namespace": "default", "event_message": "hello" }
+```
+
+becomes:
+
+```json
+{ "event_message": "hello" }
+```
+
+Drop fields runs **after** field copying and key-value enrichment, so a value can be copied or used for enrichment first and then dropped from its original location:
+
+```text
+# transform_copy_fields
+service:m.routing.service
+
+# transform_drop_fields
+service
+```
+
+The original `service` key is removed from the top level, but `metadata.routing.service` retains the value.
+
+:::note ClickHouse backends
+The ClickHouse backend persists events into fixed OTEL tables via a built-in mapping that already discards unmapped top-level keys. Drop fields is still useful for ClickHouse to keep specific keys out of the catch-all `*_attributes` map columns. Be careful not to drop fields that the mapping reads (e.g. `project`, `trace_id`, `timestamp`) — those will fall back to defaults.
 :::
 
 ## Adaptive Schema
