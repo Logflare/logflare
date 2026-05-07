@@ -69,7 +69,6 @@ async function waitForLogs(
 let uniqueId = '';
 
 test.setTimeout(60_000);
-expect.configure({ timeout: 15_000 });
 
 type ConsoleEntry = { type: string; text: string; ts: string };
 type NetworkEntry = {
@@ -237,21 +236,25 @@ test.beforeAll(async ({ request, browserName }) => {
     query: `select cron.schedule('test_cron_${uniqueId}', '5 seconds', $$SELECT auth.email()$$);`
   }});
 
-  // Wait for ingestion of THIS test's setup events, in parallel. These are
-  // uniqueId-tagged so we can confirm our specific data made it through the
-  // (Vector → Logflare → backend → searchable) path before the test bodies
+  // Wait for ingestion of test setup events in parallel before the test bodies
   // run their searches. Replaces a fixed 30s sleep that was racy on slow CI
   // runners.
   //
-  // The other pipelines (postgrest "Config reloaded", realtime "Billing
-  // metrics", edge functions /home/deno/functions/hello, cron job)
-  // emit periodically or on infra events independent of our setup; the test
-  // bodies' date-windowed searches reliably hit historical entries, so we
-  // don't need to poll those in beforeAll.
+  // - edge_logs / auth_logs / storage_logs poll for uniqueId-tagged events from
+  //   the setup above.
+  // - realtime_logs polls for "Billing", a periodic infra emission. The test
+  //   body asserts on "Billing metrics" with a 15s expect timeout, but the
+  //   emission cadence is ~1 minute, so without this wait the test races a gap
+  //   between emissions.
+  //
+  // The remaining pipelines (postgrest "Config reloaded", edge functions
+  // /home/deno/functions/hello, cron job) reliably hit historical entries via
+  // the test bodies' date-windowed searches, so we don't poll those here.
   await Promise.all([
     waitForLogs(request, 'edge_logs', `function_${uniqueId}`),
     waitForLogs(request, 'auth_logs', `example_${uniqueId}`),
     waitForLogs(request, 'storage_logs', `avatars_${uniqueId}`),
+    waitForLogs(request, 'realtime_logs', 'Billing'),
   ]);
 });
 
