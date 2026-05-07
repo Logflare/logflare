@@ -25,6 +25,8 @@ defmodule Logflare.Backends.BufferProducer do
           interval: pos_integer()
         }
 
+  @type table_key :: {pos_integer(), pos_integer() | nil, pid() | nil}
+
   @default_interval 1_000
 
   def start_link(opts) when is_list(opts) do
@@ -232,24 +234,18 @@ defmodule Logflare.Backends.BufferProducer do
   defp do_fetch(%{consolidated: true, backend_id: bid}, n) do
     key = {:consolidated, bid, self()}
 
-    case IngestEventQueue.pop_pending(key, n) do
-      {:error, :not_initialized} ->
-        Logger.warning(
-          "IngestEventQueue not initialized for consolidated queue",
-          backend_id: bid
-        )
-
-        []
-
-      {:ok, events} ->
-        events
-    end
+    do_fetch_key(key, n)
   end
 
   defp do_fetch(%{source_id: sid, backend_id: bid}, n) do
     key = {sid, bid, self()}
 
-    case IngestEventQueue.take_pending(key, n) do
+    do_fetch_key(key, n)
+  end
+
+  @spec do_fetch_key(key :: table_key(), count :: non_neg_integer()) :: [LogEvent.t()]
+  defp do_fetch_key({sid, bid, _pid} = key, n) do
+    case IngestEventQueue.pop_pending(key, n) do
       {:error, :not_initialized} ->
         Logger.warning(
           "IngestEventQueue not initialized, could not fetch events. source_id: #{sid}",
@@ -258,13 +254,30 @@ defmodule Logflare.Backends.BufferProducer do
 
         []
 
-      {:ok, []} ->
-        []
-
       {:ok, events} ->
-        {:ok, _} = IngestEventQueue.mark_ingested(key, events)
-
         events
     end
   end
+
+  # defp do_fetch(%{source_id: sid, backend_id: bid}, n) do
+  #   key = {sid, bid, self()}
+  #
+  #   case IngestEventQueue.take_pending(key, n) do
+  #     {:error, :not_initialized} ->
+  #       Logger.warning(
+  #         "IngestEventQueue not initialized, could not fetch events. source_id: #{sid}",
+  #         backend_id: bid
+  #       )
+  #
+  #       []
+  #
+  #     {:ok, []} ->
+  #       []
+  #
+  #     {:ok, events} ->
+  #       {:ok, _} = IngestEventQueue.mark_ingested(key, events)
+  #
+  #       events
+  #   end
+  # end
 end
