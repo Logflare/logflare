@@ -670,22 +670,6 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  def delete_batch({_, _, _pid} = sid_bid_pid, events) when is_list(events) do
-    tid = get_tid(sid_bid_pid)
-
-    if tid != nil do
-      ids = Enum.map(events, & &1.id)
-
-      for id <- ids do
-        :ets.delete(tid, id)
-      end
-
-      :ok
-    else
-      {:error, :not_initialized}
-    end
-  end
-
   @doc """
   Drop events from the ingest event table.
   """
