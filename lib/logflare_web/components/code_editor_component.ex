@@ -1,6 +1,52 @@
 defmodule LogflareWeb.MonacoEditorComponentNew do
   use Phoenix.Component
 
+  @default_opts %{
+    "automaticLayout" => true,
+    "contextmenu" => false,
+    "editContext" => false,
+    "folding" => false,
+    "fontFamily" => "JetBrains Mono, monospace",
+    "fontSize" => 12,
+    "formatOnPaste" => true,
+    "formatOnType" => true,
+    "glyphMargin" => false,
+    "guides" => %{
+      "indentation" => false
+    },
+    "hideCursorInOverviewRuler" => true,
+    "lineNumbers" => "off",
+    "lineNumbersMinChars" => 0,
+    "minimap" => %{
+      "enabled" => false
+    },
+    "occurrencesHighlight" => false,
+    "padding" => %{
+      "top" => 14,
+      "bottom" => 14
+    },
+    "parameterHints" => true,
+    "renderLineHighlight" => "none",
+    "roundedSelection" => true,
+    "scrollbar" => %{
+      "vertical" => "auto",
+      "horizontal" => "hidden",
+      "verticalScrollbarSize" => 6,
+      "alwaysConsumeMouseWheel" => false
+    },
+    "scrollBeyondLastLine" => false,
+    "smoothScrolling" => true,
+    "stickyScroll" => %{
+      "enabled" => false
+    },
+    "suggestSelection" => "first",
+    "tabCompletion" => "on",
+    "tabIndex" => -1,
+    "tabSize" => 2,
+    "theme" => "default",
+    "wordWrap" => "on"
+  }
+
   attr :field, Phoenix.HTML.FormField, required: true
   attr :id, :string, default: "lf-monaco"
   attr :language, :string, default: "sql"
@@ -13,10 +59,14 @@ defmodule LogflareWeb.MonacoEditorComponentNew do
   attr :editor_class, :string, default: "tw-w-full"
 
   def code_editor(assigns) do
+    opts =
+      assigns.opts
+      |> default_opts()
+
     assigns =
       assigns
       |> assign(:completions_json, Jason.encode!(assigns.completions))
-      |> assign(:opts_json, Jason.encode!(assigns.opts))
+      |> assign(:opts_json, Jason.encode!(opts))
       |> assign(:schema_fields_json, Jason.encode!(assigns.schema_fields))
       |> assign(:suggested_searches_json, Jason.encode!(assigns.suggested_searches))
 
@@ -30,24 +80,20 @@ defmodule LogflareWeb.MonacoEditorComponentNew do
     """
   end
 
+  def default_opts(overrides \\ %{}) do
+    DeepMerge.deep_merge(@default_opts, overrides)
+  end
+
   def lql_editor_opts do
     %{
-      "language" => "lql",
-      "lineNumbers" => "off",
-      "glyphMargin" => false,
-      "folding" => false,
       "lineDecorationsWidth" => 8,
-      "lineNumbersMinChars" => 0,
       "wordWrap" => "off",
       "scrollbar" => %{
-        "horizontal" => "hidden",
         "vertical" => "hidden",
         "handleMouseWheel" => false
       },
       "overviewRulerLanes" => 0,
       "overviewRulerBorder" => false,
-      "hideCursorInOverviewRuler" => true,
-      "contextmenu" => false,
       "fixedOverflowWidgets" => true,
       "suggest" => %{"enabled" => true, "showWords" => false},
       "parameterHints" => %{"enabled" => false},
@@ -58,8 +104,8 @@ defmodule LogflareWeb.MonacoEditorComponentNew do
       "fontFamily" =>
         "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
       "padding" => %{"top" => 5, "bottom" => 5},
-      "automaticLayout" => true,
       "minHeight" => 32
     }
+    |> default_opts()
   end
 end

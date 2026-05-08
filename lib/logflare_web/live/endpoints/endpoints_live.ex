@@ -476,36 +476,6 @@ defmodule LogflareWeb.EndpointsLive do
     |> Enum.map(& &1.name)
   end
 
-  defp endpoint_editor_opts do
-    %{
-      "wordWrap" => "on",
-      "language" => "sql",
-      "fontSize" => 12,
-      "padding" => %{
-        "top" => 14,
-        "bottom" => 14
-      },
-      "contextmenu" => false,
-      "hideCursorInOverviewRuler" => true,
-      "smoothScrolling" => true,
-      "scrollbar" => %{
-        "vertical" => "auto",
-        "horizontal" => "hidden",
-        "verticalScrollbarSize" => 6,
-        "alwaysConsumeMouseWheel" => false
-      },
-      "lineNumbers" => "off",
-      "glyphMargin" => false,
-      "lineNumbersMinChars" => 0,
-      "folding" => false,
-      "roundedSelection" => true,
-      "minimap" => %{
-        "enabled" => false
-      },
-      "minHeight" => 240
-    }
-  end
-
   defp maybe_assign_transformed_query(socket, false, _endpoint, _params), do: socket
 
   defp maybe_assign_transformed_query(socket, true, endpoint, params) do
