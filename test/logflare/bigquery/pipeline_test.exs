@@ -84,7 +84,19 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       assert m.retries == 1
     end
+test "ack will not requeue failed events that have exhausted retries", %{source: source} do
+  sid_bid_pid = {source.id, nil, self()}
+  IngestEventQueue.upsert_tid(sid_bid_pid)
+  le = build(:log_event) |> Map.put(:retries, 1)
+  ref = {sid_bid_pid, source.token, %{mark_ingested: false, max_retries: 1}}
+  message = Pipeline.transform(le, ref: ref)
+  {mod, ref, _data} = message.acknowledger
+  assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
 
+  mod.ack(ref, [], [message])
+
+  assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+end
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
       source: source
     } do
