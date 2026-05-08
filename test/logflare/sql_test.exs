@@ -991,7 +991,7 @@ defmodule Logflare.SqlTest do
       query = "WITH x AS (DELETE FROM #{name} WHERE id > 0 RETURNING id) SELECT id FROM x"
 
       assert {:error, msg} = Sql.transform(:pg_sql, query, user)
-      assert msg =~ "Only SELECT queries allowed"
+      assert msg =~ "found: DELETE"
     end
 
     test "rejects writable CTE with embedded INSERT", %{source: %{name: name}, user: user} do

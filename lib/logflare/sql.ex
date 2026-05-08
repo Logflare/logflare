@@ -720,10 +720,11 @@ defmodule Logflare.Sql do
   end
 
   defp has_restricted_functions(
-         {"Table", %{"args" => [_ | _], "name" => [%{"value" => _} | _] = names}},
+         {"Table", %{"args" => args, "name" => [%{"value" => _} | _] = names}},
          :ok,
          %{dialect: dialect}
-       ) do
+       )
+       when is_list(args) do
     restricted_list = list_restricted_functions_for_dialect(dialect)
 
     found_restricted =
