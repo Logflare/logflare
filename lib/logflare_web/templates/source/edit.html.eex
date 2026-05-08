@@ -334,6 +334,19 @@
     <%= submit "Save", class: "btn btn-primary form-button" %>
   <% end %>
 
+  <%= section_header("Default Search LQL") %>
+  <p>Set LQL to be included in the initial search query for this source.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
+    <div class="form-group">
+      <%= text_input f, :default_search_lql, class: "form-control form-control-margin" %>
+      <%= error_tag f, :default_search_lql %>
+      <small class="form-text text-muted">
+        For example: <code>s:m.parsed.parsed s:m.level</code>.
+      </small>
+    </div>
+    <%= submit "Save", class: "btn btn-primary form-button" %>
+  <% end %>
+
 
   <%= if @user.system_monitoring do %>
     <%= section_header("Monitoring Labels") %>
