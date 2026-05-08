@@ -269,11 +269,6 @@ defmodule LogflareWeb.QueryLive do
     handle_info(:parse_query, socket)
   end
 
-  def handle_event("parse-query", %{"_target" => ["live_monaco_editor", _]}, socket) do
-    # ignore change events from the editor field
-    {:noreply, socket}
-  end
-
   defp run_query(socket, user, query_string) do
     type =
       case Backends.get_default_backend(user) do
