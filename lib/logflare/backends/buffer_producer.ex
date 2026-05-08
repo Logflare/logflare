@@ -26,7 +26,7 @@ defmodule Logflare.Backends.BufferProducer do
           mark_ingested: boolean()
         }
 
-  @type table_key :: {pos_integer(), pos_integer() | nil, pid() | nil}
+  @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
   @default_interval 1_000
 
@@ -86,7 +86,8 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: nil,
       backend_id: backend_id,
       last_discard_log_dt: nil,
-      interval: interval
+      interval: interval,
+      mark_ingested: false
     }
 
     table_key = {:consolidated, backend_id, self()}
