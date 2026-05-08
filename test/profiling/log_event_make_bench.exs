@@ -174,6 +174,13 @@ otel_kv_config = """
 project:enriched:org_id
 """
 
+otel_drop_config = """
+attributes._client_address
+attributes._network_peer_address
+metadata.type
+resource.deployment.environment
+"""
+
 edge_copy_config = """
 project:metadata.proj
 metadata.request.cf.country:metadata.flat.country
@@ -182,6 +189,13 @@ metadata.request.headers.user_agent:metadata.flat.user_agent
 
 edge_kv_config = """
 project:enriched:org_id
+"""
+
+edge_drop_config = """
+metadata.request.cf.tlsClientAuth
+metadata.request.cf.botManagement.ja4Signals
+metadata.request.cf.tlsExportedAuthenticator
+metadata.request.headers.user_agent
 """
 
 # Insert each source variant and fetch through Sources.Cache.get_by_and_preload_rules/1,
@@ -197,6 +211,7 @@ end
 source = fetch_source.([])
 otel_with_copy = fetch_source.(transform_copy_fields: otel_copy_config)
 otel_with_kv = fetch_source.(transform_key_values: otel_kv_config)
+otel_with_drop = fetch_source.(transform_drop_fields: otel_drop_config)
 
 otel_with_copy_kv =
   fetch_source.(
@@ -204,13 +219,28 @@ otel_with_copy_kv =
     transform_key_values: otel_kv_config
   )
 
+otel_with_all =
+  fetch_source.(
+    transform_copy_fields: otel_copy_config,
+    transform_key_values: otel_kv_config,
+    transform_drop_fields: otel_drop_config
+  )
+
 edge_with_copy = fetch_source.(transform_copy_fields: edge_copy_config)
 edge_with_kv = fetch_source.(transform_key_values: edge_kv_config)
+edge_with_drop = fetch_source.(transform_drop_fields: edge_drop_config)
 
 edge_with_copy_kv =
   fetch_source.(
     transform_copy_fields: edge_copy_config,
     transform_key_values: edge_kv_config
+  )
+
+edge_with_all =
+  fetch_source.(
+    transform_copy_fields: edge_copy_config,
+    transform_key_values: edge_kv_config,
+    transform_drop_fields: edge_drop_config
   )
 
 suite =
@@ -225,8 +255,14 @@ suite =
       "otel trace + kv" => fn ->
         LogEvent.make(otel_trace_params, %{source: otel_with_kv})
       end,
+      "otel trace + drop" => fn ->
+        LogEvent.make(otel_trace_params, %{source: otel_with_drop})
+      end,
       "otel trace + copy + kv" => fn ->
         LogEvent.make(otel_trace_params, %{source: otel_with_copy_kv})
+      end,
+      "otel trace + all" => fn ->
+        LogEvent.make(otel_trace_params, %{source: otel_with_all})
       end,
       "edge log" => fn ->
         LogEvent.make(edge_log_params, %{source: source})
@@ -237,8 +273,14 @@ suite =
       "edge log + kv" => fn ->
         LogEvent.make(edge_log_params, %{source: edge_with_kv})
       end,
+      "edge log + drop" => fn ->
+        LogEvent.make(edge_log_params, %{source: edge_with_drop})
+      end,
       "edge log + copy + kv" => fn ->
         LogEvent.make(edge_log_params, %{source: edge_with_copy_kv})
+      end,
+      "edge log + all" => fn ->
+        LogEvent.make(edge_log_params, %{source: edge_with_all})
       end
     },
     time: 5,
