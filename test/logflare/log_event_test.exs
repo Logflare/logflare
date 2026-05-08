@@ -506,6 +506,32 @@ defmodule Logflare.LogEventTest do
     end
   end
 
+  describe "transform pipeline" do
+    test "runs all four stages in documented order", %{source: source, user: user} do
+      insert(:key_value, user: user, key: "router", value: %{"org_id" => "acme"})
+
+      source =
+        %{
+          source
+          | transform_copy_fields: "_my_key:metadata.original",
+            transform_key_values: "_my_key:enriched",
+            transform_drop_fields: "_my_key"
+        }
+        |> Source.parse_copy_fields_config()
+        |> Source.parse_key_values_config()
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"my-key" => "router", "extra" => "data"}, %{source: source})
+
+      assert body["metadata"]["original"] == "router"
+      assert body["enriched"] == %{"org_id" => "acme"}
+      refute Map.has_key?(body, "_my_key")
+      refute Map.has_key?(body, "my-key")
+      assert body["extra"] == "data"
+    end
+  end
+
   test "make/2 with metadata string", %{source: source} do
     assert %LogEvent{
              body: body,
