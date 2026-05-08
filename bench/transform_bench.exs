@@ -19,8 +19,14 @@ Mimic.copy(Logflare.KeyValues.Cache)
 Mimic.copy(Logflare.Utils)
 Mimic.set_mimic_global()
 
+# Pre-build the cache return so the stub doesn't allocate a fresh map per
+# call — Cachex returns a stored term in production, so this matches reality
+# better. (The remaining kv_enrich variance is dominated by Mimic stub
+# dispatch overhead, not allocation, and isn't addressable without replacing
+# the stubbing strategy.)
+kv_value = %{"org_id" => "acme", "name" => "Acme"}
 Mimic.stub(Logflare.KeyValues.Cache, :lookup, fn _user_id, _key, _accessor_path ->
-  %{"org_id" => "acme", "name" => "Acme"}
+  kv_value
 end)
 
 Mimic.stub(Logflare.Utils, :flag, fn _feature, _identifier -> true end)
