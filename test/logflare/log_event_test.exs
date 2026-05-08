@@ -412,6 +412,24 @@ defmodule Logflare.LogEventTest do
       assert body["keep"] == 1
     end
 
+    test "parsed virtual takes precedence over raw config string", %{source: source} do
+      source = %{
+        source
+        | transform_drop_fields: "noop",
+          transform_drop_fields_parsed: [["service"]]
+      }
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(
+                 %{"service" => "router", "noop" => 1, "keep" => 2},
+                 %{source: source}
+               )
+
+      refute Map.has_key?(body, "service")
+      assert body["noop"] == 1
+      assert body["keep"] == 2
+    end
+
     test "drops a nested field via dot syntax", %{source: source} do
       source =
         %{source | transform_drop_fields: "metadata.user.id"}
@@ -548,6 +566,28 @@ defmodule Logflare.LogEventTest do
 
       refute Map.has_key?(body, "service")
       assert body["enriched"] == %{"org_id" => "acme"}
+    end
+
+    test "paths match post-bigquery_spec field names", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "my-key"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"my-key" => 1, "keep" => 2}, %{source: source})
+
+      assert body["_my_key"] == 1
+      assert body["keep"] == 2
+
+      source =
+        %{source | transform_drop_fields: "_my_key"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"my-key" => 1, "keep" => 2}, %{source: source})
+
+      refute Map.has_key?(body, "_my_key")
+      assert body["keep"] == 2
     end
   end
 
