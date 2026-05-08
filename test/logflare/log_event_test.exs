@@ -482,6 +482,28 @@ defmodule Logflare.LogEventTest do
       refute Map.has_key?(body, "service")
       assert body["metadata"]["routing"]["service"] == "router"
     end
+
+    test "runs after kv_enrich so users can enrich then drop the source", %{
+      source: source,
+      user: user
+    } do
+      insert(:key_value, user: user, key: "router", value: %{"org_id" => "acme"})
+
+      source =
+        %{
+          source
+          | transform_key_values: "service:enriched",
+            transform_drop_fields: "service"
+        }
+        |> Source.parse_key_values_config()
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router"}, %{source: source})
+
+      refute Map.has_key?(body, "service")
+      assert body["enriched"] == %{"org_id" => "acme"}
+    end
   end
 
   test "make/2 with metadata string", %{source: source} do
