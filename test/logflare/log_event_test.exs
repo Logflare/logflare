@@ -161,6 +161,34 @@ defmodule Logflare.LogEventTest do
       assert %LogEvent{body: body} = LogEvent.make(%{"food" => 123}, %{source: source})
       assert Map.drop(body, ["id", "timestamp"]) == %{"food" => 123}
     end
+
+    test "preserves existing sibling keys at nested destination", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "food:metadata.flat.field"}
+        |> Source.parse_copy_fields_config()
+
+      payload = %{
+        "food" => 123,
+        "metadata" => %{"flat" => %{"existing_sibling" => 1}, "other" => "kept"}
+      }
+
+      assert %LogEvent{body: body} = LogEvent.make(payload, %{source: source})
+
+      assert body["metadata"]["flat"]["field"] == 123
+      assert body["metadata"]["flat"]["existing_sibling"] == 1
+      assert body["metadata"]["other"] == "kept"
+    end
+
+    test "creates deeply nested intermediates when missing", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "food:a.b.c.d"}
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"food" => 123}, %{source: source})
+
+      assert body["a"]["b"]["c"]["d"] == 123
+    end
   end
 
   describe "kv_enrich" do
@@ -242,6 +270,23 @@ defmodule Logflare.LogEventTest do
                LogEvent.make(%{"project" => "123abc"}, %{source: source})
 
       assert body["enriched"] == %{"org_id" => "456def", "name" => "Acme"}
+    end
+
+    test "preserves existing sibling keys at nested destination", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:m.flat.lookup"}
+        |> Source.parse_key_values_config()
+
+      payload = %{
+        "project" => "123abc",
+        "metadata" => %{"flat" => %{"existing_sibling" => 1}, "other" => "kept"}
+      }
+
+      assert %LogEvent{body: body} = LogEvent.make(payload, %{source: source})
+
+      assert body["metadata"]["flat"]["lookup"] == %{"org_id" => "456def", "name" => "Acme"}
+      assert body["metadata"]["flat"]["existing_sibling"] == 1
+      assert body["metadata"]["other"] == "kept"
     end
 
     test "3-part pattern with dot syntax accessor", %{source: source} do
