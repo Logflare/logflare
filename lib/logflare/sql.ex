@@ -28,7 +28,7 @@ defmodule Logflare.Sql do
     "session_user"
   ]
 
-  @dml_statement_keys ~w(Delete Insert Update Truncate Merge Drop ShowVariable Copy SetVariable Grant Revoke CreateTable CreateFunction AlterTable AlterSystem Execute Do)
+  @dml_statement_keys ~w(Delete Insert Update Truncate Merge Drop ShowVariable Copy SetVariable Grant Revoke CreateTable CreateFunction AlterTable AlterSystem Execute Do CreateView Call)
 
   @pg_restricted_functions [
     "current_database",
