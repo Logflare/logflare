@@ -32,6 +32,7 @@ defmodule Logflare.Sources.Source do
              :retention_days,
              :transform_copy_fields,
              :transform_key_values,
+             :transform_drop_fields,
              :bigquery_clustering_fields,
              :default_ingest_backend_enabled?
            ]}
