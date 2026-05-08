@@ -1,42 +1,35 @@
-# Usage: MIX_ENV=test mix run bench/transform_bench.exs
+# Usage: MIX_ENV=test mix run test/profiling/transform_bench.exs
 #
 # Measures LogEvent.make/2 throughput on the ingest hot path across transform
 # configurations. Compares the pre-parsed (cached) virtual against the
 # unparsed-fallback path to surface the benefit of the parsed-virtual caching.
 #
-# Run under MIX_ENV=test to avoid the dev-env Phoenix asset watcher
-# contaminating the first scenario.
-#
-# kv_enrich's KeyValues.Cache lookup and the "key_values" feature flag are
-# stubbed via Mimic to a constant hot-cache hit. This isolates the transform
-# pipeline cost from cache/DB cost — the kv_enrich numbers do NOT reflect
-# production latency under cache misses or backing-store load.
+# Run under MIX_ENV=test so the "key_values" feature flag returns true
+# unconditionally (see Logflare.Utils.flag/2) and the dev-env Phoenix asset
+# watcher doesn't contaminate the first scenario.
+
+import Logflare.Factory
 
 alias Logflare.LogEvent
 alias Logflare.Sources.Source
 
-Mimic.copy(Logflare.KeyValues.Cache)
-Mimic.copy(Logflare.Utils)
-Mimic.set_mimic_global()
+user = insert(:user)
+source = insert(:source, user: user)
 
-# Pre-build the cache return so the stub doesn't allocate a fresh map per
-# call — Cachex returns a stored term in production, so this matches reality
-# better. (The remaining kv_enrich variance is dominated by Mimic stub
-# dispatch overhead, not allocation, and isn't addressable without replacing
-# the stubbing strategy.)
-kv_value = %{"org_id" => "acme", "name" => "Acme"}
-Mimic.stub(Logflare.KeyValues.Cache, :lookup, fn _user_id, _key, _accessor_path ->
-  kv_value
-end)
+# KV lookup targets used by the kv_enrich scenarios. Match the values that
+# appear under the "service" and "namespace" keys in the bench payload below
+# so each kv rule actually hits.
+insert(:key_value,
+  user: user,
+  key: "router",
+  value: %{"org_id" => "acme", "name" => "Acme"}
+)
 
-Mimic.stub(Logflare.Utils, :flag, fn _feature, _identifier -> true end)
-
-source = %Source{
-  id: 1,
-  user_id: 1,
-  token: Ecto.UUID.generate(),
-  name: "bench-source"
-}
+insert(:key_value,
+  user: user,
+  key: "default",
+  value: %{"org_id" => "default-org", "name" => "Default"}
+)
 
 payload = fn ->
   %{
@@ -112,10 +105,10 @@ Benchee.run(
     "copy_fields (unparsed fallback)" => fn ->
       LogEvent.make(payload.(), %{source: with_copy_unparsed})
     end,
-    "kv_enrich (parsed, stubbed hit)" => fn ->
+    "kv_enrich (parsed)" => fn ->
       LogEvent.make(payload.(), %{source: with_kv_parsed})
     end,
-    "kv_enrich (unparsed fallback, stubbed hit)" => fn ->
+    "kv_enrich (unparsed fallback)" => fn ->
       LogEvent.make(payload.(), %{source: with_kv_unparsed})
     end,
     "drop_fields (parsed)" => fn ->
