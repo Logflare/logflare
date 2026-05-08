@@ -209,7 +209,7 @@ defmodule Logflare.LogEvent do
     new_body =
       Enum.reduce(parsed, le.body, fn %{from_path: from_path, to_path: to_path}, acc ->
         if value = get_in(acc, from_path) do
-          put_in(acc, Enum.map(to_path, &Access.key(&1, %{})), value)
+          put_at_path(acc, to_path, value)
         else
           acc
         end
@@ -256,10 +256,18 @@ defmodule Logflare.LogEvent do
          true <- Logflare.Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-
            KeyValues.Cache.lookup(user_id, raw_string, accessor_path) do
-      put_in(body, Enum.map(to_path, &Access.key(&1, %{})), value)
+      put_at_path(body, to_path, value)
     else
       _ -> body
     end
+  end
+
+  @spec put_at_path(map(), [String.t()], term()) :: map()
+  defp put_at_path(map, [leaf], value) when is_map(map), do: Map.put(map, leaf, value)
+
+  defp put_at_path(map, [head | rest], value) when is_map(map) do
+    child = Map.get(map, head, %{})
+    Map.put(map, head, put_at_path(child, rest, value))
   end
 
   @spec drop_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
