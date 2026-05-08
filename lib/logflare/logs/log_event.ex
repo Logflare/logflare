@@ -235,7 +235,7 @@ defmodule Logflare.LogEvent do
         apply_kv_instruction(acc, instruction, user_id)
       end)
 
-    {:ok, Map.put(le, :body, new_body)}
+    {:ok, %{le | body: new_body}}
   end
 
   # Fallback: parse at ingestion time when parsed field is not populated
