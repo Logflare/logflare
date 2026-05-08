@@ -22,7 +22,8 @@ defmodule Logflare.Backends.BufferProducer do
           source_token: atom() | nil,
           backend_id: pos_integer(),
           last_discard_log_dt: DateTime.t() | nil,
-          interval: pos_integer()
+          interval: pos_integer(),
+          mark_ingested: boolean()
         }
 
   @type table_key :: {pos_integer(), pos_integer() | nil, pid() | nil}
@@ -54,6 +55,7 @@ defmodule Logflare.Backends.BufferProducer do
   @spec init_standard_state(keyword(), pos_integer()) :: state()
   defp init_standard_state(opts, interval) do
     source = Sources.Cache.get_by_id(opts[:source_id])
+    feature_flags = Application.get_env(:logflare, Logflare.FeatureFlags, [])
 
     state = %{
       consolidated: false,
@@ -62,7 +64,8 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: source.token,
       backend_id: opts[:backend_id],
       last_discard_log_dt: nil,
-      interval: interval
+      interval: interval,
+      mark_ingested: opts[:mark_ingested] || Keyword.get(feature_flags, :mark_ingested, false)
     }
 
     table_key = {state.source_id, state.backend_id, self()}
@@ -231,20 +234,39 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [LogEvent.t()]
-  defp do_fetch(%{consolidated: true, backend_id: bid}, n) do
+  defp do_fetch(%{consolidated: true, backend_id: bid} = state, n) do
     key = {:consolidated, bid, self()}
 
-    do_fetch_key(key, n)
+    do_fetch_key(key, n, state)
   end
 
-  defp do_fetch(%{source_id: sid, backend_id: bid}, n) do
+  defp do_fetch(%{source_id: sid, backend_id: bid} = state, n) do
     key = {sid, bid, self()}
 
-    do_fetch_key(key, n)
+    do_fetch_key(key, n, state)
   end
 
-  @spec do_fetch_key(key :: table_key(), count :: non_neg_integer()) :: [LogEvent.t()]
-  defp do_fetch_key({sid, bid, _pid} = key, n) do
+  @spec do_fetch_key(key :: table_key(), count :: non_neg_integer(), state :: state()) :: [LogEvent.t()]
+  defp do_fetch_key({sid, bid, _pid} = key, n, %{mark_ingested: true}) do
+    case IngestEventQueue.take_pending(key, n) do
+      {:error, :not_initialized} ->
+        Logger.warning(
+          "IngestEventQueue not initialized, could not fetch events. source_id: #{sid}",
+          backend_id: bid
+        )
+
+        []
+
+      {:ok, []} ->
+        []
+
+      {:ok, events} ->
+        {:ok, _} = IngestEventQueue.mark_ingested(key, events)
+
+        events
+    end
+  end
+  defp do_fetch_key({sid, bid, _pid} = key, n, _) do
     case IngestEventQueue.pop_pending(key, n) do
       {:error, :not_initialized} ->
         Logger.warning(
@@ -258,26 +280,4 @@ defmodule Logflare.Backends.BufferProducer do
         events
     end
   end
-
-  # defp do_fetch(%{source_id: sid, backend_id: bid}, n) do
-  #   key = {sid, bid, self()}
-  #
-  #   case IngestEventQueue.take_pending(key, n) do
-  #     {:error, :not_initialized} ->
-  #       Logger.warning(
-  #         "IngestEventQueue not initialized, could not fetch events. source_id: #{sid}",
-  #         backend_id: bid
-  #       )
-  #
-  #       []
-  #
-  #     {:ok, []} ->
-  #       []
-  #
-  #     {:ok, events} ->
-  #       {:ok, _} = IngestEventQueue.mark_ingested(key, events)
-  #
-  #       events
-  #   end
-  # end
 end

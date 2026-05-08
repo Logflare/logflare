@@ -162,6 +162,9 @@ config :opentelemetry,
 
 config :logflare, Logflare.Vault, json_library: Jason
 
+config :logflare, Logflare.FeatureFlags,
+  mark_ingested: false #marks events as ingested instead of popping when true
+
 config :broadway, config_storage: :ets
 
 config :mime, :types, %{

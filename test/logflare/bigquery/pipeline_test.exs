@@ -30,7 +30,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      ref = {sid_bid_pid, source.token}
+      ref = {sid_bid_pid, source.token, %{mark_ingested: true}}
       message = Pipeline.transform(le, ref: ref)
       {mod, ref, _data} = message.acknowledger
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
@@ -52,6 +52,37 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       mod.ack(ref, [message], [])
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+    end
+
+    test "ack will not attempt to remove items if mark_ingested is disabled", %{source: source} do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      ref = {sid_bid_pid, source.token, %{mark_ingested: false, max_retries: 0}}
+      message = Pipeline.transform(le, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+
+      mod.ack(ref, [message], [])
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+    end
+
+    test "ack will requeue failed events", %{source: source} do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event)
+      ref = {sid_bid_pid, source.token, %{mark_ingested: false, max_retries: 1}}
+      message = Pipeline.transform(le, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+
+      mod.ack(ref, [], [message])
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+
+      {:ok, [m]} = IngestEventQueue.pop_pending(sid_bid_pid, 1)
+
+      assert m.retries == 1
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{

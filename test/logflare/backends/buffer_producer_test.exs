@@ -28,8 +28,34 @@ defmodule Logflare.Backends.BufferProducerTest do
     |> Enum.take(1)
 
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+    # events popped when ingested
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+  end
+
+  test "marks events as ingested when feature flag set" do
+    old_config = Application.get_env(:logflare, Logflare.FeatureFlags)
+    Application.put_env(:logflare, Logflare.FeatureFlags, [mark_ingested: true])
+
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    le = build(:log_event, source: source)
+    
+    buffer_producer_pid =
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+
+    sid_bid_pid = {source.id, nil, buffer_producer_pid}
+    :timer.sleep(100)
+    :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+    GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+    |> Enum.take(1)
+
+    assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     # marked as :ingested
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+
+    Application.put_env(:logflare, Logflare.FeatureFlags, old_config)
   end
 
   test "moves events in IngestEventQueue to other queues on termination" do
@@ -72,8 +98,8 @@ defmodule Logflare.Backends.BufferProducerTest do
     |> Enum.take(1)
 
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # marked as :ingested
-    assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+    # popped during ingestions
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
   end
 
   test "BufferProducer when discarding will display source name" do
