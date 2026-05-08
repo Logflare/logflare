@@ -139,6 +139,7 @@ defmodule Logflare.Sources.Source do
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
     field :transform_copy_fields, :string
+    field :transform_copy_fields_parsed, {:array, :map}, virtual: true
     field :transform_key_values, :string
     field :transform_key_values_parsed, {:array, :map}, virtual: true
     field :transform_drop_fields, :string
@@ -413,6 +414,33 @@ defmodule Logflare.Sources.Source do
       end)
 
     %{source | transform_key_values_parsed: parsed}
+  end
+
+  @spec parse_copy_fields_config(%__MODULE__{}) :: %__MODULE__{}
+  def parse_copy_fields_config(%__MODULE__{transform_copy_fields: blank} = source)
+      when blank in [nil, ""] do
+    %{source | transform_copy_fields_parsed: nil}
+  end
+
+  def parse_copy_fields_config(%__MODULE__{transform_copy_fields: config} = source) do
+    parsed =
+      config
+      |> String.split("\n", trim: true)
+      |> Enum.flat_map(fn raw ->
+        instruction = String.trim(raw)
+
+        case String.split(instruction, ":", parts: 2) do
+          [from, to] ->
+            from = String.replace_prefix(from, "m.", "metadata.")
+            to = String.replace_prefix(to, "m.", "metadata.")
+            [%{from_path: String.split(from, "."), to_path: String.split(to, ".")}]
+
+          _ ->
+            []
+        end
+      end)
+
+    %{source | transform_copy_fields_parsed: parsed}
   end
 
   @spec parse_drop_fields_config(%__MODULE__{}) :: %__MODULE__{}

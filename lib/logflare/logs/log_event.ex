@@ -195,34 +195,31 @@ defmodule Logflare.LogEvent do
   end
 
   @spec copy_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
-  defp copy_fields(%LE{} = le, %Source{transform_copy_fields: nil}), do: {:ok, le}
+  defp copy_fields(%LE{} = le, %Source{
+         transform_copy_fields_parsed: nil,
+         transform_copy_fields: blank
+       })
+       when blank in [nil, ""],
+       do: {:ok, le}
 
-  defp copy_fields(le, source) do
-    instructions = String.split(source.transform_copy_fields, ~r/\n/, trim: true)
+  defp copy_fields(%LE{} = le, %Source{transform_copy_fields_parsed: []}), do: {:ok, le}
 
+  defp copy_fields(%LE{} = le, %Source{transform_copy_fields_parsed: parsed})
+       when is_list(parsed) do
     new_body =
-      for instruction <- instructions, instruction = String.trim(instruction), reduce: le.body do
-        acc ->
-          case String.split(instruction, ":", parts: 2) do
-            [from, to] ->
-              from = String.replace_prefix(from, "m.", "metadata.")
-              from_path = String.split(from, ".")
+      Enum.reduce(parsed, le.body, fn %{from_path: from_path, to_path: to_path}, acc ->
+        if value = get_in(acc, from_path) do
+          put_in(acc, Enum.map(to_path, &Access.key(&1, %{})), value)
+        else
+          acc
+        end
+      end)
 
-              to = String.replace_prefix(to, "m.", "metadata.")
-              to_path = String.split(to, ".")
+    {:ok, %{le | body: new_body}}
+  end
 
-              if value = get_in(acc, from_path) do
-                put_in(acc, Enum.map(to_path, &Access.key(&1, %{})), value)
-              else
-                acc
-              end
-
-            _ ->
-              acc
-          end
-      end
-
-    {:ok, Map.put(le, :body, new_body)}
+  defp copy_fields(%LE{} = le, %Source{} = source) do
+    copy_fields(le, Source.parse_copy_fields_config(source))
   end
 
   @spec kv_enrich(LE.t(), Source.t()) :: {:ok, LE.t()}

@@ -43,6 +43,26 @@ defmodule Logflare.LogEventTest do
     end
 
     test "field copying - nested", %{source: source} do
+      source =
+        %{
+          source
+          | transform_copy_fields: """
+              food:my.field
+            """
+        }
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{
+               body: %{
+                 "my" => %{
+                   "field" => 123
+                 },
+                 "food" => _
+               }
+             } = LogEvent.make(%{"food" => 123}, %{source: source})
+    end
+
+    test "field copying - works with unparsed fallback", %{source: source} do
       source = %{
         source
         | transform_copy_fields: """
@@ -61,12 +81,14 @@ defmodule Logflare.LogEventTest do
     end
 
     test "field copying - top level", %{source: source} do
-      source = %{
-        source
-        | transform_copy_fields: """
-            food:field
-          """
-      }
+      source =
+        %{
+          source
+          | transform_copy_fields: """
+              food:field
+            """
+        }
+        |> Source.parse_copy_fields_config()
 
       assert %LogEvent{
                body: %{
@@ -77,13 +99,15 @@ defmodule Logflare.LogEventTest do
     end
 
     test "field copying - multiple", %{source: source} do
-      source = %{
-        source
-        | transform_copy_fields: """
-            food:field
-            field:123
-          """
-      }
+      source =
+        %{
+          source
+          | transform_copy_fields: """
+              food:field
+              field:123
+            """
+        }
+        |> Source.parse_copy_fields_config()
 
       assert %LogEvent{
                body: %{
@@ -95,27 +119,31 @@ defmodule Logflare.LogEventTest do
     end
 
     test "field copying - dashes in field", %{source: source} do
-      source = %{
-        source
-        | transform_copy_fields: """
-            _my_food:field
-          """
-      }
+      source =
+        %{
+          source
+          | transform_copy_fields: """
+              _my_food:field
+            """
+        }
+        |> Source.parse_copy_fields_config()
 
       assert %LogEvent{body: body} = LogEvent.make(%{"my-food" => 123}, %{source: source})
       assert Map.drop(body, ["id", "timestamp"]) == %{"_my_food" => 123, "field" => 123}
     end
 
     test "field copying - invalid instructions are ignored", %{source: source} do
-      source = %{
-        source
-        | transform_copy_fields: """
-            food field
-            food-field
-            foodfield
-            missing:field
-          """
-      }
+      source =
+        %{
+          source
+          | transform_copy_fields: """
+              food field
+              food-field
+              foodfield
+              missing:field
+            """
+        }
+        |> Source.parse_copy_fields_config()
 
       assert %LogEvent{body: body} = LogEvent.make(%{"food" => 123}, %{source: source})
       assert Map.drop(body, ["id", "timestamp"]) == %{"food" => 123}
@@ -396,6 +424,7 @@ defmodule Logflare.LogEventTest do
           | transform_copy_fields: "service:m.routing.service",
             transform_drop_fields: "service"
         }
+        |> Source.parse_copy_fields_config()
         |> Source.parse_drop_fields_config()
 
       assert %LogEvent{body: body} =
