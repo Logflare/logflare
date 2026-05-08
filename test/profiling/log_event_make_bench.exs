@@ -11,12 +11,32 @@
 # (if one exists). The history file is the source of truth for trend tracking.
 
 alias Logflare.LogEvent
+alias Logflare.Sources.Cache
 
 import Logflare.Factory
 
-# Setup test data
+# Sources.Cache.get_by_and_preload_rules/1 transitively hits Billing.get_plan_by/1
+# (via Sources.put_retention_days/1), which uses Repo.get_by and raises if there's
+# more than one Free plan. mix run isn't sandboxed like ExUnit, so insert only when
+# no Free plan exists yet — that keeps repeated bench runs from accumulating
+# duplicate plans without disturbing whatever local DB state a dev has set up.
+Logflare.Repo.get_by(Logflare.Billing.Plan, name: "Free") || insert(:plan)
+
 user = insert(:user)
-source = insert(:source, user: user)
+
+# KV lookup targets used by the kv_enrich scenarios. Match the values
+# present under the "project" key in each payload below so the rules hit.
+insert(:key_value,
+  user: user,
+  key: "supabase-api-gateway",
+  value: %{"org_id" => "supabase", "tier" => "platform"}
+)
+
+insert(:key_value,
+  user: user,
+  key: "example_project",
+  value: %{"org_id" => "example_org", "tier" => "free"}
+)
 
 # OTEL trace payload (~15 leaf values, 2-3 levels deep)
 otel_trace_params = %{
@@ -143,14 +163,82 @@ edge_log_params = %{
   "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
 }
 
+# Transform configs scaled to each payload's shape. Paths reference fields
+# that exist in the corresponding payload above so each rule actually fires.
+otel_copy_config = """
+project:metadata.proj
+attributes._url_path:metadata.flat.url_path
+"""
+
+otel_kv_config = """
+project:enriched:org_id
+"""
+
+edge_copy_config = """
+project:metadata.proj
+metadata.request.cf.country:metadata.flat.country
+metadata.request.headers.user_agent:metadata.flat.user_agent
+"""
+
+edge_kv_config = """
+project:enriched:org_id
+"""
+
+# Insert each source variant and fetch through Sources.Cache.get_by_and_preload_rules/1,
+# the same path the FetchResource plug uses on the ingest hot path. This populates
+# whichever parsed-virtual fields exist at the current point in history (kv_enrich
+# pre-PR; the additional copy_fields and drop_fields parsed virtuals post-PR), so
+# the bench measures the same code paths production hits at that commit.
+fetch_source = fn opts ->
+  record = insert(:source, [user: user] ++ opts)
+  Cache.get_by_and_preload_rules(token: record.token)
+end
+
+source = fetch_source.([])
+otel_with_copy = fetch_source.(transform_copy_fields: otel_copy_config)
+otel_with_kv = fetch_source.(transform_key_values: otel_kv_config)
+
+otel_with_copy_kv =
+  fetch_source.(
+    transform_copy_fields: otel_copy_config,
+    transform_key_values: otel_kv_config
+  )
+
+edge_with_copy = fetch_source.(transform_copy_fields: edge_copy_config)
+edge_with_kv = fetch_source.(transform_key_values: edge_kv_config)
+
+edge_with_copy_kv =
+  fetch_source.(
+    transform_copy_fields: edge_copy_config,
+    transform_key_values: edge_kv_config
+  )
+
 suite =
   Benchee.run(
     %{
       "otel trace" => fn ->
         LogEvent.make(otel_trace_params, %{source: source})
       end,
+      "otel trace + copy" => fn ->
+        LogEvent.make(otel_trace_params, %{source: otel_with_copy})
+      end,
+      "otel trace + kv" => fn ->
+        LogEvent.make(otel_trace_params, %{source: otel_with_kv})
+      end,
+      "otel trace + copy + kv" => fn ->
+        LogEvent.make(otel_trace_params, %{source: otel_with_copy_kv})
+      end,
       "edge log" => fn ->
         LogEvent.make(edge_log_params, %{source: source})
+      end,
+      "edge log + copy" => fn ->
+        LogEvent.make(edge_log_params, %{source: edge_with_copy})
+      end,
+      "edge log + kv" => fn ->
+        LogEvent.make(edge_log_params, %{source: edge_with_kv})
+      end,
+      "edge log + copy + kv" => fn ->
+        LogEvent.make(edge_log_params, %{source: edge_with_copy_kv})
       end
     },
     time: 5,
