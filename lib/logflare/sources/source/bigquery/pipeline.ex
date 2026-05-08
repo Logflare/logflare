@@ -129,7 +129,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # TODO: Remove with feature flag for mark_ingested
 
     metrics = Sources.get_source_metrics_for_ingest(source_token)
-    {sid, bid, _tid} = queue
+    {sid, bid, _pid} = queue
 
     backend_metadata =
       if bid do
@@ -162,9 +162,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   def ack({queue, _source_token, flags}, successful, failed) do
-    {sid, bid, _tid} = queue
+    {sid, bid, _pid} = queue
 
-    maybe_requeue_failed({sid, bid}, failed, flags)
+    maybe_requeue_failed(queue, failed, flags)
 
     backend_metadata =
       if bid do
@@ -476,23 +476,23 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   defp maybe_requeue_failed(_, [], _), do: :ok
   defp maybe_requeue_failed(_, _, %{max_retries: 0}), do: :ok
 
-  defp maybe_requeue_failed({_sid, _bid} = sid_bid, failed, %{max_retries: max_retries}) do
+  defp maybe_requeue_failed({_sid, _bid, _pid} = sid_bid_pid, failed, %{max_retries: max_retries}) do
     events =
       Enum.filter(failed, fn %{data: %LE{retries: retries}} -> retries < max_retries end)
       |> Enum.map(fn %{data: %LE{} = event} ->
         %LE{event | retries: (event.retries || 0) + 1}
       end)
 
-    requeue(sid_bid, events)
+    requeue(sid_bid_pid, events)
   end
 
   defp requeue(_, []), do: :ok
 
-  defp requeue(sid_bid, events) do
+  defp requeue(sid_bid_pid, events) do
     Logger.info("Requeuing #{length(events)} BigQuery events for retry")
 
-    IngestEventQueue.delete_batch(sid_bid, events)
-    IngestEventQueue.add_to_table(sid_bid, events)
+    IngestEventQueue.delete_batch(sid_bid_pid, events)
+    IngestEventQueue.add_to_table(sid_bid_pid, events)
   end
 
   defp emit_event_telemetry({sid, bid, _}, source, le, backend_metadata) do
