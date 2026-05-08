@@ -183,11 +183,21 @@ test.beforeAll(async ({ request, browserName }) => {
 
   uniqueId = `${Date.now()}_${browserName}`;
 
-  await supabase.auth.signUp({ email: `example_${uniqueId}@email.com`, password: 'example-password' })
+  // The Supabase JS SDK returns { data, error } and never throws on HTTP
+  // failures. Surface those errors here so a failing setup call produces an
+  // informative failure instead of an opaque 180s waitForLogs timeout when the
+  // expected logs never arrive.
+  const { error: signUpErr } = await supabase.auth.signUp({ email: `example_${uniqueId}@email.com`, password: 'example-password' })
+  if (signUpErr) throw new Error(`auth.signUp failed: ${signUpErr.message}`)
 
-  await supabase.storage.createBucket(`avatars_${uniqueId}`)
-  await supabase.storage.deleteBucket(`avatars_${uniqueId}`)
+  const { error: createBucketErr } = await supabase.storage.createBucket(`avatars_${uniqueId}`)
+  if (createBucketErr) throw new Error(`storage.createBucket failed: ${createBucketErr.message}`)
 
+  const { error: deleteBucketErr } = await supabase.storage.deleteBucket(`avatars_${uniqueId}`)
+  if (deleteBucketErr) throw new Error(`storage.deleteBucket failed: ${deleteBucketErr.message}`)
+
+  // function_<uniqueId> doesn't exist; the test asserts on the resulting 404
+  // log line, so don't throw on its error. The 'hello' function does exist.
   await supabase.functions.invoke(`function_${uniqueId}`)
   await supabase.functions.invoke('hello')
 
