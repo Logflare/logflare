@@ -230,19 +230,20 @@ test.beforeAll(async ({ request, browserName }) => {
   //
   // - edge_logs / auth_logs / storage_logs poll for uniqueId-tagged events from
   //   the setup above.
-  // - realtime_logs polls for "Billing", a periodic infra emission. The test
-  //   body asserts on "Billing metrics" with a 15s expect timeout, but the
-  //   emission cadence is ~1 minute, so without this wait the test races a gap
-  //   between emissions.
+  // - realtime_logs / postgrest_logs poll for periodic infra emissions
+  //   ("Billing" and "Config reloaded"). The corresponding test bodies assert
+  //   on those strings with a 15s expect timeout, but the emissions are
+  //   sparse, so without this wait the tests race the gap between emissions.
   //
-  // The remaining pipelines (postgrest "Config reloaded", edge functions
-  // /home/deno/functions/hello, cron job) reliably hit historical entries via
-  // the test bodies' date-windowed searches, so we don't poll those here.
+  // edge functions /home/deno/functions/hello and the cron job reliably hit
+  // historical entries via the test bodies' date-windowed searches, so we
+  // don't poll those here.
   await Promise.all([
     waitForLogs(request, 'edge_logs', `function_${uniqueId}`),
     waitForLogs(request, 'auth_logs', `example_${uniqueId}`),
     waitForLogs(request, 'storage_logs', `avatars_${uniqueId}`),
     waitForLogs(request, 'realtime_logs', 'Billing'),
+    waitForLogs(request, 'postgrest_logs', 'Config reloaded'),
   ]);
 });
 
