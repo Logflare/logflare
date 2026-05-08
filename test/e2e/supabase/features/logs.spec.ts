@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext, type Request } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page, type Request, type TestInfo } from '@playwright/test';
 import { searchLogs } from '../lib/utils';
 import supabase from '../lib/supabase';
 
@@ -77,12 +77,11 @@ type NetworkEntry = {
   status: number;
   contentType: string;
   durationMs?: number;
-  bodyPreview?: string;
   ts: string;
 };
+type Diagnostics = { console: ConsoleEntry[]; network: NetworkEntry[] };
 
-const consoleByTest = new Map<string, ConsoleEntry[]>();
-const networkByTest = new Map<string, NetworkEntry[]>();
+const diagnosticsByTest = new Map<string, Diagnostics>();
 
 const RELEVANT_URL_PATTERNS = [
   /\/api\/platform\//,
@@ -95,100 +94,79 @@ const RELEVANT_URL_PATTERNS = [
   /\/pg-meta\//,
 ];
 const isRelevantUrl = (url: string) => RELEVANT_URL_PATTERNS.some(re => re.test(url));
-const MAX_BODY_PREVIEW = 4_000;
+
+async function captureTable(page: Page, testInfo: TestInfo, kind: 'html' | 'text') {
+  const filename = kind === 'html' ? 'table.html' : 'table.txt';
+  const contentType = kind === 'html' ? 'text/html' : 'text/plain';
+  try {
+    const locator = page.getByRole('table');
+    const body = kind === 'html'
+      ? await locator.innerHTML({ timeout: 1_000 })
+      : (await locator.textContent({ timeout: 1_000 })) ?? '';
+    await testInfo.attach(filename, { body, contentType });
+  } catch (e) {
+    await testInfo.attach(`${filename}.error.txt`, {
+      body: `Failed to capture table ${kind}: ${(e as Error).message}`,
+      contentType: 'text/plain',
+    });
+  }
+}
 
 test.beforeEach(async ({ page }, testInfo) => {
-  const messages: ConsoleEntry[] = [];
-  consoleByTest.set(testInfo.testId, messages);
+  const consoleEntries: ConsoleEntry[] = [];
+  const network: NetworkEntry[] = [];
+  diagnosticsByTest.set(testInfo.testId, { console: consoleEntries, network });
 
   page.on('console', msg => {
-    messages.push({ type: msg.type(), text: msg.text(), ts: new Date().toISOString() });
+    consoleEntries.push({ type: msg.type(), text: msg.text(), ts: new Date().toISOString() });
   });
   page.on('pageerror', err => {
-    messages.push({
+    consoleEntries.push({
       type: 'pageerror',
       text: `${err.name}: ${err.message}${err.stack ? '\n' + err.stack : ''}`,
       ts: new Date().toISOString(),
     });
   });
 
-  const network: NetworkEntry[] = [];
-  networkByTest.set(testInfo.testId, network);
   const requestStart = new WeakMap<Request, number>();
 
   page.on('request', req => {
     if (isRelevantUrl(req.url())) requestStart.set(req, Date.now());
   });
 
-  page.on('response', async resp => {
+  page.on('response', resp => {
     const url = resp.url();
     if (!isRelevantUrl(url)) return;
     const req = resp.request();
     const startedAt = requestStart.get(req);
-    const contentType = resp.headers()['content-type'] ?? '';
-
-    let bodyPreview: string | undefined;
-    if (contentType.includes('json') || contentType.includes('text')) {
-      try {
-        const body = await resp.text();
-        bodyPreview = body.length > MAX_BODY_PREVIEW
-          ? body.slice(0, MAX_BODY_PREVIEW) + `…[truncated ${body.length - MAX_BODY_PREVIEW} chars]`
-          : body;
-      } catch {
-        bodyPreview = '<unable to read body>';
-      }
-    }
 
     network.push({
       method: req.method(),
       url,
       status: resp.status(),
-      contentType,
+      contentType: resp.headers()['content-type'] ?? '',
       durationMs: startedAt ? Date.now() - startedAt : undefined,
-      bodyPreview,
       ts: new Date().toISOString(),
     });
   });
 });
 
 test.afterEach(async ({ page }, testInfo) => {
-  const messages = consoleByTest.get(testInfo.testId) ?? [];
-  const network = networkByTest.get(testInfo.testId) ?? [];
-  consoleByTest.delete(testInfo.testId);
-  networkByTest.delete(testInfo.testId);
+  const diag = diagnosticsByTest.get(testInfo.testId) ?? { console: [], network: [] };
+  diagnosticsByTest.delete(testInfo.testId);
 
   if (testInfo.status === testInfo.expectedStatus) return;
 
-  try {
-    const tableHtml = await page.getByRole('table').innerHTML({ timeout: 1_000 });
-    await testInfo.attach('table.html', { body: tableHtml, contentType: 'text/html' });
-  } catch (e) {
-    await testInfo.attach('table-error.txt', {
-      body: `Failed to capture table HTML: ${(e as Error).message}`,
-      contentType: 'text/plain',
-    });
-  }
-
-  try {
-    const tableText = await page.getByRole('table').textContent({ timeout: 1_000 });
-    await testInfo.attach('table.txt', {
-      body: tableText ?? '',
-      contentType: 'text/plain',
-    });
-  } catch (e) {
-    await testInfo.attach('table-text-error.txt', {
-      body: `Failed to capture table text: ${(e as Error).message}`,
-      contentType: 'text/plain',
-    });
-  }
+  await captureTable(page, testInfo, 'html');
+  await captureTable(page, testInfo, 'text');
 
   await testInfo.attach('browser-console.json', {
-    body: JSON.stringify(messages, null, 2),
+    body: JSON.stringify(diag.console, null, 2),
     contentType: 'application/json',
   });
 
   await testInfo.attach('network.json', {
-    body: JSON.stringify(network, null, 2),
+    body: JSON.stringify(diag.network, null, 2),
     contentType: 'application/json',
   });
 
