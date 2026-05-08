@@ -487,6 +487,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   defp requeue(_, []), do: :ok
+
   defp requeue(sid_bid, events) do
     Logger.info("Requeuing #{length(events)} BigQuery events for retry")
 
