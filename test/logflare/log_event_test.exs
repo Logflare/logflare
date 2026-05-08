@@ -283,6 +283,18 @@ defmodule Logflare.LogEventTest do
     end
 
     test "drops a top-level field", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "service"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router", "keep" => 1}, %{source: source})
+
+      refute Map.has_key?(body, "service")
+      assert body["keep"] == 1
+    end
+
+    test "works with unparsed fallback", %{source: source} do
       source = %{source | transform_drop_fields: "service"}
 
       assert %LogEvent{body: body} =
@@ -293,7 +305,9 @@ defmodule Logflare.LogEventTest do
     end
 
     test "drops a nested field via dot syntax", %{source: source} do
-      source = %{source | transform_drop_fields: "metadata.user.id"}
+      source =
+        %{source | transform_drop_fields: "metadata.user.id"}
+        |> Source.parse_drop_fields_config()
 
       assert %LogEvent{body: body} =
                LogEvent.make(
@@ -305,7 +319,9 @@ defmodule Logflare.LogEventTest do
     end
 
     test "m. shorthand resolves to metadata.", %{source: source} do
-      source = %{source | transform_drop_fields: "m.routing.region"}
+      source =
+        %{source | transform_drop_fields: "m.routing.region"}
+        |> Source.parse_drop_fields_config()
 
       assert %LogEvent{body: body} =
                LogEvent.make(
@@ -318,7 +334,9 @@ defmodule Logflare.LogEventTest do
     end
 
     test "drops multiple fields", %{source: source} do
-      source = %{source | transform_drop_fields: "service\nnamespace\nm.routing.region"}
+      source =
+        %{source | transform_drop_fields: "service\nnamespace\nm.routing.region"}
+        |> Source.parse_drop_fields_config()
 
       assert %LogEvent{body: body} =
                LogEvent.make(
@@ -338,7 +356,9 @@ defmodule Logflare.LogEventTest do
     end
 
     test "missing fields are a silent no-op", %{source: source} do
-      source = %{source | transform_drop_fields: "absent\nmetadata.also.absent"}
+      source =
+        %{source | transform_drop_fields: "absent\nmetadata.also.absent"}
+        |> Source.parse_drop_fields_config()
 
       assert %LogEvent{body: body} =
                LogEvent.make(%{"keep" => 1}, %{source: source})
@@ -347,7 +367,9 @@ defmodule Logflare.LogEventTest do
     end
 
     test "blank and whitespace-only lines are ignored", %{source: source} do
-      source = %{source | transform_drop_fields: "\n  \nservice\n\n"}
+      source =
+        %{source | transform_drop_fields: "\n  \nservice\n\n"}
+        |> Source.parse_drop_fields_config()
 
       assert %LogEvent{body: body} =
                LogEvent.make(%{"service" => "router", "keep" => 1}, %{source: source})
@@ -357,7 +379,9 @@ defmodule Logflare.LogEventTest do
     end
 
     test "non-map intermediate path is a silent no-op", %{source: source} do
-      source = %{source | transform_drop_fields: "service.region"}
+      source =
+        %{source | transform_drop_fields: "service.region"}
+        |> Source.parse_drop_fields_config()
 
       assert %LogEvent{body: body} =
                LogEvent.make(%{"service" => "router"}, %{source: source})
@@ -366,11 +390,13 @@ defmodule Logflare.LogEventTest do
     end
 
     test "runs after copy_fields so users can copy then drop the source", %{source: source} do
-      source = %{
-        source
-        | transform_copy_fields: "service:m.routing.service",
-          transform_drop_fields: "service"
-      }
+      source =
+        %{
+          source
+          | transform_copy_fields: "service:m.routing.service",
+            transform_drop_fields: "service"
+        }
+        |> Source.parse_drop_fields_config()
 
       assert %LogEvent{body: body} =
                LogEvent.make(%{"service" => "router"}, %{source: source})

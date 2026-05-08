@@ -142,6 +142,7 @@ defmodule Logflare.Sources.Source do
     field :transform_key_values, :string
     field :transform_key_values_parsed, {:array, :map}, virtual: true
     field :transform_drop_fields, :string
+    field :transform_drop_fields_parsed, {:array, {:array, :string}}, virtual: true
     field :bigquery_clustering_fields, :string
     field :system_source, :boolean, default: false
     field :system_source_type, Ecto.Enum, values: @system_source_types
@@ -412,6 +413,30 @@ defmodule Logflare.Sources.Source do
       end)
 
     %{source | transform_key_values_parsed: parsed}
+  end
+
+  @spec parse_drop_fields_config(%__MODULE__{}) :: %__MODULE__{}
+  def parse_drop_fields_config(%__MODULE__{transform_drop_fields: blank} = source)
+      when blank in [nil, ""] do
+    %{source | transform_drop_fields_parsed: nil}
+  end
+
+  def parse_drop_fields_config(%__MODULE__{transform_drop_fields: config} = source) do
+    parsed =
+      config
+      |> String.split("\n", trim: true)
+      |> Enum.flat_map(fn raw ->
+        case String.trim(raw) do
+          "" ->
+            []
+
+          path ->
+            path = String.replace_prefix(path, "m.", "metadata.")
+            [String.split(path, ".")]
+        end
+      end)
+
+    %{source | transform_drop_fields_parsed: parsed}
   end
 
   def system_source_types, do: @system_source_types

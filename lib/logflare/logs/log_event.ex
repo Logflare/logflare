@@ -266,21 +266,23 @@ defmodule Logflare.LogEvent do
   end
 
   @spec drop_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
-  defp drop_fields(%LE{} = le, %Source{transform_drop_fields: nil}), do: {:ok, le}
-  defp drop_fields(%LE{} = le, %Source{transform_drop_fields: ""}), do: {:ok, le}
+  defp drop_fields(%LE{} = le, %Source{
+         transform_drop_fields_parsed: nil,
+         transform_drop_fields: blank
+       })
+       when blank in [nil, ""],
+       do: {:ok, le}
 
-  defp drop_fields(le, source) do
-    paths = String.split(source.transform_drop_fields, "\n", trim: true)
+  defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: []}), do: {:ok, le}
 
-    new_body =
-      for raw <- paths, path = String.trim(raw), path != "", reduce: le.body do
-        acc ->
-          path = String.replace_prefix(path, "m.", "metadata.")
-          keys = String.split(path, ".")
-          drop_field_at(acc, keys)
-      end
+  defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: parsed})
+       when is_list(parsed) do
+    new_body = Enum.reduce(parsed, le.body, fn keys, acc -> drop_field_at(acc, keys) end)
+    {:ok, %{le | body: new_body}}
+  end
 
-    {:ok, Map.put(le, :body, new_body)}
+  defp drop_fields(%LE{} = le, %Source{} = source) do
+    drop_fields(le, Source.parse_drop_fields_config(source))
   end
 
   @spec drop_field_at(term(), [String.t()]) :: term()
