@@ -202,6 +202,28 @@ defmodule Logflare.LogEventTest do
       refute Map.has_key?(body, "enriched")
     end
 
+    test "empty string config is a no-op", %{source: source} do
+      source = %{source | transform_key_values: "", transform_key_values_parsed: nil}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "abc"}, %{source: source})
+
+      assert body["project"] == "abc"
+    end
+
+    test "whitespace-only config is a no-op", %{source: source} do
+      source =
+        %{source | transform_key_values: "   \n\t\n   "}
+        |> Source.parse_key_values_config()
+
+      assert source.transform_key_values_parsed == []
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "abc"}, %{source: source})
+
+      assert body["project"] == "abc"
+    end
+
     test "2-part pattern sets entire map at destination (pre-parsed)", %{source: source} do
       source =
         %{source | transform_key_values: "project:enriched"}
