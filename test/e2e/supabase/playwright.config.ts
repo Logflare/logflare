@@ -21,8 +21,18 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
+  /* Reporter to use. See https://playwright.dev/docs/test-reporters
+   * On CI we add:
+   *   - 'github': inline error annotations on the PR diff view
+   *   - 'json':   structured results consumed by ci-failure-summary.sh to
+   *               populate $GITHUB_STEP_SUMMARY on failure */
+  reporter: process.env.CI
+    ? [
+        ['html'],
+        ['github'],
+        ['json', { outputFile: 'test-results/results.json' }],
+      ]
+    : 'html',
   /* Default timeout for expect() assertions. Bumped from the 5s default so
    * `toContainText` can ride out brief UI/ingestion latency. */
   expect: { timeout: 15_000 },

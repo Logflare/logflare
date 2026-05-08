@@ -107,6 +107,10 @@ jobs:
           docker logs --timestamps "$c" > "container-logs/${c}.log" 2>&1 || true
         done
 
+    - name: Generate failure summary
+      if: failure()
+      run: bash ./ci-failure-summary.sh >> "$GITHUB_STEP_SUMMARY"
+
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
