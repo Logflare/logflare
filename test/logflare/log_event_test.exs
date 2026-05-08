@@ -33,7 +33,7 @@ defmodule Logflare.LogEventTest do
     assert source_id == source.id
   end
 
-  describe "make/2 transformations" do
+  describe "bigquery_spec" do
     test "dashes to underscores", %{source: source} do
       assert %LogEvent{
                body: %{
@@ -41,8 +41,10 @@ defmodule Logflare.LogEventTest do
                }
              } = LogEvent.make(%{"test-field" => 123}, %{source: source})
     end
+  end
 
-    test "field copying - nested", %{source: source} do
+  describe "copy_fields" do
+    test "nested", %{source: source} do
       source =
         %{
           source
@@ -62,7 +64,7 @@ defmodule Logflare.LogEventTest do
              } = LogEvent.make(%{"food" => 123}, %{source: source})
     end
 
-    test "field copying - works with unparsed fallback", %{source: source} do
+    test "works with unparsed fallback", %{source: source} do
       source = %{
         source
         | transform_copy_fields: """
@@ -80,7 +82,7 @@ defmodule Logflare.LogEventTest do
              } = LogEvent.make(%{"food" => 123}, %{source: source})
     end
 
-    test "field copying - top level", %{source: source} do
+    test "top level", %{source: source} do
       source =
         %{
           source
@@ -98,7 +100,7 @@ defmodule Logflare.LogEventTest do
              } = LogEvent.make(%{"food" => 123}, %{source: source})
     end
 
-    test "field copying - multiple", %{source: source} do
+    test "multiple", %{source: source} do
       source =
         %{
           source
@@ -118,7 +120,7 @@ defmodule Logflare.LogEventTest do
              } = LogEvent.make(%{"food" => 123}, %{source: source})
     end
 
-    test "field copying - dashes in field", %{source: source} do
+    test "dashes in field", %{source: source} do
       source =
         %{
           source
@@ -132,7 +134,7 @@ defmodule Logflare.LogEventTest do
       assert Map.drop(body, ["id", "timestamp"]) == %{"_my_food" => 123, "field" => 123}
     end
 
-    test "field copying - whitespace-only config is a no-op", %{source: source} do
+    test "whitespace-only config is a no-op", %{source: source} do
       source =
         %{source | transform_copy_fields: "   \n\t\n   "}
         |> Source.parse_copy_fields_config()
@@ -143,7 +145,7 @@ defmodule Logflare.LogEventTest do
       assert Map.drop(body, ["id", "timestamp"]) == %{"food" => 123}
     end
 
-    test "field copying - invalid instructions are ignored", %{source: source} do
+    test "invalid instructions are ignored", %{source: source} do
       source =
         %{
           source
