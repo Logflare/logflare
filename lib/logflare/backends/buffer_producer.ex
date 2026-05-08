@@ -246,7 +246,9 @@ defmodule Logflare.Backends.BufferProducer do
     do_fetch_key(key, n, state)
   end
 
-  @spec do_fetch_key(key :: table_key(), count :: non_neg_integer(), state :: state()) :: [LogEvent.t()]
+  @spec do_fetch_key(key :: table_key(), count :: non_neg_integer(), state :: state()) :: [
+          LogEvent.t()
+        ]
   defp do_fetch_key({sid, bid, _pid} = key, n, %{mark_ingested: true}) do
     case IngestEventQueue.take_pending(key, n) do
       {:error, :not_initialized} ->
@@ -266,6 +268,7 @@ defmodule Logflare.Backends.BufferProducer do
         events
     end
   end
+
   defp do_fetch_key({sid, bid, _pid} = key, n, _) do
     case IngestEventQueue.pop_pending(key, n) do
       {:error, :not_initialized} ->

@@ -34,13 +34,13 @@ defmodule Logflare.Backends.BufferProducerTest do
 
   test "marks events as ingested when feature flag set" do
     old_config = Application.get_env(:logflare, Logflare.FeatureFlags)
-    Application.put_env(:logflare, Logflare.FeatureFlags, [mark_ingested: true])
+    Application.put_env(:logflare, Logflare.FeatureFlags, mark_ingested: true)
 
     user = insert(:user)
     source = insert(:source, user: user)
 
     le = build(:log_event, source: source)
-    
+
     buffer_producer_pid =
       start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
 
