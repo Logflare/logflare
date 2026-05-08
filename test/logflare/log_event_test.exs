@@ -132,6 +132,17 @@ defmodule Logflare.LogEventTest do
       assert Map.drop(body, ["id", "timestamp"]) == %{"_my_food" => 123, "field" => 123}
     end
 
+    test "field copying - whitespace-only config is a no-op", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "   \n\t\n   "}
+        |> Source.parse_copy_fields_config()
+
+      assert source.transform_copy_fields_parsed == []
+
+      assert %LogEvent{body: body} = LogEvent.make(%{"food" => 123}, %{source: source})
+      assert Map.drop(body, ["id", "timestamp"]) == %{"food" => 123}
+    end
+
     test "field copying - invalid instructions are ignored", %{source: source} do
       source =
         %{
@@ -403,6 +414,20 @@ defmodule Logflare.LogEventTest do
                LogEvent.make(%{"service" => "router", "keep" => 1}, %{source: source})
 
       refute Map.has_key?(body, "service")
+      assert body["keep"] == 1
+    end
+
+    test "whitespace-only config is a no-op", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "   \n\t\n   "}
+        |> Source.parse_drop_fields_config()
+
+      assert source.transform_drop_fields_parsed == []
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router", "keep" => 1}, %{source: source})
+
+      assert body["service"] == "router"
       assert body["keep"] == 1
     end
 
