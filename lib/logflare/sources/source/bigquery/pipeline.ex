@@ -483,6 +483,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         %LE{event | retries: (event.retries || 0) + 1}
       end)
 
+    requeue(sid_bid, events)
+  end
+
+  defp requeue(_, []), do: :ok
+  defp requeue(sid_bid, events) do
     Logger.info("Requeuing #{length(events)} BigQuery events for retry")
 
     IngestEventQueue.delete_batch(sid_bid, events)
