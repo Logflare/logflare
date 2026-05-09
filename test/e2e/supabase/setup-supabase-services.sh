@@ -89,7 +89,13 @@ log "Waiting for Logflare to seed all sources..."
 # lib/logflare/single_tenant.ex. A POST that lands in the seeding window
 # returns 401, which Vector's HTTP sink marks as "not retriable" and drops —
 # leading to flaky empty-table failures in the E2E suite (notably storage_logs).
+#
 # Probe each source until ingestion succeeds before declaring the stack ready.
+# This only triggers a check, not re-seeding. If startup_tasks never finishes
+# seeding a source (we have evidence of persistent 401 across full test runs;
+# mechanism not yet proven), the probe times out at the deadline below and
+# dumps the analytics tail. Strictly better than a silent flake; not a fix
+# for the underlying issue, which is tracked separately.
 set -a
 # shellcheck disable=SC1091
 source "$BASE_DIR/$SUPABASE_DIR/$SPARSE_PATH/.env"
