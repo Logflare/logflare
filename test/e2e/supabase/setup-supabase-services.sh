@@ -82,5 +82,68 @@ if ! compose up -d --wait --wait-timeout 180; then
 fi
 endgroup
 
+log "Waiting for Logflare to seed all sources..."
+
+# Logflare's HTTP endpoint accepts requests as soon as Bandit binds, which
+# happens before startup_tasks finishes seeding the supabase sources defined in
+# lib/logflare/single_tenant.ex. A POST that lands in the seeding window
+# returns 401, which Vector's HTTP sink marks as "not retriable" and drops —
+# leading to flaky empty-table failures in the E2E suite (notably storage_logs).
+# Probe each source until ingestion succeeds before declaring the stack ready.
+set -a
+# shellcheck disable=SC1091
+source "$BASE_DIR/$SUPABASE_DIR/$SPARSE_PATH/.env"
+set +a
+
+if [ -z "${LOGFLARE_PUBLIC_ACCESS_TOKEN:-}" ]; then
+  error "LOGFLARE_PUBLIC_ACCESS_TOKEN not set after sourcing .env"
+  exit 1
+fi
+
+SOURCES=(
+  "cloudflare.logs.prod"
+  "postgres.logs"
+  "deno-relay-logs"
+  "deno-subhosting-events"
+  "gotrue.logs.prod"
+  "realtime.logs.prod"
+  "storage.logs.prod.2"
+  "postgREST.logs.prod"
+  "pgbouncer.logs.prod"
+)
+
+probe_source() {
+  local name="$1"
+  local out
+  out=$(docker exec supabase-analytics curl -s -o /dev/null -w '%{http_code}' \
+    -X POST "http://127.0.0.1:4000/api/logs?source_name=$name" \
+    -H "x-api-key: $LOGFLARE_PUBLIC_ACCESS_TOKEN" \
+    -H "content-type: application/json" \
+    --data '{"event_message":"stack-readiness-probe"}' 2>/dev/null) || out="000"
+  echo "$out"
+}
+
+DEADLINE=$((SECONDS + 60))
+for source in "${SOURCES[@]}"; do
+  last_code=""
+  while true; do
+    last_code=$(probe_source "$source")
+    case "$last_code" in
+      2*) break ;;
+    esac
+    if [ "$SECONDS" -gt "$DEADLINE" ]; then
+      error "Source '$source' not ready after 60s (last status: $last_code)."
+      warn  "This usually means Logflare's startup_tasks crashed during seeding."
+      warn  "Last 50 lines of analytics log:"
+      compose logs --no-log-prefix --tail 50 analytics
+      exit 1
+    fi
+    sleep 1
+  done
+done
+
+log "All ${#SOURCES[@]} Logflare sources seeded and accepting events."
+endgroup
+
 log "Supabase stack is up! Access Supabase studio via ${CYAN}http://localhost:8000${RESET}"
 log "Run E2E tests with '${GREEN}npm run playwright:test${RESET}'"
