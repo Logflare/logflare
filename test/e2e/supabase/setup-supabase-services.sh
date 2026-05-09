@@ -96,13 +96,18 @@ log "Waiting for Logflare to seed all sources..."
 # mechanism not yet proven), the probe times out at the deadline below and
 # dumps the analytics tail. Strictly better than a silent flake; not a fix
 # for the underlying issue, which is tracked separately.
-set -a
-# shellcheck disable=SC1091
-source "$BASE_DIR/$SUPABASE_DIR/$SPARSE_PATH/.env"
-set +a
+ENV_FILE="$BASE_DIR/$SUPABASE_DIR/$SPARSE_PATH/.env"
+if [ ! -f "$ENV_FILE" ]; then
+  error "Cannot find .env at $ENV_FILE"
+  exit 1
+fi
+
+# Don't `source` the .env file: docker-compose's .env format permits
+# unquoted values with spaces, which bash interprets as commands.
+LOGFLARE_PUBLIC_ACCESS_TOKEN=$(grep -E '^LOGFLARE_PUBLIC_ACCESS_TOKEN=' "$ENV_FILE" | head -1 | cut -d= -f2-)
 
 if [ -z "${LOGFLARE_PUBLIC_ACCESS_TOKEN:-}" ]; then
-  error "LOGFLARE_PUBLIC_ACCESS_TOKEN not set after sourcing .env"
+  error "LOGFLARE_PUBLIC_ACCESS_TOKEN not found in $ENV_FILE"
   exit 1
 fi
 
