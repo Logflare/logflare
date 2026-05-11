@@ -19,6 +19,27 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
       assert byte_size(syslog_msg) == 150
     end
 
+    test "drops encrypted message when encryption overhead would exceed max_message_bytes" do
+      cipher_key = :crypto.strong_rand_bytes(32)
+      log_event = build(:log_event, message: String.duplicate("a", 500))
+
+      [_length_str, headers_only] =
+        log_event
+        |> format_to_binary(%{max_message_bytes: 1})
+        |> unframe()
+
+      max_bytes = byte_size(headers_only) + 4
+
+      [length_str, syslog_msg] =
+        log_event
+        |> format_to_binary(%{max_message_bytes: max_bytes, cipher_key: cipher_key})
+        |> unframe()
+
+      assert String.to_integer(length_str) == byte_size(syslog_msg)
+      assert byte_size(syslog_msg) <= max_bytes
+      assert syslog_msg == headers_only
+    end
+
     property "plaintext truncation respects max_message_bytes" do
       check all max_bytes <- integer(1..100_000),
                 body_text <- string(:utf8, min_length: 1, max_length: 100_000) do
