@@ -70,6 +70,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
       :structured_data,
       :max_message_bytes
     ])
+    |> Logflare.Utils.default_field_value(:max_message_bytes, 50_000)
   end
 
   @impl Logflare.Backends.Adaptor
