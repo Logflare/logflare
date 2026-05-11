@@ -435,7 +435,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     test "defaults to 50000 max message bytes" do
       changeset = syslog_changeset(%{host: "localhost", port: 6514})
       assert changeset.valid?
-      assert Ecto.Changeset.apply_changes(changeset).max_message_bytes == 50000
+      assert Ecto.Changeset.apply_changes(changeset).max_message_bytes == 50_000
     end
 
     test "rejects invalid max message bytes" do
