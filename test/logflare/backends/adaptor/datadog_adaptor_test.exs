@@ -47,6 +47,52 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
     end
   end
 
+  describe "test_connection/1" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :datadog,
+          sources: [source],
+          config: %{api_key: "foo-bar", region: "US1"}
+        )
+
+      [backend: backend]
+    end
+
+    test "POSTs an empty array to the regional logs intake", %{backend: backend} do
+      @client
+      |> expect(:send, fn req ->
+        assert req[:url] == "https://http-intake.logs.datadoghq.com/api/v2/logs"
+        assert req[:body] == []
+        assert req[:headers]["dd-api-key"] == "foo-bar"
+        {:ok, %Tesla.Env{status: 202, body: ""}}
+      end)
+
+      assert :ok = @subject.test_connection(backend)
+    end
+
+    test "returns error on non-2xx response", %{backend: backend} do
+      @client
+      |> expect(:send, fn _req ->
+        {:ok, %Tesla.Env{status: 403, body: %{"errors" => ["Forbidden"]}}}
+      end)
+
+      assert {:error, reason} = @subject.test_connection(backend)
+      assert reason =~ "403"
+    end
+
+    test "returns error on transport failure", %{backend: backend} do
+      @client
+      |> expect(:send, fn _req -> {:error, :nxdomain} end)
+
+      assert {:error, reason} = @subject.test_connection(backend)
+      assert reason =~ "nxdomain"
+    end
+  end
+
   describe "logs ingestion" do
     setup do
       user = insert(:user)
