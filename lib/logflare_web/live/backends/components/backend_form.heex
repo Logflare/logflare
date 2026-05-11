@@ -436,7 +436,7 @@
           </div>
           <div class="form-group">
             {label(f_config, :max_message_bytes, "Max Message Size (Bytes)")}
-            {number_input(f_config, :max_message_bytes, class: "form-control")}
+            {number_input(f_config, :max_message_bytes, class: "form-control", placeholder: "50000")}
             <small class="text-muted">
               Optional maximum size of the syslog message in bytes. Prevents downstream receivers from rejecting large payloads (e.g., 65536). Defaults to 50000 bytes.
             </small>
