@@ -134,5 +134,23 @@ defmodule Logflare.Logs.Ingest.MetadataCleanerTest do
                "metadata.context.request_id" => "abc"
              }
     end
+
+    test "empty containers at leaves pass through as values" do
+      assert Cleaner.flatten(%{"empty_map" => %{}, "empty_list" => []}) ==
+               %{"empty_map" => %{}, "empty_list" => []}
+
+      assert Cleaner.flatten(%{"a" => %{"b" => %{}, "c" => []}}) ==
+               %{"a.b" => %{}, "a.c" => []}
+    end
+
+    test "nested lists use compound integer index paths" do
+      assert Cleaner.flatten(%{"a" => [[1, 2], [3, 4]]}) ==
+               %{"a.0.0" => 1, "a.0.1" => 2, "a.1.0" => 3, "a.1.1" => 4}
+    end
+
+    test "lists with mixed element types" do
+      assert Cleaner.flatten(%{"xs" => [1, %{"k" => "v"}, [2, 3]]}) ==
+               %{"xs.0" => 1, "xs.1.k" => "v", "xs.2.0" => 2, "xs.2.1" => 3}
+    end
   end
 end
