@@ -49,43 +49,62 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
   """
   @spec flatten(map()) :: %{flat_key() => term()}
   def flatten(map) when is_map(map) do
-    Map.new(do_flatten_map(map, []))
+    map
+    |> do_flatten_map([], [])
+    |> :lists.reverse()
+    |> :maps.from_list()
   end
 
   def nil_or_empty?(x) when nil_or_empty(x), do: true
   def nil_or_empty?(_), do: false
 
-  @spec do_flatten_map(map(), [String.t()]) :: [{flat_key(), term()}]
-  defp do_flatten_map(map, prefix) do
-    Enum.flat_map(map, fn
-      {k, v} when is_map(v) and v != %{} ->
-        do_flatten_map(v, [k | prefix])
-
-      {k, v} when is_list(v) and v != [] ->
-        do_flatten_list(v, [k | prefix])
-
-      {k, v} ->
-        [{build_key([k | prefix]), v}]
-    end)
+  @spec do_flatten_map(map(), [String.t()], [{flat_key(), term()}]) :: [{flat_key(), term()}]
+  defp do_flatten_map(map, prefix, acc) do
+    do_flatten_pairs(:maps.to_list(map), prefix, acc)
   end
 
-  @spec do_flatten_list(list(), [String.t()]) :: [{flat_key(), term()}]
-  defp do_flatten_list(list, prefix) do
-    list
-    |> Enum.with_index()
-    |> Enum.flat_map(fn
-      {v, idx} when is_map(v) and v != %{} ->
-        do_flatten_map(v, [Integer.to_string(idx) | prefix])
-
-      {v, idx} when is_list(v) and v != [] ->
-        do_flatten_list(v, [Integer.to_string(idx) | prefix])
-
-      {v, idx} ->
-        [{build_key([Integer.to_string(idx) | prefix]), v}]
-    end)
+  @spec do_flatten_pairs([{term(), term()}], [String.t()], [{flat_key(), term()}]) ::
+          [{flat_key(), term()}]
+  defp do_flatten_pairs([{k, v} | rest], prefix, acc) when is_map(v) and v != %{} do
+    acc = do_flatten_map(v, [k | prefix], acc)
+    do_flatten_pairs(rest, prefix, acc)
   end
 
-  @spec build_key([String.t()]) :: flat_key()
+  defp do_flatten_pairs([{k, v} | rest], prefix, acc) when is_list(v) and v != [] do
+    acc = do_flatten_list(v, 0, [k | prefix], acc)
+    do_flatten_pairs(rest, prefix, acc)
+  end
+
+  defp do_flatten_pairs([{k, v} | rest], prefix, acc) do
+    do_flatten_pairs(rest, prefix, [{build_key([k | prefix]), v} | acc])
+  end
+
+  defp do_flatten_pairs([], _prefix, acc), do: acc
+
+  @spec do_flatten_list(list(), non_neg_integer(), [String.t()], [{flat_key(), term()}]) ::
+          [{flat_key(), term()}]
+  defp do_flatten_list([v | rest], idx, prefix, acc) when is_map(v) and v != %{} do
+    acc = do_flatten_map(v, [Integer.to_string(idx) | prefix], acc)
+    do_flatten_list(rest, idx + 1, prefix, acc)
+  end
+
+  defp do_flatten_list([v | rest], idx, prefix, acc) when is_list(v) and v != [] do
+    acc = do_flatten_list(v, 0, [Integer.to_string(idx) | prefix], acc)
+    do_flatten_list(rest, idx + 1, prefix, acc)
+  end
+
+  defp do_flatten_list([v | rest], idx, prefix, acc) do
+    do_flatten_list(rest, idx + 1, prefix, [
+      {build_key([Integer.to_string(idx) | prefix]), v} | acc
+    ])
+  end
+
+  defp do_flatten_list([], _idx, _prefix, acc), do: acc
+
+  @spec build_key([term()]) :: flat_key()
+  defp build_key([single]) when is_binary(single), do: single
+  defp build_key([single]), do: to_string(single)
+
   defp build_key(reversed_parts) do
     reversed_parts
     |> Enum.reverse()

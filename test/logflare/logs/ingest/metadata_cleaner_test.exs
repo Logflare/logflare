@@ -152,5 +152,10 @@ defmodule Logflare.Logs.Ingest.MetadataCleanerTest do
       assert Cleaner.flatten(%{"xs" => [1, %{"k" => "v"}, [2, 3]]}) ==
                %{"xs.0" => 1, "xs.1.k" => "v", "xs.2.0" => 2, "xs.2.1" => 3}
     end
+
+    test "literal dot-keys take precedence over nested-derived paths on collision" do
+      assert Cleaner.flatten(%{"a.b" => :explicit, "a" => %{"b" => :nested}}) ==
+               %{"a.b" => :explicit}
+    end
   end
 end
