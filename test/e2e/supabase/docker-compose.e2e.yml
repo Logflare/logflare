@@ -7,3 +7,22 @@ services:
       tags:
         - "supabase/logflare:local"
     pull_policy: never
+    # Upstream healthcheck omits curl --fail, so a 503 from /health (returned
+    # while supabase-mode seeding is still in progress) is reported as healthy.
+    # Adding --fail makes docker actually wait for the 200 from /health, which
+    # in supabase mode requires startup_tasks seeding to complete.
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:4000/health"]
+      timeout: 5s
+      interval: 5s
+      retries: 10
+
+  # Gate Vector on analytics being fully seeded. Without this, Vector starts in
+  # parallel with analytics and POSTs into the seeding window — its first POST
+  # for a not-yet-seeded source returns 401, which Vector marks as not retriable
+  # and drops the events. Combined with the analytics healthcheck fix above,
+  # this closes the race.
+  vector:
+    depends_on:
+      analytics:
+        condition: service_healthy

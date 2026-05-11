@@ -109,9 +109,29 @@ jobs:
     - name: Run Playwright tests (only ${{ matrix.browsers.name }})
       run: npx playwright test --project ${{ matrix.browsers.project }}
 
+    - name: Capture container logs
+      if: failure()
+      run: |
+        mkdir -p container-logs
+        docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' > container-logs/_containers.txt
+        for c in $(docker ps -a --format '{{.Names}}'); do
+          docker logs --timestamps "$c" > "container-logs/${c}.log" 2>&1 || true
+        done
+
+    - name: Generate failure summary
+      if: failure()
+      run: bash ./ci-failure-summary.sh >> "$GITHUB_STEP_SUMMARY"
+
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
-        name: playwright-report
-        path: playwright-report/
+        name: playwright-report-${{ matrix.browsers.project }}
+        path: test/e2e/supabase/playwright-report/
+        retention-days: 30
+
+    - uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: container-logs-${{ matrix.browsers.project }}
+        path: test/e2e/supabase/container-logs/
         retention-days: 30
