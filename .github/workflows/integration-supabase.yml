@@ -92,8 +92,19 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Install Playwright ${{ matrix.browsers.name }} Browser
-      run: npx playwright install ${{ matrix.browsers.project }} --with-deps
+    - name: Cache Playwright ${{ matrix.browsers.name }} browser
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ matrix.browsers.project }}-${{ hashFiles('test/e2e/supabase/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-${{ matrix.browsers.project }}-
+
+    - name: Install Playwright ${{ matrix.browsers.name }} browser
+      run: npx playwright install ${{ matrix.browsers.project }}
+
+    - name: Install Playwright ${{ matrix.browsers.name }} system deps
+      run: npx playwright install-deps ${{ matrix.browsers.project }}
 
     - name: Run Playwright tests (only ${{ matrix.browsers.name }})
       run: npx playwright test --project ${{ matrix.browsers.project }}
