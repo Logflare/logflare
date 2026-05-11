@@ -157,6 +157,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
 
   defp maybe_encrypt({_message, _message_length} = keep, nil = _no_cipher_key), do: keep
 
+  # we don't want to encrypt empty message as it would result in more bytes than allowed
+  defp maybe_encrypt({_message, _allowed_length = 0}, _key), do: {<<>>, 0}
+
   defp maybe_encrypt({message, _message_length}, key) do
     encrypted = encrypt(message, key)
     {encrypted, byte_size(encrypted)}

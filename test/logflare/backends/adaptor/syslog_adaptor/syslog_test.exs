@@ -20,8 +20,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
     end
 
     property "plaintext truncation respects max_message_bytes" do
-      check all max_bytes <- integer(200..65_535),
-                body_text <- string(:utf8, min_length: 10, max_length: 100_000) do
+      check all max_bytes <- integer(1..100_000),
+                body_text <- string(:utf8, min_length: 1, max_length: 100_000) do
         [length_str, syslog_msg] =
           build(:log_event, message: body_text)
           |> format_to_binary(%{max_message_bytes: max_bytes})
@@ -35,8 +35,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
     property "ciphertext truncation guarantees payload fits inside max_message_bytes" do
       cipher_key = :crypto.strong_rand_bytes(32)
 
-      check all max_bytes <- integer(200..65_535),
-                body_text <- string(:utf8, min_length: 10, max_length: 100_000) do
+      check all max_bytes <- integer(1..100_000),
+                body_text <- string(:utf8, min_length: 1, max_length: 100_000) do
         [length_str, syslog_msg] =
           build(:log_event, message: body_text)
           |> format_to_binary(%{max_message_bytes: max_bytes, cipher_key: cipher_key})
