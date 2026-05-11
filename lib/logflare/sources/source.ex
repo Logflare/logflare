@@ -487,29 +487,27 @@ defmodule Logflare.Sources.Source do
     parsed =
       config
       |> String.split("\n", trim: true)
-      |> Enum.flat_map(fn raw ->
-        case String.trim(raw) do
-          "" ->
-            []
-
-          path ->
-            segments =
-              path
-              |> String.replace_prefix("m.", "metadata.")
-              |> String.split(".")
-
-            case segments do
-              [head | _] when head in @reserved_drop_field_heads -> []
-              segments -> [segments]
-            end
-        end
-      end)
+      |> Enum.flat_map(&parse_drop_fields_line/1)
 
     %{source | transform_drop_fields_parsed: parsed}
   end
 
   def parse_drop_fields_config(%__MODULE__{} = source) do
     %{source | transform_drop_fields_parsed: nil}
+  end
+
+  defp parse_drop_fields_line(raw) do
+    case String.trim(raw) do
+      "" -> []
+      path -> drop_fields_segments(path)
+    end
+  end
+
+  defp drop_fields_segments(path) do
+    case path |> String.replace_prefix("m.", "metadata.") |> String.split(".") do
+      [head | _] when head in @reserved_drop_field_heads -> []
+      segments -> [segments]
+    end
   end
 
   def system_source_types, do: @system_source_types
