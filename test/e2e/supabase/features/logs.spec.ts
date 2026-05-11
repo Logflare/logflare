@@ -1,6 +1,67 @@
 import { test, expect, type APIRequestContext, type Page, type Request, type TestInfo } from '@playwright/test';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { searchLogs } from '../lib/utils';
 import supabase from '../lib/supabase';
+
+const execFileP = promisify(execFile);
+
+// Mapping from logs.all CTE alias to the underlying Logflare source name.
+// Kept in sync with priv/supabase/endpoints/logs.all.sql — the SQL there
+// aliases each `from \`<source.name>\`` block, and tests below pass those
+// aliases through waitForLogs. Only used by sampleFromPostgres.
+const SOURCE_NAME_BY_TABLE: Record<string, string> = {
+  edge_logs: 'cloudflare.logs.prod',
+  postgres_logs: 'postgres.logs',
+  function_edge_logs: 'deno-relay-logs',
+  function_logs: 'deno-subhosting-events',
+  auth_logs: 'gotrue.logs.prod',
+  realtime_logs: 'realtime.logs.prod',
+  storage_logs: 'storage.logs.prod.2',
+  postgrest_logs: 'postgREST.logs.prod',
+  pgbouncer_logs: 'pgbouncer.logs.prod',
+};
+
+// Fetch the last `limit` event_messages directly from the analytics Postgres
+// backend via `docker exec`. Bypasses Logflare's HTTP/SQL endpoint stack so
+// the diagnostic still works when those layers are themselves the failure
+// mode (e.g. logs.all returning 5xx or hanging). Best-effort — returns an
+// empty array on any error, since this only runs on the unhappy path.
+async function sampleFromPostgres(table: string, limit = 5): Promise<string[]> {
+  const sourceName = SOURCE_NAME_BY_TABLE[table];
+  const password = process.env.POSTGRES_PASSWORD;
+  if (!sourceName || !password) return [];
+
+  const psql = async (sql: string) => {
+    const { stdout } = await execFileP(
+      'docker',
+      [
+        'exec',
+        '-e', `PGPASSWORD=${password}`,
+        'supabase-db',
+        'psql', '-U', 'supabase_admin', '-d', '_supabase',
+        '-t', '-A', '-c', sql,
+      ],
+      { timeout: 5_000 },
+    );
+    return stdout;
+  };
+
+  try {
+    const tokenOut = await psql(
+      `select token from _analytics.sources where name = '${sourceName}' limit 1`,
+    );
+    const token = tokenOut.trim();
+    if (!token) return [];
+    const physicalTable = `log_events_${token.replace(/-/g, '_')}`;
+    const sampleOut = await psql(
+      `select event_message from _analytics.${physicalTable} order by timestamp desc limit ${limit}`,
+    );
+    return sampleOut.split('\n').filter(Boolean).map(l => l.slice(0, 300));
+  } catch {
+    return [];
+  }
+}
 
 // Poll the logs.all endpoint until at least one row matches `pattern` in `table`.
 // Replaces a fixed sleep that was racy when CI ingestion was slow. The endpoint
@@ -38,22 +99,13 @@ async function waitForLogs(
     await new Promise(r => setTimeout(r, intervalMs));
   }
 
-  // Timed out — fetch a sample of recent rows from the table for forensic context,
-  // and log via console.error so the diagnostic surfaces in CI logs (Playwright's
+  // Timed out — fetch a sample of recent rows directly from the analytics
+  // Postgres backend for forensic context. Going via psql (rather than the
+  // same logs.all endpoint the polling loop just exhausted) means this still
+  // surfaces useful data when the endpoint itself is the failure mode.
+  // Logged via console.error so the diagnostic surfaces in CI logs (Playwright's
   // hook failures don't fire afterEach, so testInfo.attach isn't available here).
-  let sample: string[] = [];
-  try {
-    const start = new Date(Date.now() - 3_600_000).toISOString();
-    const end = new Date(Date.now() + 3_600_000).toISOString();
-    const sampleSql = `select event_message from ${table} order by timestamp desc limit 5`;
-    const resp = await request.get('/api/platform/projects/default/analytics/endpoints/logs.all', {
-      params: { iso_timestamp_start: start, iso_timestamp_end: end, sql: sampleSql },
-    });
-    if (resp.ok()) {
-      const data = await resp.json().catch(() => null);
-      sample = (data?.result ?? []).map((r: { event_message?: string }) => (r.event_message ?? '').slice(0, 300));
-    }
-  } catch (_) { /* ignore — diagnostic only */ }
+  const sample = await sampleFromPostgres(table);
 
   const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
   const summary = [
