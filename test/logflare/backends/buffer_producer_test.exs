@@ -3,6 +3,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.PubSubRates.Cache, as: PubSubRatesCache
 
   import ExUnit.CaptureLog
 
@@ -28,14 +29,11 @@ defmodule Logflare.Backends.BufferProducerTest do
     |> Enum.take(1)
 
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # events popped when ingested
-    assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+    # marked as :ingested
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
   end
 
-  test "marks events as ingested when feature flag set" do
-    old_config = Application.get_env(:logflare, Logflare.FeatureFlags)
-    Application.put_env(:logflare, Logflare.FeatureFlags, mark_ingested: true)
-
+  test "pops events when ingestion rate high" do
     user = insert(:user)
     source = insert(:source, user: user)
 
@@ -48,14 +46,25 @@ defmodule Logflare.Backends.BufferProducerTest do
     :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
+    PubSubRatesCache.cache_rates(source.token, %{
+      Node.self() => %{
+        average_rate: 500,
+        last_rate: 500,
+        max_rate: 500,
+        limiter_metrics: %{
+          average: 0,
+          duration: 60,
+          sum: 0
+        }
+      }
+    })
+
     GenStage.stream([{buffer_producer_pid, max_demand: 1}])
     |> Enum.take(1)
 
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # marked as :ingested
-    assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
-
-    Application.put_env(:logflare, Logflare.FeatureFlags, old_config)
+    # popped during ingest
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
   end
 
   test "moves events in IngestEventQueue to other queues on termination" do
@@ -98,8 +107,8 @@ defmodule Logflare.Backends.BufferProducerTest do
     |> Enum.take(1)
 
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # popped during ingestions
-    assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+    # marked ingested
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
   end
 
   test "BufferProducer when discarding will display source name" do

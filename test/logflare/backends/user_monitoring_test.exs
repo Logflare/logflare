@@ -117,8 +117,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
 
       TestUtils.retry_assert(fn ->
-        # This will be empty since events are popped from the table on ingest
-        assert [] = Backends.list_recent_logs_local(source)
+        assert [_] = Backends.list_recent_logs_local(source)
 
         assert [
                  _ | _

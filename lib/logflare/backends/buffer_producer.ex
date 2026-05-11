@@ -22,13 +22,13 @@ defmodule Logflare.Backends.BufferProducer do
           source_token: atom() | nil,
           backend_id: pos_integer(),
           last_discard_log_dt: DateTime.t() | nil,
-          interval: pos_integer(),
-          mark_ingested: boolean()
+          interval: pos_integer()
         }
 
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
   @default_interval 1_000
+  @max_avg_before_pop 100
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
@@ -55,7 +55,6 @@ defmodule Logflare.Backends.BufferProducer do
   @spec init_standard_state(keyword(), pos_integer()) :: state()
   defp init_standard_state(opts, interval) do
     source = Sources.Cache.get_by_id(opts[:source_id])
-    feature_flags = Application.get_env(:logflare, Logflare.FeatureFlags, [])
 
     state = %{
       consolidated: false,
@@ -64,8 +63,7 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: source.token,
       backend_id: opts[:backend_id],
       last_discard_log_dt: nil,
-      interval: interval,
-      mark_ingested: opts[:mark_ingested] || Keyword.get(feature_flags, :mark_ingested, false)
+      interval: interval
     }
 
     table_key = {state.source_id, state.backend_id, self()}
@@ -86,8 +84,7 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: nil,
       backend_id: backend_id,
       last_discard_log_dt: nil,
-      interval: interval,
-      mark_ingested: false
+      interval: interval
     }
 
     table_key = {:consolidated, backend_id, self()}
@@ -235,22 +232,26 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [LogEvent.t()]
-  defp do_fetch(%{consolidated: true, backend_id: bid} = state, n) do
+  defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
     key = {:consolidated, bid, self()}
 
-    do_fetch_key(key, n, state)
+    do_pop_key(key, n)
   end
 
-  defp do_fetch(%{source_id: sid, backend_id: bid} = state, n) do
+  defp do_fetch(%{source_id: sid, backend_id: bid, source_token: source_token} = _state, n) do
     key = {sid, bid, self()}
 
-    do_fetch_key(key, n, state)
+    Sources.get_source_metrics_for_ingest(source_token)
+    |> case do
+      %{avg: avg} when avg > @max_avg_before_pop -> do_pop_key(key, n)
+      _ -> do_take_key(key, n)
+    end
   end
 
-  @spec do_fetch_key(key :: table_key(), count :: non_neg_integer(), state :: state()) :: [
+  @spec do_take_key(key :: table_key(), count :: non_neg_integer()) :: [
           LogEvent.t()
         ]
-  defp do_fetch_key({sid, bid, _pid} = key, n, %{mark_ingested: true}) do
+  defp do_take_key({sid, bid, _pid} = key, n) do
     case IngestEventQueue.take_pending(key, n) do
       {:error, :not_initialized} ->
         Logger.warning(
@@ -270,7 +271,10 @@ defmodule Logflare.Backends.BufferProducer do
     end
   end
 
-  defp do_fetch_key({sid, bid, _pid} = key, n, _) do
+  @spec do_pop_key(key :: table_key(), count :: non_neg_integer()) :: [
+          LogEvent.t()
+        ]
+  defp do_pop_key({sid, bid, _pid} = key, n) do
     case IngestEventQueue.pop_pending(key, n) do
       {:error, :not_initialized} ->
         Logger.warning(
@@ -282,6 +286,7 @@ defmodule Logflare.Backends.BufferProducer do
 
       {:ok, events} ->
         events
+        |> Enum.map(fn %LogEvent{} = e -> %{e | is_popped: true} end)
     end
   end
 end

@@ -30,6 +30,8 @@ defmodule Logflare.LogEvent do
     field :retries, :integer, default: 0
     field :event_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
     field :source_id, :integer, default: nil
+    # Indicates if the event was removed from ets during ingest
+    field :is_popped, :boolean, virtual: true, default: false
 
     embeds_one :pipeline_error, PipelineError do
       field :stage, :string

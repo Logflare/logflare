@@ -38,20 +38,17 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     source = Keyword.get(args, :source)
     backend = Keyword.get(args, :backend)
 
-    # feature flag to renable old behaviour
-    mark_ingested =
-      Application.get_env(:logflare, Logflare.FeatureFlags, [])
-      |> Keyword.get(:mark_ingested, false)
-
     max_retries =
-      Application.get_env(:logflare, Logflare.FeatureFlags, [])
+      Application.get_env(:logflare, :bigquery_pipeline, [])
       |> Keyword.get(:max_retries, @max_retries)
+
+    ack_config = %{max_retries: max_retries}
 
     opts =
       Keyword.merge(
         [
-          name: name,
           # top-level will apply to all children
+          name: name,
           hibernate_after: 5_000,
           spawn_opt: [
             fullsweep_after: 10
@@ -66,9 +63,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             transformer:
               {__MODULE__, :transform,
                [
-                 ref:
-                   {{source.id, backend.id, args[:pipeline_ref]}, source.token,
-                    %{mark_ingested: mark_ingested, max_retries: max_retries}}
+                 ref: {{source.id, backend.id, args[:pipeline_ref]}, ack_config}
                ]}
           ],
           processors: [
@@ -123,13 +118,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     }
   end
 
-  # Ziinc: temporarily pass in source token until PubSubRates is refactored
   @impl Broadway.Acknowledger
-  def ack({queue, source_token, %{mark_ingested: true}}, successful, _failed) do
-    # TODO: Remove with feature flag for mark_ingested
-
-    metrics = Sources.get_source_metrics_for_ingest(source_token)
+  def ack({queue, config}, successful, failed) do
     {sid, bid, _tid} = queue
+
+    maybe_requeue_failed({sid, bid}, failed, config)
 
     backend_metadata =
       if bid do
@@ -142,40 +135,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       nil ->
         Logger.warning("Source not found for ack!", source_id: sid)
 
-        for %{data: le} <- successful do
+        for %{data: %{is_popped: false} = le} <- successful do
           IngestEventQueue.delete(queue, le)
         end
-
-      source ->
-        for %{data: le} <- successful do
-          # delete immediately if not default backend or if avg rate is above 100
-          if metrics.avg > 100 or bid != nil do
-            IngestEventQueue.delete(queue, le)
-          end
-
-          # emit telemetry on event
-          emit_event_telemetry(queue, source, le, backend_metadata)
-        end
-    end
-
-    :ok
-  end
-
-  def ack({queue, _source_token, flags}, successful, failed) do
-    {sid, bid, _tid} = queue
-
-    maybe_requeue_failed({sid, bid}, failed, flags)
-
-    backend_metadata =
-      if bid do
-        Backends.Cache.get_backend(bid).metadata || %{}
-      else
-        %{}
-      end
-
-    case Sources.Cache.get_by_id(sid) do
-      nil ->
-        Logger.warning("Source not found for ack!", source_id: sid)
 
       source ->
         for %{data: le} <- successful do
