@@ -3,6 +3,7 @@ defmodule Logflare.Sources.Source do
   use TypedEctoSchema
 
   import Ecto.Changeset
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
   alias Logflare.Billing
   alias Logflare.Google.BigQuery.GCPConfig
@@ -110,6 +111,7 @@ defmodule Logflare.Sources.Source do
   end
 
   @system_source_types [:metrics, :logs]
+  @reserved_drop_field_heads ~w(id event_message timestamp)
 
   typed_schema "sources" do
     field :name, :string
@@ -263,8 +265,43 @@ defmodule Logflare.Sources.Source do
     |> unique_constraint(:public_token)
     |> put_source_ttl_change()
     |> validate_source_ttl(source)
+    |> validate_drop_fields()
     |> normalize_and_validate_labels()
   end
+
+  defp validate_drop_fields(changeset) do
+    validate_change(changeset, :transform_drop_fields, fn :transform_drop_fields, config ->
+      reserved = reserved_drop_field_heads(config)
+
+      case reserved do
+        [] ->
+          []
+
+        fields ->
+          [
+            transform_drop_fields: "cannot drop reserved fields: #{Enum.join(fields, ", ")}"
+          ]
+      end
+    end)
+  end
+
+  defp reserved_drop_field_heads(config) when is_non_empty_binary(config) do
+    config
+    |> String.split("\n", trim: true)
+    |> Enum.flat_map(fn raw ->
+      raw
+      |> String.trim()
+      |> String.replace_prefix("m.", "metadata.")
+      |> String.split(".", parts: 2)
+      |> case do
+        [head | _] when head in @reserved_drop_field_heads -> [head]
+        _ -> []
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  defp reserved_drop_field_heads(_config), do: []
 
   defp put_source_ttl_change(changeset) do
     value = get_field(changeset, :retention_days)
@@ -418,12 +455,8 @@ defmodule Logflare.Sources.Source do
   end
 
   @spec parse_copy_fields_config(%__MODULE__{}) :: %__MODULE__{}
-  def parse_copy_fields_config(%__MODULE__{transform_copy_fields: blank} = source)
-      when blank in [nil, ""] do
-    %{source | transform_copy_fields_parsed: nil}
-  end
-
-  def parse_copy_fields_config(%__MODULE__{transform_copy_fields: config} = source) do
+  def parse_copy_fields_config(%__MODULE__{transform_copy_fields: config} = source)
+      when is_non_empty_binary(config) do
     parsed =
       config
       |> String.split("\n", trim: true)
@@ -444,13 +477,13 @@ defmodule Logflare.Sources.Source do
     %{source | transform_copy_fields_parsed: parsed}
   end
 
-  @spec parse_drop_fields_config(%__MODULE__{}) :: %__MODULE__{}
-  def parse_drop_fields_config(%__MODULE__{transform_drop_fields: blank} = source)
-      when blank in [nil, ""] do
-    %{source | transform_drop_fields_parsed: nil}
+  def parse_copy_fields_config(%__MODULE__{} = source) do
+    %{source | transform_copy_fields_parsed: nil}
   end
 
-  def parse_drop_fields_config(%__MODULE__{transform_drop_fields: config} = source) do
+  @spec parse_drop_fields_config(%__MODULE__{}) :: %__MODULE__{}
+  def parse_drop_fields_config(%__MODULE__{transform_drop_fields: config} = source)
+      when is_non_empty_binary(config) do
     parsed =
       config
       |> String.split("\n", trim: true)
@@ -460,12 +493,23 @@ defmodule Logflare.Sources.Source do
             []
 
           path ->
-            path = String.replace_prefix(path, "m.", "metadata.")
-            [String.split(path, ".")]
+            segments =
+              path
+              |> String.replace_prefix("m.", "metadata.")
+              |> String.split(".")
+
+            case segments do
+              [head | _] when head in @reserved_drop_field_heads -> []
+              segments -> [segments]
+            end
         end
       end)
 
     %{source | transform_drop_fields_parsed: parsed}
+  end
+
+  def parse_drop_fields_config(%__MODULE__{} = source) do
+    %{source | transform_drop_fields_parsed: nil}
   end
 
   def system_source_types, do: @system_source_types

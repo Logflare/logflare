@@ -529,6 +529,25 @@ defmodule Logflare.LogEventTest do
       assert body["service"] == "router"
     end
 
+    test "reserved top-level fields are filtered at parse time", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "id\nevent_message\ntimestamp\nservice"}
+        |> Source.parse_drop_fields_config()
+
+      assert source.transform_drop_fields_parsed == [["service"]]
+    end
+
+    test "reserved field names under metadata are still droppable", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "metadata.id\nm.timestamp"}
+        |> Source.parse_drop_fields_config()
+
+      assert source.transform_drop_fields_parsed == [
+               ["metadata", "id"],
+               ["metadata", "timestamp"]
+             ]
+    end
+
     test "runs after copy_fields so users can copy then drop the source", %{source: source} do
       source =
         %{
