@@ -25,32 +25,34 @@ defmodule Logflare.BigQuery.PipelineTest do
       {:ok, source: source}
     end
 
-    test "ack will remove items from pipeline if average rate is above 100", %{source: source} do
+    test "ack will requeue failed events", %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event)
-      IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      ref = {sid_bid_pid, source.token}
+      ref = {sid_bid_pid, %{max_retries: 1}}
       message = Pipeline.transform(le, ref: ref)
       {mod, ref, _data} = message.acknowledger
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+
+      mod.ack(ref, [], [message])
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
-      mod.ack(ref, [message], [])
-      refute IngestEventQueue.get_table_size(sid_bid_pid) == 0
 
-      PubSubRatesCache.cache_rates(source.token, %{
-        Node.self() => %{
-          average_rate: 500,
-          last_rate: 500,
-          max_rate: 500,
-          limiter_metrics: %{
-            average: 0,
-            duration: 60,
-            sum: 0
-          }
-        }
-      })
+      {:ok, [m]} = IngestEventQueue.pop_pending(sid_bid_pid, 1)
 
-      mod.ack(ref, [message], [])
+      assert m.retries == 1
+    end
+
+    test "ack will not requeue failed events that have exhausted retries", %{source: source} do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event) |> Map.put(:retries, 1)
+      ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(le, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+
+      mod.ack(ref, [], [message])
+
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
     end
 
