@@ -7,10 +7,15 @@ defmodule LogflareWeb.AuthLive do
   """
 
   import Phoenix.Component
+  import Phoenix.LiveView, only: [attach_hook: 4, push_patch: 2]
 
   use LogflareWeb, :routes
 
+  alias Logflare.Repo
+  alias Logflare.Teams.Team
   alias Logflare.Teams.TeamContext
+  alias LogflareWeb.Utils
+
   require Logger
 
   def on_mount(:default, params, %{"current_email" => email} = session, socket) do
@@ -45,6 +50,15 @@ defmodule LogflareWeb.AuthLive do
     {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/auth/login")}
   end
 
+  def on_mount(:ensure_team_param, params, _session, socket) do
+    socket =
+      params
+      |> maybe_assign_team_from_resource("", socket)
+      |> attach_hook(:ensure_team_param, :handle_params, &ensure_team_param/3)
+
+    {:cont, socket}
+  end
+
   @doc """
   Assigns the context for a resource.
   Used for overriding the default context assignment when accessing  a resource.
@@ -56,9 +70,21 @@ defmodule LogflareWeb.AuthLive do
   """
   def assign_context_by_resource(socket, resource, user_email)
       when is_map_key(resource, :user_id) do
-    resource = Logflare.Repo.preload(resource, user: :team)
+    resource = Repo.preload(resource, user: :team)
+    assign_context_by_team_id(socket, resource.user.team.id, user_email)
+  end
 
-    case TeamContext.resolve(resource.user.team.id, user_email) do
+  def assign_context_by_resource(socket, nil, _user_email), do: socket
+
+  @spec assign_context_by_team_id(
+          Phoenix.LiveView.Socket.t(),
+          TeamContext.team_id_param(),
+          String.t()
+        ) :: Phoenix.LiveView.Socket.t()
+  def assign_context_by_team_id(socket, nil, _user_email), do: socket
+
+  def assign_context_by_team_id(socket, team_id, user_email) do
+    case TeamContext.resolve(team_id, user_email) do
       {:ok, %TeamContext{team: team, user: user, team_user: team_user}} ->
         assign(socket,
           user: Logflare.Users.preload_defaults(user),
@@ -71,5 +97,47 @@ defmodule LogflareWeb.AuthLive do
     end
   end
 
-  def assign_context_by_resource(socket, nil, _user_email), do: socket
+  defp ensure_team_param(params, uri, socket) do
+    current_uri = local_path_with_query(uri)
+    socket = maybe_assign_team_from_resource(params, uri, socket)
+    team = socket.assigns[:team]
+
+    cond do
+      team_param_matches?(params, team) ->
+        {:cont, socket}
+
+      is_struct(team, Team) ->
+        next_uri = Utils.with_team_param(current_uri, team)
+        {:halt, push_patch(socket, to: next_uri, replace: true)}
+
+      true ->
+        {:cont, socket}
+    end
+  end
+
+  defp team_param_matches?(%{"t" => team_id}, %Team{id: id}), do: team_id == to_string(id)
+  defp team_param_matches?(_params, _team), do: false
+
+  defp maybe_assign_team_from_resource(params, uri, %{view: view} = socket) do
+    if function_exported?(view, :resource_team_id_query, 3) do
+      effective_user = socket.assigns[:team_user] || socket.assigns.user
+
+      case view.resource_team_id_query(params, uri, effective_user) do
+        nil -> socket
+        query -> assign_context_by_team_id(socket, Repo.one(query), effective_user.email)
+      end
+    else
+      socket
+    end
+  end
+
+  defp local_path_with_query(uri) do
+    uri = URI.parse(uri)
+
+    if uri.query in [nil, ""] do
+      uri.path
+    else
+      uri.path <> "?" <> uri.query
+    end
+  end
 end

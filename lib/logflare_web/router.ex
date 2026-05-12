@@ -20,7 +20,8 @@ defmodule LogflareWeb.Router do
                            do: [LogflareWeb.Hooks.AllowTestSandbox],
                            else: []
 
-  @dashboard_hooks [LogflareWeb.AuthLive]
+  @auth_live_hooks [LogflareWeb.AuthLive]
+  @team_param_live_hooks [LogflareWeb.AuthLive, {LogflareWeb.AuthLive, :ensure_team_param}]
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -212,8 +213,11 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live_session :dashboard, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
+    live_session :dashboard, on_mount: @common_on_mount_hooks ++ @team_param_live_hooks do
       live("/dashboard", DashboardLive, :index)
+    end
+
+    live_session :without_team_param, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
       live("/access-tokens", AccessTokensLive, :index)
       live("/backends", BackendsLive, :index)
       live("/backends/new", BackendsLive, :new)
@@ -231,7 +235,7 @@ defmodule LogflareWeb.Router do
   scope "/endpoints", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live_session :endpoints, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
+    live_session :endpoints, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
       live("/", EndpointsLive, :index)
       live("/new", EndpointsLive, :new)
       live("/:id", EndpointsLive, :show)
@@ -242,7 +246,7 @@ defmodule LogflareWeb.Router do
   scope "/alerts", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live_session :alerts, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
+    live_session :alerts, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
       live "/", AlertsLive, :index
       live "/new", AlertsLive, :new
       live "/:id", AlertsLive, :show
@@ -289,7 +293,7 @@ defmodule LogflareWeb.Router do
 
     resources "/", SourceController, except: [:index, :new, :create, :delete] do
       live_session(:rules,
-        on_mount: @common_on_mount_hooks ++ @dashboard_hooks,
+        on_mount: @common_on_mount_hooks ++ @auth_live_hooks,
         root_layout: {LogflareWeb.LayoutView, :root}
       ) do
         live("/rules", Sources.RulesLive)
