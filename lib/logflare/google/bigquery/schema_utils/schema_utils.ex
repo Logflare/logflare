@@ -191,16 +191,27 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     |> flatten_typemap()
   end
 
+  @spec flatten_typemap(map | nil) :: map
   def flatten_typemap(nil), do: %{}
 
-  def flatten_typemap(%{} = typemap) do
-    for {k, v} <- Iteraptor.to_flatmap(typemap), into: %{} do
-      {format_flatmap_field_names(k), v}
-    end
+  def flatten_typemap(typemap) when is_map(typemap) do
+    do_flatten_typemap(typemap, "", %{})
   end
 
-  defp format_flatmap_field_names(k) do
-    String.trim_trailing(k, ".t")
-    |> String.replace(".fields.", ".")
+  defp do_flatten_typemap(typemap, prefix, acc) do
+    Enum.reduce(typemap, acc, fn {key, value}, acc ->
+      flat_key =
+        if prefix == "", do: to_string(key), else: prefix <> "." <> to_string(key)
+
+      flatten_node(value, flat_key, acc)
+    end)
+  end
+
+  defp flatten_node(%{t: :map, fields: fields}, key, acc) do
+    do_flatten_typemap(fields, key, Map.put(acc, key, :map))
+  end
+
+  defp flatten_node(%{t: type}, key, acc) do
+    Map.put(acc, key, type)
   end
 end
