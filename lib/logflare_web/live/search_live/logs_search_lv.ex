@@ -2,6 +2,8 @@ defmodule LogflareWeb.Source.SearchLV do
   @moduledoc """
   Handles all user interactions with the source logs search.
   """
+  @behaviour LogflareWeb.Live.ResourceTeamContext
+
   use LogflareWeb, :live_view
 
   import Logflare.Lql.Rules
@@ -22,7 +24,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.TeamUsers
   alias Logflare.User
   alias Logflare.Users
-  alias LogflareWeb.AuthLive
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchLive.FormComponents
@@ -31,12 +32,23 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Utils
   alias Logflare.Utils.Chart, as: ChartUtils
 
+  require Ecto.Query
   require Logger
 
   @tail_search_interval 1000
   @user_idle_interval :timer.minutes(2)
 
   on_mount LogflareWeb.AuthLive
+  on_mount {LogflareWeb.AuthLive, :ensure_team_param}
+
+  def resource_team_id_query(%{"source_id" => source_id}, _uri, user) do
+    Sources.Source
+    |> Logflare.Teams.filter_by_user_access(user)
+    |> Ecto.Query.where([source], source.id == ^source_id)
+    |> Ecto.Query.select([resource_team: team], team.id)
+  end
+
+  def resource_team_id_query(_params, _uri, _user), do: nil
 
   def mount(%{"source_id" => source_id} = params, _session, socket) do
     %{assigns: %{user: user, team_user: team_user}} = socket
@@ -58,11 +70,11 @@ defmodule LogflareWeb.Source.SearchLV do
          |> redirect(to: ~p"/dashboard" |> Utils.with_team_param(socket.assigns[:team]))}
 
       source ->
-        {:ok, mount_with_source(socket, source, params, effective_user)}
+        {:ok, mount_with_source(socket, source, params)}
     end
   end
 
-  defp mount_with_source(socket, source, %{"t" => _team_id} = params, _effective_user) do
+  defp mount_with_source(socket, source, params) do
     %{assigns: %{user: user, team_user: team_user}} = socket
 
     tailing? =
@@ -104,13 +116,6 @@ defmodule LogflareWeb.Source.SearchLV do
       force_query: Map.get(params, "force", "false") == "true"
     )
     |> maybe_assign_user_timezone(team_user, user)
-  end
-
-  defp mount_with_source(socket, source, params, effective_user) do
-    socket = AuthLive.assign_context_by_resource(socket, source, effective_user.email)
-    params = Map.put(params, "t", socket.assigns.team.id)
-
-    mount_with_source(socket, source, params, effective_user)
   end
 
   defp maybe_assign_user_timezone(socket, team_user, user) do
