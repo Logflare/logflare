@@ -1,3 +1,15 @@
+# credo:disable-for-this-file Credo.Check.Refactor.IoPuts
+#
+# Usage: MIX_ENV=test mix run test/profiling/log_event_make_bench.exs
+#
+# Env (snapshot tooling):
+#   SAVE_SNAPSHOT=1 — append this run's results to log_event_make_bench.history.exs
+#   LABEL="..."     — optional label for the new entry (e.g., "post X rewrite")
+#   MACHINE="..."   — optional machine identifier so cross-machine entries can be filtered
+#
+# Every run prints a delta table vs the most-recent entry in the history file
+# (if one exists). The history file is the source of truth for trend tracking.
+
 alias Logflare.LogEvent
 
 import Logflare.Factory
@@ -131,53 +143,133 @@ edge_log_params = %{
   "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
 }
 
-Benchee.run(
-  %{
-    "otel trace" => fn ->
-      LogEvent.make(otel_trace_params, %{source: source})
-    end,
-    "edge log" => fn ->
-      LogEvent.make(edge_log_params, %{source: source})
-    end
+suite =
+  Benchee.run(
+    %{
+      "otel trace" => fn ->
+        LogEvent.make(otel_trace_params, %{source: source})
+      end,
+      "edge log" => fn ->
+        LogEvent.make(edge_log_params, %{source: source})
+      end
+    },
+    time: 5,
+    warmup: 2,
+    memory_time: 3,
+    reduction_time: 3
+  )
+
+# --- Snapshot capture ---
+
+results =
+  for s <- suite.scenarios, into: %{} do
+    stats = s.run_time_data.statistics
+    mem = s.memory_usage_data.statistics
+    reds = s.reductions_data.statistics
+
+    {s.name,
+     %{
+       ips: round(stats.ips),
+       wall_avg_us: Float.round(stats.average / 1_000, 2),
+       wall_median_us: Float.round(stats.median / 1_000, 2),
+       wall_p99_us: Float.round((stats.percentiles[99] || 0) / 1_000, 2),
+       memory_avg_bytes: round(mem.average),
+       reductions_avg: round(reds.average)
+     }}
+  end
+
+git_sha =
+  case System.cmd("git", ["rev-parse", "--short=9", "HEAD"], stderr_to_stdout: true) do
+    {sha, 0} -> String.trim(sha)
+    _ -> "unknown"
+  end
+
+new_entry = %{
+  meta: %{
+    captured_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+    git_sha: git_sha,
+    label: System.get_env("LABEL"),
+    machine: System.get_env("MACHINE")
   },
-  time: 5,
-  warmup: 2,
-  memory_time: 3,
-  reduction_time: 3
-)
+  results: results
+}
 
-# Results without flattening logic (baseline)
-#
-# Name                 ips        average  deviation         median         99th %
-# otel trace       10.37 K       96.45 μs     ±7.56%       94.75 μs      119.88 μs
-# edge log          2.69 K      371.63 μs     ±8.87%      362.90 μs      471.92 μs
-#
-# Memory usage statistics:
-#
-# Name               average  deviation         median         99th %
-# otel trace         0.30 MB     ±0.00%        0.30 MB        0.30 MB
-# edge log           1.30 MB     ±0.00%        1.30 MB        1.30 MB
-#
-# Reduction count statistics:
-#
-# Name               average  deviation         median         99th %
-# otel trace         32.09 K     ±0.00%        32.09 K        32.09 K
-# edge log          138.71 K     ±0.00%       138.71 K       138.71 K
+history_path = Path.expand("log_event_make_bench.history.exs", __DIR__)
 
-# Results with flattening logic (clean + flatten as separate passes)
-#
-# Name                 ips        average  deviation         median         99th %
-# otel trace       10.12 K       98.85 μs     ±8.04%       96.88 μs      123.75 μs
-# edge log          2.61 K      382.76 μs    ±11.07%      373.33 μs      509.76 μs
-#
-# Memory usage statistics:
-#
-# Name               average  deviation         median         99th %
-# otel trace         0.31 MB     ±0.00%        0.31 MB        0.31 MB
-# edge log           1.34 MB     ±0.00%        1.34 MB        1.34 MB
-#
-# Reduction count statistics:
-#
-# Name               average  deviation         median         99th %
-# otel trace         32.78 K     ±0.13%        32.76 K        32.89 K
-# edge log          140.89 K     ±0.00%       140.89 K       140.89 K
+history =
+  if File.exists?(history_path) do
+    {history, _} = Code.eval_file(history_path)
+    history
+  else
+    []
+  end
+
+# --- Delta print ---
+
+fmt_pct = fn old, new ->
+  cond do
+    old == 0 and new == 0 ->
+      "0.0%"
+
+    old == 0 ->
+      "+inf%"
+
+    true ->
+      pct = Float.round((new - old) / old * 100, 1)
+      if pct >= 0, do: "+#{pct}%", else: "#{pct}%"
+  end
+end
+
+fmt_bytes = fn b ->
+  if b >= 1_048_576,
+    do: "#{Float.round(b / 1_048_576, 2)} MB",
+    else: "#{Float.round(b / 1024, 1)} KB"
+end
+
+fmt_count = fn n ->
+  if n >= 1000, do: "#{Float.round(n / 1000, 1)}K", else: "#{n}"
+end
+
+case history do
+  [latest | _] ->
+    label = latest.meta[:label] || latest.meta.captured_at
+    IO.puts("\nDelta vs #{latest.meta.git_sha} (#{label}):")
+
+    for {fixture, new_stats} <- Enum.sort(results) do
+      case latest.results[fixture] do
+        nil ->
+          IO.puts("  #{fixture}: no baseline in latest snapshot")
+
+        old ->
+          IO.puts("  #{fixture}")
+
+          IO.puts(
+            "    wall: #{old.wall_median_us} → #{new_stats.wall_median_us} µs  (#{fmt_pct.(old.wall_median_us, new_stats.wall_median_us)})"
+          )
+
+          IO.puts(
+            "    mem:  #{fmt_bytes.(old.memory_avg_bytes)} → #{fmt_bytes.(new_stats.memory_avg_bytes)}  (#{fmt_pct.(old.memory_avg_bytes, new_stats.memory_avg_bytes)})"
+          )
+
+          IO.puts(
+            "    reds: #{fmt_count.(old.reductions_avg)} → #{fmt_count.(new_stats.reductions_avg)}  (#{fmt_pct.(old.reductions_avg, new_stats.reductions_avg)})"
+          )
+      end
+    end
+
+  [] ->
+    IO.puts("\nNo history yet — run with SAVE_SNAPSHOT=1 to seed.")
+end
+
+# --- Save if requested ---
+
+if System.get_env("SAVE_SNAPSHOT") == "1" do
+  new_history = [new_entry | history]
+
+  File.write!(
+    history_path,
+    inspect(new_history, pretty: true, limit: :infinity, sort_maps: true) <> "\n"
+  )
+
+  IO.puts("\nSaved snapshot (#{git_sha}) to #{history_path}")
+end
