@@ -11,6 +11,7 @@
 # (if one exists). The history file is the source of truth for trend tracking.
 
 alias Logflare.LogEvent
+alias Logflare.Profiling
 alias Logflare.Sources.Cache
 
 import Logflare.Factory
@@ -289,117 +290,5 @@ suite =
     reduction_time: 3
   )
 
-# --- Snapshot capture ---
-
-results =
-  for s <- suite.scenarios, into: %{} do
-    stats = s.run_time_data.statistics
-    mem = s.memory_usage_data.statistics
-    reds = s.reductions_data.statistics
-
-    {s.name,
-     %{
-       ips: round(stats.ips),
-       wall_avg_us: Float.round(stats.average / 1_000, 2),
-       wall_median_us: Float.round(stats.median / 1_000, 2),
-       wall_p99_us: Float.round((stats.percentiles[99] || 0) / 1_000, 2),
-       memory_avg_bytes: round(mem.average),
-       reductions_avg: round(reds.average)
-     }}
-  end
-
-git_sha =
-  case System.cmd("git", ["rev-parse", "--short=9", "HEAD"], stderr_to_stdout: true) do
-    {sha, 0} -> String.trim(sha)
-    _ -> "unknown"
-  end
-
-new_entry = %{
-  meta: %{
-    captured_at: DateTime.utc_now() |> DateTime.to_iso8601(),
-    git_sha: git_sha,
-    label: System.get_env("LABEL"),
-    machine: System.get_env("MACHINE")
-  },
-  results: results
-}
-
 history_path = Path.expand("log_event_make_bench.history.exs", __DIR__)
-
-history =
-  if File.exists?(history_path) do
-    {history, _} = Code.eval_file(history_path)
-    history
-  else
-    []
-  end
-
-# --- Delta print ---
-
-fmt_pct = fn old, new ->
-  cond do
-    old == 0 and new == 0 ->
-      "0.0%"
-
-    old == 0 ->
-      "+inf%"
-
-    true ->
-      pct = Float.round((new - old) / old * 100, 1)
-      if pct >= 0, do: "+#{pct}%", else: "#{pct}%"
-  end
-end
-
-fmt_bytes = fn b ->
-  if b >= 1_048_576,
-    do: "#{Float.round(b / 1_048_576, 2)} MB",
-    else: "#{Float.round(b / 1024, 1)} KB"
-end
-
-fmt_count = fn n ->
-  if n >= 1000, do: "#{Float.round(n / 1000, 1)}K", else: "#{n}"
-end
-
-case history do
-  [latest | _] ->
-    label = latest.meta[:label] || latest.meta.captured_at
-    IO.puts("\nDelta vs #{latest.meta.git_sha} (#{label}):")
-
-    for {fixture, new_stats} <- Enum.sort(results) do
-      case latest.results[fixture] do
-        nil ->
-          IO.puts("  #{fixture}: no baseline in latest snapshot")
-
-        old ->
-          IO.puts("  #{fixture}")
-
-          IO.puts(
-            "    wall: #{old.wall_median_us} → #{new_stats.wall_median_us} µs  (#{fmt_pct.(old.wall_median_us, new_stats.wall_median_us)})"
-          )
-
-          IO.puts(
-            "    mem:  #{fmt_bytes.(old.memory_avg_bytes)} → #{fmt_bytes.(new_stats.memory_avg_bytes)}  (#{fmt_pct.(old.memory_avg_bytes, new_stats.memory_avg_bytes)})"
-          )
-
-          IO.puts(
-            "    reds: #{fmt_count.(old.reductions_avg)} → #{fmt_count.(new_stats.reductions_avg)}  (#{fmt_pct.(old.reductions_avg, new_stats.reductions_avg)})"
-          )
-      end
-    end
-
-  [] ->
-    IO.puts("\nNo history yet — run with SAVE_SNAPSHOT=1 to seed.")
-end
-
-# --- Save if requested ---
-
-if System.get_env("SAVE_SNAPSHOT") == "1" do
-  new_history = [new_entry | history]
-
-  File.write!(
-    history_path,
-    inspect(new_history, pretty: true, limit: :infinity, sort_maps: true) <> "\n"
-  )
-
-  IO.puts("\nSaved snapshot (#{git_sha}) to #{history_path}")
-end
+Profiling.track(suite, history_path)
