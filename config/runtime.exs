@@ -317,9 +317,8 @@ cond do
   Env.get_boolean("LOGFLARE_SINGLE_TENANT") &&
       not is_nil(System.get_env("CLICKHOUSE_BACKEND_URL")) ->
     clickhouse_backend_port =
-      case System.get_env("CLICKHOUSE_BACKEND_PORT") do
-        nil -> nil
-        port -> String.to_integer(port)
+      if port = System.get_env("CLICKHOUSE_BACKEND_PORT") do
+        String.to_integer(port)
       end
 
     config :logflare,
