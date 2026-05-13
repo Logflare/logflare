@@ -898,6 +898,12 @@ defmodule Logflare.SqlTest do
     assert String.downcase(result) =~ "from (select 'val' as val) as tester"
   end
 
+  test "expand_subqueries/3 returns sql parser errors" do
+    alert = build(:alert, name: "my.alert", query: "select 'id' as id", language: :bq_sql)
+
+    assert {:error, _} = Sql.expand_subqueries(:bq_sql, "select from", [alert])
+  end
+
   describe "transform/3 for :postgres backends" do
     setup do
       user = insert(:user)
