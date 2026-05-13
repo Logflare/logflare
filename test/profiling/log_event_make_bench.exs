@@ -75,7 +75,12 @@ otel_trace_params = %{
   "trace_id" => "f9918d38f5d1cb74ec5656b9a315e5f6"
 }
 
-# Edge log payload (~80 leaf values, 4-5 levels deep)
+# Edge log payload (~80 leaf values, 4-5 levels deep).
+#
+# NOTE: the `cf` subtree (botManagement + ja4Signals + tlsClientAuth) overstates
+# the current production shape — those subtrees have been trimmed upstream. We
+# keep the original shape here so existing history entries remain comparable.
+# When refreshing baselines, trim cf to match prod and reseed the history file.
 edge_log_params = %{
   "event_message" =>
     "POST | 200 | 3.254.227.51 | 9ca90d4f3f7cc99e | https://example.supabase.co/rest/v1/calls",
