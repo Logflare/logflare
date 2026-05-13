@@ -791,6 +791,15 @@ defmodule Logflare.Backends do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
   end
 
+  @spec via_source_with_value(Source.t() | non_neg_integer(), term(), term()) ::
+          {:via, module(), term()}
+  def via_source_with_value(%Source{id: id}, process_id, value),
+    do: via_source_with_value(id, process_id, value)
+
+  def via_source_with_value(id, process_id, value) when is_number(id) do
+    {:via, Registry, {SourceRegistry, {id, process_id}, value}}
+  end
+
   @doc """
   Registers a unique backend-related process on the backend registry.
   """

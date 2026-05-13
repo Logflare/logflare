@@ -72,6 +72,8 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
+  @type typemap_key :: atom() | String.t()
+
   @spec to_typemap(term()) :: map() | nil
   def to_typemap(nil), do: nil
 
@@ -101,15 +103,14 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
             %{t: type_of(v)}
         end
 
-      k =
-        cond do
-          is_atom(k) -> k
-          String.valid?(k) -> String.to_atom(k)
-          true -> decode_until_valid!(k)
-        end
-
-      {k, v}
+      {normalize_typemap_key(k), v}
     end
+  end
+
+  defp normalize_typemap_key(k) when is_atom(k), do: k
+
+  defp normalize_typemap_key(k) when is_binary(k) do
+    if String.valid?(k), do: k, else: decode_until_valid!(k)
   end
 
   # Reached recursively from the list-of-maps branch above when an element
@@ -131,7 +132,6 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
       k ->
         k
         |> Unicode.unaccent()
-        |> String.to_atom()
     end
   end
 
@@ -147,7 +147,8 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     true
   end
 
-  @spec to_typemap(TS.t() | list(TS.t()), keyword) :: %{required(atom) => map | atom}
+  @spec to_typemap(TS.t() | list(TS.t()), keyword) ::
+          %{required(typemap_key()) => map | atom}
   def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
     to_typemap(fields, from: :bigquery_schema)
   end
@@ -155,8 +156,6 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
     Map.new(fields, fn
       %TFS{fields: fields, name: n, type: t, mode: mode} ->
-        k = String.to_atom(n)
-
         v =
           cond do
             mode == "REPEATED" and t == "RECORD" ->
@@ -183,7 +182,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
             v
           end
 
-        {k, v}
+        {n, v}
     end)
   end
 

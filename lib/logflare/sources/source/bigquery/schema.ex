@@ -17,6 +17,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   alias Logflare.Sources.Source
   alias Logflare.LogEvent
   alias Logflare.AccountEmail
+  alias Logflare.Backends
   alias Logflare.Mailer
   alias Logflare.TeamUsers
   alias Logflare.SingleTenant
@@ -31,13 +32,20 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     )
   end
 
+  @spec update_counter() :: :atomics.atomics_ref()
+  def update_counter do
+    :atomics.new(1, signed: false)
+  end
+
   @spec update(pid() | tuple(), LogEvent.t(), Source.t()) :: :ok
   def update(pid, %LogEvent{} = log_event, %Source{} = source)
       when is_pid(pid) or is_tuple(pid) do
-    if accept_update?(pid) do
-      GenServer.cast(pid, {:update, log_event, source})
-    else
-      :ok
+    case checkout_update(pid) do
+      {:ok, counter} ->
+        GenServer.cast(pid, {:update, counter, log_event, source})
+
+      :drop ->
+        :ok
     end
   end
 
@@ -77,20 +85,21 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     {:noreply, %{state | field_count: count_fields(schema)}}
   end
 
-  def handle_cast(
-        {:update, %LogEvent{}, %Source{lock_schema: true}},
-        state
-      ),
-      do: {:noreply, state}
+  def handle_cast({:update, counter, log_event, source}, state) do
+    try do
+      handle_update(log_event, source, state)
+    after
+      checkin_update(counter)
+    end
+  end
 
-  def handle_cast(
-        {:update, %LogEvent{}, _source},
-        %{field_count: fc, field_count_limit: limit} = state
-      )
-      when fc > limit,
-      do: {:noreply, state}
+  defp handle_update(%LogEvent{}, %Source{lock_schema: true}, state), do: {:noreply, state}
 
-  def handle_cast({:update, %LogEvent{body: body, id: event_id}, _source}, state) do
+  defp handle_update(%LogEvent{}, _source, %{field_count: fc, field_count_limit: limit} = state)
+       when fc > limit,
+       do: {:noreply, state}
+
+  defp handle_update(%LogEvent{body: body, id: event_id}, _source, state) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
     source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
@@ -199,25 +208,46 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     next_update_ts(updates_per_minute)
   end
 
-  defp accept_update?(pid) when is_pid(pid) do
-    mailbox_below_limit?(pid)
+  defp checkout_update(pid) when is_pid(pid) do
+    {:ok, nil}
   end
 
-  defp accept_update?(name) do
+  defp checkout_update({:via, Registry, {Backends.SourceRegistry, key}}) do
+    checkout_registry_update(key)
+  end
+
+  defp checkout_update({:via, Registry, {Backends.SourceRegistry, key, _value}}) do
+    checkout_registry_update(key)
+  end
+
+  defp checkout_update(name) do
     case GenServer.whereis(name) do
-      pid when is_pid(pid) -> mailbox_below_limit?(pid)
-      _ -> true
+      pid when is_pid(pid) -> {:ok, nil}
+      _ -> :drop
     end
   end
 
-  defp mailbox_below_limit?(pid) do
-    with limit when is_integer(limit) and limit > 0 <- max_message_queue_len(),
-         {:message_queue_len, len} <- Process.info(pid, :message_queue_len) do
-      len < limit
-    else
-      _ -> true
+  defp checkout_registry_update(key) do
+    case Registry.lookup(Backends.SourceRegistry, key) do
+      [{_pid, counter}] -> checkout_counter(counter)
+      _ -> :drop
     end
   end
+
+  defp checkout_counter(counter) do
+    queued = :atomics.add_get(counter, 1, 1)
+    limit = max_message_queue_len()
+
+    if not is_integer(limit) or limit <= 0 or queued <= limit do
+      {:ok, counter}
+    else
+      checkin_update(counter)
+      :drop
+    end
+  end
+
+  defp checkin_update(nil), do: :ok
+  defp checkin_update(counter), do: :atomics.sub(counter, 1, 1)
 
   defp max_message_queue_len do
     Application.get_env(:logflare, __MODULE__)[:max_message_queue_len]

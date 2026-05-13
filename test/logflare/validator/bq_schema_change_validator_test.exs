@@ -58,6 +58,12 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
       assert validate(le, source) === :ok
     end
 
+    test "correctly builds a typemap from metadata" do
+      assert :metadata
+             |> SchemaFactory.build(variant: :third)
+             |> SchemaUtils.to_typemap() == typemap_for_third()["metadata"].fields
+    end
+
     test "returns {:error, _} when a leaf type conflicts with the cached schema" do
       user = Factory.insert(:user)
       source = Factory.insert(:source, user_id: user.id) |> then(&Sources.get_by(id: &1.id))
@@ -338,5 +344,38 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
       })
 
     source
+  end
+
+  defp typemap_for_third do
+    %{
+      "timestamp" => %{t: :datetime},
+      "event_message" => %{t: :string},
+      "metadata" => %{
+        t: :map,
+        fields: %{
+          "datacenter" => %{t: :string},
+          "ip_address" => %{t: :string},
+          "request_method" => %{t: :string},
+          "user" => %{
+            t: :map,
+            fields: %{
+              "browser" => %{t: :string},
+              "id" => %{t: :integer},
+              "vip" => %{t: :boolean},
+              "company" => %{t: :string},
+              "login_count" => %{t: :integer},
+              "address" => %{
+                t: :map,
+                fields: %{
+                  "street" => %{t: :string},
+                  "city" => %{t: :string},
+                  "st" => %{t: :string}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   end
 end
