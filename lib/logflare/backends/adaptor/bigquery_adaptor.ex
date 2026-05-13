@@ -211,7 +211,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       when is_list(opts) do
     with {:ok, {bq_sql, bq_params}} <- ecto_to_sql(query, opts),
          %User{} = user <- Users.Cache.get(user_id) do
-      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", dataset_id)
+      bq_sql =
+        String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", "`#{escape_bq_identifier(dataset_id)}`")
 
       execute_user_query(
         user,
@@ -245,9 +246,22 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> Changeset.cast(params, [:project_id, :dataset_id])
   end
 
+  @bq_identifier_pattern ~r/\A[a-zA-Z0-9_]+\z/
+  @gcp_project_id_pattern ~r/\A[a-z][a-z0-9\-]{4,28}[a-z0-9]\z/
+
+  @spec bq_identifier_pattern() :: Regex.t()
+  def bq_identifier_pattern, do: @bq_identifier_pattern
+
   @impl Logflare.Backends.Adaptor
-  def validate_config(changeset),
-    do: changeset
+  def validate_config(changeset) do
+    changeset
+    |> Changeset.validate_format(:dataset_id, @bq_identifier_pattern,
+      message: "must contain only letters, numbers, and underscores"
+    )
+    |> Changeset.validate_format(:project_id, @gcp_project_id_pattern,
+      message: "must be a valid GCP project ID"
+    )
+  end
 
   @doc """
   Returns the email of a managed service account
@@ -690,6 +704,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> String.replace(~r/FROM\s+"(.+?)"/, "FROM \\1")
     |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
   end
+
+  @spec escape_bq_identifier(String.t()) :: String.t()
+  def escape_bq_identifier(identifier), do: String.replace(identifier, "`", "\\`")
 
   @spec pg_param_to_bq_param(param :: any()) :: map()
   defp pg_param_to_bq_param(param) do

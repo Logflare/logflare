@@ -113,8 +113,6 @@ defmodule Logflare.Telemetry do
       last_value("logflare.system.observer.metrics.io_output", unit: {:byte, :kilobyte}),
       last_value("logflare.system.observer.metrics.logical_processors"),
       last_value("logflare.system.observer.metrics.logical_processors_online"),
-      last_value("logflare.system.observer.metrics.logical_processors_available"),
-      last_value("logflare.system.observer.metrics.schedulers"),
       last_value("logflare.system.observer.metrics.schedulers_online"),
       last_value("logflare.system.observer.metrics.otp_release"),
       last_value("logflare.system.observer.metrics.atom_limit"),

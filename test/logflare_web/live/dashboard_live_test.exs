@@ -158,6 +158,12 @@ defmodule LogflareWeb.DashboardLiveTest do
                "Invite more team members"
              )
     end
+
+    test "never shows 'Create your home team' button to owners", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      refute view |> has_element?("#members button[phx-click='create_home_team']")
+    end
   end
 
   describe "dashboard - viewing home team as team member" do
@@ -194,6 +200,59 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       refute view
              |> has_element?("a[href='/account/edit#team-members']", "Invite more team members")
+    end
+
+    test "shows 'Create your home team' button when team_user has no home team", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert view
+             |> has_element?(
+               "#members button[phx-click='create_home_team']",
+               "Create your home team"
+             )
+    end
+
+    test "hides 'Create your home team' button when team_user already has a home team", %{
+      conn: conn,
+      team_user: team_user
+    } do
+      home_owner = insert(:user, email: team_user.email)
+      insert(:team, user: home_owner, name: "Home Team")
+
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      refute view |> has_element?("#members button[phx-click='create_home_team']")
+    end
+
+    test "clicking 'Create your home team' creates a User + Team and redirects to /dashboard",
+         %{conn: conn, team_user: team_user} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert {:error, {:redirect, %{to: "/dashboard"}}} =
+               view
+               |> element("button[phx-click='create_home_team']")
+               |> render_click()
+
+      created = Logflare.Users.get_by(email: String.downcase(team_user.email))
+      assert created
+      assert created.provider_uid == team_user.provider_uid
+      created = Repo.preload(created, :team)
+      assert created.team
+    end
+
+    test "shows error flash when create_user/1 fails", %{conn: conn} do
+      Mimic.expect(Logflare.Users, :create_user, fn _team_user ->
+        {:error, %Ecto.Changeset{}}
+      end)
+
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      html =
+        view
+        |> element("button[phx-click='create_home_team']")
+        |> render_click()
+
+      assert html =~ "Could not create home team"
     end
   end
 

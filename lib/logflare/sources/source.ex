@@ -7,6 +7,7 @@ defmodule Logflare.Sources.Source do
   alias Logflare.Billing
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Users
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   @default_source_api_quota 25
   @derive {Jason.Encoder,
@@ -133,6 +134,7 @@ defmodule Logflare.Sources.Source do
     field :validate_schema, :boolean, default: true
     field :drop_lql_filters, Ecto.LqlRules, default: []
     field :drop_lql_string, :string
+    field :default_search_lql, :string, default: nil
     field :disable_tailing, :boolean, default: false
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
@@ -197,6 +199,7 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
+      :default_search_lql,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
@@ -231,6 +234,7 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
+      :default_search_lql,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
@@ -352,7 +356,7 @@ defmodule Logflare.Sources.Source do
     dataset_id =
       source.user.bigquery_dataset_id || "#{source.user.id}" <> GCPConfig.dataset_id_append()
 
-    "`#{bq_project_id}`.#{dataset_id}.#{table}"
+    "`#{BigQueryAdaptor.escape_bq_identifier(bq_project_id)}`.`#{BigQueryAdaptor.escape_bq_identifier(dataset_id)}`.`#{BigQueryAdaptor.escape_bq_identifier(table)}`"
   end
 
   @spec format_table_name(atom) :: String.t()
