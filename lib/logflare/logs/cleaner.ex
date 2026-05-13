@@ -5,6 +5,7 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
   """
 
   @type flat_key :: String.t()
+  @typep pair_acc :: [{flat_key(), term()}]
 
   defguardp nil_or_empty(x) when x in [%{}, [], "", {}, nil]
 
@@ -50,7 +51,7 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
   @spec flatten(map()) :: %{flat_key() => term()}
   def flatten(map) when is_map(map) do
     map
-    |> do_flatten_map([], [])
+    |> do_flatten_map()
     |> :lists.reverse()
     |> :maps.from_list()
   end
@@ -58,19 +59,18 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
   def nil_or_empty?(x) when nil_or_empty(x), do: true
   def nil_or_empty?(_), do: false
 
-  @spec do_flatten_map(map(), [String.t()], [{flat_key(), term()}]) :: [{flat_key(), term()}]
-  defp do_flatten_map(map, prefix, acc) do
+  @spec do_flatten_map(map(), [String.t()], pair_acc()) :: pair_acc()
+  defp do_flatten_map(map, prefix \\ [], acc \\ []) do
     do_flatten_pairs(:maps.to_list(map), prefix, acc)
   end
 
-  @spec do_flatten_pairs([{term(), term()}], [String.t()], [{flat_key(), term()}]) ::
-          [{flat_key(), term()}]
+  @spec do_flatten_pairs([{term(), term()}], [String.t()], pair_acc()) :: pair_acc()
   defp do_flatten_pairs([{k, v} | rest], prefix, acc) when is_map(v) and v != %{} do
     acc = do_flatten_map(v, [k | prefix], acc)
     do_flatten_pairs(rest, prefix, acc)
   end
 
-  defp do_flatten_pairs([{k, v} | rest], prefix, acc) when is_list(v) and v != [] do
+  defp do_flatten_pairs([{k, [_ | _] = v} | rest], prefix, acc) do
     acc = do_flatten_list(v, 0, [k | prefix], acc)
     do_flatten_pairs(rest, prefix, acc)
   end
@@ -81,14 +81,13 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
 
   defp do_flatten_pairs([], _prefix, acc), do: acc
 
-  @spec do_flatten_list(list(), non_neg_integer(), [String.t()], [{flat_key(), term()}]) ::
-          [{flat_key(), term()}]
+  @spec do_flatten_list(list(), non_neg_integer(), [String.t()], pair_acc()) :: pair_acc()
   defp do_flatten_list([v | rest], idx, prefix, acc) when is_map(v) and v != %{} do
     acc = do_flatten_map(v, [Integer.to_string(idx) | prefix], acc)
     do_flatten_list(rest, idx + 1, prefix, acc)
   end
 
-  defp do_flatten_list([v | rest], idx, prefix, acc) when is_list(v) and v != [] do
+  defp do_flatten_list([[_ | _] = v | rest], idx, prefix, acc) do
     acc = do_flatten_list(v, 0, [Integer.to_string(idx) | prefix], acc)
     do_flatten_list(rest, idx + 1, prefix, acc)
   end
