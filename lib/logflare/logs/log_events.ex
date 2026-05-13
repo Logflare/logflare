@@ -29,7 +29,7 @@ defmodule Logflare.Logs.LogEvents do
       when is_atom_value(source_token) and is_non_empty_binary(id) and is_list(opts) do
     [min, max] = Keyword.get(opts, :partitions_range, [])
     source = Sources.Cache.get_by_and_preload(token: source_token)
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+    source_schema = SourceSchemas.Cache.get_source_schema_by_source_id(source.id)
     partition_type = Sources.get_table_partition_type(source)
 
     lql = Keyword.get(opts, :lql, "")

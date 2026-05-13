@@ -163,7 +163,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     do: Keyword.put(opts, :timestamp, DateTime.truncate(timestamp, :second))
 
   defp get_lql_schema(source) do
-    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+    case SourceSchemas.Cache.get_source_schema_by_source_id(source.id) do
       %_{bigquery_schema: schema} when not is_nil(schema) -> schema
       _ -> SchemaBuilder.initial_table_schema()
     end

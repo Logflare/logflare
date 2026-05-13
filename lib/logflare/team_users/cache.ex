@@ -28,6 +28,14 @@ defmodule Logflare.TeamUsers.Cache do
     }
   end
 
+  @behaviour Logflare.ContextCache
+
+  @impl Logflare.ContextCache
+  def bust_actions(action, id) when is_integer(id) do
+    value = if action == :update, do: TeamUsers.get_team_user(id), else: :bust
+    {:partial, %{{:get_team_user, [id]} => value}}
+  end
+
   def get_team_user(id), do: apply_repo_fun({:get_team_user, 1}, [id])
   def get_team_user!(id), do: apply_repo_fun(:get_team_user!, [id])
   def get_team_user_and_preload(id), do: apply_repo_fun(:get_team_user_and_preload, [id])

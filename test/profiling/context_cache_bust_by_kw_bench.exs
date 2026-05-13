@@ -19,11 +19,12 @@ end
 Benchee.run(
   %{
     "bust_keys by primary key" => fn [{_source, rule} | _] ->
-      pkey = rule.id
-      ContextCache.bust_keys([{Rules, pkey}])
+      ContextCache.bust_keys([{Rules, rule.id}])
     end,
-    "bust_keys by relation key" => fn [{source, _rule} | _] ->
-      ContextCache.bust_keys([{Rules, source_id: source.id}])
+    "refresh_keys by relation key" => fn [{source, _rule} | _] ->
+      kw = [source_id: source.id]
+      plan = Rules.Cache.bust_actions(:delete, kw)
+      ContextCache.refresh_keys([{Rules, kw, plan}])
     end
   },
   before_each: fn sources ->

@@ -1,3 +1,4 @@
+alias Logflare.ContextCache
 alias Logflare.Sources
 import Logflare.Factory
 

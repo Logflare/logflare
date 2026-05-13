@@ -405,7 +405,7 @@ defmodule Logflare.SingleTenant do
       checks =
         for source <- sources,
             source.name in @source_names,
-            source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id),
+            source_schema = SourceSchemas.Cache.get_source_schema_by_source_id(source.id),
             source_schema != nil do
           length(source_schema.bigquery_schema.fields) > 3
         end

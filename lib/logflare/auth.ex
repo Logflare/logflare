@@ -113,6 +113,12 @@ defmodule Logflare.Auth do
     )
   end
 
+  @doc "Gets an access token by its integer primary key."
+  @spec get_access_token_by_id(integer()) :: OauthAccessToken.t() | nil
+  def get_access_token_by_id(id) when is_integer(id) do
+    Repo.get(OauthAccessToken, id)
+  end
+
   @doc """
   Retrieves access token struct by token value.
   Requires resource owner to be provided.

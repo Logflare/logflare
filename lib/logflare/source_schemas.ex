@@ -30,6 +30,10 @@ defmodule Logflare.SourceSchemas do
     SourceSchema |> Repo.get_by(kv)
   end
 
+  def get_source_schema_by_source_id(source_id) when is_integer(source_id) do
+    SourceSchema |> Repo.get_by(source_id: source_id)
+  end
+
   @doc """
   Creates a source_schema.
 
@@ -104,7 +108,7 @@ defmodule Logflare.SourceSchemas do
   end
 
   def source_schema_flatmap_or_default(source) do
-    case Cache.get_source_schema_by(source_id: source.id) do
+    case Cache.get_source_schema_by_source_id(source.id) do
       %_{schema_flat_map: flat_map} when is_map(flat_map) ->
         flat_map
 

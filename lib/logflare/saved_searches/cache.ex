@@ -31,25 +31,13 @@ defmodule Logflare.SavedSearches.Cache do
   def list_saved_searches_by_source(source_id), do: apply_repo_fun(__ENV__.function, [source_id])
 
   @impl Logflare.ContextCache
-  def bust_by(kw) do
-    entries =
-      kw
-      |> Enum.map(fn
-        {:source_id, source_id} -> {:list_saved_searches_by_source, [source_id]}
+  def bust_actions(_action, kw) do
+    actions =
+      Map.new(kw, fn
+        {:source_id, source_id} -> {{:list_saved_searches_by_source, [source_id]}, :bust}
       end)
 
-    Cachex.execute(__MODULE__, fn cache ->
-      Enum.reduce(entries, 0, fn key, acc ->
-        acc + delete_and_count(cache, key)
-      end)
-    end)
-  end
-
-  defp delete_and_count(cache, key) do
-    case Cachex.take(cache, key) do
-      {:ok, nil} -> 0
-      {:ok, _value} -> 1
-    end
+    {:full, actions}
   end
 
   defp apply_repo_fun(arg1, arg2) do

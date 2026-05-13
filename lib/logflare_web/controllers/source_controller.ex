@@ -103,7 +103,7 @@ defmodule LogflareWeb.SourceController do
   defp maybe_put_high_rate_flash(conn, _source, _avg_rate), do: conn
 
   defp get_bigquery_schema(source) do
-    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+    case SourceSchemas.Cache.get_source_schema_by_source_id(source.id) do
       nil -> SchemaBuilder.initial_table_schema()
       %_{bigquery_schema: schema} -> schema
     end

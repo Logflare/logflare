@@ -420,7 +420,7 @@ defmodule Logflare.Logs.SearchOperations do
   """
   @spec system_select_rules(SO.t()) :: [Lql.Rules.SelectRule.t()]
   def system_select_rules(%SO{source: source}) do
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+    source_schema = SourceSchemas.Cache.get_source_schema_by_source_id(source.id)
 
     flatmap =
       Map.get(source_schema || %{}, :schema_flat_map)
