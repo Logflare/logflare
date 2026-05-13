@@ -18,6 +18,29 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     assert seconds > 9
   end
 
+  test "update/3 skips casts when schema process mailbox is full" do
+    put_schema_config(max_message_queue_len: 1)
+
+    pid = start_mailbox_holder!()
+    send(pid, :queued)
+
+    assert :ok = Schema.update(pid, %Logflare.LogEvent{id: "id", body: %{}}, build(:source))
+    assert {:message_queue_len, 1} = Process.info(pid, :message_queue_len)
+
+    send(pid, :stop)
+  end
+
+  test "update/3 casts when schema process mailbox is below limit" do
+    put_schema_config(max_message_queue_len: 2)
+
+    pid = start_mailbox_holder!()
+
+    assert :ok = Schema.update(pid, %Logflare.LogEvent{id: "id", body: %{}}, build(:source))
+    assert {:message_queue_len, 1} = Process.info(pid, :message_queue_len)
+
+    send(pid, :stop)
+  end
+
   test "updates correctly" do
     user = insert(:user)
     source = insert(:source, user: user)
@@ -112,5 +135,34 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     old_schema = TestUtils.default_bq_schema()
     new_schema = TestUtils.build_bq_schema(%{"test" => "value"})
     Schema.notify_maybe(source.token, new_schema, old_schema)
+  end
+
+  defp start_mailbox_holder! do
+    test_pid = self()
+
+    pid =
+      spawn_link(fn ->
+        send(test_pid, {:ready, self()})
+
+        receive do
+          :stop -> :ok
+        after
+          5_000 -> :ok
+        end
+      end)
+
+    assert_receive {:ready, ^pid}
+
+    pid
+  end
+
+  defp put_schema_config(config) do
+    old_config = Application.get_env(:logflare, Schema)
+
+    on_exit(fn ->
+      Application.put_env(:logflare, Schema, old_config)
+    end)
+
+    Application.put_env(:logflare, Schema, Keyword.merge(old_config, config))
   end
 end
