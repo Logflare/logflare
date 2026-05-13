@@ -1,10 +1,62 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   use Logflare.DataCase
+  use ExUnitProperties
 
   import Ecto.Query
 
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
+
+  # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
+  # identifier-quoting characters, whitespace, and shell metacharacters.
+  @injection_chars ~c";`.'\" -/\\#!@$%^&*()+={}[]|<>?,~"
+
+  defp dataset_id_with_injection do
+    gen all prefix <- string(:alphanumeric, min_length: 1),
+            bad_char <- member_of(@injection_chars),
+            suffix <- string(:alphanumeric) do
+      prefix <> <<bad_char>> <> suffix
+    end
+  end
+
+  describe "validate_config/1" do
+    test "accepts valid dataset_id and project_id" do
+      changeset =
+        BigQueryAdaptor.cast_config(%{dataset_id: "my_dataset_1", project_id: "my-project-id"})
+
+      assert BigQueryAdaptor.validate_config(changeset).valid?
+    end
+
+    property "rejects dataset_id containing any injection character" do
+      check all bad <- dataset_id_with_injection() do
+        changeset = BigQueryAdaptor.cast_config(%{dataset_id: bad, project_id: "my-project-id"})
+        validated = BigQueryAdaptor.validate_config(changeset)
+        refute validated.valid?
+        assert Keyword.has_key?(validated.errors, :dataset_id)
+      end
+    end
+
+    test "rejects project_id with injection characters" do
+      for bad <- [
+            "evil;drop",
+            "evil`proj",
+            "UPPERCASE_proj",
+            "ab",
+            "a" <> String.duplicate("b", 30)
+          ] do
+        changeset = BigQueryAdaptor.cast_config(%{dataset_id: "valid_dataset", project_id: bad})
+        validated = BigQueryAdaptor.validate_config(changeset)
+        refute validated.valid?
+        assert Keyword.has_key?(validated.errors, :project_id)
+      end
+    end
+
+    test "allows nil dataset_id and project_id" do
+      changeset = BigQueryAdaptor.cast_config(%{})
+      assert BigQueryAdaptor.validate_config(changeset).valid?
+    end
+  end
 
   describe "ecto_to_sql/2" do
     test "converts Ecto query to BigQuery SQL format" do
@@ -141,7 +193,10 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
         )
 
       assert {:ok,
-              %{rows: [%{"event_message" => "test message", "value" => "123"}], total_rows: 1}} =
+              %QueryResult{
+                rows: [%{"event_message" => "test message", "value" => "123"}],
+                total_rows: 1
+              }} =
                result
     end
 
@@ -155,8 +210,66 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       result = BigQueryAdaptor.execute_query(backend, query, [])
 
       assert {:ok,
-              %{rows: [%{"event_message" => "test message", "value" => "123"}], total_rows: 1}} =
+              %QueryResult{
+                rows: [%{"event_message" => "test message", "value" => "123"}],
+                total_rows: 1
+              }} =
                result
+    end
+  end
+
+  describe "build_base_query_opts reservation" do
+    setup do
+      insert(:plan, name: "Free", type: "standard")
+      pid = self()
+
+      user =
+        insert(:user,
+          bigquery_dataset_id: "test_dataset",
+          bigquery_reservation_search: "projects/p/locations/l/reservations/search"
+        )
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      [user: user]
+    end
+
+    test "explicit :reservation in opts overrides query_type-based reservation", %{user: user} do
+      override = "projects/p/locations/l/reservations/override"
+
+      BigQueryAdaptor.execute_query(
+        {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :search,
+        reservation: override
+      )
+
+      assert_received {:reservation, ^override}
+    end
+
+    test "falls back to query_type-based reservation when :reservation is nil", %{user: user} do
+      BigQueryAdaptor.execute_query(
+        {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :search
+      )
+
+      assert_received {:reservation, "projects/p/locations/l/reservations/search"}
+    end
+
+    test "reservation is nil when query_type is not :search or :alerts and no override", %{
+      user: user
+    } do
+      BigQueryAdaptor.execute_query(
+        {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        []
+      )
+
+      assert_received {:reservation, nil}
     end
   end
 end

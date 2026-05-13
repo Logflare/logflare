@@ -1,10 +1,13 @@
 <div class="subhead">
   <div class="container mx-auto">
-    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary" %>/edit</h5>
+    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source) |> Utils.with_team_param(@team), class:  "text-primary" %>/edit</h5>
     <div class="log-settings">
       <ul>
-        <li><%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLive, @source.id) do %><i
-            class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
+        <li>
+          <%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLive, @source.id) |> Utils.with_team_param(@team) do %>
+            <i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span>
+        <% end %>
+        </li>
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i
               class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
       </ul>
@@ -16,13 +19,20 @@
   <%= section_header("Source Name") %>
   <p>For example, <code>YourApp</code> would be good for all logs from your app. <code>YourApp.bots</code> would be a
     good place to keep all bot logs. Route logs with LQL rules using
-    <%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLive, @source.id) do %>rules<% end %>.</p>
+    <%= link "rules", to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLive, @source.id) |> Utils.with_team_param(@team) %>.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn a -> %>
   <div class="form-group">
     <%= text_input a, :name, placeholder: "YourApp.SourceName", class: "form-control form-control-margin" %>
     <%= error_tag a, :name %>
   </div>
-  <%= submit "Update name", class: "btn btn-primary form-button" %>
+
+  <div class="form-group">
+    <p>Source description. Optional, but can help team members understand what this source is for. </p>
+    <%= label a, :description, "Description", class: "hidden" %>
+    <%= textarea a, :description, placeholder: "A short description", class: "form-control form-control-margin", rows: 4 %>
+    <%= error_tag a, :description %>
+  </div>
+  <%= submit "Update source", class: "btn btn-primary form-button" %>
   <% end %>
 
   <%= section_header("Service Group") %>
@@ -125,7 +135,7 @@
     Slack channel from any Logflare source.</p>
   <div class="form-button">
     <a
-      href="https://slack.com/oauth/v2/authorize?client_id=<%= Application.get_env(:ueberauth, Ueberauth.Strategy.SlackV2.OAuth)[:client_id] %>&scope=incoming-webhook&install_redirect=update-to-granular-scopes&redirect_uri=<%= LogflareWeb.Endpoint.url() <> "/auth/slack/callback" %>&state=<%= Jason.encode!(%{"action" => "save_hook_url", "source" => @source}) %>"><img
+      href="https://slack.com/oauth/v2/authorize?client_id=<%= Application.get_env(:ueberauth, Ueberauth.Strategy.SlackV2.OAuth)[:client_id] %>&scope=incoming-webhook&install_redirect=update-to-granular-scopes&redirect_uri=<%= LogflareWeb.Endpoint.url() <> "/auth/slack/callback" %>&state=<%= LogflareWeb.Auth.SlackOauthState.sign(assigns[:team_user] || @user, %{"action" => "save_hook_url", "source" => %{"id" => @source.id}}) %>"><img
         alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png"
         srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"></a>
   </div>
@@ -263,6 +273,36 @@
     </div>
     <%= submit "Update field copying rules", class: "btn btn-primary form-button" %>
   <% end %>
+
+  <%= section_header("Key-Value Enrichment") %>
+  <p>
+    Enrich events using key-value lookups at ingestion. For each rule, the source field's value is looked up in your account's key-value store. The stored JSON value (or a sub-value extracted via an accessor path) is set on the destination field. Runs after field copying.
+  </p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+    <div class="form-group">
+      <%= textarea e, :transform_key_values, placeholder: "project:enriched\nproject:m.org_name:org.name\nproject:m.region:$.geo.region", class: "form-control form-control-margin tw-h-[120px]" %>
+      <%= error_tag e, :transform_key_values %>
+      <small class="form-text text-muted">
+        One rule per line. Pattern: <code>lookup_field:destination_field</code> or <code>lookup_field:destination_field:accessor_path</code>. Use <code>m.</code> as shorthand for <code>metadata.</code>. The accessor path extracts a nested value from the stored JSON — use dot syntax (<code>org.id</code>) or JSONPath (<code>$.org.id</code>). Without an accessor path, the entire stored value is set at the destination.
+      </small>
+    </div>
+    <%= submit "Update key-value enrichment rules", class: "btn btn-primary form-button" %>
+  <% end %>
+
+  <%= section_header("Drop fields") %>
+  <p>
+    Drop specific fields from the event body at ingestion. Useful for removing keys that were only needed upstream (e.g. for routing) before they are persisted. Runs after field copying and key-value enrichment, so values can be copied or used for enrichment first and then dropped.
+  </p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+    <div class="form-group">
+      <%= textarea e, :transform_drop_fields, placeholder: "service\nnamespace\nm.routing.region", class: "form-control form-control-margin tw-h-[120px]" %>
+      <%= error_tag e, :transform_drop_fields %>
+      <small class="form-text text-muted">
+        One field path per line. Use dot syntax for nested keys (<code>metadata.user.id</code>) and <code>m.</code> as shorthand for <code>metadata.</code>. Missing paths are silently ignored.
+      </small>
+    </div>
+    <%= submit "Update field dropping rules", class: "btn btn-primary form-button" %>
+  <% end %>
   <hr/>
 
   <%= section_header("Backend TTL") %>
@@ -309,6 +349,35 @@
     <%= submit "Save", class: "btn btn-primary form-button" %>
   <% end %>
 
+  <%= section_header("Default Search LQL") %>
+  <p>Set LQL to be included in the initial search query for this source.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
+    <div class="form-group">
+      <%= text_input f, :default_search_lql, class: "form-control form-control-margin" %>
+      <%= error_tag f, :default_search_lql %>
+      <small class="form-text text-muted">
+        For example: <code>s:m.parsed.parsed s:m.level</code>.
+      </small>
+    </div>
+    <%= submit "Save", class: "btn btn-primary form-button" %>
+  <% end %>
+
+
+  <%= if @user.system_monitoring do %>
+    <%= section_header("Monitoring Labels") %>
+    <p>Set labels for this source, to be used for monitoring. Labels are used to group metrics together when system monitoring is enabled. Values of the labels will be determined at ingest time.</p>
+    <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
+      <div class="form-group">
+        <%= text_input f, :labels , class: "form-control form-control-margin" %>
+        <%= error_tag f, :labels %>
+      <small class="form-text text-muted">
+        Comma-separated. For example: <code>status=m.level,my_project=project.name</code>.
+      </small>
+      </div>
+      <%= submit "Save", class: "btn btn-primary form-button" %>
+    <% end %>
+  <% end %>
+
   <%= section_header("Search Tailing") %>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
     <div class="form-group">
@@ -321,7 +390,7 @@
     <%= submit if(@source.disable_tailing, do: "Enable search tailing", else: "Disable search tailing"), class: "btn btn-primary form-button" %>
   <% end %>
 
-  <%= if LogflareWeb.Utils.flag("multibackend", @user) == true do %>
+  <%= if Logflare.Utils.flag("multibackend", @user) == true do %>
      <%= section_header("Storage Write API Ingestion") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
       <div class="form-group">
@@ -348,7 +417,7 @@
 
       <%= submit "Save", class: "btn btn-primary form-button" %>
     <% end %>
-    <%= if LogflareWeb.Utils.flag("multibackend", @user) do %>
+    <%= if Logflare.Utils.flag("multibackend", @user) do %>
       <%= live_render(@conn, LogflareWeb.SourceBackendsLive, session: %{"source_id"=> @source.id})%>
     <% end %>
 

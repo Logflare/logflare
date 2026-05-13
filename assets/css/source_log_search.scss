@@ -17,7 +17,6 @@
     & .source-name {
       text-align: left;
     }
-    margin-top: 20px;
   }
 
   & .alert {
@@ -56,6 +55,13 @@
       color: $brand-brighter-green;
     }
   }
+}
+
+// Prevent live_monaco_editor auto-resize from expanding the single-line editor
+.lql-editor-wrapper [phx-hook="CodeEditorHook"] {
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
 }
 
 .message {

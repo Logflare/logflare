@@ -9,8 +9,8 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Backends.Adaptor
   alias Logflare.Endpoints
   alias Logflare.Endpoints.PiiRedactor
-  alias Logflare.Users
-  alias LogflareWeb.{QueryComponents, Utils}
+  alias LogflareWeb.QueryComponents
+  alias Logflare.Utils
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -30,12 +30,12 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp render_access_tokens_link(assigns) do
     ~H"""
-    <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
+    <.subheader_link team={@team} to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
     """
   end
 
-  def mount(%{}, %{"user_id" => user_id}, socket) do
-    user = Users.get(user_id)
+  def mount(%{}, _session, socket) do
+    %{assigns: %{user: user}} = socket
 
     allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
 
@@ -44,7 +44,6 @@ defmodule LogflareWeb.EndpointsLive do
     socket =
       socket
       |> assign(:user_id, user.id)
-      |> assign(:user, user)
       #  must be below user_id assign
       |> refresh_endpoints()
       |> assign(:query_result_rows, nil)
@@ -57,6 +56,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
       |> assign(:prev_params, %{})
+      |> assign(:prev_reservation, nil)
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
       |> assign(:declared_params, %{})
       |> assign(:alerts, alerts)
@@ -88,15 +88,17 @@ defmodule LogflareWeb.EndpointsLive do
 
   def handle_params(params, _uri, socket) do
     endpoint_id = params["id"]
+    user = socket.assigns.team_user || socket.assigns.user
 
     endpoint =
       if endpoint_id do
-        Endpoints.get_by(id: endpoint_id, user_id: socket.assigns.user_id)
+        Endpoints.get_endpoint_query_by_user_access(user, endpoint_id)
       end
 
     socket =
       socket
       |> assign(:show_endpoint, endpoint)
+      |> maybe_assign_team_context(params, endpoint)
       |> then(fn
         socket when endpoint != nil ->
           {:ok, parsed_result} =
@@ -165,7 +167,7 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_event(
         "save-endpoint",
         %{"endpoint" => params},
-        %{assigns: %{user: user, show_endpoint: show_endpoint}} = socket
+        %{assigns: %{user: user, show_endpoint: show_endpoint, team: team}} = socket
       ) do
     Logger.debug("Saving endpoint", params: params)
 
@@ -176,7 +178,7 @@ defmodule LogflareWeb.EndpointsLive do
         {:noreply,
          socket
          |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
-         |> push_patch(to: ~p"/endpoints/#{endpoint.id}")
+         |> push_patch(to: LogflareWeb.Utils.with_team_param(~p"/endpoints/#{endpoint.id}", team))
          |> assign(:show_endpoint, endpoint)
          |> assign(:query_result_rows, nil)
          |> assign(:total_bytes_processed, nil)}
@@ -198,17 +200,24 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_event(
         "delete-endpoint",
         %{"endpoint_id" => id},
-        %{assigns: _assigns} = socket
+        %{assigns: assigns} = socket
       ) do
-    endpoint = Endpoints.get_endpoint_query(id)
-    {:ok, _} = Endpoints.delete_query(endpoint)
+    user = assigns[:team_user] || assigns[:user]
 
-    {:noreply,
-     socket
-     |> refresh_endpoints()
-     |> assign(:show_endpoint, nil)
-     |> put_flash(:info, "#{endpoint.name} has been deleted")
-     |> push_patch(to: "/endpoints")}
+    case Endpoints.get_endpoint_query_by_user_access(user, id) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "You do not have access to that endpoint.")}
+
+      endpoint ->
+        {:ok, _} = Endpoints.delete_query(endpoint)
+
+        {:noreply,
+         socket
+         |> refresh_endpoints()
+         |> assign(:show_endpoint, nil)
+         |> put_flash(:info, "#{endpoint.name} has been deleted")
+         |> push_patch(to: "/endpoints")}
+    end
   end
 
   def handle_event(
@@ -218,6 +227,7 @@ defmodule LogflareWeb.EndpointsLive do
       ) do
     query_string = Map.get(payload, "query")
     query_params = Map.get(payload, "params", %{})
+    reservation = Map.get(payload, "reservation")
 
     allowed_labels = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :labels)
 
@@ -229,18 +239,22 @@ defmodule LogflareWeb.EndpointsLive do
 
     endpoint_language = get_current_endpoint_language(socket)
     redact_pii = socket.assigns.redact_pii
+    backend_id = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :backend_id)
 
     case Endpoints.run_query_string(user, {endpoint_language, query_string},
            params: query_params,
            parsed_labels: parsed_labels,
            use_query_cache: false,
-           redact_pii: redact_pii
+           redact_pii: redact_pii,
+           backend_id: backend_id,
+           reservation: reservation
          ) do
       {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
         {:noreply,
          socket
          |> put_flash(:info, "Ran query successfully")
          |> assign(:prev_params, query_params)
+         |> assign(:prev_reservation, reservation)
          |> assign(:query_result_rows, rows)
          |> assign(:total_bytes_processed, total_bytes_processed)}
 
@@ -250,6 +264,7 @@ defmodule LogflareWeb.EndpointsLive do
          socket
          |> put_flash(:info, "Ran query successfully")
          |> assign(:prev_params, query_params)
+         |> assign(:prev_reservation, reservation)
          |> assign(:query_result_rows, rows)
          |> assign(:total_bytes_processed, nil)}
 
@@ -280,7 +295,8 @@ defmodule LogflareWeb.EndpointsLive do
     Logger.metadata(
       endpoint_id: endpoint.id,
       backend_id: endpoint.backend_id,
-      sandbox_params: sandbox_params
+      sandbox_params: sandbox_params,
+      user_id: endpoint.user_id
     )
 
     # Update the form to preserve query mode and other inputs
@@ -482,4 +498,10 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   defp maybe_redact_query(query, _redact_pii), do: query
+
+  defp maybe_assign_team_context(socket, %{"t" => _team_id}, _endpoint), do: socket
+
+  defp maybe_assign_team_context(socket, _params, endpoint) do
+    LogflareWeb.AuthLive.assign_context_by_resource(socket, endpoint, socket.assigns.user.email)
+  end
 end

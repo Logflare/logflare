@@ -85,7 +85,11 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def to_rule(args, :filter) when is_list(args) do
-    filter = struct!(FilterRule, Map.new(args))
+    filter =
+      args
+      |> Map.new()
+      |> then(&struct!(FilterRule, &1))
+      |> maybe_merge_value_modifiers()
 
     cond do
       match?({:quoted, _}, filter.value) ->
@@ -100,10 +104,19 @@ defmodule Logflare.Lql.Parser.Helpers do
 
         case value do
           [[_, _] = v] ->
-            %{filter | value: nil, values: v, operator: :range}
+            {values, modifiers} = unwrap_values_modifiers(v)
+
+            %{
+              filter
+              | value: nil,
+                values: values,
+                operator: :range,
+                modifiers: Map.merge(filter.modifiers, modifiers)
+            }
 
           [[v]] ->
-            %{filter | value: v}
+            {value, modifiers} = unwrap_value_modifiers(v)
+            %{filter | value: value, modifiers: Map.merge(filter.modifiers, modifiers)}
         end
 
       true ->
@@ -159,11 +172,24 @@ defmodule Logflare.Lql.Parser.Helpers do
   # DateTime Helper Functions
   # ============================================================================
 
-  @spec parse_date_or_datetime_with_range(list()) :: [Date.t() | NaiveDateTime.t()]
+  @spec parse_date_or_datetime_with_range(list()) ::
+          [
+            {:with_modifiers, Date.t() | NaiveDateTime.t(),
+             %{timestamp_origin: :absolute | :local}}
+          ]
   def parse_date_or_datetime_with_range(result) when is_list(result) do
+    absolute_timestamp =
+      Enum.any?(result, fn
+        {:timezone, _timezone} -> true
+        _ -> false
+      end)
+
     [lv, rv] =
       result
       |> Enum.reduce([%{}, %{}], fn
+        {:timezone, timezone}, [lacc, racc] ->
+          [Map.put(lacc, :timezone, timezone), Map.put(racc, :timezone, timezone)]
+
         {k, v}, [lacc, racc] ->
           [lv, rv] =
             case v do
@@ -173,20 +199,8 @@ defmodule Logflare.Lql.Parser.Helpers do
 
           [Map.put(lacc, k, lv), Map.put(racc, k, rv)]
       end)
-      |> Enum.map(fn
-        %{second: _, minute: _, hour: _} = dt ->
-          dt =
-            Map.update(dt, :microsecond, {0, 0}, fn us ->
-              {float, ""} = Float.parse("0." <> us)
-
-              {round(float * 1_000_000), 6}
-            end)
-
-          struct!(NaiveDateTime, dt)
-
-        d ->
-          struct!(Date, d)
-      end)
+      |> Enum.map(&build_date_or_datetime_from_parts/1)
+      |> set_timestamp_origin(absolute_timestamp)
 
     if lv == rv do
       [lv]
@@ -196,27 +210,57 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   @spec parse_date_or_datetime([{:date | :datetime, String.t()}]) :: Date.t() | NaiveDateTime.t()
-  def parse_date_or_datetime([{tag, result}]) do
-    mod =
-      case tag do
-        :date -> Date
-        :datetime -> NaiveDateTime
-      end
+  def parse_date_or_datetime([{tag, result}]), do: parse_iso8601_value!(tag, result)
 
-    case mod.from_iso8601(result) do
-      {:ok, dt, _offset} ->
-        dt
+  @spec parse_timestamp_datetime([{:datetime | :datetime_tz, String.t()}]) ::
+          {:with_modifiers, NaiveDateTime.t(), map()}
+  def parse_timestamp_datetime([{tag, result}]) when tag in [:datetime, :datetime_tz] do
+    parse_iso8601_value!(:datetime, result)
+    |> set_timestamp_origin(tag == :datetime_tz)
+  end
 
-      {:ok, dt} ->
-        dt
+  @spec parse_datetime_literal(term()) :: {:ok, Date.t() | NaiveDateTime.t()} | {:error, term()}
+  def parse_datetime_literal(%Date{} = value), do: {:ok, value}
+  def parse_datetime_literal(%NaiveDateTime{} = value), do: {:ok, value}
+
+  def parse_datetime_literal(%DateTime{} = value) do
+    {:ok, value |> DateTime.shift_zone!("Etc/UTC") |> DateTime.to_naive()}
+  end
+
+  def parse_datetime_literal(value) when is_integer(value) do
+    value
+    |> Integer.to_string()
+    |> parse_unix_timestamp()
+  end
+
+  def parse_datetime_literal(value) when is_binary(value) do
+    cond do
+      String.match?(value, ~r/^\d+$/) ->
+        parse_unix_timestamp(value)
+
+      String.contains?(value, "T") ->
+        parse_iso8601_datetime(value)
+
+      true ->
+        parse_iso8601_date(value)
+    end
+  end
+
+  def parse_datetime_literal(_value), do: {:error, :invalid_format}
+
+  @spec parse_unix_timestamp_literal([String.t()]) :: {:with_modifiers, NaiveDateTime.t(), map()}
+  def parse_unix_timestamp_literal([value]) do
+    case parse_unix_timestamp(value) do
+      {:ok, parsed} ->
+        set_timestamp_origin(parsed, true)
 
       {:error, :invalid_format} ->
         throw(
-          "Error while parsing timestamp #{tag} value: expected ISO8601 string, got '#{result}'"
+          "Error while parsing timestamp: '#{value}' is not a valid Unix timestamp (expected 10, 13, or 16 digits)"
         )
 
-      {:error, e} ->
-        throw(e)
+      {:error, error} ->
+        throw(error)
     end
   end
 
@@ -225,21 +269,22 @@ defmodule Logflare.Lql.Parser.Helpers do
           value: term()
         }
   def timestamp_shorthand_to_value(["now"]) do
-    %{value: %{Timex.now() | microsecond: {0, 0}}, shorthand: "now"}
+    value = set_timestamp_origin(%{Timex.now() | microsecond: {0, 0}}, true)
+    %{value: value, shorthand: "now"}
   end
 
   def timestamp_shorthand_to_value(["today"]) do
     dt = Timex.today() |> Timex.to_datetime()
-    value = {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+    range = set_timestamp_origin([dt, Timex.shift(dt, days: 1, seconds: -1)], true)
 
-    %{value: value, shorthand: "today"}
+    %{value: {:range_operator, range}, shorthand: "today"}
   end
 
   def timestamp_shorthand_to_value(["yesterday"]) do
     dt = Timex.today() |> Timex.shift(days: -1) |> Timex.to_datetime()
-    value = {:range_operator, [dt, Timex.shift(dt, days: 1, seconds: -1)]}
+    range = set_timestamp_origin([dt, Timex.shift(dt, days: 1, seconds: -1)], true)
 
-    %{value: value, shorthand: "yesterday"}
+    %{value: {:range_operator, range}, shorthand: "yesterday"}
   end
 
   def timestamp_shorthand_to_value(["this", period]) do
@@ -267,8 +312,9 @@ defmodule Logflare.Lql.Parser.Helpers do
           Timex.beginning_of_year(today_ndt)
       end
 
-    value = {:range_operator, [lvalue, now_ndt]}
-    %{value: value, shorthand: "this@#{period}"}
+    range = set_timestamp_origin([lvalue, now_ndt], true)
+
+    %{value: {:range_operator, range}, shorthand: "this@#{period}"}
   end
 
   def timestamp_shorthand_to_value(["last", amount, period]) do
@@ -301,8 +347,13 @@ defmodule Logflare.Lql.Parser.Helpers do
       end
 
     lvalue = Timex.shift(truncated, [{period, amount}])
-    value = {:range_operator, [lvalue, now_ndt]}
-    %{value: value, shorthand: "last@#{if amount < 0, do: -amount, else: amount}#{period}"}
+
+    range = set_timestamp_origin([lvalue, now_ndt], true)
+
+    %{
+      value: {:range_operator, range},
+      shorthand: "last@#{if amount < 0, do: -amount, else: amount}#{period}"
+    }
   end
 
   # ============================================================================
@@ -316,7 +367,7 @@ defmodule Logflare.Lql.Parser.Helpers do
         :timestamp
       ) do
     throw(
-      "Error while parsing timestamp filter value: expected ISO8601 string or range or shorthand, got '#{v}'"
+      "Error while parsing timestamp filter value: expected ISO8601 string, Unix timestamp, range or shorthand, got '#{v}'"
     )
   end
 
@@ -328,4 +379,192 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def check_for_no_invalid_metadata_field_values(rule, _), do: rule
+
+  @spec check_for_invalid_blank_select_alias(Keyword.t() | {atom(), any()}) ::
+          Keyword.t() | {atom(), any()} | no_return()
+  def check_for_invalid_blank_select_alias({:invalid_blank_select_alias, "@"}) do
+    throw(
+      "Error while parsing select clause: select alias cannot be blank, expected alias name after @. For example, s:my_field@my_alias"
+    )
+  end
+
+  def check_for_invalid_blank_select_alias(args), do: args
+
+  defp build_date_or_datetime_from_parts(%{second: _, minute: _, hour: _} = dt) do
+    {timezone, dt} = Map.pop(dt, :timezone)
+    microseconds = Map.get(dt, :microsecond)
+
+    if is_binary(timezone) do
+      dt
+      |> datetime_parts_to_iso8601(microseconds, timezone)
+      |> then(&parse_iso8601_value!(:datetime, &1))
+    else
+      dt =
+        Map.update(dt, :microsecond, {0, 0}, fn us ->
+          {float, ""} = Float.parse("0." <> us)
+
+          {round(float * 1_000_000), 6}
+        end)
+
+      struct!(NaiveDateTime, dt)
+    end
+  end
+
+  defp build_date_or_datetime_from_parts(d), do: struct!(Date, d)
+
+  defp datetime_parts_to_iso8601(dt, microseconds, timezone) do
+    datetime =
+      "#{dt.year}-#{pad_int(dt.month)}-#{pad_int(dt.day)}T#{pad_int(dt.hour)}:#{pad_int(dt.minute)}:#{pad_int(dt.second)}"
+
+    case microseconds do
+      nil ->
+        datetime <> timezone
+
+      us ->
+        datetime <> "." <> us <> timezone
+    end
+  end
+
+  defp pad_int(value), do: String.pad_leading(to_string(value), 2, "0")
+
+  defp parse_iso8601_value!(:date, value) do
+    case parse_iso8601_date(value) do
+      {:ok, parsed} ->
+        parsed
+
+      {:error, :invalid_format} ->
+        throw("Error while parsing timestamp date value: expected ISO8601 string, got '#{value}'")
+
+      {:error, error} ->
+        throw(error)
+    end
+  end
+
+  defp parse_iso8601_value!(:datetime, value) do
+    case parse_iso8601_datetime(value) do
+      {:ok, parsed} ->
+        parsed
+
+      {:error, :invalid_format} ->
+        throw(
+          "Error while parsing timestamp datetime value: expected ISO8601 string, got '#{value}'"
+        )
+
+      {:error, error} ->
+        throw(error)
+    end
+  end
+
+  defp parse_iso8601_date(value) do
+    case Date.from_iso8601(value) do
+      {:ok, date} -> {:ok, date}
+      {:error, :invalid_format} -> {:error, :invalid_format}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  defp parse_iso8601_datetime(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} ->
+        {:ok, DateTime.to_naive(datetime)}
+
+      {:error, :missing_offset} ->
+        case NaiveDateTime.from_iso8601(value) do
+          {:ok, datetime} -> {:ok, datetime}
+          {:error, :invalid_format} -> {:error, :invalid_format}
+          {:error, error} -> {:error, error}
+        end
+
+      {:error, :invalid_format} ->
+        {:error, :invalid_format}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp parse_unix_timestamp(value) when is_binary(value) do
+    case normalize_unix_timestamp(value) do
+      {timestamp, unit} when is_integer(timestamp) ->
+        case DateTime.from_unix(timestamp, unit) do
+          {:ok, datetime} -> {:ok, DateTime.to_naive(datetime)}
+          {:error, error} -> {:error, error}
+        end
+
+      :error ->
+        {:error, :invalid_format}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp normalize_unix_timestamp(value) do
+    case byte_size(value) do
+      10 ->
+        case Integer.parse(value) do
+          {timestamp, ""} -> {timestamp, :second}
+          _ -> :error
+        end
+
+      13 ->
+        case Integer.parse(value) do
+          {timestamp, ""} -> {timestamp, :millisecond}
+          _ -> :error
+        end
+
+      16 ->
+        case Integer.parse(value) do
+          {timestamp, ""} -> {div(timestamp, 1_000), :millisecond}
+          _ -> :error
+        end
+
+      _ ->
+        {:error, :invalid_format}
+    end
+  end
+
+  defp maybe_merge_value_modifiers(%FilterRule{} = rule) do
+    {value, modifiers} = unwrap_value_modifiers(rule.value)
+
+    %{
+      rule
+      | value: value,
+        modifiers: Map.merge(rule.modifiers, modifiers)
+    }
+  end
+
+  defp unwrap_value_modifiers({:with_modifiers, value, modifiers}),
+    do: {value, modifiers}
+
+  defp unwrap_value_modifiers({:range_operator, [lvalue, rvalue]}) do
+    {lvalue, lmodifiers} = unwrap_value_modifiers(lvalue)
+    {rvalue, rmodifiers} = unwrap_value_modifiers(rvalue)
+
+    if lmodifiers[:timestamp_origin] != rmodifiers[:timestamp_origin] do
+      throw("Timestamp range cannot mix timestamps with and without timezone offsets")
+    end
+
+    {{:range_operator, [lvalue, rvalue]}, Map.merge(lmodifiers, rmodifiers)}
+  end
+
+  defp unwrap_value_modifiers(value), do: {value, %{}}
+
+  defp unwrap_values_modifiers(values) when is_list(values) do
+    Enum.reduce(values, {[], %{}}, fn value, {acc, modifiers} ->
+      {value, value_modifiers} = unwrap_value_modifiers(value)
+      {[value | acc], Map.merge(modifiers, value_modifiers)}
+    end)
+    |> then(fn {values, modifiers} -> {Enum.reverse(values), modifiers} end)
+  end
+
+  defp set_timestamp_origin(values, origin) when is_list(values) do
+    Enum.map(values, &set_timestamp_origin(&1, origin))
+  end
+
+  defp set_timestamp_origin(value, true),
+    do: {:with_modifiers, value, %{timestamp_origin: :absolute}}
+
+  defp set_timestamp_origin(value, false),
+    do: {:with_modifiers, value, %{timestamp_origin: :local}}
 end

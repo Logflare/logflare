@@ -148,7 +148,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
         %Tesla.Env{status: 202, body: ""}
       end)
 
-      assert :ok = Alerting.run_alert(alert_query)
+      assert {:ok, _} = Alerting.run_alert(alert_query)
 
       assert_receive payload, 2000
 

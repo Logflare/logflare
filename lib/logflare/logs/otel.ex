@@ -3,31 +3,25 @@ defmodule Logflare.Logs.Otel do
   Shared functionality between OtelMetrics and OtelTraces.
   """
 
-  alias Opentelemetry.Proto.Common.V1.KeyValue
   alias Opentelemetry.Proto.Common.V1.AnyValue
-  alias Opentelemetry.Proto.Common.V1.ArrayValue
   alias Opentelemetry.Proto.Common.V1.InstrumentationScope
+  alias Opentelemetry.Proto.Common.V1.KeyValue
   alias Opentelemetry.Proto.Resource.V1.Resource
 
   @doc """
   Converts a Resource struct into a map
 
-  Keys with dot notation are converted into nested maps.
-
   ### Examples
 
       iex> handle_resource(%Resource{attributes: [%KeyValue{key: "service.name", value: "foo"}]})
-      %{"service" => %{"name" => "foo"}}
+      %{"service.name" => "foo"}
   """
   @spec handle_resource(Resource.t()) :: map()
   def handle_resource(%{attributes: attributes}) do
-    Enum.reduce(attributes, %{}, fn attribute, acc ->
-      {k, v} = extract_key_value(attribute)
-      k = String.split(k, ".") |> Enum.reverse()
-      map = Enum.reduce(k, v, fn key, acc -> %{key => acc} end)
-      DeepMerge.deep_merge(map, acc)
-    end)
+    Map.new(attributes, &extract_key_value/1)
   end
+
+  def handle_resource(resource) when is_map(resource), do: %{}
 
   @doc """
   Extracts the project name from the *handled* resource
@@ -35,7 +29,7 @@ defmodule Logflare.Logs.Otel do
   By convention, that's the service name.
   """
   def resource_project(handled_resource) when is_non_struct_map(handled_resource) do
-    handled_resource["service"]["name"]
+    handled_resource["service"]["name"] || handled_resource["service.name"]
   end
 
   @doc """
@@ -56,12 +50,9 @@ defmodule Logflare.Logs.Otel do
   Transforms a KeyValue struct into a tuple
   """
   @spec extract_key_value(KeyValue.t()) :: {String.t(), term()}
-  def extract_key_value(%KeyValue{key: key, value: nil}), do: {key, nil}
+  def extract_key_value(%{key: key, value: nil}), do: {key, nil}
 
-  def extract_key_value(%KeyValue{
-        key: key,
-        value: value
-      }) do
+  def extract_key_value(%{key: key, value: value}) do
     {key, extract_value(value)}
   end
 
@@ -85,7 +76,7 @@ defmodule Logflare.Logs.Otel do
       123
   """
   @spec extract_value(AnyValue.t() | nil | term()) :: term()
-  def extract_value(%AnyValue{value: {:array_value, %ArrayValue{values: values}}}) do
+  def extract_value(%{value: {:array_value, %{values: values}}}) do
     Enum.map(values, &extract_value/1)
   end
 
@@ -100,15 +91,5 @@ defmodule Logflare.Logs.Otel do
   @spec handle_attributes([KeyValue.t()]) :: map()
   def handle_attributes(attributes) do
     Map.new(attributes, &extract_key_value/1)
-  end
-
-  @doc """
-  Transforms a nanoseconds from unix timestamp into an iso8601 string
-  """
-  @spec nano_to_iso8601(integer()) :: String.t()
-  def nano_to_iso8601(time_nano) do
-    time_nano
-    |> DateTime.from_unix!(:nanosecond)
-    |> DateTime.to_iso8601()
   end
 end

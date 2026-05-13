@@ -10,7 +10,7 @@ defmodule LogflareWeb.AccessTokensLive do
     ~H"""
     <.subheader>
       <:path>
-        ~/accounts/<.subheader_path_link live_patch to={~p"/access-tokens"}>access tokens</.subheader_path_link>
+        ~/accounts/<.subheader_path_link live_patch to={~p"/access-tokens"} team={@team}>access tokens</.subheader_path_link>
       </:path>
       <.subheader_link to="https://docs.logflare.app/concepts/access-tokens/" external={true} text="docs" fa_icon="book" />
     </.subheader>
@@ -151,14 +151,13 @@ defmodule LogflareWeb.AccessTokensLive do
     "scopes_query" => [],
     "scopes_main" => ["ingest"]
   }
-  def mount(_params, %{"user_id" => user_id}, socket) do
-    user = Logflare.Users.get(user_id)
+  def mount(_params, _session, socket) do
+    %{assigns: %{user: user}} = socket
     sources = Sources.list_sources_by_user(user)
     endpoints = Endpoints.list_endpoints_by(user_id: user.id)
 
     socket =
       socket
-      |> assign(:user, user)
       |> assign(:show_create_form, false)
       |> assign(:created_token, nil)
       |> assign(:sources, sources)

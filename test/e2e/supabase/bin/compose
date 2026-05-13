@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+BASE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)
+
+source "$BASE_DIR/config.sh"
+
+cd "$BASE_DIR/$SUPABASE_DIR/$SPARSE_PATH"
+docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml "$@"
+cd ../..
+

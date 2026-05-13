@@ -1,16 +1,130 @@
 defmodule LogflareWeb.SourceControllerTest do
   use LogflareWeb.ConnCase
 
-  alias Logflare.Teams
-  alias Logflare.Sources
-  alias Logflare.Repo
-  alias Logflare.Backends.SourceSup
   alias Logflare.Backends
+  alias Logflare.Backends.SourceSup
+  alias Logflare.Repo
+  alias Logflare.Sources
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.Source.SlackHookServer
+  alias Logflare.Sources.Source.Supervisor, as: SourceSupervisor
+  alias Logflare.Sources.Source.WebhookNotificationServer
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Teams
+  alias Logflare.TestUtils
+  alias Phoenix.HTML
 
   setup do
     start_supervised!(AllLogsLogged)
     :ok
+  end
+
+  describe "dashboard" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+      home_team = insert(:team, user: user)
+
+      [invited_team1, invited_team2] = insert_pair(:team)
+      team_user1 = insert(:team_user, email: user.email, team: invited_team1)
+      team_user2 = insert(:team_user, email: user.email, team: invited_team2)
+
+      {:ok,
+       user: user,
+       home_team: home_team,
+       invited_team1: invited_team1,
+       invited_team2: invited_team2,
+       team_user1: team_user1,
+       team_user2: team_user2}
+    end
+
+    test "navigating between teams results in correct query params being set", %{
+      conn: conn,
+      user: user,
+      invited_team1: invited_team1
+    } do
+      conn
+      |> login_user(user)
+      |> visit(~p"/dashboard?t=#{invited_team1.id}")
+      |> then(fn session ->
+        html = Floki.parse_document!(session.conn.resp_body)
+
+        links =
+          html
+          |> Floki.find("a[href*='?t=#{invited_team1.id}']")
+
+        assert Enum.find(links, fn elem -> Floki.text(elem) =~ "Dashboard" end)
+      end)
+    end
+  end
+
+  describe "dashboard admin link in navbar" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user, admin: true)
+      admin_team = insert(:team, user: user)
+
+      # user1 has home team
+      user1 = insert(:user)
+      insert(:team, user: user1)
+      team_user1 = insert(:team_user, email: user1.email, team: admin_team)
+
+      # user2 has no home tema
+      team_user2 = insert(:team_user, email: "some@email.com", team: admin_team)
+
+      {:ok, user: user, admin_team: admin_team, team_user1: team_user1, team_user2: team_user2}
+    end
+
+    defp nav_and_assert_admin_link(conn, team_name, team_id) do
+      conn
+      |> visit(~p"/")
+      |> then(fn session ->
+        try do
+          click_link(session, team_name)
+        rescue
+          _ -> session
+        end
+      end)
+      |> then(fn session ->
+        html = Floki.parse_document!(session.conn.resp_body)
+
+        links =
+          html
+          |> Floki.find("a[href*='?t=#{team_id}']")
+
+        assert Enum.find(links, fn elem -> Floki.text(elem) =~ "Admin" end)
+      end)
+    end
+
+    test "viewing as invited team_user - no home team", %{
+      conn: conn,
+      user: user,
+      team_user2: team_user,
+      admin_team: admin_team
+    } do
+      conn
+      |> login_user(user, team_user)
+      |> nav_and_assert_admin_link(admin_team.name, admin_team.id)
+    end
+
+    test "viewing as invited team_user - with home team", %{
+      conn: conn,
+      user: user,
+      team_user1: team_user,
+      admin_team: admin_team
+    } do
+      conn
+      |> login_user(user, team_user)
+      |> nav_and_assert_admin_link(admin_team.name, admin_team.id)
+    end
+
+    test "viewing as admin user", %{
+      conn: conn,
+      user: user,
+      admin_team: admin_team
+    } do
+      conn |> login_user(user) |> nav_and_assert_admin_link(admin_team.name, admin_team.id)
+    end
   end
 
   describe "list" do
@@ -20,7 +134,7 @@ defmodule LogflareWeb.SourceControllerTest do
       team = insert(:team, user: user)
       source = insert(:source, user: user)
       user = Repo.preload(user, :sources)
-      [source: source, team: team, conn: login_user(conn, user)]
+      [user: user, source: source, team: team, conn: login_user(conn, user)]
     end
 
     test "show source", %{conn: conn, source: source} do
@@ -31,9 +145,21 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_has("button > span", text: "Search", exact: true)
     end
 
+    test "show source uses default search LQL as search input value", %{conn: conn, user: user} do
+      source = insert(:source, user: user, default_search_lql: "level:error")
+
+      html =
+        conn
+        |> get(~p"/sources/#{source}")
+        |> html_response(200)
+
+      assert html =~ ~s|id="source-search-querystring"|
+      assert html =~ ~s|value="level:error "|
+    end
+
     test "show source's recent logs", %{conn: conn, source: source} do
       start_supervised!({SourceSup, source})
-      le = build(:log_event, source: source, metadata: %{"level" => "debug"})
+      le = build(:log_event, level: "debug", source: source)
       Backends.ingest_logs([le], source)
 
       conn
@@ -43,6 +169,64 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_has("pre > code",
         text: Logflare.JSON.encode!(le.body["event_message"], pretty: true)
       )
+    end
+
+    test "show source's recent logs when log is a plain map without :via_rule_id", %{
+      conn: conn,
+      source: source
+    } do
+      le = build(:log_event, source: source)
+
+      plain_map_log =
+        le
+        |> Map.from_struct()
+        |> Map.drop([:via_rule_id])
+
+      Backends
+      |> expect(:list_recent_logs, fn _source -> [plain_map_log] end)
+
+      html =
+        conn
+        |> get(~p"/sources/#{source}")
+        |> html_response(200)
+
+      assert html =~ le.body["event_message"]
+    end
+
+    test "renders inputs for recommended query fields", %{
+      conn: conn,
+      user: user
+    } do
+      source =
+        insert(:source,
+          user: user,
+          suggested_keys: "metadata.level!,m.user_id",
+          bigquery_clustering_fields: "session_id"
+        )
+
+      conn
+      |> visit(~p"/sources/#{source}")
+      |> assert_has("label", text: "session_id")
+      |> assert_has("label", text: "metadata.level")
+      |> assert_has("label", text: "m.user_id")
+      |> assert_has(".required-field-indicator", text: "required")
+      |> assert_has("input.form-control[id='recent-logs-field-session_id']")
+      |> assert_has("input.form-control[id='recent-logs-field-metadata.level']")
+      |> assert_has("input.form-control[id='recent-logs-field-m.user_id']")
+    end
+
+    test "shows source schema modal trigger and content", %{conn: conn, source: source} do
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: TestUtils.build_bq_schema(%{"metadata" => %{"status" => 200}})
+      )
+
+      conn
+      |> visit(~p"/sources/#{source}")
+      |> assert_has("a[data-target='#sourceSchemaModal']", text: "schema")
+      |> assert_has("div#sourceSchemaModal")
+      |> assert_has("h5", text: "Source Schema")
+      |> assert_has("kbd", text: "metadata.status")
     end
 
     test "invalid source", %{conn: conn, source: source} do
@@ -66,40 +250,15 @@ defmodule LogflareWeb.SourceControllerTest do
       html =
         conn
         |> get(~p"/sources/#{other_source}")
-        |> html_response(403)
+        |> html_response(404)
 
       # main nav
       assert html =~ "Sign out"
       refute html =~ "Sign in"
       # error content
-      assert html =~ "403"
-      assert html =~ "Forbidden"
+      assert html =~ "404"
+      assert html =~ "not found"
     end
-  end
-
-  test "prompt to switch team if not found and part of many teams", %{conn: conn} do
-    hidden_team = insert(:team, user: build(:user))
-
-    insert(:plan)
-    user = insert(:user)
-    source = insert(:source, user: user)
-    main_team = insert(:team, user: user)
-
-    other_user = insert(:user)
-    other_team = insert(:team, user: other_user)
-    insert(:team_user, team: main_team, provider_uid: other_user.provider_uid)
-
-    # main team has 2 users now
-    html =
-      conn
-      |> login_user(other_user)
-      |> get(~p"/sources/#{source.id}")
-      |> html_response(403)
-
-    assert html =~ other_team.name
-    assert html =~ main_team.name
-    refute html =~ hidden_team.name
-    assert html =~ "You may need to switch teams"
   end
 
   describe "Premium only features" do
@@ -178,7 +337,7 @@ defmodule LogflareWeb.SourceControllerTest do
   describe "show" do
     setup [:create_plan, :old_setup]
 
-    test "returns 403 for a source not owned by the user", %{
+    test "returns 404 for a source not owned by the user", %{
       conn: conn,
       users: [_u1, u2 | _],
       sources: [s1 | _]
@@ -188,17 +347,21 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u2)
         |> get(~p"/sources/#{s1}")
 
-      assert html_response(conn, 403) =~ "Forbidden"
+      assert html_response(conn, 404) =~ "not found"
     end
   end
 
   describe "new" do
     setup [:create_plan]
 
-    test "logged user can create a new source", %{conn: conn} do
+    setup do
       user = insert(:user)
-      Teams.create_team(user, %{name: "Test Team"})
 
+      team = insert(:team, user: user)
+      [user: user, team: team]
+    end
+
+    test "logged user can create a new source", %{conn: conn, user: user} do
       conn
       |> login_user(user)
       |> visit(~p"/dashboard")
@@ -211,6 +374,23 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_path(~p"/sources/*", query_params: %{new: true})
     end
 
+    test "team user can create a new source", %{conn: conn, user: user} do
+      team = insert(:team, name: "Team1")
+      team_user = insert(:team_user, email: user.email, team: team)
+
+      conn
+      |> login_user(team.user, team_user)
+      |> visit(~p"/dashboard?t=#{team.id}")
+      |> click_link("New source")
+      |> assert_path(~p"/sources/new", query_params: %{t: team.id})
+      |> assert_has("h5", text: "~/logs/new")
+      |> assert_has("form")
+      |> fill_in("Source Name", with: "MyApp.Logs")
+      |> submit()
+      |> assert_path(~p"/sources/*", query_params: %{new: true})
+      |> assert_has("a", href: ~p"/dashboard?t=#{team.id}")
+    end
+
     test "returns 403 for a user not logged in", %{conn: conn} do
       assert conn
              |> visit(~p"/sources/new")
@@ -221,14 +401,39 @@ defmodule LogflareWeb.SourceControllerTest do
   describe "update" do
     setup [:create_plan, :old_setup]
 
+    test "source details form includes current description value", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [s1, _s2 | _]
+    } do
+      description = "Current source description"
+      source = Repo.update!(Ecto.Changeset.change(s1, description: description))
+
+      html =
+        conn
+        |> login_user(u1)
+        |> get(~p"/sources/#{source}/edit")
+        |> html_response(200)
+        |> Floki.parse_document!()
+
+      assert [_textarea] = Floki.find(html, "textarea[name='source[description]']")
+
+      assert html
+             |> Floki.find("textarea[name='source[description]']")
+             |> Floki.text()
+             |> String.trim() == description
+    end
+
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = TestUtils.random_string()
+      new_description = TestUtils.random_string()
 
       params = %{
         "id" => s1.id,
         "source" => %{
           "favorite" => true,
-          "name" => new_name
+          "name" => new_name,
+          "description" => new_description
         }
       }
 
@@ -242,6 +447,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 302) =~ "redirected"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
       assert s1_new.name == new_name
+      assert s1_new.description == new_description
       assert s1_new.favorite == true
 
       conn =
@@ -251,6 +457,27 @@ defmodule LogflareWeb.SourceControllerTest do
         |> get(~p"/sources/#{s1}")
 
       assert conn.assigns.source.name == new_name
+      assert conn.assigns.source.description == new_description
+    end
+
+    test "able to update labels", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
+      params = %{
+        "id" => s1.id,
+        "source" => %{
+          "labels" => "test=some_label"
+        }
+      }
+
+      conn =
+        conn
+        |> login_user(u1)
+        |> patch(~p"/sources/#{s1}", params)
+
+      s1_new = Sources.get_by(token: s1.token)
+
+      assert html_response(conn, 302) =~ "redirected"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+      assert s1_new.labels == "test=some_label"
     end
 
     test "returns 406 with invalid params", %{
@@ -278,6 +505,30 @@ defmodule LogflareWeb.SourceControllerTest do
       assert s1_new.name != new_name
       assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Something went wrong!"
       assert html_response(conn, 406) =~ "Source Name"
+    end
+
+    test "updates description when valid", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [s1, _s2 | _]
+    } do
+      new_description = "  valid description  "
+
+      conn =
+        conn
+        |> login_user(u1)
+        |> patch(~p"/sources/#{s1}", %{
+          "id" => s1.id,
+          "source" => %{
+            "description" => new_description
+          }
+        })
+
+      s1_new = Sources.get_by(id: s1.id)
+
+      assert html_response(conn, 302) =~ "redirected"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+      assert s1_new.description == "valid description"
     end
 
     test "returns 200 but doesn't change restricted params", %{
@@ -313,7 +564,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert redirected_to(conn, 302) =~ source_path(conn, :edit, s1.id)
     end
 
-    test "returns 403 when user is not an owner of source", %{
+    test "returns 404 when user is not an owner of source", %{
       conn: conn,
       users: [u1, _u2],
       sources: [s1, _s2, u2s1 | _]
@@ -334,7 +585,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       refute s1_new.name === "it's mine now!"
       assert conn.halted === true
-      assert html_response(conn, 403) =~ "Forbidden"
+      assert html_response(conn, 404) =~ "not found"
     end
   end
 
@@ -442,6 +693,421 @@ defmodule LogflareWeb.SourceControllerTest do
       end)
 
       [user: insert(:user)]
+    end
+  end
+
+  describe "team context links" do
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:plan, name: "Free")
+      team = insert(:team, user: user)
+      team_user = insert(:team_user, team: team, email: user.email)
+      source = insert(:source, user: user)
+
+      [
+        conn: login_user(conn, user, team_user),
+        user: user,
+        team: team,
+        team_user: team_user,
+        source: source
+      ]
+    end
+
+    test "source show page links include team query param", %{
+      conn: conn,
+      source: source,
+      team_user: team_user
+    } do
+      html =
+        conn
+        |> get(~p"/sources/#{source}?t=#{team_user.team_id}")
+        |> html_response(200)
+
+      for path <- ~w(explore rules clear edit) do
+        assert html =~
+                 ~r/href="[^"]*\/sources\/#{source.id}\/#{path}[^"]*[?&]t=#{team_user.team_id}/
+      end
+    end
+
+    test "source search form includes team query param", %{
+      conn: conn,
+      source: source,
+      team_user: team_user
+    } do
+      html =
+        conn
+        |> get(~p"/sources/#{source}?t=#{team_user.team_id}")
+        |> html_response(200)
+
+      # Check search form has hidden input with team param
+      assert html =~ ~r/<input[^>]*name="t"/
+    end
+
+    test "source edit page has Rules link with team query param", %{
+      conn: conn,
+      source: source,
+      team_user: team_user
+    } do
+      html =
+        conn
+        |> get(~p"/sources/#{source}/edit?t=#{team_user.team_id}")
+        |> html_response(200)
+
+      assert html =~ ~r/sources\/#{source.id}\/rules/ or html =~ ~r/RulesLive/
+      assert html =~ "?t=#{team_user.team_id}" or html =~ "&amp;t=#{team_user.team_id}"
+    end
+  end
+
+  describe "test_alerts" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user, webhook_notification_url: "https://example.com/hook")
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "success", %{conn: conn, source: source} do
+      expect(WebhookNotificationServer, :test_post, fn %{id: id} ->
+        assert id == source.id
+        {:ok, %Tesla.Env{status: 200}}
+      end)
+
+      conn = get(conn, ~p"/sources/#{source}/test-alerts")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Webhook test successful!"
+    end
+
+    test "error with Tesla.Env response", %{conn: conn, source: source} do
+      expect(WebhookNotificationServer, :test_post, fn _ -> {:error, %Tesla.Env{status: 500}} end)
+
+      conn = get(conn, ~p"/sources/#{source}/test-alerts")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "status code was 500"
+    end
+
+    test "error with non-Tesla response", %{conn: conn, source: source} do
+      expect(WebhookNotificationServer, :test_post, fn _ -> {:error, "connection refused"} end)
+
+      conn = get(conn, ~p"/sources/#{source}/test-alerts")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "connection refused"
+    end
+  end
+
+  describe "test_slack_hook" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user, slack_hook_url: "https://hooks.slack.com/test")
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "success", %{conn: conn, source: source} do
+      expect(SlackHookServer, :test_post, fn %{id: id} ->
+        assert id == source.id
+        {:ok, %Tesla.Env{status: 200}}
+      end)
+
+      conn = get(conn, ~p"/sources/#{source}/test-slack-hook")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Slack hook test successful!"
+    end
+
+    test "error with Tesla.Env response", %{conn: conn, source: source} do
+      expect(SlackHookServer, :test_post, fn _ -> {:error, %Tesla.Env{status: 403}} end)
+
+      conn = get(conn, ~p"/sources/#{source}/test-slack-hook")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "status code was 403"
+    end
+  end
+
+  describe "delete_slack_hook" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user, slack_hook_url: "https://hooks.slack.com/test")
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "success", %{conn: conn, source: source} do
+      conn = get(conn, ~p"/sources/#{source}/delete-slack-hook")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Slack hook deleted!"
+
+      updated = Sources.get_by(id: source.id)
+      assert updated.slack_hook_url == nil
+    end
+
+    test "does not delete a victim's slack hook when source_id query param points to an attacker-owned source",
+         %{conn: conn, source: attacker_source} do
+      victim = insert(:user)
+      insert(:team, user: victim)
+
+      victim_source =
+        insert(:source, user: victim, slack_hook_url: "https://hooks.slack.com/victim")
+
+      conn =
+        get(
+          conn,
+          ~p"/sources/#{attacker_source}/delete-slack-hook?source_id=#{victim_source.id}"
+        )
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{attacker_source}/edit"
+
+      assert Sources.get_by(id: victim_source.id).slack_hook_url ==
+               "https://hooks.slack.com/victim"
+    end
+  end
+
+  describe "delete with recent events check" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "redirects with error when events are less than 24h old", %{conn: conn, source: source} do
+      recent_timestamp = DateTime.utc_now() |> DateTime.to_unix(:microsecond)
+      Counters.create(source.token)
+      Counters.increment_source_changed_at_unix_ts(source.token, recent_timestamp)
+
+      conn = delete(conn, ~p"/sources/#{source}")
+
+      assert redirected_to(conn, 302) =~ "/dashboard"
+      flash = Phoenix.Flash.get(conn.assigns.flash, :error)
+      assert is_list(flash)
+      assert Enum.any?(flash, &(is_binary(&1) and &1 =~ "less than 24 hours"))
+    end
+
+    test "deletes source when events are older than 24h", %{conn: conn, source: source} do
+      Counters.create(source.token)
+      expect(SourceSupervisor, :delete_source, fn _ -> {:ok, source.token} end)
+
+      conn = delete(conn, ~p"/sources/#{source}")
+
+      assert redirected_to(conn, 302) =~ "/dashboard"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source deleted!"
+      refute Sources.get(source.id)
+    end
+  end
+
+  describe "clear_logs" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "clears logs and redirects", %{conn: conn, source: source} do
+      expect(SourceSupervisor, :reset_source, fn _ -> {:ok, source.token} end)
+
+      conn = get(conn, ~p"/sources/#{source}/clear")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Logs cleared!"
+    end
+  end
+
+  describe "rejected_logs" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "renders rejected logs page", %{conn: conn, source: source} do
+      conn = get(conn, ~p"/sources/#{source}/rejected")
+
+      html = html_response(conn, 200)
+      assert html =~ source.name
+      assert html =~ "clear cache"
+    end
+  end
+
+  describe "explore" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user, provider: "email")
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "free plan user gets upgrade message", %{conn: conn, source: source} do
+      conn = get(conn, ~p"/sources/#{source}/explore")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}"
+      flash = Phoenix.Flash.get(conn.assigns.flash, :error)
+      assert is_list(flash)
+      flash_text = flash |> HTML.Safe.to_iodata() |> IO.iodata_to_binary()
+      assert flash_text =~ "upgrade to explore"
+    end
+
+    test "non-google provider user gets sign-in message", %{conn: conn, user: user} do
+      plan = insert(:plan, name: "Paid", stripe_id: "stripe-paid")
+      insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
+      source = insert(:source, user: user)
+
+      conn = get(conn, ~p"/sources/#{source}/explore")
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}"
+      flash = Phoenix.Flash.get(conn.assigns.flash, :error)
+      assert is_list(flash)
+      flash_text = flash |> HTML.Safe.to_iodata() |> IO.iodata_to_binary()
+      assert flash_text =~ "Sign in with Google"
+    end
+  end
+
+  describe "update with notifications_every" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "updates notification frequency", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{"source" => %{"notifications_every" => "3600000"}})
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+    end
+
+    test "returns upgrade error when frequency exceeds plan limit", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{"source" => %{"notifications_every" => "1000"}})
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      flash = Phoenix.Flash.get(conn.assigns.flash, :error)
+      assert is_list(flash)
+      flash_text = flash |> HTML.Safe.to_iodata() |> IO.iodata_to_binary()
+      assert flash_text =~ "upgrade"
+    end
+  end
+
+  describe "update with drop_lql_string" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+      insert(:source_schema, source: source)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "updates drop LQL filters successfully", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{
+          "source" => %{"drop_lql_string" => "event_message:~\"test\""}
+        })
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+    end
+
+    test "shows error for unknown field in LQL", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{
+          "source" => %{"drop_lql_string" => "nonexistent_field:value"}
+        })
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error)
+    end
+  end
+
+  describe "default_search_lql" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+      insert(:source_schema, source: source)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "updates default search LQL successfully", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{
+          "source" => %{"default_search_lql" => "s:m.level"}
+        })
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+      assert Repo.reload(source).default_search_lql == "s:m.level"
+    end
+
+    test "shows error for unknown field in default search LQL", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{
+          "source" => %{"default_search_lql" => "nonexistent_field:value"}
+        })
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+
+      [flash | _] = Phoenix.Flash.get(conn.assigns.flash, :error)
+
+      assert flash =~ "LQL parser error: path `nonexistent_field`"
+    end
+  end
+
+  describe "create with session params" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+
+      [conn: login_user(conn, user), user: user]
+    end
+
+    test "redirects for oauth when oauth_params in session", %{conn: conn, user: _user} do
+      conn =
+        conn
+        |> Plug.Conn.put_session(:oauth_params, %{some: "params"})
+        |> post(~p"/sources", %{"source" => %{"name" => "OAuth Source"}})
+
+      assert redirected_to(conn, 302)
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source created!"
+      assert Sources.get_by(name: "OAuth Source")
     end
   end
 

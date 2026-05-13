@@ -109,6 +109,10 @@ At ingestion, the pipeline will perform the following in sequence:
 
 3. If set, fields will be copied in sequence. See [field copying](#copy-fields) for more details.
 
+4. If set, key-value enrichment will be applied. See [key-value enrichment](#key-value-enrichment) for more details.
+
+5. If set, configured fields will be dropped from the event body. See [drop fields](#drop-fields) for more details.
+
 ### Key Transformation
 
 When logging object, your object keys will be transformed automatically to comply with the respective backend in use. For example, BigQuery column requirements require that names only contain letters (a-z, A-Z), numbers (0-9), or underscores (\_), and it must start with a letter or underscore. This will be automatically handled for you when ingesting data.
@@ -151,6 +155,113 @@ _top_level:my_copied_field
 
 :::note
 Destination field names must match the BigQuery colummn name specification, or the event risks being rejected.
+:::
+
+### Key-Value Enrichment
+
+:::info Pro Plan / Self-Hosted
+Key-value enrichment is only available on Pro plans and for self-hosted deployments.
+:::
+
+A source can be configured to enrich events using key-value lookups at ingestion time. Key-value pairs are stored per account and shared across all sources. Each entry has a `key` (string) and a `value` (JSON object). When a rule is configured, the source field's value is used to look up a key in the key-value store, and the stored JSON value (or a sub-value extracted via an accessor path) is set on the destination field.
+
+The configuration pattern is `lookup_field:destination_field` or `lookup_field:destination_field:accessor_path`, one rule per line. Dot syntax is supported for nested paths, and `m.` can be used as shorthand for `metadata.`.
+
+The **accessor path** is optional and extracts a nested value from the stored JSON:
+- **Dot syntax**: `org.id` navigates into `{"org": {"id": 123}}` and returns `123`
+- **JSONPath**: `$.org.id` uses JSONPath syntax for the same navigation
+
+If no accessor path is provided, the entire stored JSON value is set at the destination.
+
+#### Example: Full value (no accessor path)
+
+Configuration:
+
+```text
+project:enriched
+```
+
+Key-value entry:
+
+```json
+key:   "123abc"
+value: {"org_id": "456def", "name": "Acme"}
+```
+
+Incoming event:
+
+```json
+{ "project": "123abc" }
+```
+
+Enriched event:
+
+```json
+{ "project": "123abc", "enriched": {"org_id": "456def", "name": "Acme"} }
+```
+
+#### Example: With accessor path
+
+Configuration:
+
+```text
+project:org_id:org_id
+project:m.org_name:name
+```
+
+Using the same key-value entry above, the incoming event `{ "project": "123abc" }` becomes:
+
+```json
+{ "project": "123abc", "org_id": "456def", "metadata": {"org_name": "Acme"} }
+```
+
+If no matching key is found, the event is left unchanged. Non-string field values (numbers, booleans, etc.) are stringified before lookup.
+
+Key-value pairs can be managed via the [Management API](https://logflare.app/swaggerui).
+
+:::note
+Key-value enrichment runs after field copying, so copied fields can be used as lookup sources.
+:::
+
+### Drop Fields
+
+A source can be configured to drop specific fields from the event body before it is persisted. This is useful for keys that are needed upstream — for example, by a log shipper for routing — but should not be stored.
+
+One field path per line. Dot syntax addresses nested paths, and `m.` is shorthand for `metadata.`. Missing paths and non-map intermediates are silently ignored.
+
+For example, given a Fluent Bit pipeline that uses `service` and `namespace` for routing but does not need them stored:
+
+```text
+service
+namespace
+```
+
+An incoming event:
+
+```json
+{ "service": "router", "namespace": "default", "event_message": "hello" }
+```
+
+becomes:
+
+```json
+{ "event_message": "hello" }
+```
+
+Drop fields runs at the end of the transformation pipeline, so a value can be copied or used for enrichment first and then dropped from its original location:
+
+```text
+# transform_copy_fields
+service:m.routing.service
+
+# transform_drop_fields
+service
+```
+
+The original `service` key is removed from the top level, but `metadata.routing.service` retains the value.
+
+:::note ClickHouse backends
+The ClickHouse backend persists events into fixed OTEL tables via a built-in mapping that already discards unmapped top-level keys. Drop fields is still useful for ClickHouse to keep specific keys out of the catch-all `*_attributes` map columns. Be careful not to drop fields that the mapping reads (e.g. `project`, `trace_id`, `timestamp`) — those will fall back to defaults.
 :::
 
 ## Adaptive Schema

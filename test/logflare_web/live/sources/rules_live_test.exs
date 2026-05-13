@@ -1,5 +1,5 @@
 defmodule LogflareWeb.Sources.RulesLiveTest do
-  use LogflareWeb.ConnCase, async: false
+  use LogflareWeb.ConnCase, async: true
 
   alias Logflare.Rules
 
@@ -26,7 +26,26 @@ defmodule LogflareWeb.Sources.RulesLiveTest do
       |> login_user(user)
       |> get(~p"/sources/#{source}/rules")
 
-    assert html_response(conn, 403) =~ "Forbidden"
+    assert html_response(conn, 404) =~ "not found"
+  end
+
+  test "attacker cannot delete another user's rule from rules liveview", %{conn: conn} do
+    attacker = insert(:user, endpoints_beta: true)
+    victim = insert(:user)
+
+    attacker_source = insert(:source, user: attacker)
+    victim_source = insert(:source, user: victim)
+    backend = insert(:backend, user: victim)
+    rule = insert(:rule, source: victim_source, backend: backend)
+
+    {:ok, view, _html} =
+      conn
+      |> login_user(attacker)
+      |> live(~p"/sources/#{attacker_source.id}/rules")
+
+    render_hook(view, "delete_rule", %{"rule_id" => to_string(rule.id)})
+
+    assert Rules.get_rule(rule.id)
   end
 
   describe "Authenticated User" do
@@ -54,7 +73,7 @@ defmodule LogflareWeb.Sources.RulesLiveTest do
     test "displays empty rules list initially", %{conn: conn, source: source} do
       conn
       |> visit(~p"/sources/#{source}/rules")
-      |> assert_has("h5", text: "~/logs/#{source.name}/rules")
+      |> assert_has(".subhead h5 a", text: source.name)
       |> assert_has("a[href='/sources/#{source.id}']", text: source.name)
       |> assert_has("h5", text: "Source Routing Rules")
       |> assert_has("li.list-group-item", text: "No rules yet...")

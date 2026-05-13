@@ -81,8 +81,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
 
   defp log_stuff(logs_last_second) do
     if Application.get_env(:logflare, :env) == :prod do
-      Logger.info("All logs logged!", all_logs_logged: total_logs_logged_cluster())
-      Logger.info("Logs last second!", logs_per_second: logs_last_second)
+      Logger.debug("All logs logged!", all_logs_logged: total_logs_logged_cluster())
+      Logger.debug("Logs last second!", logs_per_second: logs_last_second)
     end
   end
 end

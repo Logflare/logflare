@@ -12,7 +12,7 @@
         <h5 class="header-margin">Source ID</h5>
         <p>You'll need this source ID for some integrations or libraries.</p>
         <span class="pointer-cursor logflare-tooltip" id="source-id" data-toggle="tooltip" 
-          data-placement="top" title="<span id=copy-tooltip>Copy this</span>"
+          data-html="true" data-placement="top" title="<span id=copy-tooltip>Copy this</span>"
           data-clipboard-text="<%= @source.token %>"><code><%= @source.token %></code> <i
             class="fas fa-copy"></i></span>
 

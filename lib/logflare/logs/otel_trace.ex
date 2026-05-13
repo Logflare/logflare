@@ -30,7 +30,6 @@ defmodule Logflare.Logs.OtelTrace do
   end
 
   defp handle_span(span, resource, scope) do
-    start_time = Otel.nano_to_iso8601(span.start_time_unix_nano)
     metadata = %{"type" => "span"}
     events = Enum.map(span.events, &handle_event(&1, span, resource, scope))
 
@@ -43,10 +42,10 @@ defmodule Logflare.Logs.OtelTrace do
         "span_id" => Base.encode16(span.span_id, case: :lower),
         "parent_span_id" => Base.encode16(span.parent_span_id, case: :lower),
         "trace_id" => Base.encode16(span.trace_id, case: :lower),
-        "start_time" => start_time,
-        "end_time" => Otel.nano_to_iso8601(span.end_time_unix_nano),
+        "start_time" => span.start_time_unix_nano,
+        "end_time" => span.end_time_unix_nano,
         "attributes" => Otel.handle_attributes(span.attributes),
-        "timestamp" => start_time,
+        "timestamp" => span.start_time_unix_nano,
         "project" => Otel.resource_project(resource)
       }
     ] ++ events
@@ -63,7 +62,7 @@ defmodule Logflare.Logs.OtelTrace do
       "parent_span_id" => Base.encode16(span_id),
       "trace_id" => Base.encode16(trace_id, case: :lower),
       "attributes" => Otel.handle_attributes(event.attributes),
-      "timestamp" => Otel.nano_to_iso8601(event.time_unix_nano),
+      "timestamp" => event.time_unix_nano,
       "project" => Otel.resource_project(resource)
     }
   end

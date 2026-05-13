@@ -107,8 +107,7 @@ defmodule Logflare.Sources.Counters do
     end
   end
 
-  # Deprecated: should be the count of things in the RecentEventsTouch ets table but never could get things
-  # incrementing / decrementing correctly.
+  # Deprecated:
   @spec log_count(Source.t() | atom) :: non_neg_integer
   def log_count(%Source{token: token}) do
     log_count(token)

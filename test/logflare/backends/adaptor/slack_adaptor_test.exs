@@ -1,5 +1,6 @@
 defmodule Logflare.Backends.SlackAdaptorTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase, async: true
+  use LogflareWeb, :routes
 
   alias Logflare.Backends.Adaptor.SlackAdaptor
 
@@ -8,6 +9,7 @@ defmodule Logflare.Backends.SlackAdaptorTest do
   describe "send_message/1" do
     test "can work with alert query" do
       alert = insert(:alert)
+      alert_url = url(~p"/alerts/#{alert.id}")
 
       pid = self()
 
@@ -28,12 +30,12 @@ defmodule Logflare.Backends.SlackAdaptorTest do
                    accessory: %{
                      type: "button",
                      text: %{type: "plain_text", text: "Manage"},
-                     url: "http://localhost:4000/alerts/#{alert.id}",
+                     url: alert_url,
                      style: "primary"
                    },
                    text: %{
                      type: "mrkdwn",
-                     text: "🔊 *#{alert.name}* | http://localhost:4000/alerts/#{alert.id}"
+                     text: "🔊 *#{alert.name}* | #{alert_url}"
                    }
                  }
                ]
@@ -61,12 +63,12 @@ defmodule Logflare.Backends.SlackAdaptorTest do
                    accessory: %{
                      type: "button",
                      text: %{type: "plain_text", text: "Manage"},
-                     url: "http://localhost:4000/alerts/#{alert.id}",
+                     url: alert_url,
                      style: "primary"
                    },
                    text: %{
                      type: "mrkdwn",
-                     text: "🔊 *#{alert.name}*, 2 rows | http://localhost:4000/alerts/#{alert.id}"
+                     text: "🔊 *#{alert.name}*, 2 rows | #{alert_url}"
                    }
                  },
                  %{
@@ -204,6 +206,16 @@ defmodule Logflare.Backends.SlackAdaptorTest do
 
   test "to_rich_text_preformatted/1 with nil" do
     assert [] = SlackAdaptor.to_rich_text_preformatted(%{"123" => nil})
+  end
+
+  test "to_rich_text_preformatted/1 skips nil event values" do
+    assert [%{text: "message:"}, %{text: " "}, %{text: "ok"}] =
+             SlackAdaptor.to_rich_text_preformatted(%{"message" => "ok", "status" => nil})
+  end
+
+  test "to_rich_text_preformatted/1 with non-string values" do
+    assert [%{text: "status:"}, %{text: " "}, %{text: ":ok"}] =
+             SlackAdaptor.to_rich_text_preformatted(%{"status" => :ok})
   end
 
   test "to_rich_text_preformatted/1 with maps" do

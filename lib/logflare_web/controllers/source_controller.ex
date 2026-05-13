@@ -5,12 +5,13 @@ defmodule LogflareWeb.SourceController do
 
   alias Logflare.Billing
   alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.JSON
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
-  alias Logflare.Repo
   alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Sources.Source.SlackHookServer
   alias Logflare.Sources.Source.WebhookNotificationServer
   alias Logflare.Sources.Source.Supervisor
@@ -18,11 +19,6 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.SourceSchemas
   alias LogflareWeb.AuthController
   alias Logflare.Backends
-
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-
-  defp env_dataset_id_append,
-    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   @lql_dialect :routing
 
@@ -69,22 +65,23 @@ defmodule LogflareWeb.SourceController do
     render_show_with_assigns(conn, user, source, source.metrics.avg)
   end
 
-  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate <= 5 do
+  def render_show_with_assigns(conn, _user, source, avg_rate) do
     search_tip = SearchUtils.gen_search_tip()
 
-    render(
-      conn,
+    conn
+    |> maybe_put_high_rate_flash(source, avg_rate)
+    |> render(
       "show.html",
+      bq_schema: get_bigquery_schema(source),
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      search_tip: search_tip
+      search_tip: search_tip,
+      team: Map.get(conn.assigns, :team)
     )
   end
 
-  def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 5 do
-    search_tip = SearchUtils.gen_search_tip()
-
+  defp maybe_put_high_rate_flash(conn, source, avg_rate) when avg_rate > 5 do
     search_path =
       Routes.live_path(conn, LogflareWeb.Source.SearchLV, source,
         querystring: "c:count(*) c:group_by(t::minute)",
@@ -93,30 +90,29 @@ defmodule LogflareWeb.SourceController do
 
     message = [
       "This source is seeing more than 5 events per second. ",
-      Phoenix.HTML.Link.link("Search",
+      PhoenixHTMLHelpers.Link.link("Search",
         to: "#{search_path}"
       ),
       " to see the latest events. Use the explore link to view in Google Data Studio."
     ]
 
     conn
-    |> put_flash(
-      :info,
-      message
-    )
-    |> render(
-      "show.html",
-      logs: get_and_encode_logs(source),
-      source: source,
-      public_token: source.public_token,
-      search_tip: search_tip
-    )
+    |> put_flash(:info, message)
+  end
+
+  defp maybe_put_high_rate_flash(conn, _source, _avg_rate), do: conn
+
+  defp get_bigquery_schema(source) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      nil -> SchemaBuilder.initial_table_schema()
+      %_{bigquery_schema: schema} -> schema
+    end
   end
 
   def explore(%{assigns: %{plan: %{name: "Free"}, source: source}} = conn, _params) do
     message = [
       "Please ",
-      Phoenix.HTML.Link.link("upgrade to explore",
+      PhoenixHTMLHelpers.Link.link("upgrade to explore",
         to: ~p"/billing/edit"
       ),
       " in Google Data Studio."
@@ -130,8 +126,10 @@ defmodule LogflareWeb.SourceController do
           conn,
         _params
       ) do
-    bigquery_project_id = user.bigquery_project_id || env_project_id()
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
+    bigquery_project_id = user.bigquery_project_id || GCPConfig.default_project_id()
+
+    dataset_id =
+      user.bigquery_dataset_id || Integer.to_string(user.id) <> GCPConfig.dataset_id_append()
 
     explore_link =
       generate_explore_link(team_user.email, source.token, bigquery_project_id, dataset_id)
@@ -145,7 +143,7 @@ defmodule LogflareWeb.SourceController do
         _params
       ) do
     message = [
-      Phoenix.HTML.Link.link("Sign in with Google",
+      PhoenixHTMLHelpers.Link.link("Sign in with Google",
         to: "#{Routes.oauth_path(conn, :request, "google")}"
       ),
       " to explore in Data Studio."
@@ -155,8 +153,10 @@ defmodule LogflareWeb.SourceController do
   end
 
   def explore(%{assigns: %{user: %{provider: "google"} = user, source: source}} = conn, _params) do
-    bigquery_project_id = user.bigquery_project_id || env_project_id()
-    dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
+    bigquery_project_id = user.bigquery_project_id || GCPConfig.default_project_id()
+
+    dataset_id =
+      user.bigquery_dataset_id || Integer.to_string(user.id) <> GCPConfig.dataset_id_append()
 
     explore_link =
       generate_explore_link(user.email, source.token, bigquery_project_id, dataset_id)
@@ -167,7 +167,7 @@ defmodule LogflareWeb.SourceController do
 
   def explore(%{assigns: %{user: _user, source: source}} = conn, _params) do
     message = [
-      Phoenix.HTML.Link.link("Sign in with Google",
+      PhoenixHTMLHelpers.Link.link("Sign in with Google",
         to: "#{Routes.oauth_path(conn, :request, "google")}"
       ),
       " to explore in Data Studio."
@@ -203,7 +203,7 @@ defmodule LogflareWeb.SourceController do
     env = Application.get_env(:logflare, :env)
 
     plans =
-      if env == :dev || :staging do
+      if env in [:dev, :staging] do
         Billing.list_plans() ++
           [Billing.legacy_plan()] ++ [%Billing.Plan{limit_alert_freq: 60_000}]
       else
@@ -221,17 +221,12 @@ defmodule LogflareWeb.SourceController do
     |> Enum.dedup()
   end
 
-  def test_alerts(conn, %{"id" => source_id}) do
-    with source = %Source{} <- Sources.get_by_and_preload(id: source_id),
-         {:ok, %Tesla.Env{} = _response} <- WebhookNotificationServer.test_post(source) do
-      conn
-      |> put_flash(:info, "Webhook test successful!")
-      |> redirect(to: Routes.source_path(conn, :edit, source.id))
-    else
-      nil ->
+  def test_alerts(%{assigns: %{source: source}} = conn, %{"id" => path_id}) do
+    case WebhookNotificationServer.test_post(source) do
+      {:ok, %Tesla.Env{}} ->
         conn
-        |> put_flash(:error, "Source not found")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> put_flash(:info, "Webhook test successful!")
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
 
       {:error, %Tesla.Env{} = response} ->
         conn
@@ -239,26 +234,21 @@ defmodule LogflareWeb.SourceController do
           :error,
           "Webhook test failed! Response status code was #{response.status}."
         )
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
 
       {:error, response} ->
         conn
         |> put_flash(:error, "Webhook test failed! Error response: #{response}")
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
     end
   end
 
-  def test_slack_hook(conn, %{"id" => source_id}) do
-    with source = %Source{} <- Sources.get_by_and_preload(id: source_id),
-         {:ok, %Tesla.Env{} = _response} <- SlackHookServer.test_post(source) do
-      conn
-      |> put_flash(:info, "Slack hook test successful!")
-      |> redirect(to: Routes.source_path(conn, :edit, source.id))
-    else
-      nil ->
+  def test_slack_hook(%{assigns: %{source: source}} = conn, %{"id" => path_id}) do
+    case SlackHookServer.test_post(source) do
+      {:ok, %Tesla.Env{}} ->
         conn
-        |> put_flash(:error, "Source not found")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> put_flash(:info, "Slack hook test successful!")
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
 
       {:error, %Tesla.Env{} = response} ->
         conn
@@ -266,23 +256,28 @@ defmodule LogflareWeb.SourceController do
           :error,
           "Slack hook test failed! Response status code was #{response.status}."
         )
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
+
+      {:error, reason} ->
+        Logger.error("Error testing Slack hook.", error_string: inspect(reason))
+
+        conn
+        |> put_flash(:error, "Slack hook test failed!")
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
     end
   end
 
-  def delete_slack_hook(conn, %{"id" => source_id}) do
-    Repo.get(Source, source_id)
-    |> Sources.delete_slack_hook_url()
-    |> case do
+  def delete_slack_hook(%{assigns: %{source: source}} = conn, %{"id" => path_id}) do
+    case Sources.delete_slack_hook_url(source) do
       {:ok, _source} ->
         conn
         |> put_flash(:info, "Slack hook deleted!")
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
 
       {:error, _changeset} ->
         conn
         |> put_flash(:error, "Delete failed! Contact support if this continues.")
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
     end
   end
 
@@ -327,6 +322,49 @@ defmodule LogflareWeb.SourceController do
   end
 
   def update(
+        %{assigns: %{source: source, user: _user, plan: _plan}} = conn,
+        %{"source" => %{"default_search_lql" => lqlstring} = _params}
+      ) do
+    schema = get_bigquery_schema(source)
+
+    with {:ok, _lql_rules} <- Lql.Parser.parse(lqlstring, schema),
+         {:ok, _changeset} <-
+           Sources.update_source_by_user(source, %{"default_search_lql" => lqlstring}) do
+      conn
+      |> put_flash(:info, "Source updated!")
+      |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        conn
+        |> put_status(406)
+        |> put_flash(:error, "Something went wrong!")
+        |> render(
+          "edit.html",
+          changeset: changeset,
+          source: source,
+          notifications_opts: notifications_options()
+        )
+
+      {:error, :field_not_found, _suggested_querystring, error} ->
+        conn
+        |> put_flash(:error, error)
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, error} when is_binary(error) ->
+        conn
+        |> put_flash(:error, "Default search LQL: #{error}")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      e ->
+        Logger.error("Error updating default search LQL.", error_string: inspect(e))
+
+        conn
+        |> put_flash(:error, "Something else went wrong. Contact support if this continues.")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    end
+  end
+
+  def update(
         %{assigns: %{source: source, user: _user, plan: plan}} = conn,
         %{"source" => %{"notifications_every" => _freq} = params}
       ) do
@@ -339,7 +377,7 @@ defmodule LogflareWeb.SourceController do
       {:error, :upgrade} ->
         message = [
           "Please ",
-          Phoenix.HTML.Link.link("upgrade",
+          PhoenixHTMLHelpers.Link.link("upgrade",
             to: ~p"/billing/edit"
           ),
           " first!"
@@ -394,7 +432,7 @@ defmodule LogflareWeb.SourceController do
     else
       message = [
         "Failed! Recent events are less than 24 hours old. ",
-        Phoenix.HTML.Link.link("Force delete",
+        PhoenixHTMLHelpers.Link.link("Force delete",
           to: "#{Routes.source_path(conn, :del_source_and_redirect, source.id)}",
           method: :delete
         ),
@@ -460,20 +498,8 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp get_and_encode_logs(%Source{} = source) do
-    log_events = Backends.list_recent_logs(source)
-
-    for le <- log_events, le do
-      le
-      |> Map.take([:body, :via_rule, :origin_source_id])
-      |> case do
-        %{body: %{"metadata" => %{"level" => level}}}
-        when level in ~W(debug info warning error alert critical notice emergency) ->
-          body = Map.put(le.body, "level", level)
-          %{le | body: body}
-
-        le ->
-          le
-      end
+    for le <- Backends.list_recent_logs(source) do
+      Map.take(le, [:body, :via_rule_id, :source_uuid])
     end
   end
 

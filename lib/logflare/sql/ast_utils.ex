@@ -3,7 +3,7 @@ defmodule Logflare.Sql.AstUtils do
   Utilities for traversing and transforming SQL ASTs.
   """
 
-  defguardp is_list_or_map(value) when is_list(value) or is_map(value)
+  import Logflare.Utils.Guards
 
   @doc """
   Recursively transforms an AST using a provided transform function.

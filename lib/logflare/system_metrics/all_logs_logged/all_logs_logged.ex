@@ -6,8 +6,6 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
   alias Logflare.SystemMetric
   alias Logflare.Cluster
 
-  require Logger
-
   @total_logs :total_logs_logged
   @table :system_counter
   @persist_every 5_000

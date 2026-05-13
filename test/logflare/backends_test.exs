@@ -1,17 +1,18 @@
 defmodule Logflare.BackendsTest do
   use Logflare.DataCase
 
-  import StreamData
+  import ExUnit.CaptureLog
   import ExUnitProperties
+  import StreamData
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
-  alias Logflare.Logs.SourceRouting
   alias Logflare.Lql
   alias Logflare.PubSubRates
   alias Logflare.Repo
@@ -19,6 +20,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.User
 
@@ -29,16 +31,134 @@ defmodule Logflare.BackendsTest do
 
   describe "encryption" do
     test "backend config is encrypted to the :config_encrypted field" do
-      insert(:backend, config_encrypted: %{some_value: "testing"})
+      %{id: backend_id} = insert(:backend, config_encrypted: %{some_value: "testing"})
 
-      assert [
-               %{
-                 config: nil,
-                 config_encrypted: encrypted
-               }
-             ] = Repo.all(from b in "backends", select: [:config, :config_encrypted])
+      assert %{config: nil, config_encrypted: encrypted} =
+               Repo.one(
+                 from b in "backends",
+                   where: [id: ^backend_id],
+                   select: [:config, :config_encrypted]
+               )
 
       assert is_binary(encrypted)
+    end
+  end
+
+  describe "Adaptor.consolidated_ingest?/1" do
+    test "returns false for backends that do not implement the callback" do
+      backend = %Backend{type: :webhook}
+      refute Adaptor.consolidated_ingest?(backend)
+    end
+
+    test "returns false for bigquery backend" do
+      backend = %Backend{type: :bigquery}
+      refute Adaptor.consolidated_ingest?(backend)
+    end
+
+    test "returns false for postgres backend" do
+      backend = %Backend{type: :postgres}
+      refute Adaptor.consolidated_ingest?(backend)
+    end
+
+    test "returns false for s3 backend" do
+      backend = %Backend{type: :s3}
+      refute Adaptor.consolidated_ingest?(backend)
+    end
+  end
+
+  describe "consolidated pipeline hooks" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+
+      [user: user]
+    end
+
+    test "create_backend/2 starts consolidated pipeline for clickhouse backend", %{user: user} do
+      attrs = %{
+        type: :clickhouse,
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "create_backend/2 does not start pipeline for non-consolidated backend", %{user: user} do
+      attrs = %{
+        type: :webhook,
+        name: "Test Webhook",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
+    test "delete_backend/1 stops consolidated pipeline", %{user: user} do
+      attrs = %{
+        type: :clickhouse,
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert {:ok, _} = Backends.delete_backend(backend)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
+    end
+
+    test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
+      attrs = %{
+        type: :clickhouse,
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
+      assert Backends.ConsolidatedSup.pipeline_running?(updated)
+
+      Backends.ConsolidatedSup.stop_pipeline(updated)
+    end
+  end
+
+  describe "typecast_config_string_map_to_atom_map/1" do
+    test "sets consolidated_ingest? virtual field based on adaptor callback" do
+      backend = insert(:backend, type: :webhook, config: %{url: "https://example.com"})
+
+      result = Backends.typecast_config_string_map_to_atom_map(backend)
+
+      assert result.consolidated_ingest? == false
+    end
+
+    test "returns nil for nil input" do
+      assert Backends.typecast_config_string_map_to_atom_map(nil) == nil
     end
   end
 
@@ -148,28 +268,141 @@ defmodule Logflare.BackendsTest do
                Backends.list_backends(user_id: user.id) |> Backends.preload_alerts()
     end
 
+    test "list_backends/1 with `has_sources_or_rules` filter includes backends with sources", %{
+      source: source,
+      user: user
+    } do
+      backend_with_source =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://with-source.com"},
+          sources: [source]
+        )
+
+      backend_without_source =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://without-source.com"}
+        )
+
+      results = Backends.list_backends(has_sources_or_rules: true, user_id: user.id)
+      result_ids = Enum.map(results, & &1.id)
+
+      assert backend_with_source.id in result_ids
+      refute backend_without_source.id in result_ids
+    end
+
+    test "list_backends/1 with `has_sources_or_rules` filter includes backends with drain rules",
+         %{
+           source: source,
+           user: user
+         } do
+      backend_with_rule =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://with-rule.com"}
+        )
+
+      backend_without_anything =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://without-anything.com"}
+        )
+
+      insert(:rule, source: source, backend: backend_with_rule, lql_string: "testing")
+
+      results = Backends.list_backends(has_sources_or_rules: true, user_id: user.id)
+      result_ids = Enum.map(results, & &1.id)
+
+      assert backend_with_rule.id in result_ids
+      refute backend_without_anything.id in result_ids
+    end
+
+    test "list_backends/1 with `has_sources_or_rules` filter includes backends with both sources and rules",
+         %{
+           source: source,
+           user: user
+         } do
+      other_source = insert(:source, user: user)
+
+      backend_with_both =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://with-both.com"},
+          sources: [source]
+        )
+
+      insert(:rule, source: other_source, backend: backend_with_both, lql_string: "testing")
+
+      results = Backends.list_backends(has_sources_or_rules: true, user_id: user.id)
+      result_ids = Enum.map(results, & &1.id)
+
+      assert backend_with_both.id in result_ids
+      assert Enum.count(result_ids, &(&1 == backend_with_both.id)) == 1
+    end
+
+    test "list_backends/1 by user access", %{user: user} do
+      team_user = insert(:team_user, email: user.email)
+
+      %Backend{id: backend_id} = insert(:backend, user: user)
+      %Backend{id: other_backend_id} = insert(:backend, user: team_user.team.user)
+      %Backend{id: forbidden_backend_id} = insert(:backend, user: build(:user))
+
+      backend_ids =
+        Backends.list_backends_by_user_access(user)
+        |> Enum.map(& &1.id)
+
+      assert backend_id in backend_ids
+      assert other_backend_id in backend_ids
+      refute forbidden_backend_id in backend_ids
+    end
+
+    test "get_backend_by_user_access/2" do
+      owner = insert(:user)
+      team_user = insert(:team_user, email: owner.email)
+      %Backend{id: backend_id} = insert(:backend, user: owner)
+      %Backend{id: other_backend_id} = insert(:backend, user: team_user.team.user)
+      %Backend{id: forbidden_backend_id} = insert(:backend, user: build(:user))
+
+      assert %Backend{id: ^backend_id} =
+               Backends.get_backend_by_user_access(owner, backend_id)
+
+      assert %Backend{id: ^backend_id} =
+               Backends.get_backend_by_user_access(team_user, backend_id)
+
+      assert %Backend{id: ^other_backend_id} =
+               Backends.get_backend_by_user_access(team_user, other_backend_id)
+
+      assert nil == Backends.get_backend_by_user_access(owner, forbidden_backend_id)
+      assert nil == Backends.get_backend_by_user_access(team_user, forbidden_backend_id)
+    end
+
     test "fetch_latest_timestamp/1 without SourceSup returns 0", %{source: source} do
       assert 0 == Backends.fetch_latest_timestamp(source)
     end
 
     test "create backend", %{user: user} do
       assert {:ok, %Backend{}} =
-               Backends.create_backend(%{
+               Backends.create_backend(user, %{
                  name: "some name",
                  type: :webhook,
-                 user_id: user.id,
                  config: %{url: "http://some.url"}
                })
 
       assert {:error, %Ecto.Changeset{}} =
-               Backends.create_backend(%{name: "123", type: :other, config: %{}})
+               Backends.create_backend(user, %{name: "123", type: :other, config: %{}})
 
       assert {:error, %Ecto.Changeset{}} =
-               Backends.create_backend(%{name: "123", type: :webhook, config: nil})
+               Backends.create_backend(user, %{name: "123", type: :webhook, config: nil})
 
       # config validations
       assert {:error, %Ecto.Changeset{}} =
-               Backends.create_backend(%{type: :postgres, config: %{url: nil}})
+               Backends.create_backend(user, %{type: :postgres, config: %{url: nil}})
     end
 
     test "delete backend" do
@@ -217,15 +450,14 @@ defmodule Logflare.BackendsTest do
 
     test "update backend config correctly", %{user: user} do
       assert {:ok, backend} =
-               Backends.create_backend(%{
+               Backends.create_backend(user, %{
                  name: "some name",
                  type: :webhook,
-                 config: %{url: "http://example.com"},
-                 user_id: user.id
+                 config: %{url: "http://example.com"}
                })
 
       assert {:error, %Ecto.Changeset{}} =
-               Backends.create_backend(%{
+               Backends.create_backend(user, %{
                  type: :webhook,
                  config: nil
                })
@@ -244,6 +476,32 @@ defmodule Logflare.BackendsTest do
       assert %Backend{config: %{url: "http" <> _}} = Backends.get_backend(backend.id)
 
       :timer.sleep(1000)
+    end
+
+    test "partial config update preserves existing fields", %{user: user} do
+      assert {:ok, backend} =
+               Backends.create_backend(user, %{
+                 name: "some name",
+                 type: :webhook,
+                 config: %{url: "http://example.com", gzip: true}
+               })
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{config: %{gzip: false}})
+      assert updated.config.url == "http://example.com"
+      assert updated.config.gzip == false
+    end
+
+    test "partial config update with string keys", %{user: user} do
+      assert {:ok, backend} =
+               Backends.create_backend(user, %{
+                 name: "some name",
+                 type: :webhook,
+                 config: %{url: "http://example.com", gzip: true}
+               })
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{config: %{"gzip" => false}})
+      assert updated.config.url == "http://example.com"
+      assert updated.config.gzip == false
     end
   end
 
@@ -405,7 +663,6 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source})
       :timer.sleep(1000)
       assert true == Backends.source_sup_started?(source)
-      assert {:ok, _pid} = Backends.lookup(RecentEventsTouch, source.token)
     end
 
     test "start_source_sup/1, stop_source_sup/1, restart_source_sup/1", %{source: source} do
@@ -430,40 +687,69 @@ defmodule Logflare.BackendsTest do
         assert SourceSup.rule_child_started?(rule)
       end)
     end
-  end
 
-  describe "RecentEventsTocuh" do
-    setup do
-      insert(:plan)
-      user = insert(:user)
-      timestamp = NaiveDateTime.utc_now()
-      source = insert(:source, user_id: user.id, log_events_updated_at: timestamp)
-      {:ok, _tid} = IngestEventQueue.upsert_tid({source.id, nil, nil})
-      {:ok, source: source, timestamp: timestamp}
+    test "SourceSup filters out consolidated backends", %{source: source, user: user} do
+      consolidated_backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://consolidated.example.com"},
+          user: user,
+          sources: [source]
+        )
+
+      non_consolidated_backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://non-consolidated.example.com"},
+          user: user,
+          sources: [source]
+        )
+
+      Mimic.stub(Logflare.Backends.Adaptor, :consolidated_ingest?, fn
+        %{id: id} when id == consolidated_backend.id -> true
+        _ -> false
+      end)
+
+      Backends.clear_list_backends_cache(source.id)
+
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      via = Backends.via_source(source, SourceSup)
+
+      children =
+        Supervisor.which_children(via)
+        |> Enum.filter(fn
+          {{_mod, _source_id, bid}, _pid, _type, _sup} when is_integer(bid) -> true
+          _ -> false
+        end)
+
+      child_backend_ids = Enum.map(children, fn {{_mod, _sid, bid}, _, _, _} -> bid end)
+
+      assert non_consolidated_backend.id in child_backend_ids
+      refute consolidated_backend.id in child_backend_ids
     end
 
-    test "RecentEventsTouch updates source.log_events_updated_at", %{
-      source: source
-    } do
-      le = build(:log_event, ingested_at: NaiveDateTime.utc_now() |> NaiveDateTime.add(200))
-      IngestEventQueue.add_to_table({source.id, nil, nil}, [le])
-      start_supervised!({RecentEventsTouch, source: source, touch_every: 100})
-      :timer.sleep(800)
-      updated = Sources.get_by(id: source.id)
-      assert updated.log_events_updated_at != source.log_events_updated_at
-      assert updated.log_events_updated_at == le.ingested_at |> NaiveDateTime.truncate(:second)
-    end
+    test "start_backend_child skips consolidated backends", %{source: source, user: user} do
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://example.com"},
+          user: user
+        )
 
-    test "RecentEventsTouch does not update source.log_events_updated_at if already updated", %{
-      source: source,
-      timestamp: timestamp
-    } do
-      le = build(:log_event, ingested_at: timestamp)
-      IngestEventQueue.add_to_table({source.id, nil, nil}, [le])
-      start_supervised!({RecentEventsTouch, source: source, touch_every: 100})
-      :timer.sleep(800)
-      updated = Sources.get_by(id: source.id)
-      assert updated.log_events_updated_at == source.log_events_updated_at
+      Mimic.stub(Logflare.Backends.Adaptor, :consolidated_ingest?, fn
+        %{id: id} when id == backend.id -> true
+        _ -> false
+      end)
+
+      backend = Backends.get_backend(backend.id)
+      assert backend.consolidated_ingest? == true
+
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      assert :noop = SourceSup.start_backend_child(source, backend)
     end
   end
 
@@ -644,6 +930,105 @@ defmodule Logflare.BackendsTest do
         # 0 events
         assert Backends.list_recent_logs_local(other_target) |> length() == 0
       end)
+    end
+
+    test "list_recent_logs_local returns empty for consolidated backends", %{user: user} do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend, type: :webhook, config: %{url: "https://example.com"}, user: user)
+
+      Mimic.stub(Logflare.Backends.Adaptor, :consolidated_ingest?, fn
+        %{id: id} when id == backend.id -> true
+        _ -> false
+      end)
+
+      consolidated_key = {:consolidated, backend.id, self()}
+      Backends.IngestEventQueue.upsert_tid(consolidated_key)
+
+      events = for _ <- 1..5, do: build(:log_event, source: source)
+      Backends.IngestEventQueue.add_to_table(consolidated_key, events)
+
+      assert [] = Backends.list_recent_logs_local(source, backend)
+    end
+
+    test "dispatch_to_backends routes consolidated backend to {:consolidated, backend_id} key", %{
+      user: user
+    } do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend, type: :webhook, config: %{url: "https://example.com"}, user: user)
+
+      Mimic.stub(Logflare.Backends.Adaptor, :consolidated_ingest?, fn
+        %{id: id} when id == backend.id -> true
+        _ -> false
+      end)
+
+      backend = Backends.get_backend(backend.id)
+      assert backend.consolidated_ingest? == true
+
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+
+      events = [build(:log_event, source: source, message: "consolidated test")]
+      assert {:ok, 1} = Backends.ingest_logs(events, source, backend)
+
+      {:ok, queued_events} = IngestEventQueue.fetch_events({:consolidated, backend.id}, 10)
+      assert length(queued_events) == 1
+      assert hd(queued_events).body["event_message"] == "consolidated test"
+    end
+
+    test "dispatch_to_backends routes non-consolidated backend to {source_id, backend_id} key", %{
+      user: user
+    } do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend, type: :webhook, config: %{url: "https://example.com"}, user: user)
+
+      backend = Backends.get_backend(backend.id)
+      assert backend.consolidated_ingest? == false
+
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      events = [build(:log_event, source: source, message: "standard test")]
+      assert {:ok, 1} = Backends.ingest_logs(events, source, backend)
+
+      {:ok, queued_events} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+      assert length(queued_events) == 1
+      assert hd(queued_events).body["event_message"] == "standard test"
+    end
+
+    test "dispatch_to_backends with nil backend routes consolidated to {:consolidated, backend_id}",
+         %{user: user} do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://example.com"},
+          user: user,
+          sources: [source]
+        )
+
+      Mimic.stub(Logflare.Backends.Adaptor, :consolidated_ingest?, fn
+        %{id: id} when id == backend.id -> true
+        _ -> false
+      end)
+
+      Backends.clear_list_backends_cache(source.id)
+
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+      IngestEventQueue.upsert_tid({source.id, nil, nil})
+
+      events = [build(:log_event, source: source, message: "multi dispatch test")]
+      assert {:ok, 1} = Backends.ingest_logs(events, source)
+
+      {:ok, consolidated_events} = IngestEventQueue.fetch_events({:consolidated, backend.id}, 10)
+      assert length(consolidated_events) == 1
+
+      {:ok, system_events} = IngestEventQueue.fetch_events({source.id, nil}, 10)
+      assert length(system_events) == 1
     end
 
     test "route to backend", %{user: user} do
@@ -969,10 +1354,10 @@ defmodule Logflare.BackendsTest do
       Benchee.run(
         %{
           "with rules" => fn ->
-            SourceRouting.route_to_sinks_and_ingest(batch1, source1)
+            SourceRouter.route_to_sinks_and_ingest(batch1, source1)
           end,
           "100 rules" => fn ->
-            SourceRouting.route_to_sinks_and_ingest(batch2, source2)
+            SourceRouter.route_to_sinks_and_ingest(batch2, source2)
           end
         },
         time: 3,
@@ -1088,7 +1473,7 @@ defmodule Logflare.BackendsTest do
     test "handles non-existent backend gracefully" do
       non_existent_id = 99_999
 
-      reject(&Logflare.Cluster.Utils.rpc_multicast/3)
+      reject(&ClusterUtils.rpc_multicast/3)
 
       assert :ok = Backends.sync_backend_across_cluster(non_existent_id)
     end
@@ -1106,9 +1491,131 @@ defmodule Logflare.BackendsTest do
 
       # Should not make any RPC calls
 
-      reject(&Logflare.Cluster.Utils.rpc_multicast/3)
+      reject(&ClusterUtils.rpc_multicast/3)
 
       assert :ok = Backends.sync_backend_across_cluster(backend.id)
+    end
+  end
+
+  describe "ingest_logs/2 event age filtering" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      {:ok, source: source}
+    end
+
+    test "drops events older than 72 hours", %{source: source} do
+      now_us = System.system_time(:microsecond)
+      old_timestamp = now_us - 73 * 3_600 * 1_000_000
+
+      params = [%{"message" => "old event", "timestamp" => old_timestamp}]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source)
+    end
+
+    test "drops events more than 1 hour in the future", %{source: source} do
+      now_us = System.system_time(:microsecond)
+      future_timestamp = now_us + 2 * 3_600 * 1_000_000
+
+      params = [%{"message" => "future event", "timestamp" => future_timestamp}]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source)
+    end
+
+    test "accepts events within valid time range", %{source: source} do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "current event", "timestamp" => now_us},
+        %{"message" => "recent past", "timestamp" => now_us - 1 * 3_600 * 1_000_000},
+        %{"message" => "near future", "timestamp" => now_us + 30 * 60 * 1_000_000}
+      ]
+
+      assert {:ok, 3} = Backends.ingest_logs(params, source)
+    end
+
+    test "filters mixed batch of valid and invalid timestamps", %{source: source} do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "valid now", "timestamp" => now_us},
+        %{"message" => "too old", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "too future", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
+        %{"message" => "valid past", "timestamp" => now_us - 24 * 3_600 * 1_000_000}
+      ]
+
+      assert {:ok, 2} = Backends.ingest_logs(params, source)
+    end
+
+    test "accepts events at exact boundary (72 hours ago)", %{source: source} do
+      now_us = System.system_time(:microsecond)
+      boundary_timestamp = now_us - (71 * 3_600 + 59 * 60) * 1_000_000
+
+      params = [%{"message" => "boundary event", "timestamp" => boundary_timestamp}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+    end
+
+    test "accepts events at exact boundary (1 hour in future)", %{source: source} do
+      now_us = System.system_time(:microsecond)
+      boundary_timestamp = now_us + 59 * 60 * 1_000_000
+
+      params = [%{"message" => "boundary event", "timestamp" => boundary_timestamp}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+    end
+
+    test "handles batch where all events are filtered out", %{source: source} do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
+        %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
+      ]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source)
+    end
+
+    test "logs consolidated warning with structured metadata when events are filtered", %{
+      source: source
+    } do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "valid event", "timestamp" => now_us},
+        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
+        %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
+      ]
+
+      log =
+        capture_log([level: :warning], fn ->
+          assert {:ok, 1} = Backends.ingest_logs(params, source)
+        end)
+
+      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-72h, +1h] window"
+    end
+
+    test "does not log when no events are filtered", %{source: source} do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "valid event 1", "timestamp" => now_us},
+        %{"message" => "valid event 2", "timestamp" => now_us - 1 * 3_600 * 1_000_000}
+      ]
+
+      log =
+        capture_log(fn ->
+          assert {:ok, 2} = Backends.ingest_logs(params, source)
+        end)
+
+      refute log =~ "Dropping"
+      refute log =~ "timestamps outside"
     end
   end
 end

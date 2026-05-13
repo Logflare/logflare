@@ -244,6 +244,26 @@ defmodule Logflare.Lql.Rules do
   end
 
   @doc """
+  Replaces all `FilterRule` structs that match provided path. Preserves index
+  position of the first matching rule.
+
+  Appends when no match exists.
+  """
+  @spec upsert_filter_rule_by_path(lql_rules(), FilterRule.t()) :: lql_rules()
+  def upsert_filter_rule_by_path(lql_rules, %FilterRule{path: path} = filter_rule)
+      when is_list(lql_rules) do
+    case Enum.find_index(lql_rules, &match?(%FilterRule{path: ^path}, &1)) do
+      nil ->
+        lql_rules ++ [filter_rule]
+
+      index ->
+        lql_rules
+        |> Enum.reject(&match?(%FilterRule{path: ^path}, &1))
+        |> List.insert_at(index, filter_rule)
+    end
+  end
+
+  @doc """
   Updates timestamp rules in the LQL rule collection with new timestamp rules.
 
   Removes all existing timestamp filters and replaces them with the provided new rules.

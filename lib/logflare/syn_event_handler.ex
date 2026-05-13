@@ -10,7 +10,7 @@ defmodule Logflare.SynEventHandler do
   @impl true
 
   @doc """
-  Resolves registry conflicts for alerting and other scopes.
+  Resolves registry conflicts for scopes.
 
   ## Examples
 
@@ -18,11 +18,11 @@ defmodule Logflare.SynEventHandler do
       iex> pid2 = :c.pid(0,222,0)
       iex> meta1 = %{timestamp: 1, sup_pid: pid1}
       iex> meta2 = %{timestamp: 2, sup_pid: pid2}
-      iex> Logflare.SynEventHandler.resolve_registry_conflict(:alerting, Logflare.Alerting.AlertsScheduler, {pid1, meta1, 1}, {pid2, meta2, 2})
+      iex> Logflare.SynEventHandler.resolve_registry_conflict(:core, Logflare.SomeModule, {pid1, meta1, 1}, {pid2, meta2, 2})
       #PID<0.111.0>
-      iex> Logflare.SynEventHandler.resolve_registry_conflict(:alerting, Logflare.Alerting.AlertsScheduler, {pid2, meta2, 2}, {pid1, meta1, 1})
+      iex> Logflare.SynEventHandler.resolve_registry_conflict(:core, Logflare.SomeModule, {pid2, meta2, 2}, {pid1, meta1, 1})
       #PID<0.111.0>
-      iex> Logflare.SynEventHandler.resolve_registry_conflict(:alerting, Logflare.Alerting.AlertsScheduler, {pid2, meta2, 1}, {pid1, meta1, 1})
+      iex> Logflare.SynEventHandler.resolve_registry_conflict(:core, Logflare.SomeModule, {pid2, meta2, 1}, {pid1, meta1, 1})
       #PID<0.111.0>
       iex> Logflare.SynEventHandler.resolve_registry_conflict(:other, Logflare.OtherModule, {pid2, %{}, 2}, {pid1, %{}, 1})
       #PID<0.111.0>
@@ -36,14 +36,9 @@ defmodule Logflare.SynEventHandler do
       {pid2, meta2, _} = pid_meta2
       local_indicator = if node() == node(original), do: "local", else: "remote"
 
-      message =
+      Logger.debug(
         "#{__MODULE__}  [#{node()}|registry<#{scope}>] Registry CONFLICT for name #{inspect(name)}: {#{inspect(pid1)}, #{inspect(meta1)}} vs {#{inspect(pid2)}, #{inspect(meta2)}} -> keeping #{local_indicator}: #{inspect(original)}"
-
-      if name == Logflare.Alerting.AlertsScheduler do
-        Logger.warning(message)
-      else
-        Logger.debug(message)
-      end
+      )
 
       Logflare.Utils.try_to_stop_process(to_stop, :shutdown, :syn_resolve_kill)
     end

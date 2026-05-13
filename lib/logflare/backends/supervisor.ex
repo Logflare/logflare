@@ -17,10 +17,14 @@ defmodule Logflare.Backends.Supervisor do
 
     children = [
       Backends.IngestEventQueue,
-      Backends.IngestEventQueue.BroadcastWorker,
+      Backends.IngestEventQueue.BufferCacheWorker,
       Backends.IngestEventQueue.MapperJanitor,
       Backends.Adaptor.PostgresAdaptor.Supervisor,
-      Backends.Adaptor.ClickhouseAdaptor.QueryConnectionSup,
+      Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore,
+      Backends.Adaptor.ClickHouseAdaptor.NativeIngester.SchemaCache,
+      Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup,
+      Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup,
+      Backends.ConsolidatedSup,
       {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},
       {Registry,
        name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},

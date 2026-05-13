@@ -10,14 +10,12 @@ defmodule Logflare.SavedSearches do
   alias Logflare.SavedSearch
   alias Logflare.Sources.Source
 
-  require Logger
-
   @type lql_rule :: ChartRule.t() | FilterRule.t()
 
   @doc """
   Retrives a SavedSearch by id
   """
-  @spec get(number()) :: SavedSearch.t()
+  @spec get(number()) :: SavedSearch.t() | nil
   def get(id) do
     Repo.get(SavedSearch, id)
   end
@@ -48,15 +46,6 @@ defmodule Logflare.SavedSearches do
       )
     )
     |> Repo.insert()
-  end
-
-  @doc """
-  Completely deletes a saved search.
-  TODO: remove, unused.
-  """
-  @spec delete(SavedSearch.t()) :: {:ok, SavedSearch.t()}
-  def delete(search) do
-    Repo.delete(search)
   end
 
   @doc """
@@ -117,6 +106,15 @@ defmodule Logflare.SavedSearches do
     |> where([s], s.source_id == ^source_id)
     |> order_by([s], desc: s.inserted_at)
     |> limit([s], 10)
+    |> Repo.all()
+  end
+
+  @spec list_saved_searches_by_source(number()) :: [SavedSearch.t()]
+  def list_saved_searches_by_source(source_id) do
+    SavedSearch
+    |> where([s], s.saved_by_user == true)
+    |> where([s], s.source_id == ^source_id)
+    |> order_by([s], asc: fragment("lower(?)", s.querystring))
     |> Repo.all()
   end
 end

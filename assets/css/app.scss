@@ -29,6 +29,7 @@
 @import "billing";
 @import "modal";
 @import "live_view";
+@import "command_palette";
 
 /* Try this for zooming on iPhone */
 button,
@@ -75,6 +76,14 @@ main.app {
 
 .tooltip-inner {
   min-width: 100px;
+}
+
+.tooltip.max-w-640 .tooltip-inner {
+  max-width: 640px;
+}
+
+.tooltip.tw-text-left .tooltip-inner {
+    text-align: left;
 }
 
 .source-meta-data {

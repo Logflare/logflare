@@ -15,10 +15,11 @@ config :logflare,
   # preemtible is 30 seconds from shutdown to sigterm
   # normal instances can be more than 90 seconds
   sigterm_shutdown_grace_period_ms: 15_000,
+  cache_stats: false,
   encryption_key_fallback: hardcoded_encryption_key,
   encryption_key_default: hardcoded_encryption_key
 
-config :logflare, Logflare.Alerting, min_cluster_size: 1, enabled: true
+config :logflare, Logflare.Alerting, enabled: true
 
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
@@ -26,9 +27,12 @@ config :logflare, :postgres_backend_adapter, pool_size: 3
 
 config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 0
 
+config :logflare, :bigquery_pipeline, max_retries: 0
+
 config :logflare, :clickhouse_backend_adaptor,
   engine: "MergeTree",
-  pool_size: 3
+  pool_size: 3,
+  native_pool_size: 10
 
 config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
 
@@ -57,7 +61,11 @@ config :logflare, LogflareWeb.Endpoint,
   ],
   url: [host: "localhost", scheme: "http", port: 4000],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
-  render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
+  render_errors: [
+    view: LogflareWeb.ErrorView,
+    accepts: ~w(html json),
+    root_layout: {LogflareWeb.LayoutView, :root}
+  ],
   pubsub_server: Logflare.PubSub,
   live_view: [signing_salt: "Fvo_-oQi4bjPfQLh"]
 
@@ -137,11 +145,6 @@ config :number,
     separator: "."
   ]
 
-config :scrivener_html,
-  routes_helper: LogflareWeb.Router.Helpers,
-  # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
-  view_style: :bootstrap_v4
-
 config :logflare, Logflare.ContextCache.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"]
@@ -150,17 +153,9 @@ config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-config :logflare, Logflare.Alerting.AlertsScheduler,
-  init_task: {Logflare.Alerting, :init_alert_jobs, []}
-
-config :logflare, Logflare.Scheduler,
-  run_strategy: Quantum.RunStrategy.Local,
-  jobs: [
-    source_cleanup: [
-      schedule: "*/15 * * * *",
-      task: {Logflare.Sources, :shutdown_idle_sources, []}
-    ]
-  ]
+config :logflare, Oban,
+  engine: Oban.Engines.Basic,
+  repo: Logflare.Repo
 
 config :opentelemetry,
   sdk_disabled: true,

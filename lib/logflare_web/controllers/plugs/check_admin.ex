@@ -6,16 +6,22 @@ defmodule LogflareWeb.Plugs.CheckAdmin do
 
   import Plug.Conn
   import Phoenix.Controller
+  alias Logflare.Admin
 
   alias LogflareWeb.ErrorView
 
-  def call(%{assigns: %{user: %{admin: true}}} = c, _params), do: c
-
   def call(conn, _params) do
-    conn
-    |> put_status(403)
-    |> put_view(ErrorView)
-    |> render("403_page.html", conn.assigns)
-    |> halt()
+    email = Plug.Conn.get_session(conn, :current_email)
+
+    if Admin.admin?(email) do
+      conn
+      |> assign(:admin, true)
+    else
+      conn
+      |> put_status(403)
+      |> put_view(ErrorView)
+      |> render("403_page.html", conn.assigns)
+      |> halt()
+    end
   end
 end

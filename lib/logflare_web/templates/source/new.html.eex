@@ -17,7 +17,7 @@
     If you're hosted on <%= link "Vercel", to: "https://vercel.co", target: "_blank" %> maybe name it
     <code>YourApp.vercel</code>.
   </p>
-  <%= form_for @changeset, Routes.source_path(@conn, :create), fn f -> %>
+  <%= form_for @changeset, Routes.source_path(@conn, :create, t: @team.id), fn f -> %>
   <div class="form-group">
     <label class="hidden" for="source_name">Source Name</label>
     <%= text_input f, :name, placeholder: "YourApp.SourceName", class: "form-control form-control-margin", autofocus: true %>

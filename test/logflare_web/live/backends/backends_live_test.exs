@@ -1,6 +1,8 @@
 defmodule LogflareWeb.BackendsLiveTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.Backends
+  alias Logflare.Rules
   alias Logflare.Sources
 
   setup do
@@ -14,6 +16,110 @@ defmodule LogflareWeb.BackendsLiveTest do
     source = insert(:source, user_id: user.id)
 
     %{conn: login_user(conn, user), user: user, source: source}
+  end
+
+  describe "unauthorized" do
+    test "returns 404 for backend that doesn't belong to user", %{conn: conn} do
+      user = insert(:user)
+      other_user = insert(:user)
+      backend = insert(:backend, user: other_user)
+
+      assert_raise LogflareWeb.ErrorsLive.InvalidResourceError, fn ->
+        conn
+        |> login_user(user)
+        |> get(~p"/backends/#{backend.id}")
+        |> response(404)
+      end
+    end
+
+    test "attacker cannot delete another user's backend", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user)
+      backend = insert(:backend, user: victim)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live(~p"/backends")
+
+      render_hook(view, "delete", %{"backend_id" => to_string(backend.id)})
+
+      assert Backends.get_backend(backend.id)
+    end
+
+    test "attacker cannot create a rule for another user's source from backends liveview",
+         %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user)
+
+      attacker_backend = insert(:backend, user: attacker)
+      victim_source = insert(:source, user: victim)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live(~p"/backends/#{attacker_backend.id}")
+
+      render_hook(view, "save_rule", %{
+        "rule" => %{
+          "source_id" => to_string(victim_source.id),
+          "backend_id" => to_string(attacker_backend.id),
+          "lql_string" => "level:error"
+        }
+      })
+
+      assert Rules.list_by_source_id(victim_source.id) == []
+    end
+
+    test "attacker cannot attach another user's alert to their own backend", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user)
+
+      attacker_backend = insert(:backend, user: attacker, type: :incidentio)
+      victim_alert = insert(:alert, user: victim)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live(~p"/backends/#{attacker_backend.id}")
+
+      render_hook(view, "add_alert", %{
+        "alert" => %{"alert_id" => to_string(victim_alert.id)}
+      })
+
+      backend =
+        attacker_backend.id
+        |> Backends.get_backend()
+        |> Backends.preload_alerts()
+
+      refute Enum.any?(backend.alert_queries, &(&1.id == victim_alert.id))
+      assert backend.alert_queries == []
+    end
+
+    test "attacker cannot strip default ingest from another user's source", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user)
+
+      attacker_backend = insert(:backend, user: attacker)
+      victim_backend = insert(:backend, user: victim, default_ingest?: true)
+      victim_source = insert(:source, user: victim, backends: [victim_backend])
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live(~p"/backends/#{attacker_backend.id}")
+
+      render_hook(view, "remove_default_ingest", %{
+        "source_id" => to_string(victim_source.id)
+      })
+
+      source =
+        victim_source.id
+        |> Sources.get()
+        |> Sources.preload_backends()
+
+      assert Enum.any?(source.backends, &(&1.id == victim_backend.id))
+    end
   end
 
   describe "index" do
@@ -268,6 +374,47 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert_redirect(view, ~p"/backends")
     end
+
+    test "clickhouse form shows async inserts checkbox", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/backends/new")
+
+      html =
+        view
+        |> element("select#type")
+        |> render_change(%{backend: %{type: "clickhouse"}})
+
+      assert html =~ "Async Inserts"
+      assert html =~ "async_insert"
+    end
+
+    test "can create clickhouse backend with async_insert enabled", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "my clickhouse",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "user",
+              password: "pass",
+              async_insert: true
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+      assert html =~ "my clickhouse"
+    end
   end
 
   describe "edit" do
@@ -297,8 +444,8 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "some description"
     end
 
-    test "will show correct config inputs", %{conn: conn} do
-      backend = insert(:backend, type: :webhook)
+    test "will show correct config inputs", %{conn: conn, user: user} do
+      backend = insert(:backend, type: :webhook, user: user)
       assert {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
 
       assert render(view) =~ "URL"
@@ -306,8 +453,8 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute view |> element("select#type") |> has_element?()
     end
 
-    test "cancel will nav back to show", %{conn: conn} do
-      backend = insert(:backend, type: :webhook)
+    test "cancel will nav back to show", %{conn: conn, user: user} do
+      backend = insert(:backend, type: :webhook, user: user)
       assert {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
 
       view
@@ -600,6 +747,88 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute html =~ "Add a Source"
     end
 
+    test "can add all available sources at once", %{conn: conn, user: user, source: source} do
+      {:ok, source1} =
+        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      source3 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123}
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      # Add first source individually to enable default_ingest? on the backend
+      view |> element("button", "Add a Source") |> render_click()
+
+      view
+      |> element("form#default_ingest")
+      |> render_submit(%{
+        default_ingest: %{source_id: source1.id, backend_id: backend.id}
+      })
+
+      html = render(view)
+      assert html =~ "Add All Sources"
+
+      # Now add all remaining sources at once
+      html =
+        view
+        |> element("button", "Add All Sources")
+        |> render_click()
+
+      assert html =~ "Successfully added all available sources as default ingest"
+      assert html =~ source1.name
+      assert html =~ source2.name
+      assert html =~ source3.name
+      assert html =~ "uses this backend as default ingest"
+
+      # All sources added, buttons should be hidden
+      refute html =~ "Add a Source"
+      refute html =~ "Add All Sources"
+    end
+
+    test "Add All Sources button only shows when backend is default_ingest", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, source} =
+        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      _source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123}
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      html = render(view)
+      # Backend not yet default_ingest?, button should not show
+      assert html =~ "Add a Source"
+      refute html =~ "Add All Sources"
+
+      # Add a source to enable default_ingest? on the backend
+      view |> element("button", "Add a Source") |> render_click()
+
+      view
+      |> element("form#default_ingest")
+      |> render_submit(%{
+        default_ingest: %{source_id: source.id, backend_id: backend.id}
+      })
+
+      html = render(view)
+      assert html =~ "Add All Sources"
+    end
+
     test "button disappears when all available sources are added", %{
       conn: conn,
       user: user,
@@ -632,6 +861,174 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute html =~ "Add a Source"
       assert html =~ source.name
       assert html =~ "uses this backend as default ingest"
+    end
+
+    test "can remove all default ingest sources at once", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, source1} =
+        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123},
+          default_ingest?: true
+        )
+
+      {:ok, _} = Logflare.Backends.update_source_backends(source1, [backend])
+      {:ok, _} = Logflare.Backends.update_source_backends(source2, [backend])
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      html = render(view)
+      assert html =~ source1.name
+      assert html =~ source2.name
+      assert html =~ "Remove All Sources"
+
+      html =
+        view
+        |> element("button", "Remove All Sources")
+        |> render_click()
+
+      assert html =~ "Successfully removed all default ingest sources"
+      refute html =~ "uses this backend as default ingest"
+      refute html =~ "Remove All Sources"
+    end
+
+    test "Remove All Sources button only shows when more than 1 source is associated", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, source} =
+        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123},
+          default_ingest?: true
+        )
+
+      {:ok, _} = Logflare.Backends.update_source_backends(source, [backend])
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      html = render(view)
+      assert html =~ source.name
+      assert html =~ "uses this backend as default ingest"
+      refute html =~ "Remove All Sources"
+    end
+
+    test "cannot set another user's source as default ingest", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, _} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123}
+        )
+
+      victim = insert(:user)
+
+      victim_source =
+        insert(:source, user: victim, default_ingest_backend_enabled?: true)
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      view
+      |> element("button", "Add a Source")
+      |> render_click()
+
+      html =
+        view
+        |> element("form#default_ingest")
+        |> render_submit(%{
+          default_ingest: %{
+            source_id: victim_source.id
+          }
+        })
+
+      refute html =~ "Successfully marked backend as default ingest for source"
+      assert html =~ "Source not found"
+
+      reloaded = Logflare.Backends.get_backend(backend.id)
+      refute reloaded.default_ingest?
+
+      victim_source_reloaded =
+        Logflare.Sources.get(victim_source.id) |> Logflare.Sources.preload_backends()
+
+      assert victim_source_reloaded.backends == []
+    end
+  end
+
+  describe "resolving team context" do
+    setup %{conn: conn} do
+      user = insert(:user)
+      team = insert(:team, user: user)
+      team_user = insert(:team_user, team: team)
+      backend = insert(:backend, user: user)
+
+      [conn: conn, user: user, team: team, team_user: team_user, backend: backend]
+    end
+
+    test "team user can list backends", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      backend: backend
+    } do
+      {:ok, _view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/backends?t=#{team_user.team_id}")
+
+      assert html =~ backend.name
+    end
+
+    test "team user can view backend without t= param", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      backend: backend
+    } do
+      {:ok, _view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/backends/#{backend.id}")
+
+      assert html =~ backend.name
+    end
+
+    test "backend links include team query param on index", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      backend: backend
+    } do
+      {:ok, view, _html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/backends?t=#{team_user.team_id}")
+
+      # Check that "New backend" link includes team param
+      html = render(view)
+      assert html =~ ~r/href="[^"]*\/backends\/new[^"]*[?&]t=#{team_user.team_id}/
+
+      # Check that backend name link includes team param
+      assert html =~ ~r/href="[^"]*\/backends\/#{backend.id}[^"]*[?&]t=#{team_user.team_id}/
     end
   end
 

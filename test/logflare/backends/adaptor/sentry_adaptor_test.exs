@@ -1,14 +1,16 @@
 defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.SentryAdaptor
+  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Tesla.MockAdapter
 
   @subject SentryAdaptor
-  @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
+  @tesla_adapter Tesla.Adapter.Finch
 
   doctest @subject
 
@@ -30,27 +32,49 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
     end
   end
 
-  describe "transform_config/1" do
-    test "converts DSN to webhook configuration" do
-      backend = %{
-        config: %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
-      }
+  describe "test_connection/1" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
 
-      config = @subject.transform_config(backend)
+      backend =
+        insert(:backend,
+          type: :sentry,
+          sources: [source],
+          config: %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
+        )
 
-      assert config.url == "https://o123456.ingest.sentry.io/api/123456/envelope/"
-      assert config.headers == %{"content-type" => "application/x-sentry-envelope"}
-      assert config.http == "http2"
-      assert is_function(config.format_batch)
+      [backend: backend, source: source]
     end
 
-    test "raises error with invalid DSN" do
-      backend = %{
-        config: %{dsn: "invalid-dsn"}
-      }
+    test "succeeds on 200 response", ctx do
+      mock_adapter(fn env ->
+        assert env.method == :post
+        assert Tesla.build_url(env) == "https://o123456.ingest.sentry.io/api/123456/envelope/"
+        assert Tesla.get_header(env, "content-type") == "application/x-sentry-envelope"
 
-      assert_raise ArgumentError, ~r/Invalid Sentry DSN/, fn ->
-        @subject.transform_config(backend)
+        {:ok, %Tesla.Env{status: 200, body: ~s({"id":"abc123"})}}
+      end)
+
+      assert :ok = @subject.test_connection(ctx.backend)
+    end
+
+    test "returns error on failure", ctx do
+      error_responses = [
+        {:ok,
+         %Tesla.Env{status: 401, body: %{"detail" => "invalid auth"}}
+         |> Tesla.put_header("content-type", "application/json")},
+        {:ok,
+         %Tesla.Env{status: 403, body: %{"detail" => "project not found"}}
+         |> Tesla.put_header("content-type", "application/json")},
+        {:error, :nxdomain}
+      ]
+
+      for response <- error_responses do
+        mock_adapter(fn _env -> response end)
+
+        assert {:error, reason} = @subject.test_connection(ctx.backend)
+        assert is_binary(reason)
       end
     end
   end
@@ -76,19 +100,21 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
+      mock_adapter(fn env ->
+        assert env.method == :post
+        assert Tesla.build_url(env) == "https://o123456.ingest.sentry.io/api/123456/envelope/"
+        assert Tesla.get_header(env, "content-type") == "application/x-sentry-envelope"
+        envelope_body = env.body
 
         send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       log_events = [
         build(:log_event,
           source: source,
           event_message: "Test log message",
-          timestamp: 1_704_067_200_000_000
+          timestamp: System.system_time(:microsecond)
         )
       ]
 
@@ -136,12 +162,9 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
+      mock_adapter(fn env ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       level_mappings = [
@@ -164,7 +187,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
           build(:log_event,
             source: source,
             event_message: "Test log message",
-            timestamp: 1_704_067_200_000_000,
+            timestamp: System.system_time(:microsecond),
             level: input_level,
             test_index: index
           )
@@ -192,28 +215,26 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
+      mock_adapter(fn env ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       log_events = [
         build(:log_event,
           source: source,
           event_message: "Log 1",
-          timestamp: 1_704_067_200_000_000
+          timestamp: System.system_time(:microsecond)
         ),
         build(:log_event,
           source: source,
           event_message: "Log 2",
-          timestamp: 1_704_067_200_000_000
+          timestamp: System.system_time(:microsecond)
         ),
         build(:log_event,
           source: source,
           event_message: "Log 3",
-          timestamp: 1_704_067_200_000_000
+          timestamp: System.system_time(:microsecond)
         )
       ]
 
@@ -240,12 +261,9 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
+      mock_adapter(fn env ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       log_events = [
@@ -253,7 +271,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
           source: source,
           event_message: "Test message",
           trace_id: "efdb9350effb47959d48bd0aaf395824",
-          timestamp: 1_704_067_200_000_000,
+          timestamp: System.system_time(:microsecond),
           string_field: "text_value",
           integer_field: 42,
           float_field: 3.14,
@@ -289,11 +307,89 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert attributes["boolean_field"] == %{"type" => "boolean", "value" => true}
       assert attributes["list_field"] == %{"type" => "string", "value" => "[1,2,3]"}
 
-      assert attributes["metadata"] == %{
+      assert attributes["metadata.project"] == %{"type" => "string", "value" => "testing_123"}
+      assert attributes["metadata.level"] == %{"type" => "string", "value" => "info"}
+      assert attributes["metadata.region"] == %{"type" => "string", "value" => "us-west-1"}
+
+      assert attributes["metadata.context"] == %{
                "type" => "string",
                "value" =>
-                 "{\"context\":{\"application\":\"realtime\",\"module\":\"Elixir.Realtime.Telemetry.Logger\"},\"level\":\"info\",\"project\":\"testing_123\",\"region\":\"us-west-1\"}"
+                 "{\"application\":\"realtime\",\"module\":\"Elixir.Realtime.Telemetry.Logger\"}"
              }
+
+      refute Map.has_key?(attributes, "metadata")
+    end
+
+    test "falls back to metadata.level when level is not set", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      log_events = [
+        build(:log_event,
+          source: source,
+          event_message: "Test message from legacy client",
+          timestamp: System.system_time(:microsecond),
+          metadata: %{
+            "level" => "warning",
+            "project" => "legacy_project"
+          }
+        )
+      ]
+
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert_receive {^ref, envelope_body}, 2000
+
+      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
+      item_payload = Jason.decode!(item_payload_line)
+      items = item_payload["items"]
+      assert length(items) == 1
+      item = Enum.at(items, 0)
+
+      assert item["level"] == "warn"
+
+      assert item["attributes"]["metadata.project"] == %{
+               "type" => "string",
+               "value" => "legacy_project"
+             }
+
+      assert item["attributes"]["metadata.level"] == %{"type" => "string", "value" => "warning"}
+    end
+
+    test "prefers top-level level over metadata.level", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      log_events = [
+        build(:log_event,
+          source: source,
+          event_message: "Test message",
+          timestamp: System.system_time(:microsecond),
+          level: "error",
+          metadata: %{
+            "level" => "debug"
+          }
+        )
+      ]
+
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert_receive {^ref, envelope_body}, 2000
+
+      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
+      item_payload = Jason.decode!(item_payload_line)
+      items = item_payload["items"]
+      item = Enum.at(items, 0)
+
+      assert item["level"] == "error"
     end
   end
 
@@ -310,5 +406,16 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"} =
                @subject.redact_config(config)
     end
+  end
+
+  defp mock_adapter(function) do
+    stub(@tesla_adapter)
+
+    HttpBased.Client
+    |> expect(:new, fn opts ->
+      HttpBased.Client
+      |> Mimic.call_original(:new, [opts])
+      |> MockAdapter.replace(function)
+    end)
   end
 end

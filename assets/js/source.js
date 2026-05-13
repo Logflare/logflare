@@ -100,14 +100,14 @@ export function scrollBottom() {
   window.scrollTo(0, y)
 }
 
-async function logTemplate(e) {
-  const { via_rule, origin_source_id, body } = e;
+export async function logTemplate(e) {
+  const { via_rule_id, source_uuid, body } = e;
   const metadata = JSON.stringify(body, null, 2);
   const formatter = await userSelectedFormatter();
   const formattedDatetime = formatter(body.timestamp);
   const randomId = Math.random() * 10e16;
   const metadataId = `metadata-${body.timestamp}-${randomId}`;
-  const log_level = _.get(body, ["metadata", "level"]);
+  const log_level = _.get(body, "level", _.get(body, ["metadata", "level"]));
 
   const logLevelTemplate = log_level
     ? `<mark class="log-level-${log_level}">${log_level}</mark>`
@@ -129,9 +129,9 @@ async function logTemplate(e) {
     }">${formattedDatetime}</mark> ${logLevelTemplate}
     ${escape(body.event_message)}
     ${metadataElement}
-    ${via_rule
+    ${via_rule_id
       ? `<span
-    data-toggle="tooltip" data-placement="top" title="Matching ${via_rule.regex} routing from ${origin_source_id}" style="color: ##5eeb8f;">
+    data-toggle="tooltip" data-placement="top" title="Routed from ${source_uuid}" style="color: #5eeb8f;">
     <i class="fa fa-code-branch" style="font-size: 1em;"></i>
     </span>`
       : `<span></span>`
@@ -186,5 +186,6 @@ window.Source = {
   initLogsUiFunctions,
   trackScroll,
   scrollBottom,
-  scrollOverflowBottom
+  scrollOverflowBottom,
+  switchDateFormat
 }

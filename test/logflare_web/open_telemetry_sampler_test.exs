@@ -102,6 +102,43 @@ defmodule LogflareWeb.OpenTelemetrySamplerTest do
       end
     end
 
+    test "samples ingest spans with ingest sample ratio", %{
+      ctx: ctx,
+      trace_id: trace_id,
+      links: links,
+      span_kind: span_kind,
+      sampler_config: sampler_config
+    } do
+      Application.put_env(:logflare, :ingest_sample_ratio, 0.0)
+      attributes = %{}
+
+      assert {:drop, _attrs, _state} =
+               OpenTelemetrySampler.should_sample(
+                 ctx,
+                 trace_id,
+                 links,
+                 "ingest.bigquery_batch",
+                 span_kind,
+                 attributes,
+                 sampler_config
+               )
+
+      Application.put_env(:logflare, :ingest_sample_ratio, 1.0)
+
+      {decision, _attrs, _state} =
+        OpenTelemetrySampler.should_sample(
+          ctx,
+          trace_id,
+          links,
+          "ingest.bigquery_batch",
+          span_kind,
+          attributes,
+          sampler_config
+        )
+
+      assert decision != :drop
+    end
+
     test "uses default sampler config for other routes", %{
       ctx: ctx,
       trace_id: trace_id,

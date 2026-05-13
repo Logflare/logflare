@@ -7,5 +7,15 @@
       {text_input(params_f, key, value: Map.get(@prev_params, key, ""))}
     </div>
   </.inputs_for>
+
+  <div :if={Ecto.Changeset.get_field(@endpoint_changeset, :enable_dynamic_reservation)} class="form-group tw-mt-2">
+    {label(f, :reservation, "BigQuery Reservation")}
+    {text_input(f, :reservation,
+      value: @prev_reservation || "",
+      class: "form-control",
+      placeholder: "projects/{project}/locations/{location}/reservations/{reservation}"
+    )}
+  </div>
+
   {submit("Test query", class: "btn btn-secondary")}
 </.form>

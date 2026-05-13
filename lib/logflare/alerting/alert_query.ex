@@ -4,6 +4,8 @@ defmodule Logflare.Alerting.AlertQuery do
 
   import Ecto.Changeset
 
+  alias Crontab.CronExpression.Parser, as: CronParser
+  alias Crontab.Scheduler
   alias Logflare.Endpoints.Query
 
   @derive {Jason.Encoder,
@@ -16,7 +18,8 @@ defmodule Logflare.Alerting.AlertQuery do
              :language,
              :query,
              :webhook_notification_url,
-             :slack_hook_url
+             :slack_hook_url,
+             :enabled
            ]}
   typed_schema "alert_queries" do
     field :name, :string
@@ -28,6 +31,7 @@ defmodule Logflare.Alerting.AlertQuery do
     field :token, Ecto.UUID, autogenerate: true
     field :slack_hook_url, :string
     field :webhook_notification_url, :string
+    field :enabled, :boolean, default: true
 
     belongs_to :user, Logflare.User
 
@@ -48,17 +52,18 @@ defmodule Logflare.Alerting.AlertQuery do
       :query,
       :cron,
       :slack_hook_url,
-      :webhook_notification_url
+      :webhook_notification_url,
+      :enabled
     ])
     |> validate_required([:name, :query, :cron, :language])
     |> validate_change(:cron, fn :cron, cron ->
-      with {:ok, expr} <- Crontab.CronExpression.Parser.parse(cron),
-           [first, second] <- Crontab.Scheduler.get_next_run_dates(expr) |> Enum.take(2),
-           true <- NaiveDateTime.diff(first, second, :minute) <= -15 do
+      with {:ok, expr} <- CronParser.parse(cron),
+           [first, second] <- Scheduler.get_next_run_dates(expr) |> Enum.take(2),
+           true <- NaiveDateTime.diff(first, second, :minute) <= -5 do
         []
       else
         [] -> [cron: "not enough run dates"]
-        false -> [cron: "can only trigger up to 15 minute intervals"]
+        false -> [cron: "can only trigger up to 5 minute intervals"]
         {:error, msg} -> [cron: msg]
       end
     end)

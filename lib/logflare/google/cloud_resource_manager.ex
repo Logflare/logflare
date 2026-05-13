@@ -3,12 +3,14 @@ defmodule Logflare.Google.CloudResourceManager do
 
   alias GoogleApi.CloudResourceManager.V1.Api
   alias GoogleApi.CloudResourceManager.V1.Model
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Users
   alias Logflare.User
   alias Logflare.TeamUsers
   alias Logflare.Utils.Tasks
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Utils
 
   require Logger
 
@@ -63,6 +65,54 @@ defmodule Logflare.Google.CloudResourceManager do
       {:enabled?, false} -> {:error, :managed_service_accounts_disabled}
       {:error, _err} = err -> err
     end
+  end
+
+  @spec append_managed_sa_to_all_iam_projects(User.t()) :: %{
+          primary: {:ok, Model.Policy.t()} | {:error, term()},
+          additional: [
+            {String.t(), {:ok, Model.Policy.t()} | {:error, term()}}
+          ]
+        }
+  def append_managed_sa_to_all_iam_projects(user) do
+    primary_result = append_managed_sa_to_iam_policy(user)
+
+    additional_results =
+      user
+      |> User.parse_bigquery_additional_projects()
+      |> Enum.map(fn project_id ->
+        {project_id, append_managed_sa_to_additional_project(user, project_id)}
+      end)
+
+    %{primary: primary_result, additional: additional_results}
+  end
+
+  defp append_managed_sa_to_additional_project(
+         %User{bigquery_enable_managed_service_accounts: false},
+         _project_id
+       ),
+       do: {:error, :managed_service_accounts_disabled}
+
+  defp append_managed_sa_to_additional_project(_user, project_id) do
+    with {:enabled?, true} <- {:enabled?, BigQueryAdaptor.managed_service_accounts_enabled?()},
+         {:ok, policy} <- get_iam_policy_for_project(project_id),
+         {:contains?, _policy, false} <-
+           {:contains?, policy, contains_managed_service_accounts?(policy)} do
+      append_managed_service_accounts(project_id, policy)
+    else
+      {:contains?, policy, _} -> {:ok, policy}
+      {:enabled?, false} -> {:error, :managed_service_accounts_disabled}
+      {:error, _err} = err -> err
+    end
+  end
+
+  defp get_iam_policy_for_project(project_id) do
+    conn = GenUtils.get_conn()
+
+    Api.Projects.cloudresourcemanager_projects_get_iam_policy(
+      conn,
+      project_id,
+      body: %Model.GetIamPolicyRequest{}
+    )
   end
 
   # returns false if missing any of the managed service accounts
@@ -120,7 +170,8 @@ defmodule Logflare.Google.CloudResourceManager do
 
     bindings =
       [%Model.Binding{members: members, role: "roles/bigquery.jobUser"}] ++
-        get_service_accounts()
+        get_service_accounts() ++
+        build_project_viewer_bindings()
 
     policy = %Model.Policy{bindings: bindings}
     body = %Model.SetIamPolicyRequest{policy: policy}
@@ -166,17 +217,17 @@ defmodule Logflare.Google.CloudResourceManager do
       if result == :noop do
         Logger.error(
           "Could find user #{captured} in the database. Set IAM policy error: #{message}",
-          error_string: Jason.decode!(response.body)
+          error_string: Jason.decode!(response.body) |> Utils.stringify()
         )
       else
         Logger.info(
           "Google account #{captured} was marked as invalid and excluded from IAM policy",
-          error_string: Jason.decode!(response.body)
+          error_string: Jason.decode!(response.body) |> Utils.stringify()
         )
       end
     else
       Logger.error("Set IAM policy unknown API error: #{message}",
-        error_string: Jason.decode!(response.body)
+        error_string: Jason.decode!(response.body) |> Utils.stringify()
       )
 
       :noop
@@ -195,7 +246,7 @@ defmodule Logflare.Google.CloudResourceManager do
 
     for {member, roles} <-
           [
-            {env_service_account(),
+            {GCPConfig.service_account(),
              [
                "roles/bigquery.admin",
                "roles/resourcemanager.projectIamAdmin",
@@ -264,7 +315,6 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   defp env_project_number, do: Application.get_env(:logflare, Logflare.Google)[:project_number]
-  defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account]
   defp env_api_sa, do: Application.get_env(:logflare, Logflare.Google)[:api_sa]
   defp env_cloud_build_sa, do: Application.get_env(:logflare, Logflare.Google)[:cloud_build_sa]
 
@@ -276,4 +326,24 @@ defmodule Logflare.Google.CloudResourceManager do
 
   defp env_grafana_sa,
     do: Application.get_env(:logflare, Logflare.Google)[:grafana_sa]
+
+  defp env_project_viewer,
+    do: Application.get_env(:logflare, Logflare.Google)[:project_viewer]
+
+  defp build_project_viewer_bindings do
+    case env_project_viewer() do
+      nil ->
+        []
+
+      value ->
+        member =
+          if String.starts_with?(value, "user:") or String.starts_with?(value, "group:") do
+            value
+          else
+            "user:" <> value
+          end
+
+        [%Model.Binding{members: [member], role: "roles/viewer"}]
+    end
+  end
 end

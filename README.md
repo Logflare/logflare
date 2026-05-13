@@ -14,17 +14,17 @@ Sign up at https://logflare.app.
 
 ## Integrations
 
-| Provider/Runtime | Link                                                                                                                                                                                           |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cloudflare       | <a href="https://www.cloudflareapps.com/apps/logflare"><img src="https://install.cloudflareapps.com/install-button.png" alt="Install Logflare with Cloudflare" border="0" width="110"></a> |
-| Vercel           | [Logflare Vercel integration](https://vercel.com/integrations/logflare)                                                                                                                        |
-| Fly              | [Logflare/fly-log-shipper](https://github.com/Logflare/fly-log-shipper)                                                                                                                        |
-| Github Action    | [Logflare/action](https://github.com/Logflare/action)                                                                                                                                          |
-| Javascript       | [Logflare/pino-transport](https://github.com/Logflare/pino-logflare)                                                                                                                           |
-| Javascript       | [Logflare/winston-logflare](https://github.com/Logflare/winston-logflare)                                                                                                                      |
-| Elixir           | [Logflare/logflare_logger_backend](https://github.com/Logflare/logflare_logger_backend)                                                                                                        |
-| Elixir           | [Logflare/logflare_agent](https://github.com/Logflare/logflare_agent)                                                                                                                          |
-| Erlang           | [Logflare/logflare_erl](https://github.com/Logflare/logflare_erl)                                                                                                                              |
+| Provider/Runtime | Link                                                                                    |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| OpenTelemetry    | [OpenTelemetry](https://docs.logflare.app/integrations/open-telemetry/)                 |
+| Vercel           | [Logflare Vercel integration](https://vercel.com/integrations/logflare)                 |
+| Fly              | [Logflare/fly-log-shipper](https://github.com/Logflare/fly-log-shipper)                 |
+| Github Action    | [Logflare/action](https://github.com/Logflare/action)                                   |
+| Javascript       | [Logflare/pino-transport](https://github.com/Logflare/pino-logflare)                    |
+| Javascript       | [Logflare/winston-logflare](https://github.com/Logflare/winston-logflare)               |
+| Elixir           | [Logflare/logflare_logger_backend](https://github.com/Logflare/logflare_logger_backend) |
+| Elixir           | [Logflare/logflare_agent](https://github.com/Logflare/logflare_agent)                   |
+| Erlang           | [Logflare/logflare_erl](https://github.com/Logflare/logflare_erl)                       |
 
 ## Learn more
 

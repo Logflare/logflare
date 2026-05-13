@@ -27,6 +27,15 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       assert %{"result" => %{"parameters" => []}} = json_response(conn, 200)
     end
 
+    test "valid ch_sql query returns 200 ok", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query/parse?#{[ch_sql: ~s|select now() as 'my_time'|]}")
+
+      assert %{"result" => %{"parameters" => []}} = json_response(conn, 200)
+    end
+
     test "invalid valid sql query returns 200 ok", %{conn: conn, user: user} do
       conn =
         conn
@@ -84,7 +93,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
     end
   end
 
-  describe "pg_sql" do
+  describe "query with pg_sql" do
     setup do
       cfg = Application.get_env(:logflare, Logflare.Repo)
 

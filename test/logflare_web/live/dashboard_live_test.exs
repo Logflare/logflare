@@ -3,6 +3,7 @@ defmodule LogflareWeb.DashboardLiveTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Repo
+  alias Logflare.Sources.UserMetricsPoller
 
   setup %{conn: conn} do
     insert(:plan)
@@ -12,15 +13,64 @@ defmodule LogflareWeb.DashboardLiveTest do
     user = %{user | team: team}
     conn = conn |> login_user(user)
 
-    {:ok, user: user, source: source, conn: conn}
+    {:ok, user: user, source: source, conn: conn, team: team}
   end
 
   describe "Dashboard Live" do
+    setup {TestUtils, :attach_wait_for_render}
+
     test "renders dashboard", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, "/dashboard")
 
       assert view |> has_element?("h5", "~/logs")
       assert html =~ source.name
+    end
+
+    test "renders source description value", %{conn: conn, user: user} do
+      description = "Production API logs"
+      source = insert(:source, user: user, description: description)
+
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert view
+             |> element("#source-#{source.token}")
+             |> render() =~ description
+    end
+
+    test "truncates long source descriptions and expose the full value in a tooltip", %{
+      conn: conn,
+      user: user
+    } do
+      description = String.trim(String.duplicate("Long source description ", 20))
+      source = insert(:source, user: user, description: description)
+
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      rendered =
+        view
+        |> element("#source-#{source.token}")
+        |> render()
+        |> Floki.parse_fragment!()
+
+      tooltip_el = Floki.find(rendered, "#source-#{source.token}-description")
+
+      assert tooltip_el |> Floki.text() |> String.trim() == description
+      assert Floki.attribute(tooltip_el, "data-title") == [description]
+      assert Floki.attribute(tooltip_el, "data-html") == ["true"]
+    end
+
+    test "sources have a saved searches modal", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      refute view |> has_element?("#saved-searches-modal")
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click()
+
+      Logflare.TestUtils.wait_for_render(view, "#saved-searches-modal")
+
+      assert view |> has_element?(".modal-title", "Saved Searches")
     end
   end
 
@@ -31,16 +81,18 @@ defmodule LogflareWeb.DashboardLiveTest do
       user =
         Logflare.SingleTenant.get_default_user()
 
-      insert(:team, user: user)
+      team = insert(:team, user: user)
       conn = conn |> login_user(user)
-      [user: user, conn: conn]
+      [user: user, conn: conn, team: team]
     end
 
-    test "renders source in dashboard", %{conn: conn, user: user} do
+    test "renders source in dashboard", %{conn: conn, user: user, team: team} do
       source = insert(:source, user: user)
 
-      {:ok, view, _} = live(conn, "/dashboard")
-      assert view |> has_element?(~s|a[href="/sources/#{source.id}"]|, source.name)
+      {:ok, _view, html} = live(conn, "/dashboard")
+
+      assert html =~ source.name
+      assert html =~ ~r/sources\/#{source.id}[^"<]*t=#{team.id}/
     end
   end
 
@@ -78,40 +130,6 @@ defmodule LogflareWeb.DashboardLiveTest do
     end
   end
 
-  describe "saved searches" do
-    setup %{source: source} do
-      [saved_search: insert(:saved_search, source: source)]
-    end
-
-    test "render saved searches", %{conn: conn, saved_search: saved_search} do
-      {:ok, _view, html} = live(conn, "/dashboard")
-
-      assert html =~ "Saved Searches"
-      assert html =~ saved_search.querystring
-    end
-
-    test "delete saved search ", %{conn: conn, saved_search: saved_search} do
-      {:ok, view, html} = live(conn, "/dashboard")
-
-      assert html =~ saved_search.querystring
-
-      view
-      |> element("[phx-click='delete_saved_search'][phx-value-id='#{saved_search.id}']")
-      |> render_click()
-
-      {:ok, _view, html} = live(conn, "/dashboard")
-
-      refute html =~ saved_search.querystring
-    end
-
-    test "shows error when deleting non-existent saved search", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      assert render_hook(view, "delete_saved_search", %{"id" => "999999"}) =~
-               "Saved search not found"
-    end
-  end
-
   describe "dashboard - viewing home team as user" do
     setup %{user: user} do
       other_team = insert(:team, name: "Other Team")
@@ -128,105 +146,134 @@ defmodule LogflareWeb.DashboardLiveTest do
       ]
     end
 
-    test "teams list", %{
-      conn: conn,
-      user: user,
-      other_team: other_team,
-      forbidden_team: forbidden_team
-    } do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      assert view |> has_element?("#teams li", "#{user.team.name}home team")
-      assert view |> has_element?("#teams a", other_team.name)
-      refute view |> has_element?("#teams a", forbidden_team.name)
-    end
-
-    test "team members list", %{conn: conn, user: user, other_member: other_member} do
+    test "team members list", %{conn: conn, user: user, other_member: other_member, team: team} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
       assert view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
       assert view |> has_element?("#members li", "#{other_member.name}")
+
+      assert view
+             |> has_element?(
+               "a[href='/account/edit?t=#{team.id}#team-members']",
+               "Invite more team members"
+             )
     end
 
-    test "sign in to other team", %{
-      conn: conn,
-      user: user,
-      other_team: other_team,
-      other_member: other_member,
-      team_user: team_user,
-      forbidden_team: forbidden_team
-    } do
+    test "never shows 'Create your home team' button to owners", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      {:ok, conn} =
-        view
-        |> element("a", other_team.name)
-        |> render_click()
-        |> follow_redirect(
-          conn,
-          ~p"/profile/switch?#{%{team_user_id: team_user, user_id: other_team.user_id}}"
-        )
-
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      assert view |> has_element?("#teams span", other_team.name)
-      assert view |> has_element?("#teams a", user.team.name)
-      refute view |> has_element?("#teams a", forbidden_team.name)
-
-      assert view |> element("#members li", other_team.user.name) |> render =~ "owner"
-      refute view |> has_element?("#members li", other_member.name)
+      refute view |> has_element?("#members button[phx-click='create_home_team']")
     end
   end
 
   describe "dashboard - viewing home team as team member" do
-    setup %{user: user, conn: conn} do
+    setup %{conn: conn} do
       other_team = insert(:team, name: "Other Team")
       forbidden_team = insert(:team, name: "Not My Team")
 
       team_user = insert(:team_user, team: other_team)
-      other_member = insert(:team_user, team: user.team)
+      another_member = insert(:team_user, team: other_team)
 
-      conn = conn |> login_user(user, team_user)
+      # Login as the team_user (using unique email from factory)
+      conn =
+        conn
+        |> Plug.Test.init_test_session(%{current_email: team_user.email})
 
       [
         other_team: other_team,
         forbidden_team: forbidden_team,
-        other_member: other_member,
+        another_member: another_member,
         team_user: team_user,
         conn: conn
       ]
     end
 
-    test "teams list", %{conn: conn, other_team: other_team} do
+    test "team members list", %{
+      conn: conn,
+      other_team: other_team,
+      another_member: another_member
+    } do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      assert view |> has_element?("#teams li", "#{other_team.name}")
+      assert view |> has_element?("#members li", "#{other_team.user.name}")
+      assert view |> has_element?("#members li", "#{another_member.name}")
+
+      refute view
+             |> has_element?("a[href='/account/edit#team-members']", "Invite more team members")
     end
 
-    test "team members list", %{conn: conn, user: user, other_member: other_member} do
+    test "shows 'Create your home team' button when team_user has no home team", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      refute view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
-      assert view |> has_element?("#members li", "#{other_member.name}")
+      assert view
+             |> has_element?(
+               "#members button[phx-click='create_home_team']",
+               "Create your home team"
+             )
+    end
+
+    test "hides 'Create your home team' button when team_user already has a home team", %{
+      conn: conn,
+      team_user: team_user
+    } do
+      home_owner = insert(:user, email: team_user.email)
+      insert(:team, user: home_owner, name: "Home Team")
+
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      refute view |> has_element?("#members button[phx-click='create_home_team']")
+    end
+
+    test "clicking 'Create your home team' creates a User + Team and redirects to /dashboard",
+         %{conn: conn, team_user: team_user} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert {:error, {:redirect, %{to: "/dashboard"}}} =
+               view
+               |> element("button[phx-click='create_home_team']")
+               |> render_click()
+
+      created = Logflare.Users.get_by(email: String.downcase(team_user.email))
+      assert created
+      assert created.provider_uid == team_user.provider_uid
+      created = Repo.preload(created, :team)
+      assert created.team
+    end
+
+    test "shows error flash when create_user/1 fails", %{conn: conn} do
+      Mimic.expect(Logflare.Users, :create_user, fn _team_user ->
+        {:error, %Ecto.Changeset{}}
+      end)
+
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      html =
+        view
+        |> element("button[phx-click='create_home_team']")
+        |> render_click()
+
+      assert html =~ "Could not create home team"
     end
   end
 
   describe "displaying source metrics" do
-    test "starts UserMetricsPoller when session has string user_id", %{user: user} do
+    test "starts UserMetricsPoller when session has string user_id", %{user: user, conn: conn} do
       # Simulate what happens when session data is deserialized with string user_id
       conn =
-        build_conn()
+        conn
         |> Plug.Test.init_test_session(%{user_id: "#{user.id}"})
         |> Plug.Conn.assign(:user, user)
 
       {:ok, _view, _html} = live(conn, "/dashboard")
 
       # The UserMetricsPoller should be registered and running after mount
-      assert {poller_pid, _} = :syn.lookup(:core, {Logflare.Sources.UserMetricsPoller, user.id})
-      assert Process.alive?(poller_pid)
+      TestUtils.retry_assert(fn ->
+        assert {poller_pid, _} = :syn.lookup(:ui, {UserMetricsPoller, user.id})
+        assert Process.alive?(poller_pid)
+      end)
 
       # Should have one subscriber (the LiveView process)
-      assert [_subscriber] = Logflare.Sources.UserMetricsPoller.list_subscribers(user.id)
+      assert [_subscriber] = UserMetricsPoller.list_subscribers(user.id)
     end
 
     test "renders source metrics ", %{conn: conn, source: source} do
@@ -238,7 +285,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert view |> has_element?("span[id=#{source.token}-max-rate]", "0")
       assert view |> has_element?("span[id=#{source.token}-rejected]", "0")
 
-      assert view |> element("li[id=source-#{source.token}] [title^=Pipelines]") |> render =~
+      assert view |> element("li[id=source-#{source.token}] [data-title^=Pipelines]") |> render =~
                "0"
 
       assert view |> element("li[id=source-#{source.token}]") |> render =~ "ttl: 3 days"
@@ -273,13 +320,15 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      assert {poller_pid, _} = :syn.lookup(:core, {Logflare.Sources.UserMetricsPoller, user.id})
+      TestUtils.retry_assert(fn ->
+        assert {poller_pid, _} = :syn.lookup(:ui, {UserMetricsPoller, user.id})
+        send(poller_pid, :poll_metrics)
+      end)
 
-      send(poller_pid, :poll_metrics)
       # wait for broadcast
       Process.sleep(100)
 
-      assert view |> element("li[id=source-#{source.token}] [title^=Pipelines]") |> render =~
+      assert view |> element("li[id=source-#{source.token}] [data-title^=Pipelines]") |> render =~
                to_string(buffer)
 
       assert view |> has_element?("span[id=#{source.token}-rate]", "#{last_rate}/s")
@@ -297,6 +346,57 @@ defmodule LogflareWeb.DashboardLiveTest do
              )
 
       assert view |> has_element?("[id^=source-#{source.token}-inserts]", to_string(log_count))
+    end
+  end
+
+  describe "team query param preservation" do
+    setup %{conn: conn} do
+      user = insert(:user)
+      team = insert(:team, user: user)
+      team_user = insert(:team_user, team: team, email: user.email)
+      source = insert(:source, user: user)
+      saved_search = insert(:saved_search, source: source)
+
+      conn = login_user(conn, user, team_user)
+
+      [
+        user: user,
+        team: team,
+        team_user: team_user,
+        source: source,
+        saved_search: saved_search,
+        conn: conn
+      ]
+    end
+
+    test "dashboard links preserve team param for home team", %{
+      conn: conn,
+      source: source,
+      team: team
+    } do
+      {:ok, _view, html} = live(conn, ~p"/dashboard?t=#{team.id}")
+
+      for path <- ["sources/#{source.id}", "sources/#{source.id}/edit", "billing/edit", "account"] do
+        assert html =~ ~r/t=#{team.id}/
+        assert html =~ "/#{path}"
+      end
+    end
+
+    test "dashboard links preserve team param", %{
+      conn: conn,
+      team_user: team_user,
+      source: source
+    } do
+      {:ok, _view, html} = live(conn, ~p"/dashboard?t=#{team_user.team_id}")
+
+      for path <- [
+            "sources/#{source.id}",
+            "sources/#{source.id}/edit",
+            "billing/edit",
+            "account"
+          ] do
+        assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
+      end
     end
   end
 end

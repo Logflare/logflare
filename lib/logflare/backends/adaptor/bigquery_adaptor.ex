@@ -8,9 +8,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   import Logflare.Utils.Guards
 
   require Logger
+  require OpenTelemetry.Tracer
 
   alias Ecto.Changeset
-  alias Explorer.DataFrame
+  alias GoogleApi.IAM.V1.Api.Projects, as: IAMProjects
+  alias GoogleApi.IAM.V1.Model.CreateServiceAccountRequest
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
@@ -18,12 +20,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Billing
   alias Logflare.BqRepo
   alias Logflare.Endpoints.Query
   alias Logflare.Google
   alias Logflare.Google.BigQuery.EventUtils
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
   alias Logflare.Sources
@@ -55,7 +59,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     project_id = backend.config.project_id
     dataset_id = backend.config.dataset_id
     # TODO: remove source_id metadata to reduce confusion
-    Logger.metadata(source_id: source.token, source_token: source.token)
+    Logger.metadata(
+      source_id: source.token,
+      source_token: source.token,
+      user_id: user.id,
+      system_source: source.system_source
+    )
 
     children = [
       {
@@ -95,26 +104,51 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   def insert_log_events_via_storage_write_api(log_events, opts) do
-    # convert log events to table rows
-    opts =
-      Keyword.validate!(opts, [:project_id, :dataset_id, :source_token, :source_id, :source_token])
+    context =
+      Keyword.validate!(opts, [
+        :project_id,
+        :dataset_id,
+        :source_token,
+        :source_id,
+        :source_token,
+        :backend_id
+      ])
 
-    # get table id
     table_id = format_table_name(opts[:source_token])
 
-    data_frames =
-      log_events
-      |> Enum.map(&log_event_to_df_struct(&1))
-      |> normalize_df_struct_fields()
-      |> DataFrame.new()
+    arrow_data =
+      OpenTelemetry.Tracer.with_span "ingest.bq_serialize", %{
+        attributes: %{insert_method: :bq_storage_write}
+      } do
+        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erlang.external_size(log_events))
+
+        arrow_data =
+          log_events
+          |> Enum.map(&log_event_to_df_struct(&1))
+          |> normalize_df_struct_fields()
+          |> GoogleApiClient.encode_ndjson()
+          |> GoogleApiClient.encode_arrow_data()
+
+        OpenTelemetry.Tracer.set_attribute(
+          :serialized_bytes,
+          Enum.sum_by(arrow_data, &:erlang.external_size(&1))
+        )
+
+        arrow_data
+      end
 
     # append rows
-    GoogleApiClient.append_rows(
-      {:arrow, data_frames},
-      opts[:project_id],
-      opts[:dataset_id],
-      table_id
-    )
+    OpenTelemetry.Tracer.with_span "ingest.bq_api_call", %{
+      attributes: %{insert_method: :bq_storage_write}
+    } do
+      case GoogleApiClient.append_rows({:arrow, arrow_data}, context, table_id) do
+        {:error, reason} ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(reason))
+
+        _ ->
+          :ok
+      end
+    end
   end
 
   @spec format_table_name(atom) :: String.t()
@@ -177,7 +211,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       when is_list(opts) do
     with {:ok, {bq_sql, bq_params}} <- ecto_to_sql(query, opts),
          %User{} = user <- Users.Cache.get(user_id) do
-      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", dataset_id)
+      bq_sql =
+        String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", "`#{escape_bq_identifier(dataset_id)}`")
 
       execute_user_query(
         user,
@@ -206,14 +241,27 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def supports_default_ingest?, do: true
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{}, %{project_id: :string, dataset_id: :string}}
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config, %{project_id: :string, dataset_id: :string}}
     |> Changeset.cast(params, [:project_id, :dataset_id])
   end
 
+  @bq_identifier_pattern ~r/\A[a-zA-Z0-9_]+\z/
+  @gcp_project_id_pattern ~r/\A[a-z][a-z0-9\-]{4,28}[a-z0-9]\z/
+
+  @spec bq_identifier_pattern() :: Regex.t()
+  def bq_identifier_pattern, do: @bq_identifier_pattern
+
   @impl Logflare.Backends.Adaptor
-  def validate_config(changeset),
-    do: changeset
+  def validate_config(changeset) do
+    changeset
+    |> Changeset.validate_format(:dataset_id, @bq_identifier_pattern,
+      message: "must contain only letters, numbers, and underscores"
+    )
+    |> Changeset.validate_format(:project_id, @gcp_project_id_pattern,
+      message: "must be a valid GCP project ID"
+    )
+  end
 
   @doc """
   Returns the email of a managed service account
@@ -255,7 +303,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   """
   @spec list_managed_service_accounts(String.t()) :: [GoogleApi.IAM.V1.Model.ServiceAccount.t()]
   def list_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || env_project_id()
+    project_id = project_id || GCPConfig.default_project_id()
 
     get_next_page(project_id, nil)
     |> Enum.filter(&(&1.name =~ @service_account_prefix))
@@ -270,7 +318,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @spec create_managed_service_accounts(String.t()) ::
           {:ok, [GoogleApi.IAM.V1.Model.ServiceAccount.t()]}
   def create_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || env_project_id()
+    project_id = project_id || GCPConfig.default_project_id()
 
     # determine the ids of of service accounts to create, based on what service accounts already exist
     size =
@@ -408,7 +456,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   """
   @spec impersonated_goth_child_specs :: [Supervisor.child_spec()]
   def impersonated_goth_child_specs do
-    project_id = env_project_id()
+    project_id = GCPConfig.default_project_id()
     pool_size = managed_service_account_pool_size()
     json = Application.get_env(:goth, :json)
 
@@ -439,15 +487,18 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def update_iam_policy(user \\ nil) do
     CloudResourceManager.set_iam_policy(async: false)
 
-    if Map.get(user || %{}, :bigquery_project_id) do
-      # byob project, maybe append managed SA to policy
-      append_managed_sa_to_iam_policy(user)
+    if Map.get(user || %{}, :bigquery_project_id) ||
+         Map.get(user || %{}, :bigquery_additional_projects) do
+      # byob project or additional IAM projects, append managed SA to all policies
+      append_managed_sa_to_all_iam_projects(user)
     end
   end
 
   defdelegate get_iam_policy(user), to: CloudResourceManager
 
   defdelegate append_managed_sa_to_iam_policy(user), to: CloudResourceManager
+
+  defdelegate append_managed_sa_to_all_iam_projects(user), to: CloudResourceManager
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
   defdelegate get_conn(conn_type), to: GenUtils
@@ -458,7 +509,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   # handles pagination for the IAM api
   defp get_next_page(project_id, page_token) do
     GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list("projects/#{project_id}",
+    |> IAMProjects.iam_projects_service_accounts_list("projects/#{project_id}",
       pageSize: 100,
       pageToken: page_token
     )
@@ -485,9 +536,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           {:ok, GoogleApi.IAM.V1.Model.ServiceAccount.t()} | {:error, Tesla.Env.t() | String.t()}
   defp create_managed_service_account(project_id, service_account_index) do
     GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(
+    |> IAMProjects.iam_projects_service_accounts_create(
       "projects/#{project_id}",
-      body: %GoogleApi.IAM.V1.Model.CreateServiceAccountRequest{
+      body: %CreateServiceAccountRequest{
         accountId: managed_service_account_id(service_account_index)
       }
     )
@@ -523,10 +574,16 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
       dryRun: Keyword.get(opts, :dry_run, false),
       reservation:
-        case Keyword.get(opts, :query_type) do
-          :search -> user.bigquery_reservation_search
-          :alerts -> user.bigquery_reservation_alerts
-          _ -> nil
+        case Keyword.get(opts, :reservation) do
+          nil ->
+            case Keyword.get(opts, :query_type) do
+              :search -> user.bigquery_reservation_search
+              :alerts -> user.bigquery_reservation_alerts
+              _ -> nil
+            end
+
+          value ->
+            value
         end
     ]
   end
@@ -538,7 +595,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           input_params :: map(),
           nil | Query.t(),
           opts :: Keyword.t()
-        ) :: {:ok, Query.t()} | {:error, any()}
+        ) :: {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_context(user_id, query_string, declared_params, input_params, nil, opts) do
     user = Users.Cache.get(user_id)
     bq_params = build_bq_params(declared_params, input_params)
@@ -554,7 +611,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           input_params :: map(),
           endpoint_query :: Query.t(),
           opts :: Keyword.t()
-        ) :: {:ok, Query.t()} | {:error, any()}
+        ) :: {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_context(
          user_id,
          query_string,
@@ -587,13 +644,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bq_params :: [map()],
           query_opts :: Keyword.t()
         ) ::
-          {:ok, %{rows: [map()], total_bytes_processed: integer(), total_rows: integer()}}
+          {:ok, QueryResult.t()}
           | {:error, any()}
   defp execute_user_query(%User{} = user, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
     execute_user_query(
       user,
-      user.bigquery_project_id || env_project_id(),
+      user.bigquery_project_id || GCPConfig.default_project_id(),
       query_string,
       bq_params,
       query_opts
@@ -607,7 +664,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bq_params :: [map()],
           query_opts :: Keyword.t()
         ) ::
-          {:ok, %{rows: [map()], total_bytes_processed: integer(), total_rows: integer()}}
+          {:ok, QueryResult.t()}
           | {:error, any()}
   defp execute_user_query(%User{} = user, project_id, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
@@ -620,13 +677,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          ) do
       {:ok, result} ->
         {:ok,
-         %{
-           rows: result.rows,
+         QueryResult.new(result.rows, %{
            total_bytes_processed: result.total_bytes_processed,
            total_rows: result.total_rows,
            query_string: query_string,
            bq_params: bq_params
-         }}
+         })}
 
       {:error, %{body: body}} ->
         error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)
@@ -649,6 +705,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
   end
 
+  @spec escape_bq_identifier(String.t()) :: String.t()
+  def escape_bq_identifier(identifier), do: String.replace(identifier, "`", "\\`")
+
   @spec pg_param_to_bq_param(param :: any()) :: map()
   defp pg_param_to_bq_param(param) do
     param = SqlUtils.normalize_datetime_param(param)
@@ -658,7 +717,4 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       parameterValue: %Value{value: param}
     }
   end
-
-  @spec env_project_id :: String.t()
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 end

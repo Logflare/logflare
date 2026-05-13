@@ -20,22 +20,32 @@ Mimic.copy(GoogleApi.CloudResourceManager.V1.Api.Projects)
 Mimic.copy(GoogleApi.IAM.V1.Api.Projects)
 Mimic.copy(Goth)
 Mimic.copy(Phoenix.Token)
+Mimic.copy(Stripe.BillingPortal.Session)
 Mimic.copy(Stripe.Customer)
+Mimic.copy(Stripe.Event)
 Mimic.copy(Stripe.Invoice)
 Mimic.copy(Stripe.PaymentMethod)
+Mimic.copy(Stripe.Session)
+Mimic.copy(Stripe.SetupIntent)
 Mimic.copy(Stripe.Subscription)
 Mimic.copy(Stripe.SubscriptionItem.Usage)
+Mimic.copy(Tesla)
 Mimic.copy(Tesla.Adapter.Finch)
 
 Mimic.copy(Logflare.Admin)
-Mimic.copy(Logflare.Alerting.AlertsScheduler)
 Mimic.copy(Logflare.Auth)
 Mimic.copy(Logflare.Backends)
+Mimic.copy(Logflare.Backends.Adaptor)
+Mimic.copy(Logflare.Backends.Adaptor.AxiomAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.BigQueryAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient)
 Mimic.copy(Logflare.Cluster.Utils)
-Mimic.copy(Logflare.Backends.Adaptor.ClickhouseAdaptor)
-Mimic.copy(Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager)
+Mimic.copy(Logflare.ContextCache)
+Mimic.copy(Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo)
+Mimic.copy(Logflare.Backends.Adaptor.ClickHouseAdaptor)
+Mimic.copy(Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager)
+Mimic.copy(Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool)
+Mimic.copy(Logflare.Backends.Adaptor.HttpBased.Client)
 Mimic.copy(Logflare.Backends.Adaptor.SlackAdaptor.Client)
 Mimic.copy(Logflare.Backends.Adaptor.WebhookAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.WebhookAdaptor.Client)
@@ -49,15 +59,21 @@ Mimic.copy(Logflare.Logs.LogEvents)
 Mimic.copy(Logflare.Logs.SearchQueryExecutor)
 Mimic.copy(Logflare.Lql)
 Mimic.copy(Logflare.Mailer)
+Mimic.copy(Logflare.Networking.GrpcPool)
+Mimic.copy(Logflare.Rules)
 Mimic.copy(Logflare.SingleTenant)
 Mimic.copy(Logflare.Sources)
 Mimic.copy(Logflare.Sources.Cache)
 Mimic.copy(Logflare.Sources.Source.BigQuery.Schema)
 Mimic.copy(Logflare.Sources.Source.RateCounterServer)
+Mimic.copy(Logflare.Sources.Source.SlackHookServer)
 Mimic.copy(Logflare.Sources.Source.Supervisor)
+Mimic.copy(Logflare.Sources.Source.WebhookNotificationServer)
 Mimic.copy(Logflare.SystemMetrics.AllLogsLogged)
+Mimic.copy(Logflare.TeamUsers)
 Mimic.copy(Logflare.Users)
 Mimic.copy(Logflare.Users.Cache)
+Mimic.copy(Logflare.KeyValues.CacheWarmer)
 Mimic.copy(Logflare.Utils)
 Mimic.copy(LogflareWeb.Plugs.RateLimiter)
 {:ok, _} = Application.ensure_all_started(:ex_machina)
@@ -68,7 +84,19 @@ Mimic.stub(Goth)
 Mimic.stub(Finch)
 
 ExUnit.configure(
-  exclude: [not_implemented: true, integration: true, failing: true, benchmark: true]
+  exclude: [
+    not_implemented: true,
+    feature: true,
+    integration: true,
+    failing: true,
+    benchmark: true
+  ]
 )
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
+
+if System.get_env("E2E", "false") in ["true", "1"] do
+  {:ok, _} = PhoenixTest.Playwright.Supervisor.start_link()
+end
+
+Application.put_env(:phoenix_test, :base_url, LogflareWeb.Endpoint.url())

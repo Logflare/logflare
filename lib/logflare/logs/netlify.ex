@@ -1,6 +1,6 @@
 defmodule Logflare.Logs.Netlify do
   @moduledoc """
-  See https://elixirforum.com/t/parse-this-string/29252 for a NimbleParsec example.
+  Documentation for Netlify log drains can be found [here](https://docs.netlify.com/manage/monitoring/log-drains/).
   """
   require Logger
 
@@ -92,7 +92,7 @@ defmodule Logflare.Logs.Netlify do
         json
 
       {:error, reason} ->
-        msg = "Error in decoding unhandled Netflify log event format!"
+        msg = "Error in decoding unhandled Netlify log event format!"
         Logger.error(msg, error_string: inspect(reason))
         msg
     end

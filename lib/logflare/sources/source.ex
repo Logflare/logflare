@@ -3,14 +3,18 @@ defmodule Logflare.Sources.Source do
   use TypedEctoSchema
 
   import Ecto.Changeset
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
   alias Logflare.Billing
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Users
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   @default_source_api_quota 25
   @derive {Jason.Encoder,
            only: [
              :name,
+             :description,
              :service_name,
              :token,
              :id,
@@ -28,12 +32,11 @@ defmodule Logflare.Sources.Source do
              :backends,
              :retention_days,
              :transform_copy_fields,
+             :transform_key_values,
+             :transform_drop_fields,
              :bigquery_clustering_fields,
              :default_ingest_backend_enabled?
            ]}
-
-  defp env_dataset_id_append,
-    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   defmodule Metrics do
     @moduledoc false
@@ -107,10 +110,12 @@ defmodule Logflare.Sources.Source do
     end
   end
 
-  @system_source_types [:rejected_events, :metrics, :logs]
+  @system_source_types [:metrics, :logs]
+  @reserved_drop_field_heads ~w(id event_message timestamp)
 
   typed_schema "sources" do
     field :name, :string
+    field :description, :string, default: nil
     field :service_name, :string
     field :token, Ecto.UUID.Atom, autogenerate: true
     field :public_token, :string
@@ -132,13 +137,20 @@ defmodule Logflare.Sources.Source do
     field :validate_schema, :boolean, default: true
     field :drop_lql_filters, Ecto.LqlRules, default: []
     field :drop_lql_string, :string
+    field :default_search_lql, :string, default: nil
     field :disable_tailing, :boolean, default: false
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
     field :transform_copy_fields, :string
+    field :transform_copy_fields_parsed, {:array, :map}, virtual: true
+    field :transform_key_values, :string
+    field :transform_key_values_parsed, {:array, :map}, virtual: true
+    field :transform_drop_fields, :string
+    field :transform_drop_fields_parsed, {:array, {:array, :string}}, virtual: true
     field :bigquery_clustering_fields, :string
     field :system_source, :boolean, default: false
     field :system_source_type, Ecto.Enum, values: @system_source_types
+    field :labels, :string
 
     field :default_ingest_backend_enabled?, :boolean,
       source: :default_ingest_backend_enabled,
@@ -175,6 +187,7 @@ defmodule Logflare.Sources.Source do
     source
     |> cast(attrs, [
       :name,
+      :description,
       :service_name,
       :token,
       :public_token,
@@ -192,12 +205,18 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
+      :default_search_lql,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
+      :transform_key_values,
+      :transform_drop_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
-      :bq_storage_write_api
+      :bq_storage_write_api,
+      :labels,
+      :system_source,
+      :system_source_type
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -207,6 +226,7 @@ defmodule Logflare.Sources.Source do
     source
     |> cast(attrs, [
       :name,
+      :description,
       :service_name,
       :token,
       :public_token,
@@ -221,12 +241,16 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
+      :default_search_lql,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
+      :transform_key_values,
+      :transform_drop_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
-      :bq_storage_write_api
+      :bq_storage_write_api,
+      :labels
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -234,13 +258,50 @@ defmodule Logflare.Sources.Source do
 
   def default_validations(changeset, source) do
     changeset
+    |> normalize_description()
     |> validate_required([:name])
     |> unique_constraint(:name, name: :sources_name_index)
     |> unique_constraint(:token)
     |> unique_constraint(:public_token)
     |> put_source_ttl_change()
     |> validate_source_ttl(source)
+    |> validate_drop_fields()
+    |> normalize_and_validate_labels()
   end
+
+  defp validate_drop_fields(changeset) do
+    validate_change(changeset, :transform_drop_fields, fn :transform_drop_fields, config ->
+      reserved = reserved_drop_field_heads(config)
+
+      case reserved do
+        [] ->
+          []
+
+        fields ->
+          [
+            transform_drop_fields: "cannot drop reserved fields: #{Enum.join(fields, ", ")}"
+          ]
+      end
+    end)
+  end
+
+  defp reserved_drop_field_heads(config) when is_non_empty_binary(config) do
+    config
+    |> String.split("\n", trim: true)
+    |> Enum.flat_map(fn raw ->
+      raw
+      |> String.trim()
+      |> String.replace_prefix("m.", "metadata.")
+      |> String.split(".", parts: 2)
+      |> case do
+        [head | _] when head in @reserved_drop_field_heads -> [head]
+        _ -> []
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  defp reserved_drop_field_heads(_config), do: []
 
   defp put_source_ttl_change(changeset) do
     value = get_field(changeset, :retention_days)
@@ -256,7 +317,7 @@ defmodule Logflare.Sources.Source do
         days = round(plan.limit_source_ttl / :timer.hours(24))
 
         cond do
-          user.bigquery_project_id != Application.get_env(:logflare, Logflare.Google)[:project_id] ->
+          user.bigquery_project_id != GCPConfig.default_project_id() ->
             []
 
           ttl > days ->
@@ -271,16 +332,74 @@ defmodule Logflare.Sources.Source do
     end
   end
 
-  def generate_bq_table_id(%__MODULE__{} = source) do
-    default_project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
+  defp normalize_and_validate_labels(%_{changes: changes} = changeset)
+       when not is_map_key(changes, :labels), do: changeset
 
-    bq_project_id = source.user.bigquery_project_id || default_project_id
+  defp normalize_and_validate_labels(changeset) do
+    {normalized, errors} =
+      case get_change(changeset, :labels) do
+        value when value in [nil, ""] ->
+          {[], []}
+
+        labels ->
+          get_normalized_and_errors(labels)
+      end
+
+    errors
+    |> Enum.uniq()
+    |> Enum.reduce(changeset, fn {k, v}, cs -> add_error(cs, k, v) end)
+    |> then(fn
+      changeset when normalized == [] ->
+        put_change(changeset, :labels, "")
+
+      changeset ->
+        changeset
+        |> put_change(:labels, normalized |> Enum.reverse() |> Enum.join(","))
+    end)
+  end
+
+  defp normalize_description(changeset) do
+    update_change(changeset, :description, fn
+      description when is_binary(description) ->
+        String.trim(description)
+
+      value ->
+        value
+    end)
+  end
+
+  defp get_normalized_and_errors(labels) do
+    labels
+    |> String.split(",", trim: true)
+    |> Enum.reduce({[], []}, fn pair, {normalized, errors} ->
+      case pair |> String.trim() |> String.split("=") do
+        [k, v] when k != "" and v != "" ->
+          {["#{String.trim(k)}=#{String.trim(v)}" | normalized], errors}
+
+        [_, ""] ->
+          {normalized, [{:labels, "each label must have a non-empty value"} | errors]}
+
+        ["", _] ->
+          {normalized, [{:labels, "each label must have a non-empty key"} | errors]}
+
+        [_] ->
+          {normalized, [{:labels, "each label must be in key=value format"} | errors]}
+
+        _ ->
+          {normalized, [{:labels, "each label must have exactly one '=' sign"} | errors]}
+      end
+    end)
+  end
+
+  def generate_bq_table_id(%__MODULE__{} = source) do
+    bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
 
     table = format_table_name(source.token)
 
-    dataset_id = source.user.bigquery_dataset_id || "#{source.user.id}" <> env_dataset_id_append()
+    dataset_id =
+      source.user.bigquery_dataset_id || "#{source.user.id}" <> GCPConfig.dataset_id_append()
 
-    "`#{bq_project_id}`.#{dataset_id}.#{table}"
+    "`#{BigQueryAdaptor.escape_bq_identifier(bq_project_id)}`.`#{BigQueryAdaptor.escape_bq_identifier(dataset_id)}`.`#{BigQueryAdaptor.escape_bq_identifier(table)}`"
   end
 
   @spec format_table_name(atom) :: String.t()
@@ -290,5 +409,156 @@ defmodule Logflare.Sources.Source do
     |> String.replace("-", "_")
   end
 
+  @spec parse_key_values_config(%__MODULE__{}) :: %__MODULE__{}
+  def parse_key_values_config(%__MODULE__{transform_key_values: nil} = source) do
+    %{source | transform_key_values_parsed: nil}
+  end
+
+  def parse_key_values_config(%__MODULE__{transform_key_values: config} = source) do
+    parsed =
+      config
+      |> String.split(~r/\n/, trim: true)
+      |> Enum.flat_map(fn instruction ->
+        instruction = String.trim(instruction)
+
+        case String.split(instruction, ":", parts: 3) do
+          [lookup_key, dest_key, accessor_path] ->
+            lookup_key = String.replace_prefix(lookup_key, "m.", "metadata.")
+            dest_key = String.replace_prefix(dest_key, "m.", "metadata.")
+
+            [
+              %{
+                from_path: String.split(lookup_key, "."),
+                to_path: String.split(dest_key, "."),
+                accessor_path: String.trim(accessor_path)
+              }
+            ]
+
+          [lookup_key, dest_key] ->
+            lookup_key = String.replace_prefix(lookup_key, "m.", "metadata.")
+            dest_key = String.replace_prefix(dest_key, "m.", "metadata.")
+
+            [
+              %{
+                from_path: String.split(lookup_key, "."),
+                to_path: String.split(dest_key, "."),
+                accessor_path: nil
+              }
+            ]
+
+          _ ->
+            []
+        end
+      end)
+
+    %{source | transform_key_values_parsed: parsed}
+  end
+
+  @spec parse_copy_fields_config(%__MODULE__{}) :: %__MODULE__{}
+  def parse_copy_fields_config(%__MODULE__{transform_copy_fields: config} = source)
+      when is_non_empty_binary(config) do
+    parsed =
+      config
+      |> String.split("\n", trim: true)
+      |> Enum.flat_map(fn raw ->
+        instruction = String.trim(raw)
+
+        case String.split(instruction, ":", parts: 2) do
+          [from, to] ->
+            from = String.replace_prefix(from, "m.", "metadata.")
+            to = String.replace_prefix(to, "m.", "metadata.")
+            [%{from_path: String.split(from, "."), to_path: String.split(to, ".")}]
+
+          _ ->
+            []
+        end
+      end)
+
+    %{source | transform_copy_fields_parsed: parsed}
+  end
+
+  def parse_copy_fields_config(%__MODULE__{} = source) do
+    %{source | transform_copy_fields_parsed: nil}
+  end
+
+  @spec parse_drop_fields_config(%__MODULE__{}) :: %__MODULE__{}
+  def parse_drop_fields_config(%__MODULE__{transform_drop_fields: config} = source)
+      when is_non_empty_binary(config) do
+    parsed =
+      config
+      |> String.split("\n", trim: true)
+      |> Enum.flat_map(&parse_drop_fields_line/1)
+
+    %{source | transform_drop_fields_parsed: parsed}
+  end
+
+  def parse_drop_fields_config(%__MODULE__{} = source) do
+    %{source | transform_drop_fields_parsed: nil}
+  end
+
+  defp parse_drop_fields_line(raw) do
+    case String.trim(raw) do
+      "" -> []
+      path -> drop_fields_segments(path)
+    end
+  end
+
+  defp drop_fields_segments(path) do
+    case path |> String.replace_prefix("m.", "metadata.") |> String.split(".") do
+      [head | _] when head in @reserved_drop_field_heads -> []
+      segments -> [segments]
+    end
+  end
+
   def system_source_types, do: @system_source_types
+
+  @doc """
+  Returns a combined list of BigQuery clustering fields
+  and suggested keys to be used for query optimization.
+
+  ## Examples
+
+      iex> source = %Source{bigquery_clustering_fields: "id,timestamp", suggested_keys: "m.user_id,status"}
+      iex> recommended_query_fields(source)
+      ["id", "timestamp", "m.user_id", "status"]
+
+
+    with trailing `!` for `:suggested_keys`:
+
+      iex> source = %Source{bigquery_clustering_fields: "id,timestamp", suggested_keys: "m.user_id!,status"}
+      iex> recommended_query_fields(source)
+      ["id", "timestamp", "m.user_id!", "status"]
+
+
+      iex> source = %Source{bigquery_clustering_fields: nil, suggested_keys: ""}
+      iex> recommended_query_fields(source)
+      []
+  """
+  @spec recommended_query_fields(%__MODULE__{}) :: [String.t()]
+  def recommended_query_fields(%__MODULE__{} = source) do
+    clustering_fields =
+      (source.bigquery_clustering_fields || "")
+      |> String.split(",", trim: true)
+
+    suggested_keys =
+      (source.suggested_keys || "")
+      |> String.split(",", trim: true)
+      |> Enum.map(&String.trim/1)
+
+    clustering_fields ++ suggested_keys
+  end
+
+  @spec required_query_field?(String.t()) :: boolean()
+  def required_query_field?(field) when is_binary(field) do
+    field
+    |> String.trim()
+    |> String.ends_with?("!")
+  end
+
+  @spec query_field_name(String.t()) :: String.t()
+  def query_field_name(field) when is_binary(field) do
+    field
+    |> String.trim()
+    |> String.trim_trailing("!")
+  end
 end

@@ -108,7 +108,7 @@ defmodule Logflare.Sql do
           input :: String.t(),
           queries :: [AlertQuery.t() | Endpoints.Query.t()]
         ) ::
-          {:ok, String.t()}
+          {:ok, String.t()} | {:error, String.t()}
   def expand_subqueries(_language, input, []), do: {:ok, input}
 
   def expand_subqueries(language, input, queries)
@@ -194,7 +194,7 @@ defmodule Logflare.Sql do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    Logger.metadata(query_string: query)
+    Logger.metadata(query_string: query, user_id: user.id)
 
     with {:ok, statements} <- Parser.parse(sql_dialect, query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, sql_dialect),
@@ -207,7 +207,7 @@ defmodule Logflare.Sql do
            ast: statements,
            dialect: sql_dialect
          },
-         data = DialectTransformer.Clickhouse.build_transformation_data(user, base_data),
+         data = DialectTransformer.ClickHouse.build_transformation_data(user, base_data),
          :ok <- validate_query(statements, data),
          :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}, data) do
       data = %{data | sandboxed_query_ast: sandboxed_query_ast}
@@ -224,7 +224,7 @@ defmodule Logflare.Sql do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    Logger.metadata(query_string: query)
+    Logger.metadata(query_string: query, user_id: user.id)
 
     with {:ok, statements} <- Parser.parse(sql_dialect, query) do
       statements
@@ -250,7 +250,7 @@ defmodule Logflare.Sql do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    Logger.metadata(query_string: query)
+    Logger.metadata(query_string: query, user_id: user.id)
 
     with {:ok, statements} <- Parser.parse("bigquery", query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, "bigquery"),
@@ -336,6 +336,25 @@ defmodule Logflare.Sql do
         |> Map.new()
 
       {:ok, sources}
+    end
+  end
+
+  @doc """
+  Extracts the raw table names found in a SQL query.
+
+  Useful for determining which sources are referenced before having a full source mapping.
+
+  ### Example
+
+      iex> extract_table_names("SELECT * FROM `my.source` WHERE id = 1")
+      {:ok, ["my.source"]}
+  """
+  @spec extract_table_names(String.t(), Keyword.t()) :: {:ok, [String.t()]} | {:error, String.t()}
+  def extract_table_names(query, opts \\ []) when is_list(opts) do
+    dialect = Keyword.get(opts, :dialect, "bigquery")
+
+    with {:ok, ast} <- Parser.parse(dialect, query) do
+      {:ok, find_all_source_names(ast)}
     end
   end
 

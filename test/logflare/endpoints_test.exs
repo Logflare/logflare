@@ -1,9 +1,11 @@
 defmodule Logflare.EndpointsTest do
   use Logflare.DataCase
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   setup do
     insert(:plan)
@@ -13,6 +15,43 @@ defmodule Logflare.EndpointsTest do
   test "list_endpoints_by" do
     %{id: id, name: name} = insert(:endpoint)
     assert [%{id: ^id}] = Endpoints.list_endpoints_by(name: name)
+  end
+
+  test "list_endpoints_by_user_access" do
+    user = insert(:user)
+    team_user = insert(:team_user, email: user.email)
+
+    %Query{id: endpoint_id} = insert(:endpoint, user: user)
+    %Query{id: other_endpoint_id} = insert(:endpoint, user: team_user.team.user)
+    %Query{id: forbidden_endpoint_id} = insert(:endpoint, user: build(:user))
+
+    endpoint_ids =
+      Endpoints.list_endpoints_by_user_access(user)
+      |> Enum.map(& &1.id)
+
+    assert endpoint_id in endpoint_ids
+    assert other_endpoint_id in endpoint_ids
+    refute forbidden_endpoint_id in endpoint_ids
+  end
+
+  test "get_endpoint_query_by_user_access/2" do
+    owner = insert(:user)
+    team_user = insert(:team_user, email: owner.email)
+    %Query{id: endpoint_id} = insert(:endpoint, user: owner)
+    %Query{id: other_endpoint_id} = insert(:endpoint, user: team_user.team.user)
+    %Query{id: forbidden_endpoint_id} = insert(:endpoint, user: build(:user))
+
+    assert %Query{id: ^endpoint_id} =
+             Endpoints.get_endpoint_query_by_user_access(owner, endpoint_id)
+
+    assert %Query{id: ^endpoint_id} =
+             Endpoints.get_endpoint_query_by_user_access(team_user, endpoint_id)
+
+    assert %Query{id: ^other_endpoint_id} =
+             Endpoints.get_endpoint_query_by_user_access(team_user, other_endpoint_id)
+
+    assert nil == Endpoints.get_endpoint_query_by_user_access(owner, forbidden_endpoint_id)
+    assert nil == Endpoints.get_endpoint_query_by_user_access(team_user, forbidden_endpoint_id)
   end
 
   test "get_endpoint_query/1 retrieves endpoint" do
@@ -245,6 +284,53 @@ defmodule Logflare.EndpointsTest do
 
       assert {:ok, %{rows: [%{"testing" => _}]}} =
                Endpoints.run_query_string(user, {:bq_sql, query_string})
+    end
+
+    test "run_query_string/3 uses specified backend_id when provided" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+
+      # Create two ClickHouse backends for the same user
+      _backend1 = insert(:backend, user: user, type: :clickhouse)
+      backend2 = insert(:backend, user: user, type: :clickhouse)
+
+      test_pid = self()
+
+      expect(ClickHouseAdaptor, :execute_query, fn backend, _query, _opts ->
+        send(test_pid, {:backend_used, backend.id})
+        {:ok, QueryResult.new([%{"testing" => "123"}])}
+      end)
+
+      query_string = "SELECT 1 as testing"
+
+      assert {:ok, %{rows: [%{"testing" => "123"}]}} =
+               Endpoints.run_query_string(user, {:ch_sql, query_string}, backend_id: backend2.id)
+
+      assert_received {:backend_used, backend_id}
+      assert backend_id == backend2.id
+    end
+
+    test "run_query_string/3 falls back to first backend of type when backend_id is nil" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      test_pid = self()
+
+      expect(ClickHouseAdaptor, :execute_query, fn backend, _query, _opts ->
+        send(test_pid, {:backend_used, backend.id})
+        {:ok, QueryResult.new([%{"testing" => "123"}])}
+      end)
+
+      query_string = "SELECT 1 as testing"
+
+      # When backend_id is not specified, it should fall back to finding by type
+      assert {:ok, %{rows: [%{"testing" => "123"}]}} =
+               Endpoints.run_query_string(user, {:ch_sql, query_string})
+
+      assert_received {:backend_used, backend_id}
+      assert backend_id == backend.id
     end
 
     test "run_query/1 applies PII redaction based on redact_pii flag" do
@@ -526,6 +612,32 @@ defmodule Logflare.EndpointsTest do
 
       # In supabase mode, postgres should return :bq_sql
       assert Endpoints.derive_language_from_backend_id(backend.id) == :pg_sql
+    end
+  end
+
+  describe "enable_dynamic_reservation" do
+    test "changeset/2 casts enable_dynamic_reservation" do
+      user = insert(:user)
+
+      changeset =
+        Endpoints.change_query(%Query{user: user}, %{
+          "name" => "test-endpoint",
+          "query" => "select 1",
+          "enable_dynamic_reservation" => true
+        })
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_change(changeset, :enable_dynamic_reservation) == true
+    end
+
+    test "enable_dynamic_reservation defaults to false" do
+      endpoint = insert(:endpoint)
+      assert endpoint.enable_dynamic_reservation == false
+    end
+
+    test "enable_dynamic_reservation can be persisted as true" do
+      endpoint = insert(:endpoint, enable_dynamic_reservation: true)
+      assert endpoint.enable_dynamic_reservation == true
     end
   end
 end

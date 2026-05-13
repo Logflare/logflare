@@ -54,21 +54,12 @@ defmodule Logflare.Vault do
       :timer.sleep(1_000)
 
       result =
-        cond do
-          Keyword.has_key?(ciphers, :retired) ->
-            Logger.info("Encryption key marked as 'retired' found, migrating schemas to new key.")
+        if retired_key != nil do
+          Logger.info("Encryption key marked as 'retired' found, migrating schemas to new key.")
 
-            do_migrate()
-            true
-
-          fallback_key != default_key ->
-            Logger.info("Encryption key has been provided, migrating all schemas to key.")
-            do_migrate()
-
-            true
-
-          true ->
-            :noop
+          do_migrate()
+        else
+          :noop
         end
 
       if result != :noop do

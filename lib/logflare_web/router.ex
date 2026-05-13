@@ -16,6 +16,12 @@ defmodule LogflareWeb.Router do
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
 
+  @common_on_mount_hooks if Application.compile_env(:logflare, :sql_sandbox),
+                           do: [LogflareWeb.Hooks.AllowTestSandbox],
+                           else: []
+
+  @dashboard_hooks [LogflareWeb.AuthLive]
+
   # TODO: move plug calls in SourceController and RuleController into here
 
   pipeline :browser do
@@ -45,10 +51,8 @@ defmodule LogflareWeb.Router do
       "referrer-policy" => "same-origin"
     })
 
-    plug(LogflareWeb.Plugs.SetVerifyUser)
     plug(LogflareWeb.Plugs.SetTeamIfNil)
-    plug(LogflareWeb.Plugs.SetTeamUser)
-    plug(LogflareWeb.Plugs.SetTeam)
+    plug(LogflareWeb.Plugs.SetTeamContext)
     plug(LogflareWeb.Plugs.SetPlan)
     plug(LogflareWeb.Plugs.EnsureSourceStarted)
     plug(LogflareWeb.Plugs.SetHeaders)
@@ -56,6 +60,17 @@ defmodule LogflareWeb.Router do
 
   pipeline :logpush do
     plug(:handle_logpush_headers)
+  end
+
+  pipeline :browser_json do
+    plug(Plug.RequestId)
+    plug(:accepts, ["json"])
+    plug(:fetch_session)
+    plug(:fetch_flash)
+    plug(LogflareWeb.Plugs.SetTeamIfNil)
+    plug(LogflareWeb.Plugs.SetTeamContext)
+    plug(LogflareWeb.Plugs.SetPlan)
+    plug(LogflareWeb.Plugs.SetHeaders)
   end
 
   pipeline :api do
@@ -189,37 +204,50 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/", LogflareWeb do
-    pipe_through([:browser, :require_auth])
+    pipe_through([:browser_json, :require_auth])
 
-    live("/dashboard", DashboardLive, :index)
-    live("/access-tokens", AccessTokensLive, :index)
-    live("/backends", BackendsLive, :index)
-    live("/backends/new", BackendsLive, :new)
-    live("/backends/:id", BackendsLive, :show)
-    live("/backends/:id/edit", BackendsLive, :edit)
+    get("/command-palette/sources", CommandPaletteController, :sources)
   end
 
-  scope "/query", LogflareWeb do
+  scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live("/", QueryLive, :index)
+    live_session :dashboard, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
+      live("/dashboard", DashboardLive, :index)
+      live("/access-tokens", AccessTokensLive, :index)
+      live("/backends", BackendsLive, :index)
+      live("/backends/new", BackendsLive, :new)
+      live("/backends/:id", BackendsLive, :show)
+      live("/backends/:id/edit", BackendsLive, :edit)
+      live("/query", QueryLive, :index)
+      live("/key-values", KeyValuesLive, :index)
+
+      scope "/integrations" do
+        live("/vercel/edit", VercelLogDrainsLive, :edit)
+      end
+    end
   end
 
   scope "/endpoints", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live("/", EndpointsLive, :index)
-    live("/new", EndpointsLive, :new)
-    live("/:id", EndpointsLive, :show)
-    live("/:id/edit", EndpointsLive, :edit)
+    live_session :endpoints, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
+      live("/", EndpointsLive, :index)
+      live("/new", EndpointsLive, :new)
+      live("/:id", EndpointsLive, :show)
+      live("/:id/edit", EndpointsLive, :edit)
+    end
   end
 
   scope "/alerts", LogflareWeb do
     pipe_through([:browser, :require_auth])
-    live "/", AlertsLive, :index
-    live "/new", AlertsLive, :new
-    live "/:id", AlertsLive, :show
-    live "/:id/edit", AlertsLive, :edit
+
+    live_session :alerts, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
+      live "/", AlertsLive, :index
+      live "/new", AlertsLive, :new
+      live "/:id", AlertsLive, :show
+      live "/:id/edit", AlertsLive, :edit
+    end
   end
 
   scope "/sources", LogflareWeb do
@@ -234,6 +262,12 @@ defmodule LogflareWeb.Router do
     pipe_through([:browser, :set_source, :ensure_source_started])
 
     get("/public/:public_token", SourceController, :public)
+  end
+
+  scope "/teams", LogflareWeb do
+    pipe_through([:browser, :require_auth])
+
+    get("/switch", TeamController, :switch)
   end
 
   scope "/sources", LogflareWeb do
@@ -254,7 +288,10 @@ defmodule LogflareWeb.Router do
     pipe_through([:browser, :require_auth, :set_source, :ensure_source_started])
 
     resources "/", SourceController, except: [:index, :new, :create, :delete] do
-      live_session(:rules, root_layout: {LogflareWeb.LayoutView, :root}) do
+      live_session(:rules,
+        on_mount: @common_on_mount_hooks ++ @dashboard_hooks,
+        root_layout: {LogflareWeb.LayoutView, :root}
+      ) do
         live("/rules", Sources.RulesLive)
       end
     end
@@ -285,12 +322,6 @@ defmodule LogflareWeb.Router do
     delete("/", TeamUserController, :delete)
   end
 
-  scope "/profile/switch", LogflareWeb do
-    pipe_through([:browser, :require_auth, :auth_switch])
-
-    get("/", TeamUserController, :change_team)
-  end
-
   scope "/account", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
@@ -305,12 +336,6 @@ defmodule LogflareWeb.Router do
     delete("/", UserController, :delete)
     get("/edit/api-key", UserController, :new_api_key)
     put("/edit/owner", UserController, :change_owner)
-  end
-
-  scope "/integrations", LogflareWeb do
-    pipe_through([:browser, :require_auth])
-
-    live("/vercel/edit", VercelLogDrainsLive, :edit)
   end
 
   scope "/billing", LogflareWeb do
@@ -336,10 +361,9 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/admin", LogflareWeb do
-    pipe_through([:browser, :check_admin])
+    pipe_through([:browser, :require_auth, :check_admin])
 
     get("/dashboard", AdminController, :dashboard)
-    get("/sources", AdminController, :sources)
     get("/accounts", AdminController, :accounts)
     live("/cluster", Admin.ClusterLive, :index)
     live("/partner", Admin.PartnerLive, :index)
@@ -376,6 +400,7 @@ defmodule LogflareWeb.Router do
     get("/login/email", Auth.EmailController, :login)
     post("/login/email", Auth.EmailController, :send_link)
     get("/login/email/verify", Auth.EmailController, :verify_token)
+    get("/login/single_tenant", AuthController, :single_tenant_signin)
     get("/logout", AuthController, :logout)
     get("/:provider", Auth.OauthController, :request)
     post("/login/email/verify", Auth.EmailController, :verify_token_form)
@@ -433,10 +458,18 @@ defmodule LogflareWeb.Router do
       only: [:index, :show, :create, :update, :delete]
     )
 
-    resources("/backends", Api.BackendController,
-      param: "token",
-      only: [:index, :show, :create, :update, :delete]
-    )
+    scope "/backends" do
+      resources("/", Api.BackendController,
+        param: "token",
+        only: [:index, :show, :create, :update, :delete]
+      )
+
+      post("/:token/test", Api.BackendController, :test_connection)
+    end
+
+    get "/key-values", Api.KeyValueController, :index
+    post "/key-values", Api.KeyValueController, :create
+    delete "/key-values", Api.KeyValueController, :delete
   end
 
   scope "/api/partner", LogflareWeb do
@@ -539,7 +572,7 @@ defmodule LogflareWeb.Router do
     end
   end
 
-  if Mix.env() == :dev do
+  if Application.compile_env(:logflare, :dev_routes) do
     scope "/dev" do
       pipe_through([:browser])
 

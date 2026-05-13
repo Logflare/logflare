@@ -3,77 +3,49 @@ defmodule LogflareWeb.DashboardLive do
   use LogflareWeb, :live_view
 
   alias Logflare.Billing
-  alias Logflare.SavedSearches
   alias Logflare.Sources
+  alias Logflare.Sources.UserMetricsPoller
   alias Logflare.Teams
-  alias Logflare.TeamUsers
   alias Logflare.Users
   alias LogflareWeb.DashboardLive.DashboardComponents
   alias LogflareWeb.DashboardLive.DashboardSourceComponents
   alias LogflareWeb.Helpers.Forms
+  alias LogflareWeb.ModalLiveHelpers
 
   @impl true
-  def mount(_, %{"user_id" => user_id} = session, socket) do
-    user = Users.get_by_and_preload(id: user_id)
+  def mount(_, _session, socket) do
+    %{user: user} = socket.assigns
+
+    can_create_home_team? =
+      case socket.assigns[:team_user] do
+        nil -> false
+        team_user -> is_nil(Teams.get_home_team(team_user))
+      end
 
     socket =
       socket
-      |> assign(:user, user)
-      |> assign_new(:team, fn %{user: user} ->
-        Teams.get_team_by(user_id: user.id) |> Teams.preload_team_users()
-      end)
-      |> assign_new(:sources, fn %{user: user} ->
-        user
-        |> Sources.list_sources_by_user()
-        |> Sources.preload_for_dashboard()
-      end)
+      |> assign(
+        :sources,
+        user |> Sources.list_sources_by_user() |> Sources.preload_for_dashboard()
+      )
       |> assign_new(:source_metrics, fn %{sources: sources} ->
         sources
         |> Enum.into(%{}, fn source ->
           {to_string(source.token), %{metrics: source.metrics, updated_at: source.updated_at}}
         end)
       end)
-      |> assign_new(:plan, fn %{user: user} -> Billing.get_plan_by_user(user) end)
-      |> assign_teams(session["team_user_id"])
+      |> assign(:plan, Billing.get_plan_by_user(user))
       |> assign(:fade_in, false)
+      |> assign(:show_modal, false)
+      |> assign(:can_create_home_team?, can_create_home_team?)
 
     if connected?(socket) do
-      Logflare.Sources.UserMetricsPoller.track(self(), user.id)
+      %{user: user} = socket.assigns
+      track_user_metrics(user.id)
       Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user.id}")
     end
 
     {:ok, socket}
-  end
-
-  @doc """
-  Assigns teams and members.
-
-  If the user is signed in as `team_user` then `user` will be the team owner.
-  """
-  def assign_teams(socket, nil) do
-    %{user: user} = socket.assigns
-
-    home_team = user.team |> Logflare.Repo.preload(:user)
-    team_users = Logflare.TeamUsers.list_team_users_by_and_preload(email: user.email)
-
-    assign(socket,
-      home_team: home_team,
-      team_user: nil,
-      team_users: team_users
-    )
-  end
-
-  def assign_teams(socket, team_user_id) do
-    team_user = TeamUsers.get_team_user_and_preload(team_user_id)
-    home_team = Teams.get_home_team(team_user)
-    team_users = TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
-
-    socket
-    |> assign(
-      home_team: home_team,
-      team_user: team_user,
-      team_users: team_users
-    )
   end
 
   @impl true
@@ -81,8 +53,7 @@ defmodule LogflareWeb.DashboardLive do
     %{user: user} = socket.assigns
     favorite = Map.has_key?(params, "favorite")
 
-    with source <- Sources.get_by_and_preload(id: id),
-         true <- LogflareWeb.Plugs.SetVerifySource.verify_source_for_user(source, user),
+    with source <- Sources.Cache.get_by_and_preload(id: id, user_id: user.id),
          {:ok, _source} <- Sources.update_source_by_user(source, %{"favorite" => favorite}) do
       sources =
         Repo.reload(socket.assigns.sources)
@@ -94,47 +65,38 @@ defmodule LogflareWeb.DashboardLive do
     end
   end
 
-  def handle_event("delete_saved_search", %{"id" => search_id}, socket) do
-    %{user: user, sources: sources} = socket.assigns
-
-    socket =
-      with %Logflare.SavedSearch{source: source} = search <-
-             SavedSearches.get(search_id) |> Repo.preload(:source),
-           true <- LogflareWeb.Plugs.SetVerifySource.verify_source_for_user(source, user),
-           {:ok, _response} <- SavedSearches.delete_by_user(search) do
-        sources =
-          sources
-          |> Sources.preload_saved_searches(force: true)
-
-        socket
-        |> assign(sources: sources)
-        |> put_flash(:info, "Saved search deleted!")
-      else
-        nil ->
-          put_flash(socket, :error, "Saved search not found")
-
-        false ->
-          put_flash(socket, :error, "You don't have permission to delete this saved search")
-
-        _ ->
-          put_flash(socket, :error, "Something went wrong!")
-      end
-
-    {:noreply, socket}
-  end
-
   def handle_event("visibility_change", %{"visibility" => "hidden"}, socket) do
     %{user: user} = socket.assigns
 
-    Logflare.Sources.UserMetricsPoller.untrack(self(), user.id)
+    untrack_user_metrics(user.id)
     {:noreply, socket}
   end
 
   def handle_event("visibility_change", %{"visibility" => "visible"}, socket) do
     %{user: user} = socket.assigns
 
-    Logflare.Sources.UserMetricsPoller.track(self(), user.id)
+    track_user_metrics(user.id)
     {:noreply, socket}
+  end
+
+  def handle_event("create_home_team", _params, socket) do
+    %{team_user: team_user} = socket.assigns
+
+    case Users.create_user(team_user) do
+      {:ok, _user} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Home team created. Welcome to your new team!")
+         |> redirect(to: ~p"/dashboard")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not create home team.")}
+    end
+  end
+
+  @impl true
+  def handle_info({:set_flash, {type, message}}, socket) do
+    {:noreply, put_flash(socket, type, message)}
   end
 
   @impl true
@@ -162,17 +124,26 @@ defmodule LogflareWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
+    <%= if @show_modal do %>
+      {ModalLiveHelpers.live_modal(@modal.body.module_or_template,
+        id: @modal.body.id,
+        title: @modal.body.title,
+        params: @modal.params,
+        user: @user,
+        team: @team,
+        close: @modal.body[:close],
+        return_to: @modal.body.return_to
+      )}
+    <% end %>
     <div id="dashboard-container" phx-hook="DocumentVisibility">
-      <DashboardComponents.subhead user={@user} />
+      <DashboardComponents.subhead user={@user} team={@team} />
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
-            <DashboardComponents.saved_searches sources={@sources} />
-            <DashboardComponents.teams current_team={@team} home_team={@home_team} team_users={@team_users} />
-            <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
+            <DashboardComponents.members user={@user} team={@team} team_user={@team_user} can_create_home_team?={@can_create_home_team?} />
           </div>
           <div class="tw-col-span-7">
-            <.source_list sources={@sources} source_metrics={@source_metrics} plan={@plan} fade_in={@fade_in} />
+            <.source_list sources={@sources} source_metrics={@source_metrics} team={@team} plan={@plan} fade_in={@fade_in} />
           </div>
           <div class="tw-col-span-2">
             <DashboardComponents.integrations />
@@ -183,18 +154,24 @@ defmodule LogflareWeb.DashboardLive do
     """
   end
 
+  attr :sources, :list, required: true
+  attr :source_metrics, :map, required: true
+  attr :team, Teams.Team, required: true
+  attr :plan, :map, required: true
+  attr :fade_in, :boolean, default: false
+
   def source_list(assigns) do
     ~H"""
     <div id="source-list" phx-hook="FormatTimestamps">
       <div class="tw-mb-3 tw-flex tw-justify-end">
-        <.link href={~p"/query"} class="btn btn-primary btn-sm">
+        <.team_link team={@team} href={~p"/query"} class="btn btn-primary btn-sm">
           Run a query
-        </.link>
-        <.link href={~p"/sources/new"} class="btn btn-primary btn-sm">
+        </.team_link>
+        <.team_link team={@team} href={~p"/sources/new"} class="btn btn-primary btn-sm">
           New source
-        </.link>
+        </.team_link>
       </div>
-      <ul class="list-group">
+      <ul class="list-group" id="source-list-group" phx-hook="LiveTooltips">
         <%= if Enum.empty?(@sources) do %>
           <li class="list-group-item">You don't have any sources!</li>
           <li class="list-group-item">Sources are where your log events go.</li>
@@ -205,7 +182,7 @@ defmodule LogflareWeb.DashboardLive do
           <li :if={service_name == nil} class="list-group-item">
             <hr />
           </li>
-          <DashboardSourceComponents.source_item :for={source <- sources} source={source} plan={@plan} metrics={@source_metrics[to_string(source.token)][:metrics]} fade_in={@fade_in} />
+          <DashboardSourceComponents.source_item :for={source <- sources} source={source} plan={@plan} metrics={@source_metrics[to_string(source.token)][:metrics]} fade_in={@fade_in} team={@team} />
         <% end %>
       </ul>
     </div>
@@ -215,5 +192,13 @@ defmodule LogflareWeb.DashboardLive do
   # groups services by name, ungrouped sources last.
   defp grouped_sources(sources) do
     sources |> Enum.group_by(fn source -> source.service_name end) |> Enum.reverse()
+  end
+
+  defp track_user_metrics(user_id) do
+    UserMetricsPoller.track(self(), user_id)
+  end
+
+  defp untrack_user_metrics(user_id) do
+    UserMetricsPoller.untrack(self(), user_id)
   end
 end

@@ -3,19 +3,19 @@ defmodule LogflareWeb.QueryLive do
   use LogflareWeb, :live_view
   use Phoenix.Component
 
-  require Logger
-
-  alias Logflare.Endpoints
   alias Logflare.Alerting
-  alias Logflare.Users
   alias Logflare.Backends
+  alias Logflare.Endpoints
+  alias Logflare.Sources
+  alias Logflare.Sql
+  alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
 
   def render(assigns) do
     ~H"""
     <.subheader>
       <:path>
-        ~/<.subheader_path_link live_patch to={~p"/query"}>query</.subheader_path_link>
+        ~/<.subheader_path_link live_patch to={~p"/query"} team={@team}>query</.subheader_path_link>
       </:path>
     </.subheader>
 
@@ -93,8 +93,8 @@ defmodule LogflareWeb.QueryLive do
     <section :if={@query_result_rows} class="container mx-auto">
       <div class="tw-flex tw-justify-between tw-items-end">
         <h3>Query result</h3>
-        <div class="tw-mb-1">
-          <QueryComponents.query_cost bytes={@total_bytes_processed} />
+        <div :if={@total_bytes_processed} class="tw-mb-1">
+          <QueryComponents.query_cost :if={is_integer(@total_bytes_processed)} bytes={@total_bytes_processed} />
         </div>
       </div>
       <p :if={@query_result_rows == []}>
@@ -150,16 +150,15 @@ defmodule LogflareWeb.QueryLive do
     """
   end
 
-  def mount(%{}, %{"user_id" => user_id}, socket) do
-    user = Users.get(user_id)
+  def mount(%{}, _session, socket) do
+    %{assigns: %{user: user}} = socket
 
     endpoints = Endpoints.list_endpoints_by(user_id: user.id)
     alerts = Alerting.list_alert_queries_by_user_id(user.id)
 
     socket =
       socket
-      |> assign(:user_id, user_id)
-      |> assign(:user, user)
+      |> assign(:user_id, user.id)
       |> assign(:query_result_rows, nil)
       |> assign(:total_bytes_processed, nil)
       |> assign(:parse_error_message, nil)
@@ -181,6 +180,18 @@ defmodule LogflareWeb.QueryLive do
           formatted
       end
 
+    socket = maybe_assign_team_context(socket, params, q)
+
+    %{assigns: %{user: user}} = socket
+    endpoints = Endpoints.list_endpoints_by(user_id: user.id)
+    alerts = Alerting.list_alert_queries_by_user_id(user.id)
+
+    socket =
+      socket
+      |> assign(:user_id, user.id)
+      |> assign(:endpoints, endpoints)
+      |> assign(:alerts, alerts)
+
     query_string =
       if q != nil and socket.assigns.query_string == nil do
         q
@@ -193,6 +204,22 @@ defmodule LogflareWeb.QueryLive do
     end
 
     {:noreply, assign(socket, :query_string, query_string)}
+  end
+
+  defp maybe_assign_team_context(socket, %{"t" => _team_id}, _query), do: socket
+
+  defp maybe_assign_team_context(socket, _params, nil), do: socket
+
+  defp maybe_assign_team_context(socket, _params, query_string) do
+    effective_user = socket.assigns[:team_user] || socket.assigns.user
+
+    with {:ok, [source_name | _]} <- Sql.extract_table_names(query_string),
+         %Sources.Source{} = source <-
+           Sources.get_by_name_and_user_access(effective_user, source_name) do
+      AuthLive.assign_context_by_resource(socket, source, socket.assigns.user.email)
+    else
+      _ -> socket
+    end
   end
 
   def handle_info(:parse_query, socket) do
@@ -222,8 +249,11 @@ defmodule LogflareWeb.QueryLive do
   def handle_event(
         "run-query",
         _params,
-        %{assigns: %{user: user, query_string: query_string}} = socket
+        %{assigns: %{query_string: query_string}} = socket
       ) do
+    socket = maybe_assign_team_context(socket, %{}, query_string)
+    %{assigns: %{user: user}} = socket
+
     socket =
       run_query(socket, user, query_string)
       |> push_patch(to: ~p"/query?#{%{q: query_string}}")
@@ -266,7 +296,9 @@ defmodule LogflareWeb.QueryLive do
            params: %{},
            use_query_cache: false
          ) do
-      {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
+      {:ok, %{rows: rows} = result} ->
+        total_bytes_processed = Map.get(result, :total_bytes_processed)
+
         socket
         |> put_flash(:info, "Ran query successfully")
         |> assign(:query_result_rows, rows)
@@ -274,7 +306,7 @@ defmodule LogflareWeb.QueryLive do
 
       {:error, err} ->
         socket
-        |> put_flash(:error, "Error occured when running query: #{inspect(err)}")
+        |> put_flash(:error, "Error occurred when running query: #{inspect(err)}")
     end
   end
 end

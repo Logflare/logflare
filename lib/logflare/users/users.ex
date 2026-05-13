@@ -3,20 +3,23 @@ defmodule Logflare.Users do
 
   import Ecto.Query
 
+  alias Logflare.AccountEmail
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Endpoints
+  alias Logflare.Generators
   alias Logflare.Google.BigQuery
+  alias Logflare.Mailer
   alias Logflare.Repo
-  alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Sources.Source
-  alias Logflare.Backends
+  alias Logflare.Sources.Source.Supervisor
+  alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
-  alias Logflare.Users.{Cache, UserPreferences}
-  alias Logflare.Endpoints
-
-  require Logger
+  alias Logflare.Users.Cache
+  alias Logflare.Users.UserPreferences
 
   @max_limit 100
 
@@ -186,10 +189,15 @@ defmodule Logflare.Users do
   def get_related_user_id(map) do
     case map do
       %{user_id: user_id} -> %{user_id: user_id}
+      %{"user_id" => user_id} -> %{user_id: user_id}
       %{source_id: source_id} -> Sources.Cache.get_by_id(source_id)
+      %{"source_id" => source_id} -> Sources.Cache.get_by_id(source_id)
       %{source_token: token} -> Sources.Cache.get_source_by_token(token)
+      %{"source_token" => token} -> Sources.Cache.get_source_by_token(token)
       %{backend_id: backend_id} -> Backends.Cache.get_backend(backend_id)
+      %{"backend_id" => backend_id} -> Backends.Cache.get_backend(backend_id)
       %{endpoint_id: endpoint_id} -> Endpoints.Cache.get_endpoint_query(endpoint_id)
+      %{"endpoint_id" => endpoint_id} -> Endpoints.Cache.get_endpoint_query(endpoint_id)
       _ -> nil
     end
     |> case do
@@ -243,6 +251,44 @@ defmodule Logflare.Users do
     |> Repo.insert()
   end
 
+  @doc "create user from team user"
+  @spec create_user(TeamUser.t()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
+  def create_user(%TeamUser{} = team_user) do
+    auth_params =
+      Map.take(team_user, [
+        :email,
+        :provider,
+        :provider_uid,
+        :name,
+        :image,
+        :phone,
+        :email_preferred,
+        :valid_google_account
+      ])
+
+    Repo.transaction(fn ->
+      with {:ok, user} <- insert_user(auth_params),
+           {:ok, _team} <- Teams.create_team(user, %{name: Generators.team_name()}) do
+        user
+      else
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+    |> post_insert_user()
+  end
+
+  defp post_insert_user({:ok, user} = result) do
+    user
+    |> AccountEmail.welcome()
+    |> Mailer.deliver()
+
+    BigQueryAdaptor.update_iam_policy(user)
+    BigQueryAdaptor.patch_dataset_access(user)
+    result
+  end
+
+  defp post_insert_user(other), do: other
+
   def insert_or_update_user(auth_params)
       when not is_map_key(auth_params, :email) or not is_map_key(auth_params, :provider_uid) do
     {:error, "Missing email or provider_uid"}
@@ -258,6 +304,7 @@ defmodule Logflare.Users do
 
       true ->
         insert_user(auth_params)
+        |> post_insert_user()
     end
   end
 

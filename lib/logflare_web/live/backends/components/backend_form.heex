@@ -32,7 +32,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    {select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio, S3: :s3, Axiom: :axiom],
+    {select(f, :type, ["Select a backend type..." | @backend_types],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -101,7 +101,7 @@
             <%= label f_config, :pool_size do %>
               Connection pool size
             <% end %>
-            {text_input(f_config, :pool_size, class: "form-control", value: 1)}
+            {text_input(f_config, :pool_size, class: "form-control", value: input_value(f_config, "pool_size") || 1)}
           </div>
           <div class="form-group">
             <%= label f_config, :schema do %>
@@ -211,21 +211,50 @@
           </div>
           <div class="form-group">
             {label(f_config, :database, "Database Name")}
-            {text_input(f_config, :database, class: "form-control", value: "default")}
+            {text_input(f_config, :database, class: "form-control", value: input_value(f_config, "database") || "default")}
             <small class="form-text text-muted">
               The ClickHouse database name where events will be stored.
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :port, "Port")}
-            {text_input(f_config, :port, class: "form-control", value: 8443)}
+            {label(f_config, :insert_protocol, "Insert Protocol")}
+            {select(f_config, :insert_protocol, [{"HTTP", "http"}, {"Native (TCP)", "native"}],
+              class: "form-control form-control-margin",
+              id: "insert_protocol"
+            )}
+            <small class="form-text text-muted">
+              Protocol used for inserting data into ClickHouse.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :async_insert, "Async Inserts")}
+            {checkbox(f_config, :async_insert, id: "async_insert")}
+          </div>
+          <div class="form-group">
+            {label(f_config, :port, "HTTP Port")}
+            {text_input(f_config, :port, class: "form-control", value: input_value(f_config, "port") || 8443)}
             <small class="form-text text-muted">
               The port number for the ClickHouse server.
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :port, "Connection pool size")}
-            {text_input(f_config, :pool_size, class: "form-control", value: 1)}
+            {label(f_config, :native_port, "Native Port")}
+            {text_input(f_config, :native_port, class: "form-control", value: input_value(f_config, "native_port") || 9440)}
+          </div>
+          <div class="form-group">
+            {label(f_config, :pool_size, "HTTP Pool Size")}
+            {text_input(f_config, :pool_size, class: "form-control", value: input_value(f_config, "pool_size") || 20)}
+          </div>
+          <div class="form-group">
+            {label(f_config, :native_pool_size, "Native Pool Size")}
+            {text_input(f_config, :native_pool_size, class: "form-control", value: input_value(f_config, "native_pool_size") || 20)}
+          </div>
+          <div class="form-group">
+            {label(f_config, :read_only_url, "Read-Only URL (Optional)")}
+            {text_input(f_config, :read_only_url, class: "form-control")}
+            <small class="form-text text-muted">
+              Separate endpoint for read queries, for example: <code>https://read-warehouse.clickhouse.cloud:8443</code>
+            </small>
           </div>
         <% "incidentio" -> %>
           <div class="form-group">
@@ -317,6 +346,127 @@
             {text_input(f_config, :domain, class: "form-control", value: "api.axiom.co")}
             <small class="form-text text-muted">
               The regionalized Axiom domain, defaults to the domain for the US region
+            </small>
+          </div>
+        <% "otlp" -> %>
+          <div class="form-group">
+            {label(f_config, :endpoint, "Endpoint")}
+            {text_input(f_config, :endpoint, class: "form-control", value: "https://otlp-endpoint.com/v1/logs")}
+            <small class="form-text text-muted">
+              Address of the OTLP Endpoint
+            </small>
+          </div>
+          <% headers_number = 2
+          # TODO: Adjust number of entries dynamically
+          fields =
+            (input_value(f_config, :headers) || %{})
+            |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
+            |> Enum.take(headers_number) %>
+          <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
+            <div class="form-group">
+              {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
+              {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
+              {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
+              {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
+            </div>
+          <% end %>
+          <div class="form-group">
+            {label(f_config, :gzip, "Gzip")}
+            {checkbox(f_config, :gzip, id: "gzip")}
+            <small class="form-text text-muted">
+              Enable "gzip" compression in sent requests
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :protocol, "Protocol")}
+            {select(f_config, :protocol, Logflare.Backends.Adaptor.OtlpAdaptor.protocols(),
+              class: "form-control form-control-margin",
+              id: "otlp-protocol"
+            )}
+            <small class="form-text text-muted">
+              Transport protocol used for OTLP
+            </small>
+          </div>
+        <% "last9" -> %>
+          <div class="form-group">
+            {label(f_config, :username, "Otel integration Username")}
+            {text_input(f_config, :username, class: "form-control")}
+            {label(f_config, :password, "Otel integration Password")}
+            {text_input(f_config, :password, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Auth data obtained via <a href="https://app.last9.io/integrations?integration=OpenTelemetry">Last9 OTel integration panel</a>
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :region, "Region")}
+            {select(f_config, :region, Logflare.Backends.Adaptor.Last9Adaptor.regions(),
+              class: "form-control form-control-margin",
+              id: "last9-region"
+            )}
+            <small class="form-text text-muted">
+              Region of your cluster
+            </small>
+          </div>
+        <% "sentry" -> %>
+          <div class="form-group">
+            {label(f_config, :dsn, "DSN (Required)")}
+            {text_input(f_config, :dsn, class: "form-control")}
+            <small class="text-muted">
+              The DSN for Sentry SDK from the dashboard
+            </small>
+          </div>
+        <% "syslog" -> %>
+          <div class="form-group">
+            {label(f_config, :host, "Host (Required)")}
+            {text_input(f_config, :host, class: "form-control")}
+            <small class="text-muted">
+              The hostname or IP address of the syslog server.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :port, "Port (Required)")}
+            {number_input(f_config, :port, class: "form-control")}
+            <small class="text-muted">
+              It's usually 6514, but may vary based on your syslog server configuration.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :tls, "Use TLS?")}
+            {checkbox(f_config, :tls, id: "tls")}
+          </div>
+          <div class="form-group">
+            {label(f_config, :structured_data, "Structured Data (RFC5424)")}
+            {textarea(f_config, :structured_data, class: "form-control")}
+            <small class="text-muted">
+              Optional Structured Data element. Must match <a href="https://datatracker.ietf.org/doc/html/rfc5424#section-6.3" target="_blank">RFC5424</a> format, e.g. <code>[SD-ID key="value"]</code>
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :cipher_key, "Cipher Key (Base64-encoded)")}
+            {text_input(f_config, :cipher_key, class: "form-control")}
+            <small class="text-muted">
+              Optional cipher key for encrypting syslog messages. Must be a 32-byte key encoded in Base64.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :ca_cert, "CA Certificate (PEM)")}
+            {textarea(f_config, :ca_cert, class: "form-control")}
+            <small class="text-muted">
+              Optional custom CA certificate for verifying the syslog server's TLS certificate. Must be in PEM format. If not provided, system CAs will be used.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :client_cert, "Client Certificate (PEM)")}
+            {textarea(f_config, :client_cert, class: "form-control")}
+            <small class="text-muted">
+              Optional client certificate for mutual TLS authentication. Must be in PEM format.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :client_key, "Client Key (PEM)")}
+            {textarea(f_config, :client_key, class: "form-control")}
+            <small class="text-muted">
+              Optional client key for mutual TLS authentication. Must be in PEM format.
             </small>
           </div>
         <% _ -> %>

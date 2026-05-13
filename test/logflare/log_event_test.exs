@@ -6,7 +6,7 @@ defmodule Logflare.LogEventTest do
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
 
-  @subject Logflare.LogEvent
+  @subject LogEvent
 
   setup do
     user = insert(:user)
@@ -25,7 +25,7 @@ defmodule Logflare.LogEventTest do
              source_id: source_id,
              valid: true,
              pipeline_error: nil,
-             via_rule: nil
+             via_rule_id: nil
            } = LogEvent.make(@vallog_event_ids, %{source: source})
 
     assert id == body["id"]
@@ -33,7 +33,7 @@ defmodule Logflare.LogEventTest do
     assert source_id == source.id
   end
 
-  describe "make/2 transformations" do
+  describe "bigquery_spec" do
     test "dashes to underscores", %{source: source} do
       assert %LogEvent{
                body: %{
@@ -41,8 +41,30 @@ defmodule Logflare.LogEventTest do
                }
              } = LogEvent.make(%{"test-field" => 123}, %{source: source})
     end
+  end
 
-    test "field copying - nested", %{source: source} do
+  describe "copy_fields" do
+    test "nested", %{source: source} do
+      source =
+        %{
+          source
+          | transform_copy_fields: """
+              food:my.field
+            """
+        }
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{
+               body: %{
+                 "my" => %{
+                   "field" => 123
+                 },
+                 "food" => _
+               }
+             } = LogEvent.make(%{"food" => 123}, %{source: source})
+    end
+
+    test "works with unparsed fallback", %{source: source} do
       source = %{
         source
         | transform_copy_fields: """
@@ -60,13 +82,15 @@ defmodule Logflare.LogEventTest do
              } = LogEvent.make(%{"food" => 123}, %{source: source})
     end
 
-    test "field copying - top level", %{source: source} do
-      source = %{
-        source
-        | transform_copy_fields: """
-            food:field
-          """
-      }
+    test "top level", %{source: source} do
+      source =
+        %{
+          source
+          | transform_copy_fields: """
+              food:field
+            """
+        }
+        |> Source.parse_copy_fields_config()
 
       assert %LogEvent{
                body: %{
@@ -76,14 +100,16 @@ defmodule Logflare.LogEventTest do
              } = LogEvent.make(%{"food" => 123}, %{source: source})
     end
 
-    test "field copying - multiple", %{source: source} do
-      source = %{
-        source
-        | transform_copy_fields: """
-            food:field
-            field:123
-          """
-      }
+    test "multiple", %{source: source} do
+      source =
+        %{
+          source
+          | transform_copy_fields: """
+              food:field
+              field:123
+            """
+        }
+        |> Source.parse_copy_fields_config()
 
       assert %LogEvent{
                body: %{
@@ -94,31 +120,531 @@ defmodule Logflare.LogEventTest do
              } = LogEvent.make(%{"food" => 123}, %{source: source})
     end
 
-    test "field copying - dashes in field", %{source: source} do
-      source = %{
-        source
-        | transform_copy_fields: """
-            _my_food:field
-          """
-      }
+    test "dashes in field", %{source: source} do
+      source =
+        %{
+          source
+          | transform_copy_fields: """
+              _my_food:field
+            """
+        }
+        |> Source.parse_copy_fields_config()
 
       assert %LogEvent{body: body} = LogEvent.make(%{"my-food" => 123}, %{source: source})
       assert Map.drop(body, ["id", "timestamp"]) == %{"_my_food" => 123, "field" => 123}
     end
 
-    test "field copying - invalid instructions are ignored", %{source: source} do
-      source = %{
-        source
-        | transform_copy_fields: """
-            food field
-            food-field
-            foodfield
-            missing:field
-          """
-      }
+    test "whitespace-only config is a no-op", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "   \n\t\n   "}
+        |> Source.parse_copy_fields_config()
+
+      assert source.transform_copy_fields_parsed == []
 
       assert %LogEvent{body: body} = LogEvent.make(%{"food" => 123}, %{source: source})
       assert Map.drop(body, ["id", "timestamp"]) == %{"food" => 123}
+    end
+
+    test "invalid instructions are ignored", %{source: source} do
+      source =
+        %{
+          source
+          | transform_copy_fields: """
+              food field
+              food-field
+              foodfield
+              missing:field
+            """
+        }
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{body: body} = LogEvent.make(%{"food" => 123}, %{source: source})
+      assert Map.drop(body, ["id", "timestamp"]) == %{"food" => 123}
+    end
+
+    test "preserves existing sibling keys at nested destination", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "food:metadata.flat.field"}
+        |> Source.parse_copy_fields_config()
+
+      payload = %{
+        "food" => 123,
+        "metadata" => %{"flat" => %{"existing_sibling" => 1}, "other" => "kept"}
+      }
+
+      assert %LogEvent{body: body} = LogEvent.make(payload, %{source: source})
+
+      assert body["metadata"]["flat"]["field"] == 123
+      assert body["metadata"]["flat"]["existing_sibling"] == 1
+      assert body["metadata"]["other"] == "kept"
+    end
+
+    test "creates deeply nested intermediates when missing", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "food:a.b.c.d"}
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"food" => 123}, %{source: source})
+
+      assert body["a"]["b"]["c"]["d"] == 123
+    end
+
+    test "copies falsey-but-present source values", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "flag:dest"}
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"flag" => false}, %{source: source})
+
+      assert body["flag"] == false
+      assert body["dest"] == false
+    end
+  end
+
+  describe "kv_enrich" do
+    setup %{source: source, user: user} do
+      insert(:key_value,
+        user: user,
+        key: "123abc",
+        value: %{"org_id" => "456def", "name" => "Acme"}
+      )
+
+      insert(:key_value,
+        user: user,
+        key: "xyz789",
+        value: %{"result" => "enriched_val", "extra" => "data"}
+      )
+
+      insert(:key_value,
+        user: user,
+        key: "42",
+        value: %{"result" => "found_it"}
+      )
+
+      insert(:key_value,
+        user: user,
+        key: "nested_proj",
+        value: %{"org" => %{"id" => 123, "name" => "Acme"}, "role" => "admin"}
+      )
+
+      [source: source, user: user]
+    end
+
+    test "nil config is a no-op", %{source: source} do
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "abc"}, %{
+                 source: %{source | transform_key_values: nil, transform_key_values_parsed: nil}
+               })
+
+      assert body["project"] == "abc"
+      refute Map.has_key?(body, "enriched")
+    end
+
+    test "empty string config is a no-op", %{source: source} do
+      source = %{source | transform_key_values: "", transform_key_values_parsed: nil}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "abc"}, %{source: source})
+
+      assert body["project"] == "abc"
+    end
+
+    test "whitespace-only config is a no-op", %{source: source} do
+      source =
+        %{source | transform_key_values: "   \n\t\n   "}
+        |> Source.parse_key_values_config()
+
+      assert source.transform_key_values_parsed == []
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "abc"}, %{source: source})
+
+      assert body["project"] == "abc"
+    end
+
+    test "2-part pattern sets entire map at destination (pre-parsed)", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:enriched"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc"}, %{source: source})
+
+      assert body["enriched"] == %{"org_id" => "456def", "name" => "Acme"}
+    end
+
+    test "2-part pattern works with unparsed fallback", %{source: source} do
+      source = %{source | transform_key_values: "project:enriched"}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc"}, %{source: source})
+
+      assert body["enriched"] == %{"org_id" => "456def", "name" => "Acme"}
+    end
+
+    test "preserves existing sibling keys at nested destination", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:m.flat.lookup"}
+        |> Source.parse_key_values_config()
+
+      payload = %{
+        "project" => "123abc",
+        "metadata" => %{"flat" => %{"existing_sibling" => 1}, "other" => "kept"}
+      }
+
+      assert %LogEvent{body: body} = LogEvent.make(payload, %{source: source})
+
+      assert body["metadata"]["flat"]["lookup"] == %{"org_id" => "456def", "name" => "Acme"}
+      assert body["metadata"]["flat"]["existing_sibling"] == 1
+      assert body["metadata"]["other"] == "kept"
+    end
+
+    test "3-part pattern with dot syntax accessor", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:org_id:org_id"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc"}, %{source: source})
+
+      assert body["org_id"] == "456def"
+    end
+
+    test "3-part pattern with nested dot syntax accessor", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:m.org_id:org.id"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "nested_proj"}, %{source: source})
+
+      assert body["metadata"]["org_id"] == 123
+    end
+
+    test "3-part pattern with jsonpath accessor", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:m.org_name:$.org.name"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "nested_proj"}, %{source: source})
+
+      assert body["metadata"]["org_name"] == "Acme"
+    end
+
+    test "accessor path on missing nested key returns nil (no enrichment)", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:result:nonexistent.path"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc"}, %{source: source})
+
+      refute Map.has_key?(body, "result")
+    end
+
+    test "multiple rules with mixed accessor paths", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:org_id:org_id\ncode:extra:extra"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc", "code" => "xyz789"}, %{source: source})
+
+      assert body["org_id"] == "456def"
+      assert body["extra"] == "data"
+    end
+
+    test "no match leaves event unchanged", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:org_id:org_id"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "no_match"}, %{source: source})
+
+      refute Map.has_key?(body, "org_id")
+    end
+
+    test "nested source paths with m. shorthand", %{source: source} do
+      source =
+        %{source | transform_key_values: "m.project_id:m.org_id:org_id"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"metadata" => %{"project_id" => "123abc"}}, %{source: source})
+
+      assert body["metadata"]["org_id"] == "456def"
+    end
+
+    test "non-string field values are stringified for key lookup", %{source: source} do
+      source =
+        %{source | transform_key_values: "count:result:result"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"count" => 42}, %{source: source})
+
+      assert body["result"] == "found_it"
+    end
+  end
+
+  describe "drop_fields" do
+    test "nil config is a no-op", %{source: source} do
+      source = %{source | transform_drop_fields: nil}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"keep" => 1, "service" => "router"}, %{source: source})
+
+      assert body["keep"] == 1
+      assert body["service"] == "router"
+    end
+
+    test "drops a top-level field", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "service"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router", "keep" => 1}, %{source: source})
+
+      refute Map.has_key?(body, "service")
+      assert body["keep"] == 1
+    end
+
+    test "works with unparsed fallback", %{source: source} do
+      source = %{source | transform_drop_fields: "service"}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router", "keep" => 1}, %{source: source})
+
+      refute Map.has_key?(body, "service")
+      assert body["keep"] == 1
+    end
+
+    test "parsed virtual takes precedence over raw config string", %{source: source} do
+      source = %{
+        source
+        | transform_drop_fields: "noop",
+          transform_drop_fields_parsed: [["service"]]
+      }
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(
+                 %{"service" => "router", "noop" => 1, "keep" => 2},
+                 %{source: source}
+               )
+
+      refute Map.has_key?(body, "service")
+      assert body["noop"] == 1
+      assert body["keep"] == 2
+    end
+
+    test "drops a nested field via dot syntax", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "metadata.user.id"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(
+                 %{"metadata" => %{"user" => %{"id" => 42, "name" => "ada"}}},
+                 %{source: source}
+               )
+
+      assert body["metadata"]["user"] == %{"name" => "ada"}
+    end
+
+    test "m. shorthand resolves to metadata.", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "m.routing.region"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(
+                 %{"metadata" => %{"routing" => %{"region" => "us-east"}, "kept" => 1}},
+                 %{source: source}
+               )
+
+      refute get_in(body, ["metadata", "routing", "region"])
+      assert body["metadata"]["kept"] == 1
+    end
+
+    test "drops multiple fields", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "service\nnamespace\nm.routing.region"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(
+                 %{
+                   "service" => "router",
+                   "namespace" => "default",
+                   "metadata" => %{"routing" => %{"region" => "us-east"}},
+                   "keep" => 1
+                 },
+                 %{source: source}
+               )
+
+      refute Map.has_key?(body, "service")
+      refute Map.has_key?(body, "namespace")
+      refute get_in(body, ["metadata", "routing", "region"])
+      assert body["keep"] == 1
+    end
+
+    test "missing fields are a silent no-op", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "absent\nmetadata.also.absent"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"keep" => 1}, %{source: source})
+
+      assert body["keep"] == 1
+    end
+
+    test "blank and whitespace-only lines are ignored", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "\n  \nservice\n\n"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router", "keep" => 1}, %{source: source})
+
+      refute Map.has_key?(body, "service")
+      assert body["keep"] == 1
+    end
+
+    test "whitespace-only config is a no-op", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "   \n\t\n   "}
+        |> Source.parse_drop_fields_config()
+
+      assert source.transform_drop_fields_parsed == []
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router", "keep" => 1}, %{source: source})
+
+      assert body["service"] == "router"
+      assert body["keep"] == 1
+    end
+
+    test "non-map intermediate path is a silent no-op", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "service.region"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router"}, %{source: source})
+
+      assert body["service"] == "router"
+    end
+
+    test "reserved top-level fields are filtered at parse time", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "id\nevent_message\ntimestamp\nservice"}
+        |> Source.parse_drop_fields_config()
+
+      assert source.transform_drop_fields_parsed == [["service"]]
+    end
+
+    test "reserved field names under metadata are still droppable", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "metadata.id\nm.timestamp"}
+        |> Source.parse_drop_fields_config()
+
+      assert source.transform_drop_fields_parsed == [
+               ["metadata", "id"],
+               ["metadata", "timestamp"]
+             ]
+    end
+
+    test "runs after copy_fields so users can copy then drop the source", %{source: source} do
+      source =
+        %{
+          source
+          | transform_copy_fields: "service:m.routing.service",
+            transform_drop_fields: "service"
+        }
+        |> Source.parse_copy_fields_config()
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router"}, %{source: source})
+
+      refute Map.has_key?(body, "service")
+      assert body["metadata"]["routing"]["service"] == "router"
+    end
+
+    test "runs after kv_enrich so users can enrich then drop the source", %{
+      source: source,
+      user: user
+    } do
+      insert(:key_value, user: user, key: "router", value: %{"org_id" => "acme"})
+
+      source =
+        %{
+          source
+          | transform_key_values: "service:enriched",
+            transform_drop_fields: "service"
+        }
+        |> Source.parse_key_values_config()
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"service" => "router"}, %{source: source})
+
+      refute Map.has_key?(body, "service")
+      assert body["enriched"] == %{"org_id" => "acme"}
+    end
+
+    test "paths match post-bigquery_spec field names", %{source: source} do
+      source =
+        %{source | transform_drop_fields: "my-key"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"my-key" => 1, "keep" => 2}, %{source: source})
+
+      assert body["_my_key"] == 1
+      assert body["keep"] == 2
+
+      source =
+        %{source | transform_drop_fields: "_my_key"}
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"my-key" => 1, "keep" => 2}, %{source: source})
+
+      refute Map.has_key?(body, "_my_key")
+      assert body["keep"] == 2
+    end
+  end
+
+  describe "transform pipeline" do
+    test "runs all four stages in documented order", %{source: source, user: user} do
+      insert(:key_value, user: user, key: "router", value: %{"org_id" => "acme"})
+
+      source =
+        %{
+          source
+          | transform_copy_fields: "_my_key:metadata.original",
+            transform_key_values: "_my_key:enriched",
+            transform_drop_fields: "_my_key"
+        }
+        |> Source.parse_copy_fields_config()
+        |> Source.parse_key_values_config()
+        |> Source.parse_drop_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"my-key" => "router", "extra" => "data"}, %{source: source})
+
+      assert body["metadata"]["original"] == "router"
+      assert body["enriched"] == %{"org_id" => "acme"}
+      refute Map.has_key?(body, "_my_key")
+      refute Map.has_key?(body, "my-key")
+      assert body["extra"] == "data"
     end
   end
 
@@ -131,7 +657,7 @@ defmodule Logflare.LogEventTest do
              is_from_stale_query: nil,
              valid: true,
              pipeline_error: nil,
-             via_rule: nil
+             via_rule_id: nil
            } = LogEvent.make(%{"metadata" => "some string"}, %{source: source})
 
     assert id == body["id"]
@@ -191,6 +717,55 @@ defmodule Logflare.LogEventTest do
     assert le.body["event_message"] =~ "value"
     assert le.body["event_message"] =~ "some message"
     assert le.body["message"] == nil
+  end
+
+  describe "timestamp_inferred flag" do
+    test "is true when no timestamp is provided", %{source: source} do
+      le = LogEvent.make(%{"event_message" => "test"}, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is false when a valid ISO 8601 timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", "2024-01-01T00:00:00Z")
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == false
+    end
+
+    test "is true when an unparsable string timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", "not-a-timestamp")
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is false when a valid integer timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", 1_713_268_565_764_892)
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == false
+    end
+
+    test "is false when a valid float timestamp is provided", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", 1_713_268_565.5)
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == false
+    end
+
+    test "is true when timestamp is an unsupported type", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", [1, 2, 3])
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is true when timestamp is a negative integer", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", -1)
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
+
+    test "is true when timestamp is an empty string", %{source: source} do
+      params = Map.put(@vallog_event_ids, "timestamp", "")
+      le = LogEvent.make(params, %{source: source})
+      assert le.timestamp_inferred == true
+    end
   end
 
   describe "make_message/2" do

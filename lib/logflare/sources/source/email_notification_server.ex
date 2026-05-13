@@ -10,8 +10,6 @@ defmodule Logflare.Sources.Source.EmailNotificationServer do
   alias Logflare.TeamUsers
   alias Logflare.Users
 
-  require Logger
-
   def start_link(args) do
     source = Keyword.get(args, :source)
     GenServer.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__))

@@ -1,6 +1,8 @@
 defmodule LogflareWeb.UserControllerTest do
   use LogflareWeb.ConnCase
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Users
 
   setup do
@@ -12,6 +14,10 @@ defmodule LogflareWeb.UserControllerTest do
     setup do
       u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1", billing_enabled: true)
       u2 = insert(:user, bigquery_dataset_id: "test_dataset_id_2")
+      t1 = insert(:team, user: u1)
+      t2 = insert(:team, user: u2)
+      u1 = %{u1 | team: t1}
+      u2 = %{u2 | team: t2}
 
       {:ok, users: [u1, u2]}
     end
@@ -90,7 +96,7 @@ defmodule LogflareWeb.UserControllerTest do
       conn =
         conn
         |> recycle()
-        |> Plug.Test.init_test_session(%{user_id: u1.id})
+        |> Plug.Test.init_test_session(%{current_email: String.downcase(new_email)})
         |> get(~p"/account/edit")
 
       assert conn.assigns.user.email == String.downcase(new_email)
@@ -134,8 +140,7 @@ defmodule LogflareWeb.UserControllerTest do
         )
 
       TestUtils.retry_assert(fn ->
-        u_id = to_string(u1_id)
-        assert_received {{:user_id, :project_id}, {^u_id, ^bq_project_id}}
+        assert_received {{:user_id, :project_id}, {^u1_id, ^bq_project_id}}
       end)
 
       TestUtils.retry_assert(fn ->
@@ -165,6 +170,174 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn = delete(conn, ~p"/account")
       assert redirected_to(conn, 302) =~ ~p"/auth/login?user_deleted=true"
+    end
+  end
+
+  describe "UserController change_owner" do
+    test "owner cannot transfer ownership to team member from another team", %{conn: conn} do
+      owner_a = insert(:user)
+      _team_a = insert(:team, user: owner_a)
+
+      owner_b = insert(:user)
+      team_b = insert(:team, user: owner_b)
+      victim_team_user = insert(:team_user, team: team_b, email: "victim@example.com")
+
+      conn =
+        conn
+        |> login_user(owner_a)
+        |> put(~p"/account/edit/owner", %{"user" => %{"team_user_id" => victim_team_user.id}})
+
+      assert redirected_to(conn, 302) =~ "/account/edit"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "Not authorized to transfer ownership to this team member"
+
+      assert Logflare.TeamUsers.get_team_user!(victim_team_user.id)
+    end
+
+    test "owner can transfer ownership to their own team member", %{conn: conn} do
+      owner = insert(:user)
+      team = insert(:team, user: owner)
+      team_user = insert(:team_user, team: team, email: "member@example.com")
+
+      conn =
+        conn
+        |> login_user(owner)
+        |> put(~p"/account/edit/owner", %{"user" => %{"team_user_id" => team_user.id}})
+
+      assert redirected_to(conn, 302) =~ "/account/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Owner successfully changed!"
+      refute Logflare.TeamUsers.get_team_user(team_user.id)
+    end
+  end
+
+  describe "audit logging" do
+    setup do
+      u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1", billing_enabled: true)
+      t1 = insert(:team, user: u1)
+      u1 = %{u1 | team: t1}
+
+      {:ok, user: u1}
+    end
+
+    test "logs when user account is updated", %{conn: conn, user: user} do
+      reject(Users.Cache, :get_by, 1)
+
+      log =
+        capture_log([level: :info], fn ->
+          conn
+          |> login_user(user)
+          |> put(~p"/account/edit", %{"user" => %{"name" => "New Name"}})
+        end)
+
+      assert log =~ "user audit: user account updated"
+    end
+
+    test "logs BigQuery settings changes with before/after values", %{conn: conn, user: user} do
+      insert(:plan, name: "Lifetime")
+      insert(:billing_account, user: user, lifetime_plan: true)
+
+      expect(Logflare.Google.BigQuery, :create_dataset, fn _user_id,
+                                                           _dataset_id,
+                                                           _location,
+                                                           _project_id ->
+        {:ok, []}
+      end)
+
+      expect(Logflare.Sources.Source.Supervisor, :reset_all_user_sources, fn _user ->
+        :ok
+      end)
+
+      log =
+        capture_log([level: :info], fn ->
+          conn
+          |> login_user(user)
+          |> put(~p"/account/edit", %{
+            "user" => %{"bigquery_project_id" => "new-bq-project"}
+          })
+        end)
+
+      assert log =~ "user audit: BigQuery backend settings changed"
+    end
+
+    test "logs when BigQuery update is blocked for free plan", %{conn: conn, user: user} do
+      reject(Users.Cache, :get_by, 1)
+
+      log =
+        capture_log([level: :warning], fn ->
+          conn
+          |> login_user(user)
+          |> put(~p"/account/edit", %{
+            "user" => %{"bigquery_project_id" => "blocked-project"}
+          })
+        end)
+
+      assert log =~ "user audit: BigQuery backend update blocked for free plan"
+    end
+
+    test "logs when user account is deleted", %{conn: conn, user: user} do
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:ok, ""}
+        end
+      )
+
+      log =
+        capture_log([level: :info], fn ->
+          conn
+          |> login_user(user)
+          |> delete(~p"/account")
+        end)
+
+      assert log =~ "user audit: user account deletion requested"
+      assert log =~ "user audit: user account deleted"
+    end
+
+    test "logs when API key is reset", %{conn: conn, user: user} do
+      reject(Users.Cache, :get_by, 1)
+
+      log =
+        capture_log([level: :info], fn ->
+          conn
+          |> login_user(user)
+          |> get(~p"/account/edit/api-key")
+        end)
+
+      assert log =~ "user audit: API key reset"
+    end
+
+    test "logs unauthorized ownership transfer attempt", %{conn: conn, user: user} do
+      other_owner = insert(:user)
+      other_team = insert(:team, user: other_owner)
+      other_team_user = insert(:team_user, team: other_team, email: "other@example.com")
+
+      log =
+        capture_log([level: :warning], fn ->
+          conn
+          |> login_user(user)
+          |> put(~p"/account/edit/owner", %{
+            "user" => %{"team_user_id" => other_team_user.id}
+          })
+        end)
+
+      assert log =~ "user audit: unauthorized ownership transfer attempt"
+    end
+
+    test "logs successful ownership transfer", %{conn: conn, user: user} do
+      team_user = insert(:team_user, team: user.team, email: "member@example.com")
+
+      log =
+        capture_log([level: :info], fn ->
+          conn
+          |> login_user(user)
+          |> put(~p"/account/edit/owner", %{
+            "user" => %{"team_user_id" => team_user.id}
+          })
+        end)
+
+      assert log =~ "user audit: account ownership transferred"
     end
   end
 

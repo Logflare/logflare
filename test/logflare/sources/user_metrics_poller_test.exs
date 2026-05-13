@@ -1,6 +1,7 @@
 defmodule Logflare.Sources.UserMetricsPollerTest do
   use Logflare.DataCase, async: false
   alias Logflare.Sources.UserMetricsPoller
+  alias Logflare.Utils.Tasks
 
   def user_with_source(_) do
     _plan = insert(:plan)
@@ -17,7 +18,7 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
     Process.sleep(100)
 
     poller_pid =
-      case :syn.lookup(:core, {UserMetricsPoller, user.id}) do
+      case :syn.lookup(:ui, {UserMetricsPoller, user.id}) do
         {poller_pid, _} ->
           poller_pid
 
@@ -26,7 +27,7 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
       end
 
     on_exit(fn ->
-      Logflare.Utils.Tasks.kill_all_tasks()
+      Tasks.kill_all_tasks()
       ref = Process.monitor(poller_pid)
       Process.exit(poller_pid, :shutdown)
       Process.sleep(100)

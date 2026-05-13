@@ -5,23 +5,35 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   use GenServer
 
-  require Logger
-
-  alias Logflare.Alerting
   alias Logflare.Backends
+  alias Logflare.ContextCache
   alias Logflare.Rules
   alias Logflare.Utils
-  alias Logflare.ContextCache
+
+  @supervisor_name __MODULE__.Supervisor
+
+  @spec supervisor_spec() :: Supervisor.module_spec()
+  def supervisor_spec do
+    {PartitionSupervisor, child_spec: __MODULE__, name: @supervisor_name}
+  end
+
+  @spec cast_to_bust([{context, args}]) :: :ok when context: module(), args: term()
+  def cast_to_bust(records) do
+    GenServer.cast({:via, PartitionSupervisor, {@supervisor_name, records}}, {:to_bust, records})
+  end
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args)
   end
 
+  @impl true
   def init(state) do
     {:ok, state}
   end
 
+  @impl true
   def handle_cast({:to_bust, context_pkeys}, state) do
+    ContextCache.Gossip.record_tombstones(context_pkeys)
     ContextCache.bust_keys(context_pkeys)
 
     for record <- context_pkeys do
@@ -29,13 +41,6 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
     end
 
     {:noreply, state}
-  end
-
-  defp maybe_do_cross_cluster_syncing({Alerting, alert_id}) when is_integer(alert_id) do
-    # sync alert job
-    Utils.Tasks.start_child(fn ->
-      Alerting.sync_alert_job(alert_id)
-    end)
   end
 
   defp maybe_do_cross_cluster_syncing({Backends, backend_id})

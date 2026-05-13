@@ -2,7 +2,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @moduledoc """
   Backend adaptor for webhooks / HTTP posts.
 
-  A number of other adaptors (_ClickHouse, DataDog, Elastic, Loki, etc_) leverage this to handle the final HTTP transaction.
+  A number of other adaptors (_DataDog, Elastic, Loki, etc_) leverage this to handle the final HTTP transaction.
 
   ### Finch Pool Selection
 
@@ -15,14 +15,12 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   This adaptor performs a merge on config that will prevent you from leveraging a dynamically generated URL configuration at runtime.
   To bypass this behavior, you can use the optional `:url_override` attribute.
-
-  See the `Logflare.Backends.Adaptor.ClickhouseWebhookAdaptor` for an example that utilizes this.
   """
 
   use GenServer
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
+  alias Logflare.Backends.Backend
   alias Logflare.Utils
 
   @behaviour Logflare.Backends.Adaptor
@@ -45,8 +43,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def cast_config(params) do
-    {%{}, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
+  def cast_config(params, existing_config \\ %{}) do
+    {existing_config, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
     |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip])
     |> Logflare.Utils.default_field_value(:http, "http2")
     |> Logflare.Utils.default_field_value(:gzip, true)
@@ -74,9 +72,46 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     end)
   end
 
+  @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    test_connection(backend, [])
+  end
+
+  @doc """
+  Tests connectivity by sending a custom probe `body` to the configured URL.
+
+  Used by adaptors that wrap `WebhookAdaptor` (e.g. `LokiAdaptor`,
+  `IncidentioAdaptor`) to share HTTP plumbing while choosing a payload shape
+  the receiver will accept.
+  """
+  @spec test_connection(Backend.t(), term()) :: :ok | {:error, term()}
+  def test_connection(%Backend{config: config}, body) do
+    response =
+      __MODULE__.Client.send(
+        url: config.url,
+        body: body,
+        headers: Map.get(config, :headers, %{}),
+        http: Map.get(config, :http),
+        gzip: Map.get(config, :gzip, true)
+      )
+
+    case response do
+      {:ok, %Tesla.Env{status: status}} when status in 200..299 ->
+        :ok
+
+      {:ok, %Tesla.Env{status: status, body: resp_body}} ->
+        {:error, "Unexpected response: #{status} #{inspect(resp_body)}"}
+
+      {:error, reason} ->
+        {:error, "Request error: #{inspect(reason)}"}
+    end
+  end
+
   # HTTP Client
   defmodule Client do
     @moduledoc false
+    alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
     use Tesla, docs: false
 
     defguardp is_possible_pool(value)
@@ -108,7 +143,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           Tesla.Middleware.Telemetry,
           Tesla.Middleware.JSON,
           if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
-          {EgressMiddleware, metadata: opts[:metadata]}
+          EgressTracer
         ]
         |> Enum.filter(& &1),
         adaptor
@@ -153,7 +188,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           source_id: args.source.id,
           backend_id: Map.get(args.backend || %{}, :id),
           source_token: args.source.token,
-          backend_token: Map.get(args.backend || %{}, :token)
+          backend_token: Map.get(args.backend || %{}, :token),
+          user_id: args.source.user_id
         }
       )
     end
@@ -207,15 +243,18 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),
-        # metadata map will get set as OTEL attributes in EgressMiddleware
-        metadata:
-          %{
-            "source_id" => context[:source_id],
-            "source_uuid" => context[:source_token],
-            "backend_id" => context[:backend_id],
-            "backend_uuid" => context[:backend_token]
-          }
-          |> Map.merge(backend_meta),
+        opts: [
+          # metadata map will get set as OTEL attributes in EgressTracer
+          metadata:
+            %{
+              "source_id" => context[:source_id],
+              "source_uuid" => context[:source_token],
+              "backend_id" => context[:backend_id],
+              "backend_uuid" => context[:backend_token],
+              "user_id" => context[:user_id]
+            }
+            |> Map.merge(backend_meta)
+        ],
         http: config[:http]
       )
     end

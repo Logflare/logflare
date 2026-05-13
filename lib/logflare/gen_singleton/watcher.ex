@@ -38,19 +38,15 @@ defmodule Logflare.GenSingleton.Watcher do
 
   @impl true
   def init({sup_pid, args}) do
+    Process.send_after(self(), :maybe_start_child, startup_delay())
+
     {:ok,
      %{
        sup_pid: sup_pid,
        child_spec: args[:child_spec],
        monitor_ref: nil,
        monitor_pid: nil
-     }, {:continue, :maybe_start_child}}
-  end
-
-  @impl true
-  def handle_continue(:maybe_start_child, state) do
-    state = try_start_child(state)
-    {:noreply, state}
+     }}
   end
 
   @impl true
@@ -71,10 +67,7 @@ defmodule Logflare.GenSingleton.Watcher do
     )
 
     # delay check, but not all at the same time
-    delay =
-      if Application.get_env(:logflare, :env) == :test,
-        do: 100,
-        else: 3_000 + Enum.random(0..2_500)
+    delay = startup_delay()
 
     Process.send_after(self(), :maybe_start_child, delay)
     {:noreply, state}
@@ -131,5 +124,13 @@ defmodule Logflare.GenSingleton.Watcher do
   @impl true
   def terminate(_reason, _state) do
     :ok
+  end
+
+  defp startup_delay do
+    if Application.get_env(:logflare, :env) == :test do
+      0
+    else
+      :rand.uniform(10_000)
+    end
   end
 end

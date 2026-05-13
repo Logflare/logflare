@@ -9,16 +9,16 @@ defmodule LogflareWeb.BillingAccountLive.Edit do
 
   alias Logflare.{Users, Billing}
 
-  require Logger
+  on_mount {LogflareWeb.AuthLive, :default}
 
   @impl true
-  def mount(_params, %{"user_id" => user_id}, socket) do
+  def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Logflare.PubSub, "billing")
     end
 
     user =
-      Users.get(user_id)
+      socket.assigns.user
       |> Users.preload_sources()
       |> Users.preload_billing_account()
 

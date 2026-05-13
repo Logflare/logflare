@@ -8,6 +8,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
@@ -18,6 +19,8 @@ defmodule Logflare.Endpoints do
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sql
+  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Utils
@@ -25,7 +28,9 @@ defmodule Logflare.Endpoints do
   @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
 
   @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
-  @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
+  @typep run_query_return ::
+           {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
+           | {:error, String.t()}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
@@ -50,6 +55,30 @@ defmodule Logflare.Endpoints do
       end
     end)
     |> Repo.all()
+  end
+
+  @doc """
+  Lists all endpoints a user has access to, including where the user is a team member.
+  """
+  @spec list_endpoints_by_user_access(User.t()) :: [Query.t()]
+  def list_endpoints_by_user_access(%User{} = user) do
+    Query
+    |> Teams.filter_by_user_access(user)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets an endpoint query by id that the user has access to.
+  Returns the endpoint query if the user owns it or is a team member, otherwise returns nil.
+  """
+  @spec get_endpoint_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+          Query.t() | nil
+  def get_endpoint_query_by_user_access(user_or_team_user, id)
+      when is_integer(id) or is_binary(id) do
+    Query
+    |> Teams.filter_by_user_access(user_or_team_user)
+    |> where([query], query.id == ^id)
+    |> Repo.one()
   end
 
   @doc """
@@ -302,22 +331,33 @@ defmodule Logflare.Endpoints do
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
         %{endpoint_id: endpoint_query.id, language: query_language},
         fn ->
-          result =
-            exec_query_on_backend(
-              endpoint_query,
-              transformed_query,
-              declared_params,
-              params,
-              opts
-            )
+          exec_query_on_backend(
+            endpoint_query,
+            transformed_query,
+            declared_params,
+            params,
+            opts
+          )
+          |> then(fn
+            {:ok, data} = result ->
+              measurements = %{
+                total_bytes_processed: Map.get(data, :total_bytes_processed, 0)
+              }
 
-          total_rows =
-            case result do
-              {:ok, %{rows: rows}} -> length(rows)
-              _ -> 0
-            end
+              metadata =
+                Map.merge(endpoint_query.parsed_labels || %{}, %{
+                  "endpoint_id" => endpoint_query.id,
+                  "endpoint_uuid" => Utils.stringify(endpoint_query.token),
+                  "user_id" => endpoint_query.user_id
+                })
 
-          {result, %{total_rows: total_rows}}
+              :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)
+
+              {result, %{}}
+
+            result ->
+              {result, %{}}
+          end)
         end
       )
     end
@@ -349,7 +389,8 @@ defmodule Logflare.Endpoints do
       user_id: user.id,
       parsed_labels: Keyword.get(opts, :parsed_labels, %{}),
       source_mapping: source_mapping,
-      redact_pii: Keyword.get(opts, :redact_pii, false)
+      redact_pii: Keyword.get(opts, :redact_pii, false),
+      backend_id: Keyword.get(opts, :backend_id)
     }
 
     run_query(query, params, opts)
@@ -448,7 +489,7 @@ defmodule Logflare.Endpoints do
         ) :: {:ok, String.t() | nil} | {:error, String.t()}
   # no sql_param provided, but lql_param is present for SANDBOXED endpoint
   defp maybe_convert_lql_to_sql(lql_param, nil, expanded_query, language, true)
-       when is_non_empty_binary(lql_param) and language in [:bq_sql, :ch_sql] do
+       when is_non_empty_binary(lql_param) and language in [:bq_sql, :ch_sql, :pg_sql] do
     with {:ok, cte_names} <- Sql.extract_cte_aliases(expanded_query),
          {:ok, lql_rules} <- Lql.Parser.parse(lql_param),
          from_rule <- Rules.get_from_rule(lql_rules),
@@ -550,14 +591,9 @@ defmodule Logflare.Endpoints do
       redact_pii = Keyword.get(opts, :redact_pii, endpoint_query.redact_pii)
 
       case adaptor.execute_query(backend, query_args, opts) do
-        {:ok, rows} when is_list(rows) ->
+        {:ok, %QueryResult{rows: rows} = result} ->
           redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
-          {:ok, %{rows: redacted_rows}}
-
-        {:ok, %{rows: rows} = result} ->
-          # Pass through the full result map with all metadata, but redact PII in rows
-          redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
-          {:ok, %{result | rows: redacted_rows}}
+          {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}
 
         {:error, error} ->
           {:error, error}

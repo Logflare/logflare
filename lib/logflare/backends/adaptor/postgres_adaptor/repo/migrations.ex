@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations do
   alias Logflare.Sources.Source
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo, as: Repo
   alias Logflare.Backends.Adaptor.PostgresAdaptor, as: Adaptor
+  alias Ecto.Adapters.SQL
 
   @migrations [
     :create_table
@@ -47,6 +48,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations do
   end
 
   defp execute!(query) do
-    Ecto.Adapters.SQL.query!(Repo.get_dynamic_repo(), query)
+    SQL.query!(Repo.get_dynamic_repo(), query)
   end
 end

@@ -1,41 +1,6 @@
 defmodule LogflareWeb.Utils do
   @moduledoc false
 
-  alias Logflare.User
-
-  @doc """
-  Checks if a feature flag is enabled.
-  If SDK key is not set, will always return false.
-  In test mode, will always return true.
-
-  ### Example
-    iex> flag("my-feature")
-    true
-  """
-  def flag(feature, user \\ nil) when is_binary(feature) do
-    config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
-    env = Application.get_env(:logflare, :env)
-    overrides = Application.get_env(:logflare, :feature_flag_override, %{})
-
-    cond do
-      env == :test ->
-        true
-
-      config_cat_key != nil ->
-        case user do
-          nil ->
-            ConfigCat.get_value(feature, false)
-
-          %User{} ->
-            user_obj = ConfigCat.User.new(user.email)
-            ConfigCat.get_value(feature, false, user_obj)
-        end
-
-      true ->
-        Map.get(overrides, feature, "false") == "true"
-    end
-  end
-
   @doc """
   Converts changeset errors to a human-readable string format. There's an optional prefix message you can provide as the second argument.
 
@@ -162,9 +127,18 @@ defmodule LogflareWeb.Utils do
 
       replacement =
         case type do
-          "STRING" -> "'#{value}'"
-          num when num in ["INTEGER", "FLOAT"] -> inspect(value)
-          _ -> inspect(value)
+          "STRING" ->
+            escaped = value |> String.replace("\\", "\\\\") |> String.replace("'", "''")
+            "'#{escaped}'"
+
+          num when num in ["INTEGER", "FLOAT"] ->
+            inspect(value)
+
+          _ ->
+            escaped =
+              value |> to_string() |> String.replace("\\", "\\\\") |> String.replace("'", "''")
+
+            "'#{escaped}'"
         end
 
       String.replace(acc_sql, "?", replacement, global: false)
@@ -177,7 +151,7 @@ defmodule LogflareWeb.Utils do
         }) :: String.t()
   def replace_table_with_source_name(sql, %{bq_table_id: table_id, name: name})
       when is_binary(sql) and is_binary(table_id) and is_binary(name) do
-    quoted_name = "`#{name}`"
+    quoted_name = "`#{String.replace(name, "`", "\\`")}`"
 
     table_variants =
       [table_id, String.replace(table_id, "`", "")]
@@ -190,4 +164,60 @@ defmodule LogflareWeb.Utils do
   end
 
   def replace_table_with_source_name(sql, _source), do: sql
+
+  @doc """
+  Add a team_id param to a URI.
+  Team id can be passed as an integer, a conn with a team_id param, or nil (no team_id will be set)
+  An existing team_id param will be overwritten.
+
+  Use team_link/1 in HEEx templates.
+
+  ## Examples
+
+      iex> with_team_param("/dashboard", 123)
+      "/dashboard?t=123"
+
+      iex> with_team_param("/dashboard?t=999", 123)
+      "/dashboard?t=123"
+
+      iex> team = %Logflare.Teams.Team{id: 123}
+      iex> with_team_param("/dashboard", team)
+      "/dashboard?t=123"
+
+      iex> with_team_param("/dashboard", nil)
+      "/dashboard"
+
+      iex> with_team_param("/dashboard", nil)
+      "/dashboard"
+
+  """
+  @spec with_team_param(String.t(), nil | integer() | Phoenix.Param.t()) :: String.t()
+  def with_team_param(uri, nil), do: uri
+
+  def with_team_param(uri, team) when is_struct(team),
+    do: with_team_param(uri, Phoenix.Param.to_param(team))
+
+  def with_team_param(uri, team_id) when is_binary(team_id) do
+    case Integer.parse(team_id) do
+      {int_team_id, ""} -> with_team_param(uri, int_team_id)
+      _ -> uri
+    end
+  end
+
+  def with_team_param(uri, team_id) when is_integer(team_id) do
+    uri
+    |> URI.parse()
+    |> set_team_id_param(team_id)
+  end
+
+  defp set_team_id_param(uri, team_id) do
+    query_params =
+      (uri.query || "")
+      |> URI.decode_query()
+      |> Map.put("t", team_id)
+      |> URI.encode_query()
+
+    %{uri | query: query_params}
+    |> URI.to_string()
+  end
 end

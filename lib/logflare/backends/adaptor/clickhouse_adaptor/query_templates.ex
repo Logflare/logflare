@@ -1,17 +1,62 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   @moduledoc """
-  Common query templates utilized by the `ClickhouseAdaptor`.
+  Common query templates utilized by the `ClickHouseAdaptor`.
   """
 
   import Logflare.Utils.Guards
 
+  alias Logflare.LogEvent.TypeDetection
+
   @default_table_engine Application.compile_env(:logflare, :clickhouse_backend_adaptor)[:engine]
-  @default_ttl_days 5
+  @default_ttl_days 90
+
+  # When true, applies cloud settings to all table types (logs, metrics, traces).
+  # When false, only applies to *otel_logs* table.
+  @apply_cloud_settings_to_all_tables false
+
+  @base_settings "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
+
+  @cloud_settings [
+    "shared_merge_tree_max_replicas_to_merge_parts_for_each_parts_range = 0",
+    "shared_merge_tree_activate_coordinated_merges_tasks = 1",
+    "shared_merge_tree_enable_coordinated_merges = 1",
+    "shared_merge_tree_enable_keeper_parts_extra_data = 1",
+    "shared_merge_tree_merge_coordinator_merges_prepare_count = 1200",
+    "shared_merge_tree_merge_coordinator_max_merge_request_size = 500",
+    "shared_merge_tree_merge_coordinator_fetch_fresh_metadata_period_ms = 5000",
+    "shared_merge_tree_merge_coordinator_max_period_ms = 5000",
+    "min_bytes_for_full_part_storage = 2147483648"
+  ]
+
+  @log_columns ~w(id source_uuid source_name project trace_id span_id trace_flags
+    severity_text severity_number service_name event_message scope_name scope_version
+    scope_schema_url resource_schema_url resource_attributes scope_attributes
+    log_attributes mapping_config_id ingested_at timestamp)
+
+  @metric_columns ~w(id source_uuid source_name project time_unix start_time_unix
+    metric_name metric_description metric_unit metric_type service_name event_message
+    scope_name scope_version scope_schema_url resource_schema_url resource_attributes
+    scope_attributes attributes aggregation_temporality is_monotonic flags value count
+    sum min max scale zero_count positive_offset negative_offset
+    bucket_counts explicit_bounds positive_bucket_counts negative_bucket_counts
+    quantile_values quantiles exemplars.filtered_attributes exemplars.time_unix
+    exemplars.value exemplars.span_id exemplars.trace_id
+    mapping_config_id ingested_at timestamp)
+
+  @trace_columns ~w(id source_uuid source_name project trace_id span_id
+    parent_span_id trace_state span_name span_kind service_name event_message duration
+    status_code status_message scope_name scope_version resource_attributes span_attributes
+    events.timestamp events.name events.attributes
+    links.trace_id links.span_id links.trace_state links.attributes
+    mapping_config_id ingested_at timestamp)
 
   @doc """
-  Default naming prefix for the log ingest table.
+  Returns the column names for a given event type.
   """
-  def default_table_name_prefix, do: "ingest_logs"
+  @spec columns_for_type(TypeDetection.event_type()) :: [String.t()]
+  def columns_for_type(:log), do: @log_columns
+  def columns_for_type(:metric), do: @metric_columns
+  def columns_for_type(:trace), do: @trace_columns
 
   @doc """
   Generates a ClickHouse query statement to check that the user GRANTs include the needed permissions.
@@ -41,18 +86,231 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   end
 
   @doc """
-  Generates a ClickHouse query statement to provision an ingest table for logs.
+  Generates a `CHECK GRANT` statement for read-only permissions (`SELECT` only).
 
-  ###Options
+  Used to validate read-only cluster connectivity when a separate `read_only_url` is configured.
 
-  - `:database` - (Optional) Will produce a fully qualified `<database>.<table>` string when provided with a value. Defaults to `nil`.
-  - `:engine` - (Optional) ClickHouse table engine. Defaults to `"MergeTree"`. Default can be adjusted in `/config/*.exs`.
-  - `:ttl_days` - (Optional) Will add a TTL statement to the table creation query. Defaults to `5`. `nil` will disable the TTL.
+  ## Options
+
+  - `:database` - (Optional) Will produce a fully qualified `<database>.*` string when provided with a value. Defaults to `nil`.
 
   """
-  @spec create_log_ingest_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
-  def create_log_ingest_table_statement(table, opts \\ [])
+  @spec read_grant_check_statement(opts :: Keyword.t()) :: String.t()
+  def read_grant_check_statement(opts \\ []) when is_list(opts) do
+    database = Keyword.get(opts, :database, nil)
+
+    grant_target_string =
+      if is_non_empty_binary(database) do
+        "#{database}.*"
+      else
+        "*"
+      end
+
+    "CHECK GRANT SELECT ON #{grant_target_string}"
+  end
+
+  @doc """
+  Dispatches to the correct type-specific DDL function based on `event_type`.
+  """
+  @spec create_table_statement(
+          table :: String.t(),
+          event_type :: TypeDetection.event_type(),
+          opts :: Keyword.t()
+        ) :: String.t()
+  def create_table_statement(table, :log, opts),
+    do: create_logs_table_statement(table, opts)
+
+  def create_table_statement(table, :metric, opts),
+    do: create_metrics_table_statement(table, opts)
+
+  def create_table_statement(table, :trace, opts),
+    do: create_traces_table_statement(table, opts)
+
+  @doc """
+  Generates a ClickHouse DDL statement for an OTEL logs table.
+  """
+  @spec create_logs_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
+  def create_logs_table_statement(table, opts \\ [])
       when is_non_empty_binary(table) and is_list(opts) do
+    {db_table, engine, ttl_days} = extract_opts(table, opts)
+
+    Enum.join([
+      """
+      CREATE TABLE IF NOT EXISTS #{db_table} (
+        `id` UUID,
+        `source_uuid` LowCardinality(String) CODEC(ZSTD(1)),
+        `source_name` LowCardinality(String) CODEC(ZSTD(1)),
+        `project` String CODEC(ZSTD(1)),
+        `trace_id` String CODEC(ZSTD(1)),
+        `span_id` String CODEC(ZSTD(1)),
+        `trace_flags` UInt8,
+        `severity_text` LowCardinality(String) CODEC(ZSTD(1)),
+        `severity_number` UInt8,
+        `service_name` LowCardinality(String) CODEC(ZSTD(1)),
+        `event_message` String CODEC(ZSTD(1)),
+        `scope_name` String CODEC(ZSTD(1)),
+        `scope_version` LowCardinality(String) CODEC(ZSTD(1)),
+        `scope_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
+        `resource_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
+        `resource_attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        `scope_attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        `log_attributes` Map(String, String) CODEC(ZSTD(1)),
+        `mapping_config_id` UUID,
+        `ingested_at` Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
+        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        `timestamp_time` DateTime DEFAULT toDateTime(timestamp),
+        INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_source_name source_name TYPE bloom_filter(0.01) GRANULARITY 1
+      )
+      ENGINE = #{engine}
+      PARTITION BY toDate(timestamp)
+      PRIMARY KEY (project, source_name, toDateTime(timestamp))
+      ORDER BY (project, source_name, toDateTime(timestamp), timestamp)
+      """,
+      if is_pos_integer(ttl_days) do
+        "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
+      end,
+      build_settings_string(opts)
+    ])
+    |> String.trim_trailing("\n")
+  end
+
+  @doc """
+  Generates a ClickHouse DDL statement for an OTEL metrics table.
+  """
+  @spec create_metrics_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
+  def create_metrics_table_statement(table, opts \\ [])
+      when is_non_empty_binary(table) and is_list(opts) do
+    {db_table, engine, ttl_days} = extract_opts(table, opts)
+
+    Enum.join([
+      """
+      CREATE TABLE IF NOT EXISTS #{db_table} (
+        `id` UUID,
+        `source_uuid` LowCardinality(String) CODEC(ZSTD(1)),
+        `source_name` LowCardinality(String) CODEC(ZSTD(1)),
+        `project` String CODEC(ZSTD(1)),
+        `time_unix` Nullable(DateTime64(9)) CODEC(Delta(8), ZSTD(1)),
+        `start_time_unix` Nullable(DateTime64(9)) CODEC(Delta(8), ZSTD(1)),
+        `metric_name` LowCardinality(String) CODEC(ZSTD(1)),
+        `metric_description` String CODEC(ZSTD(1)),
+        `metric_unit` LowCardinality(String) CODEC(ZSTD(1)),
+        `metric_type` Enum8('gauge' = 1, 'sum' = 2, 'histogram' = 3, 'exponential_histogram' = 4, 'summary' = 5),
+        `service_name` LowCardinality(String) CODEC(ZSTD(1)),
+        `event_message` String CODEC(ZSTD(1)),
+        `scope_name` String CODEC(ZSTD(1)),
+        `scope_version` LowCardinality(String) CODEC(ZSTD(1)),
+        `scope_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
+        `resource_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
+        `resource_attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        `scope_attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        `attributes` Map(String, String) CODEC(ZSTD(1)),
+        `aggregation_temporality` LowCardinality(String) CODEC(ZSTD(1)),
+        `is_monotonic` Bool,
+        `flags` UInt32 CODEC(ZSTD(1)),
+        `value` Float64 CODEC(ZSTD(1)),
+        `count` UInt64 CODEC(ZSTD(1)),
+        `sum` Float64 CODEC(ZSTD(1)),
+        `bucket_counts` Array(UInt64) CODEC(ZSTD(1)),
+        `explicit_bounds` Array(Float64) CODEC(ZSTD(1)),
+        `min` Float64 CODEC(ZSTD(1)),
+        `max` Float64 CODEC(ZSTD(1)),
+        `scale` Int32 CODEC(ZSTD(1)),
+        `zero_count` UInt64 CODEC(ZSTD(1)),
+        `positive_offset` Int32 CODEC(ZSTD(1)),
+        `positive_bucket_counts` Array(UInt64) CODEC(ZSTD(1)),
+        `negative_offset` Int32 CODEC(ZSTD(1)),
+        `negative_bucket_counts` Array(UInt64) CODEC(ZSTD(1)),
+        `quantile_values` Array(Float64) CODEC(ZSTD(1)),
+        `quantiles` Array(Float64) CODEC(ZSTD(1)),
+        `exemplars.filtered_attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
+        `exemplars.time_unix` Array(DateTime64(9)) CODEC(ZSTD(1)),
+        `exemplars.value` Array(Float64) CODEC(ZSTD(1)),
+        `exemplars.span_id` Array(String) CODEC(ZSTD(1)),
+        `exemplars.trace_id` Array(String) CODEC(ZSTD(1)),
+        `mapping_config_id` UUID,
+        `ingested_at` Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
+        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        INDEX idx_source_name source_name TYPE bloom_filter(0.01) GRANULARITY 1
+      )
+      ENGINE = #{engine}
+      PARTITION BY toDate(timestamp)
+      PRIMARY KEY (project, source_name, toDateTime(timestamp))
+      ORDER BY (project, source_name, toDateTime(timestamp), timestamp)
+      """,
+      if is_pos_integer(ttl_days) do
+        "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
+      end,
+      build_settings_string(opts)
+    ])
+    |> String.trim_trailing("\n")
+  end
+
+  @doc """
+  Generates a ClickHouse DDL statement for an OTEL traces table.
+  """
+  @spec create_traces_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
+  def create_traces_table_statement(table, opts \\ [])
+      when is_non_empty_binary(table) and is_list(opts) do
+    {db_table, engine, ttl_days} = extract_opts(table, opts)
+
+    Enum.join([
+      """
+      CREATE TABLE IF NOT EXISTS #{db_table} (
+        `id` UUID,
+        `source_uuid` LowCardinality(String) CODEC(ZSTD(1)),
+        `source_name` LowCardinality(String) CODEC(ZSTD(1)),
+        `project` String CODEC(ZSTD(1)),
+        `trace_id` String CODEC(ZSTD(1)),
+        `span_id` String CODEC(ZSTD(1)),
+        `parent_span_id` String CODEC(ZSTD(1)),
+        `trace_state` String CODEC(ZSTD(1)),
+        `span_name` LowCardinality(String) CODEC(ZSTD(1)),
+        `span_kind` LowCardinality(String) CODEC(ZSTD(1)),
+        `service_name` LowCardinality(String) CODEC(ZSTD(1)),
+        `event_message` String CODEC(ZSTD(1)),
+        `duration` UInt64 CODEC(ZSTD(1)),
+        `status_code` LowCardinality(String) CODEC(ZSTD(1)),
+        `status_message` String CODEC(ZSTD(1)),
+        `scope_name` String CODEC(ZSTD(1)),
+        `scope_version` String CODEC(ZSTD(1)),
+        `resource_attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        `span_attributes` Map(String, String) CODEC(ZSTD(1)),
+        `events.timestamp` Array(DateTime64(9)) CODEC(ZSTD(1)),
+        `events.name` Array(LowCardinality(String)) CODEC(ZSTD(1)),
+        `events.attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
+        `Events.Timestamp` Array(DateTime64(9)) ALIAS `events.timestamp`,
+        `Events.Name` Array(LowCardinality(String)) ALIAS `events.name`,
+        `Events.Attributes` Array(Map(LowCardinality(String), String)) ALIAS `events.attributes`,
+        `links.trace_id` Array(String) CODEC(ZSTD(1)),
+        `links.span_id` Array(String) CODEC(ZSTD(1)),
+        `links.trace_state` Array(String) CODEC(ZSTD(1)),
+        `links.attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
+        `mapping_config_id` UUID,
+        `ingested_at` Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
+        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_duration duration TYPE minmax GRANULARITY 1,
+        INDEX idx_source_name source_name TYPE bloom_filter(0.01) GRANULARITY 1
+      )
+      ENGINE = #{engine}
+      PARTITION BY toDate(timestamp)
+      PRIMARY KEY (project, source_name, toDateTime(timestamp))
+      ORDER BY (project, source_name, toDateTime(timestamp), timestamp)
+      """,
+      if is_pos_integer(ttl_days) do
+        "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
+      end,
+      build_settings_string(opts)
+    ])
+    |> String.trim_trailing("\n")
+  end
+
+  @spec apply_cloud_settings_to_all_tables?() :: boolean()
+  def apply_cloud_settings_to_all_tables?, do: @apply_cloud_settings_to_all_tables
+
+  @spec extract_opts(String.t(), Keyword.t()) :: {String.t(), String.t(), pos_integer() | nil}
+  defp extract_opts(table, opts) when is_non_empty_binary(table) and is_list(opts) do
     database = Keyword.get(opts, :database)
     engine = Keyword.get(opts, :engine, @default_table_engine)
     ttl_days_temp = Keyword.get(opts, :ttl_days, @default_ttl_days)
@@ -62,31 +320,24 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
         ttl_days_temp
       end
 
-    db_table_string =
+    db_table =
       if is_non_empty_binary(database) do
         "#{database}.#{table}"
       else
         "#{table}"
       end
 
-    Enum.join([
-      """
-      CREATE TABLE IF NOT EXISTS #{db_table_string} (
-        `id` UUID,
-        `body` String,
-        `timestamp` DateTime64(6)
-      )
-      ENGINE = #{engine}
-      PARTITION BY toYYYYMMDD(timestamp)
-      ORDER BY (timestamp)
-      """,
-      if is_pos_integer(ttl_days) do
-        """
-        TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY
-        """
-      end,
-      "SETTINGS index_granularity = 8192 SETTINGS flatten_nested=0"
-    ])
-    |> String.trim_trailing("\n")
+    {db_table, engine, ttl_days}
+  end
+
+  @spec build_settings_string(Keyword.t()) :: String.t()
+  defp build_settings_string(opts) when is_list(opts) do
+    cloud? = Keyword.get(opts, :clickhouse_cloud, false)
+
+    if cloud? do
+      @base_settings <> ", " <> Enum.join(@cloud_settings, ", ")
+    else
+      @base_settings
+    end
   end
 end

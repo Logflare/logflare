@@ -5,25 +5,29 @@ defmodule Logflare.Alerting do
 
   import Ecto.Query, warn: false
 
+  alias Crontab.CronExpression.Parser, as: CronParser
+  alias Crontab.Scheduler, as: CronScheduler
   alias Logflare.Alerting.AlertQuery
-  alias Logflare.Alerting.AlertsScheduler
+  alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Cluster
   alias Logflare.Endpoints
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Repo
+  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
-  alias Logflare.Utils
 
   require Logger
   require OpenTelemetry.Tracer
 
-  def to_job_name(%AlertQuery{id: id}), do: to_job_name(id)
-  def to_job_name(id) when is_integer(id), do: String.to_atom(Integer.to_string(id))
+  @future_job_states ~w(available scheduled executing)
 
   @doc """
   Returns the list of alert_queries.
@@ -45,6 +49,26 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
+  Lists all alert queries across all users.
+  Used by the scheduler worker to enqueue jobs.
+  """
+  @spec list_all_alert_queries() :: [AlertQuery.t()]
+  def list_all_alert_queries do
+    from(q in AlertQuery, where: q.enabled == true)
+    |> Repo.all()
+  end
+
+  @doc """
+  Lists all alert queries a user has access to, including where the user is a team member.
+  """
+  @spec list_alert_queries_user_access(User.t()) :: [AlertQuery.t()]
+  def list_alert_queries_user_access(%User{} = user) do
+    AlertQuery
+    |> Teams.filter_by_user_access(user)
+    |> Repo.all()
+  end
+
+  @doc """
   Gets a single alert_query.
 
   Raises `Ecto.NoResultsError` if the Alert query does not exist.
@@ -62,6 +86,20 @@ defmodule Logflare.Alerting do
 
   def get_alert_query_by(kw) do
     Repo.get_by(AlertQuery, kw)
+  end
+
+  @doc """
+  Gets an alert query by id that the user has access to.
+  Returns the alert query if the user owns it or is a team member, otherwise returns nil.
+  """
+  @spec get_alert_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+          AlertQuery.t() | nil
+  def get_alert_query_by_user_access(user_or_team_user, id)
+      when is_integer(id) or is_binary(id) do
+    AlertQuery
+    |> Teams.filter_by_user_access(user_or_team_user)
+    |> where([alert_query], alert_query.id == ^id)
+    |> Repo.one()
   end
 
   def preload_alert_query(alert) do
@@ -118,7 +156,30 @@ defmodule Logflare.Alerting do
         changeset
     end)
     |> Repo.update()
+    |> handle_schedule_change(alert_query)
   end
+
+  defp handle_schedule_change({:ok, %AlertQuery{} = updated} = result, previous) do
+    cond do
+      updated.enabled != previous.enabled ->
+        if updated.enabled do
+          schedule_alert(updated)
+        else
+          delete_future_alert_jobs(updated.id)
+        end
+
+      updated.enabled and updated.cron != previous.cron ->
+        delete_future_alert_jobs(updated.id)
+        schedule_alert(updated)
+
+      true ->
+        :noop
+    end
+
+    result
+  end
+
+  defp handle_schedule_change(error, _previous), do: error
 
   @doc """
   Deletes a alert_query.
@@ -132,13 +193,59 @@ defmodule Logflare.Alerting do
       {:error, %Ecto.Changeset{}}
 
   """
-  def delete_alert_query(%AlertQuery{} = alert_query) do
-    with {:ok, _} <- Repo.delete(alert_query),
-         {:ok, _job} <- delete_alert_job(alert_query) do
-      {:ok, alert_query}
-    else
-      {:error, :not_found} -> {:ok, alert_query}
+  @spec delete_alert_query(AlertQuery.t()) :: {:ok, AlertQuery.t()} | {:error, Ecto.Changeset.t()}
+  def delete_alert_query(%AlertQuery{id: id} = alert_query) do
+    delete_alert_jobs(id)
+    Repo.delete(alert_query)
+  end
+
+  defp delete_alert_jobs(alert_query_id) do
+    from(j in Oban.Job,
+      where: j.worker == "Logflare.Alerting.AlertWorker",
+      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id))
+    )
+    |> Repo.delete_all()
+  end
+
+  @doc """
+  Deletes future (available/scheduled/executing) jobs for an alert query.
+  """
+  @spec delete_future_alert_jobs(integer()) :: {non_neg_integer(), nil | [term()]}
+  def delete_future_alert_jobs(alert_query_id) do
+    from(j in Oban.Job,
+      where: j.worker == "Logflare.Alerting.AlertWorker",
+      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+      where: j.state in @future_job_states
+    )
+    |> Repo.delete_all()
+  end
+
+  @doc """
+  Schedules the next 5 runs for an alert query based on its cron expression.
+  Inserts AlertWorker jobs into Oban.
+  """
+  @spec schedule_alert(AlertQuery.t()) :: :ok
+  def schedule_alert(%AlertQuery{} = alert_query) do
+    case CronParser.parse(alert_query.cron) do
+      {:ok, cron_expr} ->
+        now = NaiveDateTime.utc_now()
+
+        cron_expr
+        |> CronScheduler.get_next_run_dates(now)
+        |> Enum.take(5)
+        |> Enum.each(fn run_date ->
+          scheduled_at = DateTime.from_naive!(run_date, "Etc/UTC")
+
+          %{alert_query_id: alert_query.id, scheduled_at: DateTime.to_iso8601(scheduled_at)}
+          |> AlertWorker.new(scheduled_at: scheduled_at)
+          |> Oban.insert()
+        end)
+
+      {:error, reason} ->
+        Logger.warning("Invalid cron expression for alert #{alert_query.id}: #{inspect(reason)}")
     end
+
+    :ok
   end
 
   @doc """
@@ -156,124 +263,39 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
-  Retrieves a Job based on AlertQuery.
-  Job shares the same id as AlertQuery, resulting in a 1-1 relationship.
-  """
-  @spec get_alert_job(AlertQuery.t()) :: Quantum.Job.t()
-  def get_alert_job(%AlertQuery{id: id}), do: get_alert_job(id)
-
-  def get_alert_job(id) do
-    on_scheduler_node(fn ->
-      AlertsScheduler.find_job(to_job_name(id))
-    end)
-  end
-
-  @doc """
-  Updates or creates a new Quantum.Job based on a given AlertQuery.
-  """
-  @spec upsert_alert_job(AlertQuery.t()) :: {:ok, Quantum.Job.t()}
-  def upsert_alert_job(%AlertQuery{} = alert_query) do
-    job = create_alert_job_struct(alert_query)
-    :ok = on_scheduler_node(fn -> AlertsScheduler.add_job(job) end)
-    {:ok, job}
-  end
-
-  @doc """
-  Creates an alert job struct (but does not insert it into the scheduler.)
-  """
-  @spec create_alert_job_struct(AlertQuery.t()) :: Quantum.Job.t()
-  def create_alert_job_struct(%AlertQuery{} = alert_query) do
-    AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
-    |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query, :scheduled]})
-    |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
-    |> Quantum.Job.set_name(to_job_name(alert_query))
-  end
-
-  @doc """
-  Initializes and ensures that all alert jobs are created.
-  TODO: batching instead of loading whole table.
-  """
-  def init_alert_jobs do
-    AlertQuery
-    |> Repo.all()
-    |> Enum.map(fn alert_query ->
-      create_alert_job_struct(alert_query)
-    end)
-  end
-
-  def sync_alert_jobs do
-    on_scheduler_node(fn ->
-      Utils.Tasks.start_child(&do_sync_alert_jobs/0)
-    end)
-  end
-
-  defp do_sync_alert_jobs do
-    init_alert_jobs()
-    |> tap(fn _ -> AlertsScheduler.delete_all_jobs() end)
-    |> Enum.each(&AlertsScheduler.add_job/1)
-  end
-
-  @doc """
-  Syncs a specific alert job by alert_id.
-  Upserts the job if it doesn't exist, otherwise deletes the existing job.
-  """
-  @spec sync_alert_job(number()) :: :ok | {:error, :not_found}
-  def sync_alert_job(alert_id) when is_integer(alert_id) do
-    on_scheduler_node(fn -> do_sync_alert_job(alert_id) end)
-  end
-
-  defp do_sync_alert_job(alert_id) do
-    if alert_query = get_alert_query_by(id: alert_id) do
-      job = create_alert_job_struct(alert_query)
-      AlertsScheduler.add_job(job)
-      {:ok, job}
-    else
-      # alert query does not exist, maybe remove from scheduler
-      job = AlertsScheduler.find_job(to_job_name(alert_id))
-
-      if job do
-        AlertsScheduler.delete_job(job.name)
-      end
-    end
-  end
-
-  @doc """
   Performs the check lifecycle of an AlertQuery.
 
   Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
   """
-  @spec run_alert(AlertQuery.t(), :scheduled) ::
-          :ok | {:error, :not_enabled} | {:error, :below_min_cluster_size}
-  def run_alert(%AlertQuery{} = alert_query, :scheduled) do
-    # perform pre-run checks
-    cfg = Application.get_env(:logflare, Logflare.Alerting)
-    cluster_size = Cluster.Utils.actual_cluster_size()
-
-    cond do
-      cfg[:enabled] == false ->
-        {:error, :not_enabled}
-
-      cfg[:min_cluster_size] >= cluster_size ->
-        {:error, :below_min_cluster_size}
-
-      true ->
-        OpenTelemetry.Tracer.with_span "alerting.run_alert", %{
-          "alert.id" => alert_query.id,
-          "alert.name" => alert_query.name,
-          "alert.user_id" => alert_query.user_id,
-          "system.cluster_size" => cluster_size
-        } do
-          run_alert(alert_query)
-        end
+  @spec run_alert(AlertQuery.t() | integer(), :scheduled) ::
+          {:ok, map()} | {:error, :not_found | :no_results | any}
+  def run_alert(alert_id, :scheduled) when is_integer(alert_id) do
+    if alert_query = get_alert_query_by(id: alert_id) do
+      run_alert(alert_query, :scheduled)
+    else
+      {:error, :not_found}
     end
   end
 
-  @spec run_alert(AlertQuery.t()) :: :ok | {:error, :no_results} | {:error, any()}
+  def run_alert(%AlertQuery{} = alert_query, :scheduled) do
+    cluster_size = Cluster.Utils.actual_cluster_size()
+
+    OpenTelemetry.Tracer.with_span "alerting.run_alert", %{
+      "alert.id" => alert_query.id,
+      "alert.name" => alert_query.name,
+      "alert.user_id" => alert_query.user_id,
+      "system.cluster_size" => cluster_size
+    } do
+      run_alert(alert_query)
+    end
+  end
+
+  @spec run_alert(AlertQuery.t()) :: {:ok, map()} | {:error, :no_results} | {:error, any()}
   def run_alert(%AlertQuery{} = alert_query) do
     alert_query = alert_query |> preload_alert_query()
 
     case execute_alert_query(alert_query) do
-      {:ok, %{rows: [_ | _] = results}} ->
+      {:ok, %QueryResult{rows: [_ | _] = results} = result} ->
         if alert_query.webhook_notification_url do
           send_webhook_notification(alert_query, results)
         end
@@ -296,13 +318,10 @@ defmodule Logflare.Alerting do
           )
         end
 
-        :ok
+        {:ok, result |> Map.from_struct() |> Map.put(:fired, true)}
 
-      {:ok, %{rows: []}} ->
-        {:error, :no_results}
-
-      {:ok, %{rows: nil}} ->
-        {:error, :no_results}
+      {:ok, %QueryResult{rows: rows} = result} when rows == [] or rows == nil ->
+        {:ok, result |> Map.from_struct() |> Map.put(:fired, false)}
 
       other ->
         other
@@ -334,49 +353,67 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
-  Deletes an AlertQuery's job from the scheduler
-  noop if already deleted.
-  ### Examples
-
-  ```elixir
-  iex> delete_alert_job(%AlertQuery{})
-  :ok
-  iex> delete_alert_job(alert_query.id)
-  :ok
-  ```
+  Inserts an immediate AlertWorker job for manual triggering.
   """
-  @spec delete_alert_job(AlertQuery.t() | number()) ::
-          {:ok, Quantum.Job.t()} | {:error, :not_found}
-  def delete_alert_job(%AlertQuery{id: id}), do: delete_alert_job(id)
-
-  def delete_alert_job(alert_id) when is_integer(alert_id) do
-    on_scheduler_node(fn ->
-      case AlertsScheduler.find_job(to_job_name(alert_id)) do
-        %_{} = job ->
-          AlertsScheduler.delete_job(job.name)
-          {:ok, job}
-
-        nil ->
-          {:error, :not_found}
-      end
-    end)
+  @spec trigger_alert_now(AlertQuery.t()) :: {:ok, Oban.Job.t()} | {:error, Oban.Job.changeset()}
+  def trigger_alert_now(%AlertQuery{id: alert_query_id}) do
+    %{alert_query_id: alert_query_id, scheduled_at: DateTime.to_iso8601(DateTime.utc_now())}
+    |> AlertWorker.new()
+    |> Oban.insert()
   end
 
   @doc """
-  List alert jobs on the scheduler
+  Lists recent execution history for an alert query from Oban jobs.
   """
-  def list_alert_jobs do
-    on_scheduler_node(fn ->
-      AlertsScheduler.jobs()
-    end)
+  @spec list_execution_history(integer()) :: [Oban.Job.t()]
+  def list_execution_history(alert_query_id) do
+    from(j in Oban.Job,
+      where: j.worker == "Logflare.Alerting.AlertWorker",
+      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+      order_by: [desc: j.scheduled_at],
+      limit: 50
+    )
+    |> Repo.all()
   end
 
-  defp on_scheduler_node(func) do
-    with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()) do
-      pid
-      |> node()
-      |> Cluster.Utils.rpc_call(func)
-    end
+  @doc """
+  Lists future (upcoming) jobs for an alert query.
+  """
+  @spec list_future_jobs(integer()) :: [Oban.Job.t()]
+  def list_future_jobs(alert_query_id) do
+    from(j in Oban.Job,
+      where: j.worker == "Logflare.Alerting.AlertWorker",
+      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+      where: j.state in @future_job_states,
+      order_by: [asc: j.scheduled_at]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns a query for past (completed/failed/cancelled/discarded) jobs for an alert query.
+  """
+  @spec past_jobs_query(integer()) :: Ecto.Query.t()
+  def past_jobs_query(alert_query_id) do
+    from(j in Oban.Job,
+      where: j.worker == "Logflare.Alerting.AlertWorker",
+      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+      where: j.state not in @future_job_states,
+      order_by: [desc: j.scheduled_at]
+    )
+  end
+
+  @doc """
+  Partitions jobs into future (upcoming) and past (completed/failed) lists.
+  """
+  @spec partition_jobs_by_time([Oban.Job.t()]) :: %{future: [Oban.Job.t()], past: [Oban.Job.t()]}
+  def partition_jobs_by_time(jobs) do
+    {future, past} =
+      Enum.split_with(jobs, fn job ->
+        to_string(job.state) in @future_job_states
+      end)
+
+    %{future: future, past: past}
   end
 
   @doc """
@@ -388,11 +425,11 @@ defmodule Logflare.Alerting do
 
   ```elixir
   iex> execute_alert_query(alert_query)
-  {:ok, [%{"user_id" => "my-user-id"}]}
+  {:ok, %Logflare.Backends.Adaptor.QueryResult{rows: [%{"user_id" => "my-user-id"}]}}
   ```
   """
   @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
-          Logflare.BqRepo.query_result() | {:error, any()}
+          {:ok, QueryResult.t()} | {:error, any()}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
     Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
@@ -414,7 +451,7 @@ defmodule Logflare.Alerting do
          {:ok, result} <-
            BigQueryAdaptor.execute_query(
              {
-               alert_query.user.bigquery_project_id || env_project_id(),
+               alert_query.user.bigquery_project_id || GCPConfig.default_project_id(),
                alert_query.user.bigquery_dataset_id,
                alert_query.user.id
              },
@@ -439,22 +476,24 @@ defmodule Logflare.Alerting do
             other -> other
           end
 
+        Logger.error("Alert query execution failed with bad response",
+          user_id: alert_query.user_id,
+          alert_query_id: alert_query.id,
+          alert_name: alert_query.name,
+          error_string: inspect(error)
+        )
+
         {:error, error}
 
-      err ->
-        err
+      {:error, error} ->
+        Logger.error("Alert query execution failed with an unknown error",
+          user_id: alert_query.user_id,
+          alert_query_id: alert_query.id,
+          alert_name: alert_query.name,
+          error_string: inspect(error)
+        )
+
+        {:error, error}
     end
-  end
-
-  # helper to get the google project id via env.
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-
-  @doc """
-  Returns the alerts scheduler :via name used for syn registry.
-  """
-  def scheduler_name do
-    ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
-    # add nanosecond resolution for timestamp comparison
-    {:via, :syn, {:alerting, Logflare.Alerting.AlertsScheduler, %{timestamp: ts}}}
   end
 end

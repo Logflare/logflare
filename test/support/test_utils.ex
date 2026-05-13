@@ -91,6 +91,28 @@ defmodule Logflare.TestUtils do
     end
   end
 
+  defp setup_single_tenant_backend(%{backend_type: :clickhouse}) do
+    quote do
+      setup do
+        Goth
+        |> reject(:fetch, 1)
+
+        previous = Application.get_env(:logflare, :clickhouse_backend_adaptor)
+
+        Application.put_env(:logflare, :clickhouse_backend_adaptor,
+          url: "http://localhost:8123",
+          database: "logflare_test",
+          username: "default",
+          password: "",
+          port: 8123
+        )
+
+        on_exit(fn -> Application.put_env(:logflare, :clickhouse_backend_adaptor, previous) end)
+        :ok
+      end
+    end
+  end
+
   defp setup_single_tenant_backend(%{backend_type: :bigquery} = opts) do
     quote do
       setup do
@@ -118,8 +140,14 @@ defmodule Logflare.TestUtils do
     :crypto.strong_rand_bytes(length) |> Base.url_encode64() |> binary_part(0, length)
   end
 
+  @spec gen_bq_timestamp() :: String.t()
   def gen_bq_timestamp do
-    micro = DateTime.utc_now() |> DateTime.to_unix(:microsecond)
+    gen_bq_timestamp(DateTime.utc_now())
+  end
+
+  @spec gen_bq_timestamp(DateTime.t()) :: String.t()
+  def gen_bq_timestamp(%DateTime{} = datetime) do
+    micro = datetime |> DateTime.to_unix(:microsecond)
     exp_first_part = micro / 1_000_000_000_000_000
     Float.to_string(exp_first_part) <> "E9"
   end
@@ -153,13 +181,13 @@ defmodule Logflare.TestUtils do
   Generates a mock BigQuery response.
   This is a successful bq response retrieved manually
   """
-  def gen_bq_response(result \\ %{})
+  def gen_bq_response(result \\ %{}, schema \\ nil)
 
-  def gen_bq_response(result) when is_map(result) do
-    gen_bq_response([result])
+  def gen_bq_response(result, schema) when is_map(result) do
+    gen_bq_response([result], schema)
   end
 
-  def gen_bq_response(results) when is_list(results) do
+  def gen_bq_response(results, schema) when is_list(results) do
     results =
       Enum.map(results, fn result ->
         result
@@ -171,10 +199,15 @@ defmodule Logflare.TestUtils do
       end)
 
     schema =
-      if length(results) > 0 do
-        SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema())
-      else
-        SchemaBuilder.initial_table_schema()
+      cond do
+        schema ->
+          schema
+
+        length(results) > 0 ->
+          SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema())
+
+        true ->
+          SchemaBuilder.initial_table_schema()
       end
 
     rows =
@@ -202,7 +235,7 @@ defmodule Logflare.TestUtils do
       rows: rows,
       schema: schema,
       # Simple result length as test value
-      totalBytesProcessed: length(rows) |> to_string(),
+      totalBytesProcessed: (length(rows) * 1024) |> to_string(),
       totalRows: inspect(length(results))
     }
   end
@@ -482,7 +515,7 @@ defmodule Logflare.TestUtils do
         {_, view, _} = live(~p"/live")
 
         view
-        |> TestUtils.wait_for_render(~p"div#complete")
+        |> TestUtils.wait_for_render("div#complete")
 
         # your assertions here
       end
@@ -569,5 +602,10 @@ defmodule Logflare.TestUtils do
 
     ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(id) end)
     id
+  end
+
+  @spec reset_associations(Ecto.Schema.t()) :: Ecto.Schema.t()
+  def reset_associations(%schema{} = struct) do
+    Ecto.reset_fields(struct, schema.__schema__(:associations))
   end
 end

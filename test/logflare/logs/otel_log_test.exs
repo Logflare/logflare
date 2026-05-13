@@ -48,8 +48,7 @@ defmodule Logflare.Logs.OtelLogTest do
                "span_id" => ^expected_span_id
              } = first_event
 
-      assert elem(DateTime.from_iso8601(first_event["timestamp"]), 1) ==
-               DateTime.from_unix!(first_record.time_unix_nano, :nanosecond)
+      assert first_event["timestamp"] == first_record.time_unix_nano
     end
 
     test "json encodable log event body", %{
@@ -58,6 +57,16 @@ defmodule Logflare.Logs.OtelLogTest do
     } do
       [params | _] = OtelLog.handle_batch(resource_logs, source)
       assert {:ok, _} = Jason.encode(params)
+    end
+
+    test "timestamps are unix milliseconds", %{
+      resource_logs: resource_logs,
+      source: source
+    } do
+      [params | _] = OtelLog.handle_batch(resource_logs, source)
+
+      assert is_integer(params["timestamp"])
+      assert Integer.digits(params["timestamp"]) |> length() == 19
     end
   end
 end

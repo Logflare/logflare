@@ -25,6 +25,7 @@
           <th scope="col">Team Users</th>
           <th scope="col">Source Fields</th>
           <th scope="col">Source TTL</th>
+          <th scope="col">Key Values</th>
           <th scope="col"></th>
         </tr>
       </thead>
@@ -44,6 +45,7 @@
           <td><%= p.limit_team_users_limit %></td>
           <td><%= p.limit_source_fields_limit %></td>
           <td><%= p.limit_source_ttl %></td>
+          <td><%= p.limit_key_values %></td>
           <td><%= link "Edit", to: ~p"/admin/plans/#{p}/edit", class: "btn btn-secondary btn-sm" %></td>
         </tr>
         <% end %>

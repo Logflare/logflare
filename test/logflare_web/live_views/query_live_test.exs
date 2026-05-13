@@ -30,7 +30,7 @@ defmodule LogflareWeb.QueryLiveTest do
       |> element("form")
       |> render_submit(%{}) =~ "Ran query successfully"
 
-      assert view |> render() =~ "1 byte processed"
+      assert view |> render() =~ ~r/1 .+ processed/
 
       assert_patch(view) =~ ~r/current_timestamp/
       assert render(view) =~ "some-data"
@@ -99,6 +99,118 @@ defmodule LogflareWeb.QueryLiveTest do
              |> render_hook("parse-query", %{
                value: "select current_datetime() order-by invalid"
              }) =~ "parser error"
+    end
+  end
+
+  describe "team context switching" do
+    test "switches team context when query references source from another team via URL", %{
+      conn: conn
+    } do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{}])}
+      end)
+
+      team_owner = insert(:user)
+      team = insert(:team, user: team_owner)
+      insert(:source, user: team_owner, name: "team_source")
+
+      team_user = insert(:team_user, email: "member@example.com", team: team)
+
+      conn = login_user(conn, team_owner, team_user)
+
+      query = URI.encode("SELECT id, timestamp FROM `team_source`")
+      {:ok, view, _html} = live(conn, "/query?q=#{query}")
+
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{})
+
+      assert html =~ "Ran query successfully",
+             "Expected successful query execution for team member accessing team source via URL. Got: #{String.slice(html, 0, 2000)}"
+    end
+
+    test "switches team context when query is submitted via form", %{conn: conn} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{}])}
+      end)
+
+      team_owner = insert(:user)
+      team = insert(:team, user: team_owner)
+      insert(:source, user: team_owner, name: "form_source")
+
+      team_user = insert(:team_user, email: "formmember@example.com", team: team)
+
+      conn = login_user(conn, team_owner, team_user)
+
+      {:ok, view, _html} = live(conn, "/query")
+
+      view
+      |> render_hook("parse-query", %{
+        value: "SELECT id, timestamp FROM `form_source`"
+      })
+
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{})
+
+      assert html =~ "Ran query successfully",
+             "Expected successful query execution for team member submitting query via form. Got: #{String.slice(html, 0, 2000)}"
+    end
+
+    test "preserves team context when `t` param is provided", %{conn: conn, user: user} do
+      team = insert(:team, user: user)
+      insert(:source, user: user, name: "my_source")
+
+      query = URI.encode("SELECT id, timestamp FROM `my_source`")
+
+      {:ok, _view, html} = live(conn, "/query?q=#{query}&t=#{team.id}")
+
+      assert html =~ "my_source"
+    end
+
+    test "shows error when running query with non-existent source", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/query")
+
+      view
+      |> render_hook("parse-query", %{
+        value: "SELECT id, timestamp, metadata FROM `nonexistent_source`"
+      })
+
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{})
+
+      assert html =~ "can&#39;t find source nonexistent_source",
+             "Expected error 'can't find source nonexistent_source' after running query. Got: #{String.slice(html, 0, 2000)}"
+    end
+  end
+
+  describe "postgres backend" do
+    TestUtils.setup_single_tenant(backend_type: :postgres)
+
+    test "run a query against postgres", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/query")
+
+      render_hook(view, "parse-query", %{
+        value: "select 42 as answer, 'and some other expected string'"
+      })
+
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{})
+
+      assert html =~ "Ran query successfully"
+      assert html =~ "answer"
+      assert html =~ "42"
+      assert html =~ "and some other expected string"
+
+      refute html =~ "bytes processed"
     end
   end
 end

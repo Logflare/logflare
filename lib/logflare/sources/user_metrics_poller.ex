@@ -59,7 +59,7 @@ defmodule Logflare.Sources.UserMetricsPoller do
   end
 
   defp via_tuple(user_id) do
-    {:via, :syn, {:core, {__MODULE__, user_id}}}
+    {:via, :syn, {:ui, {__MODULE__, user_id}}}
   end
 
   # Server Implementation

@@ -30,13 +30,20 @@ All browser authentication will be disabled when in single-tenant mode.
 | `LOGFLARE_SUPABASE_MODE`                       | Boolean, defaults to `false`                                            | A special mode for Logflare, where Supabase-specific resources will be seeded. Intended for Suapbase self-hosted usage.                                                                                                                                              |
 | `PHX_HTTP_IP`                                  | String, defaults to `nil`                                               | Allows configuration of the HTTP server IP to bind to. Specifying an IPv6 like `::` will enable IPv6.                                                                                                                                                                |
 | `PHX_HTTP_PORT`                                | Integer, defaults to `4000`                                             | Allows configuration of the HTTP server port.                                                                                                                                                                                                                        |
+| `DB_DATABASE`                                  | String, defaults to `nil`                                               | Database name for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                |
+| `DB_HOSTNAME`                                  | String, defaults to `nil`                                               | Hostname for Logflare's internal PostgreSQL database connection. IPv4 and IPv6 hosts are detected automatically for socket configuration.                                                                                                                            |
+| `DB_PORT`                                      | Integer, defaults to `5432`                                             | Port for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                         |
+| `DB_USERNAME`                                  | String, defaults to `nil`                                               | Username for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                     |
+| `DB_PASSWORD`                                  | String, defaults to `nil`                                               | Password for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                     |
+| `DB_POOL_SIZE`                                 | Integer, defaults to `10`                                               | Overrides the Ecto connection pool size for Logflare's internal PostgreSQL database connection.                                                                                                                                                                      |
 | `DB_SCHEMA`                                    | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations.                                                                                                                                                                                            |
+| `DB_SSL`                                       | Boolean, defaults to `false`                                            | Enables SSL/TLS connection to the internal Logflare database. Requires certificate files when enabled. See [Database SSL Configuration](#database-ssl-configuration).                                                                                                |
+| `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of read replica hostnames. Each replica is assumed to use the same port, credentials, and database name as the primary. If unset, all queries go to the primary. Example: `replica1.example.com,replica2.example.com`                           |
 | `LOGFLARE_LOG_LEVEL`                           | String, defaults to `info`. <br/>Options: `error`,`warning`, `info`     | Allows runtime configuration of log level.                                                                                                                                                                                                                           |
 | `LOGFLARE_NODE_HOST`                           | string, defaults to `127.0.0.1`                                         | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                                                                                             |
 | `LOGFLARE_METADATA_CLUSTER`                    | string, defaults to `nil`                                               | Sets global logging/tracing metadata for the cluster name and affects the release node name (e.g., `logflare-production@<host>`). Useful for filtering logs by cluster name and distinguishing nodes in multi-cluster setups. See the [metadata](#Metadata) section. |
 | `LOGFLARE_PUBSUB_POOL_SIZE`                    | Integer, defaults to `10`                                               | Sets the number of `Phoenix.PubSub.PG2` partitions to be created. Should be configured to the number of cores of your server for optimal multi-node performance.                                                                                                     |
 | `LOGFLARE_ALERTS_ENABLED`                      | Boolean, defaults to `true`                                             | Flag for enabling and disabling query alerts.                                                                                                                                                                                                                        |
-| `LOGFLARE_ALERTS_MIN_CLUSTER_SIZE`             | Integer, defaults to `1`                                                | Sets the required cluster size for Query Alerts to be run. If cluster size is below the provided value, query alerts will not run.                                                                                                                                   |
 | `LOGFLARE_MIN_CLUSTER_SIZE`                    | Integer, defaults to `1`                                                | Sets the target cluster size, and emits a warning log periodically if the cluster is below the set number of nodes..                                                                                                                                                 |
 | `LOGFLARE_OTEL_ENDPOINT`                       | String, defaults to `nil`                                               | Sets the OpenTelemetry Endpoint to send traces to via gRPC. Port number can be included, such as `https://logflare.app:443`                                                                                                                                          |
 | `LOGFLARE_OTEL_SOURCE_UUID`                    | String, defaults to `nil`, optionally required for OpenTelemetry.       | Sets the appropriate header for ingesting OpenTelemetry events into a Logflare source.                                                                                                                                                                               |
@@ -89,12 +96,14 @@ The `LOGFLARE_METADATA_CLUSTER` environment variable is also set in the Erlang n
 
 ### BigQuery Backend Configuration
 
-| Env Var                             | Type                        | Description                                                                                                                                                                                         |
-| ----------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GOOGLE_PROJECT_ID`                 | string, required            | Specifies the GCP project to use.                                                                                                                                                                   |
-| `GOOGLE_PROJECT_NUMBER`             | string, required            | Specifies the GCP project to use.                                                                                                                                                                   |
-| `GOOGLE_DATASET_ID_APPEND`          | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery.                                                                                                                                       |
-| `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run throguh the main service account. |
+| Env Var                             | Type                        | Description                                                                                                                                                                                                     |
+| ----------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_PROJECT_ID`                 | string, required            | Specifies the GCP project to use.                                                                                                                                                                               |
+| `GOOGLE_PROJECT_NUMBER`             | string, required            | Specifies the GCP project to use.                                                                                                                                                                               |
+| `GOOGLE_DATASET_ID_APPEND`          | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery.                                                                                                                                                   |
+| `GOOGLE_DATASET_LOCATION`           | string, defaults to `US`    | Allows customization of region, where dataset is created in BigQuery. Defaults to the "US" multi-region. See [BigQuery docs](https://docs.cloud.google.com/bigquery/docs/locations) for a full list of options. |
+| `GOOGLE_PROJECT_VIEWER`             | string, optional            | Email of a Google user account to grant Viewer role on the GCP project.                                                                                                                                         |
+| `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run throguh the main service account.             |
 
 #### Managed Service Accounts
 
@@ -116,6 +125,42 @@ Without these two additional permissions, the managed service accounts feature w
 | ------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `POSTGRES_BACKEND_URL`    | string, required                       | PostgreSQL connection string, for connecting to the database. User must have sufficient permssions to manage the schema. |
 | `POSTGRES_BACKEND_SCHEMA` | string, optional, defaults to `public` | Specifies the database schema to scope all operations.                                                                   |
+
+### ClickHouse Backend Configuration
+
+| Env Var                       | Type                                  | Description                                                                                                                                                                                                 |
+| ----------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLICKHOUSE_BACKEND_URL`      | string, required                      | ClickHouse HTTP endpoint URL. Use this with `LOGFLARE_SINGLE_TENANT=true` to run single-tenant ingestion on ClickHouse.                                                                                    |
+| `CLICKHOUSE_BACKEND_DATABASE` | string, required                      | ClickHouse database for Logflare-managed ingest tables. The configured user must have sufficient permissions to create, alter, insert into, select from, and drop tables/views in this database.           |
+| `CLICKHOUSE_BACKEND_USERNAME` | string, optional                      | ClickHouse username. If provided, `CLICKHOUSE_BACKEND_PASSWORD` must also be provided.                                                                                                                      |
+| `CLICKHOUSE_BACKEND_PASSWORD` | string, optional                      | ClickHouse password. If provided, `CLICKHOUSE_BACKEND_USERNAME` must also be provided.                                                                                                                      |
+| `CLICKHOUSE_BACKEND_PORT`     | integer, optional, defaults from URL  | ClickHouse HTTP port. Defaults to the port in `CLICKHOUSE_BACKEND_URL`, `8443` for `https`, or `8123` for `http`.                                                                                          |
+
+## Database SSL Configuration
+
+Logflare supports secure SSL/TLS connections to its internal database (not the PostgreSQL backend). This is configured using the `DB_SSL` environment variable and certificate files.
+
+### Requirements
+
+To enable SSL for the internal Logflare database:
+
+1. Set `DB_SSL=true` environment variable
+2. Provide three certificate files in the working directory on server startup:
+   - `db-server-ca.pem` - Server CA certificate
+   - `db-client-cert.pem` - Client certificate
+   - `db-client-key.pem` - Client private key
+
+All three files must be present for SSL to be enabled.
+
+### Configuration Details
+
+The SSL connection is configured with:
+
+- **Peer verification**: Enabled (`verify: :verify_peer`)
+- **TLS version**: TLS 1.2
+- **Wildcard support**: Enabled via `public_key.pkix_verify_hostname_match_fun(:https)`
+
+The configuration follows the [Erlang Security Working Group recommendations](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl).
 
 ## Database Encryption
 
@@ -206,6 +251,7 @@ services:
       - DB_PORT=5432
       - DB_PASSWORD=postgres
       - DB_USERNAME=postgres
+      - DB_SSL=true # Optional: enable SSL for internal database
       - LOGFLARE_SINGLE_TENANT=true
       - LOGFLARE_API_KEY=my-cool-api-key
 
@@ -217,6 +263,13 @@ services:
       # Required for Postgres backend
       - POSTGRES_BACKEND_URL=postgresql://user:pass@host:port/db
       - POSTGRES_BACKEND_SCHEMA=my_schema
+
+      # Required for ClickHouse backend
+      - CLICKHOUSE_BACKEND_URL=http://clickhouse:8123
+      - CLICKHOUSE_BACKEND_DATABASE=logflare
+      - CLICKHOUSE_BACKEND_USERNAME=default
+      - CLICKHOUSE_BACKEND_PASSWORD=
+      - CLICKHOUSE_BACKEND_PORT=8123
     volumes:
       - type: bind
         source: ${PWD}/.env
@@ -225,6 +278,19 @@ services:
       - type: bind
         source: ${PWD}/gcloud.json
         target: /opt/app/rel/logflare/bin/gcloud.json
+        read_only: true
+      # Optional: SSL certificate files for internal database
+      - type: bind
+        source: ${PWD}/db-server-ca.pem
+        target: /opt/app/rel/logflare/bin/db-server-ca.pem
+        read_only: true
+      - type: bind
+        source: ${PWD}/db-client-cert.pem
+        target: /opt/app/rel/logflare/bin/db-client-cert.pem
+        read_only: true
+      - type: bind
+        source: ${PWD}/db-client-key.pem
+        target: /opt/app/rel/logflare/bin/db-client-key.pem
         read_only: true
     depends_on:
       - db

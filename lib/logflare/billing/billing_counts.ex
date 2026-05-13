@@ -9,8 +9,6 @@ defmodule Logflare.Billing.BillingCounts do
   alias Logflare.Repo
   alias Logflare.User
 
-  require Logger
-
   @spec timeseries(Logflare.User.t(), DateTime.t(), DateTime.t()) :: [BillingCount.t()]
   def timeseries(%User{id: user_id}, start_date, end_date) do
     q =

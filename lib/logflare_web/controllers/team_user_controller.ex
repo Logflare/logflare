@@ -1,12 +1,11 @@
 defmodule LogflareWeb.TeamUserController do
   use LogflareWeb, :controller
-  use Phoenix.HTML
 
   plug LogflareWeb.Plugs.AuthMustBeOwner when action in [:delete]
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.TeamUsers
   alias Logflare.Users
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   def edit(%{assigns: %{team_user: team_user}} = conn, _params) do
     changeset = TeamUsers.TeamUser.changeset(team_user, %{})
@@ -19,7 +18,7 @@ defmodule LogflareWeb.TeamUserController do
       {:ok, _team_user} ->
         conn
         |> put_flash(:info, "Profile updated!")
-        |> redirect(to: Routes.team_user_path(conn, :edit))
+        |> redirect(to: ~p"/profile/edit?t=#{team_user.team_id}")
 
       {:error, changeset} ->
         conn
@@ -30,20 +29,27 @@ defmodule LogflareWeb.TeamUserController do
 
   def delete(%{assigns: %{user: user}} = conn, %{"id" => team_user_id} = _params) do
     team_user = TeamUsers.get_team_user!(team_user_id)
+    user = Users.preload_team(user)
 
-    case TeamUsers.delete_team_user(team_user) do
-      {:ok, _team_user} ->
-        BigQueryAdaptor.update_iam_policy()
-        BigQueryAdaptor.patch_dataset_access(user)
+    if team_user.team_id != user.team.id do
+      conn
+      |> put_flash(:error, "Not authorized to delete this team member")
+      |> redirect(to: Routes.user_path(conn, :edit))
+    else
+      case TeamUsers.delete_team_user(team_user) do
+        {:ok, _team_user} ->
+          BigQueryAdaptor.update_iam_policy()
+          BigQueryAdaptor.patch_dataset_access(user)
 
-        conn
-        |> put_flash(:info, "Member profile deleted!")
-        |> redirect(to: Routes.user_path(conn, :edit))
+          conn
+          |> put_flash(:info, "Member profile deleted!")
+          |> redirect(to: Routes.user_path(conn, :edit))
 
-      {:error, _changeset} ->
-        conn
-        |> put_flash(:error, "Something went wrong!")
-        |> redirect(to: Routes.user_path(conn, :edit))
+        {:error, _changeset} ->
+          conn
+          |> put_flash(:error, "Something went wrong!")
+          |> redirect(to: Routes.user_path(conn, :edit))
+      end
     end
   end
 
@@ -63,61 +69,5 @@ defmodule LogflareWeb.TeamUserController do
         |> put_flash(:error, "Something went wrong!")
         |> render("edit.html", changeset: changeset, team_user: team_user)
     end
-  end
-
-  def change_team(
-        %{assigns: %{team_user: _team_user, user: _user}} = conn,
-        %{
-          "user_id" => user_id,
-          "team_user_id" => team_user_id
-        } = params
-      ) do
-    new_team_user = TeamUsers.get_team_user!(team_user_id)
-
-    conn
-    |> put_session(:user_id, user_id)
-    |> put_session(:team_user_id, team_user_id)
-    |> put_resp_cookie("_logflare_user_id", user_id, max_age: 2_592_000)
-    |> put_resp_cookie("_logflare_team_user_id", team_user_id, max_age: 2_592_000)
-    |> put_resp_cookie("_logflare_last_team", "#{new_team_user.team_id}", max_age: 2_592_000)
-    |> put_flash(:info, "Welcome to this Logflare team!")
-    |> redirect(to: Map.get(params, "redirect_to", ~p"/dashboard"))
-  end
-
-  def change_team(
-        %{assigns: %{team_user: _team_user, user: user}} = conn,
-        %{
-          "user_id" => user_id
-        } = params
-      ) do
-    user = Users.preload_team(user)
-
-    conn
-    |> put_session(:user_id, user_id)
-    |> delete_session(:team_user_id)
-    |> delete_resp_cookie("_logflare_user_id")
-    |> delete_resp_cookie("_logflare_team_user_id")
-    |> put_resp_cookie("_logflare_last_team", "#{user.team.id}", max_age: 2_592_000)
-    |> put_flash(:info, "Welcome to this Logflare team!")
-    |> redirect(to: Map.get(params, "redirect_to", ~p"/dashboard"))
-  end
-
-  def change_team(
-        %{assigns: %{user: user}} = conn,
-        %{
-          "user_id" => user_id,
-          "team_user_id" => team_user_id
-        } = params
-      ) do
-    {:ok, team_user} = TeamUsers.update_team_user_on_change_team(user, team_user_id)
-
-    conn
-    |> put_session(:user_id, user_id)
-    |> put_session(:team_user_id, team_user_id)
-    |> put_resp_cookie("_logflare_user_id", user_id, max_age: 2_592_000)
-    |> put_resp_cookie("_logflare_team_user_id", team_user_id, max_age: 2_592_000)
-    |> put_resp_cookie("_logflare_last_team", "#{team_user.team_id}", max_age: 2_592_000)
-    |> put_flash(:info, "Welcome to this Logflare team!")
-    |> redirect(to: Map.get(params, "redirect_to", ~p"/dashboard"))
   end
 end

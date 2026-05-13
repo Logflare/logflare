@@ -2,7 +2,6 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
   @moduledoc """
   Assigns team user if browser session is present in conn
   """
-  require Logger
 
   import Plug.Conn
   import Phoenix.Controller

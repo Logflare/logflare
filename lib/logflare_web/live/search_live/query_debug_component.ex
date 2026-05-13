@@ -6,6 +6,7 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
 
   alias LogflareWeb.Utils
   alias LogflareWeb.QueryComponents
+  alias Logflare.Teams
 
   def update(assigns, socket) do
     {:ok, assign(socket, assigns)}
@@ -13,7 +14,20 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
 
   def render(assigns) do
     assigns =
-      assign_new(assigns, :search_op, fn
+      assign_new(assigns, :team, fn
+        %{team_user: team_user} when not is_nil(team_user) ->
+          Teams.get_team!(team_user.team_id)
+
+        %{team: team} ->
+          team
+
+        %{user: %{team: team}} when not is_nil(team) ->
+          team
+
+        _ ->
+          nil
+      end)
+      |> assign_new(:search_op, fn
         %{id: :modal_debug_error_link} -> assigns.search_op_error
         %{id: :modal_debug_log_events_link} -> assigns.search_op_log_events
         %{id: :modal_debug_log_aggregates_link} -> assigns.search_op_log_aggregates
@@ -41,9 +55,9 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
                   Actual SQL query used when querying for results. Use it in the BigQuery console if you need to.
                 </p>
               </div>
-              <.link :if={not is_nil(@sql_query)} href={~p"/query?#{%{q: @sql_query}}"} class="btn btn-primary tw-flex-shrink-0 tw-self-start tw-mt-4">
+              <.team_link :if={not is_nil(@sql_query)} team={@team} href={~p"/query?#{%{q: @sql_query}}"} class="btn btn-primary tw-flex-shrink-0 tw-self-start tw-mt-4">
                 Edit as query
-              </.link>
+              </.team_link>
             </div>
             <ul class="list-group">
               <li class="list-group-item">

@@ -22,24 +22,33 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Users
   alias Logflare.PubSubRates
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
-
+  alias Logflare.Utils
   require OpenTelemetry.Tracer
+
+  @behaviour Broadway.Acknowledger
 
   # BQ max is 10MB
   # https://cloud.google.com/bigquery/quotas#streaming_inserts
   @max_batch_length 6_000_000
   @max_batch_size 500
+  @max_retries 0
 
   def start_link(args, opts \\ []) do
     {name, args} = Keyword.pop(args, :name)
     source = Keyword.get(args, :source)
     backend = Keyword.get(args, :backend)
 
+    max_retries =
+      Application.get_env(:logflare, :bigquery_pipeline, [])
+      |> Keyword.get(:max_retries, @max_retries)
+
+    ack_config = %{max_retries: max_retries}
+
     opts =
       Keyword.merge(
         [
-          name: name,
           # top-level will apply to all children
+          name: name,
           hibernate_after: 5_000,
           spawn_opt: [
             fullsweep_after: 10
@@ -53,7 +62,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
                ]},
             transformer:
               {__MODULE__, :transform,
-               [ref: {{source.id, backend.id, args[:pipeline_ref]}, source.token}]}
+               [
+                 ref: {{source.id, backend.id, args[:pipeline_ref]}, ack_config}
+               ]}
           ],
           processors: [
             default: [concurrency: 8, max_demand: 100]
@@ -73,7 +84,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             source_token: source.token,
             bq_storage_write_api: source.bq_storage_write_api,
             source_id: source.id,
-            backend_id: Map.get(backend || %{}, :id)
+            backend_id: Map.get(backend || %{}, :id),
+            user_id: source.user_id,
+            system_source: source.system_source
           }
         ],
         opts
@@ -86,6 +99,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   # pipeline name is sharded
+  @impl Broadway
   def process_name({:via, module, {registry, identifier}}, base_name) do
     {:via, module, {registry, {identifier, base_name}}}
   end
@@ -104,29 +118,52 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     }
   end
 
-  # Ziinc: temporarily pass in source token until PubSubRates is refactored
-  def ack({queue, source_token}, successful, _failed) do
-    # TODO: re-queue failed
-    metrics = Sources.get_source_metrics_for_ingest(source_token)
-    {_sid, bid, _tid} = queue
+  @impl Broadway.Acknowledger
+  def ack({queue, config}, successful, failed) do
+    {sid, bid, _tid} = queue
 
-    # delete immediately if not default backend or if avg rate is above 100
-    if metrics.avg > 100 or bid != nil do
-      for %{data: le} <- successful do
-        IngestEventQueue.delete(queue, le)
+    maybe_requeue_failed({sid, bid}, failed, config)
+
+    backend_metadata =
+      if bid do
+        Backends.Cache.get_backend(bid).metadata || %{}
+      else
+        %{}
       end
+
+    case Sources.Cache.get_by_id(sid) do
+      nil ->
+        Logger.warning("Source not found for ack!", source_id: sid)
+
+        for %{data: %{is_popped: false} = le} <- successful do
+          IngestEventQueue.delete(queue, le)
+        end
+
+      source ->
+        for %{data: le} <- successful do
+          # emit telemetry on event
+          emit_event_telemetry(queue, source, le, backend_metadata)
+        end
     end
+
+    :ok
   end
 
-  @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
+  @impl Broadway
   def handle_message(_processor_name, message, context) do
-    Logger.metadata(source_id: context.source_token, source_token: context.source_token)
+    Logger.metadata(
+      source_id: context.source_token,
+      source_token: context.source_token,
+      user_id: context.user_id,
+      system_source: context.system_source
+    )
 
     message
     |> Message.update_data(&process_data(&1, context))
     |> Message.put_batcher(:bq)
   end
 
+  @impl Broadway
   def handle_batch(:bq, messages, batch_info, context) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
@@ -147,24 +184,32 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           v != nil,
           do: {k, v}
 
-    OpenTelemetry.Tracer.with_span :bigquery_pipeline, %{
+    OpenTelemetry.Tracer.with_span "ingest.bigquery_batch", %{
       attributes: Map.new(attributes)
     } do
       source = Sources.Cache.get_by_id(context.source_id)
 
       if source && source.bq_storage_write_api do
         log_events = messages |> Enum.map(& &1.data)
+        batch_attrs = compute_batch_attrs(messages, :bq_storage_write)
 
-        BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
-          project_id: context.bigquery_project_id,
-          dataset_id: context.bigquery_dataset_id,
-          source_id: context.source_id,
-          source_token: context.source_token
-        )
+        OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
+          BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
+            project_id: context.bigquery_project_id,
+            dataset_id: context.bigquery_dataset_id,
+            source_id: context.source_id,
+            source_token: context.source_token,
+            backend_id: context.backend_id
+          )
+        end
 
         messages
       else
-        stream_batch(context, messages)
+        batch_attrs = compute_batch_attrs(messages, :bq_streaming_insert)
+
+        OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
+          stream_batch(context, messages)
+        end
       end
     end
   end
@@ -188,6 +233,29 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       end
       |> Map.put("timestamp", bq_timestamp)
       |> Map.put("event_message", body["event_message"])
+      |> case do
+        %{"start_time" => start_time, "end_time" => end_time} = data
+        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
+          # round to microseconds
+          %{
+            data
+            | "start_time" => DateTime.from_unix!(start_time, :nanosecond),
+              "end_time" => DateTime.from_unix!(end_time, :nanosecond)
+          }
+
+        %{"start_time" => start_time} = data
+        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
+          # round to microseconds
+          %{data | "start_time" => DateTime.from_unix!(start_time, :nanosecond)}
+
+        %{"end_time" => end_time} = data
+        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
+          # round to microseconds
+          %{data | "end_time" => DateTime.from_unix!(end_time, :nanosecond)}
+
+        data ->
+          data
+      end
 
     %Model.TableDataInsertAllRequestRows{
       insertId: id,
@@ -195,8 +263,16 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     }
   end
 
-  def stream_batch(%{source_token: source_token} = context, messages) do
-    Logger.metadata(source_id: source_token, source_token: source_token)
+  def stream_batch(
+        %{source_token: source_token, user_id: user_id, system_source: system_source} = context,
+        messages
+      ) do
+    Logger.metadata(
+      source_id: source_token,
+      source_token: source_token,
+      user_id: user_id,
+      system_source: system_source
+    )
 
     :telemetry.span(
       [:logflare, :ingest, :pipeline, :stream_batch],
@@ -206,42 +282,62 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   defp execute_bigquery_stream_batch(%{source_token: source_token} = context, messages) do
-    rows = le_messages_to_bq_rows(messages)
+    rows =
+      OpenTelemetry.Tracer.with_span "ingest.bq_serialize", %{
+        attributes: %{insert_method: :bq_streaming_insert}
+      } do
+        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erlang.external_size(messages))
+        result = le_messages_to_bq_rows(messages)
+        OpenTelemetry.Tracer.set_attribute(:serialized_bytes, :erlang.external_size(result))
+        result
+      end
 
     # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
     # All others send to the rejected list with the message from BigQuery.
     # See todo in `process_data` also.
-    case BigQuery.stream_batch!(context, rows) do
-      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
-        :ok
+    OpenTelemetry.Tracer.with_span "ingest.bq_api_call", %{
+      attributes: %{insert_method: :bq_streaming_insert}
+    } do
+      case BigQuery.stream_batch!(context, rows) do
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
+          OpenTelemetry.Tracer.set_attribute(:insert_error_count, 0)
+          :ok
 
-      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
-        Logger.warning("BigQuery insert errors.", error_string: inspect(errors))
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
+          OpenTelemetry.Tracer.set_attribute(:insert_error_count, length(errors))
+          error_string = inspect(errors)
+          OpenTelemetry.Tracer.set_status(:error, error_string)
+          Logger.warning("BigQuery insert errors.", error_string: error_string)
 
-      {:error, %Tesla.Env{} = response} ->
-        case GenUtils.get_tesla_error_message(response) do
-          "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
-              message ->
-            disconnect_backend_and_email(source_token, message)
+        {:error, %Tesla.Env{} = response} ->
+          message = GenUtils.get_tesla_error_message(response)
+          OpenTelemetry.Tracer.set_status(:error, message)
 
-          "The project" <> _tail = message ->
-            # "The project web-wtc-1537199112807 has not enabled BigQuery."
-            disconnect_backend_and_email(source_token, message)
+          case message do
+            "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
+                message ->
+              disconnect_backend_and_email(source_token, message)
 
-          # Don't disconnect here because sometimes the GCP API doesn't find projects
-          #
-          # "Not found:" <> _tail = message ->
-          #   disconnect_backend_and_email(source_id, message)
-          #   messages
+            "The project" <> _tail = message ->
+              # "The project web-wtc-1537199112807 has not enabled BigQuery."
+              disconnect_backend_and_email(source_token, message)
 
-          _message ->
-            Logger.warning("Stream batch response error!",
-              tesla_response: GenUtils.get_tesla_error_message(response)
-            )
-        end
+            # Don't disconnect here because sometimes the GCP API doesn't find projects
+            #
+            # "Not found:" <> _tail = message ->
+            #   disconnect_backend_and_email(source_id, message)
+            #   messages
 
-      {:error, response} ->
-        Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
+            _message ->
+              Logger.warning("Stream batch response error!",
+                tesla_response: GenUtils.get_tesla_error_message(response)
+              )
+          end
+
+        {:error, response} ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(response))
+          Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
+      end
     end
 
     {messages, %{}}
@@ -258,7 +354,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     # random sample if local ingest rate is above a certain level
     # dynamic calculation maintains ~1 schema update per second across all rate levels
-    unless source.lock_schema do
+    if source && not source.lock_schema do
       probability =
         case PubSubRates.Cache.get_local_rates(source.token) do
           %{average_rate: avg} when avg > 0 ->
@@ -284,6 +380,13 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     String.to_atom("#{source_id}" <> "-pipeline")
   end
 
+  defp compute_batch_attrs(messages, bq_api_tag) do
+    event_count = length(messages)
+    bytes = messages |> Enum.map(&:erlang.external_size(&1.data.body)) |> Enum.sum()
+
+    %{insert_method: bq_api_tag, batch_event_count: event_count, batch_bytes: bytes}
+  end
+
   defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
     source = Sources.Cache.get_by(token: source_id)
     user = Users.Cache.get(source.user_id)
@@ -295,6 +398,14 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       bigquery_processed_bytes_limit: 10_000_000_000
     }
 
+    Logger.warning("user audit: BigQuery backend auto-disconnect triggered",
+      action: "user.bq_auto_disconnect",
+      user_id: user.id,
+      user_email: user.email,
+      source_token: source_id,
+      reason: message
+    )
+
     case Users.update_user_allowed(user, defaults) do
       {:ok, user} ->
         Supervisor.reset_all_user_sources(user)
@@ -303,13 +414,67 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         |> AccountEmail.backend_disconnected(message)
         |> Mailer.deliver()
 
-        Logger.warning("Backend disconnected for: #{user.email}", tesla_response: message)
+        Logger.warning("user audit: BigQuery backend auto-disconnected",
+          action: "user.bq_auto_disconnected",
+          user_id: user.id,
+          user_email: user.email,
+          source_token: source_id,
+          reason: message
+        )
 
       {:error, changeset} ->
-        Logger.error("Failed to reset backend for user: #{user.email}",
-          changeset: inspect(changeset)
+        Logger.error("user audit: BigQuery backend auto-disconnect failed",
+          action: "user.bq_auto_disconnect_failed",
+          user_id: user.id,
+          user_email: user.email,
+          source_token: source_id,
+          reason: message,
+          errors: inspect(changeset.errors)
         )
     end
+  end
+
+  # Requeue failed events if the number of previous retries is less than @max_retries
+  defp maybe_requeue_failed(_, [], _), do: :ok
+  defp maybe_requeue_failed(_, _, %{max_retries: 0}), do: :ok
+
+  defp maybe_requeue_failed({_sid, _bid} = sid_bid, failed, %{max_retries: max_retries}) do
+    events =
+      Enum.filter(failed, fn %{data: %LE{retries: retries}} -> retries < max_retries end)
+      |> Enum.map(fn %{data: %LE{} = event} ->
+        %LE{event | retries: (event.retries || 0) + 1}
+      end)
+
+    requeue(sid_bid, events)
+  end
+
+  defp requeue(_, []), do: :ok
+
+  defp requeue(sid_bid, events) do
+    Logger.info("Requeuing #{length(events)} BigQuery events for retry")
+
+    IngestEventQueue.delete_batch(sid_bid, events)
+    IngestEventQueue.add_to_table(sid_bid, events)
+  end
+
+  defp emit_event_telemetry({sid, bid, _}, source, le, backend_metadata) do
+    # emit telemetry on event
+    event_labels = Sources.get_labels_from_event(source, le)
+
+    metrics = %{ingested_bytes: :erlang.external_size(le.body)}
+
+    metadata =
+      %{
+        "source_id" => sid,
+        "backend_id" => bid,
+        "source_uuid" => Utils.stringify(source.token),
+        "user_id" => source.user_id,
+        "system_source" => source.system_source
+      }
+      |> Map.merge(event_labels)
+      |> Map.merge(backend_metadata)
+
+    :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
   end
 
   # https://hexdocs.pm/broadway/Broadway.html#start_link/2

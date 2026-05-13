@@ -159,7 +159,7 @@ defmodule LogflareWeb.AdminPlanControllerTest do
       end
     end
 
-    test "returns 403 for unauthenticated requests and for non-admin users", %{conn: conn} do
+    test "returns 403 for non-admin users", %{conn: conn} do
       user = insert(:user, admin: false)
       plan = insert(:plan, name: "Test Plan for Edit")
 
@@ -169,17 +169,25 @@ defmodule LogflareWeb.AdminPlanControllerTest do
              |> html_response(403) =~ "Forbidden"
 
       assert conn
-             |> put(~p"/admin/plans/#{plan}", %{plan: %{id: plan.id, name: "Updated"}})
-             |> html_response(403) =~ "Forbidden"
-
-      assert conn
              |> login_user(user)
              |> put(~p"/admin/plans/#{plan}", %{plan: %{id: plan.id, name: "Updated"}})
              |> html_response(403) =~ "Forbidden"
     end
+
+    test "redirects unauthenticated requests to login", %{conn: conn} do
+      plan = insert(:plan, name: "Test Plan for Edit")
+
+      assert conn
+             |> get(~p"/admin/plans/#{plan}/edit")
+             |> redirected_to(302) == "/auth/login"
+
+      assert conn
+             |> put(~p"/admin/plans/#{plan}", %{plan: %{id: plan.id, name: "Updated"}})
+             |> redirected_to(302) == "/auth/login"
+    end
   end
 
-  test "returns 403 for unauthenticated requests and for non-admin users", %{conn: conn} do
+  test "returns 403 for non-admin users", %{conn: conn} do
     user = insert(:user)
 
     for path <- [~p"/admin/plans", ~p"/admin/plans/new"] do
@@ -187,10 +195,14 @@ defmodule LogflareWeb.AdminPlanControllerTest do
              |> login_user(user)
              |> get(path)
              |> html_response(403) =~ "Forbidden"
+    end
+  end
 
+  test "redirects unauthenticated requests to login", %{conn: conn} do
+    for path <- [~p"/admin/plans", ~p"/admin/plans/new"] do
       assert conn
              |> get(path)
-             |> html_response(403) =~ "Forbidden"
+             |> redirected_to(302) == "/auth/login"
     end
   end
 end

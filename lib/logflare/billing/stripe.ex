@@ -9,6 +9,7 @@ defmodule Logflare.Billing.Stripe do
   alias Logflare.Billing
   alias Logflare.User
   alias Logflare.Sources
+  alias Stripe.SubscriptionItem.Usage, as: SubscriptionItemUsage
 
   @trial_days_default 15
 
@@ -255,7 +256,7 @@ defmodule Logflare.Billing.Stripe do
       timestamp: timestamp
     }
 
-    Stripe.SubscriptionItem.Usage.create(subscription_item_id, params)
+    SubscriptionItemUsage.create(subscription_item_id, params)
   end
 
   def trial_end(days \\ @trial_days_default) do

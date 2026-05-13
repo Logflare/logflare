@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @moduledoc """
   Manages a ClickHouse connection pool lifecycle for query/read operations.
 
@@ -13,7 +13,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   require Logger
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Backend
 
   @inactivity_timeout :timer.minutes(5)
@@ -21,7 +20,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   @ch_query_conn_timeout :timer.minutes(1)
 
   typedstruct do
-    field :backend_id, pos_integer(), enforce: true
+    field :backend_id, pos_integer() | nil, enforce: true
     field :pool_pid, pid() | nil, default: nil
     field :last_activity, integer() | nil, default: nil
     field :resolve_timer_ref, reference() | nil, default: nil
@@ -90,9 +89,29 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
+  @doc """
+  Gets the last activity timestamp for the connection manager.
+  """
+  @spec get_last_activity(Backend.t()) :: integer() | nil
+  def get_last_activity(%Backend{} = backend) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.call(:get_last_activity)
+  end
+
+  @doc """
+  Sets the last activity timestamp.
+  """
+  @spec set_last_activity(Backend.t(), integer() | nil) :: :ok
+  def set_last_activity(%Backend{} = backend, timestamp) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.cast({:set_last_activity, timestamp})
+  end
+
   @impl true
   def init(backend_id) do
-    resolve_timer_ref = Process.send_after(self(), :resolve_connections, @resolve_interval)
+    resolve_timer_ref = resolve_timer_send_after()
 
     initial_state = %__MODULE__{
       backend_id: backend_id,
@@ -129,7 +148,17 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   def handle_call(:pool_active, _from, %__MODULE__{} = state), do: {:reply, false, state}
 
   @impl true
+  def handle_call(:get_last_activity, _from, %__MODULE__{last_activity: last_activity} = state) do
+    {:reply, last_activity, state}
+  end
+
+  @impl true
   def handle_cast(:update_activity, %__MODULE__{} = state), do: {:noreply, record_activity(state)}
+
+  @impl true
+  def handle_cast({:set_last_activity, timestamp}, %__MODULE__{} = state) do
+    {:noreply, %{state | last_activity: timestamp}}
+  end
 
   @impl true
   def handle_info(:resolve_connections, %__MODULE__{} = state) do
@@ -137,7 +166,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
       Process.cancel_timer(state.resolve_timer_ref)
     end
 
-    new_timer_ref = Process.send_after(self(), :resolve_connections, @resolve_interval)
+    new_timer_ref = resolve_timer_send_after()
 
     new_state =
       %__MODULE__{state | resolve_timer_ref: new_timer_ref}
@@ -149,7 +178,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   @impl true
   def handle_info({:DOWN, _ref, :process, pid, _reason}, %__MODULE__{pool_pid: pid} = state)
       when is_pid(pid) do
-    Logger.warning("Clickhouse connection pool died",
+    Logger.warning("ClickHouse connection pool died",
       backend_id: state.backend_id
     )
 
@@ -171,7 +200,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
          {:ok, pid} <- Ch.start_link(ch_opts) do
       Process.monitor(pid)
 
-      Logger.info("Started Clickhouse connection pool",
+      Logger.info("Started ClickHouse connection pool",
         backend_id: state.backend_id
       )
 
@@ -183,7 +212,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     else
       {:error, reason} ->
         Logger.error(
-          "Failed to start Clickhouse connection pool",
+          "Failed to start ClickHouse connection pool",
           backend_id: state.backend_id,
           reason: reason
         )
@@ -226,7 +255,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     if Process.alive?(pool_pid) do
       GenServer.stop(pool_pid)
 
-      Logger.info("Stopped Clickhouse connection pool due to inactivity",
+      Logger.info("Stopped ClickHouse connection pool due to inactivity",
         backend_id: state.backend_id
       )
     end
@@ -235,38 +264,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   end
 
   @spec build_ch_opts(__MODULE__.t()) :: {:ok, Keyword.t()} | {:error, term()}
-  defp build_ch_opts(%__MODULE__{backend_id: nil}) do
-    # Single-tenant mode with virtual backend
-    name = connection_pool_via(%Logflare.Backends.Backend{type: :clickhouse})
-    opts = Logflare.SingleTenant.clickhouse_backend_adapter_opts() || []
-
-    url = Keyword.get(opts, :url)
-    database = Keyword.get(opts, :database)
-    username = Keyword.get(opts, :username)
-    password = Keyword.get(opts, :password)
-    port = Keyword.get(opts, :port) || ClickhouseAdaptor.extract_port_from_url(url)
-
-    default_pool_size =
-      Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
-
-    with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
-      ch_opts = [
-        name: name,
-        scheme: scheme,
-        hostname: hostname,
-        port: port,
-        database: database,
-        username: username,
-        password: password,
-        pool_size: default_pool_size,
-        settings: [],
-        timeout: @ch_query_conn_timeout
-      ]
-
-      {:ok, ch_opts}
-    end
-  end
-
   defp build_ch_opts(%__MODULE__{backend_id: backend_id}) do
     # Fetch fresh backend from cache
     backend = Backends.Cache.get_backend(backend_id)
@@ -285,16 +282,18 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
         |> div(2)
         |> max(default_pool_size)
 
-      url = Map.get(config, :url)
+      read_only_url = Map.get(config, :read_only_url)
+      url = if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
 
-      with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
+      with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
         pool_via = connection_pool_via(backend)
+        port = get_read_port(config, url_port)
 
         ch_opts = [
           name: pool_via,
           scheme: scheme,
           hostname: hostname,
-          port: get_port_config(backend, config),
+          port: port,
           database: config.database,
           username: config.username,
           password: config.password,
@@ -308,12 +307,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
-  @spec extract_scheme_and_hostname(String.t()) ::
-          {:ok, {String.t(), String.t()}} | {:error, String.t()}
-  defp extract_scheme_and_hostname(url) when is_binary(url) and byte_size(url) > 0 do
+  @spec extract_url_components(String.t()) ::
+          {:ok, {String.t(), String.t(), non_neg_integer() | nil}} | {:error, String.t()}
+  defp extract_url_components(url) when is_non_empty_binary(url) do
     case URI.new(url) do
-      {:ok, %URI{scheme: scheme, host: hostname}} when scheme in ~w(http https) ->
-        {:ok, {scheme, hostname}}
+      {:ok, %URI{scheme: scheme, host: hostname, port: port}} when scheme in ~w(http https) ->
+        {:ok, {scheme, hostname, port}}
 
       {:ok, %URI{}} ->
         {:error, "Unable to extract scheme and hostname from URL."}
@@ -323,16 +322,24 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
-  defp extract_scheme_and_hostname(_url), do: {:error, "Unexpected URL value provided."}
+  defp extract_url_components(_url), do: {:error, "Unexpected URL value provided."}
 
-  @spec get_port_config(Backend.t(), map()) :: non_neg_integer()
-  defp get_port_config(_backend, %{port: port}) when is_pos_integer(port), do: port
+  @spec get_read_port(map(), non_neg_integer() | nil) :: non_neg_integer()
+  defp get_read_port(config, url_port), do: url_port || get_config_port(config)
 
-  defp get_port_config(_backend, %{port: port}) when is_non_empty_binary(port),
-    do: String.to_integer(port)
+  @spec get_config_port(map()) :: non_neg_integer()
+  defp get_config_port(%{port: port}) when is_pos_integer(port), do: port
+  defp get_config_port(%{port: port}) when is_non_empty_binary(port), do: String.to_integer(port)
 
   @spec connection_manager_via(Backend.t()) :: tuple()
   defp connection_manager_via(%Backend{} = backend) do
     Backends.via_backend(backend, __MODULE__)
+  end
+
+  defp resolve_timer_send_after do
+    resolve_interval =
+      Application.get_env(:logflare, __MODULE__)[:resolve_interval] || @resolve_interval
+
+    Process.send_after(self(), :resolve_connections, resolve_interval)
   end
 end

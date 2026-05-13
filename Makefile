@@ -120,7 +120,7 @@ setup: check-tools check-version-manager setup.node
 setup.node:
 	@echo -e "$(BOLD)$(BLUE)📦 Installing Node.js dependencies...$(NC)"
 	@echo ""
-	npm --prefix ./assets install
+	npm --prefix ./assets ci 
 	@echo ""
 
 reset:
@@ -195,7 +195,10 @@ migrate:
 	@env $$(cat .dev.env | xargs) mix ecto.migrate
 
 
-.PHONY: __start__ migrate start.sb.pg start.sb.bq start.sb.ch start.st.pg start.st.bq start.st.ch start.orange start.pink
+stripe:
+	stripe listen --forward-to localhost:4000/webhooks/stripe
+
+.PHONY: __start__ migrate stripe start.sb.pg start.sb.bq start.sb.ch start.st.pg start.st.bq start.st.ch start.orange start.pink
 
 # Encryption and decryption of secrets
 # Usage:
@@ -238,7 +241,6 @@ $(addprefix decrypt.,${envs}): decrypt.%: \
  	.$$*.env \
  	.$$*.cert.key \
  	.$$*.cert.pem \
- 	.$$*.req.pem \
  	.$$*.db-client-cert.pem \
  	.$$*.db-client-key.pem \
  	.$$*.db-server-ca.pem
@@ -248,7 +250,6 @@ $(addprefix encrypt.,${envs}): encrypt.%: \
 	.$$*.env.enc \
 	.$$*.cert.key.enc \
 	.$$*.cert.pem.enc \
-	.$$*.req.pem.enc \
  	.$$*.db-client-cert.pem.enc \
  	.$$*.db-client-key.pem.enc \
  	.$$*.db-server-ca.pem.enc
@@ -352,27 +353,27 @@ deploy.prod.versioned:
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-b \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-b,_LOGFLARE_ALERTS_ENABLED=false \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-c \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-c,_LOGFLARE_ALERTS_ENABLED=false \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-d \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-d,_LOGFLARE_ALERTS_ENABLED=false \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-e \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-e,_LOGFLARE_ALERTS_ENABLED=false \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-f \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-f,_LOGFLARE_ALERTS_ENABLED=false \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 
@@ -408,8 +409,58 @@ $(addprefix ssl.,${envs}): ssl.%:
 	@openssl req -x509 -newkey rsa:2048 -keyout .$*.cert.key -out .$*.cert.pem -days 3650 \
 		-nodes -subj "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=$(CERT_DOMAIN)"
 
+TELEGRAF_KEYS_DIR := priv/telegraf
+TELEGRAF_KEYS_SENTINEL := $(TELEGRAF_KEYS_DIR)/client.crt
+
+ssl.telegraf: $(TELEGRAF_KEYS_SENTINEL)
+	@echo "Telegraf SSL keys are up to date."
+
+$(TELEGRAF_KEYS_SENTINEL):
+	@echo "Generating test keys in $(TELEGRAF_KEYS_DIR)..."
+	@mkdir -p $(TELEGRAF_KEYS_DIR)
+
+	# CA
+	@openssl genrsa -out $(TELEGRAF_KEYS_DIR)/ca.key 2048
+	@openssl req -new -x509 -days 3650 -key $(TELEGRAF_KEYS_DIR)/ca.key \
+		-subj "/CN=Test CA" \
+		-out $(TELEGRAF_KEYS_DIR)/ca.crt
+
+	# Server (Telegraf)
+	@echo "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:telegraf" > $(TELEGRAF_KEYS_DIR)/server.ext
+	
+	@openssl genrsa -out $(TELEGRAF_KEYS_DIR)/server.key 2048
+	@openssl req -new -key $(TELEGRAF_KEYS_DIR)/server.key \
+		-subj "/CN=localhost" \
+		-out $(TELEGRAF_KEYS_DIR)/server.csr
+	
+	@openssl x509 -req -days 3650 -in $(TELEGRAF_KEYS_DIR)/server.csr \
+		-CA $(TELEGRAF_KEYS_DIR)/ca.crt -CAkey $(TELEGRAF_KEYS_DIR)/ca.key -set_serial 01 \
+		-out $(TELEGRAF_KEYS_DIR)/server.crt \
+		-extfile $(TELEGRAF_KEYS_DIR)/server.ext
+
+	# Client (Logflare)
+	@openssl genrsa -out $(TELEGRAF_KEYS_DIR)/client.key 2048
+	@openssl req -new -key $(TELEGRAF_KEYS_DIR)/client.key \
+		-subj "/CN=client" \
+		-out $(TELEGRAF_KEYS_DIR)/client.csr
+	@openssl x509 -req -days 3650 -in $(TELEGRAF_KEYS_DIR)/client.csr \
+		-CA $(TELEGRAF_KEYS_DIR)/ca.crt -CAkey $(TELEGRAF_KEYS_DIR)/ca.key -set_serial 02 \
+		-out $(TELEGRAF_KEYS_DIR)/client.crt
+
+	@# Cleanup temp files and ensure read permissions
+	@rm $(TELEGRAF_KEYS_DIR)/*.csr $(TELEGRAF_KEYS_DIR)/server.ext $(TELEGRAF_KEYS_DIR)/ca.key
+	@chmod 644 $(TELEGRAF_KEYS_DIR)/*
 
 docker.multi-step:
 	docker-compose build base runner
 
-.PHONY: $(addprefix ssl.,${envs}) docker.build.multistep
+ops.sign-export:
+	@if [ -z "$(PROJECT)" ]; then \
+		echo "Error: PROJECT env variable must be set. Usage: make ops.sign-export PROJECT=your_project"; \
+		exit 1; \
+	fi
+	@CLOUDSDK_PYTHON=python3 CLOUDSDK_PYTHON_SITEPACKAGES=1 gcloud storage sign-url 'gs://supabase-log-exports-prod/$(PROJECT)-*.json.gz' \
+		--private-key-file=.log-export.gcloud.json  \
+		--duration=5d > export-dl-$(PROJECT).txt
+
+.PHONY: $(addprefix ssl.,${envs}) ssl.telegraf docker.build.multistep ops.sign-export

@@ -45,6 +45,11 @@
       Optional. Enable routing API requests through managed service accounts for queries made to BigQuery.
       Requires the <code>resourcemanager.projects.setIamPolicy</code> permission on the project.
     </small>
+    <%= text_input e, :bigquery_additional_projects, placeholder: "project-id-1, project-id-2", class: "form-control form-control-margin", readonly: true %>
+    <%= error_tag e, :bigquery_additional_projects %>
+    <small class="form-text text-muted">
+      Optional. Comma-separated list of additional BigQuery project IDs for managed service account IAM setup.
+    </small>
   </div>
   <%= submit "Update BigQuery settings", class: "btn btn-primary form-button" %>
 <% end %>
@@ -56,6 +61,7 @@
 <%= hidden_input e, :bigquery_reservation_alerts, value: nil %>
 <%= hidden_input e, :bigquery_processed_bytes_limit, value: 10_000_000_000 %>
 <%= hidden_input e, :bigquery_enable_managed_service_accounts, value: false %>
+<%= hidden_input e, :bigquery_additional_projects, value: nil %>
 <%= submit "Reset BigQuery settings", class: "btn btn-secondary form-button" %>
 <% end %>
 <% else %>
@@ -105,6 +111,11 @@
     <small class="form-text text-muted">
       Optional. Enable routing API requests through managed service accounts for queries made to BigQuery.
       Requires the <code>resourcemanager.projects.setIamPolicy</code> permission on the project.
+    </small>
+    <%= text_input e, :bigquery_additional_projects, placeholder: "project-id-1, project-id-2", class: "form-control form-control-margin" %>
+    <%= error_tag e, :bigquery_additional_projects %>
+    <small class="form-text text-muted">
+      Optional. Comma-separated list of additional BigQuery project IDs for managed service account IAM setup.
     </small>
   </div>
   <%= submit "Update BigQuery settings", class: "btn btn-primary form-button" %>

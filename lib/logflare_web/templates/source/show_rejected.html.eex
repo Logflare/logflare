@@ -17,7 +17,7 @@
     <%= if @logs do %>
       <%= @logs |> Enum.with_index |> Enum.map(fn {log_event, inx} -> %>
       <li>
-        <mark class="log-datestamp" data-timestamp="<%= 1_000_000 * (DateTime.from_naive!(log_event.ingested_at, "Etc/UTC") |> DateTime.to_unix()) %>"><%= log_event.ingested_at %></mark>
+        <mark class="log-datestamp" data-timestamp="<%= 1_000_000 * DateTime.to_unix(log_event.ingested_at) %>"><%= log_event.ingested_at %></mark>
         <%= log_event.pipeline_error.message %>
         <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>"aria-expanded="false">
           log payload

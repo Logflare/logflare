@@ -94,13 +94,7 @@ defmodule Logflare.Lql.Encoder do
     do: "t:#{op}#{v}"
 
   defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: v}) do
-    dtstring =
-      v
-      |> DateTime.from_naive!("Etc/UTC")
-      |> Timex.format!("{ISO:Extended:Z}")
-      |> String.trim_trailing("Z")
-
-    "t:#{op}#{dtstring}"
+    "t:#{op}#{format_filter_value(v)}"
   end
 
   defp to_fragment(%FilterRule{
@@ -127,7 +121,7 @@ defmodule Logflare.Lql.Encoder do
   defp to_fragment(%FilterRule{path: "event_message", value: v, operator: :"~"}), do: "~#{v}"
 
   defp to_fragment(%FilterRule{path: path, operator: :range, values: values}) do
-    "#{path}:#{Enum.join(values, "..")}"
+    "#{path}:#{Enum.map_join(values, "..", &format_generic_filter_value/1)}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -144,7 +138,9 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{path: path, operator: :=, value: v}) do
-    "#{path}:#{v}"
+    value = format_generic_filter_value(v)
+
+    "#{path}:#{value}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -161,7 +157,9 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{path: path, operator: :list_includes, value: v}) do
-    "#{path}:@>#{v}"
+    value = format_generic_filter_value(v)
+
+    "#{path}:@>#{value}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -178,7 +176,9 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{path: path, operator: :list_includes_regexp, value: v}) do
-    "#{path}:@>~#{v}"
+    value = format_generic_filter_value(v)
+
+    "#{path}:@>~#{value}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -195,27 +195,58 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{path: path, operator: op, value: v}) do
-    "#{path}:#{op}#{v}"
+    value = format_generic_filter_value(v)
+
+    "#{path}:#{op}#{value}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
 
   defp to_fragment(%ChartRule{path: "timestamp", aggregate: agg, period: period}) do
     qs = "c:#{agg}(*) c:group_by(t::#{period})"
-    Regex.replace(~r/(?<=sum|avg|count|max|p50|p95|p99)\(metadata./, qs, "(m.")
+    Regex.replace(~r/(?<=sum|avg|count|countd|max|p50|p95|p99)\(metadata./, qs, "(m.")
   end
 
   defp to_fragment(%ChartRule{path: path, aggregate: agg, period: period}) do
     qs = "c:#{agg}(#{path}) c:group_by(t::#{period})"
-    Regex.replace(~r/(?<=sum|avg|count|max|p50|p95|p99)\(metadata./, qs, "(m.")
+    Regex.replace(~r/(?<=sum|avg|count|countd|max|p50|p95|p99)\(metadata./, qs, "(m.")
   end
 
   defp to_fragment(%SelectRule{path: "*"}), do: "s:*"
 
-  defp to_fragment(%SelectRule{path: path}),
+  defp to_fragment(%SelectRule{path: path, alias: nil}),
     do: "s:#{String.replace_leading(path, "metadata.", "m.")}"
 
+  defp to_fragment(%SelectRule{path: path, alias: alias_name}) when is_binary(alias_name),
+    do: "s:#{String.replace_leading(path, "metadata.", "m.")}@#{alias_name}"
+
   defp to_fragment(%FromRule{table: table}), do: "f:#{table}"
+
+  @spec maybe_quote(term()) :: String.t()
+  defp maybe_quote(v) when is_non_empty_binary(v) do
+    if Regex.match?(~r/^[a-zA-Z_0-9]+$/, v), do: v, else: ~s|"#{v}"|
+  end
+
+  defp maybe_quote(v), do: to_string(v)
+
+  defp format_generic_filter_value(value) when is_valid_date_or_datetime(value),
+    do: format_filter_value(value)
+
+  defp format_generic_filter_value(value), do: maybe_quote(value)
+
+  defp format_filter_value(%Date{} = value), do: Date.to_iso8601(value)
+
+  defp format_filter_value(%DateTime{} = value) do
+    value
+    |> DateTime.shift_zone!("Etc/UTC")
+    |> DateTime.to_naive()
+    |> format_filter_value()
+  end
+
+  defp format_filter_value(%NaiveDateTime{microsecond: {0, _}} = value),
+    do: NaiveDateTime.to_iso8601(%{value | microsecond: {0, 0}})
+
+  defp format_filter_value(%NaiveDateTime{} = value), do: NaiveDateTime.to_iso8601(value)
 
   def to_datetime_with_range(%Date{} = ldt, %Date{} = rdt) do
     mapper_fn = fn period -> timestamp_mapper(ldt, rdt, period) end

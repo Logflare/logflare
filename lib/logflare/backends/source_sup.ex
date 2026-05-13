@@ -8,19 +8,16 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Sources.Source
   alias Logflare.Users
   alias Logflare.Billing
-  alias Logflare.GenSingleton
   alias Logflare.Sources.Source.RateCounterServer
   alias Logflare.Sources.Source.EmailNotificationServer
   alias Logflare.Sources.Source.TextNotificationServer
   alias Logflare.Sources.Source.WebhookNotificationServer
   alias Logflare.Sources.Source.SlackHookServer
   alias Logflare.Sources.Source.BillingWriter
-  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Rules.Rule
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.Backends.UserMonitoring
 
   def child_spec(%Source{id: id} = arg) do
     %{
@@ -37,10 +34,13 @@ defmodule Logflare.Backends.SourceSup do
   def init(source) do
     source = Sources.Cache.preload_rules(source)
 
-    ingest_backends = Backends.Cache.list_backends(source_id: source.id)
+    ingest_backends =
+      Backends.Cache.list_backends(source_id: source.id)
+      |> Enum.reject(& &1.consolidated_ingest?)
 
     rules_backends =
       Backends.Cache.list_backends(rules_source_id: source.id)
+      |> Enum.reject(& &1.consolidated_ingest?)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
     user = Users.Cache.get(source.user_id)
@@ -55,36 +55,38 @@ defmodule Logflare.Backends.SourceSup do
       |> Enum.map(&Backend.child_spec(source, &1))
       |> Enum.uniq()
 
-    otel_exporter = maybe_get_otel_exporter(source, user)
-
     children =
       [
         {RateCounterServer, [source: source]},
-        {GenSingleton, child_spec: {RecentEventsTouch, source: source}},
         {RecentInsertsCacher, [source: source]},
         {EmailNotificationServer, [source: source]},
         {TextNotificationServer, [source: source, plan: plan]},
         {WebhookNotificationServer, [source: source]},
         {SlackHookServer, [source: source]},
-        {BillingWriter, [source: source]},
-        {SourceSupWorker, [source: source]}
-      ] ++ otel_exporter ++ specs
+        {BillingWriter, [source: source]}
+      ] ++
+        if(Application.get_env(:logflare, :env) != :test,
+          do: [{SourceSupWorker, [source: source]}],
+          else: []
+        ) ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)
   end
-
-  defp maybe_get_otel_exporter(%{system_source_type: :metrics} = source, user),
-    do: UserMonitoring.get_otel_exporter(source, user)
-
-  defp maybe_get_otel_exporter(_, _),
-    do: []
 
   @doc """
   Checks if a rule child is started for a given source/rule.
   Must be a backend rule.
   """
   @spec rule_child_started?(Rule.t()) :: boolean()
-  def rule_child_started?(%Rule{backend_id: backend_id, source_id: source_id}) do
+  def rule_child_started?(%Rule{backend_id: backend_id, source_id: source_id})
+      when backend_id != nil,
+      do: backend_child_started?(backend_id, source_id)
+
+  @doc """
+  Checks if a given backend associated with source is started.
+  """
+  @spec backend_child_started?(non_neg_integer(), non_neg_integer()) :: boolean()
+  def backend_child_started?(backend_id, source_id) do
     via = Backends.via_source(source_id, AdaptorSupervisor, backend_id)
 
     if GenServer.whereis(via) do
@@ -95,23 +97,36 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   @doc """
-  Starts a given backend child spec for the backend associated with a rule.
+  Wrapper calling `start_backend_child_by_id/2` with backend and source ids
+  associated with given rule
+  """
+  @spec start_rule_child(Rule.t()) :: Supervisor.on_start_child() | :noop
+  def start_rule_child(%Rule{} = rule),
+    do: start_backend_child_by_id(rule.backend_id, rule.source_id)
+
+  @doc """
+  Starts a backend child spec for the given backend id and source id.
   This backend will not be registered for ingest dispatching.
 
   This allows for zero-downtime ingestion, as we don't restart the SourceSup supervision tree.
   """
-  @spec start_rule_child(Rule.t()) :: Supervisor.on_start_child()
-  def start_rule_child(%Rule{backend_id: backend_id} = rule) do
+  @spec start_backend_child_by_id(non_neg_integer(), non_neg_integer()) ::
+          Supervisor.on_start_child() | :noop
+  def start_backend_child_by_id(backend_id, source_id) do
     backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
-    source = Sources.Cache.get_by_id(rule.source_id)
+    source = Sources.Cache.get_by_id(source_id)
     start_backend_child(source, backend)
   end
 
   @doc """
   Starts a given backend-souce combination when SourceSup is already running.
   This allows for zero-downtime ingestion, as we don't restart the SourceSup supervision tree.
+
+  Consolidated backends are excluded.
   """
-  @spec start_backend_child(Source.t(), Backend.t()) :: Supervisor.on_start_child()
+  @spec start_backend_child(Source.t(), Backend.t()) :: Supervisor.on_start_child() | :noop
+  def start_backend_child(%Source{}, %Backend{consolidated_ingest?: true}), do: :noop
+
   def start_backend_child(%Source{} = source, %Backend{} = backend) do
     via = Backends.via_source(source, __MODULE__)
     source = Sources.Cache.get_by_id(source.id)

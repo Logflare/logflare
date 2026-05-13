@@ -6,6 +6,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.SystemMetrics.AllLogsLogged
   alias GoogleApi.CloudResourceManager.V1.Model
 
@@ -79,7 +80,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       source = insert(:source, user: user)
       start_supervised!({SourceSup, source})
 
-      assert {:ok, %{rows: [%{"test" => "input_data"}]}} =
+      assert {:ok, %QueryResult{rows: [%{"test" => "input_data"}]}} =
                BigQueryAdaptor.execute_query(
                  backend,
                  {"SELECT @test", ["test"], %{"test" => "input_data"}},
@@ -103,7 +104,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       source = insert(:source, user: user)
       start_supervised!({SourceSup, source})
 
-      assert {:ok, %{rows: [%{"test" => "1"}]}} =
+      assert {:ok, %QueryResult{rows: [%{"test" => "1"}]}} =
                BigQueryAdaptor.execute_query(backend, "SELECT 1", [])
     end
   end
@@ -134,7 +135,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       pid = self()
 
       Logflare.Google.BigQuery
-      |> expect(:stream_batch!, fn _, _ ->
+      |> stub(:stream_batch!, fn _, _ ->
         send(pid, :streamed)
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
@@ -155,11 +156,11 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       end)
 
       GoogleApi.BigQuery.V2.Api.Tables
-      |> expect(:bigquery_tables_patch, fn _conn,
-                                           _project_id,
-                                           _dataset_id,
-                                           _table_name,
-                                           [body: _body] ->
+      |> stub(:bigquery_tables_patch, fn _conn,
+                                         _project_id,
+                                         _dataset_id,
+                                         _table_name,
+                                         [body: _body] ->
         send(pid, :patched)
         {:ok, %{}}
       end)
@@ -236,11 +237,16 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       pid = self()
 
       Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
-      |> expect(:append_rows, fn {:arrow, dataframe}, _project, _dataset, _table_id ->
+      |> expect(:append_rows, fn {:arrow, dataframe}, _context, _table_id ->
         send(pid, :streamed)
 
-        assert {:ok, _} = DataFrame.dump_ipc(dataframe)
-        assert {:ok, _} = DataFrame.dump_ipc_record_batch(dataframe)
+        {_arrow_schema, _batch_msgs} =
+          dataframe
+          |> Jason.encode!()
+          |> String.slice(1..-2//1)
+          |> String.replace("},{", "}\n{")
+          |> BigQueryAdaptor.ArrowIPC.get_ipc_bytes()
+
         {:ok, %Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse{}}
       end)
 
@@ -271,10 +277,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         {:ok, %GRPC.Client.Stream{}}
       end)
 
-      GRPC.Stub
-      |> stub(:connect, fn _url, _keywords ->
+      Logflare.Networking.GrpcPool
+      |> stub(:get_channel, fn _name ->
         {:ok, %GRPC.Channel{}}
       end)
+
+      GRPC.Stub
       |> stub(:send_request, fn stream, _request ->
         {:ok, stream}
       end)
@@ -328,24 +336,15 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       Google.Cloud.Bigquery.Storage.V1.BigQueryWrite.Stub
       |> stub(:append_rows, fn _channel ->
-        # simulate latency
-        :timer.sleep(10)
         {:ok, %GRPC.Client.Stream{}}
       end)
 
       GRPC.Stub
       |> stub(:connect, fn _url, _keywords ->
-        # simulate latency
-        :timer.sleep(20)
         {:ok, %GRPC.Channel{}}
       end)
-      |> stub(:send_request, fn stream, request ->
-        # simulate latency
-        :timer.sleep(10)
-
-        %{rows: {:arrow_rows, %{rows: %{serialized_record_batch: ipc_msg}}}} = request
-
-        BencheeAsync.Reporter.record(byte_size(ipc_msg))
+      |> stub(:send_request, fn stream, _request ->
+        BencheeAsync.Reporter.record()
         {:ok, stream}
       end)
       |> stub(:end_stream, fn stream ->
@@ -361,6 +360,37 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       start_supervised!({SourceSup, source})
 
       [source: source]
+    end
+
+    test "ipc encoding", %{source: source} do
+      batch_1 = [build(:log_event, source: source)]
+
+      Benchee.run(
+        %{
+          "arrow-rs" => fn ->
+            {_, _} =
+              batch_1
+              |> Enum.map(&BigQueryAdaptor.log_event_to_df_struct(&1))
+              |> BigQueryAdaptor.normalize_df_struct_fields()
+              |> Jason.encode!()
+              |> String.slice(1..-2//1)
+              |> String.replace("},{", "}\n{")
+              |> BigQueryAdaptor.ArrowIPC.get_ipc_bytes()
+          end,
+          "Explorer" => fn ->
+            df =
+              batch_1
+              |> Enum.map(&BigQueryAdaptor.log_event_to_df_struct(&1))
+              |> BigQueryAdaptor.normalize_df_struct_fields()
+              |> DataFrame.new()
+
+            {:ok, _arrow_schema} = DataFrame.dump_ipc_schema(df)
+            {:ok, _batch_msgs} = DataFrame.dump_ipc_record_batch(df)
+          end
+        },
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}],
+        profile_after: :tprof
+      )
     end
 
     test "defaults", %{source: source} do
@@ -741,6 +771,152 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert Enum.any?(members, fn member ->
                String.contains?(member, "logflare-managed-")
              end)
+    end
+
+    test "append_managed_sa_to_all_iam_projects/1 appends managed SAs to primary and additional projects" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_additional_projects: "extra-project-1, extra-project-2"
+        )
+
+      pid = self()
+
+      # Expect get_iam_policy called 3 times (primary + 2 additional)
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, project_id, [body: _body] ->
+          send(pid, {:get_policy, project_id})
+
+          {:ok,
+           %Model.Policy{
+             bindings: [
+               %Model.Binding{members: ["user:original@user.com"], role: "roles/bigquery.jobUser"}
+             ]
+           }}
+        end
+      )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, project_id, [body: body] ->
+          send(pid, {:set_policy, project_id})
+          {:ok, body.policy}
+        end
+      )
+
+      stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok,
+           %{
+             accounts: [
+               %GoogleApi.IAM.V1.Model.ServiceAccount{
+                 email: "logflare-managed-0@some-project.iam.gserviceaccount.com",
+                 name:
+                   "projects/some-project/serviceAccounts/logflare-managed-0@some-project.iam.gserviceaccount.com"
+               }
+             ],
+             nextPageToken: nil
+           }}
+      end)
+
+      result = BigQueryAdaptor.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:ok, _} = result.primary
+
+      additional_project_ids =
+        result.additional |> Enum.map(fn {project_id, _} -> project_id end)
+
+      assert "extra-project-1" in additional_project_ids
+      assert "extra-project-2" in additional_project_ids
+
+      assert Enum.all?(result.additional, fn {_, res} -> match?({:ok, _}, res) end)
+
+      # verify set_iam_policy was called for all three projects
+      assert_receive {:set_policy, "primary-project"}
+      assert_receive {:set_policy, "extra-project-1"}
+      assert_receive {:set_policy, "extra-project-2"}
+    end
+
+    test "append_managed_sa_to_all_iam_projects/1 with nil additional_projects only calls primary" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_additional_projects: nil
+        )
+
+      pid = self()
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _project_id, [body: _body] ->
+          {:ok,
+           %Model.Policy{
+             bindings: []
+           }}
+        end
+      )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, project_id, [body: body] ->
+          send(pid, {:set_policy, project_id})
+          {:ok, body.policy}
+        end
+      )
+
+      stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok,
+           %{
+             accounts: [
+               %GoogleApi.IAM.V1.Model.ServiceAccount{
+                 email: "logflare-managed-0@some-project.iam.gserviceaccount.com",
+                 name:
+                   "projects/some-project/serviceAccounts/logflare-managed-0@some-project.iam.gserviceaccount.com"
+               }
+             ],
+             nextPageToken: nil
+           }}
+      end)
+
+      result = BigQueryAdaptor.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:ok, _} = result.primary
+      assert [] = result.additional
+
+      assert_receive {:set_policy, "primary-project"}
+      refute_receive {:set_policy, _}
+    end
+
+    test "append_managed_sa_to_all_iam_projects/1 skips additional projects when managed SAs disabled" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: false,
+          bigquery_additional_projects: "extra-project-1"
+        )
+
+      reject(
+        &GoogleApi.CloudResourceManager.V1.Api.Projects.cloudresourcemanager_projects_get_iam_policy/3
+      )
+
+      reject(
+        &GoogleApi.CloudResourceManager.V1.Api.Projects.cloudresourcemanager_projects_set_iam_policy/3
+      )
+
+      result = BigQueryAdaptor.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:error, :managed_service_accounts_disabled} = result.primary
+
+      assert [{"extra-project-1", {:error, :managed_service_accounts_disabled}}] =
+               result.additional
     end
 
     test "gen_utils get_conn/1 when managed sa pool is enabled and user has managed sa enabled" do

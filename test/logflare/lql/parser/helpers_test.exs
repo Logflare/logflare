@@ -1,5 +1,5 @@
 defmodule Logflare.Lql.Parser.HelpersTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   use Mimic
 
   alias Logflare.Lql.Parser.Helpers
@@ -122,6 +122,19 @@ defmodule Logflare.Lql.Parser.HelpersTest do
       assert result.path == "timestamp"
       assert result.value == ~N[2023-01-01 12:00:00]
       assert is_nil(result.shorthand)
+    end
+
+    test "merges timestamp origin modifier for timestamp datetime values" do
+      args = [
+        path: "timestamp",
+        operator: :=,
+        value: {:with_modifiers, ~N[2023-01-01 12:00:00], %{timestamp_origin: :absolute}}
+      ]
+
+      result = Helpers.to_rule(args, :filter)
+
+      assert result.value == ~N[2023-01-01 12:00:00]
+      assert result.modifiers == %{timestamp_origin: :absolute}
     end
   end
 
@@ -268,34 +281,133 @@ defmodule Logflare.Lql.Parser.HelpersTest do
       assert result == ~N[2023-01-15 10:30:00]
     end
 
+    test "parse_date_or_datetime normalizes UTC offsets" do
+      result = Helpers.parse_date_or_datetime([{:datetime, "2023-01-15T10:30:00+02:00"}])
+      assert result == ~N[2023-01-15 08:30:00]
+    end
+
+    test "parse_timestamp_datetime marks Z suffixes as absolute" do
+      assert {:with_modifiers, ~N[2023-01-15 10:30:00], %{timestamp_origin: :absolute}} =
+               Helpers.parse_timestamp_datetime([{:datetime_tz, "2023-01-15T10:30:00Z"}])
+    end
+
+    test "parse_timestamp_datetime marks UTC offsets as absolute" do
+      assert {:with_modifiers, ~N[2023-01-15 08:30:00], %{timestamp_origin: :absolute}} =
+               Helpers.parse_timestamp_datetime([{:datetime_tz, "2023-01-15T10:30:00+02:00"}])
+    end
+
+    test "parse_timestamp_datetime marks naive datetimes as local" do
+      assert {:with_modifiers, ~N[2023-01-15 10:30:00], %{timestamp_origin: :local}} =
+               Helpers.parse_timestamp_datetime([{:datetime, "2023-01-15T10:30:00"}])
+    end
+
+    test "parse_datetime_literal handles Unix timestamps in seconds and milliseconds" do
+      assert {:ok, ~N[2024-03-17 13:47:02]} = Helpers.parse_datetime_literal("1710683222")
+      assert {:ok, ~N[2024-03-17 13:47:02.000]} = Helpers.parse_datetime_literal("1710683222000")
+    end
+
+    test "parse_unix_timestamp_literal marks Unix timestamps as absolute" do
+      assert {:with_modifiers, ~N[2024-03-17 13:47:02], %{timestamp_origin: :absolute}} =
+               Helpers.parse_unix_timestamp_literal(["1710683222"])
+    end
+
+    test "parse_datetime_literal truncates Unix microseconds to milliseconds" do
+      assert {:ok, ~N[2024-03-17 13:47:02.000]} =
+               Helpers.parse_datetime_literal("1710683222000001")
+    end
+
+    test "parse_datetime_literal rejects unsupported Unix widths" do
+      assert {:error, :invalid_format} = Helpers.parse_datetime_literal("171068322200")
+      assert {:error, :invalid_format} = Helpers.parse_datetime_literal("17106832220000")
+      assert {:error, :invalid_format} = Helpers.parse_datetime_literal("171068322200000")
+    end
+
+    test "parse_datetime_literal rejects invalid formats" do
+      assert {:error, :invalid_format} = Helpers.parse_datetime_literal(:bad_format)
+    end
+
+    test "parse_unix_timestamp_literal raises for unsupported widths" do
+      assert catch_throw(Helpers.parse_unix_timestamp_literal(["17106832220000"])) ==
+               "Error while parsing timestamp: '17106832220000' is not a valid Unix timestamp (expected 10, 13, or 16 digits)"
+    end
+
+    test "parse_date_or_datetime_with_range normalizes timezone-bearing values" do
+      result =
+        Helpers.parse_date_or_datetime_with_range(
+          year: [2023],
+          month: [1],
+          day: [15],
+          hour: [10],
+          minute: [30],
+          second: [0],
+          timezone: "+02:00"
+        )
+
+      assert result == [
+               {:with_modifiers, ~N[2023-01-15 08:30:00], %{timestamp_origin: :absolute}}
+             ]
+    end
+
     test "timestamp_shorthand_to_value handles 'now'" do
       result = Helpers.timestamp_shorthand_to_value(["now"])
       assert result.shorthand == "now"
-      assert %DateTime{} = result.value
+      assert {:with_modifiers, %DateTime{}, %{timestamp_origin: :absolute}} = result.value
     end
 
     test "timestamp_shorthand_to_value handles 'today'" do
       result = Helpers.timestamp_shorthand_to_value(["today"])
       assert result.shorthand == "today"
-      assert match?({:range_operator, [%DateTime{}, %DateTime{}]}, result.value)
+
+      assert match?(
+               {:range_operator,
+                [
+                  {:with_modifiers, %DateTime{}, %{timestamp_origin: :absolute}},
+                  {:with_modifiers, %DateTime{}, %{timestamp_origin: :absolute}}
+                ]},
+               result.value
+             )
     end
 
     test "timestamp_shorthand_to_value handles 'yesterday'" do
       result = Helpers.timestamp_shorthand_to_value(["yesterday"])
       assert result.shorthand == "yesterday"
-      assert match?({:range_operator, [%DateTime{}, %DateTime{}]}, result.value)
+
+      assert match?(
+               {:range_operator,
+                [
+                  {:with_modifiers, %DateTime{}, %{timestamp_origin: :absolute}},
+                  {:with_modifiers, %DateTime{}, %{timestamp_origin: :absolute}}
+                ]},
+               result.value
+             )
     end
 
     test "timestamp_shorthand_to_value handles 'this@period'" do
       result = Helpers.timestamp_shorthand_to_value(["this", :hours])
       assert result.shorthand == "this@hours"
-      assert match?({:range_operator, [%DateTime{}, %DateTime{}]}, result.value)
+
+      assert match?(
+               {:range_operator,
+                [
+                  {:with_modifiers, %DateTime{}, %{timestamp_origin: :absolute}},
+                  {:with_modifiers, %DateTime{}, %{timestamp_origin: :absolute}}
+                ]},
+               result.value
+             )
     end
 
     test "timestamp_shorthand_to_value handles 'last@amount period'" do
       result = Helpers.timestamp_shorthand_to_value(["last", 5, :minutes])
       assert result.shorthand == "last@5minutes"
-      assert match?({:range_operator, [%DateTime{}, %DateTime{}]}, result.value)
+
+      assert match?(
+               {:range_operator,
+                [
+                  {:with_modifiers, %DateTime{}, %{timestamp_origin: :absolute}},
+                  {:with_modifiers, %DateTime{}, %{timestamp_origin: :absolute}}
+                ]},
+               result.value
+             )
     end
   end
 
@@ -323,8 +435,6 @@ defmodule Logflare.Lql.Parser.HelpersTest do
 
   describe "ISO8601 parsing error handling" do
     test "handles ISO8601 parsing with timezone offset" do
-      stub(Date, :from_iso8601, fn _ -> {:ok, ~D[2023-01-01], "+00:00"} end)
-
       result = Helpers.parse_date_or_datetime([{:date, "2023-01-01"}])
       assert result == ~D[2023-01-01]
     end
@@ -336,7 +446,7 @@ defmodule Logflare.Lql.Parser.HelpersTest do
       assert error =~ "Error while parsing timestamp date value: expected ISO8601 string, got"
     end
 
-    test "handles generic ISO8601 error" do
+    test "handles generic ISO8601 errors" do
       stub(Date, :from_iso8601, fn _ -> {:error, "custom error"} end)
 
       error = catch_throw(Helpers.parse_date_or_datetime([{:date, "2023-01-01"}]))

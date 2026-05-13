@@ -10,10 +10,6 @@ services:
     volumes:
       - ./priv/setup.sql:/docker-entrypoint-initdb.d/setup.sql
       - pg-data:/var/lib/postgresql/data
-  stripe-mock:
-    image: stripe/stripe-mock:latest
-    ports:
-      - "12111:12111"
   base:
     build:
       dockerfile: ./Dockerfile.base
@@ -68,12 +64,12 @@ services:
       # - filebeat:/usr/share/filebeat/data
       # - /var/log/audit/:/var/log/audit/:ro
     # environment:
-      # - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-node1}
-      # - KIBANA_HOST=${KIBANA_HOST:-node1}
-      # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
-      # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-changeme}
-      # disable strict permission checks
-    command: [ "--strict.perms=false" ]
+    # - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-node1}
+    # - KIBANA_HOST=${KIBANA_HOST:-node1}
+    # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
+    # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-changeme}
+    # disable strict permission checks
+    command: ["--strict.perms=false"]
   loki:
     image: grafana/loki:3.1.0
     ports:
@@ -118,7 +114,7 @@ services:
       - 4317:4317 # OTLP gRPC receiver
       - 4318:4318 # OTLP http receiver
   clickhouse:
-    image: clickhouse/clickhouse-server:25.6
+    image: clickhouse/clickhouse-server:25.12
     ports:
       - "8123:8123" # HTTP interface
       - "9000:9000" # Native client interface
@@ -139,7 +135,7 @@ services:
       resources:
         limits:
           memory: 1500M
-          cpus: '1.0'
+          cpus: "1.0"
         reservations:
           memory: 512M
     shm_size: 256M
@@ -147,5 +143,13 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+  telegraf:
+    image: telegraf:1.36
+    volumes:
+      - ./priv/telegraf:/etc/telegraf:ro
+      - ./db/telegraf_output:/tmp/telegraf_output
+    ports:
+      - 6514:6514
+      - 6515:6515
 volumes:
   pg-data:

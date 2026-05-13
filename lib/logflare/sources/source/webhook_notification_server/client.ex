@@ -38,10 +38,7 @@ defmodule Logflare.Sources.Source.WebhookNotificationServer.Client do
 
   defp send(client, url, payload) do
     case Tesla.post(client, url, payload) do
-      {:ok, %Tesla.Env{status: 200} = response} ->
-        {:ok, response}
-
-      {:ok, %Tesla.Env{status: 204} = response} ->
+      {:ok, %Tesla.Env{status: status} = response} when status in [200, 204] ->
         {:ok, response}
 
       {:ok, %Tesla.Env{} = response} ->

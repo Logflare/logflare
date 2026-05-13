@@ -2,7 +2,6 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor.Client do
   @moduledoc false
 
   use Tesla
-  require Logger
 
   plug Tesla.Middleware.Retry,
     delay: 500,

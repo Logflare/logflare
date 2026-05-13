@@ -1,5 +1,5 @@
 defmodule Logflare.Lql.ParserTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   use Mimic
 
   alias Logflare.DateTimeUtils
@@ -8,6 +8,7 @@ defmodule Logflare.Lql.ParserTest do
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.FromRule
+  alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @default_schema SchemaBuilder.initial_table_schema()
@@ -224,7 +225,7 @@ defmodule Logflare.Lql.ParserTest do
           value: "a"
         },
         %FilterRule{
-          modifiers: %{negate: true},
+          modifiers: %{negate: true, timestamp_origin: :local},
           operator: :range,
           path: "timestamp",
           values: [~N[2019-01-01 00:13:37Z], ~N[2019-02-01 00:23:34Z]]
@@ -295,6 +296,120 @@ defmodule Logflare.Lql.ParserTest do
                |> String.trim()
     end
 
+    test "timestamp filters support UTC offsets, Z suffixes, and Unix timestamps" do
+      qs = ~S|
+      t:>2026-03-17T14:47:02.000Z
+      t:>=2026-03-17T14:47:02+02:00
+      t:<2026-03-17T14:47:02-02:00
+      t:<=1710683222000000
+      |
+
+      {:ok, result} = Parser.parse(qs, @default_schema)
+      rules = Enum.filter(result, &(&1.path == "timestamp"))
+
+      assert [
+               %FilterRule{
+                 value: ~N[2026-03-17 14:47:02.000],
+                 values: nil,
+                 modifiers: %{timestamp_origin: :absolute}
+               },
+               %FilterRule{
+                 value: ~N[2026-03-17 12:47:02],
+                 values: nil,
+                 modifiers: %{timestamp_origin: :absolute}
+               },
+               %FilterRule{
+                 value: ~N[2026-03-17 16:47:02],
+                 values: nil,
+                 modifiers: %{timestamp_origin: :absolute}
+               },
+               %FilterRule{
+                 value: ~N[2024-03-17 13:47:02.000],
+                 values: nil,
+                 modifiers: %{timestamp_origin: :absolute}
+               }
+             ] = rules
+
+      assert Lql.encode!(result) ==
+               "t:>2026-03-17T14:47:02 t:>=2026-03-17T12:47:02 t:<2026-03-17T16:47:02 t:<=2024-03-17T13:47:02"
+    end
+
+    test "timestamp filters support Unix timestamp ranges" do
+      qs = ~S|
+      t:1710683222..1710683822
+      t:1710683222000..1710683822000
+      |
+
+      {:ok, result} = Parser.parse(qs, @default_schema)
+      rules = Enum.filter(result, &(&1.path == "timestamp"))
+
+      assert [
+               %FilterRule{
+                 value: nil,
+                 values: [~N[2024-03-17 13:47:02], ~N[2024-03-17 13:57:02]],
+                 modifiers: %{timestamp_origin: :absolute}
+               },
+               %FilterRule{
+                 value: nil,
+                 values: [~N[2024-03-17 13:47:02.000], ~N[2024-03-17 13:57:02.000]],
+                 modifiers: %{timestamp_origin: :absolute}
+               }
+             ] = rules
+
+      assert Lql.encode!(result) ==
+               "t:2024-03-17T13:{47..57}:02 t:2024-03-17T13:{47..57}:02"
+    end
+
+    test "timestamp filters support timestamp ranges with consistent timestamp origin" do
+      qs = ~S|
+      t:2024-03-01T03:23:45+02:00..2024-03-01T07:23:56-04:00
+      t:2024-03-02T01:23:45Z..2024-03-02T22:33:44Z
+      t:2024-03-03T00:11:22..2024-04-03T11:22:33
+      |
+
+      assert {:ok, result} = Parser.parse(qs, @default_schema)
+      rules = Enum.filter(result, &(&1.path == "timestamp"))
+
+      assert [
+               %Logflare.Lql.Rules.FilterRule{
+                 path: "timestamp",
+                 operator: :range,
+                 values: [~N[2024-03-01 01:23:45], ~N[2024-03-01 11:23:56]],
+                 modifiers: %{timestamp_origin: :absolute}
+               },
+               %Logflare.Lql.Rules.FilterRule{
+                 path: "timestamp",
+                 operator: :range,
+                 values: [~N[2024-03-02 01:23:45], ~N[2024-03-02 22:33:44]],
+                 modifiers: %{timestamp_origin: :absolute}
+               },
+               %Logflare.Lql.Rules.FilterRule{
+                 path: "timestamp",
+                 operator: :range,
+                 values: [~N[2024-03-03 00:11:22], ~N[2024-04-03 11:22:33]],
+                 modifiers: %{timestamp_origin: :local}
+               }
+             ] = rules
+    end
+
+    test "timestamp filters reject range with mixed timestamp origin" do
+      assert {:error, "Timestamp range cannot mix timestamps with and without timezone offsets"} =
+               Parser.parse(
+                 "t:2024-03-17T13:47:02+00:00..2024-03-17T13:57:02.000",
+                 @default_schema
+               )
+    end
+
+    test "timestamp filters reject ambiguous 14 and 15 digit Unix timestamps" do
+      assert {:error,
+              "Error while parsing timestamp filter value: expected ISO8601 string, Unix timestamp, range or shorthand, got '17106832220000'"} =
+               Parser.parse("t:17106832220000", @default_schema)
+
+      assert {:error,
+              "Error while parsing timestamp filter value: expected ISO8601 string, Unix timestamp, range or shorthand, got '171068322200000'"} =
+               Parser.parse("t:171068322200000", @default_schema)
+    end
+
     test "timestamp shorthands" do
       assert {:ok,
               [
@@ -307,7 +422,8 @@ defmodule Logflare.Lql.ParserTest do
               ]} = Parser.parse("timestamp:now", @default_schema)
 
       # use diff to reduce test flakiness
-      assert DateTime.diff(now_ndt(), now_out, :millisecond) |> abs() <= 150
+      assert NaiveDateTime.diff(to_naive(now_ndt()), to_naive(now_out), :millisecond) |> abs() <=
+               150
 
       for {qs, shorthand, start_value, end_value} <- [
             {"t:today", "today", today_dt(),
@@ -377,8 +493,12 @@ defmodule Logflare.Lql.ParserTest do
                 ]} = Parser.parse(qs, @default_schema)
 
         # use diff to reduce test flakiness
-        assert DateTime.diff(start_value, start_out, :millisecond) |> abs() <= 1500
-        assert DateTime.diff(end_value, end_out, :millisecond) |> abs() <= 1500
+        assert NaiveDateTime.diff(to_naive(start_value), to_naive(start_out), :millisecond)
+               |> abs() <=
+                 1500
+
+        assert NaiveDateTime.diff(to_naive(end_value), to_naive(end_out), :millisecond) |> abs() <=
+                 1500
       end
     end
 
@@ -620,7 +740,7 @@ defmodule Logflare.Lql.ParserTest do
                Parser.parse("m.nonexistent:value", @default_schema)
     end
 
-    test "handles naive_datetime fields without casting" do
+    test "casts naive_datetime fields from ISO8601 and Unix literals" do
       schema = build_schema(%{"metadata" => %{"test_field" => "value"}})
       mocked_typemap = %{"metadata.test_field" => :naive_datetime}
 
@@ -628,8 +748,64 @@ defmodule Logflare.Lql.ParserTest do
         mocked_typemap
       end)
 
-      assert {:ok, [%FilterRule{path: "metadata.test_field", value: "test_value"}]} =
+      assert {:ok,
+              [
+                %FilterRule{
+                  path: "metadata.test_field",
+                  operator: :>=,
+                  value: ~N[2026-03-17 12:47:02]
+                },
+                %FilterRule{
+                  path: "metadata.test_field",
+                  operator: :range,
+                  values: [~N[2024-03-17 13:47:02], ~N[2024-03-17 13:57:02]]
+                },
+                %FilterRule{
+                  path: "metadata.test_field",
+                  operator: :<=,
+                  value: ~N[2024-03-17 13:47:02.000]
+                }
+              ]} =
+               Parser.parse(
+                 "m.test_field:>=2026-03-17T14:47:02+02:00 m.test_field:1710683222..1710683822 m.test_field:<=1710683222000000",
+                 schema
+               )
+    end
+
+    test "returns error for invalid naive_datetime field values" do
+      schema = build_schema(%{"metadata" => %{"test_field" => "value"}})
+      mocked_typemap = %{"metadata.test_field" => :naive_datetime}
+
+      stub(Logflare.Google.BigQuery.SchemaUtils, :bq_schema_to_flat_typemap, fn _ ->
+        mocked_typemap
+      end)
+
+      assert {:error,
+              "Query syntax error: expected datetime for metadata.test_field, got: 'test_value'"} =
                Parser.parse("m.test_field:test_value", schema)
+    end
+
+    test "casts datetime fields and encodes them canonically" do
+      schema = build_schema(%{"metadata" => %{"created_at" => "value"}})
+      mocked_typemap = %{"metadata.created_at" => :datetime}
+
+      stub(Logflare.Google.BigQuery.SchemaUtils, :bq_schema_to_flat_typemap, fn _ ->
+        mocked_typemap
+      end)
+
+      assert {:ok, rules} =
+               Parser.parse(
+                 "m.created_at:>=2026-03-17T14:47:02.000Z m.created_at:<=1710683222000",
+                 schema
+               )
+
+      assert Enum.map(rules, & &1.value) == [
+               ~N[2026-03-17 14:47:02.000],
+               ~N[2024-03-17 13:47:02.000]
+             ]
+
+      assert Lql.encode!(rules) ==
+               "m.created_at:>=2026-03-17T14:47:02 m.created_at:<=2024-03-17T13:47:02"
     end
 
     test "returns field not found error for nil type fields" do
@@ -653,6 +829,7 @@ defmodule Logflare.Lql.ParserTest do
           ] do
         lql_rules = [
           %FilterRule{
+            modifiers: %{timestamp_origin: :local},
             operator: :range,
             path: "timestamp",
             values: [start_date, end_date]
@@ -669,6 +846,7 @@ defmodule Logflare.Lql.ParserTest do
 
       lql_rules = [
         %FilterRule{
+          modifiers: %{timestamp_origin: :local},
           operator: :>,
           path: "timestamp",
           value: ~N[2020-01-01 13:14:15.000500]
@@ -691,6 +869,7 @@ defmodule Logflare.Lql.ParserTest do
 
         lql_rules = [
           %FilterRule{
+            modifiers: %{timestamp_origin: :local},
             operator: :range,
             path: "timestamp",
             values: [
@@ -710,6 +889,7 @@ defmodule Logflare.Lql.ParserTest do
 
       lql_rules = [
         %FilterRule{
+          modifiers: %{timestamp_origin: :local},
           operator: :range,
           path: "timestamp",
           values: [
@@ -1010,6 +1190,21 @@ defmodule Logflare.Lql.ParserTest do
       assert Enum.any?(rules, &match?(%FromRule{table: "logs"}, &1))
     end
 
+    test "parses select aliases" do
+      qs = "s:metadata.user.id@user_id"
+
+      assert {:ok, rules} = Parser.parse(qs)
+
+      assert [%SelectRule{alias: "user_id", path: "metadata.user.id"}] =
+               Enum.filter(rules, &match?(%SelectRule{}, &1))
+    end
+
+    test "rejects select with blank alias" do
+      qs = "s:m.qty@"
+
+      assert {:error, _} = Parser.parse(qs)
+    end
+
     test "parses table names with underscores" do
       qs = "f:my_table_123"
 
@@ -1036,6 +1231,9 @@ defmodule Logflare.Lql.ParserTest do
   def today_dt do
     Timex.today() |> Timex.to_datetime()
   end
+
+  def to_naive(%DateTime{} = value), do: DateTime.to_naive(value)
+  def to_naive(%NaiveDateTime{} = value), do: value
 
   def now_ndt do
     %{Timex.now() | microsecond: {0, 0}}

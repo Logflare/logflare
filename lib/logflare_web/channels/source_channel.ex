@@ -2,6 +2,9 @@ defmodule LogflareWeb.SourceChannel do
   @moduledoc false
   use LogflareWeb, :channel
 
+  alias Logflare.Sources.Cache, as: SourcesCache
+  alias Logflare.Sources.Source
+
   def join("source:" <> source_token, _payload, socket) do
     if authorized?(source_token, socket) do
       {:ok, socket}
@@ -16,9 +19,15 @@ defmodule LogflareWeb.SourceChannel do
         false
 
       socket.assigns[:public_token] ->
-        true
+        case SourcesCache.get_by(token: source_token) do
+          %Source{public_token: pt} when is_binary(pt) ->
+            Plug.Crypto.secure_compare(pt, socket.assigns.public_token)
 
-      socket.assigns[:user].admin ->
+          _ ->
+            false
+        end
+
+      socket.assigns[:user] && socket.assigns[:user].admin ->
         true
 
       socket.assigns[:user] ->

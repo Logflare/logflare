@@ -6,14 +6,18 @@ defmodule Logflare.User do
 
   import Ecto.Changeset
 
-  alias Logflare.Sources.Source
-  alias Logflare.Teams.Team
+  alias Logflare.Alerting.AlertQuery
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Billing.BillingAccount
   alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.Partners.Partner
+  alias Logflare.Sources.Source
+  alias Logflare.Teams.Team
   alias Logflare.Users.UserPreferences
   alias Logflare.Vercel
-  alias Logflare.Partners.Partner
-  alias Logflare.Alerting.AlertQuery
+
+  @type id :: pos_integer()
 
   @derive {Jason.Encoder,
            only: [
@@ -30,6 +34,7 @@ defmodule Logflare.User do
              :bigquery_dataset_id,
              :bigquery_reservation_alerts,
              :bigquery_reservation_search,
+             :bigquery_additional_projects,
              :api_quota,
              :company,
              :token,
@@ -60,9 +65,6 @@ defmodule Logflare.User do
     "australia-southeast1"
   ]
 
-  defp env_dataset_id_append,
-    do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
-
   typed_schema "users" do
     field :email, :string
     field :provider, :string
@@ -83,6 +85,7 @@ defmodule Logflare.User do
     field :bigquery_reservation_alerts, :string
     field :bigquery_processed_bytes_limit, :integer
     field :bigquery_enable_managed_service_accounts, :boolean, default: false
+    field :bigquery_additional_projects, :string
     field :api_quota, :integer, default: @default_user_api_quota
     field :valid_google_account, :boolean
     field :provider_uid, :string
@@ -98,6 +101,7 @@ defmodule Logflare.User do
     has_many :sources, Source
     has_many :endpoint_queries, Logflare.Endpoints.Query
     has_many :alert_queries, AlertQuery
+    has_many :backends, Logflare.Backends.Backend
     has_many :vercel_auths, Vercel.Auth
 
     has_one :team, Team
@@ -122,6 +126,7 @@ defmodule Logflare.User do
     :bigquery_reservation_search,
     :bigquery_processed_bytes_limit,
     :bigquery_enable_managed_service_accounts,
+    :bigquery_additional_projects,
     :valid_google_account,
     :provider_uid,
     :company,
@@ -200,7 +205,18 @@ defmodule Logflare.User do
     |> downcase_email_provider_uid(user)
     |> unique_constraint(:email, name: :users_lower_email_index)
     |> validate_bq_dataset_location()
+    |> validate_bq_dataset_id()
     |> validate_gcp_project(:bigquery_project_id, user_id: user.id)
+  end
+
+  @spec parse_bigquery_additional_projects(t()) :: [String.t()]
+  def parse_bigquery_additional_projects(%__MODULE__{bigquery_additional_projects: nil}), do: []
+
+  def parse_bigquery_additional_projects(%__MODULE__{bigquery_additional_projects: projects}) do
+    projects
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
   end
 
   def hide_bigquery_defaults(user) do
@@ -212,7 +228,8 @@ defmodule Logflare.User do
           bigquery_dataset_location: nil,
           bigquery_processed_bytes_limit: nil,
           bigquery_reservation_alerts: nil,
-          bigquery_reservation_search: nil
+          bigquery_reservation_search: nil,
+          bigquery_additional_projects: nil
       }
     else
       user
@@ -230,18 +247,16 @@ defmodule Logflare.User do
 
   def validate_gcp_project(changeset, field, options \\ []) do
     validate_change(changeset, field, fn _, bigquery_project_id ->
-      user_id = Integer.to_string(options[:user_id])
-
       dataset_id =
         changeset.changes[:bigquery_dataset_id] ||
-          "#{options[:user_id]}" <> env_dataset_id_append()
+          "#{options[:user_id]}" <> GCPConfig.dataset_id_append()
 
       location = changeset.changes[:bigquery_dataset_location] || @default_dataset_location
 
       project_id = bigquery_project_id || bq_project_id()
 
       case BigQuery.create_dataset(
-             user_id,
+             options[:user_id],
              dataset_id,
              location,
              project_id
@@ -257,6 +272,13 @@ defmodule Logflare.User do
           [{field, options[:message] || "#{error_message}"}]
       end
     end)
+  end
+
+  @spec validate_bq_dataset_id(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def validate_bq_dataset_id(changeset) do
+    validate_format(changeset, :bigquery_dataset_id, BigQueryAdaptor.bq_identifier_pattern(),
+      message: "must contain only letters, numbers, and underscores"
+    )
   end
 
   def validate_bq_dataset_location(changeset) do
@@ -276,12 +298,12 @@ defmodule Logflare.User do
   end
 
   def bq_project_id do
-    Application.get_env(:logflare, Logflare.Google)[:project_id]
+    GCPConfig.default_project_id()
   end
 
   def generate_bq_dataset_id(%__MODULE__{id: id}), do: generate_bq_dataset_id(id)
 
   def generate_bq_dataset_id(id) do
-    "#{id}" <> env_dataset_id_append()
+    "#{id}" <> GCPConfig.dataset_id_append()
   end
 end

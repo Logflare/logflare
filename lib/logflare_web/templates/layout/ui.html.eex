@@ -13,7 +13,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"></script>
     <script>
       <%= if @user do %>
-        window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @user.id) %>";
+        window.userToken = "<%= Logflare.Auth.gen_user_socket_token(@user.id) %>";
       <% end %>
     </script>
   </head>

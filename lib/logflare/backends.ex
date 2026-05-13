@@ -4,32 +4,42 @@ defmodule Logflare.Backends do
   import Ecto.Query
   import Logflare.Utils.Guards
 
+  require Logger
+
   alias Ecto.Changeset
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BackendRegistry
+  alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
-  alias Logflare.Logs.SourceRouting
   alias Logflare.PubSubRates
   alias Logflare.Repo
+  alias Logflare.Rules.Rule
   alias Logflare.SingleTenant
-  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Sources.Counters
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics
-  alias Logflare.Rules.Rule
+  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
+  alias Logflare.Users
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len_per_queue 15_000
+  @max_event_age_us 72 * 3_600 * 1_000_000
+  @max_future_event_us 1 * 3_600 * 1_000_000
+  @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
+  @single_tenant_clickhouse_backend_token "00000000-0000-0000-0000-000000000000"
+
+  @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
 
   @doc """
   Retrieves the hardcoded max pending buffer length of an individual queue
@@ -82,6 +92,13 @@ defmodule Logflare.Backends do
       {:default_ingest?, true}, q ->
         where(q, [b], b.default_ingest? == true)
 
+      {:has_sources_or_rules, true}, q ->
+        q
+        |> join(:left, [b], sb in "sources_backends", on: sb.backend_id == b.id)
+        |> join(:left, [b], r in Rule, on: r.backend_id == b.id)
+        |> where([b, sb, r], not is_nil(sb.backend_id) or not is_nil(r.backend_id))
+        |> distinct([b], b.id)
+
       _, q ->
         q
     end)
@@ -100,9 +117,34 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Lists all backends a user has access to, including where the user is a team member.
+  """
+  @spec list_backends_by_user_access(User.t()) :: [Backend.t()]
+  def list_backends_by_user_access(%User{} = user) do
+    Backend
+    |> Teams.filter_by_user_access(user)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  @doc """
+  Gets a backend by id that the user has access to.
+  Returns the backend if the user owns it or is a team member, otherwise returns nil.
+  """
+  @spec get_backend_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+          Backend.t() | nil
+  def get_backend_by_user_access(user_or_team_user, id) when is_integer(id) or is_binary(id) do
+    Backend
+    |> Teams.filter_by_user_access(user_or_team_user)
+    |> where([backend], backend.id == ^id)
+    |> Repo.one()
+    |> typecast_config_string_map_to_atom_map()
+  end
+
+  @doc """
   Preload rules for a given backend
   """
-  @spec preload_rules([Backend.t()]) :: [Backend.t()]
+  @spec preload_rules(one_or_list_or_nil()) :: one_or_list_or_nil()
   def preload_rules(backends) do
     Repo.preload(backends, rules: [:source])
   end
@@ -110,7 +152,7 @@ defmodule Logflare.Backends do
   @doc """
   Preload alerts key for a given backend
   """
-  @spec preload_alerts([Backend.t()]) :: [Backend.t()]
+  @spec preload_alerts(one_or_list_or_nil()) :: one_or_list_or_nil()
   def preload_alerts(backends) do
     Repo.preload(backends, [:alert_queries])
   end
@@ -118,7 +160,7 @@ defmodule Logflare.Backends do
   @doc """
   Preload sources for a given backend or list of backends
   """
-  @spec preload_sources(Backend.t() | [Backend.t()]) :: Backend.t() | [Backend.t()]
+  @spec preload_sources(one_or_list_or_nil()) :: one_or_list_or_nil()
   def preload_sources(backend_or_backends) do
     Repo.preload(backend_or_backends, :sources)
   end
@@ -126,10 +168,11 @@ defmodule Logflare.Backends do
   @doc """
   Creates a Backend for a given source.
   """
-  @spec create_backend(map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
-  def create_backend(attrs) do
+  @spec create_backend(User.t(), map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
+  def create_backend(%User{} = user, attrs) do
     backend =
-      %Backend{}
+      user
+      |> Ecto.build_assoc(:backends)
       |> Backend.changeset(attrs)
       |> Repo.insert()
 
@@ -139,38 +182,27 @@ defmodule Logflare.Backends do
 
       if updated.default_ingest?, do: sync_backend_across_cluster(updated.id)
 
+      maybe_start_consolidated_pipeline(updated)
+
       {:ok, typecast_config_string_map_to_atom_map(updated)}
     end
   end
 
   @doc """
   Returns the single-tenant backend configuration.
-
-  Used in single-tenant mode for ClickHouse or Postgres backends.
-  Returns a virtual backend with id: nil and no user_id.
   """
   @spec get_single_tenant_backend() :: Backend.t() | nil
   def get_single_tenant_backend do
     cond do
       SingleTenant.single_tenant?() and SingleTenant.clickhouse_backend?() ->
-        opts = SingleTenant.clickhouse_backend_adapter_opts()
-
-        %Backend{
-          id: nil,
-          type: :clickhouse,
-          config: Map.new(opts),
-          name: "Default clickhouse backend"
-        }
+        SingleTenant.clickhouse_backend_adapter_opts()
+        |> build_virtual_backend(:clickhouse, "Default clickhouse backend")
+        |> Map.put(:token, @single_tenant_clickhouse_backend_token)
+        |> Map.put(:consolidated_ingest?, true)
 
       SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() ->
-        opts = SingleTenant.postgres_backend_adapter_opts()
-
-        %Backend{
-          id: nil,
-          type: :postgres,
-          config: Map.new(opts),
-          name: "Default postgres backend"
-        }
+        SingleTenant.postgres_backend_adapter_opts()
+        |> build_virtual_backend(:postgres, "Default postgres backend")
 
       true ->
         nil
@@ -202,6 +234,52 @@ defmodule Logflare.Backends do
           name: "Default bigquery backend"
         }
     end
+  end
+
+  @doc """
+  Adds all given sources as default ingest for a backend in bulk.
+  """
+  @spec add_all_default_ingest_sources(Backend.t(), [Source.t()]) :: {:ok, Backend.t()}
+  def add_all_default_ingest_sources(
+        %Backend{default_ingest?: true} = backend,
+        [%Source{} | _] = sources
+      ) do
+    for source <- sources do
+      source = Sources.preload_backends(source)
+
+      unless Enum.any?(source.backends, &(&1.id == backend.id)) do
+        update_source_backends(source, source.backends ++ [backend])
+      end
+    end
+
+    sync_backend_across_cluster(backend.id)
+    maybe_restart_consolidated_pipeline(backend)
+
+    {:ok, Repo.reload!(backend) |> preload_sources()}
+  end
+
+  @doc """
+  Removes all sources from a default ingest backend and disables the flag.
+  """
+  @spec remove_all_default_ingest_sources(Backend.t()) :: {:ok, Backend.t()}
+  def remove_all_default_ingest_sources(%Backend{default_ingest?: true} = backend) do
+    backend = Repo.reload!(backend) |> Repo.preload(:sources)
+
+    for source <- backend.sources do
+      source = Sources.preload_backends(source)
+      filtered_backends = Enum.reject(source.backends, &(&1.id == backend.id))
+      update_source_backends(source, filtered_backends)
+    end
+
+    {:ok, updated} =
+      backend
+      |> Changeset.change(default_ingest?: false)
+      |> Repo.update()
+
+    sync_backend_across_cluster(updated.id)
+    maybe_restart_consolidated_pipeline(updated)
+
+    {:ok, preload_sources(updated)}
   end
 
   @doc """
@@ -246,6 +324,8 @@ defmodule Logflare.Backends do
           end
 
         Enum.each(updated.sources, &restart_source_sup(&1))
+
+        maybe_restart_consolidated_pipeline(updated)
 
         {:ok, typecast_config_string_map_to_atom_map(updated)}
 
@@ -402,13 +482,20 @@ defmodule Logflare.Backends do
         |> Changeset.apply_changes()
       end)
 
-    Map.put(updated, :config, updated.config_encrypted)
+    updated
+    |> Map.put(:config, updated.config_encrypted)
+    |> Map.put(:consolidated_ingest?, Adaptor.consolidated_ingest?(backend))
+  end
+
+  @spec build_virtual_backend(Keyword.t() | nil, Backend.__schema__(:type, :type), String.t()) ::
+          Backend.t()
+  defp build_virtual_backend(opts, type, name) do
+    %Backend{type: type, config_encrypted: Map.new(opts || []), name: name}
+    |> typecast_config_string_map_to_atom_map()
   end
 
   @doc """
   Retrieves a Backend by id.
-
-  For single-tenant mode, when id is nil, returns the virtual single-tenant backend.
   """
   @spec get_backend(integer() | nil) :: Backend.t() | nil
   def get_backend(nil), do: get_single_tenant_backend()
@@ -440,13 +527,33 @@ defmodule Logflare.Backends do
   """
   @spec delete_backend(Backend.t()) :: {:ok, Backend.t()}
   def delete_backend(%Backend{} = backend) do
-    backend
-    |> Changeset.change()
-    |> Changeset.foreign_key_constraint(:sources,
-      name: "sources_backends_backend_id_fkey",
-      message: "There are still sources connected to this backend"
-    )
-    |> Repo.delete()
+    result =
+      backend
+      |> Changeset.change()
+      |> Changeset.foreign_key_constraint(:sources,
+        name: "sources_backends_backend_id_fkey",
+        message: "There are still sources connected to this backend"
+      )
+      |> Repo.delete()
+
+    with {:ok, deleted} <- result do
+      maybe_stop_consolidated_pipeline(deleted)
+      {:ok, deleted}
+    end
+  end
+
+  @doc """
+  Tests the connection for a given backend.
+  """
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    adaptor = Adaptor.get_adaptor(backend)
+
+    if function_exported?(adaptor, :test_connection, 1) do
+      adaptor.test_connection(backend)
+    else
+      {:error, :not_implemented}
+    end
   end
 
   @doc """
@@ -507,34 +614,67 @@ defmodule Logflare.Backends do
   end
 
   defp split_valid_events(source, event_params) do
-    event_params
-    |> Enum.reduce({[], []}, fn param, {events, errors} ->
-      param
-      |> case do
-        %LogEvent{source_id: nil} = le ->
-          %{le | source_id: source.id}
+    now_us = System.system_time(:microsecond)
+    min_allowed = now_us - @max_event_age_us
+    max_allowed = now_us + @max_future_event_us
 
-        %LogEvent{} = le ->
-          le
+    {events, errors, total, dropped_old, dropped_future} =
+      for param <- event_params, reduce: {[], [], 0, 0, 0} do
+        {events, errors, total, dropped_old, dropped_future} ->
+          case param_to_log_event(param, source) do
+            %{drop: true} ->
+              do_telemetry(:drop, source)
+              {events, errors, total + 1, dropped_old, dropped_future}
 
-        param ->
-          LogEvent.make(param, %{source: source})
+            %{pipeline_error: %_{message: message}, valid: false} ->
+              do_telemetry(:invalid, source)
+              {events, [message | errors], total + 1, dropped_old, dropped_future}
+
+            %{body: %{"timestamp" => timestamp}} when timestamp < min_allowed ->
+              do_telemetry(:drop, source)
+              {events, errors, total + 1, dropped_old + 1, dropped_future}
+
+            %{body: %{"timestamp" => timestamp}} when timestamp > max_allowed ->
+              do_telemetry(:drop, source)
+              {events, errors, total + 1, dropped_old, dropped_future + 1}
+
+            le ->
+              {[le | events], errors, total + 1, dropped_old, dropped_future}
+          end
       end
-      |> maybe_mark_le_dropped_by_lql(source)
-      |> LogEvent.apply_custom_event_message(source)
-      |> case do
-        %{drop: true} ->
-          do_telemetry(:drop, source)
-          {events, errors}
 
-        %{pipeline_error: %_{message: message}, valid: false} ->
-          do_telemetry(:invalid, source)
-          {events, [message | errors]}
+    dropped_total = dropped_old + dropped_future
 
-        le ->
-          {[le | events], errors}
-      end
-    end)
+    if dropped_total > 0 do
+      Logger.warning(
+        "Dropping #{dropped_total} of #{total} event(s): timestamps outside [-72h, +1h] window",
+        source_id: source.token,
+        old_events_dropped: dropped_old,
+        future_events_dropped: dropped_future,
+        total_event_count: total
+      )
+    end
+
+    {events, errors}
+  end
+
+  @spec param_to_log_event(LogEvent.t() | map(), Source.t()) :: LogEvent.t()
+  defp param_to_log_event(%LogEvent{source_id: nil} = le, source) do
+    %{le | source_id: source.id}
+    |> maybe_mark_le_dropped_by_lql(source)
+    |> LogEvent.apply_custom_event_message(source)
+  end
+
+  defp param_to_log_event(%LogEvent{} = le, source) do
+    le
+    |> maybe_mark_le_dropped_by_lql(source)
+    |> LogEvent.apply_custom_event_message(source)
+  end
+
+  defp param_to_log_event(param, source) do
+    LogEvent.make(param, %{source: source})
+    |> maybe_mark_le_dropped_by_lql(source)
+    |> LogEvent.apply_custom_event_message(source)
   end
 
   defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_string: nil}), do: le
@@ -542,7 +682,7 @@ defmodule Logflare.Backends do
   defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_filters: []}), do: le
 
   defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_filters: filters}) do
-    if SourceRouting.route_with_lql_rules?(le, %Rule{lql_filters: filters}) do
+    if SourceRouter.Sequential.route_with_lql_rules?(le, %Rule{lql_filters: filters}) do
       %{le | drop: true}
     else
       le
@@ -556,22 +696,47 @@ defmodule Logflare.Backends do
   end
 
   defp maybe_broadcast_and_route(source, log_events) do
-    if source.metrics.avg < 2 do
-      Source.ChannelTopics.broadcast_new(log_events)
+    case source.metrics do
+      %{avg: avg} when avg < 2 ->
+        Source.ChannelTopics.broadcast_new(log_events)
+
+      _ ->
+        :ok
     end
 
-    SourceRouting.route_to_sinks_and_ingest(log_events, source)
-
-    :ok
+    SourceRouter.route_to_sinks_and_ingest(log_events, source)
   end
 
   # send to a specific backend
+  defp dispatch_to_backends(source, %Backend{consolidated_ingest?: true} = backend, log_events) do
+    telemetry_metadata = %{backend_type: backend.type}
+
+    :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
+      log_events = maybe_pre_ingest(source, backend, log_events)
+      IngestEventQueue.add_to_table({:consolidated, backend.id}, log_events)
+
+      :telemetry.execute(
+        [:logflare, :backends, :ingest, :count],
+        %{count: length(log_events)},
+        %{backend_type: backend.type}
+      )
+
+      {:ok, telemetry_metadata}
+    end)
+  end
+
   defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
     telemetry_metadata = %{backend_type: backend.type}
 
     :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
       log_events = maybe_pre_ingest(source, backend, log_events)
-      IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+
+      queue_key =
+        if backend.consolidated_ingest?,
+          do: {:consolidated, backend.id},
+          else: {source.id, backend.id}
+
+      IngestEventQueue.add_to_table(queue_key, log_events)
 
       :telemetry.execute(
         [:logflare, :backends, :ingest, :count],
@@ -585,13 +750,19 @@ defmodule Logflare.Backends do
 
   defp dispatch_to_backends(source, nil, log_events) do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
+    default_backend = default_dispatch_backend(source)
 
-    for backend <- [nil | backends] do
-      {backend_id, backend_type} =
-        if backend do
-          {backend.id, backend.type}
-        else
-          {nil, SingleTenant.backend_type()}
+    for backend <- [default_backend | backends] do
+      {queue_key, backend_type} =
+        case backend do
+          nil ->
+            {{source.id, nil}, SingleTenant.backend_type()}
+
+          %Backend{consolidated_ingest?: true} ->
+            {{:consolidated, backend.id}, backend.type}
+
+          %Backend{} ->
+            {{source.id, backend.id}, backend.type}
         end
 
       telemetry_metadata = %{backend_type: backend_type}
@@ -600,7 +771,11 @@ defmodule Logflare.Backends do
         log_events =
           if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
 
-        IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
+        if match?(%Backend{consolidated_ingest?: true}, backend) do
+          maybe_start_consolidated_pipeline(backend)
+        end
+
+        IngestEventQueue.add_to_table(queue_key, log_events)
 
         :telemetry.execute(
           [:logflare, :backends, :ingest, :dispatch],
@@ -610,6 +785,14 @@ defmodule Logflare.Backends do
 
         {:ok, telemetry_metadata}
       end)
+    end
+  end
+
+  defp default_dispatch_backend(%Source{} = source) do
+    if SingleTenant.clickhouse_backend?() do
+      source.user_id
+      |> Users.Cache.get()
+      |> get_default_backend()
     end
   end
 
@@ -631,23 +814,18 @@ defmodule Logflare.Backends do
   iex> Backends.via_source(source,  __MODULE__, backend.id)
   iex> Backends.via_source(source, :buffer)
   """
-  @spec via_source(Source.t(), term()) :: tuple()
+  @spec via_source(Source.t() | non_neg_integer(), term()) :: {:via, module(), term()}
   @spec via_source(
           Source.t() | non_neg_integer(),
           module(),
           Backend.t() | non_neg_integer() | nil
         ) ::
-          tuple()
+          {:via, module(), term()}
   def via_source(%Source{id: sid}, mod, backend), do: via_source(sid, mod, backend)
   def via_source(source, mod, %Backend{id: bid}), do: via_source(source, mod, bid)
   def via_source(source_id, mod, backend_id), do: via_source(source_id, {mod, backend_id})
 
   def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
-
-  def via_source(id, RecentEventsTouch) when is_number(id) do
-    ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
-    {:via, :syn, {:core, {RecentEventsTouch, id}, %{timestamp: ts}}}
-  end
 
   def via_source(id, process_id) when is_number(id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
@@ -656,7 +834,7 @@ defmodule Logflare.Backends do
   @doc """
   Registers a unique backend-related process on the backend registry.
   """
-  @spec via_backend(Backend.t() | non_neg_integer() | nil, module()) :: tuple()
+  @spec via_backend(Backend.t() | non_neg_integer() | nil, module()) :: {:via, module(), term()}
   def via_backend(%Backend{id: id}, mod), do: via_backend(id, mod)
 
   def via_backend(backend_id, mod) when is_number(backend_id) or is_nil(backend_id) do
@@ -755,6 +933,55 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Starts a consolidated pipeline for a backend if it supports consolidated ingestion.
+  """
+  @spec maybe_start_consolidated_pipeline(Backend.t()) :: :ok
+  def maybe_start_consolidated_pipeline(%Backend{} = backend) do
+    if Adaptor.consolidated_ingest?(backend) do
+      case ConsolidatedSup.start_pipeline(backend) do
+        {:ok, _pid} ->
+          Logger.info("Started consolidated pipeline", backend_id: backend.id)
+
+        {:error, {:already_started, _pid}} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("Failed to start consolidated pipeline: #{inspect(reason)}",
+            backend_id: backend.id
+          )
+      end
+    end
+
+    :ok
+  end
+
+  @doc """
+  Restarts a consolidated pipeline for a backend if it supports consolidated ingestion.
+  """
+  @spec maybe_restart_consolidated_pipeline(Backend.t()) :: :ok
+  def maybe_restart_consolidated_pipeline(%Backend{} = backend) do
+    if Adaptor.consolidated_ingest?(backend) do
+      ConsolidatedSup.stop_pipeline(backend)
+      maybe_start_consolidated_pipeline(backend)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Stops a consolidated pipeline for a backend if it supports consolidated ingestion.
+  """
+  @spec maybe_stop_consolidated_pipeline(Backend.t()) :: :ok
+  def maybe_stop_consolidated_pipeline(%Backend{} = backend) do
+    with true <- Adaptor.consolidated_ingest?(backend),
+         :ok <- ConsolidatedSup.stop_pipeline(backend) do
+      Logger.info("Stopped consolidated pipeline", backend_id: backend.id)
+    end
+
+    :ok
+  end
+
+  @doc """
   Uses the buffers cache in `PubSubRates.Cache` to determine if pending buffer is full.
 
   For sources with `default_ingest_backend_enabled? = true`:
@@ -787,15 +1014,7 @@ defmodule Logflare.Backends do
   end
 
   def cached_local_pending_buffer_full?(%Source{id: source_id}) do
-    PubSubRates.Cache.get_local_buffer(source_id, nil)
-    |> Map.get(:queues, [])
-    |> case do
-      [] ->
-        false
-
-      queues ->
-        Enum.all?(queues, fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
-    end
+    buffer_full_for_backend?(source_id, nil)
   end
 
   @spec buffer_full_for_backend?(
@@ -806,7 +1025,7 @@ defmodule Logflare.Backends do
   defp buffer_full_for_backend?(source_id, backend_id) do
     case PubSubRates.Cache.get_local_buffer(source_id, backend_id) do
       %{queues: [_ | _] = queues} ->
-        Enum.any?(queues, fn {_key, count} ->
+        Enum.all?(queues, fn {_key, count} ->
           count > @max_pending_buffer_len_per_queue
         end)
 
@@ -875,13 +1094,27 @@ defmodule Logflare.Backends do
 
   @doc """
   Lists latest recent logs of only the local cache.
+
+  For consolidated backends, returns an empty list since filtering by source
+  in a consolidated queue would require scanning all events and is expensive.
   """
   @spec list_recent_logs_local(Source.t() | pos_integer()) :: [LogEvent.t()]
   @spec list_recent_logs_local(Source.t() | pos_integer(), n :: number()) :: [LogEvent.t()]
+  @spec list_recent_logs_local(Source.t(), Backend.t()) :: [LogEvent.t()]
   def list_recent_logs_local(source, n \\ 100)
-  def list_recent_logs_local(%Source{id: id}, n), do: list_recent_logs_local(id, n)
 
-  def list_recent_logs_local(source_id, n) when is_integer(source_id) do
+  def list_recent_logs_local(%Source{id: id}, n) when is_number(n),
+    do: list_recent_logs_local(id, n)
+
+  def list_recent_logs_local(%Source{} = source, %Backend{} = backend) do
+    if Adaptor.consolidated_ingest?(backend) do
+      []
+    else
+      list_recent_logs_local(source)
+    end
+  end
+
+  def list_recent_logs_local(source_id, n) when is_integer(source_id) and is_number(n) do
     {:ok, events} = IngestEventQueue.fetch_events({source_id, nil}, n)
 
     events
@@ -890,7 +1123,7 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Pipeline count resolution logic, for DynamicPipeline, shared across BigQuery and Clickhouse.
+  Pipeline count resolution logic, for DynamicPipeline, shared across BigQuery and ClickHouse.
   """
   @spec handle_resolve_count(
           %{
@@ -899,9 +1132,12 @@ defmodule Logflare.Backends do
             last_count_increase: NaiveDateTime.t() | nil,
             last_count_decrease: NaiveDateTime.t() | nil
           },
-          %{
-            {pos_integer(), pos_integer() | nil, reference() | nil} => non_neg_integer()
-          },
+          [
+            {
+              {pos_integer(), pos_integer() | nil, reference() | nil},
+              non_neg_integer()
+            }
+          ],
           non_neg_integer()
         ) :: non_neg_integer()
   def handle_resolve_count(state, lens, avg_rate) do

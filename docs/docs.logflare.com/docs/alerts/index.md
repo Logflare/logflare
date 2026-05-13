@@ -28,7 +28,7 @@ The supported integrations are:
 
 ### Scheduling
 
-Query Alerts allows for cron-based scheduling, with a minimum interval of 15 minutes. It is advised to keep the queried time range to the bare minimum required so as to reduce query execution time, as queries that cover large time ranges may scan a lot of data and result in a slow query.
+Query Alerts allows for cron-based scheduling, with a minimum interval of 5 minutes. It is advised to keep the queried time range to the bare minimum required so as to reduce query execution time, as queries that cover large time ranges may scan a lot of data and result in a slow query.
 
 ### Testing
 

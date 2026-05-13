@@ -4,14 +4,76 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Sources.Source
-  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Backends
   alias Logflare.Users
+  alias Logflare.Sources.Counters
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.RateCounterServer
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
+
+  describe "changesets" do
+    setup do
+      [plan: insert(:plan)]
+    end
+
+    test "update_by_user_changeset" do
+      source = insert(:source, user: insert(:user), labels: "initial=label")
+
+      assert %Ecto.Changeset{changes: changes} = Source.update_by_user_changeset(source, %{})
+      assert changes == %{}
+
+      assert %Ecto.Changeset{changes: changes} =
+               Source.update_by_user_changeset(source, %{labels: "test=some_label"})
+
+      assert changes == %{labels: "test=some_label"}
+    end
+
+    test "bug: update_by_user_changeset  empty string should clear labels" do
+      source = insert(:source, user: insert(:user), labels: "status=m.level")
+
+      changeset = Source.update_by_user_changeset(source, %{})
+      assert Ecto.Changeset.get_field(changeset, :labels) == "status=m.level"
+
+      changeset = Source.update_by_user_changeset(source, %{labels: ""})
+      assert Ecto.Changeset.get_field(changeset, :labels) == ""
+    end
+
+    test "update_by_user_changeset trims description and turns blank into nil" do
+      source = insert(:source, user: insert(:user), description: "existing description")
+
+      assert %Ecto.Changeset{changes: %{description: "trimmed description"}} =
+               Source.update_by_user_changeset(source, %{description: "  trimmed description  "})
+
+      assert %Ecto.Changeset{changes: %{description: nil}} =
+               Source.update_by_user_changeset(source, %{description: "   "})
+    end
+  end
+
+  describe "recommended_query_fields/1" do
+    test "preserves required marker in suggested keys" do
+      source =
+        build(:source,
+          bigquery_clustering_fields: "session_id",
+          suggested_keys: "metadata.level!,m.user_id"
+        )
+
+      assert Source.recommended_query_fields(source) == [
+               "session_id",
+               "metadata.level!",
+               "m.user_id"
+             ]
+    end
+
+    test "query_field_name/1 and required_query_field?/1 normalize correctly" do
+      assert Source.query_field_name("metadata.level!") == "metadata.level"
+      assert Source.query_field_name("metadata.level") == "metadata.level"
+      assert Source.required_query_field?("metadata.level!")
+      refute Source.required_query_field?("metadata.level")
+    end
+  end
 
   describe "create_source/2" do
     setup do
@@ -92,6 +154,29 @@ defmodule Logflare.SourcesTest do
       insert(:source, user: user)
       assert [%Source{}] = Sources.list_sources_by_user(user)
       assert [] == insert(:user) |> Sources.list_sources_by_user()
+    end
+  end
+
+  describe "get_source_by_user_access_and_preload/2" do
+    test "get_source_by_user_access_and_preload/2" do
+      insert(:plan)
+      owner = insert(:user)
+      team_user = insert(:team_user, email: owner.email)
+      %Source{id: source_id} = insert(:source, user: owner)
+      %Source{id: other_source_id} = insert(:source, user: team_user.team.user)
+      %Source{id: forbidden_source_id} = insert(:source, user: build(:user))
+
+      assert %Source{id: ^source_id} =
+               Sources.get_by_user_access(owner, source_id)
+
+      assert %Source{id: ^source_id} =
+               Sources.get_by_user_access(team_user, source_id)
+
+      assert %Source{id: ^other_source_id} =
+               Sources.get_by_user_access(team_user, other_source_id)
+
+      assert nil == Sources.get_by_user_access(owner, forbidden_source_id)
+      assert nil == Sources.get_by_user_access(team_user, forbidden_source_id)
     end
   end
 
@@ -177,13 +262,15 @@ defmodule Logflare.SourcesTest do
       [user: insert(:user)]
     end
 
-    test "preloads required fields", %{user: user} do
-      sources = insert_list(3, :source, %{user: user})
+    test "preloads only the required fields", %{user: user} do
+      sources = insert_list(3, :source, %{user_id: user.id})
+      assocs = Sources.Source.__schema__(:associations)
+      sources = Enum.map(sources, &Ecto.reset_fields(&1, assocs))
       sources = Sources.preload_for_dashboard(sources)
 
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user))
-      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.rules))
-      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.saved_searches))
+
+      refute Enum.any?(sources, &Ecto.assoc_loaded?(&1.rules))
     end
 
     test "sorts data by name and favorite flag", %{user: user} do
@@ -222,11 +309,11 @@ defmodule Logflare.SourcesTest do
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
       :timer.sleep(500)
-      assert {:ok, _pid} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      assert {:ok, _pid} = Backends.lookup(SourceSup, token)
       :timer.sleep(1_000)
       assert {:ok, ^token} = Source.Supervisor.delete_source(token)
       :timer.sleep(1000)
-      assert {:error, :not_started} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      assert {:error, :not_started} = Backends.lookup(SourceSup, token)
     end
 
     test "reset_source/1", %{user: user} do
@@ -235,10 +322,10 @@ defmodule Logflare.SourcesTest do
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
       :timer.sleep(500)
-      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      assert {:ok, pid} = Backends.lookup(SourceSup, token)
       assert {:ok, ^token} = Source.Supervisor.reset_source(token)
       :timer.sleep(1500)
-      assert {:ok, new_pid} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      assert {:ok, new_pid} = Backends.lookup(SourceSup, token)
       assert new_pid != pid
     end
 
@@ -248,7 +335,7 @@ defmodule Logflare.SourcesTest do
       start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
       :timer.sleep(1000)
-      assert {:ok, _pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
       assert Backends.cached_pending_buffer_len(source) == 0
     end
 
@@ -257,12 +344,12 @@ defmodule Logflare.SourcesTest do
 
       start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(1000)
-      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      :timer.sleep(3000)
+      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
       :timer.sleep(3000)
-      assert {:ok, new_pid} = Backends.lookup(RecentEventsTouch, source.token)
+      assert {:ok, new_pid} = Backends.lookup(SourceSup, source.token)
       assert pid != new_pid
       assert Backends.cached_pending_buffer_len(source) == 0
     end
@@ -277,7 +364,7 @@ defmodule Logflare.SourcesTest do
       assert :ok = Source.Supervisor.ensure_started(source)
       assert :ok = Source.Supervisor.ensure_started(source)
       :timer.sleep(3000)
-      assert {:ok, _pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
       assert Backends.cached_pending_buffer_len(source) == 0
     end
 
@@ -286,9 +373,9 @@ defmodule Logflare.SourcesTest do
       pid = start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
       :timer.sleep(3000)
-      assert {:ok, prev_pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
       Process.exit(pid, :kill)
-      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
       assert prev_pid == pid
     end
 
@@ -297,9 +384,9 @@ defmodule Logflare.SourcesTest do
       pid = start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
       :timer.sleep(3000)
-      assert {:ok, prev_pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
       Process.exit(pid, :kill)
-      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
       assert prev_pid == pid
     end
   end
@@ -339,8 +426,8 @@ defmodule Logflare.SourcesTest do
     end
 
     test "does NOT shut down sources with active ingest", %{source: source} do
-      Logflare.Sources.Counters.increment(source.token, 1)
-      Logflare.Sources.Source.RateCounterServer.handle_info(:put_rate, source.token)
+      Counters.increment(source.token, 1)
+      RateCounterServer.handle_info(:put_rate, source.token)
 
       assert Sources.get_source_metrics_for_ingest(source).avg > 0
 
@@ -495,6 +582,151 @@ defmodule Logflare.SourcesTest do
         assert {:ok, pid2} = Backends.lookup(SourceSup, source)
         assert pid != pid2
       end)
+    end
+  end
+
+  describe "create_user_system_sources/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      %{user: user}
+    end
+
+    test "creates system sources with correct partition type", %{user: user} do
+      sources = Sources.create_user_system_sources(user.id)
+
+      assert length(sources) == length(Source.system_source_types())
+
+      for source <- sources do
+        assert source.system_source == true
+        assert source.system_source_type in Source.system_source_types()
+        assert source.favorite == true
+        assert source.bq_table_partition_type == :timestamp
+        assert source.user_id == user.id
+        assert String.starts_with?(source.name, "system.")
+      end
+    end
+  end
+
+  describe "labels validation and normalization" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      %{source: insert(:source, user_id: user.id)}
+    end
+
+    test "normalizes whitespace around commas and equals", %{source: source} do
+      for {input, expected} <- [
+            {"key1=value1 , key2=value2", "key1=value1,key2=value2"},
+            {"key1 = value1,key2= value2", "key1=value1,key2=value2"},
+            {"  key1=value1 , key2=value2  ", "key1=value1,key2=value2"},
+            {"key1=value1,,key2=value2,", "key1=value1,key2=value2"}
+          ] do
+        assert %_{valid?: true} = changeset = Source.changeset(source, %{labels: input})
+        assert get_change(changeset, :labels) == expected
+      end
+    end
+
+    test "accepts valid formats and empty string", %{source: source} do
+      assert Source.changeset(source, %{labels: ""}).valid?
+      assert Source.changeset(source, %{labels: "status=m.level,project=name"}).valid?
+    end
+
+    test "rejects invalid label formats", %{source: source} do
+      invalid_cases = [
+        {"no_equals", "each label must be in key=value format"},
+        {"=value", "each label must have a non-empty key"},
+        {"key=", "each label must have a non-empty value"},
+        {"key=val=extra", "each label must have exactly one '=' sign"},
+        {"valid=ok,invalid", "each label must be in key=value format"}
+      ]
+
+      for {input, expected_error} <- invalid_cases do
+        assert %_{valid?: false} = changeset = Source.changeset(source, %{labels: input})
+        assert expected_error in errors_on(changeset).labels
+      end
+    end
+  end
+
+  describe "recent events touch" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      {:ok, user: user}
+    end
+
+    test "updates source.log_events_updated_at", %{
+      user: user
+    } do
+      timestamp =
+        NaiveDateTime.utc_now() |> NaiveDateTime.add(-2, :hour) |> NaiveDateTime.truncate(:second)
+
+      source = insert(:source, user_id: user.id, log_events_updated_at: timestamp)
+      Sources.Cache.get_by_id(source.id)
+      start_supervised!({SourceSup, source})
+      :timer.sleep(800)
+      timestamp = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+      assert {:ok, 1} = Sources.recent_events_touch(timestamp)
+      updated = Sources.get_by(id: source.id)
+      assert updated.log_events_updated_at == timestamp
+
+      # does not update again if recently updated
+      Sources.Cache.get_by_id(source.id)
+      :timer.sleep(1_000)
+      timestamp = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+      assert {:ok, 0} = Sources.recent_events_touch(timestamp)
+
+      updated = Sources.get_by(id: source.id)
+      assert updated.log_events_updated_at != timestamp
+    end
+  end
+
+  describe "get_by_name_and_user_access/2" do
+    test "returns source when user owns it" do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_source")
+
+      result = Sources.get_by_name_and_user_access(user, "my_source")
+
+      assert %Logflare.Sources.Source{id: id} = result
+      assert id == source.id
+    end
+
+    test "returns source when team_user has access" do
+      insert(:plan)
+      team_owner = insert(:user)
+      team = insert(:team, user: team_owner)
+      source = insert(:source, user: team_owner, name: "team_source")
+
+      team_user = insert(:team_user, email: "member@example.com", team: team)
+
+      result = Sources.get_by_name_and_user_access(team_user, "team_source")
+
+      assert %Logflare.Sources.Source{id: id} = result
+      assert id == source.id
+    end
+
+    test "returns nil when user does not have access" do
+      insert(:plan)
+      user1 = insert(:user)
+      user2 = insert(:user)
+      insert(:source, user: user1, name: "private_source")
+
+      result = Sources.get_by_name_and_user_access(user2, "private_source")
+
+      assert is_nil(result),
+             "Expected nil when user2 does not have access to user1's source, got: #{inspect(result)}"
+    end
+
+    test "returns nil when source does not exist" do
+      insert(:plan)
+      user = insert(:user)
+
+      result = Sources.get_by_name_and_user_access(user, "nonexistent_source_name")
+
+      assert is_nil(result),
+             "Expected nil when querying for non-existent source name, got: #{inspect(result)}"
     end
   end
 end

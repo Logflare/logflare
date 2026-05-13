@@ -7,6 +7,7 @@ defmodule Logflare.Sql.DialectTransformer.BigQuery do
 
   import Logflare.Utils.Guards
 
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.User
 
   @impl true
@@ -72,7 +73,7 @@ defmodule Logflare.Sql.DialectTransformer.BigQuery do
         base_data
       ) do
     Map.merge(base_data, %{
-      logflare_project_id: Application.get_env(:logflare, Logflare.Google)[:project_id],
+      logflare_project_id: GCPConfig.default_project_id(),
       user_project_id: user_project_id,
       logflare_dataset_id: User.generate_bq_dataset_id(user),
       user_dataset_id: user_dataset_id

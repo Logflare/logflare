@@ -31,7 +31,7 @@ defmodule Logflare.Lql.BackendTransformer do
           | :string_contains
           | :range
 
-  @type dialects :: :bigquery | :clickhouse
+  @type dialects :: :bigquery | :clickhouse | :postgres
 
   @doc """
   Transforms a single LQL FilterRule into a backend-specific query fragment.
@@ -46,7 +46,7 @@ defmodule Logflare.Lql.BackendTransformer do
   """
   @callback transform_chart_rule(
               query :: Ecto.Query.t(),
-              aggregate :: :count | :avg | :sum | :max | :p50 | :p95 | :p99,
+              aggregate :: :count | :countd | :avg | :sum | :max | :p50 | :p95 | :p99,
               field_path :: String.t(),
               period :: :second | :minute | :hour | :day,
               timestamp_field :: String.t()
@@ -116,6 +116,7 @@ defmodule Logflare.Lql.BackendTransformer do
   @spec for_dialect(dialects() | String.t()) :: module()
   def for_dialect("bigquery"), do: __MODULE__.BigQuery
   def for_dialect("clickhouse"), do: __MODULE__.ClickHouse
+  def for_dialect("postgres"), do: __MODULE__.Postgres
   def for_dialect(value) when is_atom(value), do: value |> to_dialect() |> for_dialect()
 
   @doc """
@@ -124,4 +125,5 @@ defmodule Logflare.Lql.BackendTransformer do
   @spec to_dialect(dialects()) :: String.t()
   def to_dialect(:bigquery), do: "bigquery"
   def to_dialect(:clickhouse), do: "clickhouse"
+  def to_dialect(:postgres), do: "postgres"
 end

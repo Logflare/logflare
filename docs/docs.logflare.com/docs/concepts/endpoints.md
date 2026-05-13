@@ -209,3 +209,36 @@ Redaction occurs post-query without affecting performance, only targets string v
   ]
 }
 ```
+
+## Dynamic BigQuery Reservation
+
+Logflare endpoints support dynamically specifying a BigQuery reservation per API request. This allows API callers to direct query execution to a specific BigQuery reservation, enabling cost isolation and workload management.
+
+:::note
+This feature only applies to BigQuery-backed endpoints.
+:::
+
+### Enabling
+
+Check the **"Enable dynamic BigQuery reservation"** checkbox when configuring the endpoint. When disabled (the default), the `LF-ENDPOINT-BIGQUERY-RESERVATION` header is ignored.
+
+### Usage
+
+Pass the `LF-ENDPOINT-BIGQUERY-RESERVATION` header with the reservation resource path:
+
+```bash
+curl "https://api.logflare.app/api/endpoints/query/my-endpoint" \
+  -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
+  -H 'LF-ENDPOINT-BIGQUERY-RESERVATION: projects/PROJECT/locations/LOCATION/reservations/RESERVATION' \
+  -H 'Content-Type: application/json; charset=utf-8'
+```
+
+### Additional BigQuery Projects
+
+If the reservation is in a different GCP project than your primary BigQuery project, you must configure it as an additional BigQuery project under **Account > BigQuery Backend > Additional BigQuery Projects**.
+
+The main Logflare service account must be granted the following IAM roles on the additional project:
+
+- **Project IAM Admin** (`roles/resourcemanager.projectIamAdmin`) — required to set IAM policies for managed service accounts on the additional project
+- **BigQuery Admin** (`roles/bigquery.admin`) — required for managed service accounts to execute queries against reservations in the additional project
+

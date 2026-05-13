@@ -2,30 +2,36 @@ defmodule Logflare.LogEvent do
   use TypedEctoSchema
 
   import Ecto.Changeset
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_non_negative_integer: 1]
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
-  alias Logflare.Logs.Ingest.MetadataCleaner
-  alias Logflare.Sources.Source
   alias __MODULE__, as: LE
-  alias Logflare.Logs.Validators.BigQuerySchemaChange
+  alias __MODULE__.TypeDetection
+  alias Logflare.KeyValues
+  alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Logs.IngestTransformers
-
-  require Logger
+  alias Logflare.Logs.Validators.BigQuerySchemaChange
+  alias Logflare.Sources.Source
 
   @validators [BigQuerySchemaChange]
 
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
     field :body, :map, default: %{}
+    field :flattened_body, :map, default: %{}
     field :valid, :boolean
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
+    field :timestamp_inferred, :boolean, default: false
     field :ingested_at, :utc_datetime_usec
-    field :origin_source_id, Ecto.UUID.Atom
-    field :via_rule, :map
+    field :source_uuid, Ecto.UUID.Atom
+    field :source_name, :string
+    field :via_rule_id, :id
     field :retries, :integer, default: 0
-
+    field :event_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
     field :source_id, :integer, default: nil
+    # Indicates if the event was removed from ets during ingest
+    field :is_popped, :boolean, virtual: true, default: false
 
     embeds_one :pipeline_error, PipelineError do
       field :stage, :string
@@ -55,9 +61,11 @@ defmodule Logflare.LogEvent do
   """
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
   def make(params, %{source: source}, _opts \\ []) do
+    mapped = mapper(params)
+
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params), [:body, :valid])
+      |> cast(mapped, [:body, :valid])
       |> validate_required([:body])
 
     pipeline_error =
@@ -73,25 +81,33 @@ defmodule Logflare.LogEvent do
       Map.merge(changeset.changes, %{
         pipeline_error: pipeline_error,
         source_id: source.id,
-        origin_source_id: source.token,
+        source_uuid: source.token,
+        source_name: source.name,
         valid: changeset.valid?,
-        ingested_at: NaiveDateTime.utc_now(),
-        id: changeset.changes.body["id"]
+        ingested_at: DateTime.utc_now(),
+        id: changeset.changes.body["id"],
+        event_type: TypeDetection.detect(params),
+        timestamp_inferred: mapped["timestamp_inferred"]
       })
 
     Logflare.LogEvent
     |> struct!(le_map)
     |> transform(source)
     |> validate(source)
+    |> flatten_body()
   end
 
-  # Parses input parameters and performs casting.
+  @spec flatten_body(LE.t()) :: LE.t()
+  defp flatten_body(%LE{valid: false} = le), do: le
+  defp flatten_body(%LE{} = le), do: %{le | flattened_body: MetadataCleaner.flatten(le.body)}
+
+  @spec mapper(map()) :: %{String.t() => term}
   defp mapper(params) do
     # TODO: deprecate and remove `message`
     event_message = params["message"] || params["event_message"]
     id = id(params)
 
-    timestamp = determine_timestamp(params)
+    {timestamp, timestamp_inferred} = determine_timestamp(params)
 
     base_merge = %{
       "timestamp" => timestamp,
@@ -119,7 +135,8 @@ defmodule Logflare.LogEvent do
 
     %{
       "body" => body,
-      "id" => id
+      "id" => id,
+      "timestamp_inferred" => timestamp_inferred
     }
   end
 
@@ -153,7 +170,9 @@ defmodule Logflare.LogEvent do
 
   defp transform(%LE{valid: true} = le, %Source{} = source) do
     with {:ok, le} <- bigquery_spec(le),
-         {:ok, le} <- copy_fields(le, source) do
+         {:ok, le} <- copy_fields(le, source),
+         {:ok, le} <- kv_enrich(le, source),
+         {:ok, le} <- drop_fields(le, source) do
       le
     else
       {:error, message} ->
@@ -169,40 +188,118 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  @spec bigquery_spec(LE.t()) :: {:ok, LE.t()}
   defp bigquery_spec(le) do
     new_body = IngestTransformers.transform(le.body, :to_bigquery_column_spec)
     {:ok, %{le | body: new_body}}
   end
 
-  defp copy_fields(%LE{} = le, %Source{transform_copy_fields: nil}), do: {:ok, le}
+  @spec copy_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
+  defp copy_fields(%LE{} = le, %Source{
+         transform_copy_fields_parsed: nil,
+         transform_copy_fields: blank
+       })
+       when blank in [nil, ""],
+       do: {:ok, le}
 
-  defp copy_fields(le, source) do
-    instructions = String.split(source.transform_copy_fields, ~r/\n/, trim: true)
+  defp copy_fields(%LE{} = le, %Source{transform_copy_fields_parsed: []}), do: {:ok, le}
 
+  defp copy_fields(%LE{} = le, %Source{transform_copy_fields_parsed: parsed})
+       when is_list(parsed) do
     new_body =
-      for instruction <- instructions, instruction = String.trim(instruction), reduce: le.body do
-        acc ->
-          case String.split(instruction, ":", parts: 2) do
-            [from, to] ->
-              from = String.replace_prefix(from, "m.", "metadata.")
-              from_path = String.split(from, ".")
+      Enum.reduce(parsed, le.body, fn %{from_path: from_path, to_path: to_path}, acc ->
+        case get_in(acc, from_path) do
+          nil -> acc
+          value -> put_at_path(acc, to_path, value)
+        end
+      end)
 
-              to = String.replace_prefix(to, "m.", "metadata.")
-              to_path = String.split(to, ".")
-
-              if value = get_in(acc, from_path) do
-                put_in(acc, Enum.map(to_path, &Access.key(&1, %{})), value)
-              else
-                acc
-              end
-
-            _ ->
-              acc
-          end
-      end
-
-    {:ok, Map.put(le, :body, new_body)}
+    {:ok, %{le | body: new_body}}
   end
+
+  defp copy_fields(%LE{} = le, %Source{} = source) do
+    copy_fields(le, Source.parse_copy_fields_config(source))
+  end
+
+  @spec kv_enrich(LE.t(), Source.t()) :: {:ok, LE.t()}
+  defp kv_enrich(%LE{} = le, %Source{transform_key_values: nil, transform_key_values_parsed: nil}),
+       do: {:ok, le}
+
+  defp kv_enrich(%LE{} = le, %Source{transform_key_values_parsed: []}), do: {:ok, le}
+
+  defp kv_enrich(%LE{} = le, %Source{transform_key_values_parsed: parsed, user_id: user_id})
+       when is_list(parsed) do
+    new_body =
+      Enum.reduce(parsed, le.body, fn instruction, acc ->
+        apply_kv_instruction(acc, instruction, user_id)
+      end)
+
+    {:ok, %{le | body: new_body}}
+  end
+
+  # Fallback: parse at ingestion time when parsed field is not populated
+  defp kv_enrich(%LE{} = le, %Source{} = source) do
+    kv_enrich(le, Source.parse_key_values_config(source))
+  end
+
+  @spec apply_kv_instruction(map(), map(), integer()) :: map()
+  defp apply_kv_instruction(
+         body,
+         %{from_path: from_path, to_path: to_path} = instruction,
+         user_id
+       ) do
+    accessor_path = Map.get(instruction, :accessor_path)
+
+    with raw when not is_nil(raw) <- get_in(body, from_path),
+         raw_string <- to_string(raw),
+         true <- Logflare.Utils.flag("key_values", raw_string),
+         value when not is_nil(value) <-
+           KeyValues.Cache.lookup(user_id, raw_string, accessor_path) do
+      put_at_path(body, to_path, value)
+    else
+      _ -> body
+    end
+  end
+
+  @spec put_at_path(map(), [String.t()], term()) :: map()
+  defp put_at_path(map, [leaf], value) when is_map(map), do: Map.put(map, leaf, value)
+
+  defp put_at_path(map, [head | rest], value) when is_map(map) do
+    child = Map.get(map, head, %{})
+    Map.put(map, head, put_at_path(child, rest, value))
+  end
+
+  @spec drop_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
+  defp drop_fields(%LE{} = le, %Source{
+         transform_drop_fields_parsed: nil,
+         transform_drop_fields: blank
+       })
+       when blank in [nil, ""],
+       do: {:ok, le}
+
+  defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: []}), do: {:ok, le}
+
+  defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: parsed})
+       when is_list(parsed) do
+    new_body = Enum.reduce(parsed, le.body, fn keys, acc -> drop_field_at(acc, keys) end)
+    {:ok, %{le | body: new_body}}
+  end
+
+  defp drop_fields(%LE{} = le, %Source{} = source) do
+    drop_fields(le, Source.parse_drop_fields_config(source))
+  end
+
+  @spec drop_field_at(term(), [String.t()]) :: term()
+  defp drop_field_at(body, [leaf]) when is_map(body), do: Map.delete(body, leaf)
+
+  defp drop_field_at(body, [head | rest]) when is_map(body) do
+    case Map.fetch(body, head) do
+      {:ok, child} when is_map(child) -> Map.put(body, head, drop_field_at(child, rest))
+      _ -> body
+    end
+  end
+
+  defp drop_field_at(body, _), do: body
 
   @doc """
   Generates a custom event message from source settings.any()
@@ -211,17 +308,21 @@ defmodule Logflare.LogEvent do
 
   Configuration should be comma separated, and it accepts json query syntax.
   """
+  @spec apply_custom_event_message(LE.t(), Source.t()) :: LE.t()
   def apply_custom_event_message(%LE{drop: true} = le, _source), do: le
 
   def apply_custom_event_message(%LE{} = le, %Source{} = source) do
     message = make_message(le, source)
 
-    Kernel.put_in(le.body["event_message"], message)
+    le
+    |> Kernel.put_in([Access.key(:body), "event_message"], message)
+    |> Kernel.put_in([Access.key(:flattened_body), "event_message"], message)
   end
 
   @doc """
   Changeset for pipeline errors.
   """
+  @spec pipeline_error_changeset(LE.PipelineError.t(), map()) :: Ecto.Changeset.t()
   def pipeline_error_changeset(pipeline_error, attrs) do
     pipeline_error
     |> cast(attrs, [
@@ -231,6 +332,7 @@ defmodule Logflare.LogEvent do
     |> validate_required([:stage, :message])
   end
 
+  @spec make_message(LE.t(), Source.t()) :: String.t() | nil
   defp make_message(log_event, source) do
     if keys = source.custom_event_message_keys do
       keys
@@ -241,6 +343,7 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  @spec build_message(String.t(), LE.t()) :: String.t() | nil
   defp build_message(key, log_event) do
     message = get_default_message(log_event)
 
@@ -262,10 +365,12 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  @spec get_default_message(LE.t()) :: String.t() | nil
   defp get_default_message(log_event) do
     log_event.body["message"] || log_event.body["event_message"]
   end
 
+  @spec query_json(map(), String.t()) :: String.t()
   defp query_json(metadata, query) do
     case Warpath.query(metadata, query) do
       {:ok, v} ->
@@ -276,41 +381,37 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  @spec id(map()) :: String.t()
   defp id(params) do
     params["id"] || params[:id] || Ecto.UUID.generate()
   end
 
+  @spec determine_timestamp(map()) :: {integer(), boolean()}
   defp determine_timestamp(params) when not is_map_key(params, "timestamp"),
-    do: default_timestamp()
+    do: {default_timestamp(), true}
 
-  defp determine_timestamp(%{"timestamp" => x}) when is_binary(x) do
+  defp determine_timestamp(%{"timestamp" => x}) when is_non_empty_binary(x) do
     case DateTime.from_iso8601(x) do
       {:ok, udt, _} ->
-        DateTime.to_unix(udt, :microsecond)
+        {DateTime.to_unix(udt, :microsecond), false}
 
       {:error, _} ->
-        default_timestamp()
+        {default_timestamp(), true}
     end
   end
 
-  defp determine_timestamp(%{"timestamp" => x}) when is_integer(x) do
-    case Integer.digits(x) |> Enum.count() do
-      19 -> Kernel.round(x / 1_000)
-      16 -> x
-      13 -> x * 1_000
-      10 -> x * 1_000_000
-      7 -> x * 1_000_000_000
-      _ -> x
-    end
+  defp determine_timestamp(%{"timestamp" => x}) when is_non_negative_integer(x) do
+    {Logflare.Utils.to_microseconds(x), false}
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_float(x) do
     determine_timestamp(%{"timestamp" => round(x)})
   end
 
-  defp determine_timestamp(_), do: default_timestamp()
+  defp determine_timestamp(_), do: {default_timestamp(), true}
 
-  defp default_timestamp() do
+  @spec default_timestamp() :: integer()
+  defp default_timestamp do
     System.system_time(:microsecond)
   end
 end

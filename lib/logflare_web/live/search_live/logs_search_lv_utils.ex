@@ -2,9 +2,7 @@ defmodule LogflareWeb.SearchLV.Utils do
   @moduledoc """
   Various utility functions for logs search LiveViews.
   """
-  use Phoenix.HTML
-
-  require Logger
+  use LogflareWeb, :html
 
   def maybe_cancel_tailing_timer(socket) do
     if socket.assigns.tailing_timer, do: Process.cancel_timer(socket.assigns.tailing_timer)

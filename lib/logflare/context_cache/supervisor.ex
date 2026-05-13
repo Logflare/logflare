@@ -6,20 +6,22 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Backends
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.CacheBusterWorker
+  alias Logflare.ContextCache.Tombstones
   alias Logflare.Billing
   alias Logflare.ContextCache
   alias Logflare.Backends
+  alias Logflare.SavedSearches
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Users
   alias Logflare.TeamUsers
+  alias Logflare.Rules
+  alias Logflare.KeyValues
   alias Logflare.Partners
   alias Logflare.Auth
   alias Logflare.Endpoints
   alias Logflare.Repo
   alias Logflare.GenSingleton
-
-  require Logger
 
   def start_link(_) do
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
@@ -32,35 +34,57 @@ defmodule Logflare.ContextCache.Supervisor do
     |> Supervisor.init(strategy: :one_for_one)
   end
 
-  defp get_children(:test),
-    do:
-      list_caches() ++
-        [
-          {GenSingleton, child_spec: cainophile_child_spec()}
-        ]
+  defp get_children(env) do
+    caches = list_caches()
 
-  defp get_children(_env) do
-    list_caches() ++
-      [
-        ContextCache.TransactionBroadcaster,
-        {GenSingleton, child_spec: cainophile_child_spec()},
-        {PartitionSupervisor, child_spec: CacheBusterWorker, name: CacheBusterWorker.Supervisor},
-        ContextCache.CacheBuster
-      ]
+    maybe_transaction_broadcaster =
+      if env != :test do
+        ContextCache.TransactionBroadcaster
+      end
+
+    maybe_cainophile =
+      if Application.get_env(:logflare, :enable_cainophile, true) do
+        {GenSingleton, child_spec: cainophile_child_spec()}
+      end
+
+    maybe_busters =
+      if env != :test do
+        buster_specs()
+      end
+
+    caches ++
+      List.wrap(maybe_transaction_broadcaster) ++
+      List.wrap(maybe_cainophile) ++
+      List.wrap(maybe_busters)
+  end
+
+  def buster_specs do
+    [
+      CacheBusterWorker.supervisor_spec(),
+      ContextCache.CacheBuster
+    ]
+  end
+
+  def list_caches_with_metrics do
+    [
+      {TeamUsers.Cache, :team_users},
+      {Partners.Cache, :partners},
+      {Users.Cache, :users},
+      {Backends.Cache, :backends},
+      {Sources.Cache, :sources},
+      {Billing.Cache, :billing},
+      {SourceSchemas.Cache, :source_schemas},
+      {Auth.Cache, :auth},
+      {Endpoints.Cache, :endpoints},
+      {Rules.Cache, :rules},
+      {KeyValues.Cache, :key_values},
+      {SavedSearches.Cache, :saved_searches},
+      {Tombstones.Cache, :context_cache_tombstones}
+    ]
   end
 
   def list_caches do
-    [
-      TeamUsers.Cache,
-      Partners.Cache,
-      Users.Cache,
-      Backends.Cache,
-      Sources.Cache,
-      Billing.Cache,
-      SourceSchemas.Cache,
-      Auth.Cache,
-      Endpoints.Cache
-    ]
+    Enum.map(list_caches_with_metrics(), fn {cache, _} -> cache end)
   end
 
   @doc """

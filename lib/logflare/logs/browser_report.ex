@@ -1,6 +1,5 @@
 defmodule Logflare.Logs.BrowserReport do
   @moduledoc false
-  require Logger
 
   @behaviour Logflare.Logs.Processor
 

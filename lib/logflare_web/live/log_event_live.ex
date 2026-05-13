@@ -5,30 +5,15 @@ defmodule LogflareWeb.LogEventLive do
 
   use LogflareWeb, :live_view
 
-  require Logger
-
   alias Logflare.Logs.LogEvents
+  alias Logflare.SourceSchemas
   alias Logflare.Sources
-  alias Logflare.TeamUsers
-  alias Logflare.Users
 
-  def mount(%{"source_id" => source_id} = params, session, socket) do
+  on_mount LogflareWeb.AuthLive
+
+  def mount(%{"source_id" => source_id} = params, _session, socket) do
     source =
       source_id |> String.to_integer() |> Sources.Cache.get_by_id()
-
-    team_user =
-      if team_user_id = session["team_user_id"] do
-        TeamUsers.get_team_user_by(id: team_user_id)
-      else
-        nil
-      end
-
-    user =
-      if user_id = session["user_id"] do
-        Users.get_by(id: user_id)
-      else
-        nil
-      end
 
     timestamp =
       if ts = Map.get(params, "timestamp") do
@@ -36,11 +21,14 @@ defmodule LogflareWeb.LogEventLive do
         dt
       end
 
+    lql = params["lql"] || ""
+    is_tailing = params["tailing?"] == "true"
+
     opts =
       [
         source: source,
-        user: user,
-        lql: params["lql"] || ""
+        user: socket.assigns.user,
+        lql: lql
       ]
       |> maybe_put_timestamp(timestamp)
 
@@ -50,15 +38,18 @@ defmodule LogflareWeb.LogEventLive do
         {:error, _} -> nil
       end
 
+    flat_map = SourceSchemas.source_schema_flatmap_or_default(source)
+
     socket =
       socket
       |> assign(:source, source)
-      |> assign(:user, user)
-      |> assign(:team_user, team_user)
+      |> assign(:source_schema_flat_map, flat_map)
       |> assign(:log_event, log_event)
       |> assign(:origin, params["origin"])
       |> assign(:log_event_id, params["uuid"])
-      |> assign(:lql, params["lql"])
+      |> assign(:lql, lql)
+      |> assign(:tailing?, is_tailing)
+      |> assign(:tz, params["tz"])
       |> assign(:timestamp, timestamp)
 
     {:ok, socket}
@@ -74,5 +65,7 @@ defmodule LogflareWeb.LogEventLive do
 
   @spec maybe_put_timestamp(Keyword.t(), DateTime.t() | nil) :: Keyword.t()
   defp maybe_put_timestamp(opts, nil), do: opts
-  defp maybe_put_timestamp(opts, timestamp), do: Keyword.put(opts, :timestamp, timestamp)
+
+  defp maybe_put_timestamp(opts, timestamp),
+    do: Keyword.put(opts, :timestamp, DateTime.truncate(timestamp, :second))
 end

@@ -14,11 +14,11 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
   """
 
   use Ecto.Migration
+
   @disable_ddl_transaction true
   @disable_migration_lock true
   @username Application.compile_env(:logflare, Logflare.Repo)[:username]
   @slot Application.compile_env(:logflare, Logflare.ContextCache.CacheBuster)[:replication_slot]
-  @env Application.compile_env(:logflare, :env)
   @publications Application.compile_env(:logflare, Logflare.ContextCache.CacheBuster)[:publications]
   @publication_tables [
     "billing_accounts",
@@ -30,7 +30,7 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
   ]
 
   def up do
-    if @env in [:dev, :test] do
+    if env() in [:dev, :test] do
       execute("ALTER SYSTEM SET wal_level = 'logical';")
       execute("ALTER USER #{@username} WITH REPLICATION;")
     end
@@ -56,9 +56,13 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
     # This is happening in `20210810182003_set_rules_to_replica_identity_full.exs`
     # execute("alter table rules replica identity default")
 
-    if @env in [:dev, :test] do
+    if env() in [:dev, :test] do
       execute("ALTER USER #{@username} WITH NOREPLICATION;")
       execute("ALTER SYSTEM RESET wal_level;")
     end
+  end
+
+  defp env do
+    Application.get_env(:logflare, :env)
   end
 end

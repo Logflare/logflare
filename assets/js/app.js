@@ -18,10 +18,11 @@ import { LiveSocket } from "phoenix_live_view";
 import LiveReact, { initLiveReact } from "phoenix_live_react";
 
 import sourceLiveViewHooks from "./source_lv_hooks";
-import logsLiveViewHooks from "./log_event_live_hooks";
+import "./command_palette_hook.jsx";
 import $ from "jquery";
 import moment from "moment";
 import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_monaco_editor.esm"
+import LqlEditorWrapper from "./lql_editor_wrapper_hook"
 
 
 // set moment globally before daterangepicker
@@ -46,11 +47,10 @@ window.ClipboardJS = ClipboardJS;
 const hooks = {
   ...liveReactHooks,
   ...sourceLiveViewHooks,
-  ...logsLiveViewHooks,
   ...LiveModalHooks,
   ...BillingHooks,
-  CodeEditorHook
-  
+  CodeEditorHook,
+  LqlEditorWrapper,
 };
 
 let liveSocket = new LiveSocket("/live", Socket, {
@@ -104,6 +104,24 @@ document.addEventListener("DOMContentLoaded", (e) => {
   initLiveReact();
 });
 
+const buildLogListClipboardText = (selector) => {
+  return Array.from(document.querySelectorAll(selector))
+    .map((node) => {
+      const timestamp =
+        node.querySelector("[data-timestamp]").textContent?.trim() || "";
+      const message = Array.from(node.childNodes).reduce((acc, node) => {
+        if (node.nodeType == Node.TEXT_NODE) {
+          return acc + " " + node.textContent.trim();
+        }
+        return acc;
+      }, timestamp);
+
+      return message.trim();
+    })
+    .reverse()
+    .join("\n");
+};
+
 // Use `:text` on the `:detail` optoin to pass values to event listener
 window.addEventListener("logflare:copy-to-clipboard", (event) => {
   if ("clipboard" in navigator) {
@@ -124,9 +142,27 @@ window.addEventListener("logflare:copy-to-clipboard", (event) => {
   }
 });
 
+window.addEventListener("logflare:copy-logs-list", (event) => {
+  const selector = event.detail.selector;
+  if (!selector) {
+    console.error("No selector provided for log list copy")
+    return;
+  }
+
+  const text = buildLogListClipboardText(selector);
+
+  event.target.dispatchEvent(
+    new CustomEvent("logflare:copy-to-clipboard", {
+      bubbles: true,
+      detail: {text},
+    })
+  );
+});
+
 window.addEventListener("phx:page-loading-stop", (_info) => {
   // enable all tooltips
   $(function () {
     $('[data-toggle="tooltip"]').tooltip({ delay: { show: 100, hide: 200 } });
+    $('[data-toggle="popover"]').popover();
   });
 });

@@ -1,14 +1,16 @@
 import Config
 
-# We don't run a server during test. If one is required,
-# you can enable the server option below.
-config :logflare, LogflareWeb.Endpoint,
-  http: [port: 4001],
-  server: false
-
 config :logflare,
   env: :test,
+  cache_stats: true,
+  sql_sandbox: true,
+  static_gzip: false,
   encryption_key_default: "Q+IS7ogkzRxsj+zAIB1u6jNFquxkFzSrBZXItN27K/Q="
+
+config :logflare, LogflareWeb.Endpoint,
+  url: [host: "localhost", scheme: "http", port: 4001],
+  http: [port: 4001],
+  server: false
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
@@ -23,7 +25,8 @@ config :logflare, Logflare.Google,
   grafana_sa: "GOOGLE_GRAFANA_SA",
   api_sa: "GOOGLE_API_SA",
   cloud_build_sa: "GOOGLE_CLOUD_BUILD_SA",
-  cloud_build_trigger_sa: "GOOGLE_CLOUD_BUILD_TRIGGER_SA"
+  cloud_build_trigger_sa: "GOOGLE_CLOUD_BUILD_TRIGGER_SA",
+  project_viewer: "GOOGLE_PROJECT_VIEWER"
 
 config :logflare, Logflare.Repo,
   username: "postgres",
@@ -44,16 +47,33 @@ defmodule LogflareTest.LogFilters do
   end
 
   def ignore_finch_disconnections(le, _opts), do: le
+
+  def ignore_db_connection_failures(
+        %{meta: %{mfa: {DBConnection.Connection, :handle_event, 4}}},
+        _opts
+      ) do
+    :stop
+  end
+
+  def ignore_db_connection_failures(le, _opts), do: le
 end
 
 config :logger,
   default_handler: [
     filters: [
-      {:finch_silencer, {&LogflareTest.LogFilters.ignore_finch_disconnections/2, []}}
+      {:finch_silencer, {&LogflareTest.LogFilters.ignore_finch_disconnections/2, []}},
+      {:db_conn_silencer, {&LogflareTest.LogFilters.ignore_db_connection_failures/2, []}}
     ],
     level: :error
   ]
 
 config :tesla, Logflare.Backends.Adaptor.WebhookAdaptor.Client, adapter: Tesla.Mock
 
-config :phoenix_test, :endpoint, LogflareWeb.Endpoint
+config :logflare, Oban, testing: :manual
+
+config :phoenix_test, otp_app: :logflare, endpoint: LogflareWeb.Endpoint
+
+config :opentelemetry,
+  sdk_disabled: false,
+  span_processor: :simple,
+  traces_exporter: :none

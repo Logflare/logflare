@@ -66,14 +66,16 @@ defmodule LogflareWeb.Admin.ClusterLiveTest do
     end
   end
 
-  test "returns 403 when not logged in or user is not admin", %{conn: conn} do
+  test "returns 403 when user is not admin", %{conn: conn} do
     assert conn
            |> login_user(insert(:user, admin: false))
            |> get(~p"/admin/cluster")
            |> html_response(403) =~ "Forbidden"
+  end
 
+  test "redirects to login when not logged in", %{conn: conn} do
     assert conn
            |> get(~p"/admin/cluster")
-           |> html_response(403) =~ "Forbidden"
+           |> redirected_to() == ~p"/auth/login"
   end
 end

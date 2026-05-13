@@ -533,7 +533,7 @@ defmodule Logflare.Sql.DialectTranslation do
   end
 
   # Ensure all identifier values are strings, never null
-  defp pg_traverse_final_pass({"value" = k, nil}) when is_atom(k) do
+  defp pg_traverse_final_pass({"value" = k, nil}) do
     {k, ""}
   end
 

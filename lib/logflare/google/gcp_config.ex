@@ -13,6 +13,11 @@ defmodule Logflare.Google.BigQuery.GCPConfig do
   end
 
   def default_dataset_location do
-    @default_dataset_location
+    Application.get_env(:logflare, Logflare.Google)
+    |> Access.get(:default_dataset_location, @default_dataset_location)
+  end
+
+  def service_account do
+    Application.get_env(:logflare, Logflare.Google)[:service_account]
   end
 end

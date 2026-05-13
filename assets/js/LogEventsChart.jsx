@@ -1,13 +1,25 @@
-import $ from "jquery";
 import React from "react";
 import { DateTime } from "luxon";
-import { ResponsiveBarCanvas } from "@nivo/bar";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 
 import { BarLoader } from "react-spinners";
 
 const brandLightBlack = "#1d1d1d";
 const brandGray = "#9a9a9a";
 const brandGreen = "#5eeb8f";
+const chartGridLineColor = "rgba(255,255,255,0.08)";
+const chartHorizontalPoints = [20, 33, 45, 58, 70, 83, 95, 108, 120];
+const minBarHeight = 2;
+const highlightMinValue = 1;
+const highlightFill = "rgba(154,154,154,0.1)";
 
 const warnColor = "#f1ba58";
 const criticalColor = "#bd1550";
@@ -19,27 +31,23 @@ const noticeColor = "#03C03C";
 const infoColor = "#5eeb8f";
 const secondInfoColor = "#6286db";
 
-const theme = {
-  grid: {
-    line: {
-      stroke: brandLightBlack,
-      strokeWidth: 2,
-      strokeDasharray: "4 4",
-    },
-  },
-};
-
-const renderDefaultTooltip = ({ value, color, indexValue }) => {
+const renderDefaultTooltip = ({ active, payload, label }) => {
+  if (!active || !payload || !payload.length) return null;
+  const value = payload[0].value;
+  const color = payload[0].fill;
   return (
     <div style={{ backgroundColor: brandLightBlack, padding: "6px" }}>
-      <strong style={{ color }}>Timestamp: {indexValue}</strong>
+      <strong style={{ color }}>Timestamp: {label}</strong>
       <br />
       <strong style={{ color }}>Value: {value}</strong>
     </div>
   );
 };
 
-const renderCfStatusCodeTooltip = ({ data, color }) => {
+const renderCfStatusCodeTooltip = ({ active, payload }) => {
+  if (!active || !payload || !payload.length) return null;
+  const data = payload[0]?.payload;
+  if (!data) return null;
   return (
     <div style={{ backgroundColor: brandLightBlack, padding: "6px" }}>
       <strong style={{ color: brandGray }}>Timestamp: {data.timestamp}</strong>
@@ -61,7 +69,10 @@ const renderCfStatusCodeTooltip = ({ data, color }) => {
   );
 };
 
-const renderElixirLoggerTooltip = ({ data, color }) => {
+const renderElixirLoggerTooltip = ({ active, payload }) => {
+  if (!active || !payload || !payload.length) return null;
+  const data = payload[0]?.payload;
+  if (!data) return null;
   const tooltips = [
     { c: brandGray, p: "timestamp", t: "Timestamp" },
     { c: brandGray, p: "total", t: "Total" },
@@ -77,14 +88,14 @@ const renderElixirLoggerTooltip = ({ data, color }) => {
   ];
   return (
     <div style={{ backgroundColor: brandLightBlack, padding: "6px" }}>
-      {tooltips.map(({ c: color, p: property, t }) => {
-        return [
+      {tooltips.map(({ c: color, p: property, t }, index) => (
+        <React.Fragment key={property}>
           <strong style={{ color }}>
             {t}: {data[property]}
-          </strong>,
-          <br />,
-        ];
-      })}
+          </strong>
+          {index < tooltips.length - 1 && <br />}
+        </React.Fragment>
+      ))}
     </div>
   );
 };
@@ -94,9 +105,7 @@ const tooltipFactory = (dataShape) => {
     case "elixir_logger_levels":
       return renderElixirLoggerTooltip;
     case "cloudflare_status_codes":
-      return renderCfStatusCodeTooltip;
     case "vercel_status_codes":
-      return renderCfStatusCodeTooltip;
     case "netlify_status_codes":
       return renderCfStatusCodeTooltip;
     default:
@@ -108,19 +117,17 @@ const chartSettings = (type) => {
   switch (type) {
     case "elixir_logger_levels":
       return {
-        colors: ({ id }) => {
-          const color = {
-            level_info: infoColor,
-            level_error: errorColor,
-            level_warn: warnColor,
-            level_debug: debugColor,
-            level_critical: criticalColor,
-            level_notice: noticeColor,
-            level_alert: alertColor,
-            level_emergency: emergencyColor,
-            other: brandGray,
-          }[id];
-          return color || brandGray;
+        colors: {
+          level_info: infoColor,
+          level_error: errorColor,
+          level_warn: warnColor,
+          level_debug: debugColor,
+          level_critical: criticalColor,
+          level_notice: noticeColor,
+          level_alert: alertColor,
+          level_emergency: emergencyColor,
+          other: brandGray,
+          value: brandGray,
         },
         keys: [
           "level_info",
@@ -132,85 +139,52 @@ const chartSettings = (type) => {
           "level_error",
           "level_warn",
           "other",
+          "value",
         ],
       };
 
     case "cloudflare_status_codes":
-      return {
-        colors: ({ id }) => {
-          const color = {
-            status_5xx: errorColor,
-            status_4xx: warnColor,
-            status_3xx: secondInfoColor,
-            status_2xx: infoColor,
-            status_1xx: debugColor,
-            other: brandGray,
-          }[id];
-          return color || brandGray;
-        },
-        keys: [
-          "status_5xx",
-          "status_4xx",
-          "status_3xx",
-          "status_2xx",
-          "status_1xx",
-          "other",
-        ],
-      };
-
     case "netlify_status_codes":
-      return {
-        colors: ({ id }) => {
-          const color = {
-            status_5xx: errorColor,
-            status_4xx: warnColor,
-            status_3xx: secondInfoColor,
-            status_2xx: infoColor,
-            status_1xx: debugColor,
-            other: brandGray,
-          }[id];
-          return color || brandGray;
-        },
-        keys: [
-          "status_5xx",
-          "status_4xx",
-          "status_3xx",
-          "status_2xx",
-          "status_1xx",
-          "other",
-        ],
-      };
-
     case "vercel_status_codes":
       return {
-        colors: ({ id }) => {
-          const color = {
-            status_5xx: errorColor,
-            status_4xx: warnColor,
-            status_3xx: secondInfoColor,
-            status_2xx: infoColor,
-            status_1xx: debugColor,
-            other: brandGray,
-          }[id];
-          return color || brandGray;
+        colors: {
+          status_5xx: errorColor,
+          status_4xx: warnColor,
+          status_3xx: secondInfoColor,
+          status_2xx: infoColor,
+          status_1xx: debugColor,
+          other: brandGray,
+          value: brandGray,
         },
         keys: [
-          "status_5xx",
-          "status_4xx",
-          "status_3xx",
           "status_2xx",
           "status_1xx",
+          "status_3xx",
+          "status_4xx",
+          "status_5xx",
           "other",
+          "value",
         ],
       };
+
     default:
       return {
-        colors: (_) => infoColor,
+        colors: { value: infoColor },
         keys: ["value"],
       };
   }
 };
+
+const minPointSizeForValue = (value) => {
+  if (Number(value) <= 0) return 0;
+  return minBarHeight;
+};
+
+const barTotal = (entry, keys) =>
+  keys.reduce((sum, key) => sum + Math.max(Number(entry?.[key]) || 0, 0), 0);
+
 const periods = ["day", "hour", "minute", "second"];
+
 const LogEventsChart = ({
   data,
   loading,
@@ -220,9 +194,10 @@ const LogEventsChart = ({
   pushEvent,
 }) => {
   const tz = userTz || "Etc/UTC";
-  const onClick = (event) => {
+  const triggerTimeSearch = (utcDatetime) => {
+    if (!utcDatetime) return;
+
     pushEvent("soft_pause", {});
-    const utcDatetime = event.data.datetime;
 
     const start = DateTime.fromISO(utcDatetime, { zone: tz }).toISO({
       includeOffset: false,
@@ -245,7 +220,78 @@ const LogEventsChart = ({
       period: newPeriod,
     });
   };
-  const renderTooltip = tooltipFactory(chartDataShapeId);
+
+  const handleBarClick = (entry) => {
+    const payload = entry?.payload;
+    if (!payload) return;
+    const utcDatetime = payload.datetime || payload.timestamp;
+    triggerTimeSearch(utcDatetime);
+  };
+
+  const handleChartClick = (state) => {
+    const activePoint = state?.activePayload?.[0]?.payload;
+    const utcDatetime =
+      activePoint?.datetime || activePoint?.timestamp || state?.activeLabel;
+    triggerTimeSearch(utcDatetime);
+  };
+
+  const TooltipContent = tooltipFactory(chartDataShapeId);
+  const settings = chartSettings(chartDataShapeId);
+  const topStackKey = settings.keys[settings.keys.length - 1];
+  const useMinPointSize = settings.keys.length === 1;
+  const chartData = React.useMemo(
+    () =>
+      data.map((entry) => {
+        const total = barTotal(entry, settings.keys);
+
+        return {
+          ...entry,
+          hasHighlight: total >= highlightMinValue,
+        };
+      }),
+    [data, settings.keys],
+  );
+
+  const renderBarWithHighlight = ({
+    x,
+    y,
+    width,
+    height,
+    fill,
+    background,
+    payload,
+  }) => {
+    const top = background?.y ?? 0;
+    const highlightHeight = y - top;
+    const showHighlight =
+      payload?.hasHighlight &&
+      Number.isFinite(highlightHeight) &&
+      highlightHeight > 0;
+
+    return (
+      <g>
+        {showHighlight && (
+          <rect
+            x={x}
+            y={top}
+            width={width}
+            height={highlightHeight}
+            fill={highlightFill}
+            onClick={() => handleBarClick({ payload })}
+          />
+        )}
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={fill}
+          onClick={() => handleBarClick({ payload })}
+        />
+      </g>
+    );
+  };
+
   return (
     <div
       style={{
@@ -267,25 +313,41 @@ const LogEventsChart = ({
           />
         </div>
       ) : (
-        <ResponsiveBarCanvas
-          data={data}
-          margin={{ top: 20, right: 0, bottom: 0, left: 0 }}
-          padding={0.3}
-          enableGridY={true}
-          indexBy={"timestamp"}
-          tooltip={renderTooltip}
-          axisTop={null}
-          axisRight={null}
-          axisBottom={null}
-          axisLeft={null}
-          enableLabel={false}
-          animate={true}
-          onClick={onClick}
-          motionStiffness={90}
-          motionDamping={15}
-          theme={theme}
-          {...chartSettings(chartDataShapeId)}
-        />
+        <ResponsiveContainer width="100%" height={100}>
+          <BarChart
+            data={chartData}
+            margin={{ top: 20, right: 0, bottom: 0, left: 0 }}
+            style={{ cursor: "pointer" }}
+            onClick={handleChartClick}
+          >
+            <CartesianGrid
+              stroke={chartGridLineColor}
+              strokeWidth={1}
+              horizontalPoints={chartHorizontalPoints}
+              vertical={false}
+            />
+            <XAxis dataKey="timestamp" hide={true} />
+            <YAxis hide={true} />
+            <Tooltip
+              isAnimationActive={false}
+              wrapperStyle={{ zIndex: 500 }}
+              content={<TooltipContent />}
+              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+            />
+            {settings.keys.map((key) => (
+              <Bar
+                key={key}
+                dataKey={key}
+                stackId="stack"
+                fill={settings.colors[key]}
+                isAnimationActive={false}
+                minPointSize={useMinPointSize ? minPointSizeForValue : undefined}
+                shape={key === topStackKey ? renderBarWithHighlight : undefined}
+                onClick={handleBarClick}
+              />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
       )}
     </div>
   );

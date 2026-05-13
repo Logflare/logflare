@@ -3,8 +3,6 @@ defmodule Logflare.Sources.RateCounters do
 
   use GenServer
 
-  require Logger
-
   @ets_table_name :rate_counters
 
   def start_link(args \\ []) do

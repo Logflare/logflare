@@ -1,5 +1,7 @@
 defmodule LogflareWeb.TeamUserControllerTest do
-  use LogflareWeb.ConnCase, async: true
+  use LogflareWeb.ConnCase
+
+  alias Logflare.TeamUsers
 
   setup do
     insert(:plan)
@@ -7,22 +9,24 @@ defmodule LogflareWeb.TeamUserControllerTest do
   end
 
   test "user can edit their profile", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
+    owner = insert(:user)
+    member_user = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team, email: member_user.email)
 
     new_name = "Avengers"
     new_email = "tony.stark@avengers.com"
     new_phone = "+1 (555) 123-4567"
 
     conn
-    |> login_user(user, team_user)
-    |> visit(~p"/profile/edit")
+    |> login_user(member_user, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
     |> assert_has("h5", text: "Profile Preferences", exact: true)
     |> fill_in("Name", with: new_name)
     |> fill_in("Preferred email", with: new_email)
     |> fill_in("Phone number", with: new_phone)
     |> click_button("Update preferences")
+    |> assert_has("#flash-info", text: "Profile updated!")
     |> assert_has("input#team_user_name", value: new_name)
     |> assert_has("input#team_user_email_preferred", value: new_email)
     |> assert_has("input#team_user_phone", value: new_phone)
@@ -41,15 +45,9 @@ defmodule LogflareWeb.TeamUserControllerTest do
   end
 
   test "user can leave their team", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
-
-    conn
-    |> login_user(user, team_user)
-    |> visit(~p"/profile/edit")
-    |> assert_has("h5", text: "Profile Preferences", exact: true)
-    |> assert_has("a", text: "Leave now")
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team)
 
     expect(
       GoogleApi.CloudResourceManager.V1.Api.Projects,
@@ -57,14 +55,14 @@ defmodule LogflareWeb.TeamUserControllerTest do
       fn _, _project_number, [body: _body] -> {:ok, ""} end
     )
 
-    conn =
-      conn
-      |> login_user(user, team_user)
-      |> delete(~p"/profile")
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> assert_has("h5", text: "Profile Preferences", exact: true)
+    |> click_link("Leave now")
+    |> assert_path(~p"/auth/login", query_params: %{team_user_deleted: "true"})
 
-    assert redirected_to(conn, 302) =~ "/login"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Profile deleted!"
-    refute Logflare.TeamUsers.get_team_user(team_user.id)
+    refute TeamUsers.get_team_user(team_user.id)
   end
 
   test "owner can delete a team member", %{conn: conn} do
@@ -86,7 +84,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     assert redirected_to(conn, 302) == "/account/edit"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Member profile deleted!"
-    refute Logflare.TeamUsers.get_team_user(member_team_user.id)
+    refute TeamUsers.get_team_user(member_team_user.id)
   end
 
   test "not authenticated user cannot see delete a team member", %{conn: conn} do
@@ -95,6 +93,27 @@ defmodule LogflareWeb.TeamUserControllerTest do
     assert conn
            |> delete(~p"/profile/#{team_user.id}")
            |> redirected_to(302) == ~p"/auth/login"
+  end
+
+  test "owner cannot delete team member from another team", %{conn: conn} do
+    owner_a = insert(:user)
+    _team_a = insert(:team, user: owner_a)
+
+    owner_b = insert(:user)
+    team_b = insert(:team, user: owner_b)
+    victim_team_user = insert(:team_user, team: team_b, email: "victim@example.com")
+
+    conn =
+      conn
+      |> login_user(owner_a)
+      |> delete(~p"/profile/#{victim_team_user.id}")
+
+    assert redirected_to(conn, 302) == "/account/edit"
+
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+             "Not authorized to delete this team member"
+
+    assert TeamUsers.get_team_user!(victim_team_user.id)
   end
 
   test "team member cannot delete another team member (not owner)", %{conn: conn} do
@@ -120,129 +139,94 @@ defmodule LogflareWeb.TeamUserControllerTest do
     assert Logflare.TeamUsers.get_team_user!(member2_team_user.id)
   end
 
-  test "user switching between teams with team_user_id", %{conn: conn} do
-    user = insert(:user)
-    other_user = insert(:user)
-    team1 = insert(:team, user: user)
-    team_user1 = insert(:team_user, team: team1, email: user.email)
-    team2 = insert(:team, user: other_user)
-    team_user2 = insert(:team_user, team: team2, email: user.email)
+  test "update re-renders edit form with submitted values when context returns error",
+       %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team)
 
-    conn =
-      conn
-      |> login_user(user, team_user1)
-      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user2.id})
+    expect(TeamUsers, :update_team_user, fn tu, params ->
+      changeset =
+        tu
+        |> TeamUsers.TeamUser.changeset(params)
+        |> Ecto.Changeset.add_error(:email_preferred, "is invalid")
 
-    assert redirected_to(conn, 302) =~ "/dashboard"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
-    assert get_session(conn, :user_id) == to_string(user.id)
-    assert get_session(conn, :team_user_id) == to_string(team_user2.id)
+      {:error, changeset}
+    end)
+
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> fill_in("Name", with: "Bruce Banner")
+    |> fill_in("Preferred email", with: "hulk@avengers.com")
+    |> click_button("Update preferences")
+    |> assert_has("#flash-error", text: "Something went wrong!")
+    |> assert_has("input#team_user_name", value: "Bruce Banner")
+    |> assert_has("input#team_user_email_preferred", value: "hulk@avengers.com")
   end
 
-  test "user switching to personal account", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
+  test "delete_self re-renders edit form when context returns error", %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team)
 
-    conn =
-      conn
-      |> login_user(user, team_user)
-      |> get(~p"/profile/switch", %{"user_id" => user.id})
+    expect(TeamUsers, :delete_team_user, fn tu ->
+      changeset =
+        tu
+        |> Ecto.Changeset.change()
+        |> Ecto.Changeset.add_error(:base, "cannot delete")
 
-    assert redirected_to(conn, 302) == ~p"/dashboard"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
-    assert get_session(conn, :user_id) == to_string(user.id)
-    assert get_session(conn, :team_user_id) == nil
+      {:error, changeset}
+    end)
+
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> click_link("Leave now")
+    |> assert_has("#flash-error", text: "Something went wrong!")
+    |> assert_has("h5", text: "Profile Preferences", exact: true)
+
+    assert TeamUsers.get_team_user(team_user.id)
   end
 
-  test "user can switch from personal (no team_user_id) to team account", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
+  test "edit page shows GitHub-specific section for github provider", %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team, provider: "github")
 
-    conn =
-      conn
-      |> login_user(user)
-      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user.id})
-
-    assert redirected_to(conn, 302) == ~p"/dashboard"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
-    assert get_session(conn, :user_id) == to_string(user.id)
-    assert get_session(conn, :team_user_id) == to_string(team_user.id)
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> assert_has("h5", text: "Signed In with Github")
+    |> assert_has("a[href='https://github.com/settings/applications']", text: "Visit Github")
+    |> refute_has("a", text: "Visit Google")
   end
 
-  test "when user switches team is redirected using redirect_to param", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
+  test "edit page shows Google-specific section for google provider", %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team, provider: "google")
 
-    conn =
-      conn
-      |> login_user(user, team_user)
-      |> get(~p"/profile/switch", %{
-        "user_id" => user.id,
-        "team_user_id" => team_user.id,
-        "redirect_to" => "/sources"
-      })
-
-    assert redirected_to(conn, 302) =~ ~p"/sources"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> assert_has("h5", text: "Signed In with Google")
+    |> assert_has("a", text: "Visit Google")
+    |> refute_has("a", text: "Visit Github")
   end
 
-  test "not authenticated user cannot switch teams", %{conn: conn} do
-    assert conn
-           |> delete(~p"/profile/switch")
-           |> redirected_to(302) == ~p"/auth/login"
-  end
+  test "user can toggle email_me_product preference off", %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team, email_me_product: true)
 
-  test "switching teams sets last team cookie with team_id for team_user", %{conn: conn} do
-    user = insert(:user)
-    other_user = insert(:user)
-    team1 = insert(:team, user: user)
-    team_user1 = insert(:team_user, team: team1, email: user.email)
-    team2 = insert(:team, user: other_user)
-    team_user2 = insert(:team_user, team: team2, email: user.email)
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> uncheck("Email me product updates")
+    |> click_button("Update preferences")
+    |> assert_has("#flash-info", text: "Profile updated!")
 
-    conn =
-      conn
-      |> login_user(user, team_user1)
-      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user2.id})
-
-    assert redirected_to(conn, 302) =~ "/dashboard"
-    cookies = Map.get(conn.resp_cookies, "_logflare_last_team", %{})
-    assert cookies.value == "#{team2.id}"
-    assert cookies.max_age == 2_592_000
-  end
-
-  test "switching to personal account sets last team cookie with user's team_id", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
-
-    conn =
-      conn
-      |> login_user(user, team_user)
-      |> get(~p"/profile/switch", %{"user_id" => user.id})
-
-    assert redirected_to(conn, 302) == ~p"/dashboard"
-    cookies = Map.get(conn.resp_cookies, "_logflare_last_team", %{})
-    assert cookies.value == "#{team.id}"
-    assert cookies.max_age == 2_592_000
-  end
-
-  test "switching from personal to team account sets last team cookie", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
-
-    conn =
-      conn
-      |> login_user(user)
-      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user.id})
-
-    assert redirected_to(conn, 302) == ~p"/dashboard"
-    cookies = Map.get(conn.resp_cookies, "_logflare_last_team", %{})
-    assert cookies.value == "#{team.id}"
-    assert cookies.max_age == 2_592_000
+    assert Logflare.Repo.reload!(team_user).email_me_product == false
   end
 end

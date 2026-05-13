@@ -4,8 +4,6 @@ defmodule Logflare.Billing.Cache do
   alias Logflare.Billing
   alias Logflare.Utils
 
-  require Logger
-
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
 

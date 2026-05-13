@@ -35,6 +35,24 @@ defmodule Logflare.DateTimeUtils do
     NaiveDateTime.truncate(dt, gr)
   end
 
+  @doc """
+  Formats a UTC offset (in seconds) as a `±HH:MM` string.
+
+  ## Examples
+
+      iex> DateTimeUtils.humanize_timezone_offset(0)
+      "+00:00"
+
+      iex> DateTimeUtils.humanize_timezone_offset(19_800)
+      "+05:30"
+
+      iex> DateTimeUtils.humanize_timezone_offset(-18_000)
+      "-05:00"
+
+      iex> DateTimeUtils.humanize_timezone_offset(20_700)
+      "+05:45"
+
+  """
   def humanize_timezone_offset(offset) do
     {hours, minutes, _, _} =
       offset

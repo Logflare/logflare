@@ -30,25 +30,34 @@ defmodule LogflareWeb.LogChannel do
     do: join(source_uuid, socket)
 
   def join(source_uuid, socket) do
+    user = socket.assigns[:user]
+
     case Sources.Cache.get_by_and_preload_rules(token: source_uuid) do
+      %Source{} when is_nil(user) ->
+        {:error, %{reason: "Not authorized!"}}
+
       %Source{} = source ->
-        url = Routes.source_url(Endpoint, :show, source.id)
-        socket = socket |> assign(:source, source)
+        if user.id == source.user_id do
+          url = Routes.source_url(Endpoint, :show, source.id)
+          socket = assign(socket, :source, source)
 
-        send(
-          self(),
-          {:notify,
-           %{
-             message: "💥 Connected to Logflare! Can we haz all your datas? 👀 ➡️ #{url}",
-             source: %{
-               name: source.name,
-               token: source.token,
-               url: url
-             }
-           }}
-        )
+          send(
+            self(),
+            {:notify,
+             %{
+               message: "Connected to Logflare",
+               source: %{
+                 name: source.name,
+                 token: source.token,
+                 url: url
+               }
+             }}
+          )
 
-        {:ok, socket}
+          {:ok, socket}
+        else
+          {:error, %{reason: "Not authorized!"}}
+        end
 
       nil ->
         {:error, socket}

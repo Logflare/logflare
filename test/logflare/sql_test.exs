@@ -3,11 +3,14 @@ defmodule Logflare.SqlTest do
 
   import ExUnit.CaptureLog
 
+  import Logflare.ClickHouseMappedEvents
+
   alias Logflare.SingleTenant
   alias Logflare.Sql
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Adaptor.QueryResult
 
   @logflare_project_id "logflare-project-id"
   @user_project_id "user-project-id"
@@ -23,6 +26,40 @@ defmodule Logflare.SqlTest do
     on_exit(fn ->
       Application.put_env(:logflare, Logflare.Google, values)
     end)
+  end
+
+  describe "extract_table_names/2" do
+    test "extracts simple table names" do
+      assert {:ok, ["my_table"]} = Sql.extract_table_names("SELECT * FROM my_table")
+    end
+
+    test "extracts quoted table names" do
+      assert {:ok, ["my.source"]} = Sql.extract_table_names("SELECT * FROM `my.source`")
+    end
+
+    test "extracts multiple table names" do
+      query = "SELECT * FROM table1 JOIN table2 ON table1.id = table2.id"
+      {:ok, names} = Sql.extract_table_names(query)
+
+      assert "table1" in names
+      assert "table2" in names
+    end
+
+    test "extracts table names from CTE queries" do
+      query = """
+      WITH cte AS (SELECT * FROM source_table)
+      SELECT * FROM cte
+      """
+
+      {:ok, names} = Sql.extract_table_names(query)
+
+      assert "source_table" in names
+      refute "cte" in names
+    end
+
+    test "returns error for invalid SQL" do
+      assert {:error, _} = Sql.extract_table_names("INVALID SQL QUERY!!!")
+    end
   end
 
   describe "bigquery dialect" do
@@ -405,7 +442,9 @@ defmodule Logflare.SqlTest do
 
     test "parser can handle sandboxed CTEs with union all" do
       user = insert(:user)
-      insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       # valid CTE queries with UNION ALL
       input = """
@@ -443,7 +482,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries work with simple CTEs" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select a from src where a > 5"
@@ -455,7 +496,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries with order by" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select a from src order by a desc"
@@ -467,7 +510,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries with union all" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = """
       with cte1 as (select a from my_ch_table),
@@ -483,54 +528,131 @@ defmodule Logflare.SqlTest do
       assert String.downcase(result) =~ "select b from cte2"
     end
 
+    test "sandboxed queries apply LQL filters on ClickHouse top-level schema fields" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_ch_table")
+      _backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+
+      cte_query =
+        "with src as (select timestamp, severity_text, source_name from my_ch_table) select timestamp, severity_text, source_name from src"
+
+      cases = [
+        {"severity_text:ERROR", "'ERROR'", :filter_only},
+        {"source_name:edge_function_logs", "'edge_function_logs'", :filter_only},
+        {"c:count(*) c:group_by(t::minute) severity_text:ERROR", "'ERROR'", :chart},
+        {"c:count(*) c:group_by(t::hour) source_name:edge_function_logs", "'edge_function_logs'",
+         :chart},
+        {"c:count(*) c:group_by(t::minute) severity_text:ERROR source_name:edge_function_logs",
+         "'edge_function_logs'", :chart}
+      ]
+
+      for {lql, expected_value_literal, shape} <- cases do
+        {:ok, consumer_sql} = Logflare.Lql.to_sandboxed_sql(lql, "src", :clickhouse)
+
+        assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_sql}, user),
+               "Sql.transform failed for LQL: #{lql}\nConsumer SQL: #{consumer_sql}"
+
+        assert String.downcase(result) =~ "with src as"
+        assert String.downcase(result) =~ "where"
+
+        assert result =~ expected_value_literal,
+               "Missing #{expected_value_literal} in transformed result for LQL: #{lql}\nResult: #{result}"
+
+        if shape == :chart do
+          assert String.downcase(result) =~ "group by",
+                 "Missing GROUP BY in transformed chart result for LQL: #{lql}\nResult: #{result}"
+        end
+      end
+    end
+
+    test "sandboxed queries preserve Map column coercion for ClickHouse LQL filters" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_ch_table")
+      _backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+
+      cte_query =
+        "with src as (select timestamp, event_message, log_attributes from my_ch_table) select timestamp, event_message, log_attributes from src"
+
+      cases = [
+        {"log_attributes.response_time:>100", ["'response_time'", "toFloat64OrNull", "> 100"]},
+        {"log_attributes.response_time:100..500",
+         ["'response_time'", "toFloat64OrNull", "BETWEEN 100 AND 500"]},
+        {"log_attributes.ratio:>0.75", ["'ratio'", "toFloat64OrNull", "> 0.75"]},
+        {"log_attributes.ratio:0.1..0.5", ["'ratio'", "toFloat64OrNull", "BETWEEN 0.1 AND 0.5"]},
+        {"log_attributes.bla.foo:>=5", ["'bla.foo'", "toFloat64OrNull", ">= 5"]},
+        {"log_attributes.is_error:true", ["'is_error'", "accurateCastOrNull"]},
+        {"log_attributes.is_error:false", ["'is_error'", "accurateCastOrNull"]},
+        {"log_attributes.deep.nested.flag:true", ["'deep.nested.flag'", "accurateCastOrNull"]}
+      ]
+
+      for {lql, expected_fragments} <- cases do
+        {:ok, consumer_sql} = Logflare.Lql.to_sandboxed_sql(lql, "src", :clickhouse)
+
+        assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_sql}, user),
+               "Sql.transform failed for LQL: #{lql}\nConsumer SQL: #{consumer_sql}"
+
+        assert String.downcase(result) =~ "with src as"
+        assert String.downcase(result) =~ "where"
+
+        for fragment <- expected_fragments do
+          assert result =~ fragment,
+                 "Missing `#{fragment}` in transformed result for LQL: #{lql}\nResult: #{result}"
+        end
+      end
+    end
+
     test "sandboxed queries cannot access sources/tables outside of CTE scope" do
       user = insert(:user)
       source = insert(:source, user: user, name: "my_ch_table")
       other_source = insert(:source, user: user, name: "other_ch_table")
 
       # setup local clickhouse for e2e test
-      {source, backend, cleanup_fn} = setup_clickhouse_test(source: source, user: user)
-      on_exit(cleanup_fn)
+      {source, backend} = setup_clickhouse_test(source: source, user: user)
 
-      {:ok, _pid} = ClickhouseAdaptor.start_link({source, backend})
-      assert {:ok, _} = ClickhouseAdaptor.provision_ingest_table({source, backend})
+      {:ok, _pid} = ClickHouseAdaptor.start_link(backend)
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
       log_events = [
-        build(:log_event,
+        build_mapped_log_event(
           source: source,
           message: "Test message 1",
-          metadata: %{"value" => 10}
+          body: %{"metadata" => %{"value" => 10}}
         ),
-        build(:log_event,
+        build_mapped_log_event(
           source: source,
           message: "Test message 2",
-          metadata: %{"value" => 20}
+          body: %{"metadata" => %{"value" => 20}}
         )
       ]
 
-      assert :ok = ClickhouseAdaptor.insert_log_events({source, backend}, log_events)
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
 
       Process.sleep(200)
 
-      cte_query =
-        "with src as (select body from #{source.name}) select body from src"
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      consumer_query = "select body from src"
+      cte_query =
+        "with src as (select event_message from #{table_name}) select event_message from src"
+
+      consumer_query = "select event_message from src"
 
       assert {:ok, transformed} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
-      assert {:ok, results} = ClickhouseAdaptor.execute_query(backend, transformed, [])
+
+      assert {:ok, %QueryResult{rows: results}} =
+               ClickHouseAdaptor.execute_query(backend, transformed, [])
+
       assert length(results) == 2
 
       # cannot access the source table directly
-      consumer_query_accessing_source = "select body from #{source.name}"
+      consumer_query_accessing_table = "select event_message from #{table_name}"
 
       assert {:error, err} =
-               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_source}, user)
+               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_table}, user)
 
       assert String.downcase(err) =~ "table not found in cte"
 
       # cannot access another known source that exists but is not in the CTE
-      consumer_query_accessing_other_source = "select body from #{other_source.name}"
+      consumer_query_accessing_other_source = "select event_message from #{other_source.name}"
 
       assert {:error, err} =
                Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_other_source}, user)
@@ -538,9 +660,49 @@ defmodule Logflare.SqlTest do
       assert String.downcase(err) =~ "table not found in cte"
     end
 
+    test "sandboxed LQL chart queries transform correctly through full pipeline" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_ch_table")
+      _backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+
+      cte_query = "with src as (select timestamp from my_ch_table) select timestamp from src"
+
+      for {lql, expected_fragment} <- [
+            {"c:count(*) c:group_by(t::hour)", "count"},
+            {"c:count(*) c:group_by(t::minute)", "count"},
+            {"c:count(*) c:group_by(t::second)", "count"},
+            {"c:count(*) c:group_by(t::day)", "count"},
+            {"c:avg(m.latency) c:group_by(t::minute)", "avg"},
+            {"c:sum(m.bytes) c:group_by(t::day)", "sum"},
+            {"c:max(m.response_time) c:group_by(t::second)", "max"},
+            {"c:p50(m.duration) c:group_by(t::minute)", "quantile"},
+            {"c:p95(m.duration) c:group_by(t::hour)", "quantile"},
+            {"c:p99(m.duration) c:group_by(t::day)", "quantile"}
+          ] do
+        {:ok, consumer_sql} = Logflare.Lql.to_sandboxed_sql(lql, "src", :clickhouse)
+
+        assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_sql}, user),
+               "Sql.transform failed for LQL: #{lql}\nConsumer SQL: #{consumer_sql}"
+
+        assert String.downcase(result) =~ "with src as",
+               "Missing CTE in transformed result for: #{lql}\nResult: #{result}"
+
+        assert String.downcase(result) =~ expected_fragment,
+               "Missing #{expected_fragment} in transformed result for: #{lql}\nResult: #{result}"
+
+        assert String.downcase(result) =~ "group by",
+               "Missing GROUP BY in transformed result for: #{lql}\nResult: #{result}"
+
+        assert String.downcase(result) =~ "order by",
+               "Missing ORDER BY in transformed result for: #{lql}\nResult: #{result}"
+      end
+    end
+
     test "sandboxed queries reject table references not in CTE" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select a from my_ch_table"
@@ -551,7 +713,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries reject wildcards" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select * from src"
@@ -562,7 +726,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries reject DML operations" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "delete from src where a = 1"
@@ -573,7 +739,9 @@ defmodule Logflare.SqlTest do
 
     test "rejects restricted functions" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       restricted_functions = [
         {"file", "select col1 from file('/etc/passwd', 'CSV')"},
@@ -592,7 +760,9 @@ defmodule Logflare.SqlTest do
 
     test "rejects restricted functions in sandboxed queries" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
 
@@ -726,6 +896,12 @@ defmodule Logflare.SqlTest do
              ])
 
     assert String.downcase(result) =~ "from (select 'val' as val) as tester"
+  end
+
+  test "expand_subqueries/3 returns sql parser errors" do
+    alert = build(:alert, name: "my.alert", query: "select 'id' as id", language: :bq_sql)
+
+    assert {:error, _} = Sql.expand_subqueries(:bq_sql, "select from", [alert])
   end
 
   describe "transform/3 for :postgres backends" do
@@ -875,7 +1051,9 @@ defmodule Logflare.SqlTest do
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
-      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed, [])
+
+      assert {:ok, %QueryResult{rows: [%{"count" => 1}]}} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
     test "translate operator to numeric with between with 2 level nested field reference",
@@ -899,7 +1077,9 @@ defmodule Logflare.SqlTest do
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
-      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed, [])
+
+      assert {:ok, %QueryResult{rows: [%{"count" => 1}]}} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
     test "CTE translation with cross join",
@@ -923,11 +1103,13 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
       assert {:ok,
-              [
-                %{
-                  "count" => 1
-                }
-              ]} = PostgresAdaptor.execute_query(backend, transformed, [])
+              %QueryResult{
+                rows: [
+                  %{
+                    "count" => 1
+                  }
+                ]
+              }} = PostgresAdaptor.execute_query(backend, transformed, [])
     end
   end
 
@@ -961,14 +1143,16 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
       assert {:ok,
-              [
-                %{
-                  "event_message" => "something",
-                  "method" => "GET",
-                  "path" => "/",
-                  "status_code" => 200
-                }
-              ]} = PostgresAdaptor.execute_query(backend, transformed, [])
+              %QueryResult{
+                rows: [
+                  %{
+                    "event_message" => "something",
+                    "method" => "GET",
+                    "path" => "/",
+                    "status_code" => 200
+                  }
+                ]
+              }} = PostgresAdaptor.execute_query(backend, transformed, [])
     end
   end
 
@@ -1010,7 +1194,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
       # execute it on PG
-      assert {:ok, [%{"test" => "data", "nested" => "value"}]} =
+      assert {:ok, %QueryResult{rows: [%{"test" => "data", "nested" => "value"}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1034,7 +1218,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"count" => 1}]} =
+      assert {:ok, %QueryResult{rows: [%{"count" => 1}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1048,7 +1232,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"has_substring" => true}]} =
+      assert {:ok, %QueryResult{rows: [%{"has_substring" => true}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1062,7 +1246,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"has_substring" => false}]} =
+      assert {:ok, %QueryResult{rows: [%{"has_substring" => false}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1080,7 +1264,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"has_substring" => true}]} =
+      assert {:ok, %QueryResult{rows: [%{"has_substring" => true}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1099,7 +1283,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"nested" => "value"}]} =
+      assert {:ok, %QueryResult{rows: [%{"nested" => "value"}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
@@ -1129,7 +1313,7 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
-      assert {:ok, [%{"nested" => "deeper"}]} =
+      assert {:ok, %QueryResult{rows: [%{"nested" => "deeper"}]}} =
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 

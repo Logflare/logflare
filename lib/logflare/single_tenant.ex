@@ -305,11 +305,13 @@ defmodule Logflare.SingleTenant do
     end
   end
 
-  @doc "Returns clickhouse backend adapter configurations if single tenant and env is set"
+  @doc "Returns clickhouse backend adaptor configurations if single tenant and env is set"
   @spec clickhouse_backend_adapter_opts :: Keyword.t() | nil
   def clickhouse_backend_adapter_opts do
     if single_tenant?() do
-      Application.get_env(:logflare, :clickhouse_backend_adapter)
+      :logflare
+      |> Application.get_env(:clickhouse_backend_adaptor)
+      |> normalize_clickhouse_backend_adapter_opts()
     end
   end
 
@@ -441,5 +443,22 @@ defmodule Logflare.SingleTenant do
     Application.app_dir(:logflare, "priv/supabase/ingest_samples/#{source_name}.json")
     |> File.read!()
     |> Jason.decode!()
+  end
+
+  defp normalize_clickhouse_backend_adapter_opts(nil), do: nil
+
+  defp normalize_clickhouse_backend_adapter_opts(opts) when is_list(opts) do
+    case Keyword.get(opts, :url) do
+      nil -> opts
+      url -> Keyword.put_new_lazy(opts, :port, fn -> default_clickhouse_port(url) end)
+    end
+  end
+
+  defp default_clickhouse_port(url) do
+    case URI.parse(url) do
+      %URI{port: port} when is_integer(port) -> port
+      %URI{scheme: "https"} -> 8443
+      _ -> 8123
+    end
   end
 end

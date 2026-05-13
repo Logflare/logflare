@@ -7,7 +7,8 @@ defmodule Logflare.Lql.Sandboxed do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Lql.BackendTransformer
   alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules
@@ -31,7 +32,7 @@ defmodule Logflare.Lql.Sandboxed do
         ) :: {:ok, String.t()} | {:error, String.t()}
   def to_sandboxed_sql(lql_string, cte_table_name, dialect)
       when is_binary(lql_string) and is_non_empty_binary(cte_table_name) and
-             dialect in [:bigquery, :clickhouse] do
+             dialect in [:bigquery, :clickhouse, :postgres] do
     with {:ok, lql_rules} <- Parser.parse(lql_string) do
       # Determine table name: use FromRule if present, otherwise use cte_table_name parameter
       table_name =
@@ -145,7 +146,8 @@ defmodule Logflare.Lql.Sandboxed do
     adaptor =
       case dialect do
         :bigquery -> BigQueryAdaptor
-        :clickhouse -> ClickhouseAdaptor
+        :clickhouse -> ClickHouseAdaptor
+        :postgres -> PostgresAdaptor
       end
 
     with {:ok, {sql, _params}} <- adaptor.ecto_to_sql(query, inline_params: true) do

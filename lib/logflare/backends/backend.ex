@@ -21,10 +21,13 @@ defmodule Logflare.Backends.Backend do
     postgres: Adaptor.PostgresAdaptor,
     bigquery: Adaptor.BigQueryAdaptor,
     loki: Adaptor.LokiAdaptor,
-    clickhouse: Adaptor.ClickhouseAdaptor,
+    clickhouse: Adaptor.ClickHouseAdaptor,
     incidentio: Adaptor.IncidentioAdaptor,
     s3: Adaptor.S3Adaptor,
-    axiom: Adaptor.AxiomAdaptor
+    axiom: Adaptor.AxiomAdaptor,
+    otlp: Adaptor.OtlpAdaptor,
+    last9: Adaptor.Last9Adaptor,
+    syslog: Adaptor.SyslogAdaptor
   }
 
   typed_schema "backends" do
@@ -36,6 +39,7 @@ defmodule Logflare.Backends.Backend do
     field :config_encrypted, Logflare.Ecto.EncryptedMap
 
     field :register_for_ingest, :boolean, virtual: true, default: true
+    field :consolidated_ingest?, :boolean, virtual: true, default: false
     field :metadata, :map
     field :default_ingest?, :boolean, source: :default_ingest, default: false
 
@@ -57,7 +61,7 @@ defmodule Logflare.Backends.Backend do
 
   def changeset(backend, attrs) do
     backend
-    |> cast(attrs, [:type, :config, :user_id, :name, :description, :metadata, :default_ingest?])
+    |> cast(attrs, [:type, :config, :name, :description, :metadata, :default_ingest?])
     |> validate_required([:user_id, :type, :config, :name])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
     |> validate_config()
@@ -78,13 +82,21 @@ defmodule Logflare.Backends.Backend do
   defp validate_config(%{valid?: true} = changeset) do
     type = Changeset.get_field(changeset, :type)
     mod = adaptor_mapping()[type]
+    existing_config = changeset.data.config_encrypted || %{}
 
-    Changeset.validate_change(changeset, :config, fn :config, config ->
-      case Adaptor.cast_and_validate_config(mod, config) do
-        %{valid?: true} -> []
-        %{valid?: false, errors: errors} -> for {key, err} <- errors, do: {:"config.#{key}", err}
-      end
-    end)
+    with %{} = config <- Changeset.get_change(changeset, :config),
+         %{valid?: true} = merged_cs <-
+           Adaptor.cast_and_validate_config(mod, config, existing_config) do
+      Changeset.put_change(changeset, :config, Ecto.Changeset.apply_changes(merged_cs))
+    else
+      nil ->
+        changeset
+
+      %{valid?: false, errors: errors} ->
+        Enum.reduce(errors, changeset, fn {key, {msg, opts}}, cs ->
+          Changeset.add_error(cs, :"config.#{key}", msg, opts)
+        end)
+    end
   end
 
   defp validate_config(changeset), do: changeset
@@ -114,7 +126,7 @@ defmodule Logflare.Backends.Backend do
     def encode(value, opts) do
       type = value.type
 
-      adaptor = Logflare.Backends.Backend.adaptor_mapping()[type]
+      adaptor = Backend.adaptor_mapping()[type]
 
       values =
         value

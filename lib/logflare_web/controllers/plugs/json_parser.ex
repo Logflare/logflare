@@ -4,7 +4,7 @@ defmodule LogflareWeb.JsonParser do
 
   Only changes are related to the error handling for BadRequestError.
   """
-  require Logger
+
   @behaviour Plug.Parsers
 
   @impl true

@@ -6,7 +6,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
@@ -70,11 +72,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
 
       TestUtils.retry_assert(fn ->
-        assert {:ok, [%{"test" => "data"}]} = PostgresAdaptor.execute_query(backend, query, [])
+        assert {:ok, %QueryResult{rows: [%{"test" => "data"}], total_rows: 1}} =
+                 PostgresAdaptor.execute_query(backend, query, [])
       end)
 
       # query by string
-      assert {:ok, [%{"body" => [%{"test" => "data"}]}]} =
+      assert {:ok, %QueryResult{rows: [%{"body" => [%{"test" => "data"}]}], total_rows: 1}} =
                PostgresAdaptor.execute_query(
                  backend,
                  "select body from #{PostgresAdaptor.table_name(source)}",
@@ -82,7 +85,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                )
 
       # query by string with parameter
-      assert {:ok, [%{"value" => "data"}]} =
+      assert {:ok, %QueryResult{rows: [%{"value" => "data"}], total_rows: 1}} =
                PostgresAdaptor.execute_query(
                  backend,
                  {"select body ->> $1 as value from #{PostgresAdaptor.table_name(source)}",
@@ -113,25 +116,23 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       TestUtils.retry_assert(fn ->
         # query by string
         assert {:ok,
-                [
-                  %{
-                    "body" => [
-                      %{
-                        "event_message" => "some msg",
-                        "nested" => [
-                          %{
-                            "host" => "db-default",
-                            "parsed" => [
-                              %{
-                                "elements" => [%{"meta" => [%{"data" => "date"}]}]
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]} =
+                %QueryResult{
+                  rows: [
+                    %{
+                      "body" => [
+                        %{
+                          "event_message" => "some msg",
+                          "nested" => [
+                            %{
+                              "host" => "db-default",
+                              "parsed" => [%{"elements" => [%{"meta" => [%{"data" => "date"}]}]}]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }} =
                  PostgresAdaptor.execute_query(
                    backend,
                    "select body from #{PostgresAdaptor.table_name(source)}",
@@ -141,12 +142,29 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
       # non map results are not impacted by metadata transformations
       query = from(l in PostgresAdaptor.table_name(source), select: count(l.id))
-      assert {:ok, [1]} = PostgresAdaptor.execute_query(backend, query, [])
+      assert {:ok, %QueryResult{rows: [1]}} = PostgresAdaptor.execute_query(backend, query, [])
 
-      # struct results are not impacted by metadata transformations
+      # NaiveDateTime results are converted to unix microseconds
       query = from(l in PostgresAdaptor.table_name(source), select: l.timestamp)
 
-      assert {:ok, [%NaiveDateTime{}]} = PostgresAdaptor.execute_query(backend, query, [])
+      assert {:ok, %QueryResult{rows: [timestamp]}} =
+               PostgresAdaptor.execute_query(backend, query, [])
+
+      assert is_integer(timestamp)
+    end
+  end
+
+  describe "test_connection/1" do
+    test "test_connection/1 returns :ok", %{backend: backend} do
+      assert :ok = PostgresAdaptor.test_connection(backend)
+    end
+
+    test "returns error when connection fails", %{backend: backend} do
+      Mimic.expect(SharedRepo, :with_repo, fn _backend, _func ->
+        {:error, :cannot_connect}
+      end)
+
+      assert {:error, :cannot_connect} = PostgresAdaptor.test_connection(backend)
     end
   end
 
@@ -199,7 +217,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       backend = insert(:backend, type: :postgres, sources: [source], config: config)
       PostgresAdaptor.create_repo(backend)
 
-      assert {:ok, [%{"schema_name" => "my_schema"}]} =
+      assert {:ok, %QueryResult{rows: [%{"schema_name" => "my_schema"}]}} =
                PostgresAdaptor.execute_query(
                  backend,
                  "select schema_name from information_schema.schemata where schema_name = 'my_schema'",

@@ -59,12 +59,13 @@ defmodule LogflareWeb.OpenTelemetrySampler do
         sampler_config
       ) do
     config =
-      case Map.get(attributes, :"url.path") do
-        "/logs" <> _ -> ingest_config()
-        "/api/logs" <> _ -> ingest_config()
-        "/api/events" <> _ -> ingest_config()
-        "/endpoints/query" <> _ -> endpoint_config()
-        "/api/endpoints/query" <> _ -> endpoint_config()
+      case {span_name, Map.get(attributes, :"url.path")} do
+        {"ingest." <> _, _} -> ingest_config()
+        {_, "/logs" <> _} -> ingest_config()
+        {_, "/api/logs" <> _} -> ingest_config()
+        {_, "/api/events" <> _} -> ingest_config()
+        {_, "/endpoints/query" <> _} -> endpoint_config()
+        {_, "/api/endpoints/query" <> _} -> endpoint_config()
         _ -> sampler_config
       end
 

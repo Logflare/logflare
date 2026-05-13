@@ -12,7 +12,7 @@
 <div class="content container mx-auto">
   <h5 class="header-margin">Profile Preferences</h5>
   <p>Set your profile preferences.</p>
-  <%= form_for @changeset, Routes.team_user_path(@conn, :update), fn f -> %>
+  <%= form_for @changeset, Routes.team_user_path(@conn, :update, t: @team_user.team_id), fn f -> %>
   <div class="form-group">
     <%= label f, :name %>
     <%= text_input f, :name, placeholder: "Name", class: "form-control form-control-margin"%>

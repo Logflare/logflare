@@ -132,6 +132,42 @@ defmodule Logflare.SingleTenantTest do
     end
   end
 
+  describe "single tenant mode using ClickHouse" do
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
+
+    test "default backend uses clickhouse backend" do
+      assert {:ok, _plan} = SingleTenant.create_default_plan()
+      assert {:ok, user} = SingleTenant.create_default_user()
+
+      assert %Backend{
+               id: nil,
+               type: :clickhouse,
+               token: "00000000-0000-0000-0000-000000000000",
+               consolidated_ingest?: true,
+               config: %{
+                 url: "http://localhost:8123",
+                 database: "logflare_test",
+                 username: "default",
+                 port: 8123,
+                 insert_protocol: "http"
+               }
+             } = SingleTenant.get_default_backend()
+
+      user_id = user.id
+      assert %Backend{type: :clickhouse, user_id: ^user_id} = Backends.get_default_backend(user)
+      assert %Backend{type: :clickhouse} = Backends.get_backend(nil)
+      assert SingleTenant.backend_type() == :clickhouse
+    end
+
+    test "source creation skips bigquery backend setup" do
+      Logflare.Application.startup_tasks()
+      user = SingleTenant.get_default_user()
+
+      assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
+      assert [] == Backends.list_backends(source_id: source.id)
+    end
+  end
+
   test "single_tenant? returns false when not in single tenant mode" do
     refute SingleTenant.single_tenant?()
   end

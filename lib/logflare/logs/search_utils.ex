@@ -5,8 +5,6 @@ defmodule Logflare.Logs.SearchUtils do
 
   import Logflare.Utils.Guards
 
-  require Logger
-
   @doc """
   Generates a random search tip for the user.
   """

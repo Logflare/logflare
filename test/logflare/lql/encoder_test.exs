@@ -2,6 +2,7 @@ defmodule Logflare.Lql.EncoderTest do
   use ExUnit.Case, async: true
 
   alias Logflare.Lql.Encoder
+  alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.FromRule
@@ -94,6 +95,32 @@ defmodule Logflare.Lql.EncoderTest do
       assert result == "t:2020-01-01T{10..11}:{30..45}:00"
     end
 
+    test "drops zero milliseconds in timestamp" do
+      lql_rules = [
+        %FilterRule{
+          operator: :>=,
+          path: "timestamp",
+          value: NaiveDateTime.from_iso8601!("2026-03-17T12:47:02.000")
+        }
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "t:>=2026-03-17T12:47:02"
+    end
+
+    test "formats milliseconds in timestamp" do
+      lql_rules = [
+        %FilterRule{
+          operator: :>=,
+          path: "timestamp",
+          value: NaiveDateTime.from_iso8601!("2026-03-17T12:47:02.123")
+        }
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "t:>=2026-03-17T12:47:02.123"
+    end
+
     test "encodes quoted string filter" do
       lql_rules = [
         %FilterRule{
@@ -111,6 +138,28 @@ defmodule Logflare.Lql.EncoderTest do
     test "encodes empty list" do
       result = Encoder.to_querystring([])
       assert result == ""
+    end
+
+    test "quotes values with special characters for parser compatibility" do
+      for {value, expected} <- [
+            {"prod-c", ~s|cluster:"prod-c"|},
+            {"hello world", ~s|cluster:"hello world"|},
+            {"test@example", ~s|cluster:"test@example"|},
+            {"foo/bar", ~s|cluster:"foo/bar"|},
+            {"simple", "cluster:simple"}
+          ] do
+        lql_rules = [%FilterRule{operator: :=, path: "cluster", value: value}]
+        assert Encoder.to_querystring(lql_rules) == expected
+      end
+    end
+
+    test "encoded values with special characters can be parsed back" do
+      for value <- ["prod-c", "prod-a", "hello-world", "test@domain", "path/to/thing", "canary"] do
+        lql_rules = [%FilterRule{operator: :=, path: "cluster", value: value}]
+        encoded = Encoder.to_querystring(lql_rules)
+
+        assert {:ok, [%FilterRule{path: "cluster", value: ^value}]} = Parser.parse(encoded)
+      end
     end
   end
 
@@ -262,11 +311,12 @@ defmodule Logflare.Lql.EncoderTest do
       lql_rules = [
         %FromRule{table: "application_logs"},
         %SelectRule{path: "event_message", wildcard: false},
-        %SelectRule{path: "metadata.user_id", wildcard: false}
+        %SelectRule{path: "metadata.user_id", wildcard: false},
+        %SelectRule{path: "metadata.qty", alias: "quantity", wildcard: false}
       ]
 
       result = Encoder.to_querystring(lql_rules)
-      assert result == "f:application_logs s:event_message s:m.user_id"
+      assert result == "f:application_logs s:event_message s:m.user_id s:m.qty@quantity"
     end
 
     test "encodes from rule with chart rule" do

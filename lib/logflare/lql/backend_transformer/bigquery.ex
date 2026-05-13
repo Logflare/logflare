@@ -149,11 +149,31 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
   end
 
+  def transform_chart_rule(query, :countd, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count: count(field(t, ^field_path), :distinct)
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
+
   def transform_chart_rule(query, :count, _field_path, :minute, timestamp_field) do
     query
     |> select([t], %{
       timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
       count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :countd, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count: count(field(t, ^field_path), :distinct)
     })
     |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
     |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
@@ -169,11 +189,31 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
   end
 
+  def transform_chart_rule(query, :countd, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count: count(field(t, ^field_path), :distinct)
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
   def transform_chart_rule(query, :count, _field_path, :day, timestamp_field) do
     query
     |> select([t], %{
       timestamp: bq_trunc_day(field(t, ^timestamp_field)),
       count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :countd, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count: count(field(t, ^field_path), :distinct)
     })
     |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
     |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
@@ -548,19 +588,36 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
 
   @spec build_combined_select(Query.t(), [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
-    Enum.reduce(select_rules, query, fn %{path: path}, acc_query ->
-      field_key =
-        if path in @special_top_level or not String.contains?(path, ".") do
-          path
-        else
-          String.replace(path, ".", "_")
-        end
-
-      select_merge(acc_query, [l], %{^field_key => field(l, ^field_key)})
+    Enum.reduce(select_rules, query, fn %{path: path, alias: alias}, acc_query ->
+      is_nested = path not in @special_top_level and String.contains?(path, ".")
+      field_name = path |> split_by_dots() |> List.last()
+      add_select_for_field(acc_query, path, field_name, alias, is_nested)
     end)
   end
 
-  @spec unnest_paths_for_select([String.t()]) :: [String.t()]
+  @spec add_select_for_field(Query.t(), String.t(), String.t(), String.t() | nil, boolean()) ::
+          Query.t()
+  defp add_select_for_field(query, path, field_name, alias, true = _is_nested) do
+    name = if is_binary(alias), do: alias, else: String.replace(path, ".", "_")
+
+    query
+    |> unnest_and_join_nested_columns(:left, path)
+    |> select_merge([..., t], %{
+      ^name => fragment("? AS ?", field(t, ^field_name), identifier(^name))
+    })
+  end
+
+  defp add_select_for_field(query, _path, field_name, alias, false = _is_nested)
+       when is_binary(alias) do
+    select_merge(query, [t], %{
+      ^alias => fragment("? AS ?", field(t, ^field_name), identifier(^alias))
+    })
+  end
+
+  defp add_select_for_field(query, path, field_name, nil = _alias, false = _is_nested) do
+    select_merge(query, [t], %{^path => field(t, ^field_name)})
+  end
+
   defp unnest_paths_for_select(nested_columns) when length(nested_columns) <= 1, do: []
 
   defp unnest_paths_for_select(nested_columns) do

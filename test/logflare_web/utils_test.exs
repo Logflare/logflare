@@ -1,8 +1,9 @@
 defmodule LogflareWeb.UtilsTest do
   use LogflareWeb.ConnCase, async: false
 
-  alias LogflareWeb.Utils
   alias Logflare.Rules
+  alias Logflare.Utils, as: LogflareUtils
+  alias LogflareWeb.Utils
 
   doctest LogflareWeb.Utils, import: true
 
@@ -27,13 +28,13 @@ defmodule LogflareWeb.UtilsTest do
 
     @tag env: :test
     test "returns true in test environment" do
-      assert Utils.flag("some-feature") == true
-      assert Utils.flag("another-feature", %Logflare.User{}) == true
+      assert LogflareUtils.flag("some-feature") == true
+      assert LogflareUtils.flag("another-feature", %Logflare.User{}) == true
     end
 
     @tag env: :prod
     test "returns false for unknown features when no overrides are set" do
-      assert Utils.flag("unknown-feature") == false
+      assert LogflareUtils.flag("unknown-feature") == false
     end
 
     @tag env: :prod,
@@ -46,13 +47,13 @@ defmodule LogflareWeb.UtilsTest do
            "empty-string" => ""
          }
     test "handles different override string values correctly when no SDK key is present" do
-      assert Utils.flag("enabled-feature") == true
-      assert Utils.flag("disabled-feature") == false
-      assert Utils.flag("nonexistent-feature") == false
-      assert Utils.flag("truthy-feature") == true
-      assert Utils.flag("falsy-feature") == false
-      assert Utils.flag("other-value") == false
-      assert Utils.flag("empty-string") == false
+      assert LogflareUtils.flag("enabled-feature") == true
+      assert LogflareUtils.flag("disabled-feature") == false
+      assert LogflareUtils.flag("nonexistent-feature") == false
+      assert LogflareUtils.flag("truthy-feature") == true
+      assert LogflareUtils.flag("falsy-feature") == false
+      assert LogflareUtils.flag("other-value") == false
+      assert LogflareUtils.flag("empty-string") == false
     end
 
     @tag env: :prod, config_cat_key: "test-sdk-key"
@@ -65,7 +66,7 @@ defmodule LogflareWeb.UtilsTest do
         default
       end)
 
-      assert Utils.flag("test-feature") == false
+      assert LogflareUtils.flag("test-feature") == false
 
       TestUtils.retry_assert(fn ->
         assert_received {:get_value_called, "test-feature", false}
@@ -77,7 +78,7 @@ defmodule LogflareWeb.UtilsTest do
         true
       end)
 
-      assert Utils.flag("enabled-feature") == true
+      assert LogflareUtils.flag("enabled-feature") == true
 
       TestUtils.retry_assert(fn ->
         assert_received {:get_value_called, "enabled-feature", false}
@@ -102,7 +103,7 @@ defmodule LogflareWeb.UtilsTest do
         true
       end)
 
-      assert Utils.flag("test-feature", user) == true
+      assert LogflareUtils.flag("test-feature", user) == true
 
       TestUtils.retry_assert(fn ->
         assert_received {:new_called, "test@example.com"}
@@ -111,6 +112,54 @@ defmodule LogflareWeb.UtilsTest do
       TestUtils.retry_assert(fn ->
         assert_received {:get_value_called, "test-feature", false, :user_obj}
       end)
+    end
+  end
+
+  describe "sql_params_to_sql/2" do
+    test "escapes single quotes in string parameters to produce valid SQL literals" do
+      sql = "SELECT * FROM t WHERE t.col = ?"
+
+      param = %{
+        parameterType: %{type: "STRING"},
+        parameterValue: %{value: "it's a trap'; DROP TABLE users --"}
+      }
+
+      result = Utils.sql_params_to_sql(sql, [param])
+      assert result == "SELECT * FROM t WHERE t.col = 'it''s a trap''; DROP TABLE users --'"
+      assert result =~ "''"
+    end
+
+    test "handles string values without special characters unchanged" do
+      sql = "SELECT * FROM t WHERE t.col = ?"
+
+      param = %{
+        parameterType: %{type: "STRING"},
+        parameterValue: %{value: "simple_value"}
+      }
+
+      assert Utils.sql_params_to_sql(sql, [param]) ==
+               "SELECT * FROM t WHERE t.col = 'simple_value'"
+    end
+  end
+
+  describe "replace_table_with_source_name/2" do
+    test "escapes backticks in source names to keep identifier quoting intact" do
+      table_id = "`myproject`.`mydataset`.`mytable`"
+      sql = "SELECT * FROM #{table_id}"
+
+      source = %{bq_table_id: table_id, name: "evil`injection"}
+
+      result = Utils.replace_table_with_source_name(sql, source)
+      assert result == "SELECT * FROM `evil\\`injection`"
+    end
+
+    test "handles normal source names without backticks" do
+      table_id = "`myproject`.`mydataset`.`mytable`"
+      sql = "SELECT * FROM #{table_id}"
+
+      source = %{bq_table_id: table_id, name: "My Log Source"}
+      result = Utils.replace_table_with_source_name(sql, source)
+      assert result == "SELECT * FROM `My Log Source`"
     end
   end
 

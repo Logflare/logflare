@@ -91,6 +91,39 @@ defmodule Logflare.SourceSchemasTest do
     end
   end
 
+  describe "source_schema_flatmap_or_default/1" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+      source = insert(:source, user: user)
+      %{user: user, source: source}
+    end
+
+    test "returns default flat map when source schema is not found", %{
+      source: source
+    } do
+      assert SourceSchemas.source_schema_flatmap_or_default(source) ==
+               Logflare.TestUtils.default_bq_schema()
+               |> SchemaUtils.bq_schema_to_flat_typemap()
+    end
+
+    test "returns schema_flat_map from source schema when found", %{
+      source: source
+    } do
+      schema =
+        insert(:source_schema,
+          source: source,
+          bigquery_schema:
+            TestUtils.build_bq_schema(%{
+              "test" => %{"nested" => 123, "listical" => ["testing", "123"]}
+            })
+        )
+
+      assert SourceSchemas.source_schema_flatmap_or_default(source) ==
+               schema.schema_flat_map
+    end
+  end
+
   describe "format_schema/3" do
     setup do
       insert(:plan, name: "Free")

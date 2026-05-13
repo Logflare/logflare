@@ -15,12 +15,12 @@ defmodule Logflare.Sources do
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.PubSubRates
   alias Logflare.Repo
-  alias Logflare.SavedSearch
   alias Logflare.SingleTenant
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.LogEvent
@@ -76,6 +76,9 @@ defmodule Logflare.Sources do
       {:user_id, user_id}, q when is_integer(user_id) ->
         where(q, [s], s.user_id == ^user_id)
 
+      {:user_id, user_ids}, q when is_list(user_ids) ->
+        where(q, [s], s.user_id in ^user_ids)
+
       {:default_ingest_backend_enabled?, enabled}, q when is_boolean(enabled) ->
         where(q, [s], s.default_ingest_backend_enabled? == ^enabled)
 
@@ -101,7 +104,7 @@ defmodule Logflare.Sources do
            |> Ecto.build_assoc(:sources)
            |> Source.update_by_user_changeset(source_params)
            |> Repo.insert() do
-      if !SingleTenant.postgres_backend?() do
+      unless SingleTenant.postgres_backend?() or SingleTenant.clickhouse_backend?() do
         create_big_query_schema_and_start_source(source)
       end
 
@@ -134,27 +137,21 @@ defmodule Logflare.Sources do
   Create system sources for the user, if they don't exist yet
   "
   def create_user_system_sources(user_id) do
-    entries =
-      for type <- Source.system_source_types() do
-        now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    user = Users.get(user_id)
 
-        %{
-          user_id: user_id,
-          name: "system.#{type}",
-          system_source: true,
-          system_source_type: type,
-          favorite: true,
-          token: Ecto.UUID.Atom.autogenerate(),
-          inserted_at: now,
-          updated_at: now
-        }
-      end
+    for type <- Source.system_source_types() do
+      attrs = %{
+        name: "system.#{type}",
+        system_source: true,
+        system_source_type: type,
+        favorite: true
+      }
 
-    Repo.insert_all(Source, entries,
-      returning: true,
-      conflict_target: [:user_id, :system_source_type],
-      on_conflict: :nothing
-    )
+      user
+      |> Ecto.build_assoc(:sources)
+      |> Source.changeset(attrs)
+      |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :system_source_type])
+    end
 
     list_system_sources_by_user(user_id)
     |> warn_missing_system_sources(user_id)
@@ -224,7 +221,8 @@ defmodule Logflare.Sources do
     source = put_retention_days(source)
     updated = put_retention_days(updated)
 
-    if source.retention_days != updated.retention_days and not SingleTenant.postgres_backend?() do
+    if source.retention_days != updated.retention_days and
+         not (SingleTenant.postgres_backend?() or SingleTenant.clickhouse_backend?()) do
       user = Users.Cache.get(updated.user_id)
 
       BigQuery.patch_table_ttl(
@@ -236,7 +234,7 @@ defmodule Logflare.Sources do
     end
 
     if source.bigquery_clustering_fields != updated.bigquery_clustering_fields and
-         not SingleTenant.postgres_backend?() do
+         not (SingleTenant.postgres_backend?() or SingleTenant.clickhouse_backend?()) do
       user = Users.Cache.get(updated.user_id)
 
       fields = String.split(updated.bigquery_clustering_fields || "", ",") ++ ["timestamp"]
@@ -319,6 +317,22 @@ defmodule Logflare.Sources do
     |> put_retention_days()
   end
 
+  @spec get_by_user_access(User.t() | TeamUser.t(), atom()) :: Source.t() | nil
+  def get_by_user_access(user, id) do
+    Source
+    |> Logflare.Teams.filter_by_user_access(user)
+    |> where([query], query.id == ^id)
+    |> Logflare.Repo.one()
+  end
+
+  @spec get_by_name_and_user_access(User.t() | TeamUser.t(), String.t()) :: Source.t() | nil
+  def get_by_name_and_user_access(user, name) when is_binary(name) do
+    Source
+    |> Logflare.Teams.filter_by_user_access(user)
+    |> where([query], query.name == ^name)
+    |> Logflare.Repo.one()
+  end
+
   def get_rate_limiter_metrics(source, bucket: :default) do
     cluster_size = Cluster.Utils.cluster_size()
     node_metrics = get_node_rate_limiter_metrics(source, bucket: :default)
@@ -371,7 +385,7 @@ defmodule Logflare.Sources do
   @spec preload_defaults(Source.t()) :: Source.t()
   def preload_defaults(source) do
     source
-    |> Repo.preload([:user, :rules, :backends])
+    |> Repo.preload([:backends, [user: :team]])
     |> refresh_source_metrics()
     |> put_bq_table_id()
   end
@@ -379,17 +393,6 @@ defmodule Logflare.Sources do
   def preload_rules(source) do
     source
     |> Repo.preload([:rules])
-  end
-
-  @spec preload_saved_searches(Source.t() | [Source.t()], Keyword.t()) :: Source.t()
-  def preload_saved_searches(source, opts \\ []) do
-    import Ecto.Query
-
-    Repo.preload(
-      source,
-      [saved_searches: from(s in SavedSearch, where: s.saved_by_user)],
-      opts
-    )
   end
 
   def preload_source_schema(source) do
@@ -487,7 +490,6 @@ defmodule Logflare.Sources do
   @spec get_source_for_lv_param(binary | integer) :: Logflare.Sources.Source.t()
   def get_source_for_lv_param(source_id) when is_binary(source_id) or is_integer(source_id) do
     get_by_and_preload(id: source_id)
-    |> preload_saved_searches()
     |> put_bq_table_id()
     |> put_bq_dataset_id()
   end
@@ -504,7 +506,6 @@ defmodule Logflare.Sources do
   def preload_for_dashboard(sources) do
     sources
     |> Enum.map(&preload_defaults/1)
-    |> Enum.map(&preload_saved_searches/1)
     |> Enum.map(&put_schema_field_count/1)
     |> Enum.sort_by(&{!&1.favorite, &1.name})
   end
@@ -587,6 +588,37 @@ defmodule Logflare.Sources do
     :ok
   end
 
+  @doc """
+  Parses source labels from an event, for monitoring.
+
+
+  """
+  @spec get_labels_from_event(Source.t(), LogEvent.t()) :: map()
+  def get_labels_from_event(source, log_event) do
+    mapping = get_labels_mapping(source)
+
+    for {label, path} <- mapping, into: %{} do
+      {label, get_in(log_event.body, path)}
+    end
+  end
+
+  def get_labels_mapping(%{labels: nil}), do: %{}
+  def get_labels_mapping(%{labels: ""}), do: %{}
+
+  def get_labels_mapping(source) do
+    (source.labels || "")
+    |> String.split(",")
+    |> Enum.map(fn label ->
+      String.split(label, "=", parts: 2)
+      |> then(fn
+        [label, "m." <> path] -> {label, ["metadata" | String.split(path, ".")]}
+        [label, path] -> {label, String.split(path, ".")}
+        [label] -> {label, [label]}
+      end)
+    end)
+    |> Map.new()
+  end
+
   defp source_idle?(source) do
     metrics = get_source_metrics_for_ingest(source)
     total_pending = calculate_total_pending(source)
@@ -613,7 +645,6 @@ defmodule Logflare.Sources do
     all_backends
     |> Enum.reduce(0, fn backend, acc ->
       case Backends.IngestEventQueue.total_pending({source_id, backend.id}) do
-        {:error, :not_initialized} -> acc
         count -> acc + count
       end
     end)
@@ -621,14 +652,58 @@ defmodule Logflare.Sources do
 
   @spec has_recent_logs_within?(Source.t(), non_neg_integer()) :: boolean()
   defp has_recent_logs_within?(%Source{} = source, minutes) when is_integer(minutes) do
-    cutoff_time = NaiveDateTime.utc_now() |> NaiveDateTime.add(-minutes * 60, :second)
+    cutoff_time = DateTime.utc_now() |> DateTime.add(-minutes * 60, :second)
 
     case Backends.list_recent_logs_local(source, 1) do
       [] ->
         false
 
       [%LogEvent{ingested_at: ingested_at} | _] ->
-        NaiveDateTime.compare(ingested_at, cutoff_time) == :gt
+        DateTime.compare(ingested_at, cutoff_time) == :gt
     end
+  end
+
+  @doc """
+  Updates the source.log_events_updated_at timestamp to the given timestamp.
+  If no timestamp is provided, the current UTC time is used.
+  """
+  @spec recent_events_touch(NaiveDateTime.t()) :: {:ok, non_neg_integer()} | {:error, any()}
+  def recent_events_touch(timestamp \\ NaiveDateTime.utc_now()) do
+    threshold = timestamp |> NaiveDateTime.add(-1, :hour)
+    base_query = from(s in Source, where: s.log_events_updated_at <= ^threshold)
+
+    filter = {:==, {:is_map, {:element, 2, :value}}, true}
+
+    query =
+      Cachex.Query.build(where: filter, output: :value)
+
+    Sources.Cache
+    |> Cachex.stream!(query)
+    |> Stream.flat_map(fn
+      {:cached, %Source{id: id, log_events_updated_at: log_events_updated_at}} ->
+        if log_events_updated_at < threshold do
+          [id]
+        else
+          []
+        end
+
+      _val ->
+        []
+    end)
+    |> Stream.uniq()
+    |> Stream.take(500)
+    |> Enum.chunk_every(100)
+    |> Enum.map(fn ids ->
+      new_query = where(base_query, [s], s.id in ^ids)
+      {count, _} = Repo.update_all(new_query, set: [log_events_updated_at: timestamp])
+      # give the db a break and let the transactions propagate via cainophile
+      :timer.sleep(500)
+      count
+    end)
+    |> Enum.sum()
+    |> then(fn count ->
+      Logger.debug("recent events touch: updated #{count} active sources")
+      {:ok, count}
+    end)
   end
 end

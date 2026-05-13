@@ -84,8 +84,8 @@ defmodule Logflare.TestUtilsGrpc do
         span_id: :crypto.strong_rand_bytes(8),
         parent_span_id: :crypto.strong_rand_bytes(8),
         trace_id: :crypto.strong_rand_bytes(16),
-        start_time_unix_nano: DateTime.utc_now() |> DateTime.to_unix(:nanosecond),
-        end_time_unix_nano: DateTime.utc_now() |> DateTime.to_unix(:nanosecond),
+        start_time_unix_nano: System.os_time(:nanosecond),
+        end_time_unix_nano: System.os_time(:nanosecond),
         events: random_event(),
         attributes: random_attributes()
       }
@@ -96,7 +96,7 @@ defmodule Logflare.TestUtilsGrpc do
     [
       %Event{
         name: TestUtils.random_string(),
-        time_unix_nano: DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
+        time_unix_nano: System.os_time(:nanosecond)
       }
     ]
   end
@@ -321,8 +321,8 @@ defmodule Logflare.TestUtilsGrpc do
     [
       %NumberDataPoint{
         attributes: random_attributes(),
-        start_time_unix_nano: :os.system_time(:nanosecond),
-        time_unix_nano: :os.system_time(:nanosecond),
+        start_time_unix_nano: System.os_time(:nanosecond),
+        time_unix_nano: System.os_time(:nanosecond),
         value: {:as_int, :rand.uniform(100)}
       }
     ]
@@ -332,8 +332,8 @@ defmodule Logflare.TestUtilsGrpc do
     [
       %HistogramDataPoint{
         attributes: random_attributes(),
-        start_time_unix_nano: :os.system_time(:nanosecond),
-        time_unix_nano: :os.system_time(:nanosecond),
+        start_time_unix_nano: System.os_time(:nanosecond),
+        time_unix_nano: System.os_time(:nanosecond),
         bucket_counts: Enum.map(0..10, fn _ -> :rand.uniform(100) end),
         count: :rand.uniform(100),
         sum: :rand.uniform(100)
@@ -345,8 +345,8 @@ defmodule Logflare.TestUtilsGrpc do
     [
       %ExponentialHistogramDataPoint{
         attributes: random_attributes(),
-        start_time_unix_nano: :os.system_time(:nanosecond),
-        time_unix_nano: :os.system_time(:nanosecond),
+        start_time_unix_nano: System.os_time(:nanosecond),
+        time_unix_nano: System.os_time(:nanosecond),
         count: :rand.uniform(100),
         sum: :rand.uniform(100) * 1.0,
         scale: Enum.random(-10..10),
@@ -398,7 +398,7 @@ defmodule Logflare.TestUtilsGrpc do
 
   defp random_log_record do
     %LogRecord{
-      time_unix_nano: DateTime.utc_now() |> DateTime.to_unix(:nanosecond),
+      time_unix_nano: System.os_time(:nanosecond),
       severity_number: random_severity_number(),
       severity_text: random_severity_text(),
       body: %AnyValue{value: {:string_value, Logflare.TestUtils.random_string()}},

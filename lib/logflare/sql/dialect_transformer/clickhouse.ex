@@ -1,11 +1,10 @@
-defmodule Logflare.Sql.DialectTransformer.Clickhouse do
+defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   @moduledoc """
   ClickHouse-specific SQL transformations.
   """
 
   @behaviour Logflare.Sql.DialectTransformer
 
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.User
 
   @impl true
@@ -15,10 +14,7 @@ defmodule Logflare.Sql.DialectTransformer.Clickhouse do
   def dialect, do: "clickhouse"
 
   @impl true
-  def transform_source_name(source_name, %{sources: sources}) do
-    source = Enum.find(sources, fn s -> s.name == source_name end)
-    ClickhouseAdaptor.clickhouse_ingest_table_name(source)
-  end
+  def transform_source_name(source_name, _data), do: source_name
 
   @doc """
   Builds transformation data for ClickHouse from a user and base data.

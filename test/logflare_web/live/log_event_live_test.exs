@@ -1,6 +1,8 @@
 defmodule LogflareWeb.LogEventLiveTest do
   use LogflareWeb.ConnCase
+  alias GoogleApi.BigQuery.V2.Api.Jobs, as: BigQueryJobs
   alias Logflare.Logs.LogEvents
+  alias Logflare.Utils
 
   import ExUnit.CaptureLog
 
@@ -70,7 +72,7 @@ defmodule LogflareWeb.LogEventLiveTest do
   end
 
   test "load from event cache", %{conn: conn, source: source} do
-    reject(&GoogleApi.BigQuery.V2.Api.Jobs.bigquery_jobs_query/3)
+    reject(&BigQueryJobs.bigquery_jobs_query/3)
 
     le = build(:log_event, message: "some new message")
     LogEvents.Cache.put(source.token, le.id, le)
@@ -81,7 +83,7 @@ defmodule LogflareWeb.LogEventLiveTest do
         ~p"/sources/#{source.id}/event?#{%{timestamp: "2024-01-10T20:13:03Z", uuid: le.id}}"
       )
 
-    timestamp = le.body["timestamp"] |> Logflare.Utils.iso_timestamp() |> URI.encode_www_form()
+    timestamp = le.body["timestamp"] |> Utils.iso_timestamp() |> URI.encode_www_form()
 
     assert render(view) =~ le.body["event_message"]
     assert render(view) =~ le.id

@@ -1,49 +1,58 @@
 defmodule Logflare.BigQuery.PipelineTest do
   @moduledoc false
   use Logflare.DataCase
+
+  import ExUnit.CaptureLog
+
+  alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.LogEvent
+  alias Logflare.User
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Backend
   alias Logflare.Backends
+  alias Logflare.PubSubRates.Cache, as: PubSubRatesCache
   use ExUnitProperties
 
   @pipeline_name :test_pipeline
   describe "pipeline" do
     setup do
+      insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       {:ok, source: source}
     end
 
-    test "ack will remove items from pipeline if average rate is above 100", %{source: source} do
+    test "ack will requeue failed events", %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event)
-      IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      ref = {sid_bid_pid, source.token}
+      ref = {sid_bid_pid, %{max_retries: 1}}
       message = Pipeline.transform(le, ref: ref)
       {mod, ref, _data} = message.acknowledger
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+
+      mod.ack(ref, [], [message])
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
-      mod.ack(ref, [message], [])
-      refute IngestEventQueue.get_table_size(sid_bid_pid) == 0
 
-      Logflare.PubSubRates.Cache.cache_rates(source.token, %{
-        Node.self() => %{
-          average_rate: 500,
-          last_rate: 500,
-          max_rate: 500,
-          limiter_metrics: %{
-            average: 0,
-            duration: 60,
-            sum: 0
-          }
-        }
-      })
+      {:ok, [m]} = IngestEventQueue.pop_pending(sid_bid_pid, 1)
 
-      mod.ack(ref, [message], [])
+      assert m.retries == 1
+    end
+
+    test "ack will not requeue failed events that have exhausted retries", %{source: source} do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event) |> Map.put(:retries, 1)
+      ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(le, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+
+      mod.ack(ref, [], [message])
+
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
     end
 
@@ -77,6 +86,189 @@ defmodule Logflare.BigQuery.PipelineTest do
                  "project" => "my-project"
                }
              } = Pipeline.le_to_bq_row(le)
+    end
+  end
+
+  describe "le_to_bq_row/1 OpenTelemetry timestamp conversion" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      {:ok, source: source}
+    end
+
+    @start_ns System.system_time(:nanosecond)
+    @end_ns System.system_time(:nanosecond) + 1_000_000
+
+    defp make_le(source, attrs) do
+      build(:log_event, [source: source, message: "test"] ++ attrs)
+    end
+
+    defp bq_json(le), do: Pipeline.le_to_bq_row(le).json
+
+    test "converts OTel timestamps from nanoseconds to microseconds", %{source: source} do
+      json =
+        make_le(source,
+          resource: %{"service.name" => "svc"},
+          scope: %{"name" => "scope"},
+          start_time: @start_ns,
+          end_time: @end_ns
+        )
+        |> bq_json()
+
+      assert %DateTime{} = json["end_time"]
+      assert %DateTime{} = json["start_time"]
+    end
+
+    test "converts only start_time when end_time is missing", %{source: source} do
+      json =
+        make_le(source,
+          resource: %{"service.name" => "svc"},
+          scope: %{"name" => "scope"},
+          start_time: @start_ns
+        )
+        |> bq_json()
+
+      assert is_nil(json["end_time"])
+      assert %DateTime{} = json["start_time"]
+    end
+
+    test "does not convert timestamps without both resource and scope", %{source: source} do
+      for attrs <- [
+            [
+              scope: %{"name" => "scope"}
+            ],
+            [
+              resource: %{"service.name" => "svc"}
+            ]
+          ],
+          attrs = attrs ++ [start_time: @start_ns, end_time: @end_ns] do
+        json = make_le(source, attrs) |> bq_json()
+        # should not be converted to microseconds
+        refute match?(%DateTime{}, json["start_time"])
+        refute match?(%DateTime{}, json["end_time"])
+      end
+    end
+  end
+
+  describe "disconnect_backend_and_email" do
+    setup do
+      insert(:plan)
+
+      user =
+        insert(:user,
+          bigquery_project_id: "my-byob-project",
+          bigquery_dataset_id: "my_dataset",
+          bigquery_dataset_location: "US"
+        )
+
+      source = insert(:source, user_id: user.id)
+
+      {:ok, user: user, source: source}
+    end
+
+    test "resets BQ settings on free tier streaming error", %{user: user, source: source} do
+      error_body =
+        Jason.encode!(%{
+          "error" => %{
+            "message" =>
+              "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier"
+          }
+        })
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _context, _rows ->
+        {:error, %Tesla.Env{body: error_body}}
+      end)
+
+      expect(Logflare.Sources.Source.Supervisor, :reset_all_user_sources, fn _user -> :ok end)
+      expect(Logflare.Mailer, :deliver, fn _email -> {:ok, %{}} end)
+
+      context = %{
+        source_token: source.token,
+        user_id: user.id,
+        system_source: false,
+        bigquery_project_id: user.bigquery_project_id,
+        bigquery_dataset_id: user.bigquery_dataset_id
+      }
+
+      log =
+        capture_log([level: :warning], fn ->
+          Pipeline.stream_batch(context, [])
+        end)
+
+      assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
+      assert log =~ "user audit: BigQuery backend auto-disconnected"
+
+      updated_user = Repo.get!(User, user.id)
+      assert is_nil(updated_user.bigquery_project_id)
+      assert is_nil(updated_user.bigquery_dataset_id)
+      assert is_nil(updated_user.bigquery_dataset_location)
+      assert updated_user.bigquery_processed_bytes_limit == 10_000_000_000
+    end
+
+    test "resets BQ settings on project not enabled error", %{user: user, source: source} do
+      error_body =
+        Jason.encode!(%{
+          "error" => %{
+            "message" => "The project my-byob-project has not enabled BigQuery."
+          }
+        })
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _context, _rows ->
+        {:error, %Tesla.Env{body: error_body}}
+      end)
+
+      expect(Logflare.Sources.Source.Supervisor, :reset_all_user_sources, fn _user -> :ok end)
+      expect(Logflare.Mailer, :deliver, fn _email -> {:ok, %{}} end)
+
+      context = %{
+        source_token: source.token,
+        user_id: user.id,
+        system_source: false,
+        bigquery_project_id: user.bigquery_project_id,
+        bigquery_dataset_id: user.bigquery_dataset_id
+      }
+
+      log =
+        capture_log([level: :warning], fn ->
+          Pipeline.stream_batch(context, [])
+        end)
+
+      assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
+      assert log =~ "user audit: BigQuery backend auto-disconnected"
+
+      updated_user = Repo.get!(User, user.id)
+      assert is_nil(updated_user.bigquery_project_id)
+      assert is_nil(updated_user.bigquery_dataset_id)
+      assert is_nil(updated_user.bigquery_dataset_location)
+    end
+
+    test "does not reset BQ settings on other errors", %{user: user, source: source} do
+      error_body =
+        Jason.encode!(%{
+          "error" => %{"message" => "Some transient error"}
+        })
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _context, _rows ->
+        {:error, %Tesla.Env{body: error_body}}
+      end)
+
+      context = %{
+        source_token: source.token,
+        user_id: user.id,
+        system_source: false,
+        bigquery_project_id: user.bigquery_project_id,
+        bigquery_dataset_id: user.bigquery_dataset_id
+      }
+
+      capture_log([level: :warning], fn ->
+        Pipeline.stream_batch(context, [])
+      end)
+
+      updated_user = Repo.get!(User, user.id)
+      assert updated_user.bigquery_project_id == "my-byob-project"
+      assert updated_user.bigquery_dataset_id == "my_dataset"
+      assert updated_user.bigquery_dataset_location == "US"
     end
   end
 

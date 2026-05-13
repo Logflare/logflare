@@ -13,12 +13,12 @@ defmodule Logflare.Sql.DialectTransformerTest do
       assert DialectTransformer.for_dialect("bigquery") == DialectTransformer.BigQuery
     end
 
-    test "returns Clickhouse module for `:ch_sql` atom" do
-      assert DialectTransformer.for_dialect(:ch_sql) == DialectTransformer.Clickhouse
+    test "returns ClickHouse module for `:ch_sql` atom" do
+      assert DialectTransformer.for_dialect(:ch_sql) == DialectTransformer.ClickHouse
     end
 
-    test "returns Clickhouse module for `clickhouse` string" do
-      assert DialectTransformer.for_dialect("clickhouse") == DialectTransformer.Clickhouse
+    test "returns ClickHouse module for `clickhouse` string" do
+      assert DialectTransformer.for_dialect("clickhouse") == DialectTransformer.ClickHouse
     end
 
     test "returns Postgres module for `:pg_sql` atom" do

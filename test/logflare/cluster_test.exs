@@ -1,5 +1,5 @@
 defmodule Logflare.ClusterTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   alias Logflare.Cluster
 
   test "Cluster.Utils.node_list_all/0" do

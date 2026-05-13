@@ -8,6 +8,8 @@ defmodule Logflare.Rules.Rule do
   alias Logflare.Backends.Backend
   alias Logflare.Lql.Parser
 
+  @type id() :: non_neg_integer()
+
   @derive {Jason.Encoder,
            only: [
              :token,

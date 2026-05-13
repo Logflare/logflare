@@ -1,5 +1,5 @@
 defmodule LogflareWeb.Auth.UnsubscribeControllerTest do
-  use LogflareWeb.ConnCase, async: false
+  use LogflareWeb.ConnCase, async: true
 
   alias Logflare.Auth
   alias Logflare.Sources

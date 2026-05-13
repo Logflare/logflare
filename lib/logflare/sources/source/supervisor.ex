@@ -8,15 +8,13 @@ defmodule Logflare.Sources.Source.Supervisor do
   alias Logflare.ContextCache
   alias Logflare.Google.BigQuery
   alias Logflare.Repo
+  alias Logflare.SingleTenant
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Google.BigQuery
-  alias Logflare.ContextCache
-  alias Logflare.SourceSchemas
-  alias Logflare.Backends
-  alias Logflare.Utils.Tasks
   alias Logflare.Sources.Source
+  alias Logflare.Utils.Tasks
+
   require Logger
 
   # TODO: Move all manager fns into a manager server so errors in manager fns don't kill the whole supervision tree
@@ -141,9 +139,7 @@ defmodule Logflare.Sources.Source.Supervisor do
   end
 
   defp use_bigquery? do
-    not (!!Application.get_env(:logflare, :single_tenant) &&
-           (!!Application.get_env(:logflare, :postgres_backend_adapter) ||
-              !!Application.get_env(:logflare, :clickhouse_backend_adapter)))
+    not (SingleTenant.postgres_backend?() or SingleTenant.clickhouse_backend?())
   end
 
   defp create_source(%Source{} = source) do
@@ -162,7 +158,7 @@ defmodule Logflare.Sources.Source.Supervisor do
     end
   end
 
-  @spec ensure_started(atom) :: {:ok, :already_started | :started}
+  @spec ensure_started(Source.t()) :: :ok
   def ensure_started(%Source{token: source_token} = source) do
     # Check if already running
     do_lookup(source)

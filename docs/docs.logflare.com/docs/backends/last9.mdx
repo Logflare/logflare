@@ -1,0 +1,25 @@
+---
+sidebar_position: 11
+---
+
+# Last9.io
+
+The Last9.io backend is **ingest-only**, and sends logs to [Last9](https://last9.io) via OTLP/HTTP.
+
+## Behaviour and configurations
+
+### Configuration
+
+The backend can be configured with the following options:
+
+- `:region` (string, required) - The region for the endpoint. Can be either `US-WEST-1` or `AP-SOUTH-1`.
+- `:username` (string, required) - The username for authentication.
+- `:password` (string, required) - The password for authentication.
+
+You can obtain the username and password from the [Last9 OTel integration panel](https://app.last9.io/integrations?integration=OpenTelemetry).
+
+### Implementation Details
+
+- The adaptor sends logs to a region-specific endpoint (e.g., `https://otlp.last9.io/v1/logs`).
+- It uses OTLP over HTTP with Protobuf encoding.
+- Authentication is handled via HTTP Basic Auth using the provided `:username` and `:password`.

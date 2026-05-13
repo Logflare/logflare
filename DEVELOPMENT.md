@@ -47,14 +47,17 @@ make start.pink
 ### Setup for External Contributors
 
 ```bash
-# install dependencies
-make setup
-
 # start local databases
 docker-compose up -d db clickhouse
 
+# install dependencies
+make setup
+
 # start in single tenant postgres backend
 make start.st.pg
+
+# start in single tenant clickhouse backend
+make start.st.ch
 
 # run tests
 mix test
@@ -78,6 +81,7 @@ Use the single tenant `make start.*` variations. This works by switching out the
 ```bash
 make start.st.pg
 make start.st.bq
+make start.st.ch
 ```
 
 To develop with Supabase mode:
@@ -85,6 +89,7 @@ To develop with Supabase mode:
 ```bash
 make start.sb.bq
 make start.sb.pg
+make start.sb.ch
 ```
 
 ### Running with Docker Compose
@@ -117,6 +122,47 @@ In order to test all changes locally, perform the following steps:
 3. Update the test Supabase project's config under `supabase/config.toml`
    - Logflare uses the `analytics` namespace.
 
+### Testing Logflare E2E integration with Supabase
+
+These tests live in `test/e2e/supabase` and use Playwright against a local Supabase docker-compose setup.
+
+Run locally:
+
+```bash
+cd test/e2e/supabase
+
+# Boot Supabase services
+bash ./setup-supabase-services.sh
+
+# Install JS dependencies
+npm ci
+
+# Install Playwright browsers and OS deps
+npx playwright install --with-deps
+
+# Run all Playwright tests
+npm run playwright:test
+
+# Optional: run with Playwright UI
+npm run playwright:test:ui
+```
+
+For debugging or troubleshooting you can easily interact with the containers with `bin/compose` with any valid
+docker-compose commands. You need to be in the same directory.
+
+```bash
+cd test/e2e/supabase
+
+# See Logflare container logs
+bin/compose logs analytics -f
+
+# Stop all service containers
+bin/compose stop
+
+# Remove all containers and associated volumes
+bin/compose down -v
+```
+
 ## Command Reference
 
 ```bash
@@ -132,7 +178,7 @@ make grpc.protoc.bq
 make deploy.staging.{main|versioned}
 make deploy.prod.versioned
 make tag-versioned
-make ssl.{prod|staging}
+make ssl.{prod|staging|telegraf}
 ```
 
 ## Release Management

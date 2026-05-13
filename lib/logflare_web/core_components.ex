@@ -6,6 +6,7 @@ defmodule LogflareWeb.CoreComponents do
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
+  alias Logflare.Teams.TeamContext
 
   @doc "Alert the user of something"
   attr :variant, :string,
@@ -91,11 +92,12 @@ defmodule LogflareWeb.CoreComponents do
   """
   attr :to, :string
   attr :live_patch, :boolean, default: false
+  attr :team, Logflare.Teams.Team, default: nil
   slot :inner_block, required: true
 
   def subheader_path_link(assigns) do
     ~H"""
-    <.dynamic_link to={@to} patch={@live_patch} class="tw-text-gray-600 tw-hover:text-black">
+    <.dynamic_link to={LogflareWeb.Utils.with_team_param(@to, @team)} patch={@live_patch} class="tw-text-gray-600 tw-hover:text-black">
       {render_slot(@inner_block)}
     </.dynamic_link>
     """
@@ -110,10 +112,11 @@ defmodule LogflareWeb.CoreComponents do
   attr :fa_icon, :string
   attr :live_patch, :boolean, default: false
   attr :external, :boolean, default: false
+  attr :team, :any, default: nil
 
   def subheader_link(assigns) do
     ~H"""
-    <.dynamic_link to={@to} patch={@live_patch} external={@external} class="tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center">
+    <.dynamic_link to={@to} patch={@live_patch} external={@external} team={@team} class="tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center">
       <i :if={@fa_icon} class={"inline-block h-3 w-3 fas fa-#{@fa_icon}"}></i><span> <%= @text %></span>
     </.dynamic_link>
     """
@@ -133,7 +136,7 @@ defmodule LogflareWeb.CoreComponents do
 
     ~H"""
     <h5 id={@anchor} class="tw-mb-2 tw-mt-4 tw-text-white scroll-margin">
-      {@text} {Phoenix.HTML.Link.link("#", to: "#" <> @anchor)}
+      {@text} {PhoenixHTMLHelpers.Link.link("#", to: "#" <> @anchor)}
     </h5>
     """
   end
@@ -143,6 +146,7 @@ defmodule LogflareWeb.CoreComponents do
   attr :attrs, :global
   slot :inner_block, required: true
   attr :external, :boolean, default: false
+  attr :team, :any, default: nil
 
   defp dynamic_link(assigns) do
     if assigns.external do
@@ -159,7 +163,8 @@ defmodule LogflareWeb.CoreComponents do
           :navigate
         end
 
-      assigns = assign(assigns, :to, %{link_type => assigns.to})
+      to_with_team = LogflareWeb.Utils.with_team_param(assigns.to, assigns.team)
+      assigns = assign(assigns, :to, %{link_type => to_with_team})
 
       ~H"""
       <.link {@to} {@attrs}>{render_slot(@inner_block)}</.link>
@@ -173,10 +178,85 @@ defmodule LogflareWeb.CoreComponents do
   attr :lql, :string
   attr :label, :string, default: "permalink"
   attr :class, :string, default: "group-hover:tw-visible tw-invisible"
+  attr :icon, :string, default: nil
 
   def log_event_permalink(assigns) do
     ~H"""
-    <.link class={@class} target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log_event_id, timestamp: Logflare.Utils.iso_timestamp(@timestamp), lql: @lql}}"}>{@label}</.link>
+    <.link class={@class} target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log_event_id, timestamp: Logflare.Utils.iso_timestamp(@timestamp), lql: @lql}}"}>
+      <i :if={@icon} class={@icon <> " tw-mr-1 tw-w-2"}></i>
+      {@label}
+    </.link>
     """
+  end
+
+  @doc """
+  Team switcher dropdown for the navbar.
+  Displays the current team and allows switching between teams.
+
+  ## Examples
+
+      <.team_switcher teams={@teams} team_context={team_context} current_path={@conn.request_path}  />
+
+  """
+  attr :team_context, TeamContext, required: true
+  attr :teams, :list, required: true
+  attr :current_path, :string, required: true
+
+  def team_switcher(assigns) do
+    assigns =
+      assigns
+      |> assign(:has_multiple_teams, length(assigns.teams) > 1)
+      |> assign(:selected_class, fn team_id ->
+        if team_id == assigns.team_context.team.id, do: "tw-font-bold tw-text-neutral-900/60"
+      end)
+
+    ~H"""
+    <li class="nav-item" id="team-switcher">
+      <span :if={not @has_multiple_teams} class="tw-font-bold tw-text-black/60">
+        {@team_context.team.name}
+      </span>
+      <a :if={@has_multiple_teams} class="tw-font-bold tw-text-neutral-900/60 nav-link dropdown-toggle" href="#" id="teamDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        {@team_context.team.name}
+      </a>
+      <div :if={@has_multiple_teams} class="dropdown-menu dropdown-menu-right" aria-labelledby="teamDropdown">
+        <%= for team <- @teams do %>
+          <a href={~p"/teams/switch?#{[team_id: team.id, redirect_to: @current_path]}"} class={["dropdown-item tw-flex tw-items-center tw-gap-2", @selected_class.(team.id)]}>
+            <span>{team.name}</span>
+            <span :if={TeamContext.home_team?(team, @team_context)} class="tw-text-sm tw-self-end">home team</span>
+          </a>
+        <% end %>
+      </div>
+    </li>
+    """
+  end
+
+  @doc """
+  Generate a link with a team_id param.
+
+  ## Examples
+
+      <.team_link href={~p"/dashboard"} team={@team}>Dashboard</.team_link>
+
+  """
+  attr :href, :string, default: nil
+  attr :navigate, :string, default: nil
+  attr :patch, :string, default: nil
+  attr :team, :any, required: true
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def team_link(assigns) do
+    nav_attrs = [:navigate, :patch, :href]
+
+    nav_assign =
+      for key <- nav_attrs,
+          value = Map.get(assigns, key),
+          into: %{} do
+        {key, LogflareWeb.Utils.with_team_param(value, assigns.team)}
+      end
+
+    assigns
+    |> Map.merge(nav_assign)
+    |> link()
   end
 end

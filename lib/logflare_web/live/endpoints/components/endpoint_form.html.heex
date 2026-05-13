@@ -122,6 +122,22 @@
           When enabled, PII such as IP addresses in query results will be "REDACTED"
         </small>
       </div>
+
+      <div class="">
+        {checkbox(f, :enable_dynamic_reservation,
+          id: "dynamic-reservation-checkbox",
+          class: "form-check-input"
+        )}
+        {label(f, :enable_dynamic_reservation, "Enable dynamic BigQuery reservation",
+          for: "dynamic-reservation-checkbox",
+          class: "form-check-label"
+        )}
+        {error_tag(f, :enable_dynamic_reservation)}
+        <small class="form-text text-muted">
+          When enabled, API callers can set the BigQuery reservation for query execution using the <code>LF-ENDPOINT-BIGQUERY-RESERVATION</code> request header.
+          The value should be in the format <code>{"projects/{project}/locations/{location}/reservations/{reservation}"}</code>.
+        </small>
+      </div>
     </section>
 
     <.header_with_anchor text="Caching" />

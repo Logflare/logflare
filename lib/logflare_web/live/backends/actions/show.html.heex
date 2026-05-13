@@ -1,6 +1,6 @@
 <.subheader>
   <:path>
-    ~/<.subheader_path_link live_patch to={~p"/backends"}>backends</.subheader_path_link>/{@backend.name}
+    ~/<.subheader_path_link live_patch to={~p"/backends"} team={@team}>backends</.subheader_path_link>/{@backend.name}
   </:path>
   <.subheader_link live_patch to={~p"/backends/#{@backend.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
@@ -26,6 +26,10 @@
       </li>
     </ul>
   </div>
+  <div>
+    <.button variant="primary" phx-click="test_connection">Test connection</.button>
+    <.status_indicator :if={@connection_status} status={@connection_status} />
+  </div>
 </section>
 
 <section :if={@flag_multibackend == true and Logflare.Backends.Adaptor.supports_default_ingest?(@backend)} class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
@@ -41,6 +45,9 @@
       <% else %>
         Add a Source
       <% end %>
+    </.button>
+    <.button :if={@backend.default_ingest? and not @show_default_ingest_form?} phx-click="add_all_default_ingest" variant="secondary" data-confirm={"Add all #{length(@available_sources)} sources as default ingest?"}>
+      Add All Sources
     </.button>
   </div>
 
@@ -70,6 +77,11 @@
       </.button>
     </li>
   </ul>
+  <div :if={length(@default_ingest_sources || []) > 1}>
+    <.button phx-click="remove_all_default_ingest" variant="danger" data-confirm={"Remove all #{length(@default_ingest_sources)} sources from default ingest?"}>
+      Remove All Sources
+    </.button>
+  </div>
 </section>
 
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
