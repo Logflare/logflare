@@ -10,6 +10,7 @@ defmodule Logflare.Teams.TeamContext do
   import Ecto.Query
 
   alias Logflare.Backends.Backend
+  alias Logflare.Endpoints
   alias Logflare.Sources
   alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
@@ -123,6 +124,13 @@ defmodule Logflare.Teams.TeamContext do
     Backend
     |> Teams.filter_by_user_access(user)
     |> where([backend], backend.id == ^backend_id)
+    |> select([resource_team: team], team.id)
+  end
+
+  def resource_team_id_query(LogflareWeb.EndpointsLive, %{"id" => endpoint_id}, user) do
+    Endpoints.Query
+    |> Teams.filter_by_user_access(user)
+    |> where([endpoint], endpoint.id == ^endpoint_id)
     |> select([resource_team: team], team.id)
   end
 
