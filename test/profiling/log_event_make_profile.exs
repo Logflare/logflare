@@ -1,24 +1,24 @@
 # credo:disable-for-this-file Credo.Check.Refactor.IoPuts
 #
-# Usage: MIX_ENV=test mix run test/profiling/log_event_make_bench.exs
+# Usage: MIX_ENV=test mix run test/profiling/log_event_make_profile.exs
 #
-# Env (snapshot tooling):
-#   SAVE_SNAPSHOT=1 — append this run's results to log_event_make_bench.history.exs
-#   LABEL="..."     — optional label for the new entry (e.g., "post X rewrite")
-#   MACHINE="..."   — optional machine identifier so cross-machine entries can be filtered
+# Surfaces per-function time inside LogEvent.make/2 via :tprof, using the
+# realistic edge_log and otel_trace fixtures from log_event_make_bench.exs.
+# The edge_log payload (~80 leaves of mixed-case Cloudflare metadata across
+# 4-5 nesting levels) is the larger stress case and the default.
 #
-# Every run prints a delta table vs the most-recent entry in the history file
-# (if one exists). The history file is the source of truth for trend tracking.
+# Env:
+#   ITERATIONS — iterations per profile run (default 2000)
+#   TPROF_TYPE — time | calls | memory (default time)
+#   FIXTURE    — edge_log | otel_trace (default edge_log)
 
 alias Logflare.LogEvent
 
 import Logflare.Factory
 
-# Setup test data
 user = insert(:user)
 source = insert(:source, user: user)
 
-# OTEL trace payload (~15 leaf values, 2-3 levels deep)
 otel_trace_params = %{
   "attributes" => %{
     "_client_address" => "2600:1fc4:22a5:ae73:2887:684b:66c0:1f85",
@@ -52,7 +52,6 @@ otel_trace_params = %{
   "trace_id" => "f9918d38f5d1cb74ec5656b9a315e5f6"
 }
 
-# Edge log payload (~80 leaf values, 4-5 levels deep)
 edge_log_params = %{
   "event_message" =>
     "POST | 200 | 3.254.227.51 | 9ca90d4f3f7cc99e | https://example.supabase.co/rest/v1/calls",
@@ -143,133 +142,24 @@ edge_log_params = %{
   "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
 }
 
-suite =
-  Benchee.run(
-    %{
-      "otel trace" => fn ->
-        LogEvent.make(otel_trace_params, %{source: source})
-      end,
-      "edge log" => fn ->
-        LogEvent.make(edge_log_params, %{source: source})
-      end
-    },
-    time: 5,
-    warmup: 2,
-    memory_time: 3,
-    reduction_time: 3
-  )
+fixtures = %{"otel_trace" => otel_trace_params, "edge_log" => edge_log_params}
+fixture_name = System.get_env("FIXTURE") || "edge_log"
+params = Map.fetch!(fixtures, fixture_name)
 
-# --- Snapshot capture ---
+iterations = String.to_integer(System.get_env("ITERATIONS") || "2000")
+type = String.to_atom(System.get_env("TPROF_TYPE") || "time")
 
-results =
-  for s <- suite.scenarios, into: %{} do
-    stats = s.run_time_data.statistics
-    mem = s.memory_usage_data.statistics
-    reds = s.reductions_data.statistics
+for _ <- 1..500, do: LogEvent.make(params, %{source: source})
 
-    {s.name,
-     %{
-       ips: round(stats.ips),
-       wall_avg_us: Float.round(stats.average / 1_000, 2),
-       wall_median_us: Float.round(stats.median / 1_000, 2),
-       wall_p99_us: Float.round((stats.percentiles[99] || 0) / 1_000, 2),
-       memory_avg_bytes: round(mem.average),
-       reductions_avg: round(reds.average)
-     }}
-  end
+IO.puts(
+  "\n== :tprof #{type} over #{iterations} iterations of LogEvent.make/2 (#{fixture_name}) ==\n"
+)
 
-git_sha =
-  case System.cmd("git", ["rev-parse", "--short=9", "HEAD"], stderr_to_stdout: true) do
-    {sha, 0} -> String.trim(sha)
-    _ -> "unknown"
-  end
-
-new_entry = %{
-  meta: %{
-    captured_at: DateTime.utc_now() |> DateTime.to_iso8601(),
-    git_sha: git_sha,
-    label: System.get_env("LABEL"),
-    machine: System.get_env("MACHINE")
-  },
-  results: results
-}
-
-history_path = Path.expand("log_event_make_bench.history.exs", __DIR__)
-
-history =
-  if File.exists?(history_path) do
-    {history, _} = Code.eval_file(history_path)
-    history
-  else
-    []
-  end
-
-# --- Delta print ---
-
-fmt_pct = fn old, new ->
-  cond do
-    old == 0 and new == 0 ->
-      "0.0%"
-
-    old == 0 ->
-      "+inf%"
-
-    true ->
-      pct = Float.round((new - old) / old * 100, 1)
-      if pct >= 0, do: "+#{pct}%", else: "#{pct}%"
-  end
-end
-
-fmt_bytes = fn b ->
-  if b >= 1_048_576,
-    do: "#{Float.round(b / 1_048_576, 2)} MB",
-    else: "#{Float.round(b / 1024, 1)} KB"
-end
-
-fmt_count = fn n ->
-  if n >= 1000, do: "#{Float.round(n / 1000, 1)}K", else: "#{n}"
-end
-
-case history do
-  [latest | _] ->
-    label = latest.meta[:label] || latest.meta.captured_at
-    IO.puts("\nDelta vs #{latest.meta.git_sha} (#{label}):")
-
-    for {fixture, new_stats} <- Enum.sort(results) do
-      case latest.results[fixture] do
-        nil ->
-          IO.puts("  #{fixture}: no baseline in latest snapshot")
-
-        old ->
-          IO.puts("  #{fixture}")
-
-          IO.puts(
-            "    wall: #{old.wall_median_us} → #{new_stats.wall_median_us} µs  (#{fmt_pct.(old.wall_median_us, new_stats.wall_median_us)})"
-          )
-
-          IO.puts(
-            "    mem:  #{fmt_bytes.(old.memory_avg_bytes)} → #{fmt_bytes.(new_stats.memory_avg_bytes)}  (#{fmt_pct.(old.memory_avg_bytes, new_stats.memory_avg_bytes)})"
-          )
-
-          IO.puts(
-            "    reds: #{fmt_count.(old.reductions_avg)} → #{fmt_count.(new_stats.reductions_avg)}  (#{fmt_pct.(old.reductions_avg, new_stats.reductions_avg)})"
-          )
-      end
-    end
-
-  [] ->
-    IO.puts("\nNo history yet — run with SAVE_SNAPSHOT=1 to seed.")
-end
-
-# --- Save if requested ---
-
-if System.get_env("SAVE_SNAPSHOT") == "1" do
-  new_history = [new_entry | history]
-
-  File.write!(
-    history_path,
-    inspect(new_history, pretty: true, limit: :infinity, sort_maps: true) <> "\n"
-  )
-
-  IO.puts("\nSaved snapshot (#{git_sha}) to #{history_path}")
-end
+Mix.Tasks.Profile.Tprof.profile(
+  fn ->
+    for _ <- 1..iterations, do: LogEvent.make(params, %{source: source})
+  end,
+  type: type,
+  warmup: 0,
+  sort: :per_call
+)
