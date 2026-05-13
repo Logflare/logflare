@@ -200,12 +200,12 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   defp do_flatten_typemap(typemap, prefix, acc) do
     Enum.reduce(typemap, acc, fn {key, value}, acc ->
-      flat_key =
-        if prefix == "", do: to_string(key), else: prefix <> "." <> to_string(key)
-
-      flatten_node(value, flat_key, acc)
+      flatten_node(value, join_key(prefix, key), acc)
     end)
   end
+
+  defp join_key("", key), do: to_string(key)
+  defp join_key(prefix, key), do: prefix <> "." <> to_string(key)
 
   defp flatten_node(%{t: :map, fields: fields}, key, acc) do
     do_flatten_typemap(fields, key, Map.put(acc, key, :map))
