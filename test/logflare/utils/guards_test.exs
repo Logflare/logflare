@@ -103,6 +103,28 @@ defmodule Logflare.Utils.GuardsTest do
     end
   end
 
+  describe "is_non_empty_map/1" do
+    test "passes for maps with at least one key" do
+      assert match?(x when is_non_empty_map(x), %{a: 1})
+      assert match?(x when is_non_empty_map(x), %{"k" => "v"})
+      assert match?(x when is_non_empty_map(x), %{a: 1, b: 2})
+    end
+
+    test "passes for non-empty structs (which are maps with __struct__)" do
+      assert match?(x when is_non_empty_map(x), ~D[2026-04-29])
+    end
+
+    test "fails for the empty map" do
+      refute match?(x when is_non_empty_map(x), %{})
+    end
+
+    test "fails for non-maps" do
+      for value <- [[], [a: 1], "map", :map, 1, nil] do
+        refute match?(x when is_non_empty_map(x), value)
+      end
+    end
+  end
+
   describe "is_atom_value/1" do
     test "passes for regular atoms" do
       assert match?(x when is_atom_value(x), :foo)

@@ -4,6 +4,8 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
   Also provides flattening of nested maps into dot-delimited key paths.
   """
 
+  import Logflare.Utils.Guards, only: [is_non_empty_map: 1]
+
   @type flat_key :: String.t()
   @typep pair_acc :: [{flat_key(), term()}]
 
@@ -65,7 +67,7 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
   end
 
   @spec do_flatten_pairs([{term(), term()}], [String.t()], pair_acc()) :: pair_acc()
-  defp do_flatten_pairs([{k, v} | rest], prefix, acc) when is_map(v) and v != %{} do
+  defp do_flatten_pairs([{k, v} | rest], prefix, acc) when is_non_empty_map(v) do
     acc = do_flatten_map(v, [k | prefix], acc)
     do_flatten_pairs(rest, prefix, acc)
   end
@@ -82,7 +84,7 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
   defp do_flatten_pairs([], _prefix, acc), do: acc
 
   @spec do_flatten_list(list(), non_neg_integer(), [String.t()], pair_acc()) :: pair_acc()
-  defp do_flatten_list([v | rest], idx, prefix, acc) when is_map(v) and v != %{} do
+  defp do_flatten_list([v | rest], idx, prefix, acc) when is_non_empty_map(v) do
     acc = do_flatten_map(v, [Integer.to_string(idx) | prefix], acc)
     do_flatten_list(rest, idx + 1, prefix, acc)
   end
