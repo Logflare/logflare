@@ -2,10 +2,12 @@
 #
 # Usage: MIX_ENV=test mix run test/profiling/log_event_make_bench.exs
 #
-# Env (snapshot tooling):
-#   SAVE_SNAPSHOT=1 — append this run's results to log_event_make_bench.history.exs
-#   LABEL="..."     — optional label for the new entry (e.g., "post X rewrite")
-#   MACHINE="..."   — optional machine identifier so cross-machine entries can be filtered
+# Env:
+#   SAVE_SNAPSHOT=1     — append this run's results to log_event_make_bench.history.exs
+#   LABEL="..."         — optional label for the new entry (e.g., "post X rewrite")
+#   MACHINE="..."       — optional machine identifier so cross-machine entries can be filtered
+#   PROFILE=1           — run :tprof against each scenario after the benchmark (Benchee profile_after)
+#   TPROF_TYPE=time     — :tprof type when PROFILE=1 (time | calls | memory; default time)
 #
 # Every run prints a delta table vs the most-recent entry in the history file
 # (if one exists). The history file is the source of truth for trend tracking.
@@ -244,6 +246,14 @@ edge_with_all =
     transform_drop_fields: edge_drop_config
   )
 
+profile_after =
+  if System.get_env("PROFILE") == "1" do
+    type = String.to_existing_atom(System.get_env("TPROF_TYPE") || "time")
+    {:tprof, type: type, warmup: 0, sort: :per_call}
+  else
+    false
+  end
+
 suite =
   Benchee.run(
     %{
@@ -287,7 +297,8 @@ suite =
     time: 5,
     warmup: 2,
     memory_time: 3,
-    reduction_time: 3
+    reduction_time: 3,
+    profile_after: profile_after
   )
 
 history_path = Path.expand("log_event_make_bench.history.exs", __DIR__)
