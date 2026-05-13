@@ -9,6 +9,7 @@ defmodule Logflare.Teams.TeamContext do
 
   import Ecto.Query
 
+  alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
   alias Logflare.Sources
@@ -120,6 +121,13 @@ defmodule Logflare.Teams.TeamContext do
   end
 
   @spec resource_team_id_query(module(), map(), User.t() | TeamUser.t()) :: Ecto.Query.t() | nil
+  def resource_team_id_query(LogflareWeb.AlertsLive, %{"id" => id}, user) do
+    AlertQuery
+    |> Teams.filter_by_user_access(user)
+    |> where([alert], alert.id == ^id)
+    |> select([resource_team: team], team.id)
+  end
+
   def resource_team_id_query(LogflareWeb.BackendsLive, %{"id" => backend_id}, user) do
     Backend
     |> Teams.filter_by_user_access(user)
