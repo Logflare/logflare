@@ -13,6 +13,7 @@ defmodule Logflare.Teams.TeamContext do
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
   alias Logflare.Sources
+  alias Logflare.Sql
   alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.Teams
@@ -140,6 +141,19 @@ defmodule Logflare.Teams.TeamContext do
     |> Teams.filter_by_user_access(user)
     |> where([endpoint], endpoint.id == ^endpoint_id)
     |> select([resource_team: team], team.id)
+  end
+
+  def resource_team_id_query(LogflareWeb.QueryLive, %{"q" => query}, user)
+      when is_binary(query) and query != "" do
+    with {:ok, formatted} <- SqlFmt.format_query(query),
+         {:ok, [source_name | _]} <- Sql.extract_table_names(formatted) do
+      Sources.Source
+      |> Teams.filter_by_user_access(user)
+      |> where([source], source.name == ^source_name)
+      |> select([resource_team: team], team.id)
+    else
+      _ -> nil
+    end
   end
 
   def resource_team_id_query(LogflareWeb.Source.SearchLV, %{"source_id" => source_id}, user) do

@@ -1,15 +1,17 @@
 defmodule LogflareWeb.QueryLive do
   @moduledoc false
+
   use LogflareWeb, :live_view
   use Phoenix.Component
 
   alias Logflare.Alerting
   alias Logflare.Backends
   alias Logflare.Endpoints
-  alias Logflare.Sources
-  alias Logflare.Sql
+  alias Logflare.Repo
+  alias Logflare.Teams.TeamContext
   alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
+  alias LogflareWeb.Utils
 
   def render(assigns) do
     ~H"""
@@ -180,8 +182,6 @@ defmodule LogflareWeb.QueryLive do
           formatted
       end
 
-    socket = maybe_assign_team_context(socket, params, q)
-
     %{assigns: %{user: user}} = socket
     endpoints = Endpoints.list_endpoints_by(user_id: user.id)
     alerts = Alerting.list_alert_queries_by_user_id(user.id)
@@ -206,19 +206,17 @@ defmodule LogflareWeb.QueryLive do
     {:noreply, assign(socket, :query_string, query_string)}
   end
 
-  defp maybe_assign_team_context(socket, %{"t" => _team_id}, _query), do: socket
+  defp assign_team_context_for_query(socket, nil), do: socket
 
-  defp maybe_assign_team_context(socket, _params, nil), do: socket
-
-  defp maybe_assign_team_context(socket, _params, query_string) do
+  defp assign_team_context_for_query(socket, query_string) do
     effective_user = socket.assigns[:team_user] || socket.assigns.user
 
-    with {:ok, [source_name | _]} <- Sql.extract_table_names(query_string),
-         %Sources.Source{} = source <-
-           Sources.get_by_name_and_user_access(effective_user, source_name) do
-      AuthLive.assign_context_by_resource(socket, source, socket.assigns.user.email)
-    else
-      _ -> socket
+    case TeamContext.resource_team_id_query(__MODULE__, %{"q" => query_string}, effective_user) do
+      nil ->
+        socket
+
+      query ->
+        AuthLive.assign_context_by_team_id(socket, Repo.one(query), effective_user.email)
     end
   end
 
@@ -251,12 +249,14 @@ defmodule LogflareWeb.QueryLive do
         _params,
         %{assigns: %{query_string: query_string}} = socket
       ) do
-    socket = maybe_assign_team_context(socket, %{}, query_string)
+    socket = assign_team_context_for_query(socket, query_string)
     %{assigns: %{user: user}} = socket
 
     socket =
       run_query(socket, user, query_string)
-      |> push_patch(to: ~p"/query?#{%{q: query_string}}")
+      |> push_patch(
+        to: Utils.with_team_param(~p"/query?#{%{q: query_string}}", socket.assigns.team)
+      )
 
     {:noreply, socket}
   end
