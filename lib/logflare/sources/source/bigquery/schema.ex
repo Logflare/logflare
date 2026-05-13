@@ -31,10 +31,14 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     )
   end
 
-  @spec update(atom(), LogEvent.t(), Source.t()) :: :ok
+  @spec update(pid() | tuple(), LogEvent.t(), Source.t()) :: :ok
   def update(pid, %LogEvent{} = log_event, %Source{} = source)
       when is_pid(pid) or is_tuple(pid) do
-    GenServer.cast(pid, {:update, log_event, source})
+    if accept_update?(pid) do
+      GenServer.cast(pid, {:update, log_event, source})
+    else
+      :ok
+    end
   end
 
   # GenServer callbacks
@@ -193,6 +197,30 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   defp next_update do
     updates_per_minute = Application.get_env(:logflare, __MODULE__)[:updates_per_minute]
     next_update_ts(updates_per_minute)
+  end
+
+  defp accept_update?(pid) when is_pid(pid) do
+    mailbox_below_limit?(pid)
+  end
+
+  defp accept_update?(name) do
+    case GenServer.whereis(name) do
+      pid when is_pid(pid) -> mailbox_below_limit?(pid)
+      _ -> true
+    end
+  end
+
+  defp mailbox_below_limit?(pid) do
+    with limit when is_integer(limit) and limit > 0 <- max_message_queue_len(),
+         {:message_queue_len, len} <- Process.info(pid, :message_queue_len) do
+      len < limit
+    else
+      _ -> true
+    end
+  end
+
+  defp max_message_queue_len do
+    Application.get_env(:logflare, __MODULE__)[:max_message_queue_len]
   end
 
   defp same_schemas?(old_schema, new_schema) do

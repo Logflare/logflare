@@ -14,7 +14,9 @@ config :logflare, LogflareWeb.Endpoint,
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 900_000
+config :logflare, Logflare.Sources.Source.BigQuery.Schema,
+  updates_per_minute: 900_000,
+  max_message_queue_len: 10
 
 config :logflare, Logflare.Google,
   dataset_id_append: "_test",
