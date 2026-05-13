@@ -101,6 +101,10 @@ defmodule Logflare.Profiling do
           IO.puts("  #{fixture}")
 
           IO.puts(
+            "    ips:  #{fmt_ips(old.ips)} → #{fmt_ips(new_stats.ips)}  (#{fmt_pct(old.ips, new_stats.ips)})"
+          )
+
+          IO.puts(
             "    wall: #{old.wall_median_us} → #{new_stats.wall_median_us} µs  (#{fmt_pct(old.wall_median_us, new_stats.wall_median_us)})"
           )
 
@@ -141,4 +145,8 @@ defmodule Logflare.Profiling do
   defp fmt_count(n) do
     if n >= 1000, do: "#{Float.round(n / 1000, 1)}K", else: "#{n}"
   end
+
+  defp fmt_ips(ips) when ips >= 1_000_000, do: "#{Float.round(ips / 1_000_000, 2)}M ips"
+  defp fmt_ips(ips) when ips >= 1_000, do: "#{Float.round(ips / 1_000, 1)}K ips"
+  defp fmt_ips(ips), do: "#{ips} ips"
 end
