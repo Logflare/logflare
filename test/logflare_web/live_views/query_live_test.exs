@@ -216,6 +216,26 @@ defmodule LogflareWeb.QueryLiveTest do
 
     test "updates team param from uniquely matched source in query URL", %{
       conn: conn,
+      user: user
+    } do
+      team_owner = insert(:user)
+      other_team = insert(:team, user: team_owner)
+      insert(:team_user, email: user.email, team: other_team)
+      insert(:source, user: team_owner, name: "canonical_source")
+
+      query = "SELECT id, timestamp FROM `canonical_source`"
+
+      assert {:error, {:live_redirect, %{to: patch}}} =
+               live(conn, ~p"/query?#{%{q: query}}")
+
+      params = URI.parse(patch).query |> URI.decode_query()
+
+      assert params["t"] == to_string(other_team.id)
+      assert params["q"] == query
+    end
+
+    test "updates team param from source in query URL when t is already set", %{
+      conn: conn,
       user: user,
       team: team
     } do
@@ -227,7 +247,7 @@ defmodule LogflareWeb.QueryLiveTest do
       query = "SELECT id, timestamp FROM `canonical_source`"
 
       assert {:error, {:live_redirect, %{to: patch}}} =
-               live(conn, ~p"/query?#{%{q: query}}")
+               live(conn, ~p"/query?#{%{q: query, t: team.id}}")
 
       params = URI.parse(patch).query |> URI.decode_query()
 
