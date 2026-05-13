@@ -23,6 +23,45 @@ defmodule Logflare.Sources.SourceTest do
     end
   end
 
+  describe "transform_drop_fields validation" do
+    for {label, input} <- [
+          {"id", "id"},
+          {"event_message", "event_message"},
+          {"timestamp", "timestamp"},
+          {"reserved field mixed with allowed entries", "service\nid\nm.routing.region"}
+        ] do
+      test "rejects dropping #{label}" do
+        source = %Source{name: "Test Source"}
+
+        changeset =
+          Source.update_by_user_changeset(source, %{"transform_drop_fields" => unquote(input)})
+
+        assert {"cannot drop reserved fields: " <> _, _} =
+                 changeset.errors[:transform_drop_fields]
+      end
+    end
+
+    test "allows dropping nested paths that share a name with a reserved field" do
+      source = %Source{name: "Test Source"}
+
+      changeset =
+        Source.update_by_user_changeset(source, %{
+          "transform_drop_fields" => "metadata.id\nm.timestamp"
+        })
+
+      assert changeset.valid?
+    end
+
+    test "allows clearing the field" do
+      source = %Source{name: "Test Source", transform_drop_fields: "service"}
+
+      changeset =
+        Source.update_by_user_changeset(source, %{"transform_drop_fields" => ""})
+
+      assert changeset.valid?
+    end
+  end
+
   describe "Source" do
     test "generate_bq_table_id/1" do
       u = insert(:user)

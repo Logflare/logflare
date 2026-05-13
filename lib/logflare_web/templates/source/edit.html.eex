@@ -288,6 +288,21 @@
     </div>
     <%= submit "Update key-value enrichment rules", class: "btn btn-primary form-button" %>
   <% end %>
+
+  <%= section_header("Drop fields") %>
+  <p>
+    Drop specific fields from the event body at ingestion. Useful for removing keys that were only needed upstream (e.g. for routing) before they are persisted. Runs after field copying and key-value enrichment, so values can be copied or used for enrichment first and then dropped.
+  </p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+    <div class="form-group">
+      <%= textarea e, :transform_drop_fields, placeholder: "service\nnamespace\nm.routing.region", class: "form-control form-control-margin tw-h-[120px]" %>
+      <%= error_tag e, :transform_drop_fields %>
+      <small class="form-text text-muted">
+        One field path per line. Use dot syntax for nested keys (<code>metadata.user.id</code>) and <code>m.</code> as shorthand for <code>metadata.</code>. Missing paths are silently ignored.
+      </small>
+    </div>
+    <%= submit "Update field dropping rules", class: "btn btn-primary form-button" %>
+  <% end %>
   <hr/>
 
   <%= section_header("Backend TTL") %>
