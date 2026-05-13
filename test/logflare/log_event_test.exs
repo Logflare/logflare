@@ -189,6 +189,18 @@ defmodule Logflare.LogEventTest do
 
       assert body["a"]["b"]["c"]["d"] == 123
     end
+
+    test "copies falsey-but-present source values", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "flag:dest"}
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"flag" => false}, %{source: source})
+
+      assert body["flag"] == false
+      assert body["dest"] == false
+    end
   end
 
   describe "kv_enrich" do

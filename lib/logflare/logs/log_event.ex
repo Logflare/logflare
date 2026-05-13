@@ -208,10 +208,9 @@ defmodule Logflare.LogEvent do
        when is_list(parsed) do
     new_body =
       Enum.reduce(parsed, le.body, fn %{from_path: from_path, to_path: to_path}, acc ->
-        if value = get_in(acc, from_path) do
-          put_at_path(acc, to_path, value)
-        else
-          acc
+        case get_in(acc, from_path) do
+          nil -> acc
+          value -> put_at_path(acc, to_path, value)
         end
       end)
 
