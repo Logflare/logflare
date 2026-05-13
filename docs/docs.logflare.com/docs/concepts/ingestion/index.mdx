@@ -248,7 +248,7 @@ becomes:
 { "event_message": "hello" }
 ```
 
-Drop fields runs **after** field copying and key-value enrichment, so a value can be copied or used for enrichment first and then dropped from its original location:
+Drop fields runs at the end of the transformation pipeline, so a value can be copied or used for enrichment first and then dropped from its original location:
 
 ```text
 # transform_copy_fields
