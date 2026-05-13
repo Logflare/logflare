@@ -69,9 +69,10 @@ defmodule Logflare.Profiling.SchemaUpdateBench do
   end
 
   defp local_update(payload, old_schema, build_flatmap?) do
-    new_schema = SchemaBuilder.build_table_schema(payload, old_schema)
+    {new_schema, schema_changed?} =
+      SchemaBuilder.build_table_schema_with_change(payload, old_schema)
 
-    if same_schemas?(old_schema, new_schema) do
+    if not schema_changed? do
       :same
     else
       flatmap =
@@ -83,10 +84,6 @@ defmodule Logflare.Profiling.SchemaUpdateBench do
 
       {:changed, new_schema, map_size(flatmap)}
     end
-  end
-
-  defp same_schemas?(old_schema, new_schema) do
-    old_schema == new_schema
   end
 
   defp benchmark_opts(overrides) do

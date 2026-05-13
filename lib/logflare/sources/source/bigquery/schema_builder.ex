@@ -150,35 +150,57 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
 
   """
   @spec build_table_schema([map()] | map(), TFS.t()) :: TFS.t()
+  def build_table_schema(params, old_schema) do
+    params
+    |> build_table_schema_with_change(old_schema)
+    |> elem(0)
+  end
 
-  def build_table_schema(params, %{fields: old_fields}) do
+  @spec build_table_schema_with_change([map()] | map(), TFS.t()) :: {TFS.t(), boolean()}
+  def build_table_schema_with_change(params, %{fields: old_fields} = old_schema) do
     initial_schema = initial_table_schema()
     old_fields_by_name = Map.new(old_fields, &{&1.name, &1})
     is_otel = otel_data?(params)
 
-    new_fields =
-      Enum.reduce(params, [], fn {param_key, param_value}, acc ->
+    {new_fields, changed?} =
+      Enum.reduce(params, {[], false}, fn {param_key, param_value}, {new_fields, changed?} ->
         if protected_key?(param_key) do
-          acc
+          {new_fields, changed?}
         else
           prev_field_schema = Map.get(old_fields_by_name, param_key)
           new_field_schema = build_fields_schemas({param_key, param_value}, is_otel)
 
-          [merge_field_schema(prev_field_schema, new_field_schema) | acc]
+          {merged_field_schema, field_changed?} =
+            merge_field_schema(prev_field_schema, new_field_schema)
+
+          {[merged_field_schema | new_fields], changed? or field_changed?}
         end
       end)
-      |> Enum.reverse()
 
+    if changed? do
+      schema =
+        initial_schema
+        |> Map.put(
+          :fields,
+          updated_fields(old_fields, params, Enum.reverse(new_fields), initial_schema)
+        )
+        |> deep_sort_by_fields_name()
+
+      {schema, true}
+    else
+      {old_schema, false}
+    end
+  end
+
+  defp updated_fields(old_fields, params, new_fields, initial_schema) do
     # reject old fields that are now included in the params
     unrejected_fields = Enum.reject(old_fields, &Map.has_key?(params, &1.name))
+    field_names = MapSet.new(unrejected_fields ++ new_fields, & &1.name)
 
-    updated_fields =
-      (unrejected_fields ++ new_fields ++ initial_schema.fields)
-      |> Enum.uniq_by(fn f -> f.name end)
+    missing_initial_fields =
+      Enum.reject(initial_schema.fields, &MapSet.member?(field_names, &1.name))
 
-    initial_schema
-    |> Map.put(:fields, updated_fields)
-    |> deep_sort_by_fields_name()
+    unrejected_fields ++ new_fields ++ missing_initial_fields
   end
 
   def initial_table_schema do
@@ -264,23 +286,27 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
 
   defp merge_payload_maps(_value, acc), do: acc
 
-  defp merge_field_schema(nil, %TFS{} = new), do: new
+  defp merge_field_schema(nil, %TFS{} = new), do: {new, true}
 
-  defp merge_field_schema(%TFS{fields: old_fields}, %TFS{fields: new_fields} = new)
+  defp merge_field_schema(%TFS{fields: old_fields} = old, %TFS{fields: new_fields} = new)
        when is_list(old_fields) and is_list(new_fields) do
     old_fields_by_name = Map.new(old_fields, &{&1.name, &1})
     new_field_names = MapSet.new(new_fields, & &1.name)
 
-    merged_new_fields =
-      Enum.map(new_fields, fn %TFS{} = new_field ->
-        old_fields_by_name
-        |> Map.get(new_field.name)
-        |> merge_field_schema(new_field)
+    {merged_new_fields, children_changed?} =
+      Enum.map_reduce(new_fields, false, fn %TFS{} = new_field, changed? ->
+        {merged_field_schema, field_changed?} =
+          old_fields_by_name
+          |> Map.get(new_field.name)
+          |> merge_field_schema(new_field)
+
+        {merged_field_schema, changed? or field_changed?}
       end)
 
     old_only_fields = Enum.reject(old_fields, &MapSet.member?(new_field_names, &1.name))
+    merged = %{new | fields: merged_new_fields ++ old_only_fields}
 
-    %{new | fields: merged_new_fields ++ old_only_fields}
+    {merged, children_changed? or merged != old}
   end
 
   defp merge_field_schema(%TFS{fields: old_fields} = old, %TFS{fields: new_fields})
@@ -288,5 +314,5 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
     raise Protocol.UndefinedError, protocol: DeepMerge.Resolver, value: old
   end
 
-  defp merge_field_schema(_old, %TFS{} = new), do: new
+  defp merge_field_schema(old, %TFS{} = new), do: {new, old != new}
 end

@@ -107,16 +107,16 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     end
   end
 
+  # Reached recursively from the list-of-maps branch above when an element
+  # isn't a map (e.g. [%{...}, "x"]). Returning %{} keeps the surrounding
+  # Map.merge a no-op without crashing the walk.
+  def to_typemap(_), do: %{}
+
   defp normalize_typemap_key(k) when is_atom(k), do: k
 
   defp normalize_typemap_key(k) when is_binary(k) do
     if String.valid?(k), do: k, else: decode_until_valid!(k)
   end
-
-  # Reached recursively from the list-of-maps branch above when an element
-  # isn't a map (e.g. [%{...}, "x"]). Returning %{} keeps the surrounding
-  # Map.merge a no-op without crashing the walk.
-  def to_typemap(_), do: %{}
 
   defp decode_until_valid!(k, encodings \\ [:utf8, :unicode, :latin1])
 
