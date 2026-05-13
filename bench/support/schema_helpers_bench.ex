@@ -142,7 +142,7 @@ defmodule Logflare.Profiling.SchemaHelpersBench do
     |> SchemaUtils.bq_schema_to_flat_typemap()
   end
 
-  @spec repeat(pos_integer(), (() -> term())) :: :ok
+  @spec repeat(pos_integer(), (-> term())) :: :ok
   def repeat(count, fun) when is_integer(count) and count > 0 and is_function(fun, 0) do
     do_repeat(count, fun)
   end
@@ -199,16 +199,29 @@ defmodule Logflare.Profiling.SchemaHelpersBench do
     end
   end
 
-  defp benchmark_opts(overrides \\ []) do
+  defp benchmark_opts(overrides) do
     [
       time: benchmark_seconds("BENCH_TIME", 5.0),
       warmup: benchmark_seconds("BENCH_WARMUP", 2.0),
       memory_time: benchmark_seconds("BENCH_MEMORY_TIME", 3.0),
       reduction_time: benchmark_seconds("BENCH_REDUCTION_TIME", 3.0),
+      profile_after: profile_after(),
       print: [configuration: false],
       formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
     ]
     |> Keyword.merge(overrides)
+  end
+
+  defp profile_after do
+    case System.get_env("PROFILE_AFTER", "false") do
+      value when value in ["", "false", "0"] -> false
+      value when value in ["true", "1"] -> true
+      "eprof" -> :eprof
+      "tprof" -> :tprof
+      "cprof" -> :cprof
+      "fprof" -> :fprof
+      other -> raise ArgumentError, "Unknown PROFILE_AFTER=#{inspect(other)}"
+    end
   end
 
   defp benchmark_seconds(env_var, default) do

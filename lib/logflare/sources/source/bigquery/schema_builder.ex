@@ -7,6 +7,32 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
   alias Logflare.BigQuery.SchemaTypes
   alias Model.TableFieldSchema, as: TFS
 
+  @initial_table_schema %Model.TableSchema{
+    fields: [
+      %TFS{
+        description: nil,
+        fields: nil,
+        mode: "REQUIRED",
+        name: "timestamp",
+        type: "TIMESTAMP"
+      },
+      %TFS{
+        description: nil,
+        fields: nil,
+        mode: "NULLABLE",
+        name: "id",
+        type: "STRING"
+      },
+      %TFS{
+        description: nil,
+        fields: nil,
+        mode: "NULLABLE",
+        name: "event_message",
+        type: "STRING"
+      }
+    ]
+  }
+
   @doc """
   Builds table schema from event metadata and prev schema.
 
@@ -127,15 +153,12 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
 
   def build_table_schema(params, %{fields: old_fields}) do
     initial_schema = initial_table_schema()
-    protected_keys = MapSet.new(initial_schema.fields, & &1.name)
-    param_keys = Map.keys(params)
-    param_key_set = MapSet.new(param_keys)
     old_fields_by_name = Map.new(old_fields, &{&1.name, &1})
     is_otel = otel_data?(params)
 
     new_fields =
       Enum.reduce(params, [], fn {param_key, param_value}, acc ->
-        if MapSet.member?(protected_keys, param_key) do
+        if protected_key?(param_key) do
           acc
         else
           prev_field_schema = Map.get(old_fields_by_name, param_key)
@@ -147,7 +170,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
       |> Enum.reverse()
 
     # reject old fields that are now included in the params
-    unrejected_fields = Enum.reject(old_fields, &MapSet.member?(param_key_set, &1.name))
+    unrejected_fields = Enum.reject(old_fields, &Map.has_key?(params, &1.name))
 
     updated_fields =
       (unrejected_fields ++ new_fields ++ initial_schema.fields)
@@ -159,32 +182,13 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
   end
 
   def initial_table_schema do
-    %Model.TableSchema{
-      fields: [
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "REQUIRED",
-          name: "timestamp",
-          type: "TIMESTAMP"
-        },
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "NULLABLE",
-          name: "id",
-          type: "STRING"
-        },
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "NULLABLE",
-          name: "event_message",
-          type: "STRING"
-        }
-      ]
-    }
+    @initial_table_schema
   end
+
+  defp protected_key?("event_message"), do: true
+  defp protected_key?("id"), do: true
+  defp protected_key?("timestamp"), do: true
+  defp protected_key?(_key), do: false
 
   defp build_fields_schemas({params_key, params_val}, _is_otel) when is_map(params_val) do
     %TFS{

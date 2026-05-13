@@ -254,12 +254,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   defp same_schemas?(old_schema, new_schema) do
-    old_flatmap = SchemaUtils.bq_schema_to_flat_typemap(old_schema)
-    new_flatmap = SchemaUtils.bq_schema_to_flat_typemap(new_schema)
-
-    diff_keys = Map.keys(new_flatmap) -- Map.keys(old_flatmap)
-
-    old_schema == new_schema and Enum.empty?(diff_keys)
+    old_schema == new_schema
   end
 
   defp try_schema_update(body, schema) do
