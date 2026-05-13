@@ -19,6 +19,22 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
       assert prev_schema == curr_schema
     end
 
+    test "reports whether schema changed" do
+      {prev_schema, true} =
+        SchemaBuilder.build_table_schema_with_change(%{"a" => %{"b" => 1.0}}, @default_schema)
+
+      {same_schema, false} =
+        SchemaBuilder.build_table_schema_with_change(%{"a" => %{"b" => 1.0}}, prev_schema)
+
+      {changed_schema, true} =
+        SchemaBuilder.build_table_schema_with_change(%{"a" => %{"c" => 1.0}}, same_schema)
+
+      assert same_schema == prev_schema
+
+      assert %TFS{name: "c", type: "FLOAT", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(changed_schema, "a.c")
+    end
+
     test "adding new field schemas" do
       prev_schema = SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0}}, @default_schema)
       curr_schema = SchemaBuilder.build_table_schema(%{"a" => [%{"c" => 1.0}]}, prev_schema)
