@@ -67,6 +67,8 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
   end
 
   @spec do_flatten_pairs([{term(), term()}], [String.t()], pair_acc()) :: pair_acc()
+  defp do_flatten_pairs([], _prefix, acc), do: acc
+
   defp do_flatten_pairs([{k, v} | rest], prefix, acc) when is_non_empty_map(v) do
     acc = do_flatten_map(v, [k | prefix], acc)
     do_flatten_pairs(rest, prefix, acc)
@@ -81,9 +83,9 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
     do_flatten_pairs(rest, prefix, [{build_key([k | prefix]), v} | acc])
   end
 
-  defp do_flatten_pairs([], _prefix, acc), do: acc
-
   @spec do_flatten_list(list(), non_neg_integer(), [String.t()], pair_acc()) :: pair_acc()
+  defp do_flatten_list([], _idx, _prefix, acc), do: acc
+
   defp do_flatten_list([v | rest], idx, prefix, acc) when is_non_empty_map(v) do
     acc = do_flatten_map(v, [Integer.to_string(idx) | prefix], acc)
     do_flatten_list(rest, idx + 1, prefix, acc)
@@ -99,8 +101,6 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
       {build_key([Integer.to_string(idx) | prefix]), v} | acc
     ])
   end
-
-  defp do_flatten_list([], _idx, _prefix, acc), do: acc
 
   @spec build_key([term()]) :: flat_key()
   defp build_key([single]) when is_binary(single), do: single
