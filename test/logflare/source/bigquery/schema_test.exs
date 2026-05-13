@@ -2,8 +2,9 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
   @moduledoc false
   use Logflare.DataCase
 
-  alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Backends
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Sources.Source.BigQuery.Schema
 
   setup do
     insert(:plan)
@@ -18,30 +19,49 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     assert seconds > 9
   end
 
-  test "update/3 skips casts when schema process mailbox is full" do
+  test "update/3 skips casts when outstanding schema updates hit the limit" do
     put_schema_config(max_message_queue_len: 1)
 
-    pid = start_mailbox_holder!()
-    send(pid, :queued)
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend_id = 123
+    counter = Schema.update_counter()
+    pid = start_schema_update_holder!(source, backend_id, counter)
+    name = Backends.via_source(source, Schema, backend_id)
+    log_event = build(:log_event, source: source, metadata: %{})
 
-    assert :ok = Schema.update(pid, %Logflare.LogEvent{id: "id", body: %{}}, build(:source))
-    assert {:message_queue_len, 1} = Process.info(pid, :message_queue_len)
+    assert :ok = Schema.update(name, log_event, source)
+    assert_receive {:schema_cast, {:update, ^counter, ^log_event, ^source}}
+    assert :atomics.get(counter, 1) == 1
+
+    assert :ok = Schema.update(name, log_event, source)
+    refute_receive {:schema_cast, _}, 50
+    assert :atomics.get(counter, 1) == 1
 
     send(pid, :stop)
   end
 
-  test "update/3 casts when schema process mailbox is below limit" do
+  test "update/3 casts while outstanding schema updates are below the limit" do
     put_schema_config(max_message_queue_len: 2)
 
-    pid = start_mailbox_holder!()
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend_id = 123
+    counter = Schema.update_counter()
+    pid = start_schema_update_holder!(source, backend_id, counter)
+    name = Backends.via_source(source, Schema, backend_id)
+    log_event = build(:log_event, source: source, metadata: %{})
 
-    assert :ok = Schema.update(pid, %Logflare.LogEvent{id: "id", body: %{}}, build(:source))
-    assert {:message_queue_len, 1} = Process.info(pid, :message_queue_len)
+    assert :ok = Schema.update(name, log_event, source)
+    assert_receive {:schema_cast, {:update, ^counter, ^log_event, ^source}}
+    assert :atomics.get(counter, 1) == 1
 
     send(pid, :stop)
   end
 
   test "updates correctly" do
+    put_schema_config(updates_per_minute: 6)
+
     user = insert(:user)
     source = insert(:source, user: user)
     schema = TestUtils.default_bq_schema()
@@ -137,23 +157,35 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     Schema.notify_maybe(source.token, new_schema, old_schema)
   end
 
-  defp start_mailbox_holder! do
+  defp start_schema_update_holder!(source, backend_id, counter) do
     test_pid = self()
 
     pid =
       spawn_link(fn ->
-        send(test_pid, {:ready, self()})
+        {:ok, _} =
+          Registry.register(Backends.SourceRegistry, {source.id, {Schema, backend_id}}, counter)
 
-        receive do
-          :stop -> :ok
-        after
-          5_000 -> :ok
-        end
+        send(test_pid, {:ready, self()})
+        schema_update_holder_loop(test_pid)
       end)
 
     assert_receive {:ready, ^pid}
 
     pid
+  end
+
+  defp schema_update_holder_loop(test_pid) do
+    receive do
+      {:"$gen_cast", message} ->
+        send(test_pid, {:schema_cast, message})
+        schema_update_holder_loop(test_pid)
+
+      :stop ->
+        :ok
+    after
+      5_000 ->
+        :ok
+    end
   end
 
   defp put_schema_config(config) do

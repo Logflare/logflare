@@ -83,7 +83,6 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     Map.new(fields, fn
       %TFS{fields: fields, name: n, type: t, mode: mode} ->
         n = to_string(n)
-
         v =
           cond do
             mode == "REPEATED" and t == "RECORD" ->

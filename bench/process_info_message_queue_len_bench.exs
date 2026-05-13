@@ -5,8 +5,9 @@
 #   ITERATIONS=1000000
 #   SENDERS=1
 #
-# Measures the cost of repeatedly calling:
+# Measures the cost of repeatedly checking queue pressure with either:
 #   Process.info(pid, :message_queue_len)
+#   :atomics.add_get(ref, 1, 1)
 
 iterations = String.to_integer(System.get_env("ITERATIONS") || "1000000")
 senders = String.to_integer(System.get_env("SENDERS") || "1")
@@ -34,6 +35,22 @@ defmodule ProcessInfoMessageQueueLenBench do
 
   def stop(pid) when is_pid(pid) do
     send(pid, :stop)
+  end
+
+  def atomic_counter do
+    :atomics.new(1, signed: false)
+  end
+
+  def atomic_checkout(counter, limit) do
+    queued = :atomics.add_get(counter, 1, 1)
+
+    if queued <= limit do
+      :atomics.sub(counter, 1, 1)
+      1
+    else
+      :atomics.sub(counter, 1, 1)
+      0
+    end
   end
 
   def bench(iterations, fun) do
@@ -103,3 +120,16 @@ Bench.stop(draining_pid)
 
 IO.puts("\ndraining process, concurrent sender pressure")
 IO.inspect(draining_result)
+
+accepted_counter = Bench.atomic_counter()
+accepted_result = Bench.bench(iterations, fn -> Bench.atomic_checkout(accepted_counter, 10) end)
+
+IO.puts("\natomics checkout, accepted and decremented")
+IO.inspect(accepted_result)
+
+rejected_counter = Bench.atomic_counter()
+:atomics.put(rejected_counter, 1, 10)
+rejected_result = Bench.bench(iterations, fn -> Bench.atomic_checkout(rejected_counter, 10) end)
+
+IO.puts("\natomics checkout, rejected and rolled back")
+IO.inspect(rejected_result)
