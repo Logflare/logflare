@@ -92,8 +92,8 @@ defmodule LogflareWeb.AuthLive do
           team_user: team_user
         )
 
-      {:error, _reason} ->
-        socket
+      {:error, reason} ->
+        raise "Unable to resolve team context for team_id #{team_id}: #{inspect(reason)}"
     end
   end
 

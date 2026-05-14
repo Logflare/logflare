@@ -36,6 +36,22 @@ defmodule LogflareWeb.AuthLiveTest do
     assert socket.assigns.team.id == other_team.id
   end
 
+  test "assign_context_by_team_id raises when team context cannot be resolved" do
+    user = insert(:user)
+    team = insert(:team, user: user)
+    inaccessible_team = insert(:team)
+
+    socket = %Phoenix.LiveView.Socket{
+      endpoint: LogflareWeb.Endpoint,
+      assigns: %{user: user, team: team, team_user: nil},
+      router: LogflareWeb.Router
+    }
+
+    assert_raise RuntimeError, fn ->
+      AuthLive.assign_context_by_team_id(socket, inaccessible_team.id, user.email)
+    end
+  end
+
   describe "ensure team param hook" do
     setup %{conn: conn} do
       user = insert(:user)
