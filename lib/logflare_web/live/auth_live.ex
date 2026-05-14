@@ -7,7 +7,7 @@ defmodule LogflareWeb.AuthLive do
   """
 
   import Phoenix.Component
-  import Phoenix.LiveView, only: [attach_hook: 4, push_patch: 2]
+  import Phoenix.LiveView, only: [attach_hook: 4, push_navigate: 2]
 
   use LogflareWeb, :routes
 
@@ -53,7 +53,7 @@ defmodule LogflareWeb.AuthLive do
   def on_mount(:ensure_team_param, params, _session, socket) do
     socket =
       params
-      |> maybe_assign_team_from_resource("", socket)
+      |> maybe_assign_team_from_resource(socket)
       |> attach_hook(:ensure_team_param, :handle_params, &ensure_team_param/3)
 
     {:cont, socket}
@@ -98,8 +98,7 @@ defmodule LogflareWeb.AuthLive do
   end
 
   defp ensure_team_param(params, uri, socket) do
-    current_uri = local_path_with_query(uri)
-    socket = maybe_assign_team_from_resource(params, uri, socket)
+    socket = maybe_assign_team_from_resource(params, socket)
     team = socket.assigns[:team]
 
     cond do
@@ -107,8 +106,8 @@ defmodule LogflareWeb.AuthLive do
         {:cont, socket}
 
       is_struct(team, Team) ->
-        next_uri = Utils.with_team_param(current_uri, team)
-        {:halt, push_patch(socket, to: next_uri, replace: true)}
+        path = uri |> uri_to_local_path() |> Utils.with_team_param(team)
+        {:halt, push_navigate(socket, to: path, replace: true)}
 
       true ->
         {:cont, socket}
@@ -118,26 +117,17 @@ defmodule LogflareWeb.AuthLive do
   defp team_param_matches?(%{"t" => team_id}, %Team{id: id}), do: team_id == to_string(id)
   defp team_param_matches?(_params, _team), do: false
 
-  defp maybe_assign_team_from_resource(params, uri, %{view: view} = socket) do
-    if function_exported?(view, :resource_team_id_query, 3) do
-      effective_user = socket.assigns[:team_user] || socket.assigns.user
+  defp maybe_assign_team_from_resource(params, %{view: view} = socket) do
+    effective_user = socket.assigns[:team_user] || socket.assigns.user
 
-      case view.resource_team_id_query(params, uri, effective_user) do
-        nil -> socket
-        query -> assign_context_by_team_id(socket, Repo.one(query), effective_user.email)
-      end
-    else
-      socket
+    case TeamContext.resource_team_id_query(view, params, effective_user) do
+      nil -> socket
+      query -> assign_context_by_team_id(socket, Repo.one(query), effective_user.email)
     end
   end
 
-  defp local_path_with_query(uri) do
-    uri = URI.parse(uri)
-
-    if uri.query in [nil, ""] do
-      uri.path
-    else
-      uri.path <> "?" <> uri.query
-    end
+  defp uri_to_local_path(uri) do
+    %URI{path: path, query: query} = URI.parse(uri)
+    %URI{path: path, query: query} |> to_string()
   end
 end

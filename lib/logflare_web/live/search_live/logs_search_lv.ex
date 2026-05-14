@@ -2,7 +2,6 @@ defmodule LogflareWeb.Source.SearchLV do
   @moduledoc """
   Handles all user interactions with the source logs search.
   """
-  @behaviour LogflareWeb.Live.ResourceTeamContext
 
   use LogflareWeb, :live_view
 
@@ -32,7 +31,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Utils
   alias Logflare.Utils.Chart, as: ChartUtils
 
-  require Ecto.Query
   require Logger
 
   @tail_search_interval 1000
@@ -40,15 +38,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
   on_mount LogflareWeb.AuthLive
   on_mount {LogflareWeb.AuthLive, :ensure_team_param}
-
-  def resource_team_id_query(%{"source_id" => source_id}, _uri, user) do
-    Sources.Source
-    |> Logflare.Teams.filter_by_user_access(user)
-    |> Ecto.Query.where([source], source.id == ^source_id)
-    |> Ecto.Query.select([resource_team: team], team.id)
-  end
-
-  def resource_team_id_query(_params, _uri, _user), do: nil
 
   def mount(%{"source_id" => source_id} = params, _session, socket) do
     %{assigns: %{user: user, team_user: team_user}} = socket
