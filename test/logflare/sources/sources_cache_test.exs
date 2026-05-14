@@ -26,5 +26,29 @@ defmodule Logflare.SourcesCacheTest do
       assert is_list(left_source.rules)
       assert length(left_source.rules) == 2
     end
+
+    test "get_by_and_preload_rules/1 populates transform parsed virtuals" do
+      user = insert(:user)
+
+      source =
+        insert(:source,
+          user_id: user.id,
+          token: TestUtils.gen_uuid(),
+          transform_copy_fields: "service:m.routing.service",
+          transform_drop_fields: "service\nm.routing.region",
+          transform_key_values: "project:enriched"
+        )
+
+      assert %{
+               transform_copy_fields_parsed: [
+                 %{from_path: ["service"], to_path: ["metadata", "routing", "service"]}
+               ],
+               transform_drop_fields_parsed: [
+                 ["service"],
+                 ["metadata", "routing", "region"]
+               ],
+               transform_key_values_parsed: [_ | _]
+             } = get_by_and_preload_rules(token: source.token)
+    end
   end
 end

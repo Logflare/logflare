@@ -1,6 +1,8 @@
 defmodule LogflareWeb.TeamUserControllerTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.TeamUsers
+
   setup do
     insert(:plan)
     :ok
@@ -24,6 +26,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
     |> fill_in("Preferred email", with: new_email)
     |> fill_in("Phone number", with: new_phone)
     |> click_button("Update preferences")
+    |> assert_has("#flash-info", text: "Profile updated!")
     |> assert_has("input#team_user_name", value: new_name)
     |> assert_has("input#team_user_email_preferred", value: new_email)
     |> assert_has("input#team_user_phone", value: new_phone)
@@ -42,15 +45,9 @@ defmodule LogflareWeb.TeamUserControllerTest do
   end
 
   test "user can leave their team", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
-
-    conn
-    |> login_user(user, team_user)
-    |> visit(~p"/profile/edit")
-    |> assert_has("h5", text: "Profile Preferences", exact: true)
-    |> assert_has("a", text: "Leave now")
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team)
 
     expect(
       GoogleApi.CloudResourceManager.V1.Api.Projects,
@@ -58,14 +55,14 @@ defmodule LogflareWeb.TeamUserControllerTest do
       fn _, _project_number, [body: _body] -> {:ok, ""} end
     )
 
-    conn =
-      conn
-      |> login_user(user, team_user)
-      |> delete(~p"/profile")
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> assert_has("h5", text: "Profile Preferences", exact: true)
+    |> click_link("Leave now")
+    |> assert_path(~p"/auth/login", query_params: %{team_user_deleted: "true"})
 
-    assert redirected_to(conn, 302) =~ "/login"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Profile deleted!"
-    refute Logflare.TeamUsers.get_team_user(team_user.id)
+    refute TeamUsers.get_team_user(team_user.id)
   end
 
   test "owner can delete a team member", %{conn: conn} do
@@ -87,7 +84,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     assert redirected_to(conn, 302) == "/account/edit"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Member profile deleted!"
-    refute Logflare.TeamUsers.get_team_user(member_team_user.id)
+    refute TeamUsers.get_team_user(member_team_user.id)
   end
 
   test "not authenticated user cannot see delete a team member", %{conn: conn} do
@@ -116,7 +113,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
     assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
              "Not authorized to delete this team member"
 
-    assert Logflare.TeamUsers.get_team_user!(victim_team_user.id)
+    assert TeamUsers.get_team_user!(victim_team_user.id)
   end
 
   test "team member cannot delete another team member (not owner)", %{conn: conn} do
@@ -142,16 +139,94 @@ defmodule LogflareWeb.TeamUserControllerTest do
     assert Logflare.TeamUsers.get_team_user!(member2_team_user.id)
   end
 
-  test "update with invalid params shows error", %{conn: conn} do
-    member_user = insert(:user)
-    team = insert(:team)
-    team_user = insert(:team_user, team: team, email: member_user.email)
+  test "update re-renders edit form with submitted values when context returns error",
+       %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team)
 
-    conn =
-      conn
-      |> login_user(member_user, team_user)
-      |> put(~p"/profile/edit?t=#{team.id}", %{"team_user" => %{"email" => ""}})
+    expect(TeamUsers, :update_team_user, fn tu, params ->
+      changeset =
+        tu
+        |> TeamUsers.TeamUser.changeset(params)
+        |> Ecto.Changeset.add_error(:email_preferred, "is invalid")
 
-    assert html_response(conn, 200) =~ "Something went wrong!"
+      {:error, changeset}
+    end)
+
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> fill_in("Name", with: "Bruce Banner")
+    |> fill_in("Preferred email", with: "hulk@avengers.com")
+    |> click_button("Update preferences")
+    |> assert_has("#flash-error", text: "Something went wrong!")
+    |> assert_has("input#team_user_name", value: "Bruce Banner")
+    |> assert_has("input#team_user_email_preferred", value: "hulk@avengers.com")
+  end
+
+  test "delete_self re-renders edit form when context returns error", %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team)
+
+    expect(TeamUsers, :delete_team_user, fn tu ->
+      changeset =
+        tu
+        |> Ecto.Changeset.change()
+        |> Ecto.Changeset.add_error(:base, "cannot delete")
+
+      {:error, changeset}
+    end)
+
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> click_link("Leave now")
+    |> assert_has("#flash-error", text: "Something went wrong!")
+    |> assert_has("h5", text: "Profile Preferences", exact: true)
+
+    assert TeamUsers.get_team_user(team_user.id)
+  end
+
+  test "edit page shows GitHub-specific section for github provider", %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team, provider: "github")
+
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> assert_has("h5", text: "Signed In with Github")
+    |> assert_has("a[href='https://github.com/settings/applications']", text: "Visit Github")
+    |> refute_has("a", text: "Visit Google")
+  end
+
+  test "edit page shows Google-specific section for google provider", %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team, provider: "google")
+
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> assert_has("h5", text: "Signed In with Google")
+    |> assert_has("a", text: "Visit Google")
+    |> refute_has("a", text: "Visit Github")
+  end
+
+  test "user can toggle email_me_product preference off", %{conn: conn} do
+    owner = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team, email_me_product: true)
+
+    conn
+    |> login_user(owner, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
+    |> uncheck("Email me product updates")
+    |> click_button("Update preferences")
+    |> assert_has("#flash-info", text: "Profile updated!")
+
+    assert Logflare.Repo.reload!(team_user).email_me_product == false
   end
 end

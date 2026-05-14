@@ -3,10 +3,12 @@ defmodule Logflare.Sources.Source do
   use TypedEctoSchema
 
   import Ecto.Changeset
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
   alias Logflare.Billing
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Users
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   @default_source_api_quota 25
   @derive {Jason.Encoder,
@@ -31,6 +33,7 @@ defmodule Logflare.Sources.Source do
              :retention_days,
              :transform_copy_fields,
              :transform_key_values,
+             :transform_drop_fields,
              :bigquery_clustering_fields,
              :default_ingest_backend_enabled?
            ]}
@@ -108,6 +111,7 @@ defmodule Logflare.Sources.Source do
   end
 
   @system_source_types [:metrics, :logs]
+  @reserved_drop_field_heads ~w(id event_message timestamp)
 
   typed_schema "sources" do
     field :name, :string
@@ -133,12 +137,16 @@ defmodule Logflare.Sources.Source do
     field :validate_schema, :boolean, default: true
     field :drop_lql_filters, Ecto.LqlRules, default: []
     field :drop_lql_string, :string
+    field :default_search_lql, :string, default: nil
     field :disable_tailing, :boolean, default: false
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
     field :transform_copy_fields, :string
+    field :transform_copy_fields_parsed, {:array, :map}, virtual: true
     field :transform_key_values, :string
     field :transform_key_values_parsed, {:array, :map}, virtual: true
+    field :transform_drop_fields, :string
+    field :transform_drop_fields_parsed, {:array, {:array, :string}}, virtual: true
     field :bigquery_clustering_fields, :string
     field :system_source, :boolean, default: false
     field :system_source_type, Ecto.Enum, values: @system_source_types
@@ -197,10 +205,12 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
+      :default_search_lql,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
       :transform_key_values,
+      :transform_drop_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,
@@ -231,10 +241,12 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
+      :default_search_lql,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
       :transform_key_values,
+      :transform_drop_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,
@@ -253,8 +265,43 @@ defmodule Logflare.Sources.Source do
     |> unique_constraint(:public_token)
     |> put_source_ttl_change()
     |> validate_source_ttl(source)
+    |> validate_drop_fields()
     |> normalize_and_validate_labels()
   end
+
+  defp validate_drop_fields(changeset) do
+    validate_change(changeset, :transform_drop_fields, fn :transform_drop_fields, config ->
+      reserved = reserved_drop_field_heads(config)
+
+      case reserved do
+        [] ->
+          []
+
+        fields ->
+          [
+            transform_drop_fields: "cannot drop reserved fields: #{Enum.join(fields, ", ")}"
+          ]
+      end
+    end)
+  end
+
+  defp reserved_drop_field_heads(config) when is_non_empty_binary(config) do
+    config
+    |> String.split("\n", trim: true)
+    |> Enum.flat_map(fn raw ->
+      raw
+      |> String.trim()
+      |> String.replace_prefix("m.", "metadata.")
+      |> String.split(".", parts: 2)
+      |> case do
+        [head | _] when head in @reserved_drop_field_heads -> [head]
+        _ -> []
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  defp reserved_drop_field_heads(_config), do: []
 
   defp put_source_ttl_change(changeset) do
     value = get_field(changeset, :retention_days)
@@ -352,7 +399,7 @@ defmodule Logflare.Sources.Source do
     dataset_id =
       source.user.bigquery_dataset_id || "#{source.user.id}" <> GCPConfig.dataset_id_append()
 
-    "`#{bq_project_id}`.#{dataset_id}.#{table}"
+    "`#{BigQueryAdaptor.escape_bq_identifier(bq_project_id)}`.`#{BigQueryAdaptor.escape_bq_identifier(dataset_id)}`.`#{BigQueryAdaptor.escape_bq_identifier(table)}`"
   end
 
   @spec format_table_name(atom) :: String.t()
@@ -405,6 +452,62 @@ defmodule Logflare.Sources.Source do
       end)
 
     %{source | transform_key_values_parsed: parsed}
+  end
+
+  @spec parse_copy_fields_config(%__MODULE__{}) :: %__MODULE__{}
+  def parse_copy_fields_config(%__MODULE__{transform_copy_fields: config} = source)
+      when is_non_empty_binary(config) do
+    parsed =
+      config
+      |> String.split("\n", trim: true)
+      |> Enum.flat_map(fn raw ->
+        instruction = String.trim(raw)
+
+        case String.split(instruction, ":", parts: 2) do
+          [from, to] ->
+            from = String.replace_prefix(from, "m.", "metadata.")
+            to = String.replace_prefix(to, "m.", "metadata.")
+            [%{from_path: String.split(from, "."), to_path: String.split(to, ".")}]
+
+          _ ->
+            []
+        end
+      end)
+
+    %{source | transform_copy_fields_parsed: parsed}
+  end
+
+  def parse_copy_fields_config(%__MODULE__{} = source) do
+    %{source | transform_copy_fields_parsed: nil}
+  end
+
+  @spec parse_drop_fields_config(%__MODULE__{}) :: %__MODULE__{}
+  def parse_drop_fields_config(%__MODULE__{transform_drop_fields: config} = source)
+      when is_non_empty_binary(config) do
+    parsed =
+      config
+      |> String.split("\n", trim: true)
+      |> Enum.flat_map(&parse_drop_fields_line/1)
+
+    %{source | transform_drop_fields_parsed: parsed}
+  end
+
+  def parse_drop_fields_config(%__MODULE__{} = source) do
+    %{source | transform_drop_fields_parsed: nil}
+  end
+
+  defp parse_drop_fields_line(raw) do
+    case String.trim(raw) do
+      "" -> []
+      path -> drop_fields_segments(path)
+    end
+  end
+
+  defp drop_fields_segments(path) do
+    case path |> String.replace_prefix("m.", "metadata.") |> String.split(".") do
+      [head | _] when head in @reserved_drop_field_heads -> []
+      segments -> [segments]
+    end
   end
 
   def system_source_types, do: @system_source_types

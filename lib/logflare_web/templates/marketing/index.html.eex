@@ -81,7 +81,7 @@
         <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/gigalixir_logo.svg" height="50"
             alt="Gigalixir"></div>
         <div class="bg-white p-3 m-4 inner-shadow-box"><img src="images/logos/fluent-bit-logo.png" height="50"
-            alt="FluentBit"></div>
+            alt="Fluent Bit"></div>
         <div class="m-4"><img src="images/logos/webhook-logo-white.svg" height="50" alt="Webhook"></div>
       </div>
     </div>

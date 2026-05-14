@@ -232,7 +232,6 @@ $(addprefix decrypt.,${envs}): decrypt.%: \
  	.$$*.env \
  	.$$*.cert.key \
  	.$$*.cert.pem \
- 	.$$*.req.pem \
  	.$$*.db-client-cert.pem \
  	.$$*.db-client-key.pem \
  	.$$*.db-server-ca.pem
@@ -242,7 +241,6 @@ $(addprefix encrypt.,${envs}): encrypt.%: \
 	.$$*.env.enc \
 	.$$*.cert.key.enc \
 	.$$*.cert.pem.enc \
-	.$$*.req.pem.enc \
  	.$$*.db-client-cert.pem.enc \
  	.$$*.db-client-key.pem.enc \
  	.$$*.db-server-ca.pem.enc
