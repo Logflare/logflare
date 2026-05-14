@@ -144,6 +144,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     path =
       Routes.live_path(socket, __MODULE__, source.id, params)
+      |> Utils.with_team_param(socket.assigns[:team])
 
     {:noreply, push_patch(socket, to: path, replace: true)}
   end
@@ -828,6 +829,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     path =
       Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params)
+      |> Utils.with_team_param(socket.assigns[:team])
 
     push_patch(socket, to: path, replace: false)
   end
@@ -921,6 +923,7 @@ defmodule LogflareWeb.Source.SearchLV do
         querystring: suggested_querystring,
         tailing?: socket.assigns.tailing?
       )
+      |> Utils.with_team_param(socket.assigns[:team])
 
     replace = link(replace, to: path)
 
@@ -958,6 +961,7 @@ defmodule LogflareWeb.Source.SearchLV do
         chart_loading: true,
         querystring: socket.assigns.querystring
       )
+      |> Utils.with_team_param(socket.assigns[:team])
 
     keys =
       socket.assigns.source.suggested_keys

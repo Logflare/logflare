@@ -14,7 +14,8 @@
         <div class="tw-text-xs">
           <%= if @local_timezone do %>
             <.link patch={
-              ~p"/sources/#{@source}/search?#{%{querystring: "t:>#{Timex.format!(Timex.shift(@local_timestamp, seconds: -30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} t:<#{Timex.format!(Timex.shift(@local_timestamp, seconds: 30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} c:count(*) c:group_by(t::second)", tailing?: false}}"
+              ~p"/sources/#{@source}/search?#{Map.merge(@search_params, %{querystring: "t:>#{Timex.format!(Timex.shift(@local_timestamp, seconds: -30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} t:<#{Timex.format!(Timex.shift(@local_timestamp, seconds: 30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} c:count(*) c:group_by(t::second)", tailing?: false})}"
+              |> LogflareWeb.Utils.with_team_param(@team)
             }>
               <i class="fas fa-search tw-mr-1 tw-w-2"></i> inspect
             </.link>
@@ -75,7 +76,7 @@
           <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
             <JSONViewerComponent.json_viewer data={@fmt_body |> JSON.decode!()} id={"log-event-tree-#{@id}"}>
               <:action :let={node}>
-                <.quick_filter lql={@lql || ""} node={node} source={@source} source_schema_flat_map={@source_schema_flat_map} lql_schema={@lql_schema} search_params={@search_params} />
+                <.quick_filter lql={@lql || ""} node={node} source={@source} source_schema_flat_map={@source_schema_flat_map} lql_schema={@lql_schema} search_params={@search_params} team={@team} />
               </:action>
             </JSONViewerComponent.json_viewer>
           </div>
