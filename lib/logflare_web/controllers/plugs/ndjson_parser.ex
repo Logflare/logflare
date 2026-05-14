@@ -40,7 +40,7 @@ defmodule LogflareWeb.NdjsonParser do
             }
 
           {:error, error} ->
-            Logger.error("NDJSON parser error: " <> inspect(error))
+            Logger.error("NDJSON parser error: #{redact_decode_error(error)}")
 
             nil
         end
@@ -64,4 +64,11 @@ defmodule LogflareWeb.NdjsonParser do
   def decode({:error, _}) do
     raise Plug.BadRequestError
   end
+
+  # Jason.DecodeError carries the raw failing input in :data and :token —
+  # don't log either of those, only the offset.
+  defp redact_decode_error(%Jason.DecodeError{position: position}),
+    do: "decode error at position #{position}"
+
+  defp redact_decode_error(_), do: "decode error"
 end

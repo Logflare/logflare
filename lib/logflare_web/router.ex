@@ -76,7 +76,6 @@ defmodule LogflareWeb.Router do
   pipeline :api do
     plug(Plug.RequestId)
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
-    plug(LogflareWeb.Plugs.VerifyApiAccess)
 
     plug(Plug.Parsers,
       parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
@@ -90,8 +89,35 @@ defmodule LogflareWeb.Router do
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
   end
 
-  pipeline :otlp_api do
+  # Authenticated ingest. VerifyApiAccess runs before body parsing so
+  # unauthenticated requests can never trigger the parsers. FetchResource and
+  # VerifyResourceAccess run after parsing because some clients (e.g. the
+  # BERT logger) identify the source via a body field.
+  pipeline :ingest_api do
     plug(Plug.RequestId)
+    plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
+
+    plug(Plug.Parsers,
+      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
+      json_decoder: Jason,
+      body_reader: {PlugCaisson, :read_body, []},
+      length: 12_000_000
+    )
+
+    plug(LogflareWeb.Plugs.FetchResource)
+    plug(LogflareWeb.Plugs.VerifyResourceAccess)
+    plug(:accepts, ["json", "bert"])
+    plug(LogflareWeb.Plugs.SetHeaders)
+    plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
+    plug(LogflareWeb.Plugs.SetPlanFromCache)
+    plug(LogflareWeb.Plugs.RateLimiter)
+    plug(LogflareWeb.Plugs.BufferLimiter)
+  end
+
+  pipeline :ingest_otlp_api do
+    plug(Plug.RequestId)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
 
     plug(Plug.Parsers,
       parsers: [ProtobufParser],
@@ -100,26 +126,20 @@ defmodule LogflareWeb.Router do
       length: 12_000_000
     )
 
+    plug(LogflareWeb.Plugs.FetchResource)
+    plug(LogflareWeb.Plugs.VerifyResourceAccess)
     plug(:accepts, ["json", "protobuf"])
     plug(LogflareWeb.Plugs.SetHeaders)
     plug(LogflareWeb.Plugs.BlockSystemSource)
+    plug(LogflareWeb.Plugs.SetPlanFromCache)
+    plug(LogflareWeb.Plugs.RateLimiter)
+    plug(LogflareWeb.Plugs.BufferLimiter)
   end
 
   pipeline :require_endpoint_auth do
     plug(LogflareWeb.Plugs.VerifyApiAccess)
     plug(LogflareWeb.Plugs.FetchResource)
     plug(LogflareWeb.Plugs.VerifyResourceAccess)
-  end
-
-  pipeline :require_ingest_api_auth do
-    plug(LogflareWeb.Plugs.VerifyApiAccess)
-    plug(LogflareWeb.Plugs.FetchResource)
-    plug(LogflareWeb.Plugs.VerifyResourceAccess)
-    # We are ensuring source start in Logs.ingest
-    # plug LogflareWeb.Plugs.EnsureSourceStarted
-    plug(LogflareWeb.Plugs.SetPlanFromCache)
-    plug(LogflareWeb.Plugs.RateLimiter)
-    plug(LogflareWeb.Plugs.BufferLimiter)
   end
 
   pipeline :require_mgmt_api_auth do
@@ -514,7 +534,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/v1", LogflareWeb, assigns: %{resource_type: :source} do
-    pipe_through([:otlp_api, :require_ingest_api_auth])
+    pipe_through([:ingest_otlp_api])
 
     post(
       "/traces",
@@ -540,7 +560,7 @@ defmodule LogflareWeb.Router do
 
   for path <- ["/logs", "/api/logs", "/api/events"] do
     scope path, LogflareWeb, assigns: %{resource_type: :source} do
-      pipe_through([:api, :require_ingest_api_auth])
+      pipe_through([:ingest_api])
 
       post("/", LogController, :create)
       options("/", LogController, :create)
@@ -568,7 +588,7 @@ defmodule LogflareWeb.Router do
 
     # logpush
     scope "#{path}/cloudflare", LogflareWeb, assigns: %{resource_type: :source} do
-      pipe_through([:logpush, :api, :require_ingest_api_auth])
+      pipe_through([:logpush, :ingest_api])
       post("/", LogController, :cloudflare)
     end
   end
