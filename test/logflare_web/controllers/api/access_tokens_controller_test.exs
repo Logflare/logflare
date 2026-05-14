@@ -67,6 +67,16 @@ defmodule LogflareWeb.Api.AccessTokensTest do
       assert response["scopes"] =~ "public"
     end
 
+    test "creates a token with a requested scope", %{conn: conn, user: user} do
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/access-tokens", %{scopes: "ingest"})
+        |> json_response(201)
+
+      assert response["scopes"] == "ingest"
+    end
+
     test "cannot create partner scope", %{conn: conn, user: user} do
       conn
       |> add_access_token(user, "private")

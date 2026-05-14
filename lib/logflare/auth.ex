@@ -127,7 +127,7 @@ defmodule Logflare.Auth do
   end
 
   @doc "Creates an Oauth access token with no expiry, linked to the given user or team's user."
-  @typep create_attrs :: %{optional(:description) => String.t()} | map()
+  @typep create_attrs :: %{optional(:description) => String.t()}
   @typep create_opts :: [scopes: String.t()]
   @spec create_access_token(Team.t() | User.t() | Partner.t(), create_attrs(), create_opts()) ::
           {:ok, OauthAccessToken.t()} | {:error, term()}
@@ -140,7 +140,7 @@ defmodule Logflare.Auth do
   end
 
   def create_access_token(%User{} = user, attrs, opts) do
-    with {:ok, scopes} <- sanitize_user_scopes(Keyword.get(opts, :scopes)),
+    with {:ok, scopes} <- reject_partner_scope(Keyword.get(opts, :scopes)),
          {:ok, token} <-
            ExOauth2Provider.AccessTokens.create_token(user, %{}, env_oauth_config()) do
       token
@@ -165,11 +165,9 @@ defmodule Logflare.Auth do
   defp maybe_put_scopes(changeset, nil), do: changeset
   defp maybe_put_scopes(changeset, scopes), do: Changeset.put_change(changeset, :scopes, scopes)
 
-  # User-owned tokens must never carry the partner scope. Guard at the auth
-  # boundary so every caller is protected, not just the HTTP controller.
-  defp sanitize_user_scopes(nil), do: {:ok, nil}
+  defp reject_partner_scope(nil), do: {:ok, nil}
 
-  defp sanitize_user_scopes(scopes) when is_binary(scopes) do
+  defp reject_partner_scope(scopes) when is_binary(scopes) do
     if "partner" in String.split(scopes), do: {:error, :unauthorized}, else: {:ok, scopes}
   end
 

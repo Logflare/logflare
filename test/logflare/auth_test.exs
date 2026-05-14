@@ -30,12 +30,15 @@ defmodule Logflare.AuthTest do
       assert Auth.list_valid_access_tokens(partner) |> length() == 2
     end
 
-    test "user token attrs cannot inject partner scope", %{user: user} do
+    test "user token attrs cannot inject scopes via mass assignment", %{user: user} do
       {:ok, token} = Auth.create_access_token(user, %{"scopes" => "partner"})
-      refute token.scopes =~ "partner"
+      assert token.scopes == "public"
 
       {:ok, token} = Auth.create_access_token(user, %{scopes: "partner"})
-      refute token.scopes =~ "partner"
+      assert token.scopes == "public"
+
+      {:ok, token} = Auth.create_access_token(user, %{"scopes" => "ingest"})
+      assert token.scopes == "public"
     end
 
     test "user token opts cannot inject partner scope", %{user: user} do
@@ -55,6 +58,12 @@ defmodule Logflare.AuthTest do
 
       {:ok, token} = Auth.create_access_token(partner, %{}, scopes: "ingest")
       assert token.scopes == "partner"
+    end
+
+    test "team-owned token forwards opts to the underlying user", %{team: team} do
+      {:ok, token} = Auth.create_access_token(team, %{}, scopes: "private")
+      assert token.scopes == "private"
+      assert {:ok, _, _} = Auth.verify_access_token(token, ~w(private))
     end
 
     test "get_access_token/2 retrieves a user token", %{user: user} do
