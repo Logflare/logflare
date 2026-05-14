@@ -120,14 +120,14 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
 
   defp typemap_generator do
     leaf =
-      StreamData.one_of([
-        StreamData.constant(%{t: :string}),
-        StreamData.constant(%{t: :integer}),
-        StreamData.constant(%{t: :boolean}),
-        StreamData.constant(%{t: :float}),
-        StreamData.constant(%{t: :datetime}),
-        StreamData.constant(%{t: {:list, :string}}),
-        StreamData.constant(%{t: {:list, :integer}})
+      StreamData.member_of([
+        %{t: :string},
+        %{t: :integer},
+        %{t: :boolean},
+        %{t: :float},
+        %{t: :datetime},
+        %{t: {:list, :string}},
+        %{t: {:list, :integer}}
       ])
 
     key = StreamData.string(:alphanumeric, min_length: 1, max_length: 8)

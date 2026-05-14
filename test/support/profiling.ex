@@ -6,6 +6,10 @@ defmodule Logflare.Profiling do
   Captures per-scenario stats from a `Benchee.Suite`, compares them against the
   most-recent entry in a history file, prints a delta table, and optionally
   appends a new entry when `SAVE_SNAPSHOT=1` is set.
+
+  History files are read via `Code.eval_file/1` and written via `inspect/2` —
+  the file is executed as Elixir code, not parsed as data, so hand-edits must
+  remain valid Elixir terms.
   """
 
   @type stats :: %{
@@ -136,15 +140,11 @@ defmodule Logflare.Profiling do
     if pct >= 0, do: "+#{pct}%", else: "#{pct}%"
   end
 
-  defp fmt_bytes(b) do
-    if b >= 1_048_576,
-      do: "#{Float.round(b / 1_048_576, 2)} MB",
-      else: "#{Float.round(b / 1024, 1)} KB"
-  end
+  defp fmt_bytes(b) when b >= 1_048_576, do: "#{Float.round(b / 1_048_576, 2)} MB"
+  defp fmt_bytes(b), do: "#{Float.round(b / 1024, 1)} KB"
 
-  defp fmt_count(n) do
-    if n >= 1000, do: "#{Float.round(n / 1000, 1)}K", else: "#{n}"
-  end
+  defp fmt_count(n) when n >= 1000, do: "#{Float.round(n / 1000, 1)}K"
+  defp fmt_count(n), do: "#{n}"
 
   defp fmt_ips(ips) when ips >= 1_000_000, do: "#{Float.round(ips / 1_000_000, 2)}M ips"
   defp fmt_ips(ips) when ips >= 1_000, do: "#{Float.round(ips / 1_000, 1)}K ips"
