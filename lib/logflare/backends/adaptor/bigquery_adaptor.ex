@@ -41,6 +41,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @managed_service_account_partition_count 5
   @service_account_prefix "logflare-managed"
+  @reservation_error_regex ~r/reservation/i
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
@@ -685,7 +686,19 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          })}
 
       {:error, %{body: body}} ->
-        error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)
+        decoded = Jason.decode!(body)["error"]
+        error = GenUtils.process_bq_errors(decoded, user.id)
+
+        if reservation_error?(decoded) do
+          Logger.warning("Possible BigQuery reservation error",
+            user_id: user.id,
+            project_id: project_id,
+            reservation_opt: Keyword.get(query_opts, :reservation),
+            query_type: Keyword.get(query_opts, :query_type),
+            bq_error_message: decoded["message"]
+          )
+        end
+
         {:error, error}
 
       {:error, err} when is_atom(err) ->
@@ -717,4 +730,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       parameterValue: %Value{value: param}
     }
   end
+
+  @spec reservation_error?(error :: map() | any()) :: boolean()
+  defp reservation_error?(%{"message" => msg}) when is_non_empty_binary(msg) do
+    Regex.match?(@reservation_error_regex, msg)
+  end
+
+  defp reservation_error?(_), do: false
 end

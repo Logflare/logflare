@@ -3,7 +3,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   use ExUnitProperties
 
   import Ecto.Query
+  import ExUnit.CaptureLog
 
+  alias GoogleApi.BigQuery.V2.Api.Jobs, as: BqJobs
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
@@ -170,7 +172,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       insert(:plan, name: "Free", type: "standard")
       user = insert(:user, bigquery_dataset_id: "test_dataset")
 
-      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+      stub(BqJobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"event_message" => "test message", "value" => "123"}])}
       end)
 
@@ -229,7 +231,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
           bigquery_reservation_search: "projects/p/locations/l/reservations/search"
         )
 
-      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+      stub(BqJobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         send(pid, {:reservation, opts[:body].reservation})
         {:ok, TestUtils.gen_bq_response()}
       end)
@@ -270,6 +272,94 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       )
 
       assert_received {:reservation, nil}
+    end
+  end
+
+  describe "reservation error logging" do
+    setup do
+      insert(:plan, name: "Free", type: "standard")
+      user = insert(:user, bigquery_dataset_id: "test_dataset")
+      [user: user]
+    end
+
+    test "logs a warning for a reservation-not-found error", %{user: user} do
+      body =
+        ~s|{"error":{"message":"User specified reservation projects/p/locations/l/reservations/missing is not found","status":"NOT_FOUND"}}|
+
+      stub(BqJobs, :bigquery_jobs_query, fn _conn, _proj, _opts ->
+        {:error, %Tesla.Env{status: 404, body: body}}
+      end)
+
+      log =
+        capture_log([level: :warning], fn ->
+          BigQueryAdaptor.execute_query(
+            {"test-project", user.bigquery_dataset_id, user.id},
+            {"select 1", []},
+            reservation: "projects/p/locations/l/reservations/missing"
+          )
+        end)
+
+      assert log =~ "Possible BigQuery reservation error"
+    end
+
+    test "logs a warning for a permission-denied reservation error", %{user: user} do
+      body =
+        ~s|{"error":{"message":"Access Denied: Reservation projects/p/locations/l/reservations/r: Permission bigquery.reservations.use denied on reservation projects/p/locations/l/reservations/r (or it may not exist)","status":"PERMISSION_DENIED"}}|
+
+      stub(BqJobs, :bigquery_jobs_query, fn _conn, _proj, _opts ->
+        {:error, %Tesla.Env{status: 403, body: body}}
+      end)
+
+      log =
+        capture_log([level: :warning], fn ->
+          BigQueryAdaptor.execute_query(
+            {"test-project", user.bigquery_dataset_id, user.id},
+            {"select 1", []},
+            []
+          )
+        end)
+
+      assert log =~ "Possible BigQuery reservation error"
+    end
+
+    test "logs a warning for a slot/region reservation error", %{user: user} do
+      body =
+        ~s|{"error":{"message":"Cannot run query: project does not have the reservation in the data region or no slots are configured"}}|
+
+      stub(BqJobs, :bigquery_jobs_query, fn _conn, _proj, _opts ->
+        {:error, %Tesla.Env{status: 400, body: body}}
+      end)
+
+      log =
+        capture_log([level: :warning], fn ->
+          BigQueryAdaptor.execute_query(
+            {"test-project", user.bigquery_dataset_id, user.id},
+            {"select 1", []},
+            []
+          )
+        end)
+
+      assert log =~ "Possible BigQuery reservation error"
+    end
+
+    test "does not log a warning for unrelated BigQuery errors", %{user: user} do
+      body =
+        ~s|{"error":{"message":"Table test-project:test_dataset.foo not found","status":"NOT_FOUND"}}|
+
+      stub(BqJobs, :bigquery_jobs_query, fn _conn, _proj, _opts ->
+        {:error, %Tesla.Env{status: 404, body: body}}
+      end)
+
+      log =
+        capture_log([level: :warning], fn ->
+          BigQueryAdaptor.execute_query(
+            {"test-project", user.bigquery_dataset_id, user.id},
+            {"select 1", []},
+            []
+          )
+        end)
+
+      refute log =~ "Possible BigQuery reservation error"
     end
   end
 end
