@@ -182,17 +182,16 @@ config :logflare_logger_backend,
          api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
        )
 
-config :logger,
-  backends:
-    [
-      :console,
-      if(System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil,
-        do: LogflareLogger.HttpBackend,
-        else: nil
-      ),
-      if(Env.get_boolean("LOGFLARE_LOGGER_JSON"), do: LoggerJSON, else: nil)
-    ]
-    |> Enum.filter(&(&1 != nil))
+config :logflare,
+       :logger_backends,
+       [
+         if(System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil,
+           do: LogflareLogger.HttpBackend,
+           else: nil
+         ),
+         if(Env.get_boolean("LOGFLARE_LOGGER_JSON"), do: LoggerJSON, else: nil)
+       ]
+       |> Enum.filter(&(&1 != nil))
 
 config :logger,
   metadata: logflare_metadata

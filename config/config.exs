@@ -27,6 +27,8 @@ config :logflare, :postgres_backend_adapter, pool_size: 3
 
 config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 0
 
+config :logflare, :bigquery_pipeline, max_retries: 0
+
 config :logflare, :clickhouse_backend_adaptor,
   engine: "MergeTree",
   pool_size: 3,
