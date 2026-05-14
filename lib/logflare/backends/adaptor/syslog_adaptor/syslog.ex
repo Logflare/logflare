@@ -34,6 +34,13 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
   @tag_bytes 16
   @aes_overhead @iv_bytes + @tag_bytes
 
+  @doc """
+  Formats a log event as an RFC5424 syslog frame with octet-counting framing.
+
+  When `max_message_bytes` is smaller than the headers length, the frame falls
+  back to headers-only and will exceed `max_message_bytes` — RFC5424 headers
+  are never truncated.
+  """
   def format(log_event, config) do
     cipher_key = config[:cipher_key]
     structured_data = config[:structured_data]

@@ -132,7 +132,7 @@ defmodule Logflare.TelemetryTest do
     on_exit(fn -> :telemetry.detach(ref) end)
 
     sample_duration = to_timeout(millisecond: 10)
-    Schedulers.async_dispatch_stats(sample_duration)
+    Schedulers.collect_dispatch_stats(sample_duration)
 
     assert_receive {^event, ^ref, %{utilization: _}, %{name: "total", type: "total"}}
     assert_receive {^event, ^ref, %{utilization: _}, %{name: "weighted", type: "weighted"}}

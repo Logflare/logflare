@@ -43,13 +43,18 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
     property "plaintext truncation respects max_message_bytes" do
       check all max_bytes <- integer(1..100_000),
                 body_text <- string(:utf8, min_length: 1, max_length: 100_000) do
+        log_event = build(:log_event, message: body_text)
+        headers_floor = byte_size(headers_only(log_event))
+
         [length_str, syslog_msg] =
-          build(:log_event, message: body_text)
+          log_event
           |> format_to_binary(%{max_message_bytes: max_bytes})
           |> unframe()
 
         assert String.to_integer(length_str) == byte_size(syslog_msg)
-        assert byte_size(syslog_msg) <= max_bytes
+        # Headers are always emitted in full, so the frame can exceed
+        # max_bytes when it falls below the headers floor.
+        assert byte_size(syslog_msg) <= max(max_bytes, headers_floor)
       end
     end
 
@@ -58,40 +63,46 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
 
       check all max_bytes <- integer(1..100_000),
                 body_text <- string(:utf8, min_length: 1, max_length: 100_000) do
+        log_event = build(:log_event, message: body_text)
+        headers_only = headers_only(log_event)
+        headers_floor = byte_size(headers_only)
+
         [length_str, syslog_msg] =
-          build(:log_event, message: body_text)
+          log_event
           |> format_to_binary(%{max_message_bytes: max_bytes, cipher_key: cipher_key})
           |> unframe()
 
         assert String.to_integer(length_str) == byte_size(syslog_msg)
-        assert byte_size(syslog_msg) <= max_bytes
+        assert byte_size(syslog_msg) <= max(max_bytes, headers_floor)
 
-        # and now we ensure we can decrypt
+        # When max_bytes leaves no room for a non-empty encrypted payload,
+        # the frame is just headers and there is nothing to decrypt.
+        if syslog_msg != headers_only do
+          assert [
+                   _pri_version,
+                   _timestamp,
+                   _hostname,
+                   _app_name,
+                   _procid,
+                   _msgid,
+                   _structured_data,
+                   encrypted_message
+                 ] = String.split(syslog_msg, " ")
 
-        assert [
-                 _pri_version,
-                 _timestamp,
-                 _hostname,
-                 _app_name,
-                 _procid,
-                 _msgid,
-                 _structured_data,
-                 encrypted_message
-               ] = String.split(syslog_msg, " ")
+          assert <<iv::12-bytes, tag::16-bytes, ciphertext::bytes>> =
+                   Base.decode64!(encrypted_message)
 
-        assert <<iv::12-bytes, tag::16-bytes, ciphertext::bytes>> =
-                 Base.decode64!(encrypted_message)
-
-        assert <<_::bytes>> =
-                 :crypto.crypto_one_time_aead(
-                   :aes_256_gcm,
-                   cipher_key,
-                   iv,
-                   ciphertext,
-                   "syslog",
-                   tag,
-                   false
-                 )
+          assert <<_::bytes>> =
+                   :crypto.crypto_one_time_aead(
+                     :aes_256_gcm,
+                     cipher_key,
+                     iv,
+                     ciphertext,
+                     "syslog",
+                     tag,
+                     false
+                   )
+        end
       end
     end
   end
@@ -105,5 +116,15 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SyslogTest do
   # splits octet-counting prefix (MSG-LEN and the space) from the actual message
   defp unframe(payload) do
     String.split(payload, " ", parts: 2)
+  end
+
+  # formats with max_message_bytes: 0 to capture the headers-only frame
+  defp headers_only(log_event) do
+    [_length_str, headers] =
+      log_event
+      |> format_to_binary(%{max_message_bytes: 0})
+      |> unframe()
+
+    headers
   end
 end
