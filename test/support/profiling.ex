@@ -80,7 +80,7 @@ defmodule Logflare.Profiling do
   def save_snapshot(path, history) do
     File.write!(
       path,
-      inspect(history, pretty: true, limit: :infinity, sort_maps: true) <> "\n"
+      inspect(history, pretty: true, limit: :infinity, custom_options: [sort_maps: true]) <> "\n"
     )
 
     IO.puts("\nSaved snapshot to #{path}")
