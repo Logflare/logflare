@@ -33,6 +33,13 @@
         <li class="list-group-item">
           <div class="float-right">
             <small>{link("become", to: Routes.admin_path(@conn, :become_account, account.id), class: "btn btn-danger btn-sm")}</small>
+            <%= if account.admin do %>
+              <%= unless account.id == @conn.assigns.user.id do %>
+                <small>{link("revoke admin", to: Routes.admin_path(@conn, :revoke_admin, account.id), method: :post, data: [confirm: "Revoke admin access from #{account.email}?"], class: "btn btn-danger btn-sm ml-1")}</small>
+              <% end %>
+            <% else %>
+              <small>{link("make admin", to: Routes.admin_path(@conn, :grant_admin, account.id), method: :post, data: [confirm: "Grant admin access to #{account.email}?"], class: "btn btn-danger btn-sm ml-1")}</small>
+            <% end %>
           </div>
           <div>{account.email}</div>
           <div>
