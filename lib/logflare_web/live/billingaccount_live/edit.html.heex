@@ -109,7 +109,7 @@
   <div class="sub-form">
     {section_header("Payment Method")}
     <p>Manage your payment methods.</p>
-    <.live_component module={LogflareWeb.BillingAccountLive.PaymentMethodComponent} id="payment_method" user={@user} />
+    <.live_component module={LogflareWeb.BillingAccountLive.PaymentMethodComponent} id="payment_method" user={@user} team={@team} />
   </div>
   <div class="sub-form">
     {section_header("Custom Invoice Fields")}

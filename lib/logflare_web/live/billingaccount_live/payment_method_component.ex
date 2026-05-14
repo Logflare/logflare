@@ -15,7 +15,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     {:ok, socket}
   end
 
-  def update(%{user: user}, socket) do
+  def update(%{user: user, team: team}, socket) do
     payment_methods =
       Billing.list_payment_methods_by(customer_id: user.billing_account.stripe_customer)
 
@@ -28,6 +28,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
           assign(socket, :loading, true)
       end
       |> assign(:user, user)
+      |> assign(:team, team)
       |> assign(:payment_methods, payment_methods)
 
     {:ok, socket}
@@ -78,7 +79,10 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
           |> put_flash(:info, "Payment method created!")
           |> assign(:payment_methods, methods)
 
-        {:noreply, push_patch(socket, to: ~p"/billing/edit")}
+        {:noreply,
+         push_patch(socket,
+           to: LogflareWeb.Utils.with_team_param(~p"/billing/edit", socket.assigns.team)
+         )}
 
       {:error, _err} ->
         {:noreply, socket}
@@ -99,21 +103,27 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
        |> assign(:payment_methods, payment_methods)
        |> clear_flash()
        |> put_flash(:info, "Payment method deleted!")
-       |> push_patch(to: ~p"/billing/edit")}
+       |> push_patch(
+         to: LogflareWeb.Utils.with_team_param(~p"/billing/edit", socket.assigns.team)
+       )}
     else
       nil ->
         {:noreply,
          socket
          |> clear_flash()
          |> put_flash(:error, "Payment method not found.")
-         |> push_patch(to: ~p"/billing/edit")}
+         |> push_patch(
+           to: LogflareWeb.Utils.with_team_param(~p"/billing/edit", socket.assigns.team)
+         )}
 
       {:error, message} ->
         {:noreply,
          socket
          |> clear_flash()
          |> put_flash(:error, message)
-         |> push_patch(to: ~p"/billing/edit")}
+         |> push_patch(
+           to: LogflareWeb.Utils.with_team_param(~p"/billing/edit", socket.assigns[:team])
+         )}
     end
   end
 
@@ -130,7 +140,9 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
         |> assign(:payment_methods, payment_methods)
         |> clear_flash()
         |> put_flash(:info, "Payment methods successfully synced!")
-        |> push_patch(to: ~p"/billing/edit")
+        |> push_patch(
+          to: LogflareWeb.Utils.with_team_param(~p"/billing/edit", socket.assigns.team)
+        )
 
       {:noreply, socket}
     end
@@ -163,7 +175,9 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
         |> assign(:user, Map.put(user, :billing_account, billing_account))
         |> clear_flash()
         |> put_flash(:info, message)
-        |> push_patch(to: ~p"/billing/edit")
+        |> push_patch(
+          to: LogflareWeb.Utils.with_team_param(~p"/billing/edit", socket.assigns.team)
+        )
 
       {:noreply, socket}
     end
