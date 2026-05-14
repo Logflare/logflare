@@ -12,7 +12,13 @@ defmodule Logflare.Backends.RecentInsertsCacher do
 
   require Logger
 
-  @cache_every 5_000
+  @cache_every if Application.compile_env(:logflare, :env) == :test, do: 100, else: 5_000
+
+  # Jitter spreads cache ticks across wall-clock time so multi-node prod
+  # deployments don't synchronize. In :test (single-node), cap jitter at
+  # cadence so the reschedule window stays bounded — without the cap,
+  # tests polling on Counters updates can see jitter dwarf the cadence.
+  @jitter_max if Application.compile_env(:logflare, :env) == :test, do: 100, else: 1_000
 
   ## Server
   def start_link(args) do
@@ -114,11 +120,6 @@ defmodule Logflare.Backends.RecentInsertsCacher do
   end
 
   defp schedule_cache do
-    jitter =
-      if Application.get_env(:logflare, :env) == :test,
-        do: 0,
-        else: @cache_every + :rand.uniform(1000)
-
-    Process.send_after(self(), :do_cache, jitter)
+    Process.send_after(self(), :do_cache, @cache_every + :rand.uniform(@jitter_max))
   end
 end
