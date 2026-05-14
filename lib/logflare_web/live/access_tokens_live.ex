@@ -151,6 +151,21 @@ defmodule LogflareWeb.AccessTokensLive do
     "scopes_query" => [],
     "scopes_main" => ["ingest"]
   }
+
+  @scopes_main_allowed ~w(ingest query private)
+  @scopes_ingest_pattern ~r/^ingest:source:\d+$/
+  @scopes_query_pattern ~r/^query:endpoint:\d+$/
+
+  defp filter_param(values, allowed) when is_list(values) and is_list(allowed) do
+    Enum.filter(values, &(&1 in allowed))
+  end
+
+  defp filter_param(values, %Regex{} = pattern) when is_list(values) do
+    Enum.filter(values, &(is_binary(&1) and Regex.match?(pattern, &1)))
+  end
+
+  defp filter_param(_values, _allowed), do: []
+
   def mount(_params, _session, socket) do
     %{assigns: %{user: user}} = socket
     sources = Sources.list_sources_by_user(user)
@@ -187,9 +202,14 @@ defmodule LogflareWeb.AccessTokensLive do
       "Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}"
     )
 
-    scopes_ingest_params = (Map.get(params, "scopes_ingest") || []) |> Enum.filter(&(&1 != ""))
-    scopes_query_params = (Map.get(params, "scopes_query") || []) |> Enum.filter(&(&1 != ""))
-    scopes_main_params = (Map.get(params, "scopes_main") || []) |> Enum.filter(&(&1 != ""))
+    scopes_ingest_params =
+      params |> Map.get("scopes_ingest", []) |> filter_param(@scopes_ingest_pattern)
+
+    scopes_query_params =
+      params |> Map.get("scopes_query", []) |> filter_param(@scopes_query_pattern)
+
+    scopes_main_params =
+      params |> Map.get("scopes_main", []) |> filter_param(@scopes_main_allowed)
 
     scopes_main =
       if scopes_ingest_params != [],

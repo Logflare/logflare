@@ -38,6 +38,17 @@ defmodule Logflare.AuthTest do
       refute token.scopes =~ "partner"
     end
 
+    test "user token opts cannot inject partner scope", %{user: user} do
+      assert {:error, :unauthorized} =
+               Auth.create_access_token(user, %{}, scopes: "partner")
+
+      assert {:error, :unauthorized} =
+               Auth.create_access_token(user, %{}, scopes: "ingest partner")
+
+      assert {:error, :unauthorized} =
+               Auth.create_access_token(user, %{}, scopes: "partner ingest")
+    end
+
     test "partner token always receives partner scope regardless of opts", %{partner: partner} do
       {:ok, token} = Auth.create_access_token(partner, %{})
       assert token.scopes == "partner"
@@ -99,7 +110,9 @@ defmodule Logflare.AuthTest do
     # scope to a specific resource
     # source and collection are resource aliases. i.e. they refer to the same resource.
     for name <- ["source", "collection"] do
-      {:ok, key} = Auth.create_access_token(user, %{}, scopes: "ingest:#{name}:3 ingest:#{name}:1")
+      {:ok, key} =
+        Auth.create_access_token(user, %{}, scopes: "ingest:#{name}:3 ingest:#{name}:1")
+
       assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest:#{name}:1))
       assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest:#{name}:3))
     end

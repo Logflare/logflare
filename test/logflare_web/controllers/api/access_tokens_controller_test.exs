@@ -74,6 +74,13 @@ defmodule LogflareWeb.Api.AccessTokensTest do
       |> json_response(401)
     end
 
+    test "cannot smuggle partner scope alongside other scopes", %{conn: conn, user: user} do
+      conn
+      |> add_access_token(user, "private")
+      |> post("/api/access-tokens", %{scopes: "ingest partner"})
+      |> json_response(401)
+    end
+
     test "must use private token", %{conn: conn, user: user} do
       conn
       |> add_access_token(user, "public")

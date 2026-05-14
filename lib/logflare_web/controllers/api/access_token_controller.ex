@@ -36,19 +36,17 @@ defmodule LogflareWeb.Api.AccessTokenController do
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
-    scopes_input = Map.get(params, "scopes", "")
+    opts =
+      case Map.fetch(params, "scopes") do
+        {:ok, scopes} when is_binary(scopes) -> [scopes: scopes]
+        _ -> []
+      end
 
-    with {:scopes, true} <- {:scopes, "partner" not in String.split(scopes_input)},
-         {:ok, access_token} <-
-           Auth.create_access_token(user, Map.take(params, ["description"]),
-             scopes: scopes_input
-           ) do
+    with {:ok, access_token} <-
+           Auth.create_access_token(user, Map.take(params, ["description"]), opts) do
       conn
       |> put_status(201)
       |> json(access_token)
-    else
-      {:scopes, false} -> {:error, :unauthorized}
-      {:error, _} = err -> err
     end
   end
 

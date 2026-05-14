@@ -109,6 +109,43 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     assert html =~ "private"
   end
 
+  test "create token - rejects partner scope from crafted form payload", %{conn: conn, user: user} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    assert view |> element("button", "Create access token") |> render_click()
+
+    view
+    |> element("form")
+    |> render_submit(%{
+      description: "crafted",
+      scopes_main: ["ingest", "partner"],
+      scopes_ingest: [],
+      scopes_query: []
+    })
+
+    [token] = Logflare.Auth.list_valid_access_tokens(user)
+    refute token.scopes =~ "partner"
+    assert token.scopes =~ "ingest"
+  end
+
+  test "create token - drops unknown scopes from crafted form payload", %{conn: conn, user: user} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    assert view |> element("button", "Create access token") |> render_click()
+
+    view
+    |> element("form")
+    |> render_submit(%{
+      description: "crafted",
+      scopes_main: ["ingest", "admin", "root"],
+      scopes_ingest: ["ingest:source:not-a-number"],
+      scopes_query: ["query:endpoint:abc"]
+    })
+
+    [token] = Logflare.Auth.list_valid_access_tokens(user)
+    assert token.scopes == "ingest"
+  end
+
   test "show private token", %{conn: conn, user: user} do
     token = insert(:access_token, scopes: "private", resource_owner: user)
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
@@ -137,8 +174,8 @@ defmodule LogflareWeb.AccessTokensLiveTest do
            |> render_submit(%{
              description: "some description",
              scopes_main: if(scopes =~ ":", do: [], else: [scopes]),
-             scopes_ingest: if(scopes =~ "ingest:", do: [], else: [scopes]),
-             scopes_query: if(scopes =~ "query:", do: [], else: [scopes])
+             scopes_ingest: if(scopes =~ "ingest:", do: [scopes], else: []),
+             scopes_query: if(scopes =~ "query:", do: [scopes], else: [])
            }) =~ "created successfully"
 
     view |> element("table") |> render()

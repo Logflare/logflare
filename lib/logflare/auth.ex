@@ -140,10 +140,12 @@ defmodule Logflare.Auth do
   end
 
   def create_access_token(%User{} = user, attrs, opts) do
-    with {:ok, token} <- ExOauth2Provider.AccessTokens.create_token(user, %{}, env_oauth_config()) do
+    with {:ok, scopes} <- sanitize_user_scopes(Keyword.get(opts, :scopes)),
+         {:ok, token} <-
+           ExOauth2Provider.AccessTokens.create_token(user, %{}, env_oauth_config()) do
       token
       |> Changeset.cast(attrs, [:token, :description])
-      |> maybe_put_scopes(Keyword.get(opts, :scopes))
+      |> maybe_put_scopes(scopes)
       |> Changeset.unique_constraint(:token)
       |> Repo.update()
     end
@@ -162,6 +164,14 @@ defmodule Logflare.Auth do
 
   defp maybe_put_scopes(changeset, nil), do: changeset
   defp maybe_put_scopes(changeset, scopes), do: Changeset.put_change(changeset, :scopes, scopes)
+
+  # User-owned tokens must never carry the partner scope. Guard at the auth
+  # boundary so every caller is protected, not just the HTTP controller.
+  defp sanitize_user_scopes(nil), do: {:ok, nil}
+
+  defp sanitize_user_scopes(scopes) when is_binary(scopes) do
+    if "partner" in String.split(scopes), do: {:error, :unauthorized}, else: {:ok, scopes}
+  end
 
   @doc """
   Verifies a `%OauthAccessToken{}` or string access token.
