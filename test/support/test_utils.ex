@@ -13,7 +13,7 @@ defmodule Logflare.TestUtils do
   Sets a feature flag override.
   Should be used with reset_feature_flag_overrides/0 to restore the previous value.
   """
-  @spec put_feature_flag_overrides(String.t(), boolean()) :: (-> :ok)
+  @spec put_feature_flag_overrides(String.t(), boolean()) :: :ok
   def put_feature_flag_overrides(flag, value) when is_binary(flag) and is_boolean(value) do
     prev = Application.get_env(:logflare, :feature_flag_override)
     merged = Map.merge(prev || %{}, %{flag => value})
