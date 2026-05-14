@@ -127,7 +127,7 @@ defmodule Logflare.Auth do
   end
 
   @doc "Creates an Oauth access token with no expiry, linked to the given user or team's user."
-  @typep create_attrs :: %{optional(:description) => String.t()}
+  @typep create_attrs :: %{optional(:token) => String.t(), optional(:description) => String.t()}
   @typep create_opts :: [scopes: String.t()]
   @spec create_access_token(Team.t() | User.t() | Partner.t(), create_attrs(), create_opts()) ::
           {:ok, OauthAccessToken.t()} | {:error, term()}
