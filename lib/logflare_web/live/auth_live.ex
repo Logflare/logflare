@@ -10,7 +10,9 @@ defmodule LogflareWeb.AuthLive do
 
   use LogflareWeb, :routes
 
+  alias Logflare.Teams.Team
   alias Logflare.Teams.TeamContext
+
   require Logger
 
   def on_mount(:default, params, %{"current_email" => email} = session, socket) do
@@ -66,10 +68,38 @@ defmodule LogflareWeb.AuthLive do
           team_user: team_user
         )
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.error(
+          "Failed to assign context by resource for email #{user_email}, team_id #{resource.user.team.id}: #{inspect(reason)}"
+        )
+
         socket
     end
   end
 
   def assign_context_by_resource(socket, nil, _user_email), do: socket
+
+  @doc """
+  Assigns the context for a team directly.
+  Used when the team is already known and no resource lookup is needed.
+  """
+  @spec assign_context_by_team(Phoenix.LiveView.Socket.t(), Team.t(), String.t()) ::
+          Phoenix.LiveView.Socket.t()
+  def assign_context_by_team(socket, %Team{id: team_id}, user_email) do
+    case TeamContext.resolve(team_id, user_email) do
+      {:ok, %TeamContext{team: team, user: user, team_user: team_user}} ->
+        assign(socket,
+          user: Logflare.Users.preload_defaults(user),
+          team: Logflare.Teams.preload_team_users(team),
+          team_user: team_user
+        )
+
+      {:error, reason} ->
+        Logger.error(
+          "Failed to assign context by team for email #{user_email}, team_id #{team_id}: #{inspect(reason)}"
+        )
+
+        socket
+    end
+  end
 end

@@ -206,7 +206,15 @@ defmodule LogflareWeb.QueryLive do
     {:noreply, assign(socket, :query_string, query_string)}
   end
 
-  defp maybe_assign_team_context(socket, %{"t" => _team_id}, _query), do: socket
+  defp maybe_assign_team_context(socket, %{"t" => team_id}, _query) do
+    case Logflare.Teams.get_team_by(id: team_id) do
+      %Logflare.Teams.Team{} = team ->
+        AuthLive.assign_context_by_team(socket, team, socket.assigns.user.email)
+
+      nil ->
+        socket
+    end
+  end
 
   defp maybe_assign_team_context(socket, _params, nil), do: socket
 
