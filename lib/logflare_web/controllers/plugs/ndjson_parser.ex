@@ -69,6 +69,4 @@ defmodule LogflareWeb.NdjsonParser do
   # don't log either of those, only the offset.
   defp redact_decode_error(%Jason.DecodeError{position: position}),
     do: "decode error at position #{position}"
-
-  defp redact_decode_error(_), do: "decode error"
 end
