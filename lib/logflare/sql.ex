@@ -30,65 +30,49 @@ defmodule Logflare.Sql do
 
   @dml_statement_keys ~w(Delete Insert Update Truncate Merge Drop ShowVariable Copy SetVariable Grant Revoke CreateTable CreateFunction AlterTable AlterSystem Execute Do CreateView Call)
 
-  @pg_restricted_functions [
-    "current_database",
-    "current_setting",
-    "current_schema",
-    "current_schemas",
-    "current_user",
-    "cursor_to_xml",
-    "database_to_xml",
-    "database_to_xml_and_xmlschema",
-    "database_to_xmlschema",
-    "dblink",
-    "dblink_connect",
-    "dblink_connect_u",
-    "dblink_disconnect",
-    "dblink_exec",
-    "inet_client_addr",
-    "inet_client_port",
-    "inet_server_addr",
-    "inet_server_port",
-    "lo_close",
-    "lo_export",
-    "lo_import",
-    "lo_open",
-    "lo_read",
-    "lo_unlink",
-    "lo_write",
-    "loread",
-    "lowrite",
-    "pg_backend_pid",
-    "pg_cancel_backend",
-    "pg_conf_load_time",
-    "pg_ls_archive_statusdir",
-    "pg_ls_dir",
-    "pg_ls_logdir",
-    "pg_ls_tmpdir",
-    "pg_ls_waldir",
-    "pg_postmaster_start_time",
-    "pg_read_binary_file",
-    "pg_read_file",
-    "pg_reload_conf",
-    "pg_rotate_logfile",
-    "pg_sleep",
-    "pg_start_backup",
-    "pg_stat_file",
-    "pg_stop_backup",
-    "pg_terminate_backend",
-    "query_to_xml",
-    "query_to_xml_and_xmlschema",
-    "query_to_xmlschema",
-    "schema_to_xml",
-    "schema_to_xml_and_xmlschema",
-    "schema_to_xmlschema",
-    "session_user",
-    "set_config",
-    "table_to_xml",
-    "table_to_xml_and_xmlschema",
-    "table_to_xmlschema",
-    "version"
-  ]
+  # Postgres validation blocks all `pg_*`, `lo_*`, and `dblink*` functions by
+  # prefix, plus the non-prefixed functions below. The small allowlist exempts
+  # benign helpers users embed in analytics SELECTs.
+  @pg_safe_prefixed_functions ~w(
+    pg_typeof
+    pg_size_pretty
+    pg_column_size
+    pg_total_relation_size
+    pg_table_size
+    pg_relation_size
+    pg_indexes_size
+    pg_database_size
+  )
+
+  @pg_other_restricted_functions ~w(
+    current_database
+    current_setting
+    current_schema
+    current_schemas
+    current_user
+    cursor_to_xml
+    database_to_xml
+    database_to_xml_and_xmlschema
+    database_to_xmlschema
+    inet_client_addr
+    inet_client_port
+    inet_server_addr
+    inet_server_port
+    loread
+    lowrite
+    query_to_xml
+    query_to_xml_and_xmlschema
+    query_to_xmlschema
+    schema_to_xml
+    schema_to_xml_and_xmlschema
+    schema_to_xmlschema
+    session_user
+    set_config
+    table_to_xml
+    table_to_xml_and_xmlschema
+    table_to_xmlschema
+    version
+  )
 
   @ch_restricted_functions [
     "azureblobstorage",
@@ -580,8 +564,8 @@ defmodule Logflare.Sql do
 
   # applies to both ctes, sandboxed queries, and non-ctes
   defp validate_query(ast, %{dialect: dialect} = data) when is_list(ast) do
-    with :ok <- check_select_statement_only(ast),
-         :ok <- check_single_query_only(ast),
+    with :ok <- check_single_query_only(ast),
+         :ok <- check_select_statement_only(ast, dialect),
          :ok <- maybe_check_restricted_functions(ast, dialect, data),
          :ok <- has_wildcard_in_select(ast),
          :ok <- check_all_sources_allowed(ast, data) do
@@ -681,7 +665,16 @@ defmodule Logflare.Sql do
 
   defp check_single_query_only(_ast), do: {:error, "Only singular query allowed"}
 
-  defp check_select_statement_only(ast) do
+  defp check_select_statement_only(ast, "postgres") do
+    with [%{"Query" => _}] <- ast,
+         [] <- AstUtils.collect_from_ast(ast, &do_find_dml_statement/1) do
+      :ok
+    else
+      _ -> {:error, "Only SELECT queries allowed"}
+    end
+  end
+
+  defp check_select_statement_only(ast, _dialect) do
     found = AstUtils.collect_from_ast(ast, &do_find_dml_statement/1)
 
     if Enum.empty?(found) do
@@ -703,20 +696,7 @@ defmodule Logflare.Sql do
          dialect: dialect
        })
        when is_list(names) do
-    restricted_list = list_restricted_functions_for_dialect(dialect)
-
-    found_restricted =
-      for name <- names,
-          normalized = String.downcase(name["value"]),
-          normalized in restricted_list do
-        normalized
-      end
-
-    if Enum.empty?(found_restricted) do
-      :ok
-    else
-      {:error, "Restricted function #{Enum.join(found_restricted, ", ")}"}
-    end
+    check_names_against_dialect(names, dialect)
   end
 
   defp has_restricted_functions(
@@ -725,20 +705,7 @@ defmodule Logflare.Sql do
          %{dialect: dialect}
        )
        when is_list(args) do
-    restricted_list = list_restricted_functions_for_dialect(dialect)
-
-    found_restricted =
-      for name <- names,
-          normalized = String.downcase(name["value"]),
-          normalized in restricted_list do
-        normalized
-      end
-
-    if Enum.empty?(found_restricted) do
-      :ok
-    else
-      {:error, "Restricted function #{Enum.join(found_restricted, ", ")}"}
-    end
+    check_names_against_dialect(names, dialect)
   end
 
   defp has_restricted_functions(kv, :ok = acc, data) when is_list(kv) or is_map(kv) do
@@ -752,11 +719,36 @@ defmodule Logflare.Sql do
 
   defp has_restricted_functions(_kv, acc, _data), do: acc
 
-  @spec list_restricted_functions_for_dialect(String.t()) :: [String.t()]
-  defp list_restricted_functions_for_dialect("bigquery"), do: @bq_restricted_functions
-  defp list_restricted_functions_for_dialect("clickhouse"), do: @ch_restricted_functions
-  defp list_restricted_functions_for_dialect("postgres"), do: @pg_restricted_functions
-  defp list_restricted_functions_for_dialect(_), do: []
+  defp check_names_against_dialect(names, dialect) do
+    found_restricted =
+      for name <- names,
+          normalized = String.downcase(name["value"]),
+          function_restricted?(normalized, dialect) do
+        normalized
+      end
+
+    if Enum.empty?(found_restricted) do
+      :ok
+    else
+      {:error, "Restricted function #{Enum.join(found_restricted, ", ")}"}
+    end
+  end
+
+  @spec function_restricted?(String.t(), String.t()) :: boolean()
+  defp function_restricted?(name, "postgres") do
+    cond do
+      name in @pg_safe_prefixed_functions -> false
+      String.starts_with?(name, "pg_") -> true
+      String.starts_with?(name, "lo_") -> true
+      String.starts_with?(name, "dblink") -> true
+      name in @pg_other_restricted_functions -> true
+      true -> false
+    end
+  end
+
+  defp function_restricted?(name, "bigquery"), do: name in @bq_restricted_functions
+  defp function_restricted?(name, "clickhouse"), do: name in @ch_restricted_functions
+  defp function_restricted?(_name, _dialect), do: false
 
   defp has_restricted_sources(cte_ast, ast) when is_list(ast) do
     aliases =

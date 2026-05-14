@@ -1044,25 +1044,77 @@ defmodule Logflare.SqlTest do
       assert msg =~ "Restricted function"
     end
 
-    test "rejects pg_ls_logdir", %{source: %{name: name}, user: user} do
-      assert {:error, msg} =
-               Sql.transform(:pg_sql, "SELECT id FROM pg_ls_logdir(), #{name}", user)
-
-      assert msg =~ "Restricted function"
-    end
-
-    test "rejects pg_ls_waldir", %{source: %{name: name}, user: user} do
-      assert {:error, msg} =
-               Sql.transform(:pg_sql, "SELECT id FROM pg_ls_waldir(), #{name}", user)
-
-      assert msg =~ "Restricted function"
-    end
-
     test "rejects unknown source tables", %{user: user} do
       assert {:error, msg} =
                Sql.transform(:pg_sql, "SELECT id FROM nonexistent_table", user)
 
       assert msg =~ "can't find source"
+    end
+
+    for fn_call <- [
+          "pg_promote()",
+          "pg_advisory_lock(1)",
+          "pg_stat_reset()",
+          "pg_get_functiondef(1)",
+          "pg_logical_emit_message(true, 'a', 'b')",
+          "pg_export_snapshot()",
+          "pg_signal_backend(1)",
+          "pg_replication_origin_create('x')",
+          "pg_ls_logicalmapdir()",
+          "pg_ls_logicalsnapdir()",
+          "pg_ls_replslotdir('x')",
+          "pg_ls_logdir()",
+          "pg_ls_waldir()",
+          "lo_creat(-1)",
+          "lo_create(0)",
+          "lo_from_bytea(0, '\\\\x00'::bytea)",
+          "lo_put(1, 0, '\\\\x00'::bytea)",
+          "lo_get(1)",
+          "lo_truncate(1, 0)",
+          "dblink_open('c', 'SELECT 1')",
+          "dblink_send_query('c', 'SELECT 1')",
+          "dblink_get_result('c')"
+        ] do
+      test "rejects restricted function #{fn_call}", %{source: %{name: name}, user: user} do
+        assert {:error, msg} =
+                 Sql.transform(
+                   :pg_sql,
+                   "SELECT #{unquote(fn_call)} AS v, id FROM #{name}",
+                   user
+                 )
+
+        assert msg =~ "Restricted function"
+      end
+    end
+
+    for fn_call <- [
+          "pg_typeof(id)",
+          "pg_size_pretty(1024::bigint)",
+          "pg_column_size(id)"
+        ] do
+      test "allows safe function #{fn_call}", %{source: %{name: name}, user: user} do
+        assert {:ok, _} =
+                 Sql.transform(
+                   :pg_sql,
+                   "SELECT #{unquote(fn_call)} AS v, id FROM #{name}",
+                   user
+                 )
+      end
+    end
+
+    for {label, stmt} <- [
+          {"CREATE INDEX", "CREATE INDEX idx ON source_a (id)"},
+          {"SET ROLE", "SET ROLE postgres"},
+          {"LISTEN", "LISTEN my_channel"},
+          {"START TRANSACTION", "START TRANSACTION"},
+          {"COMMENT ON", "COMMENT ON TABLE source_a IS 'x'"},
+          {"DECLARE CURSOR", "DECLARE c CURSOR FOR SELECT 1"},
+          {"ANALYZE", "ANALYZE source_a"},
+          {"PREPARE", "PREPARE x AS SELECT 1"}
+        ] do
+      test "rejects non-SELECT statement: #{label}", %{user: user} do
+        assert {:error, _msg} = Sql.transform(:pg_sql, unquote(stmt), user)
+      end
     end
   end
 
