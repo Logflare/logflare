@@ -1620,9 +1620,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
           allow_sandbox(search_executor_pid)
 
           TestUtils.retry_assert(fn ->
+            prev_completed_at = get_view_assigns(view)[:last_query_completed_at]
+
             render_change(view, :start_search, %{
               "querystring" => "#{querystring} c:count(*) c:group_by(t::#{chart_period})"
             })
+
+            wait_for_search_completed(prev_completed_at)
 
             html = view |> element("#logs-list-container") |> render()
 
@@ -2118,6 +2122,19 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert html =~ source.name
       assert view |> has_element?(~s|a[href="/sources/#{source.id}?t=#{team_user.team_id}"]|)
+    end
+  end
+
+  defp wait_for_search_completed(prev_completed_at, timeout \\ 2_000) do
+    receive do
+      {:wait_for_render, %{last_query_completed_at: completed_at}}
+      when completed_at != prev_completed_at and not is_nil(completed_at) ->
+        :ok
+
+      {:wait_for_render, _assigns} ->
+        wait_for_search_completed(prev_completed_at, timeout)
+    after
+      timeout -> :timeout
     end
   end
 
