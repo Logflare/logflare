@@ -702,10 +702,12 @@ defmodule Logflare.Sql do
   defp has_restricted_functions(
          {"Table", %{"args" => args, "name" => [%{"value" => _} | _] = names}},
          :ok,
-         %{dialect: dialect}
+         %{dialect: dialect} = data
        )
        when is_list(args) do
-    check_names_against_dialect(names, dialect)
+    with :ok <- check_names_against_dialect(names, dialect) do
+      has_restricted_functions(args, :ok, data)
+    end
   end
 
   defp has_restricted_functions(kv, :ok = acc, data) when is_list(kv) or is_map(kv) do

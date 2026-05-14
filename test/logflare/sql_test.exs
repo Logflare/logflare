@@ -1044,6 +1044,14 @@ defmodule Logflare.SqlTest do
       assert msg =~ "Restricted function"
     end
 
+    test "rejects restricted function passed as TVF argument via CTE alias", %{user: user} do
+      query =
+        "WITH f AS (SELECT 1) SELECT * FROM f(pg_read_file('/etc/passwd')) AS t"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "Restricted function"
+    end
+
     test "rejects unknown source tables", %{user: user} do
       assert {:error, msg} =
                Sql.transform(:pg_sql, "SELECT id FROM nonexistent_table", user)
