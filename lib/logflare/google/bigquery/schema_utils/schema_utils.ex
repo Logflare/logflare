@@ -72,7 +72,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
-  @spec to_typemap(map | TS.t() | nil) :: %{required(atom) => map | atom}
+  @spec to_typemap(map | TS.t() | nil) :: %{required(String.t()) => map | atom}
   def to_typemap(nil), do: nil
 
   def to_typemap(%TS{} = schema), do: to_typemap(schema, from: :bigquery_schema)
@@ -101,15 +101,14 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
             %{t: type_of(v)}
         end
 
-      k =
-        cond do
-          is_atom(k) -> k
-          String.valid?(k) -> String.to_atom(k)
-          true -> decode_until_valid!(k)
-        end
-
-      {k, v}
+      {to_binary_key(k), v}
     end
+  end
+
+  defp to_binary_key(k) when is_atom(k), do: Atom.to_string(k)
+
+  defp to_binary_key(k) when is_binary(k) do
+    if String.valid?(k), do: k, else: decode_until_valid!(k)
   end
 
   defp decode_until_valid!(k, encodings \\ [:utf8, :unicode, :latin1])
@@ -120,13 +119,8 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   defp decode_until_valid!(k, [encoding | encodings]) when is_binary(k) do
     case :unicode.characters_to_binary(k, encoding) do
-      {:error, _, _} ->
-        decode_until_valid!(k, encodings)
-
-      k ->
-        k
-        |> Unicode.unaccent()
-        |> String.to_atom()
+      {:error, _, _} -> decode_until_valid!(k, encodings)
+      decoded -> Unicode.unaccent(decoded)
     end
   end
 
@@ -142,16 +136,14 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     true
   end
 
-  @spec to_typemap(TS.t() | list(TS.t()), keyword) :: %{required(atom) => map | atom}
+  @spec to_typemap(TS.t() | list(TS.t()), keyword) :: %{required(String.t()) => map | atom}
   def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
     to_typemap(fields, from: :bigquery_schema)
   end
 
   def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
     Map.new(fields, fn
-      %TFS{fields: fields, name: n, type: t, mode: mode} ->
-        k = String.to_atom(n)
-
+      %TFS{fields: fields, name: k, type: t, mode: mode} ->
         v =
           cond do
             mode == "REPEATED" and t == "RECORD" ->

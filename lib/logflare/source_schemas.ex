@@ -152,22 +152,22 @@ defmodule Logflare.SourceSchemas do
   end
 
   defp typemap_to_json_schema({key, %{fields: fields, t: :map}}) do
-    {Atom.to_string(key), typemap_to_json_schema(fields)}
+    {key, typemap_to_json_schema(fields)}
   end
 
   defp typemap_to_json_schema({key, %{t: {:list, type}}}) do
-    {Atom.to_string(key), %{"type" => "array", "items" => %{"type" => Atom.to_string(type)}}}
+    {key, %{"type" => "array", "items" => %{"type" => Atom.to_string(type)}}}
   end
 
   defp typemap_to_json_schema({key, %{t: :datetime}}),
-    do: {Atom.to_string(key), %{"type" => "number"}}
+    do: {key, %{"type" => "number"}}
 
   defp typemap_to_json_schema({key, %{t: :integer}}),
-    do: {Atom.to_string(key), %{"type" => "number"}}
+    do: {key, %{"type" => "number"}}
 
   defp typemap_to_json_schema({key, %{t: :float}}),
-    do: {Atom.to_string(key), %{"type" => "number"}}
+    do: {key, %{"type" => "number"}}
 
   defp typemap_to_json_schema({key, %{t: type}}),
-    do: {Atom.to_string(key), %{"type" => Atom.to_string(type)}}
+    do: {key, %{"type" => Atom.to_string(type)}}
 end

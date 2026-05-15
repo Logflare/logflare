@@ -47,7 +47,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
     test "correctly builds a typemap from metadata" do
       assert :metadata
              |> SchemaFactory.build(variant: :third)
-             |> to_typemap() == typemap_for_third().metadata.fields
+             |> to_typemap() == typemap_for_third()["metadata"].fields
     end
 
     test "try_merge returns :ok for correct metadata and schema" do
@@ -165,28 +165,28 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
 
   def typemap_for_third do
     %{
-      timestamp: %{t: :datetime},
-      event_message: %{t: :string},
-      metadata: %{
+      "timestamp" => %{t: :datetime},
+      "event_message" => %{t: :string},
+      "metadata" => %{
         t: :map,
         fields: %{
-          datacenter: %{t: :string},
-          ip_address: %{t: :string},
-          request_method: %{t: :string},
-          user: %{
+          "datacenter" => %{t: :string},
+          "ip_address" => %{t: :string},
+          "request_method" => %{t: :string},
+          "user" => %{
             t: :map,
             fields: %{
-              browser: %{t: :string},
-              id: %{t: :integer},
-              vip: %{t: :boolean},
-              company: %{t: :string},
-              login_count: %{t: :integer},
-              address: %{
+              "browser" => %{t: :string},
+              "id" => %{t: :integer},
+              "vip" => %{t: :boolean},
+              "company" => %{t: :string},
+              "login_count" => %{t: :integer},
+              "address" => %{
                 t: :map,
                 fields: %{
-                  street: %{t: :string},
-                  city: %{t: :string},
-                  st: %{t: :string}
+                  "street" => %{t: :string},
+                  "city" => %{t: :string},
+                  "st" => %{t: :string}
                 }
               }
             }
