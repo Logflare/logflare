@@ -51,7 +51,7 @@ defmodule Logflare.OpenTelemetryTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       spans = collect_spans()
-      assert length(spans) > 0
+      assert is_list(spans) and spans != []
 
       for span <- spans do
         assert span(name: "ingest." <> _) = span
@@ -89,7 +89,7 @@ defmodule Logflare.OpenTelemetryTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       spans = collect_spans()
-      assert length(spans) > 0
+      assert is_list(spans) and spans != []
 
       for span <- spans do
         assert span(name: "ingest." <> _) = span

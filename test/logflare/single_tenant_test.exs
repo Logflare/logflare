@@ -166,8 +166,8 @@ defmodule Logflare.SingleTenantTest do
       user = SingleTenant.get_default_user()
       sources = Sources.list_sources_by_user(user)
 
-      assert length(sources) > 0
-      assert Endpoints.list_endpoints_by(user_id: user.id) |> length() > 0
+      assert is_list(sources) and sources != []
+      assert Endpoints.list_endpoints_by(user_id: user.id) != []
     end
 
     test "supabase_mode_status/0" do
@@ -263,8 +263,8 @@ defmodule Logflare.SingleTenantTest do
       user = SingleTenant.get_default_user()
       sources = Sources.list_sources_by_user(user)
 
-      assert length(sources) > 0
-      assert Endpoints.list_endpoints_by(user_id: user.id) |> length() > 0
+      assert is_list(sources) and sources != []
+      assert Endpoints.list_endpoints_by(user_id: user.id) != []
     end
 
     test "supabase_mode_status/0" do

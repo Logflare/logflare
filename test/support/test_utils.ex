@@ -186,7 +186,7 @@ defmodule Logflare.TestUtils do
         schema ->
           schema
 
-        length(results) > 0 ->
+        results != [] ->
           SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema())
 
         true ->
