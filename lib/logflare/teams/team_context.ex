@@ -7,6 +7,9 @@ defmodule Logflare.Teams.TeamContext do
   If `team_id_param` is nil or empty, the user's home team is used.
   """
 
+  import Ecto.Query
+
+  alias Logflare.Sources
   alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.Teams
@@ -113,6 +116,16 @@ defmodule Logflare.Teams.TeamContext do
   def build(assigns) do
     %__MODULE__{user: assigns.user, team: assigns.team, team_user: assigns[:team_user]}
   end
+
+  @spec resource_team_id_query(module(), map(), User.t() | TeamUser.t()) :: Ecto.Query.t() | nil
+  def resource_team_id_query(LogflareWeb.Source.SearchLV, %{"source_id" => source_id}, user) do
+    Sources.Source
+    |> Teams.filter_by_user_access(user)
+    |> where([source], source.id == ^source_id)
+    |> select([resource_team: team], team.id)
+  end
+
+  def resource_team_id_query(_view, _params, _user), do: nil
 
   def home_team?(team, %__MODULE__{team_user: team_user}) when is_struct(team_user),
     do: team_owner?(team, team_user.email)

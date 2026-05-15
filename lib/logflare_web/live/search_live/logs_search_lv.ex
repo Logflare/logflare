@@ -2,6 +2,7 @@ defmodule LogflareWeb.Source.SearchLV do
   @moduledoc """
   Handles all user interactions with the source logs search.
   """
+
   use LogflareWeb, :live_view
 
   import Logflare.Lql.Rules
@@ -22,7 +23,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.TeamUsers
   alias Logflare.User
   alias Logflare.Users
-  alias LogflareWeb.AuthLive
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchLive.FormComponents
@@ -37,6 +37,7 @@ defmodule LogflareWeb.Source.SearchLV do
   @user_idle_interval :timer.minutes(2)
 
   on_mount LogflareWeb.AuthLive
+  on_mount {LogflareWeb.AuthLive, :ensure_team_param}
 
   def mount(%{"source_id" => source_id} = params, _session, socket) do
     %{assigns: %{user: user, team_user: team_user}} = socket
@@ -58,11 +59,11 @@ defmodule LogflareWeb.Source.SearchLV do
          |> redirect(to: ~p"/dashboard" |> Utils.with_team_param(socket.assigns[:team]))}
 
       source ->
-        {:ok, mount_with_source(socket, source, params, effective_user)}
+        {:ok, mount_with_source(socket, source, params)}
     end
   end
 
-  defp mount_with_source(socket, source, %{"t" => _team_id} = params, _effective_user) do
+  defp mount_with_source(socket, source, params) do
     %{assigns: %{user: user, team_user: team_user}} = socket
 
     tailing? =
@@ -106,13 +107,6 @@ defmodule LogflareWeb.Source.SearchLV do
     |> maybe_assign_user_timezone(team_user, user)
   end
 
-  defp mount_with_source(socket, source, params, effective_user) do
-    socket = AuthLive.assign_context_by_resource(socket, source, effective_user.email)
-    params = Map.put(params, "t", socket.assigns.team.id)
-
-    mount_with_source(socket, source, params, effective_user)
-  end
-
   defp maybe_assign_user_timezone(socket, team_user, user) do
     if connected?(socket) do
       user_tz = Map.get(get_connect_params(socket), "user_timezone")
@@ -150,6 +144,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     path =
       Routes.live_path(socket, __MODULE__, source.id, params)
+      |> Utils.with_team_param(socket.assigns[:team])
 
     {:noreply, push_patch(socket, to: path, replace: true)}
   end
@@ -834,6 +829,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     path =
       Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params)
+      |> Utils.with_team_param(socket.assigns[:team])
 
     push_patch(socket, to: path, replace: false)
   end
@@ -927,6 +923,7 @@ defmodule LogflareWeb.Source.SearchLV do
         querystring: suggested_querystring,
         tailing?: socket.assigns.tailing?
       )
+      |> Utils.with_team_param(socket.assigns[:team])
 
     replace = link(replace, to: path)
 
@@ -964,6 +961,7 @@ defmodule LogflareWeb.Source.SearchLV do
         chart_loading: true,
         querystring: socket.assigns.querystring
       )
+      |> Utils.with_team_param(socket.assigns[:team])
 
     keys =
       socket.assigns.source.suggested_keys
