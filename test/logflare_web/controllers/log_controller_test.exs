@@ -253,6 +253,37 @@ defmodule LogflareWeb.LogControllerTest do
       refute log =~ "Syslog message parsing error"
     end
 
+    test "invalid api key on /logs/cloudflare 401s before parsing the body", %{conn: conn} do
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/x-ndjson")
+            |> put_req_header("x-api-key", "this-key-is-not-valid")
+            |> post(~p"/logs/cloudflare", @malformed_ndjson)
+
+          assert json_response(conn, 401)
+        end)
+
+      refute log =~ @attacker_marker
+      refute log =~ "NDJSON parser error"
+    end
+
+    test "invalid api key on /v1/logs 401s before parsing the body", %{conn: conn} do
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/x-protobuf")
+            |> put_req_header("x-api-key", "this-key-is-not-valid")
+            |> post(~p"/v1/logs", "garbage protobuf #{@attacker_marker}")
+
+          assert json_response(conn, 401)
+        end)
+
+      refute log =~ @attacker_marker
+    end
+
     test "authenticated /logs/logplex with malformed body does not log raw content", %{conn: conn} do
       user = insert(:user)
       source = insert(:source, user: user)
