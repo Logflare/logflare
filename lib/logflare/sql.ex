@@ -39,6 +39,12 @@ defmodule Logflare.Sql do
     pg_column_size
   )
 
+  # sqlparser emits `current_role` as a bare `Identifier`, not a `Function`,
+  # so it bypasses @pg_other_restricted_functions. Block at the identifier level.
+  @pg_bareword_restricted_identifiers ~w(
+    current_role
+  )
+
   @pg_other_restricted_functions ~w(
     current_catalog
     current_database
@@ -697,6 +703,19 @@ defmodule Logflare.Sql do
   end
 
   defp has_restricted_functions(
+         {"Identifier", %{"value" => value}},
+         :ok,
+         %{dialect: "postgres"}
+       )
+       when is_binary(value) do
+    if String.downcase(value) in @pg_bareword_restricted_identifiers do
+      {:error, "Restricted function #{String.downcase(value)}"}
+    else
+      :ok
+    end
+  end
+
+  defp has_restricted_functions(
          {"Table", %{"args" => args, "name" => [%{"value" => _} | _] = names}},
          :ok,
          %{dialect: dialect} = data
@@ -806,6 +825,11 @@ defmodule Logflare.Sql do
       true -> {:error, "restricted wildcard (*) in a result column"}
       false -> :ok
     end
+  end
+
+  defp has_wildcard_in_select({"Table", %{"table_name" => name}}, _acc)
+       when is_binary(name) do
+    {:error, "restricted wildcard (*) in a result column"}
   end
 
   defp has_wildcard_in_select(kv, acc) when is_list(kv) or is_map(kv) do

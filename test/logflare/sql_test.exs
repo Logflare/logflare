@@ -1059,6 +1059,23 @@ defmodule Logflare.SqlTest do
       assert msg =~ "can't find source"
     end
 
+    test "rejects UNION TABLE set expression targeting system table", %{user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT 1 UNION TABLE pg_shadow", user)
+
+      assert msg =~ "wildcard"
+    end
+
+    test "rejects UNION TABLE set expression targeting an allowed source", %{
+      source: %{name: name},
+      user: user
+    } do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT 1 UNION TABLE #{name}", user)
+
+      assert msg =~ "wildcard"
+    end
+
     for fn_call <- [
           "pg_promote()",
           "pg_advisory_lock(1)",
