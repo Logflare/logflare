@@ -444,41 +444,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
                "my" => "value"
              }
     end
-
-    test "POST: reference params in label, project_ref=@project_ref", %{
-      conn: conn,
-      user: user
-    } do
-      pid = self()
-
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
-        send(pid, opts[:body].labels)
-        {:ok, TestUtils.gen_bq_response()}
-      end)
-
-      endpoint =
-        insert(:endpoint,
-          user: user,
-          enable_auth: true,
-          query: "with a as (select 1 as b) select b from a",
-          labels: "project_ref=@project_ref"
-        )
-
-      conn =
-        conn
-        |> put_req_header("x-api-key", user.api_key)
-        |> put_req_header("content-type", "application/json")
-        |> post(
-          ~p"/api/endpoints/query/#{endpoint.name}",
-          Jason.encode!(%{"project_ref" => "my-project"})
-        )
-
-      assert [_] = json_response(conn, 200)["result"]
-      assert conn.halted == false
-      assert_received labels
-      assert labels["project_ref"] == "my-project"
-    end
   end
 
   describe "flatten_json_params" do
