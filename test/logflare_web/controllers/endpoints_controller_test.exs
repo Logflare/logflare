@@ -448,7 +448,11 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
   describe "flatten_json_params" do
     test "flattens _json array body into top-level params" do
-      params = %{"_json" => [%{"project_ref" => "my-project", "sql" => "select 1"}], "token_or_name" => "abc"}
+      params = %{
+        "_json" => [%{"project_ref" => "my-project", "sql" => "select 1"}],
+        "token_or_name" => "abc"
+      }
+
       result = LogflareWeb.EndpointsController.flatten_json_params(params)
       assert result["project_ref"] == "my-project"
       assert result["sql"] == "select 1"

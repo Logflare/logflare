@@ -395,7 +395,9 @@ defmodule Logflare.Backends.UserMonitoringTest do
           labels: "project_ref=@project_ref"
         )
 
-      parsed_labels = Endpoints.parse_labels(endpoint.labels, "", %{"project_ref" => "my-project"})
+      parsed_labels =
+        Endpoints.parse_labels(endpoint.labels, "", %{"project_ref" => "my-project"})
+
       endpoint_with_labels = %{endpoint | parsed_labels: parsed_labels}
 
       assert {:ok, _} = Endpoints.run_query(endpoint_with_labels)
