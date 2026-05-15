@@ -165,6 +165,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
     test "other users metrics" do
       pid = self()
+      test_ref = make_ref()
 
       user =
         insert(:user, system_monitoring: true)
@@ -196,20 +197,38 @@ defmodule Logflare.Backends.UserMonitoringTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      :timer.sleep(500)
+      # Sync barrier: notify when pipeline #1 has emitted ingest telemetry for
+      # other_source. This is what feeds the OtelMetricExporter, and waiting on
+      # it eliminates dependence on guessed sleeps for SourceSup startup and
+      # the first Broadway batch_timeout.
+      other_source_id = other_source.id
+
+      :telemetry.attach(
+        {__MODULE__, test_ref},
+        [:logflare, :backends, :ingest],
+        fn _event, _measurements, metadata, _ ->
+          if metadata["source_id"] == other_source_id,
+            do: send(pid, {test_ref, :ingest_emitted})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach({__MODULE__, test_ref}) end)
 
       assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
 
       assert {:ok, _} =
                Backends.ingest_logs([%{"metadata" => %{"value" => "different"}}], other_source)
 
-      :timer.sleep(1500)
+      # Pipeline #1 has flushed and emitted telemetry. Remaining latency before
+      # the stub fires is one OtelMetricExporter tick (≤100ms in :test) plus
+      # pipeline #2's batch_timeout (~1.5s).
+      assert_receive {^test_ref, :ingest_emitted}, 10_000
 
       source_id = source.id
-      other_source_id = other_source.id
       metrics_source_id = metrics_source.id
       other_metrics_source_id = other_metrics_source.id
-      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 5_000
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 10_000
 
       rows = for row <- rows, do: row.json
 
@@ -264,9 +283,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       assert {:ok, _} = Backends.ingest_logs([%{"message" => "test webhook egress"}], source)
 
-      :timer.sleep(2500)
-
-      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 5_000
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 15_000
 
       rows = for row <- rows, do: row.json
 

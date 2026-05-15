@@ -18,14 +18,14 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     set_source_for_public(public_token, conn, opts)
   end
 
-  def call(%{assigns: %{user: %User{admin: true}}, params: params} = conn, _opts) do
+  def call(%{assigns: %{user: %User{admin: true}}, path_params: params} = conn, _opts) do
     id = params["source_id"] || params["id"]
     source = Sources.get_by_and_preload(id: id)
 
     assign(conn, :source, source)
   end
 
-  def call(%{assigns: assigns, params: params} = conn, _opts) do
+  def call(%{assigns: assigns, path_params: params} = conn, _opts) do
     id = params["source_id"] || params["id"]
     current_email = get_session(conn, :current_email)
     effective_user = assigns[:team_user] || assigns[:user]

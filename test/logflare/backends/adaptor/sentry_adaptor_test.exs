@@ -32,6 +32,53 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
     end
   end
 
+  describe "test_connection/1" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :sentry,
+          sources: [source],
+          config: %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
+        )
+
+      [backend: backend, source: source]
+    end
+
+    test "succeeds on 200 response", ctx do
+      mock_adapter(fn env ->
+        assert env.method == :post
+        assert Tesla.build_url(env) == "https://o123456.ingest.sentry.io/api/123456/envelope/"
+        assert Tesla.get_header(env, "content-type") == "application/x-sentry-envelope"
+
+        {:ok, %Tesla.Env{status: 200, body: ~s({"id":"abc123"})}}
+      end)
+
+      assert :ok = @subject.test_connection(ctx.backend)
+    end
+
+    test "returns error on failure", ctx do
+      error_responses = [
+        {:ok,
+         %Tesla.Env{status: 401, body: %{"detail" => "invalid auth"}}
+         |> Tesla.put_header("content-type", "application/json")},
+        {:ok,
+         %Tesla.Env{status: 403, body: %{"detail" => "project not found"}}
+         |> Tesla.put_header("content-type", "application/json")},
+        {:error, :nxdomain}
+      ]
+
+      for response <- error_responses do
+        mock_adapter(fn _env -> response end)
+
+        assert {:error, reason} = @subject.test_connection(ctx.backend)
+        assert is_binary(reason)
+      end
+    end
+  end
+
   describe "logs ingestion" do
     setup do
       user = insert(:user)

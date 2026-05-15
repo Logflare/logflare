@@ -20,7 +20,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     setup {TestUtils, :attach_wait_for_render}
 
     test "renders dashboard", %{conn: conn, source: source} do
-      {:ok, view, html} = live(conn, "/dashboard")
+      {:ok, view, html} = live_with_redirect(conn, ~p"/dashboard")
 
       assert view |> has_element?("h5", "~/logs")
       assert html =~ source.name
@@ -30,7 +30,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       description = "Production API logs"
       source = insert(:source, user: user, description: description)
 
-      {:ok, view, _html} = live(conn, "/dashboard")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
 
       assert view
              |> element("#source-#{source.token}")
@@ -44,7 +44,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       description = String.trim(String.duplicate("Long source description ", 20))
       source = insert(:source, user: user, description: description)
 
-      {:ok, view, _html} = live(conn, "/dashboard")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
 
       rendered =
         view
@@ -60,7 +60,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     end
 
     test "sources have a saved searches modal", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, "/dashboard")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
 
       refute view |> has_element?("#saved-searches-modal")
 
@@ -89,7 +89,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     test "renders source in dashboard", %{conn: conn, user: user, team: team} do
       source = insert(:source, user: user)
 
-      {:ok, _view, html} = live(conn, "/dashboard")
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/dashboard")
 
       assert html =~ source.name
       assert html =~ ~r/sources\/#{source.id}[^"<]*t=#{team.id}/
@@ -98,7 +98,7 @@ defmodule LogflareWeb.DashboardLiveTest do
 
   describe "favoriting a source" do
     test "favorite a source", %{conn: conn, source: source} do
-      {:ok, view, _} = live(conn, "/dashboard")
+      {:ok, view, _} = live_with_redirect(conn, ~p"/dashboard")
 
       refute source.favorite
       assert view |> element(".favorite .far") |> has_element?()
@@ -115,7 +115,7 @@ defmodule LogflareWeb.DashboardLiveTest do
 
     test "unfavorite a source", %{conn: conn, source: source} do
       {:ok, favorited_source} = source |> Logflare.Sources.update_source(%{favorite: true})
-      {:ok, view, _html} = live(conn, "/dashboard")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
 
       assert favorited_source.favorite
       assert view |> element(".favorite .fas") |> has_element?()
@@ -147,7 +147,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     end
 
     test "team members list", %{conn: conn, user: user, other_member: other_member, team: team} do
-      {:ok, view, _html} = live(conn, "/dashboard")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
 
       assert view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
       assert view |> has_element?("#members li", "#{other_member.name}")
@@ -157,6 +157,12 @@ defmodule LogflareWeb.DashboardLiveTest do
                "a[href='/account/edit?t=#{team.id}#team-members']",
                "Invite more team members"
              )
+    end
+
+    test "never shows 'Create your home team' button to owners", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
+
+      refute view |> has_element?("#members button[phx-click='create_home_team']")
     end
   end
 
@@ -184,10 +190,10 @@ defmodule LogflareWeb.DashboardLiveTest do
 
     test "team members list", %{
       conn: conn,
-      other_team: other_team,
-      another_member: another_member
+      another_member: another_member,
+      other_team: other_team
     } do
-      {:ok, view, _html} = live(conn, "/dashboard")
+      {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
 
       assert view |> has_element?("#members li", "#{other_team.user.name}")
       assert view |> has_element?("#members li", "#{another_member.name}")
@@ -195,17 +201,77 @@ defmodule LogflareWeb.DashboardLiveTest do
       refute view
              |> has_element?("a[href='/account/edit#team-members']", "Invite more team members")
     end
+
+    test "shows 'Create your home team' button when team_user has no home team", %{
+      conn: conn,
+      other_team: other_team
+    } do
+      {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
+
+      assert view
+             |> has_element?(
+               "#members button[phx-click='create_home_team']",
+               "Create your home team"
+             )
+    end
+
+    test "hides 'Create your home team' button when team_user already has a home team", %{
+      conn: conn,
+      other_team: other_team,
+      team_user: team_user
+    } do
+      home_owner = insert(:user, email: team_user.email)
+      insert(:team, user: home_owner, name: "Home Team")
+
+      {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
+
+      refute view |> has_element?("#members button[phx-click='create_home_team']")
+    end
+
+    test "clicking 'Create your home team' creates a User + Team and redirects to /dashboard",
+         %{conn: conn, other_team: other_team, team_user: team_user} do
+      {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
+
+      assert {:error, {:redirect, %{to: "/dashboard"}}} =
+               view
+               |> element("button[phx-click='create_home_team']")
+               |> render_click()
+
+      created = Logflare.Users.get_by(email: String.downcase(team_user.email))
+      assert created
+      assert created.provider_uid == team_user.provider_uid
+      created = Repo.preload(created, :team)
+      assert created.team
+    end
+
+    test "shows error flash when create_user/1 fails", %{conn: conn, other_team: other_team} do
+      Mimic.expect(Logflare.Users, :create_user, fn _team_user ->
+        {:error, %Ecto.Changeset{}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
+
+      html =
+        view
+        |> element("button[phx-click='create_home_team']")
+        |> render_click()
+
+      assert html =~ "Could not create home team"
+    end
   end
 
   describe "displaying source metrics" do
-    test "starts UserMetricsPoller when session has string user_id", %{user: user, conn: conn} do
+    test "starts UserMetricsPoller when session has string user_id", %{
+      conn: conn,
+      user: user
+    } do
       # Simulate what happens when session data is deserialized with string user_id
       conn =
         conn
         |> Plug.Test.init_test_session(%{user_id: "#{user.id}"})
         |> Plug.Conn.assign(:user, user)
 
-      {:ok, _view, _html} = live(conn, "/dashboard")
+      {:ok, _view, _html} = live_with_redirect(conn, ~p"/dashboard")
 
       # The UserMetricsPoller should be registered and running after mount
       TestUtils.retry_assert(fn ->
@@ -218,7 +284,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     end
 
     test "renders source metrics ", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, "/dashboard")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
 
       assert view |> has_element?("[id^=source-#{source.token}-inserts]", "0")
       assert view |> has_element?("span[id=#{source.token}-rate]", "0/s")
@@ -259,7 +325,7 @@ defmodule LogflareWeb.DashboardLiveTest do
           }
       end)
 
-      {:ok, view, _html} = live(conn, "/dashboard")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
 
       TestUtils.retry_assert(fn ->
         assert {poller_pid, _} = :syn.lookup(:ui, {UserMetricsPoller, user.id})
@@ -315,7 +381,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       source: source,
       team: team
     } do
-      {:ok, _view, html} = live(conn, ~p"/dashboard?t=#{team.id}")
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/dashboard")
 
       for path <- ["sources/#{source.id}", "sources/#{source.id}/edit", "billing/edit", "account"] do
         assert html =~ ~r/t=#{team.id}/

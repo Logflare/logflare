@@ -21,6 +21,11 @@ defmodule LogflareWeb.Sources.RulesLive do
     %{assigns: %{user: user}} = socket
     source = Sources.get_by_and_preload(id: source_id) |> Sources.preload_rules()
 
+    if source == nil or
+         (not user.admin and Sources.get_by_user_access(user, source.id) == nil) do
+      raise LogflareWeb.ErrorsLive.InvalidResourceError
+    end
+
     user =
       if user.admin do
         Users.get_by_and_preload(id: source.user_id)
@@ -93,20 +98,18 @@ defmodule LogflareWeb.Sources.RulesLive do
 
   def handle_event("delete_rule", %{"rule_id" => rule_id}, socket) do
     source = socket.assigns.source
+    rule = rule_id |> String.to_integer() |> Rules.get_rule()
 
-    {:ok, _rule} =
-      rule_id
-      |> String.to_integer()
-      |> Rules.get_rule()
-      |> Rules.delete_rule()
+    if rule == nil or rule.source_id != source.id do
+      {:noreply, put_flash(socket, :error, "Rule not found on this source.")}
+    else
+      {:ok, _rule} = Rules.delete_rule(rule)
+      source = Sources.get_by_and_preload(token: source.token) |> Sources.preload_rules()
 
-    source = Sources.get_by_and_preload(token: source.token) |> Sources.preload_rules()
-
-    socket =
-      socket
-      |> assign(:source, source)
-      |> assign(:rules, source.rules)
-
-    {:noreply, socket}
+      {:noreply,
+       socket
+       |> assign(:source, source)
+       |> assign(:rules, source.rules)}
+    end
   end
 end

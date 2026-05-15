@@ -2,6 +2,7 @@ defmodule LogflareWeb.AdminController do
   use LogflareWeb, :controller
 
   import Ecto.Query, only: [from: 2]
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
   alias Logflare.Admin
   alias Logflare.Repo
@@ -17,6 +18,21 @@ defmodule LogflareWeb.AdminController do
     :updated_at
   ]
   defp env_node_shutdown_code, do: Application.get_env(:logflare, :node_shutdown_code)
+
+  defp valid_shutdown_code?(provided) when is_non_empty_binary(provided) do
+    case env_node_shutdown_code() do
+      configured when is_non_empty_binary(configured) ->
+        Plug.Crypto.secure_compare(
+          :crypto.hash(:sha256, configured),
+          :crypto.hash(:sha256, provided)
+        )
+
+      _ ->
+        false
+    end
+  end
+
+  defp valid_shutdown_code?(_provided), do: false
 
   def dashboard(conn, _params) do
     conn
@@ -56,9 +72,7 @@ defmodule LogflareWeb.AdminController do
     AuthController.check_invite_token_and_signin(conn, auth_params)
   end
 
-  def delete_account(%{assigns: %{user: %User{email: "chase@logflare.app"}}} = conn, %{
-        "id" => user_id
-      }) do
+  def delete_account(conn, %{"id" => user_id}) do
     user = Users.get(user_id)
 
     case Users.delete_user(user) do
@@ -74,14 +88,10 @@ defmodule LogflareWeb.AdminController do
     end
   end
 
-  def delete_account(conn, %{"id" => _user_id}) do
-    conn
-    |> put_flash(:error, "You are not chase@logflare.app!")
-    |> redirect(to: Routes.admin_path(conn, :accounts))
-  end
-
   def shutdown_node(conn, params) do
-    if Map.get(params, "code") == env_node_shutdown_code() do
+    provided = conn |> get_req_header("lf-shutdown-code") |> List.first()
+
+    if valid_shutdown_code?(provided) do
       do_authorized_code_shutdown(conn, params)
     else
       do_unauthorized_code_shutdown(conn, params)
@@ -98,6 +108,7 @@ defmodule LogflareWeb.AdminController do
           Atom.to_string(nn) == node
         end)
 
+      Logger.info("Node shutdown initialized")
       Admin.shutdown(node_name)
 
       conn
@@ -117,6 +128,7 @@ defmodule LogflareWeb.AdminController do
   end
 
   defp do_authorized_code_shutdown(conn, _params) do
+    Logger.info("Node shutdown initialized")
     Admin.shutdown()
 
     conn

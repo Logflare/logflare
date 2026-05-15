@@ -38,6 +38,66 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       assert redirected_to(conn, 302) =~ "/alerts"
     end
+
+    test "attacker cannot delete another user's alert", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user)
+      alert = insert(:alert, user: victim)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live(~p"/alerts")
+
+      render_hook(view, "delete", %{"alert_id" => to_string(alert.id)})
+
+      assert Logflare.Alerting.get_alert_query!(alert.id)
+    end
+
+    test "attacker cannot attach another user's backend to their own alert", %{conn: conn} do
+      attacker = insert(:user)
+      victim = insert(:user)
+      attacker_alert = insert(:alert, user: attacker)
+      victim_backend = insert(:backend, user: victim, type: :incidentio)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live(~p"/alerts/#{attacker_alert.id}")
+
+      render_hook(view, "add-backend", %{
+        "backend" => %{"backend_id" => to_string(victim_backend.id)}
+      })
+
+      alert =
+        Logflare.Alerting.get_alert_query!(attacker_alert.id)
+        |> Logflare.Alerting.preload_alert_query()
+
+      refute Enum.any?(alert.backends, &(&1.id == victim_backend.id))
+      assert alert.backends == []
+    end
+
+    test "attacker cannot detach another user's backend by id", %{conn: conn} do
+      attacker = insert(:user)
+      victim = insert(:user)
+      attacker_alert = insert(:alert, user: attacker)
+      victim_backend = insert(:backend, user: victim, type: :incidentio)
+      victim_alert = insert(:alert, user: victim, backends: [victim_backend])
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live(~p"/alerts/#{attacker_alert.id}")
+
+      render_hook(view, "remove-backend", %{"backend_id" => to_string(victim_backend.id)})
+
+      victim_alert =
+        Logflare.Alerting.get_alert_query!(victim_alert.id)
+        |> Logflare.Alerting.preload_alert_query()
+
+      assert Enum.any?(victim_alert.backends, &(&1.id == victim_backend.id))
+      assert length(victim_alert.backends) == 1
+    end
   end
 
   describe "Index" do

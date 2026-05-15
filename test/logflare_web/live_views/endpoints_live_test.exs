@@ -3,6 +3,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
   use LogflareWeb.ConnCase
 
+  import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
+  import Logflare.DataCase, only: [setup_clickhouse_test: 1]
+
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
@@ -11,13 +14,30 @@ defmodule LogflareWeb.EndpointsLiveTest do
     {:ok, user: user, team: team, conn: conn}
   end
 
+  describe "unauthorized" do
+    test "attacker cannot delete another user's endpoint", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user, endpoints_beta: true)
+      endpoint = insert(:endpoint, user: victim)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live_with_redirect(~p"/endpoints")
+
+      render_hook(view, "delete-endpoint", %{"endpoint_id" => to_string(endpoint.id)})
+
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id)
+    end
+  end
+
   describe "with existing endpoint" do
     setup %{user: user} do
       {:ok, endpoint: insert(:endpoint, user: user)}
     end
 
     test "list endpoints", %{conn: conn, endpoint: endpoint, team: team} do
-      {:ok, view, _html} = live(conn, "/endpoints")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints")
 
       # intro message and link to docs
       assert has_element?(view, "p", "are GET JSON API endpoints")
@@ -40,7 +60,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "show endpoint", %{conn: conn, endpoint: endpoint, team: team} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
       assert has_element?(view, "code", endpoint.query)
       assert has_element?(view, "p", endpoint.description)
@@ -51,7 +71,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "show endpoint -> edit endpoint", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+      {:ok, view, html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
       assert html =~ "/edit"
       assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
 
@@ -70,7 +90,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "edit endpoint with redact_pii checkbox", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
 
       # Check that the redact_pii checkbox is present
       assert has_element?(view, "input[type=checkbox][name=\"endpoint[redact_pii]\"]")
@@ -87,21 +107,23 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert render(view) =~ ~r/redact PII:.*enabled/
     end
 
-    test "delete endpoint from edit", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/edit")
-      assert view |> element("button", "Delete") |> render_click() =~ "has been deleted"
+    test "delete endpoint from edit", %{conn: conn, endpoint: endpoint, team: team} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/endpoints/#{endpoint.id}/edit")
+
+      assert {:error, {:live_redirect, %{to: "/endpoints?t=" <> _}}} =
+               view |> element("button", "Delete") |> render_click()
 
       # link back to list, removed from endpoints list
-      assert_patched(view, "/endpoints")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/endpoints?t=#{team.id}")
       refute has_element?(view, endpoint.name)
 
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "*", "Endpoint Not Found")
     end
   end
 
   test "index -> new endpoint", %{conn: conn, team: team} do
-    {:ok, view, _html} = live(conn, "/endpoints")
+    {:ok, view, _html} = live_with_redirect(conn, "/endpoints")
 
     assert view
            |> element("a", "New endpoint")
@@ -114,13 +136,13 @@ defmodule LogflareWeb.EndpointsLiveTest do
     endpoint = insert(:endpoint, user: user)
     _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
 
-    {:ok, view, _html} = live(conn, "/endpoints")
+    {:ok, view, _html} = live_with_redirect(conn, "/endpoints")
 
     assert render(view) =~ ~r/caches:.+1/
   end
 
   test "new endpoint", %{conn: conn, team: team} do
-    {:ok, view, _html} = live(conn, "/endpoints/new")
+    {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
     assert view |> has_element?("form#endpoint")
 
     new_query = "select current_timestamp() as my_time"
@@ -144,7 +166,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   test "new endpoint with redact_pii enabled", %{conn: conn} do
-    {:ok, view, _html} = live(conn, "/endpoints/new")
+    {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
     assert view |> has_element?("form#endpoint")
 
     new_query = "select 'test' as test"
@@ -175,7 +197,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       invalid_query: invalid_query,
       team: team
     } do
-      {:ok, view, _html} = live(conn, "/endpoints/new")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
 
       # triggering event handler directly since Monaco does this via JavaScript
       assert view
@@ -213,7 +235,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     test "edit endpoint", %{conn: conn, user: user, team: team} do
       endpoint = insert(:endpoint, user: user, query: "select @other as initial")
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
 
       # saves the change
       assert view
@@ -238,7 +260,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       user: user
     } do
       endpoint = insert(:endpoint, user: user, query: "select @other as initial")
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
 
       view
       |> change_editor_query("select @test as changed")
@@ -272,13 +294,13 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
   test "show endpoint, auth disabled", %{conn: conn, user: user} do
     endpoint = insert(:endpoint, user: user, query: "select 'id' as id", enable_auth: false)
-    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+    {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
     assert render(view) =~ "Authentication not enabled"
   end
 
   test "show endpoint, auth enabled", %{conn: conn, user: user} do
     endpoint = insert(:endpoint, user: user, query: "select 'id' as id", enable_auth: true)
-    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+    {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
     refute render(view) =~ "Authentication not enabled"
   end
 
@@ -302,7 +324,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "new endpoint", %{conn: conn, team: team} do
-      {:ok, view, _html} = live(conn, "/endpoints/new")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
 
       refute render(view) =~ "results-123"
 
@@ -346,7 +368,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     test "edit endpoint", %{conn: conn, user: user} do
       endpoint = insert(:endpoint, user: user)
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
       refute render(view) =~ "results-123"
 
       view
@@ -373,7 +395,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
           labels: "session_id,test=@test_param"
         )
 
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       refute render(view) =~ "results-123"
       # sow declared params
       html = render(view)
@@ -443,7 +465,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       conn: conn,
       backend: _backend
     } do
-      {:ok, view, _html} = live(conn, "/endpoints/new")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
 
       html = render(view)
       assert html =~ "Backend (optional)"
@@ -453,7 +475,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     @tag env: :prod, feature_overrides: %{"endpointBackendSelection" => "false"}
     test "hides backend selection when flag is disabled", %{conn: conn, backend: _backend} do
-      {:ok, view, _html} = live(conn, "/endpoints/new")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
 
       html = render(view)
       refute html =~ "Backend (optional)"
@@ -466,7 +488,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     } do
       Logflare.Repo.delete(backend)
 
-      {:ok, view, _html} = live(conn, "/endpoints/new")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
 
       html = render(view)
       refute html =~ "Backend (optional)"
@@ -476,7 +498,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       conn: conn,
       backend: backend
     } do
-      {:ok, view, _html} = live(conn, "/endpoints/new")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
 
       view
       |> element("form#endpoint")
@@ -501,7 +523,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
           redact_pii: true
         )
 
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       assert render(view) =~ ~r/redact PII:.*enabled/
       visible_code = view |> element("div.tw-w-full.tw-bg-zinc-800 code") |> render()
@@ -522,7 +544,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
           redact_pii: true
         )
 
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
@@ -540,7 +562,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
   test "saving endpoint clears test results", %{conn: conn, user: user} do
     endpoint = insert(:endpoint, user: user, query: "select 'test' as message")
-    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+    {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
 
     # Simulate having test results by setting up mock and running query
     GoogleApi.BigQuery.V2.Api.Jobs
@@ -564,7 +586,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
   test "navigating from show to edit clears test results", %{conn: conn, user: user} do
     endpoint = insert(:endpoint, user: user)
-    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+    {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
     GoogleApi.BigQuery.V2.Api.Jobs
     |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
@@ -599,7 +621,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "shows sandbox query form when sandboxable is true", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       assert has_element?(view, "h4", "Test Sandbox Query")
       assert has_element?(view, "input[type=radio][value=sql]")
@@ -611,14 +633,14 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     test "hides sandbox query form when sandboxable is false", %{conn: conn, user: user} do
       endpoint = insert(:endpoint, user: user, sandboxable: false)
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       refute has_element?(view, "h4", "Test Sandbox Query")
       refute has_element?(view, "textarea[name='sandbox_form[sandbox_query]']")
     end
 
     test "executes SQL sandbox query successfully", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
@@ -643,7 +665,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "executes LQL sandbox query successfully", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
@@ -670,7 +692,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       conn: conn,
       endpoint: endpoint
     } do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       view
       |> element("form", "Test Sandbox Query")
@@ -690,7 +712,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "shows transformed query when checkbox is enabled", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
@@ -726,7 +748,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
           """
         )
 
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
@@ -749,7 +771,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "sandbox query displays query cost for BigQuery", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
@@ -774,7 +796,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "sandbox query handles LQL parsing errors gracefully", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       # Submit invalid LQL that will fail parsing
       assert view
@@ -795,7 +817,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "sandbox query section preserves query input on error", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       view
       |> element("form", "Test Sandbox Query")
@@ -813,7 +835,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "sandbox query mode toggle shows SQL and LQL options", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       html = render(view)
       assert html =~ "Query Mode"
@@ -827,7 +849,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       conn: conn,
       endpoint: endpoint
     } do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       html = render(view)
       assert html =~ "Test how consumers can query your endpoint"
@@ -836,10 +858,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert html =~ "restricted to the CTE tables"
     end
 
-    test "sandbox query errors do not expose Ecto query internals", %{
-      conn: conn,
-      user: user
-    } do
+    test "sandbox query errors do not expose Ecto query internals", %{conn: conn, user: user} do
       endpoint =
         insert(:endpoint,
           user: user,
@@ -852,7 +871,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
           """
         )
 
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       view
       |> element("form", "Test Sandbox Query")
@@ -876,6 +895,255 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
+  describe "LQL sandbox query with ClickHouse backend" do
+    @describetag :integration
+
+    setup %{user: user} do
+      edge_source = insert(:source, user: user, name: "edge_function_logs")
+      other_source = insert(:source, user: user, name: "postgres_logs")
+
+      {edge_source, backend} = setup_clickhouse_test(source: edge_source, user: user)
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+      log_events = [
+        build_mapped_log_event(
+          source: edge_source,
+          message: "edge error event",
+          body: %{
+            "metadata" => %{
+              "level" => "error",
+              "response_time" => "500",
+              "http.status_code" => "500",
+              "is_error" => "true",
+              "ratio" => "1.5"
+            }
+          }
+        ),
+        build_mapped_log_event(
+          source: edge_source,
+          message: "edge info event",
+          body: %{
+            "metadata" => %{
+              "level" => "info",
+              "response_time" => "150",
+              "http.status_code" => "200",
+              "is_error" => "false",
+              "ratio" => "0.75"
+            }
+          }
+        ),
+        build_mapped_log_event(
+          source: edge_source,
+          message: "edge debug event",
+          body: %{
+            "metadata" => %{
+              "level" => "debug",
+              "response_time" => "50",
+              "http.status_code" => "200",
+              "is_error" => "false",
+              "ratio" => "0.1"
+            }
+          }
+        ),
+        build_mapped_log_event(
+          source: other_source,
+          message: "postgres error event",
+          body: %{
+            "metadata" => %{
+              "level" => "error",
+              "response_time" => "400",
+              "http.status_code" => "500",
+              "is_error" => "true",
+              "ratio" => "0.5"
+            }
+          }
+        ),
+        build_mapped_log_event(
+          source: other_source,
+          message: "postgres info event",
+          body: %{
+            "metadata" => %{
+              "level" => "info",
+              "response_time" => "100",
+              "http.status_code" => "200",
+              "is_error" => "false",
+              "ratio" => "0.25"
+            }
+          }
+        )
+      ]
+
+      :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
+      Process.sleep(200)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          sandboxable: true,
+          query: """
+          WITH src AS (
+            SELECT timestamp, event_message, severity_text, source_name, log_attributes
+            FROM #{table_name}
+          )
+          SELECT timestamp, event_message, severity_text, source_name, log_attributes FROM src
+          """
+        )
+
+      # Guard against silent misrouting: the endpoint and backend must be wired
+      # to :ch_sql / :clickhouse, otherwise the LiveView could dispatch the
+      # sandbox query to BigQuery/Postgres without us noticing.
+      assert endpoint.language == :ch_sql
+      assert endpoint.backend_id == backend.id
+      assert backend.type == :clickhouse
+      assert String.starts_with?(table_name, "otel_logs_")
+
+      [endpoint: endpoint, backend: backend, table_name: table_name]
+    end
+
+    test "severity_text LQL filter runs against live ClickHouse without syntax error", %{
+      conn: conn,
+      endpoint: endpoint,
+      table_name: table_name
+    } do
+      {:ok, view, initial_html} =
+        live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+
+      # Confirm the LiveView is serving the ClickHouse-language endpoint, not
+      # falling back to BigQuery SQL somewhere in the render path.
+      assert initial_html =~ "ClickHouse SQL"
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "lql",
+          sandbox_query: "severity_text:ERROR",
+          params: %{},
+          show_transformed: "true"
+        }
+      })
+
+      html = render(view)
+
+      refute html =~ "Error occurred when running sandbox query",
+             "Expected severity_text:ERROR LQL filter to succeed against live ClickHouse"
+
+      assert html =~ "Ran sandbox query successfully"
+      assert has_element?(view, "h5", "Sandbox Query Results")
+
+      assert html =~ table_name
+      assert html =~ ~r/&quot;severity_text&quot;/
+
+      # Fixture inserted 5 events across two sources; exactly 2 have
+      # severity_text=ERROR (edge + postgres). Filter must discriminate.
+      error_matches = Regex.scan(~r/&quot;severity_text&quot;:\s*&quot;ERROR&quot;/, html)
+
+      assert length(error_matches) == 2,
+             "Expected 2 rows for severity_text:ERROR, got #{length(error_matches)}"
+
+      refute html =~ ~r/&quot;severity_text&quot;:\s*&quot;INFO&quot;/,
+             "INFO-level rows leaked through severity_text:ERROR filter"
+
+      refute html =~ ~r/&quot;severity_text&quot;:\s*&quot;DEBUG&quot;/,
+             "DEBUG-level rows leaked through severity_text:ERROR filter"
+    end
+
+    test "source_name LQL filter runs against live ClickHouse without syntax error", %{
+      conn: conn,
+      endpoint: endpoint,
+      table_name: table_name
+    } do
+      {:ok, view, initial_html} =
+        live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+
+      assert initial_html =~ "ClickHouse SQL"
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "lql",
+          sandbox_query: "source_name:edge_function_logs",
+          params: %{},
+          show_transformed: "true"
+        }
+      })
+
+      html = render(view)
+
+      refute html =~ "Error occurred when running sandbox query",
+             "Expected source_name:edge_function_logs LQL filter to succeed against live ClickHouse"
+
+      assert html =~ "Ran sandbox query successfully"
+      assert has_element?(view, "h5", "Sandbox Query Results")
+
+      assert html =~ table_name
+      assert html =~ ~r/&quot;source_name&quot;/
+
+      # Fixture inserted 5 events across two sources; exactly 3 have
+      # source_name=edge_function_logs. Postgres-sourced rows must not leak.
+      edge_matches =
+        Regex.scan(~r/&quot;source_name&quot;:\s*&quot;edge_function_logs&quot;/, html)
+
+      assert length(edge_matches) == 3,
+             "Expected 3 rows for source_name:edge_function_logs, got #{length(edge_matches)}"
+
+      refute html =~ ~r/&quot;source_name&quot;:\s*&quot;postgres_logs&quot;/,
+             "postgres_logs rows leaked through source_name:edge_function_logs filter"
+    end
+
+    test "Map column LQL filters coerce values and run against live ClickHouse", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
+      cases = [
+        {"numeric >", "log_attributes.response_time:>200",
+         ["edge error event", "postgres error event"],
+         ["edge info event", "edge debug event", "postgres info event"]},
+        {"numeric range", "log_attributes.response_time:100..300",
+         ["edge info event", "postgres info event"],
+         ["edge error event", "edge debug event", "postgres error event"]},
+        {"dotted numeric >=", "log_attributes.http.status_code:>=500",
+         ["edge error event", "postgres error event"],
+         ["edge info event", "edge debug event", "postgres info event"]},
+        {"float >", "log_attributes.ratio:>1.0", ["edge error event"],
+         ["edge info event", "edge debug event", "postgres error event", "postgres info event"]},
+        {"float range", "log_attributes.ratio:0.1..0.5",
+         ["edge debug event", "postgres error event", "postgres info event"],
+         ["edge error event", "edge info event"]},
+        {"boolean true", "log_attributes.is_error:true",
+         ["edge error event", "postgres error event"],
+         ["edge info event", "edge debug event", "postgres info event"]},
+        {"boolean false", "log_attributes.is_error:false",
+         ["edge info event", "edge debug event", "postgres info event"],
+         ["edge error event", "postgres error event"]}
+      ]
+
+      for {label, lql, expected, refuted} <- cases do
+        html = submit_sandbox_lql(conn, endpoint, lql)
+
+        refute html =~ "Error occurred when running sandbox query",
+               "[#{label}] expected `#{lql}` to succeed against live ClickHouse"
+
+        assert html =~ "Ran sandbox query successfully"
+
+        for msg <- expected do
+          assert html =~ msg, "[#{label}] missing `#{msg}` for `#{lql}`"
+        end
+
+        for msg <- refuted do
+          refute html =~ msg, "[#{label}] `#{msg}` leaked through `#{lql}`"
+        end
+      end
+    end
+  end
+
   describe "run query with dynamic BigQuery reservation" do
     setup %{user: user} do
       [
@@ -885,7 +1153,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "shows reservation input when enabled", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "input[name='run[reservation]']")
     end
 
@@ -893,12 +1161,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
       endpoint =
         insert(:endpoint, user: user, query: "select 1 as n", enable_dynamic_reservation: false)
 
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       refute has_element?(view, "input[name='run[reservation]']")
     end
 
     test "shows reservation input on edit page", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
       assert has_element?(view, "input[name='run[reservation]']")
     end
 
@@ -915,7 +1183,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
         {:ok, TestUtils.gen_bq_response([%{"n" => "1"}])}
       end)
 
-      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       view
       |> element("form", "Test query")
@@ -945,12 +1213,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/endpoints?t=#{team_user.team_id}")
+        |> live_with_redirect(~p"/endpoints")
 
       assert html =~ endpoint.name
     end
 
-    test "team user can view endpoint without t= param", %{
+    test "team user can view endpoint", %{
       conn: conn,
       user: user,
       team_user: team_user,
@@ -959,12 +1227,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/endpoints/#{endpoint.id}")
+        |> live_with_redirect(~p"/endpoints/#{endpoint.id}")
 
       assert html =~ endpoint.name
     end
 
-    test "endpoint show without t= param assigns team context and preserves it in links", %{
+    test "endpoint show assigns team context and preserves it in links", %{
       conn: conn,
       user: user,
       team_user: team_user,
@@ -973,7 +1241,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/endpoints/#{endpoint.id}")
+        |> live_with_redirect(~p"/endpoints/#{endpoint.id}")
 
       assert html =~ endpoint.name
       assert view |> has_element?(~s|a[href="/access-tokens?t=#{team_user.team.id}"]|)
@@ -986,7 +1254,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       endpoint: endpoint
     } do
       {:ok, _view, html} =
-        conn |> login_user(user, team_user) |> live(~p"/endpoints?t=#{team_user.team_id}")
+        conn |> login_user(user, team_user) |> live_with_redirect(~p"/endpoints")
 
       for path <- ["endpoints/new", "endpoints/#{endpoint.id}"] do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
@@ -1002,11 +1270,46 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/endpoints/#{endpoint}?t=#{team_user.team_id}")
+        |> live_with_redirect(~p"/endpoints/#{endpoint}")
 
       for path <- ["endpoints/#{endpoint.id}/edit", "access-tokens"] do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
     end
+
+    test "updates team param to endpoint team", %{
+      conn: conn,
+      user: user
+    } do
+      home_team = insert(:team)
+      insert(:team_user, team: home_team, email: user.email)
+      other_team = insert(:team)
+      insert(:team_user, team: other_team, email: user.email)
+      endpoint = insert(:endpoint, user: other_team.user)
+
+      assert {:error, {:live_redirect, %{to: path}}} =
+               Phoenix.LiveViewTest.live(conn, ~p"/endpoints/#{endpoint.id}?t=#{home_team.id}")
+
+      assert path == ~p"/endpoints/#{endpoint.id}?t=#{other_team.id}"
+    end
+  end
+
+  @spec submit_sandbox_lql(Plug.Conn.t(), struct(), String.t()) :: String.t()
+  defp submit_sandbox_lql(conn, endpoint, lql) do
+    {:ok, view, initial_html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+    assert initial_html =~ "ClickHouse SQL"
+
+    view
+    |> element("form", "Test Sandbox Query")
+    |> render_submit(%{
+      sandbox_form: %{
+        query_mode: "lql",
+        sandbox_query: "#{lql} s:event_message s:log_attributes",
+        params: %{},
+        show_transformed: "true"
+      }
+    })
+
+    render(view)
   end
 end

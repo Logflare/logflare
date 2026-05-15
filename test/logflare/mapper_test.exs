@@ -131,6 +131,26 @@ defmodule Logflare.MapperTest do
 
       assert result["val"] == "none"
     end
+
+    test "missing path with no explicit default falls back to empty string" do
+      result =
+        compile_and_map(
+          [Field.string("val", path: "$.val")],
+          %{}
+        )
+
+      assert result["val"] == ""
+    end
+
+    test "resolved nil with no explicit default coerces to empty string" do
+      result =
+        compile_and_map(
+          [Field.string("val", path: "$.val")],
+          %{"val" => nil}
+        )
+
+      assert result["val"] == ""
+    end
   end
 
   describe "type coercion: integers" do

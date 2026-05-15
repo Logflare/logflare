@@ -20,21 +20,21 @@ defmodule Logflare.SystemMetrics.Schedulers do
       case x do
         {type, id, util, _pct} ->
           :telemetry.execute(
-            [:logflare, :system, :scheduler, :utilization],
+            [:logflare, :system, :scheduler],
             %{utilization: Kernel.floor(util * 100)},
             %{name: Integer.to_string(id), type: rename_type(type)}
           )
 
         {:total, util, _pct} ->
           :telemetry.execute(
-            [:logflare, :system, :scheduler, :utilization],
+            [:logflare, :system, :scheduler],
             %{utilization: Kernel.floor(util * 100)},
             %{name: "total", type: "total"}
           )
 
         {:weighted, util, _pct} ->
           :telemetry.execute(
-            [:logflare, :system, :scheduler, :utilization],
+            [:logflare, :system, :scheduler],
             %{utilization: Kernel.floor(util * 100)},
             %{name: "weighted", type: "weighted"}
           )

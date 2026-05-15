@@ -33,7 +33,7 @@
     {csrf_meta_tag()}
     <%= if assigns[:user] do %>
       <script>
-        window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, assigns[:user].id) %>";
+        window.userToken = "<%= Logflare.Auth.gen_user_socket_token(assigns[:user].id) %>";
       </script>
     <% end %>
   </head>
@@ -47,6 +47,11 @@
     {@inner_content}
     <script src={Routes.static_path(@conn, "/js/app.js")}>
     </script>
+    <%= if Application.get_env(:logflare, :env) == :dev do %>
+      <script>
+        window.liveSocket.enableLatencySim(750)
+      </script>
+    <% end %>
     <%= if Application.get_env(:logflare, :env) == :prod do %>
       <script>
         window.addEventListener('load', () => {

@@ -10,7 +10,6 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
-  alias Logflare.Repo
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Sources.Source.SlackHookServer
@@ -222,17 +221,12 @@ defmodule LogflareWeb.SourceController do
     |> Enum.dedup()
   end
 
-  def test_alerts(conn, %{"id" => source_id}) do
-    with source = %Source{} <- Sources.get_by_and_preload(id: source_id),
-         {:ok, %Tesla.Env{} = _response} <- WebhookNotificationServer.test_post(source) do
-      conn
-      |> put_flash(:info, "Webhook test successful!")
-      |> redirect(to: Routes.source_path(conn, :edit, source.id))
-    else
-      nil ->
+  def test_alerts(%{assigns: %{source: source}} = conn, %{"id" => path_id}) do
+    case WebhookNotificationServer.test_post(source) do
+      {:ok, %Tesla.Env{}} ->
         conn
-        |> put_flash(:error, "Source not found")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> put_flash(:info, "Webhook test successful!")
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
 
       {:error, %Tesla.Env{} = response} ->
         conn
@@ -240,26 +234,21 @@ defmodule LogflareWeb.SourceController do
           :error,
           "Webhook test failed! Response status code was #{response.status}."
         )
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
 
       {:error, response} ->
         conn
         |> put_flash(:error, "Webhook test failed! Error response: #{response}")
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
     end
   end
 
-  def test_slack_hook(conn, %{"id" => source_id}) do
-    with source = %Source{} <- Sources.get_by_and_preload(id: source_id),
-         {:ok, %Tesla.Env{} = _response} <- SlackHookServer.test_post(source) do
-      conn
-      |> put_flash(:info, "Slack hook test successful!")
-      |> redirect(to: Routes.source_path(conn, :edit, source.id))
-    else
-      nil ->
+  def test_slack_hook(%{assigns: %{source: source}} = conn, %{"id" => path_id}) do
+    case SlackHookServer.test_post(source) do
+      {:ok, %Tesla.Env{}} ->
         conn
-        |> put_flash(:error, "Source not found")
-        |> redirect(to: Routes.source_path(conn, :index))
+        |> put_flash(:info, "Slack hook test successful!")
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
 
       {:error, %Tesla.Env{} = response} ->
         conn
@@ -267,23 +256,28 @@ defmodule LogflareWeb.SourceController do
           :error,
           "Slack hook test failed! Response status code was #{response.status}."
         )
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
+
+      {:error, reason} ->
+        Logger.error("Error testing Slack hook.", error_string: inspect(reason))
+
+        conn
+        |> put_flash(:error, "Slack hook test failed!")
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
     end
   end
 
-  def delete_slack_hook(conn, %{"id" => source_id}) do
-    Repo.get(Source, source_id)
-    |> Sources.delete_slack_hook_url()
-    |> case do
+  def delete_slack_hook(%{assigns: %{source: source}} = conn, %{"id" => path_id}) do
+    case Sources.delete_slack_hook_url(source) do
       {:ok, _source} ->
         conn
         |> put_flash(:info, "Slack hook deleted!")
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
 
       {:error, _changeset} ->
         conn
         |> put_flash(:error, "Delete failed! Contact support if this continues.")
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
+        |> redirect(to: Routes.source_path(conn, :edit, path_id))
     end
   end
 
@@ -320,6 +314,49 @@ defmodule LogflareWeb.SourceController do
 
       e ->
         Logger.error("Error updating dropped LQL.", error_string: inspect(e))
+
+        conn
+        |> put_flash(:error, "Something else went wrong. Contact support if this continues.")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    end
+  end
+
+  def update(
+        %{assigns: %{source: source, user: _user, plan: _plan}} = conn,
+        %{"source" => %{"default_search_lql" => lqlstring} = _params}
+      ) do
+    schema = get_bigquery_schema(source)
+
+    with {:ok, _lql_rules} <- Lql.Parser.parse(lqlstring, schema),
+         {:ok, _changeset} <-
+           Sources.update_source_by_user(source, %{"default_search_lql" => lqlstring}) do
+      conn
+      |> put_flash(:info, "Source updated!")
+      |> redirect(to: Routes.source_path(conn, :edit, source.id))
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        conn
+        |> put_status(406)
+        |> put_flash(:error, "Something went wrong!")
+        |> render(
+          "edit.html",
+          changeset: changeset,
+          source: source,
+          notifications_opts: notifications_options()
+        )
+
+      {:error, :field_not_found, _suggested_querystring, error} ->
+        conn
+        |> put_flash(:error, error)
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, error} when is_binary(error) ->
+        conn
+        |> put_flash(:error, "Default search LQL: #{error}")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      e ->
+        Logger.error("Error updating default search LQL.", error_string: inspect(e))
 
         conn
         |> put_flash(:error, "Something else went wrong. Contact support if this continues.")

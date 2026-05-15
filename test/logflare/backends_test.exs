@@ -11,6 +11,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Lql
@@ -74,10 +75,9 @@ defmodule Logflare.BackendsTest do
       [user: user]
     end
 
-    test "create_backend/1 starts consolidated pipeline for clickhouse backend", %{user: user} do
+    test "create_backend/2 starts consolidated pipeline for clickhouse backend", %{user: user} do
       attrs = %{
         type: :clickhouse,
-        user_id: user.id,
         name: "Test ClickHouse",
         config: %{
           url: "http://localhost",
@@ -88,21 +88,20 @@ defmodule Logflare.BackendsTest do
         }
       }
 
-      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
       assert Backends.ConsolidatedSup.pipeline_running?(backend)
 
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
-    test "create_backend/1 does not start pipeline for non-consolidated backend", %{user: user} do
+    test "create_backend/2 does not start pipeline for non-consolidated backend", %{user: user} do
       attrs = %{
         type: :webhook,
-        user_id: user.id,
         name: "Test Webhook",
         config: %{url: "https://example.com"}
       }
 
-      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
 
       refute Backends.ConsolidatedSup.pipeline_running?(backend)
     end
@@ -110,7 +109,6 @@ defmodule Logflare.BackendsTest do
     test "delete_backend/1 stops consolidated pipeline", %{user: user} do
       attrs = %{
         type: :clickhouse,
-        user_id: user.id,
         name: "Test ClickHouse",
         config: %{
           url: "http://localhost",
@@ -121,7 +119,7 @@ defmodule Logflare.BackendsTest do
         }
       }
 
-      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
       assert Backends.ConsolidatedSup.pipeline_running?(backend)
 
       assert {:ok, _} = Backends.delete_backend(backend)
@@ -131,7 +129,6 @@ defmodule Logflare.BackendsTest do
     test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
       attrs = %{
         type: :clickhouse,
-        user_id: user.id,
         name: "Test ClickHouse",
         config: %{
           url: "http://localhost",
@@ -142,7 +139,7 @@ defmodule Logflare.BackendsTest do
         }
       }
 
-      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
       assert Backends.ConsolidatedSup.pipeline_running?(backend)
 
       assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
@@ -392,22 +389,21 @@ defmodule Logflare.BackendsTest do
 
     test "create backend", %{user: user} do
       assert {:ok, %Backend{}} =
-               Backends.create_backend(%{
+               Backends.create_backend(user, %{
                  name: "some name",
                  type: :webhook,
-                 user_id: user.id,
                  config: %{url: "http://some.url"}
                })
 
       assert {:error, %Ecto.Changeset{}} =
-               Backends.create_backend(%{name: "123", type: :other, config: %{}})
+               Backends.create_backend(user, %{name: "123", type: :other, config: %{}})
 
       assert {:error, %Ecto.Changeset{}} =
-               Backends.create_backend(%{name: "123", type: :webhook, config: nil})
+               Backends.create_backend(user, %{name: "123", type: :webhook, config: nil})
 
       # config validations
       assert {:error, %Ecto.Changeset{}} =
-               Backends.create_backend(%{type: :postgres, config: %{url: nil}})
+               Backends.create_backend(user, %{type: :postgres, config: %{url: nil}})
     end
 
     test "delete backend" do
@@ -455,15 +451,14 @@ defmodule Logflare.BackendsTest do
 
     test "update backend config correctly", %{user: user} do
       assert {:ok, backend} =
-               Backends.create_backend(%{
+               Backends.create_backend(user, %{
                  name: "some name",
                  type: :webhook,
-                 config: %{url: "http://example.com"},
-                 user_id: user.id
+                 config: %{url: "http://example.com"}
                })
 
       assert {:error, %Ecto.Changeset{}} =
-               Backends.create_backend(%{
+               Backends.create_backend(user, %{
                  type: :webhook,
                  config: nil
                })
@@ -486,11 +481,10 @@ defmodule Logflare.BackendsTest do
 
     test "partial config update preserves existing fields", %{user: user} do
       assert {:ok, backend} =
-               Backends.create_backend(%{
+               Backends.create_backend(user, %{
                  name: "some name",
                  type: :webhook,
-                 config: %{url: "http://example.com", gzip: true},
-                 user_id: user.id
+                 config: %{url: "http://example.com", gzip: true}
                })
 
       assert {:ok, updated} = Backends.update_backend(backend, %{config: %{gzip: false}})
@@ -500,11 +494,10 @@ defmodule Logflare.BackendsTest do
 
     test "partial config update with string keys", %{user: user} do
       assert {:ok, backend} =
-               Backends.create_backend(%{
+               Backends.create_backend(user, %{
                  name: "some name",
                  type: :webhook,
-                 config: %{url: "http://example.com", gzip: true},
-                 user_id: user.id
+                 config: %{url: "http://example.com", gzip: true}
                })
 
       assert {:ok, updated} = Backends.update_backend(backend, %{config: %{"gzip" => false}})
@@ -803,9 +796,15 @@ defmodule Logflare.BackendsTest do
       le = build(:log_event, source: source, some: "event")
       assert {:ok, _} = Backends.ingest_logs([le], source)
 
-      TestUtils.retry_assert(fn ->
-        assert Backends.fetch_latest_timestamp(source) != 0
-      end)
+      # RecentInsertsCacher bridges Counters.increment/2 (called by ingest_logs)
+      # → Counters.increment_source_changed_at_unix_ts/2 (read by
+      # fetch_latest_timestamp/1). Trigger it explicitly and use :sys.get_state/1
+      # as a sync fence so the test doesn't depend on the cacher's timer.
+      cacher = GenServer.whereis(Backends.via_source(source, RecentInsertsCacher))
+      send(cacher, :do_cache)
+      :sys.get_state(cacher)
+
+      assert Backends.fetch_latest_timestamp(source) != 0
     end
 
     test "cache_estimated_buffer_lens/1 will cache all queue information", %{

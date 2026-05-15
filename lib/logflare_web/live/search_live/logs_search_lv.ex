@@ -2,6 +2,7 @@ defmodule LogflareWeb.Source.SearchLV do
   @moduledoc """
   Handles all user interactions with the source logs search.
   """
+
   use LogflareWeb, :live_view
 
   import Logflare.Lql.Rules
@@ -22,7 +23,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.TeamUsers
   alias Logflare.User
   alias Logflare.Users
-  alias LogflareWeb.AuthLive
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchLive.FormComponents
@@ -35,9 +35,9 @@ defmodule LogflareWeb.Source.SearchLV do
 
   @tail_search_interval 1000
   @user_idle_interval :timer.minutes(2)
-  @default_qs "c:count(*) c:group_by(t::minute)"
 
   on_mount LogflareWeb.AuthLive
+  on_mount {LogflareWeb.AuthLive, :ensure_team_param}
 
   def mount(%{"source_id" => source_id} = params, _session, socket) do
     %{assigns: %{user: user, team_user: team_user}} = socket
@@ -59,11 +59,11 @@ defmodule LogflareWeb.Source.SearchLV do
          |> redirect(to: ~p"/dashboard" |> Utils.with_team_param(socket.assigns[:team]))}
 
       source ->
-        {:ok, mount_with_source(socket, source, params, effective_user)}
+        {:ok, mount_with_source(socket, source, params)}
     end
   end
 
-  defp mount_with_source(socket, source, %{"t" => _team_id} = params, _effective_user) do
+  defp mount_with_source(socket, source, params) do
     %{assigns: %{user: user, team_user: team_user}} = socket
 
     tailing? =
@@ -102,17 +102,9 @@ defmodule LogflareWeb.Source.SearchLV do
       uri: nil,
       lql_rules: [],
       saved_searches: saved_searches(source),
-      querystring: Map.get(params, "querystring", @default_qs),
       force_query: Map.get(params, "force", "false") == "true"
     )
     |> maybe_assign_user_timezone(team_user, user)
-  end
-
-  defp mount_with_source(socket, source, params, effective_user) do
-    socket = AuthLive.assign_context_by_resource(socket, source, effective_user.email)
-    params = Map.put(params, "t", socket.assigns.team.id)
-
-    mount_with_source(socket, source, params, effective_user)
   end
 
   defp maybe_assign_user_timezone(socket, team_user, user) do
@@ -152,12 +144,15 @@ defmodule LogflareWeb.Source.SearchLV do
 
     path =
       Routes.live_path(socket, __MODULE__, source.id, params)
+      |> Utils.with_team_param(socket.assigns[:team])
 
     {:noreply, push_patch(socket, to: path, replace: true)}
   end
 
   def handle_params(%{"querystring" => qs} = params, uri, socket) do
     source = socket.assigns.source
+
+    qs = querystring_or_default(qs, source)
 
     tailing? = Map.get(params, "tailing?", "true") != "false" and socket.assigns.tailing?
 
@@ -167,6 +162,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing?, tailing?)
       |> assign(uri: URI.parse(uri))
       |> assign(uri_params: params)
+      |> assign(querystring: qs)
 
     socket =
       if team_user = socket.assigns[:team_user],
@@ -229,12 +225,6 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_params(%{"source_id" => source}, uri, socket) do
     params = %{"source_id" => source, "querystring" => "", "tailing?" => "true"}
     handle_params(params, uri, socket)
-  end
-
-  def handle_params(_params, _uri, socket) do
-    source = socket.assigns.source
-    socket = assign(socket, :page_title, source.name)
-    {:noreply, socket}
   end
 
   def render(assigns) do
@@ -431,8 +421,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("querystring_changed", %{"querystring" => qs}, socket) do
-    {:noreply, assign(socket, :querystring, qs)}
+  def handle_event("querystring_changed", %{"querystring" => _qs}, socket) do
+    {:noreply, socket}
   end
 
   def handle_event(
@@ -523,10 +513,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
       {:noreply, socket}
     end
-  end
-
-  def handle_event("reset_search", _, socket) do
-    {:noreply, reset_search(socket)}
   end
 
   def handle_event(
@@ -843,6 +829,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     path =
       Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params)
+      |> Utils.with_team_param(socket.assigns[:team])
 
     push_patch(socket, to: path, replace: false)
   end
@@ -936,6 +923,7 @@ defmodule LogflareWeb.Source.SearchLV do
         querystring: suggested_querystring,
         tailing?: socket.assigns.tailing?
       )
+      |> Utils.with_team_param(socket.assigns[:team])
 
     replace = link(replace, to: path)
 
@@ -973,6 +961,7 @@ defmodule LogflareWeb.Source.SearchLV do
         chart_loading: true,
         querystring: socket.assigns.querystring
       )
+      |> Utils.with_team_param(socket.assigns[:team])
 
     keys =
       socket.assigns.source.suggested_keys
@@ -1062,17 +1051,6 @@ defmodule LogflareWeb.Source.SearchLV do
       })
 
     {:noreply, socket}
-  end
-
-  defp reset_search(%{assigns: assigns} = socket) do
-    lql_rules =
-      Lql.decode!(@default_qs, SourceSchemas.source_schema_flatmap_or_default(assigns.source))
-
-    qs = Lql.encode!(lql_rules)
-
-    socket
-    |> assign(:querystring, qs)
-    |> assign(:lql_rules, lql_rules)
   end
 
   defp check_suggested_keys(_lql_rules, _source, %{assigns: %{force_query: true}} = socket),
@@ -1178,6 +1156,10 @@ defmodule LogflareWeb.Source.SearchLV do
       class: "tw-block tw-pt-3"
     )
   end
+
+  @spec querystring_or_default(String.t(), Logflare.Sources.Source.t()) :: String.t()
+  defp querystring_or_default("", source), do: source.default_search_lql || ""
+  defp querystring_or_default(qs, _source), do: qs
 
   @spec lql_schema_flat_map(Logflare.Sources.Source.t()) :: map()
   defp lql_schema_flat_map(source) do

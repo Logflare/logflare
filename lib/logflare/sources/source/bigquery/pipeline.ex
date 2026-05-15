@@ -25,21 +25,30 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Utils
   require OpenTelemetry.Tracer
 
+  @behaviour Broadway.Acknowledger
+
   # BQ max is 10MB
   # https://cloud.google.com/bigquery/quotas#streaming_inserts
   @max_batch_length 6_000_000
   @max_batch_size 500
+  @max_retries 0
 
   def start_link(args, opts \\ []) do
     {name, args} = Keyword.pop(args, :name)
     source = Keyword.get(args, :source)
     backend = Keyword.get(args, :backend)
 
+    max_retries =
+      Application.get_env(:logflare, :bigquery_pipeline, [])
+      |> Keyword.get(:max_retries, @max_retries)
+
+    ack_config = %{max_retries: max_retries}
+
     opts =
       Keyword.merge(
         [
-          name: name,
           # top-level will apply to all children
+          name: name,
           hibernate_after: 5_000,
           spawn_opt: [
             fullsweep_after: 10
@@ -53,7 +62,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
                ]},
             transformer:
               {__MODULE__, :transform,
-               [ref: {{source.id, backend.id, args[:pipeline_ref]}, source.token}]}
+               [
+                 ref: {{source.id, backend.id, args[:pipeline_ref]}, ack_config}
+               ]}
           ],
           processors: [
             default: [concurrency: 8, max_demand: 100]
@@ -88,6 +99,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   # pipeline name is sharded
+  @impl Broadway
   def process_name({:via, module, {registry, identifier}}, base_name) do
     {:via, module, {registry, {identifier, base_name}}}
   end
@@ -106,11 +118,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     }
   end
 
-  # Ziinc: temporarily pass in source token until PubSubRates is refactored
-  def ack({queue, source_token}, successful, _failed) do
-    # TODO: re-queue failed
-    metrics = Sources.get_source_metrics_for_ingest(source_token)
+  @impl Broadway.Acknowledger
+  def ack({queue, config}, successful, failed) do
     {sid, bid, _tid} = queue
+
+    maybe_requeue_failed({sid, bid}, failed, config)
 
     backend_metadata =
       if bid do
@@ -123,39 +135,21 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       nil ->
         Logger.warning("Source not found for ack!", source_id: sid)
 
-        for %{data: le} <- successful do
+        for %{data: %{is_popped: false} = le} <- successful do
           IngestEventQueue.delete(queue, le)
         end
 
       source ->
         for %{data: le} <- successful do
-          # delete immediately if not default backend or if avg rate is above 100
-          if metrics.avg > 100 or bid != nil do
-            IngestEventQueue.delete(queue, le)
-          end
-
           # emit telemetry on event
-          event_labels = Sources.get_labels_from_event(source, le)
-
-          metrics = %{ingested_bytes: :erlang.external_size(le.body)}
-
-          metadata =
-            %{
-              "source_id" => sid,
-              "backend_id" => bid,
-              "source_uuid" => Utils.stringify(source.token),
-              "user_id" => source.user_id,
-              "system_source" => source.system_source
-            }
-            |> Map.merge(event_labels)
-            |> Map.merge(backend_metadata)
-
-          :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
+          emit_event_telemetry(queue, source, le, backend_metadata)
         end
     end
+
+    :ok
   end
 
-  @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
+  @impl Broadway
   def handle_message(_processor_name, message, context) do
     Logger.metadata(
       source_id: context.source_token,
@@ -169,6 +163,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     |> Message.put_batcher(:bq)
   end
 
+  @impl Broadway
   def handle_batch(:bq, messages, batch_info, context) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
@@ -437,6 +432,49 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           errors: inspect(changeset.errors)
         )
     end
+  end
+
+  # Requeue failed events if the number of previous retries is less than @max_retries
+  defp maybe_requeue_failed(_, [], _), do: :ok
+  defp maybe_requeue_failed(_, _, %{max_retries: 0}), do: :ok
+
+  defp maybe_requeue_failed({_sid, _bid} = sid_bid, failed, %{max_retries: max_retries}) do
+    events =
+      Enum.filter(failed, fn %{data: %LE{retries: retries}} -> retries < max_retries end)
+      |> Enum.map(fn %{data: %LE{} = event} ->
+        %LE{event | retries: (event.retries || 0) + 1}
+      end)
+
+    requeue(sid_bid, events)
+  end
+
+  defp requeue(_, []), do: :ok
+
+  defp requeue(sid_bid, events) do
+    Logger.info("Requeuing #{length(events)} BigQuery events for retry")
+
+    IngestEventQueue.delete_batch(sid_bid, events)
+    IngestEventQueue.add_to_table(sid_bid, events)
+  end
+
+  defp emit_event_telemetry({sid, bid, _}, source, le, backend_metadata) do
+    # emit telemetry on event
+    event_labels = Sources.get_labels_from_event(source, le)
+
+    metrics = %{ingested_bytes: :erlang.external_size(le.body)}
+
+    metadata =
+      %{
+        "source_id" => sid,
+        "backend_id" => bid,
+        "source_uuid" => Utils.stringify(source.token),
+        "user_id" => source.user_id,
+        "system_source" => source.system_source
+      }
+      |> Map.merge(event_labels)
+      |> Map.merge(backend_metadata)
+
+    :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
   end
 
   # https://hexdocs.pm/broadway/Broadway.html#start_link/2

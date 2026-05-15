@@ -89,7 +89,8 @@ config :logflare,
          metadata: logflare_metadata,
          health: logflare_health,
          http_connection_pools: http_connection_pools,
-         bq_write_api_pool_size: System.get_env("LOGFLARE_BQ_WRITE_API_POOL_SIZE")
+         bq_write_api_pool_size:
+           System.get_env("LOGFLARE_BQ_WRITE_API_POOL_SIZE", "10") |> String.to_integer()
        ]
        |> filter_nil_kv_pairs.()
 
@@ -181,17 +182,16 @@ config :logflare_logger_backend,
          api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
        )
 
-config :logger,
-  backends:
-    [
-      :console,
-      if(System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil,
-        do: LogflareLogger.HttpBackend,
-        else: nil
-      ),
-      if(Env.get_boolean("LOGFLARE_LOGGER_JSON"), do: LoggerJSON, else: nil)
-    ]
-    |> Enum.filter(&(&1 != nil))
+config :logflare,
+       :logger_backends,
+       [
+         if(System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil,
+           do: LogflareLogger.HttpBackend,
+           else: nil
+         ),
+         if(Env.get_boolean("LOGFLARE_LOGGER_JSON"), do: LoggerJSON, else: nil)
+       ]
+       |> Enum.filter(&(&1 != nil))
 
 config :logger,
   metadata: logflare_metadata
@@ -338,22 +338,32 @@ end
 
 if(
   Env.get_boolean("DB_SSL") && File.exists?("db-server-ca.pem") &&
-    File.exists?("db-client-ca.pem") && File.exists?("db-client-key.pem")
+    File.exists?("db-client-cert.pem") && File.exists?("db-client-key.pem")
 ) do
-  config :logflare, Logflare.Repo,
-    ssl: true,
-    ssl_opts: [
-      #  ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
-      verify: :verify_peer,
-      cacertfile: "db-server-ca.pem",
-      certfile: "db-client-cert.pem",
-      keyfile: "db-client-key.pem",
-      versions: [:"tlsv1.2"],
-      # support wildcard
-      customize_hostname_check: [
-        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
+  base_db_ssl_opts = [
+    # ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
+    verify: :verify_peer,
+    cacertfile: Path.absname("db-server-ca.pem"),
+    certfile: Path.absname("db-client-cert.pem"),
+    keyfile: Path.absname("db-client-key.pem"),
+    depth: 3,
+    versions: [:"tlsv1.2", :"tlsv1.3"],
+    customize_hostname_check: [
+      match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
     ]
+  ]
+
+  # RFC 6066 §3 forbids IP literals in SNI. For IP hosts, suppress the SNI
+  # extension but still verify the host against iPAddress SANs via the :https
+  # match_fun. For hostnames, let OTP default SNI to `host` so dNSName SANs
+  # are checked.
+  db_ssl_opts =
+    case :inet.parse_address(String.to_charlist(System.get_env("DB_HOSTNAME", ""))) do
+      {:ok, _ip} -> Keyword.put(base_db_ssl_opts, :server_name_indication, :disable)
+      {:error, _} -> base_db_ssl_opts
+    end
+
+  config :logflare, Logflare.Repo, ssl: db_ssl_opts
 end
 
 case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
@@ -506,3 +516,15 @@ config :logflare, :context_cache_gossip, %{
   ratio: cache_gossip_ratio,
   max_nodes: cache_gossip_max_nodes
 }
+
+# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replica hostnames to distribute
+# context cache queries across. If unset or empty, all queries go to the primary database.
+# Example: "replica1.example.com,replica2.example.com"
+read_replicas =
+  "LOGFLARE_READ_REPLICAS"
+  |> System.get_env("")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+  |> Enum.uniq()
+
+config :logflare, :read_replicas, read_replicas

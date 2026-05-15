@@ -166,10 +166,11 @@ defmodule Logflare.Backends do
   @doc """
   Creates a Backend for a given source.
   """
-  @spec create_backend(map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
-  def create_backend(attrs) do
+  @spec create_backend(User.t(), map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
+  def create_backend(%User{} = user, attrs) do
     backend =
-      %Backend{}
+      user
+      |> Ecto.build_assoc(:backends)
       |> Backend.changeset(attrs)
       |> Repo.insert()
 

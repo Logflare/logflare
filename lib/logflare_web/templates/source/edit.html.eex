@@ -135,7 +135,7 @@
     Slack channel from any Logflare source.</p>
   <div class="form-button">
     <a
-      href="https://slack.com/oauth/v2/authorize?client_id=<%= Application.get_env(:ueberauth, Ueberauth.Strategy.SlackV2.OAuth)[:client_id] %>&scope=incoming-webhook&install_redirect=update-to-granular-scopes&redirect_uri=<%= LogflareWeb.Endpoint.url() <> "/auth/slack/callback" %>&state=<%= Jason.encode!(%{"action" => "save_hook_url", "source" => @source}) %>"><img
+      href="https://slack.com/oauth/v2/authorize?client_id=<%= Application.get_env(:ueberauth, Ueberauth.Strategy.SlackV2.OAuth)[:client_id] %>&scope=incoming-webhook&install_redirect=update-to-granular-scopes&redirect_uri=<%= LogflareWeb.Endpoint.url() <> "/auth/slack/callback" %>&state=<%= LogflareWeb.Auth.SlackOauthState.sign(assigns[:team_user] || @user, %{"action" => "save_hook_url", "source" => %{"id" => @source.id}}) %>"><img
         alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png"
         srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"></a>
   </div>
@@ -288,6 +288,21 @@
     </div>
     <%= submit "Update key-value enrichment rules", class: "btn btn-primary form-button" %>
   <% end %>
+
+  <%= section_header("Drop fields") %>
+  <p>
+    Drop specific fields from the event body at ingestion. Useful for removing keys that were only needed upstream (e.g. for routing) before they are persisted. Runs after field copying and key-value enrichment, so values can be copied or used for enrichment first and then dropped.
+  </p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+    <div class="form-group">
+      <%= textarea e, :transform_drop_fields, placeholder: "service\nnamespace\nm.routing.region", class: "form-control form-control-margin tw-h-[120px]" %>
+      <%= error_tag e, :transform_drop_fields %>
+      <small class="form-text text-muted">
+        One field path per line. Use dot syntax for nested keys (<code>metadata.user.id</code>) and <code>m.</code> as shorthand for <code>metadata.</code>. Missing paths are silently ignored.
+      </small>
+    </div>
+    <%= submit "Update field dropping rules", class: "btn btn-primary form-button" %>
+  <% end %>
   <hr/>
 
   <%= section_header("Backend TTL") %>
@@ -330,6 +345,19 @@
     <small class="form-text text-muted">
       Comma-separated. For example: <code>status,metadata.level</code>. Add an exclaimation mark (!) to make the key required  <code>metadata.level!</code>
     </small>
+    </div>
+    <%= submit "Save", class: "btn btn-primary form-button" %>
+  <% end %>
+
+  <%= section_header("Default Search LQL") %>
+  <p>Set LQL to be included in the initial search query for this source.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
+    <div class="form-group">
+      <%= text_input f, :default_search_lql, class: "form-control form-control-margin" %>
+      <%= error_tag f, :default_search_lql %>
+      <small class="form-text text-muted">
+        For example: <code>s:m.parsed.parsed s:m.level</code>.
+      </small>
     </div>
     <%= submit "Save", class: "btn btn-primary form-button" %>
   <% end %>

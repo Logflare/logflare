@@ -10,8 +10,8 @@ defmodule Logflare.ContextCache.Gossip.DistributedTest do
   setup_all do
     if not Node.alive?() do
       case :net_kernel.start(:"test@127.0.0.1", %{}) do
-        {:ok, _} ->
-          :ok
+        {:ok, _pid} ->
+          on_exit(fn -> :ok = :net_kernel.stop() end)
 
         {:error, reason} ->
           raise """

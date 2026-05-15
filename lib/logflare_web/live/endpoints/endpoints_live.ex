@@ -1,5 +1,6 @@
 defmodule LogflareWeb.EndpointsLive do
   @moduledoc false
+
   use LogflareWeb, :live_view
   use Phoenix.Component
 
@@ -98,7 +99,6 @@ defmodule LogflareWeb.EndpointsLive do
     socket =
       socket
       |> assign(:show_endpoint, endpoint)
-      |> maybe_assign_team_context(params, endpoint)
       |> then(fn
         socket when endpoint != nil ->
           {:ok, parsed_result} =
@@ -200,17 +200,24 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_event(
         "delete-endpoint",
         %{"endpoint_id" => id},
-        %{assigns: _assigns} = socket
+        %{assigns: assigns} = socket
       ) do
-    endpoint = Endpoints.get_endpoint_query(id)
-    {:ok, _} = Endpoints.delete_query(endpoint)
+    user = assigns[:team_user] || assigns[:user]
 
-    {:noreply,
-     socket
-     |> refresh_endpoints()
-     |> assign(:show_endpoint, nil)
-     |> put_flash(:info, "#{endpoint.name} has been deleted")
-     |> push_patch(to: "/endpoints")}
+    case Endpoints.get_endpoint_query_by_user_access(user, id) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "You do not have access to that endpoint.")}
+
+      endpoint ->
+        {:ok, _} = Endpoints.delete_query(endpoint)
+
+        {:noreply,
+         socket
+         |> refresh_endpoints()
+         |> assign(:show_endpoint, nil)
+         |> put_flash(:info, "#{endpoint.name} has been deleted")
+         |> push_patch(to: "/endpoints")}
+    end
   end
 
   def handle_event(
@@ -491,10 +498,4 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   defp maybe_redact_query(query, _redact_pii), do: query
-
-  defp maybe_assign_team_context(socket, %{"t" => _team_id}, _endpoint), do: socket
-
-  defp maybe_assign_team_context(socket, _params, endpoint) do
-    LogflareWeb.AuthLive.assign_context_by_resource(socket, endpoint, socket.assigns.user.email)
-  end
 end

@@ -601,7 +601,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     name = if is_binary(alias), do: alias, else: String.replace(path, ".", "_")
 
     query
-    |> handle_nested_field_access(path)
+    |> unnest_and_join_nested_columns(:left, path)
     |> select_merge([..., t], %{
       ^name => fragment("? AS ?", field(t, ^field_name), identifier(^name))
     })

@@ -42,6 +42,7 @@ pub fn coerce<'a>(
         // Elixir side can substitute the event's real timestamp instead of
         // silently inserting epoch time (1970-01-01).
         return match field_type {
+            FieldType::String => "".encode(env),
             FieldType::UInt8 | FieldType::UInt32 | FieldType::UInt64 => 0u64.encode(env),
             FieldType::Int32 => 0i32.encode(env),
             FieldType::Float64 => 0.0f64.encode(env),
