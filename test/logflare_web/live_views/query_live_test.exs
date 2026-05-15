@@ -223,10 +223,11 @@ defmodule LogflareWeb.QueryLiveTest do
     end
   end
 
-  defp submit_query_form(view, _conn) do
+  defp submit_query_form(view, conn) do
     case view |> element("form") |> render_submit(%{}) do
-      {:error, {:live_redirect, _}} ->
-        render(view)
+      {:error, {:live_redirect, _}} = result ->
+        {:ok, _view, html} = result |> follow_redirect(conn)
+        html
 
       html when is_binary(html) ->
         html
