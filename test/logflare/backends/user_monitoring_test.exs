@@ -315,7 +315,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       :ok
     end
 
-    test "endpoints.query.total_bytes_processed" do
+    test "endpoints.query.total_bytes_processed with static label" do
       pid = self()
 
       GoogleApi.BigQuery.V2.Api.Tabledata
@@ -335,7 +335,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       user = insert(:user, system_monitoring: true)
       source = insert(:source, user: user, system_source_type: :metrics)
       start_supervised!({SourceSup, source}, id: :source)
-      # execute a query on the endpoint
+
       endpoint =
         insert(:endpoint,
           user: user,
@@ -355,6 +355,60 @@ defmodule Logflare.Backends.UserMonitoringTest do
                             "attributes" => [
                               %{
                                 "my_label" => "some_value",
+                                "endpoint_id" => ^endpoint_id,
+                                "user_id" => _,
+                                "endpoint_uuid" => _
+                              }
+                            ]
+                          }
+                        }
+                        | _
+                      ]},
+                     5_000
+    end
+
+    test "endpoints.query.total_bytes_processed with param-referenced label" do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 _dataset_id,
+                                                 _table_name,
+                                                 opts ->
+        send(pid, {:insert_all, opts[:body].rows})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"result" => "1"}])}
+      end)
+
+      user = insert(:user, system_monitoring: true)
+      source = insert(:source, user: user, system_source_type: :metrics)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "SELECT 1",
+          labels: "project_ref=@project_ref"
+        )
+
+      parsed_labels = Endpoints.parse_labels(endpoint.labels, "", %{"project_ref" => "my-project"})
+      endpoint_with_labels = %{endpoint | parsed_labels: parsed_labels}
+
+      assert {:ok, _} = Endpoints.run_query(endpoint_with_labels)
+      :timer.sleep(1000)
+      endpoint_id = endpoint.id
+
+      assert_receive {:insert_all,
+                      [
+                        %{
+                          json: %{
+                            "attributes" => [
+                              %{
+                                "project_ref" => "my-project",
                                 "endpoint_id" => ^endpoint_id,
                                 "user_id" => _,
                                 "endpoint_uuid" => _

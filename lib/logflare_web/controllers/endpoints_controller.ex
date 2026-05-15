@@ -59,6 +59,7 @@ defmodule LogflareWeb.EndpointsController do
 
   def query(%{assigns: %{endpoint: endpoint}} = conn, params) do
     endpoint_query = Endpoints.map_query_sources(endpoint)
+    params = flatten_json_params(params)
 
     header_str =
       get_req_header(conn, "lf-endpoint-labels")
@@ -109,4 +110,12 @@ defmodule LogflareWeb.EndpointsController do
   end
 
   defp parse_get_body(conn, _opts), do: conn
+
+  # When a POST body is a JSON array, Phoenix nests it under `_json`.
+  @doc false
+  def flatten_json_params(%{"_json" => [json | _]} = params) when is_map(json) do
+    params |> Map.delete("_json") |> Map.merge(json)
+  end
+
+  def flatten_json_params(params), do: params
 end

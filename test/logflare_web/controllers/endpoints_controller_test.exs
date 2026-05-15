@@ -444,6 +444,113 @@ defmodule LogflareWeb.EndpointsControllerTest do
                "my" => "value"
              }
     end
+
+    test "POST: reference params in label, project_ref=@project_ref", %{
+      conn: conn,
+      user: user
+    } do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, opts[:body].labels)
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          enable_auth: true,
+          query: "with a as (select 1 as b) select b from a",
+          labels: "project_ref=@project_ref"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("content-type", "application/json")
+        |> post(
+          ~p"/api/endpoints/query/#{endpoint.name}",
+          Jason.encode!(%{"project_ref" => "my-project"})
+        )
+
+      assert [_] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+      assert_received labels
+      assert labels["project_ref"] == "my-project"
+    end
+  end
+
+  describe "flatten_json_params" do
+    test "flattens _json array body into top-level params" do
+      params = %{"_json" => [%{"project_ref" => "my-project", "sql" => "select 1"}], "token_or_name" => "abc"}
+      result = LogflareWeb.EndpointsController.flatten_json_params(params)
+      assert result["project_ref"] == "my-project"
+      assert result["sql"] == "select 1"
+      assert result["token_or_name"] == "abc"
+      refute Map.has_key?(result, "_json")
+    end
+
+    test "is a no-op for normal map params" do
+      params = %{"project_ref" => "my-project", "token_or_name" => "abc"}
+      assert LogflareWeb.EndpointsController.flatten_json_params(params) == params
+    end
+
+    test "is a no-op when _json is not a list of maps" do
+      params = %{"_json" => "some string"}
+      assert LogflareWeb.EndpointsController.flatten_json_params(params) == params
+    end
+  end
+
+  describe "POST _json label resolution (controller)" do
+    setup do
+      _plan = insert(:plan, name: "Free")
+      user = insert(:user)
+      {:ok, user: user}
+    end
+
+    # Calls the controller action directly with _json-structured params (the shape
+    # Plug.Parsers.JSON produces for JSON array bodies) to verify flatten_json_params
+    # is applied before parse_labels runs.
+    test "controller resolves @param labels when params are nested under _json", %{
+      conn: init_conn,
+      user: user
+    } do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, opts[:body].labels)
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          enable_auth: false,
+          query: "with a as (select 1 as b) select b from a",
+          labels: "project_ref=@project_ref",
+          source_mapping: %{}
+        )
+
+      # Pre-seed _json params exactly as Plug.Parsers.JSON produces for an array body.
+      # Calling the action directly avoids relying on test HTTP helpers to produce _json.
+      _json_params = %{
+        "_json" => [%{"project_ref" => "my-project"}],
+        "token_or_name" => to_string(endpoint.token)
+      }
+
+      conn =
+        init_conn
+        |> Plug.Conn.assign(:endpoint, endpoint)
+        |> Phoenix.Controller.put_view(LogflareWeb.EndpointsView)
+        |> Phoenix.Controller.put_format("json")
+
+      LogflareWeb.EndpointsController.query(conn, _json_params)
+
+      assert_received labels
+      assert labels["project_ref"] == "my-project"
+    end
   end
 
   describe "sandboxed query" do
