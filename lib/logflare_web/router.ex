@@ -215,14 +215,14 @@ defmodule LogflareWeb.Router do
 
     live_session :dashboard, on_mount: @common_on_mount_hooks ++ @team_param_live_hooks do
       live("/dashboard", DashboardLive, :index)
-    end
-
-    live_session :without_team_param, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
-      live("/access-tokens", AccessTokensLive, :index)
       live("/backends", BackendsLive, :index)
       live("/backends/new", BackendsLive, :new)
       live("/backends/:id", BackendsLive, :show)
       live("/backends/:id/edit", BackendsLive, :edit)
+    end
+
+    live_session :without_team_param, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
+      live("/access-tokens", AccessTokensLive, :index)
       live("/query", QueryLive, :index)
       live("/key-values", KeyValuesLive, :index)
 
