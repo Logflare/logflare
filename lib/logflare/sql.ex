@@ -37,15 +37,12 @@ defmodule Logflare.Sql do
     pg_typeof
     pg_size_pretty
     pg_column_size
-    pg_total_relation_size
-    pg_table_size
-    pg_relation_size
-    pg_indexes_size
-    pg_database_size
   )
 
   @pg_other_restricted_functions ~w(
+    current_catalog
     current_database
+    current_role
     current_setting
     current_schema
     current_schemas
@@ -744,6 +741,7 @@ defmodule Logflare.Sql do
       String.starts_with?(name, "lo_") -> true
       String.starts_with?(name, "dblink") -> true
       name in @pg_other_restricted_functions -> true
+      String.starts_with?(name, "has_") -> true
       true -> false
     end
   end

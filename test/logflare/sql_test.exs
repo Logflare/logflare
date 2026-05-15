@@ -1081,7 +1081,17 @@ defmodule Logflare.SqlTest do
           "lo_truncate(1, 0)",
           "dblink_open('c', 'SELECT 1')",
           "dblink_send_query('c', 'SELECT 1')",
-          "dblink_get_result('c')"
+          "dblink_get_result('c')",
+          "pg_total_relation_size('pg_shadow')",
+          "pg_table_size('pg_shadow')",
+          "pg_relation_size('pg_shadow')",
+          "pg_indexes_size('pg_shadow')",
+          "pg_database_size('postgres')",
+          "has_table_privilege('pg_shadow', 'SELECT')",
+          "has_schema_privilege('public', 'USAGE')",
+          "has_database_privilege('postgres', 'CONNECT')",
+          "current_role",
+          "current_catalog"
         ] do
       test "rejects restricted function #{fn_call}", %{source: %{name: name}, user: user} do
         assert {:error, msg} =
