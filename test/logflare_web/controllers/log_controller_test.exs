@@ -319,6 +319,23 @@ defmodule LogflareWeb.LogControllerTest do
       assert log =~ "NDJSON parser error"
       refute log =~ @attacker_marker
     end
+
+    test "authenticated /logs/logplex error log does not include ?source= query param",
+         %{conn: conn} do
+      user = insert(:user)
+      insert(:plan, name: "Free")
+
+      log =
+        capture_log(fn ->
+          conn
+          |> put_req_header("x-api-key", user.api_key)
+          |> put_req_header("content-type", "application/logplex-1")
+          |> post(~p"/logs/logplex?#{[source: @attacker_marker]}", @malformed_syslog)
+        end)
+
+      assert log =~ "Syslog message parsing error"
+      refute log =~ @attacker_marker
+    end
   end
 
   describe "pipeline with ?api_key= query auth" do
