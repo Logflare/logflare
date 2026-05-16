@@ -5,6 +5,62 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.TestUtils
 
+  describe "to_typemap/1" do
+    test "nil returns nil" do
+      assert SchemaUtils.to_typemap(nil) == nil
+    end
+
+    test "binary keys are atomized" do
+      assert SchemaUtils.to_typemap(%{"name" => "x", "count" => 1}) == %{
+               name: %{t: :string},
+               count: %{t: :integer}
+             }
+    end
+
+    test "atom keys are preserved" do
+      assert SchemaUtils.to_typemap(%{name: "x", count: 1}) == %{
+               name: %{t: :string},
+               count: %{t: :integer}
+             }
+    end
+
+    test "nested map keys are atomized at every level" do
+      assert SchemaUtils.to_typemap(%{"user" => %{"address" => %{"city" => "Dublin"}}}) == %{
+               user: %{
+                 t: :map,
+                 fields: %{
+                   address: %{
+                     t: :map,
+                     fields: %{city: %{t: :string}}
+                   }
+                 }
+               }
+             }
+    end
+
+    test "Latin1-encoded key (invalid UTF-8) is decoded and atomized" do
+      latin1_key =
+        <<95, 67, 195, 95, 100, 105, 103, 111, 95, 100, 101, 95, 82, 97, 115, 116, 114, 101, 105,
+          111>>
+
+      refute String.valid?(latin1_key)
+      typemap = SchemaUtils.to_typemap(%{latin1_key => "x"})
+      [normalized_key] = Map.keys(typemap)
+      assert is_atom(normalized_key)
+      assert String.valid?(Atom.to_string(normalized_key))
+      assert typemap[normalized_key] == %{t: :string}
+    end
+
+    test "arbitrary high bytes fall back to Latin1 and produce an atom" do
+      raw = <<0xFF, 0xFE, 0xFD>>
+      refute String.valid?(raw)
+      typemap = SchemaUtils.to_typemap(%{raw => "x"})
+      [normalized_key] = Map.keys(typemap)
+      assert is_atom(normalized_key)
+      assert String.valid?(Atom.to_string(normalized_key))
+    end
+  end
+
   describe "flatten_typemap/1" do
     test "nil and empty map both return empty map" do
       assert SchemaUtils.flatten_typemap(nil) == %{}
