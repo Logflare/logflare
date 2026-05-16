@@ -1,6 +1,218 @@
 [
   %{
     meta: %{
+      captured_at: "2026-05-16T20:44:01.594108Z",
+      git_sha: "640151ae9",
+      label: "o11y-1829 single-pass validate",
+      machine: nil
+    },
+    results: %{
+      "edge log" => %{
+        ips: 17_141,
+        memory_avg_bytes: 83_808,
+        reductions_avg: 5620,
+        wall_avg_us: 58.34,
+        wall_median_us: 57.75,
+        wall_p99_us: 67.63
+      },
+      "edge log + all" => %{
+        ips: 16_109,
+        memory_avg_bytes: 81_064,
+        reductions_avg: 5677,
+        wall_avg_us: 62.08,
+        wall_median_us: 61.79,
+        wall_p99_us: 71.25
+      },
+      "edge log + copy" => %{
+        ips: 16_528,
+        memory_avg_bytes: 84_112,
+        reductions_avg: 5754,
+        wall_avg_us: 60.5,
+        wall_median_us: 60.33,
+        wall_p99_us: 70.83
+      },
+      "edge log + copy + kv" => %{
+        ips: 15_846,
+        memory_avg_bytes: 86_544,
+        reductions_avg: 5913,
+        wall_avg_us: 63.11,
+        wall_median_us: 62.75,
+        wall_p99_us: 72.97
+      },
+      "edge log + drop" => %{
+        ips: 16_859,
+        memory_avg_bytes: 74_896,
+        reductions_avg: 5245,
+        wall_avg_us: 59.32,
+        wall_median_us: 59.08,
+        wall_p99_us: 68.63
+      },
+      "edge log + kv" => %{
+        ips: 16_209,
+        memory_avg_bytes: 84_048,
+        reductions_avg: 5679,
+        wall_avg_us: 61.69,
+        wall_median_us: 61.5,
+        wall_p99_us: 70.54
+      },
+      "otel trace" => %{
+        ips: 40_608,
+        memory_avg_bytes: 31_926,
+        reductions_avg: 2432,
+        wall_avg_us: 24.63,
+        wall_median_us: 24.13,
+        wall_p99_us: 30.92
+      },
+      "otel trace + all" => %{
+        ips: 37_229,
+        memory_avg_bytes: 35_726,
+        reductions_avg: 2664,
+        wall_avg_us: 26.86,
+        wall_median_us: 26.17,
+        wall_p99_us: 32.88
+      },
+      "otel trace + copy" => %{
+        ips: 38_782,
+        memory_avg_bytes: 32_862,
+        reductions_avg: 2584,
+        wall_avg_us: 25.79,
+        wall_median_us: 25.29,
+        wall_p99_us: 31.71
+      },
+      "otel trace + copy + kv" => %{
+        ips: 38_117,
+        memory_avg_bytes: 34_709,
+        reductions_avg: 2749,
+        wall_avg_us: 26.24,
+        wall_median_us: 25.88,
+        wall_p99_us: 32.08
+      },
+      "otel trace + drop" => %{
+        ips: 40_186,
+        memory_avg_bytes: 32_030,
+        reductions_avg: 2435,
+        wall_avg_us: 24.88,
+        wall_median_us: 24.67,
+        wall_p99_us: 29.92
+      },
+      "otel trace + kv" => %{
+        ips: 38_859,
+        memory_avg_bytes: 33_938,
+        reductions_avg: 2591,
+        wall_avg_us: 25.73,
+        wall_median_us: 25.33,
+        wall_p99_us: 32.17
+      }
+    }
+  },
+  %{
+    meta: %{
+      captured_at: "2026-05-16T20:41:11.642611Z",
+      git_sha: "8e03624a4",
+      label: "o11y-1829 baseline (main)",
+      machine: nil
+    },
+    results: %{
+      "edge log" => %{
+        ips: 12_851,
+        memory_avg_bytes: 141_968,
+        reductions_avg: 9735,
+        wall_avg_us: 77.82,
+        wall_median_us: 77.25,
+        wall_p99_us: 94.79
+      },
+      "edge log + all" => %{
+        ips: 12_585,
+        memory_avg_bytes: 130_088,
+        reductions_avg: 9100,
+        wall_avg_us: 79.46,
+        wall_median_us: 79.54,
+        wall_p99_us: 93.92
+      },
+      "edge log + copy" => %{
+        ips: 12_499,
+        memory_avg_bytes: 143_992,
+        reductions_avg: 10_147,
+        wall_avg_us: 80.01,
+        wall_median_us: 79.38,
+        wall_p99_us: 98.67
+      },
+      "edge log + copy + kv" => %{
+        ips: 11_656,
+        memory_avg_bytes: 146_496,
+        reductions_avg: 10_314,
+        wall_avg_us: 85.79,
+        wall_median_us: 85.46,
+        wall_p99_us: 103.5
+      },
+      "edge log + drop" => %{
+        ips: 13_271,
+        memory_avg_bytes: 121_560,
+        reductions_avg: 8580,
+        wall_avg_us: 75.35,
+        wall_median_us: 74.58,
+        wall_p99_us: 88.88
+      },
+      "edge log + kv" => %{
+        ips: 12_056,
+        memory_avg_bytes: 141_192,
+        reductions_avg: 9799,
+        wall_avg_us: 82.95,
+        wall_median_us: 82.21,
+        wall_p99_us: 101.1
+      },
+      "otel trace" => %{
+        ips: 26_663,
+        memory_avg_bytes: 57_782,
+        reductions_avg: 4307,
+        wall_avg_us: 37.5,
+        wall_median_us: 37.54,
+        wall_p99_us: 47.79
+      },
+      "otel trace + all" => %{
+        ips: 25_396,
+        memory_avg_bytes: 59_790,
+        reductions_avg: 4436,
+        wall_avg_us: 39.38,
+        wall_median_us: 38.83,
+        wall_p99_us: 46.96
+      },
+      "otel trace + copy" => %{
+        ips: 25_335,
+        memory_avg_bytes: 60_426,
+        reductions_avg: 4632,
+        wall_avg_us: 39.47,
+        wall_median_us: 39.42,
+        wall_p99_us: 47.04
+      },
+      "otel trace + copy + kv" => %{
+        ips: 24_708,
+        memory_avg_bytes: 63_742,
+        reductions_avg: 4788,
+        wall_avg_us: 40.47,
+        wall_median_us: 40.54,
+        wall_p99_us: 48.71
+      },
+      "otel trace + drop" => %{
+        ips: 27_713,
+        memory_avg_bytes: 51_050,
+        reductions_avg: 3956,
+        wall_avg_us: 36.08,
+        wall_median_us: 35.71,
+        wall_p99_us: 42.33
+      },
+      "otel trace + kv" => %{
+        ips: 24_902,
+        memory_avg_bytes: 60_350,
+        reductions_avg: 4562,
+        wall_avg_us: 40.16,
+        wall_median_us: 39.5,
+        wall_p99_us: 47.38
+      }
+    }
+  },
+  %{
+    meta: %{
       captured_at: "2026-05-12T15:45:32Z",
       git_sha: "4bf5d09fb",
       label: "post-flatten_typemap rewrite",
