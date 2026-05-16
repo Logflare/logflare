@@ -1,69 +1,107 @@
 defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
 
+  alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.LogEvent, as: LE
   alias Logflare.SourceSchemas
   alias Logflare.Sources.Source
 
-  @spec validate(LE.t(), Source.t()) :: :ok | {:error, String.t()}
-  def validate(%LE{body: _body}, %Source{validate_schema: false}) do
-    :ok
-  end
+  # Logflare injects "timestamp" as integer microseconds in LogEvent.mapper/1,
+  # but the BQ schema types it as TIMESTAMP (:datetime). Skip at the top level
+  # so the integer/datetime mismatch doesn't trip validation. "id" and
+  # "event_message" are strings on both sides, so they don't need the skip.
+  @skip_top_level_keys ~w(timestamp)
 
   @spec validate(LE.t(), Source.t()) :: :ok | {:error, String.t()}
+  def validate(%LE{body: _body}, %Source{validate_schema: false}), do: :ok
+
   def validate(%LE{body: body}, %Source{} = source) do
-    # Convert to a flat type map
-    # We're missing the cache too much here.
-    schema_flatmap =
-      if source.id, do: SourceSchemas.Cache.get_source_schema_by(source_id: source.id), else: %{}
+    schema_flat_map =
+      case source.id && SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+        %_{schema_flat_map: flat_map} when is_map(flat_map) -> flat_map
+        _ -> %{}
+      end
 
-    # Convert to a flat type map
-    metadata_flatmap =
-      SchemaUtils.to_typemap(body)
-      |> SchemaUtils.flatten_typemap()
-
-    try_merge(metadata_flatmap, schema_flatmap)
+    check_body(body, schema_flat_map)
   end
 
-  def try_merge(metadata_flatmap, schema_flatmap) do
-    merge_flat_typemaps(metadata_flatmap, schema_flatmap)
+  @spec valid?(map, map) :: boolean
+  def valid?(body, schema) do
+    schema_flat_map = SchemaUtils.bq_schema_to_flat_typemap(schema)
+    check_body(body, schema_flat_map) == :ok
+  end
+
+  @spec check_body(map, map) :: :ok | {:error, String.t()}
+  defp check_body(_body, schema_flat_map) when map_size(schema_flat_map) == 0, do: :ok
+
+  defp check_body(body, schema_flat_map) when is_map(body) do
+    walk_map(body, "", schema_flat_map)
     :ok
   rescue
-    e ->
-      {:error, Exception.message(e)}
+    e -> {:error, Exception.message(e)}
   end
 
-  def merge_flat_typemaps(nil, original), do: original
-  def merge_flat_typemaps(new, nil), do: new
-  def merge_flat_typemaps(new, original) when new == %{}, do: original
-  def merge_flat_typemaps(new, original) when new == original, do: original
-
-  def merge_flat_typemaps(new, original) do
-    Map.merge(new, original, fn k, v1, v2 ->
-      if v1 != v2,
-        do:
-          raise(
-            "Type error! Field `#{k}` has type of `#{inspect(v2)}`. Incoming metadata has type of `#{inspect(v1)}`."
-          ),
-        else: v2
+  defp walk_map(map, prefix, schema_flat_map) do
+    Enum.each(map, fn {k, v} ->
+      if not_empty_container?(v) and not skip?(prefix, k) do
+        check_field(v, join_key(prefix, k), schema_flat_map)
+      end
     end)
   end
 
-  # Currently for tests. Change tests.
-  def valid?(body, schema) do
-    schema_flatmap = SchemaUtils.bq_schema_to_flat_typemap(schema)
+  defp skip?("", k), do: k in @skip_top_level_keys
+  defp skip?(_, _), do: false
 
-    new_schema_flatmap =
-      SchemaUtils.to_typemap(body)
-      |> SchemaUtils.flatten_typemap()
+  defp check_field(%DateTime{}, key, schema_flat_map),
+    do: enforce_type(:datetime, key, schema_flat_map)
 
-    try do
-      merge_flat_typemaps(new_schema_flatmap, schema_flatmap)
-      true
-    rescue
-      _e ->
-        false
+  defp check_field(%NaiveDateTime{}, key, schema_flat_map),
+    do: enforce_type(:datetime, key, schema_flat_map)
+
+  defp check_field(v, key, schema_flat_map) when is_list(v) do
+    case hd(v) do
+      head when is_map(head) ->
+        enforce_type(:map, key, schema_flat_map)
+        Enum.each(v, &walk_map(&1, key, schema_flat_map))
+
+      head ->
+        enforce_type({:list, SchemaTypes.type_of(head)}, key, schema_flat_map)
     end
   end
+
+  defp check_field(v, key, schema_flat_map) when is_map(v) do
+    enforce_type(:map, key, schema_flat_map)
+    walk_map(v, key, schema_flat_map)
+  end
+
+  defp check_field(v, key, schema_flat_map),
+    do: enforce_type(SchemaTypes.type_of(v), key, schema_flat_map)
+
+  defp enforce_type(incoming, key, schema_flat_map) do
+    case Map.fetch(schema_flat_map, key) do
+      {:ok, ^incoming} ->
+        :ok
+
+      {:ok, existing} ->
+        raise(
+          "Type error! Field `#{key}` has type of `#{inspect(existing)}`. Incoming metadata has type of `#{inspect(incoming)}`."
+        )
+
+      :error ->
+        :ok
+    end
+  end
+
+  defp join_key("", key), do: to_string(key)
+  defp join_key(prefix, key), do: prefix <> "." <> to_string(key)
+
+  defp not_empty_container?(value)
+       when value == []
+       when value == %{}
+       when value == [[]]
+       when value == [%{}],
+       do: false
+
+  defp not_empty_container?(_), do: true
 end
