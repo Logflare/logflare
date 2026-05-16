@@ -312,6 +312,7 @@ defmodule Logflare.SingleTenant do
   def update_supabase_source_schemas do
     if supabase_mode?() do
       user = get_default_user()
+      backend = get_default_backend()
 
       sources =
         user
@@ -326,12 +327,24 @@ defmodule Logflare.SingleTenant do
             event = read_ingest_sample_json(source.name)
             log_event = LogEvent.make(event, %{source: source})
 
-            Backends.via_source(source, Schema)
-            |> Schema.update(log_event, source)
+            try do
+              Backends.via_source(source, Schema, backend.id)
+              |> Schema.update_sync(log_event, source)
+
+              Cachex.del(
+                SourceSchemas.Cache,
+                {:get_source_schema_by, [[source_id: source.id]]}
+              )
+            catch
+              :exit, reason ->
+                Logger.warning(
+                  "Schema seed failed for #{source.name}: #{inspect(reason)}"
+                )
+            end
           end)
         end
 
-      Task.await_many(tasks)
+      Task.await_many(tasks, 60_000)
     end
   end
 
@@ -410,7 +423,7 @@ defmodule Logflare.SingleTenant do
           length(source_schema.bigquery_schema.fields) > 3
         end
 
-      !!Enum.empty?(checks) and !!Enum.empty?(sources) and Enum.all?(checks)
+      not Enum.empty?(sources) and Enum.any?(checks)
     else
       false
     end

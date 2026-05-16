@@ -23,7 +23,8 @@ config :logflare, Logflare.Repo,
 config :logger, :default_handler,
   config: %{
     sync_mode_qlen: 10_000,
-    drop_mode_qlen: 10_000
+    drop_mode_qlen: 10_000,
+    flush_qlen: 20_000
   }
 
 config :logger,
