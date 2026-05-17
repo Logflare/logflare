@@ -331,6 +331,31 @@ defmodule Logflare.Sql.DialectTranslationTest do
     assert String.contains?(pg_query, "~")
   end
 
+  test "casts CTE identifiers to text when used with LIKE" do
+    # Mirrors the regex test above: a CTE field (which is JSONB in the postgres
+    # backend) used with LIKE produces "operator does not exist: jsonb ~~ unknown"
+    # at runtime. This is the path the Studio cron-logs chart query takes.
+    bq_query = """
+    WITH postgres_logs AS (
+      SELECT t.timestamp, t.event_message
+      FROM `table` AS t
+      WHERE t.project = 'test'
+    )
+    SELECT event_message
+    FROM postgres_logs
+    WHERE event_message LIKE '%cron job%'
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+
+    # event_message must be coerced to text before LIKE: either ::text cast or ->> extraction
+    assert String.contains?(pg_query, "::text") or String.contains?(pg_query, "::TEXT") or
+             String.contains?(pg_query, "->>")
+
+    assert String.contains?(pg_query, "LIKE")
+  end
+
   test "handles CAST to numeric types on CTE fields by adding ::TEXT first" do
     # This tests the fix for "cannot cast type jsonb to bigint" errors
     # when CTE fields (which are JSONB) are cast to numeric types
