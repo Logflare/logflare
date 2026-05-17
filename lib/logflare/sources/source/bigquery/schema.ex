@@ -118,7 +118,11 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   def handle_call({:update, _log_event, _source} = msg, _from, state) do
-    {:noreply, new_state} = handle_cast(msg, state)
+    # Force the schema update through regardless of the rate-limit throttle.
+    # `update_sync` is the seed/authoritative path; a prior error from a racing
+    # log event (e.g. Vector posting before init_table! finished) must not
+    # poison the source by pushing next_update into the future.
+    {:noreply, new_state} = handle_cast(msg, %{state | next_update: 0})
     {:reply, :ok, new_state}
   end
 
