@@ -37,6 +37,12 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     GenServer.cast(pid, {:update, log_event, source})
   end
 
+  @spec update_sync(atom() | tuple(), LogEvent.t(), Source.t()) :: :ok
+  def update_sync(pid, %LogEvent{} = log_event, %Source{} = source)
+      when is_pid(pid) or is_tuple(pid) do
+    GenServer.call(pid, {:update, log_event, source}, 30_000)
+  end
+
   # GenServer callbacks
 
   def init(args) do
@@ -109,6 +115,15 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     else
       {:noreply, state}
     end
+  end
+
+  def handle_call({:update, _log_event, _source} = msg, _from, state) do
+    # Force the schema update through regardless of the rate-limit throttle.
+    # `update_sync` is the seed/authoritative path; a prior error from a racing
+    # log event (e.g. Vector posting before init_table! finished) must not
+    # poison the source by pushing next_update into the future.
+    {:noreply, new_state} = handle_cast(msg, %{state | next_update: 0})
+    {:reply, :ok, new_state}
   end
 
   defp schema_needs_update?(db_schema, schema, state) do

@@ -27,11 +27,13 @@ defmodule Logflare.Google.BigQuery do
   def init_table!(user_id, source, project_id, ttl, dataset_location, dataset_id)
       when is_integer(user_id) and is_atom(source) and is_binary(project_id) and is_integer(ttl) and
              is_binary(dataset_location) and is_binary(dataset_id) do
-    case create_dataset(user_id, dataset_id, dataset_location, project_id) do
+    case with_rate_limit_retry(fn ->
+           create_dataset(user_id, dataset_id, dataset_location, project_id)
+         end) do
       {:ok, _} ->
         Logger.info("BigQuery dataset created: #{dataset_id}")
 
-        case create_table(source, dataset_id, project_id, ttl) do
+        case with_rate_limit_retry(fn -> create_table(source, dataset_id, project_id, ttl) end) do
           {:ok, table} ->
             Logger.info("BigQuery table created: #{source}")
             {:ok, table}
@@ -43,7 +45,7 @@ defmodule Logflare.Google.BigQuery do
       {:error, %Tesla.Env{status: 409}} ->
         Logger.info("BigQuery dataset found: #{dataset_id}")
 
-        case create_table(source, dataset_id, project_id, ttl) do
+        case with_rate_limit_retry(fn -> create_table(source, dataset_id, project_id, ttl) end) do
           {:ok, table} ->
             Logger.info("BigQuery table created: #{source}")
             {:ok, table}
@@ -61,6 +63,37 @@ defmodule Logflare.Google.BigQuery do
         )
     end
   end
+
+  @retry_max_attempts 5
+  @retry_base_ms 1_000
+
+  defp with_rate_limit_retry(fun, attempt \\ 1) do
+    result = fun.()
+
+    if attempt < @retry_max_attempts and rate_limit_error?(result) do
+      base = trunc(:math.pow(2, attempt - 1) * @retry_base_ms)
+      sleep_ms = base + :rand.uniform(div(base, 2) + 1)
+
+      Logger.warning(
+        "BigQuery rate-limited, retrying in #{sleep_ms}ms (attempt #{attempt}/#{@retry_max_attempts - 1})"
+      )
+
+      Process.sleep(sleep_ms)
+      with_rate_limit_retry(fun, attempt + 1)
+    else
+      result
+    end
+  end
+
+  defp rate_limit_error?({:error, %Tesla.Env{} = env}) do
+    message = GenUtils.get_tesla_error_message(env) || ""
+
+    String.contains?(message, "rate limit") or
+      String.contains?(message, "rateLimitExceeded") or
+      String.contains?(message, "quota")
+  end
+
+  defp rate_limit_error?(_), do: false
 
   @spec delete_table(atom) :: {:error, Tesla.Env.t()} | {:ok, term}
   def delete_table(source_id) do

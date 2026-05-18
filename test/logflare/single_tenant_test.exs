@@ -178,6 +178,18 @@ defmodule Logflare.SingleTenantTest do
                source_schemas_updated: nil
              } = SingleTenant.supabase_mode_status()
     end
+
+    test "supabase_mode_status/0 reports :ok once source schemas have been enriched" do
+      {:ok, sources} = SingleTenant.create_supabase_sources()
+      enriched = TestUtils.build_bq_schema(%{"my_field" => "value"})
+
+      for source <- sources do
+        insert(:source_schema, source: source, bigquery_schema: enriched)
+      end
+
+      assert SingleTenant.supabase_mode_source_schemas_updated?()
+      assert %{source_schemas_updated: :ok} = SingleTenant.supabase_mode_status()
+    end
   end
 
   describe "single tenant mode using Postgres" do

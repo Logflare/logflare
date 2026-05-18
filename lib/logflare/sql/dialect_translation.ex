@@ -496,6 +496,39 @@ defmodule Logflare.Sql.DialectTranslation do
     {k, %{v | "expr" => processed_expr}}
   end
 
+  # handle LIKE/ILIKE expressions - cast LHS to text since LIKE doesn't work on jsonb.
+  # CTE fields are JSONB in the postgres backend; without this, `event_message LIKE 'x'`
+  # produces `operator does not exist: jsonb ~~ unknown` at runtime.
+  defp pg_traverse_final_pass({k, %{"expr" => expr} = v})
+       when k in ["Like", "ILike"] do
+    processed_expr =
+      cond do
+        identifier?(expr) ->
+          %{
+            "Cast" => %{
+              "data_type" => %{"Text" => nil},
+              "expr" => expr,
+              "format" => nil,
+              "kind" => "DoubleColon"
+            }
+          }
+
+        json_access?(expr) ->
+          case expr do
+            %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
+              %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
+
+            other ->
+              pg_traverse_final_pass(other)
+          end
+
+        true ->
+          pg_traverse_final_pass(expr)
+      end
+
+    {k, %{v | "expr" => processed_expr} |> pg_traverse_final_pass()}
+  end
+
   # convert backticks to double quotes
   defp pg_traverse_final_pass({"quote_style" = k, "`"}), do: {k, "\""}
 
