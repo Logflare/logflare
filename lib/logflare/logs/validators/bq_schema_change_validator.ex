@@ -104,8 +104,6 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
     end
   end
 
-  defp join_key("", key) when is_binary(key), do: key
   defp join_key("", key), do: to_string(key)
-  defp join_key(prefix, key) when is_binary(key), do: prefix <> "." <> key
   defp join_key(prefix, key), do: prefix <> "." <> to_string(key)
 end
