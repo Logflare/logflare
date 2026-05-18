@@ -254,7 +254,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
       {:otel_metric_exporter,
-       git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "f21149a"},
+       git: "https://github.com/bblaszkow06/elixir-otel-metric-exporter", ref: "920b3fa"},
       {:live_monaco_editor, "~> 0.2"}
     ]
   end
