@@ -143,19 +143,37 @@ defmodule Logflare.Auth do
   end
 
   def create_access_token(%User{} = user, attrs) do
-    run_create_access_token(user, env_oauth_config(), fn token ->
-      token
-      |> Changeset.cast(attrs, [:token, :scopes, :description])
-      |> validate_scopes()
-      |> Changeset.unique_constraint(:token)
-    end)
+    do_create_user_access_token(user, attrs, [:scopes, :description])
   end
 
   def create_access_token(%Partner{} = partner, attrs) do
     run_create_access_token(partner, env_partner_oauth_config(), fn token ->
       token
-      |> Changeset.cast(attrs, [:token, :description])
+      |> Changeset.cast(attrs, [:description])
       |> Changeset.put_change(:scopes, "partner")
+      |> Changeset.unique_constraint(:token)
+    end)
+  end
+
+  @doc """
+  Creates an access token with a caller-supplied `:token` value.
+
+  Privileged variant of `create_access_token/2` that opts into casting `:token`.
+  Only call from trusted code paths where the token value is server-controlled
+  (e.g. single-tenant environment seeding). Never forward user-controlled
+  request params through this function.
+  """
+  @spec create_access_token_with_token(User.t(), create_attrs()) ::
+          {:ok, OauthAccessToken.t()} | {:error, Changeset.t()}
+  def create_access_token_with_token(%User{} = user, attrs) do
+    do_create_user_access_token(user, attrs, [:token, :scopes, :description])
+  end
+
+  defp do_create_user_access_token(user, attrs, cast_fields) do
+    run_create_access_token(user, env_oauth_config(), fn token ->
+      token
+      |> Changeset.cast(attrs, cast_fields)
+      |> validate_scopes()
       |> Changeset.unique_constraint(:token)
     end)
   end

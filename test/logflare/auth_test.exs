@@ -37,6 +37,36 @@ defmodule Logflare.AuthTest do
       assert_scope_error(Auth.create_access_token(user, %{scopes: "partner ingest"}))
     end
 
+    test "create_access_token/2 ignores caller-supplied :token for users", %{user: user} do
+      attacker = "attacker-chosen-#{Logflare.TestUtils.random_string(12)}"
+
+      {:ok, token_atom} = Auth.create_access_token(user, %{token: attacker})
+      assert token_atom.token != attacker
+
+      {:ok, token_string} = Auth.create_access_token(user, %{"token" => attacker})
+      assert token_string.token != attacker
+    end
+
+    test "create_access_token/2 ignores caller-supplied :token for partners", %{partner: partner} do
+      attacker = "attacker-chosen-#{Logflare.TestUtils.random_string(12)}"
+
+      {:ok, token_atom} = Auth.create_access_token(partner, %{token: attacker})
+      assert token_atom.token != attacker
+
+      {:ok, token_string} = Auth.create_access_token(partner, %{"token" => attacker})
+      assert token_string.token != attacker
+    end
+
+    test "create_access_token_with_token/2 honors caller-supplied :token", %{user: user} do
+      explicit = "server-controlled-#{Logflare.TestUtils.random_string(12)}"
+
+      {:ok, token} =
+        Auth.create_access_token_with_token(user, %{token: explicit, scopes: "public"})
+
+      assert token.token == explicit
+      assert token.scopes == "public"
+    end
+
     test "user token attrs rejects unrecognized scopes via changeset error", %{user: user} do
       assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest admin"}))
       assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest:source:not-a-number"}))
