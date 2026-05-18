@@ -200,6 +200,21 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
              )
     end
 
+    test "validates each entry in a REPEATED scalar list" do
+      schema = SchemaFactory.build(:schema, variant: :third_with_lists)
+      base = SchemaFactory.build(:metadata, variant: :third_with_lists)
+
+      assert valid?(%{"metadata" => base}, schema)
+
+      mixed_ids = put_in(base, ["user", "ids"], [299, "not_an_int", 12])
+      refute valid?(%{"metadata" => mixed_ids}, schema)
+
+      mixed_dates =
+        put_in(base, ["user", "last_login_datetimes"], ["2020-01-01T00:00:01Z", 12_345])
+
+      refute valid?(%{"metadata" => mixed_dates}, schema)
+    end
+
     test "DateTime and NaiveDateTime values satisfy a :datetime schema type" do
       bq_schema = %TS{
         fields: [

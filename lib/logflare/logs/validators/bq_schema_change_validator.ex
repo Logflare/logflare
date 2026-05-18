@@ -69,8 +69,10 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
         enforce_type(:map, key, schema_flat_map)
         walk_maps(v, key, schema_flat_map)
 
-      head ->
-        enforce_type({:list, SchemaTypes.type_of(head)}, key, schema_flat_map)
+      _head ->
+        Enum.each(v, fn elem ->
+          enforce_type({:list, SchemaTypes.type_of(elem)}, key, schema_flat_map)
+        end)
     end
   end
 
