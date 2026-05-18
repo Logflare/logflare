@@ -30,38 +30,28 @@ defmodule Logflare.AuthTest do
       assert Auth.list_valid_access_tokens(partner) |> length() == 2
     end
 
-    test "user token attrs cannot inject scopes via mass assignment", %{user: user} do
-      {:ok, token} = Auth.create_access_token(user, %{"scopes" => "partner"})
-      assert token.scopes == "public"
-
-      {:ok, token} = Auth.create_access_token(user, %{scopes: "partner"})
-      assert token.scopes == "public"
-
-      {:ok, token} = Auth.create_access_token(user, %{"scopes" => "ingest"})
-      assert token.scopes == "public"
+    test "user token attrs rejects partner scope via changeset error", %{user: user} do
+      assert_scope_error(Auth.create_access_token(user, %{"scopes" => "partner"}))
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "partner"}))
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest partner"}))
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "partner ingest"}))
     end
 
-    test "user token opts cannot inject partner scope", %{user: user} do
-      assert {:error, :unauthorized} =
-               Auth.create_access_token(user, %{}, scopes: "partner")
-
-      assert {:error, :unauthorized} =
-               Auth.create_access_token(user, %{}, scopes: "ingest partner")
-
-      assert {:error, :unauthorized} =
-               Auth.create_access_token(user, %{}, scopes: "partner ingest")
+    test "user token attrs rejects unrecognized scopes via changeset error", %{user: user} do
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest admin"}))
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest:source:not-a-number"}))
     end
 
-    test "partner token always receives partner scope regardless of opts", %{partner: partner} do
+    test "partner token always receives partner scope regardless of attrs", %{partner: partner} do
       {:ok, token} = Auth.create_access_token(partner, %{})
       assert token.scopes == "partner"
 
-      {:ok, token} = Auth.create_access_token(partner, %{}, scopes: "ingest")
+      {:ok, token} = Auth.create_access_token(partner, %{scopes: "ingest"})
       assert token.scopes == "partner"
     end
 
-    test "team-owned token forwards opts to the underlying user", %{team: team} do
-      {:ok, token} = Auth.create_access_token(team, %{}, scopes: "private")
+    test "team-owned token forwards attrs to the underlying user", %{team: team} do
+      {:ok, token} = Auth.create_access_token(team, %{scopes: "private"})
       assert token.scopes == "private"
       assert {:ok, _, _} = Auth.verify_access_token(token, ~w(private))
     end
@@ -111,7 +101,7 @@ defmodule Logflare.AuthTest do
     assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest source:2))
 
     # scope is set
-    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "ingest")
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "ingest"})
     assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest))
     assert {:ok, _, _} = Auth.verify_access_token(key.token, "ingest")
     assert {:ok, _, _} = Auth.verify_access_token(key.token)
@@ -120,7 +110,7 @@ defmodule Logflare.AuthTest do
     # source and collection are resource aliases. i.e. they refer to the same resource.
     for name <- ["source", "collection"] do
       {:ok, key} =
-        Auth.create_access_token(user, %{}, scopes: "ingest:#{name}:3 ingest:#{name}:1")
+        Auth.create_access_token(user, %{scopes: "ingest:#{name}:3 ingest:#{name}:1"})
 
       assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest:#{name}:1))
       assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest:#{name}:3))
@@ -133,19 +123,19 @@ defmodule Logflare.AuthTest do
     assert {:error, _} = Auth.verify_access_token(key.token, ~w(query))
 
     # scope is set on token
-    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "query")
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "query"})
     assert {:error, _} = Auth.verify_access_token(key.token, ~w(ingest))
     assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(query))
     assert {:ok, _, _} = Auth.verify_access_token(key.token)
 
     # scope to a specific resource
-    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "query:endpoint:3 query:endpoint:1")
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "query:endpoint:3 query:endpoint:1"})
     assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(query:endpoint:1))
     assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(query:endpoint:3))
   end
 
   test "check_scopes/2 private scope ", %{user: user} do
-    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "private")
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "private"})
     assert :ok = Auth.check_scopes(key, ~w(query))
     assert :ok = Auth.check_scopes(key, ~w(ingest))
     assert :ok = Auth.check_scopes(key, ~w(ingest:endpoint:3))
@@ -154,14 +144,14 @@ defmodule Logflare.AuthTest do
 
   test "check_scopes/2 default empty scopes", %{user: user} do
     # empty scopes means ingest into any source, the legacy behaviour
-    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "")
+    {:ok, key} = Auth.create_access_token(user, %{scopes: ""})
     assert :ok = Auth.check_scopes(key, ~w(ingest))
     assert :ok = Auth.check_scopes(key, ~w(ingest:source:1))
   end
 
   test "check_scopes/2 deprecated public scope", %{user: user} do
     # empty scopes means ingest into any source, the legacy behaviour
-    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "public")
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "public"})
     assert :ok = Auth.check_scopes(key, ~w(ingest))
     assert :ok = Auth.check_scopes(key, ~w(ingest:source:1))
     assert {:error, :unauthorized} = Auth.check_scopes(key, ~w(query))
@@ -170,7 +160,7 @@ defmodule Logflare.AuthTest do
 
   test "check_scopes/2 matches all required scopes ", %{user: user} do
     # should only allow ingest into source 1
-    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "ingest:source:1 ingest:source:4")
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "ingest:source:1 ingest:source:4"})
     assert {:error, _} = Auth.check_scopes(key, ~w(ingest))
     assert {:error, _} = Auth.check_scopes(key, ~w(ingest:source:3))
     assert {:error, _} = Auth.check_scopes(key, ~w(query))
@@ -188,11 +178,11 @@ defmodule Logflare.AuthTest do
     assert {:error, _} = Auth.verify_access_token(key.token, ~w(private))
 
     # public scope set
-    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "public")
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "public"})
     assert {:error, _} = Auth.verify_access_token(key.token, ~w(private))
 
     # scope is set
-    {:ok, key} = Auth.create_access_token(user, %{}, scopes: "private")
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "private"})
     assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(public))
     assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(private))
   end
@@ -209,5 +199,10 @@ defmodule Logflare.AuthTest do
   defp access_token_fixture(user_or_team_or_partner) do
     {:ok, key} = Auth.create_access_token(user_or_team_or_partner)
     key
+  end
+
+  defp assert_scope_error(result) do
+    assert {:error, %Ecto.Changeset{errors: errors}} = result
+    assert Keyword.has_key?(errors, :scopes)
   end
 end

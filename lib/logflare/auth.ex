@@ -20,6 +20,10 @@ defmodule Logflare.Auth do
   @user_socket_salt "logflare user socket auth"
   @public_source_salt "logflare public source token"
 
+  @scopes_main_allowed ~w(public ingest query private)
+  @scopes_ingest_pattern ~r/^ingest:(?:source|collection):\d+$/
+  @scopes_query_pattern ~r/^query:endpoint:\d+$/
+
   defp env_oauth_config, do: Application.get_env(:logflare, ExOauth2Provider)
   defp env_partner_oauth_config, do: Application.get_env(:logflare, ExOauth2ProviderPartner)
 
@@ -127,48 +131,68 @@ defmodule Logflare.Auth do
   end
 
   @doc "Creates an Oauth access token with no expiry, linked to the given user or team's user."
-  @typep create_attrs :: %{optional(:token) => String.t(), optional(:description) => String.t()}
-  @typep create_opts :: [scopes: String.t()]
-  @spec create_access_token(Team.t() | User.t() | Partner.t(), create_attrs(), create_opts()) ::
-          {:ok, OauthAccessToken.t()} | {:error, term()}
-  def create_access_token(user_or_team_or_partner, attrs \\ %{}, opts \\ [])
+  @typep create_attrs :: %{optional(atom() | String.t()) => String.t()}
+  @spec create_access_token(Team.t() | User.t() | Partner.t(), create_attrs()) ::
+          {:ok, OauthAccessToken.t() | PartnerOauthAccessToken.t()} | {:error, Changeset.t()}
+  def create_access_token(user_or_team_or_partner, attrs \\ %{})
 
-  def create_access_token(%Team{user_id: user_id}, attrs, opts) do
+  def create_access_token(%Team{user_id: user_id}, attrs) do
     user_id
     |> Logflare.Users.get()
-    |> create_access_token(attrs, opts)
+    |> create_access_token(attrs)
   end
 
-  def create_access_token(%User{} = user, attrs, opts) do
-    with {:ok, scopes} <- reject_partner_scope(Keyword.get(opts, :scopes)),
-         {:ok, token} <-
-           ExOauth2Provider.AccessTokens.create_token(user, %{}, env_oauth_config()) do
+  def create_access_token(%User{} = user, attrs) do
+    run_create_access_token(user, env_oauth_config(), fn token ->
       token
-      |> Changeset.cast(attrs, [:token, :description])
-      |> maybe_put_scopes(scopes)
+      |> Changeset.cast(attrs, [:token, :scopes, :description])
+      |> validate_scopes()
       |> Changeset.unique_constraint(:token)
-      |> Repo.update()
-    end
+    end)
   end
 
-  def create_access_token(%Partner{} = partner, attrs, _opts) do
-    with {:ok, token} <-
-           ExOauth2Provider.AccessTokens.create_token(partner, %{}, env_partner_oauth_config()) do
+  def create_access_token(%Partner{} = partner, attrs) do
+    run_create_access_token(partner, env_partner_oauth_config(), fn token ->
       token
       |> Changeset.cast(attrs, [:token, :description])
       |> Changeset.put_change(:scopes, "partner")
       |> Changeset.unique_constraint(:token)
-      |> Repo.update()
-    end
+    end)
   end
 
-  defp maybe_put_scopes(changeset, nil), do: changeset
-  defp maybe_put_scopes(changeset, scopes), do: Changeset.put_change(changeset, :scopes, scopes)
+  defp run_create_access_token(resource_owner, oauth_config, build_changeset) do
+    Repo.transaction(fn ->
+      with {:ok, token} <-
+             ExOauth2Provider.AccessTokens.create_token(resource_owner, %{}, oauth_config),
+           {:ok, token} <- token |> build_changeset.() |> Repo.update() do
+        token
+      else
+        {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
+      end
+    end)
+  end
 
-  defp reject_partner_scope(nil), do: {:ok, nil}
+  defp validate_scopes(changeset) do
+    Changeset.validate_change(changeset, :scopes, fn field, scopes ->
+      tokens = String.split(scopes)
 
-  defp reject_partner_scope(scopes) when is_binary(scopes) do
-    if "partner" in String.split(scopes), do: {:error, :unauthorized}, else: {:ok, scopes}
+      cond do
+        "partner" in tokens ->
+          [{field, "cannot be assigned by users"}]
+
+        Enum.all?(tokens, &valid_scope_token?/1) ->
+          []
+
+        true ->
+          [{field, "contains unrecognized scope"}]
+      end
+    end)
+  end
+
+  defp valid_scope_token?(token) do
+    token in @scopes_main_allowed or
+      Regex.match?(@scopes_ingest_pattern, token) or
+      Regex.match?(@scopes_query_pattern, token)
   end
 
   @doc """

@@ -114,21 +114,24 @@ defmodule LogflareWeb.AccessTokensLiveTest do
 
     assert view |> element("button", "Create access token") |> render_click()
 
-    view
-    |> element("form")
-    |> render_submit(%{
-      description: "crafted",
-      scopes_main: ["ingest", "partner"],
-      scopes_ingest: [],
-      scopes_query: []
-    })
+    html =
+      view
+      |> element("form")
+      |> render_submit(%{
+        description: "crafted",
+        scopes_main: ["ingest", "partner"],
+        scopes_ingest: [],
+        scopes_query: []
+      })
 
-    [token] = Logflare.Auth.list_valid_access_tokens(user)
-    refute token.scopes =~ "partner"
-    assert token.scopes =~ "ingest"
+    assert html =~ "Could not create access token"
+    assert Logflare.Auth.list_valid_access_tokens(user) == []
   end
 
-  test "create token - drops unknown scopes from crafted form payload", %{conn: conn, user: user} do
+  test "create token - tolerates non-list scope params from crafted form payload", %{
+    conn: conn,
+    user: user
+  } do
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
 
     assert view |> element("button", "Create access token") |> render_click()
@@ -137,13 +140,54 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     |> element("form")
     |> render_submit(%{
       description: "crafted",
-      scopes_main: ["ingest", "admin", "root"],
-      scopes_ingest: ["ingest:source:not-a-number"],
-      scopes_query: ["query:endpoint:abc"]
+      scopes_main: "partner",
+      scopes_ingest: "ingest:source:1",
+      scopes_query: %{"0" => "query:endpoint:1"}
     })
 
-    [token] = Logflare.Auth.list_valid_access_tokens(user)
-    assert token.scopes == "ingest"
+    assert Logflare.Auth.list_valid_access_tokens(user) == []
+  end
+
+  test "update-token-form - tolerates non-list scope params from crafted change payload", %{
+    conn: conn,
+    user: user
+  } do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    assert view |> element("button", "Create access token") |> render_click()
+
+    view
+    |> element("form")
+    |> render_change(%{
+      description: "crafted",
+      scopes_main: "partner",
+      scopes_ingest: "ingest:source:1",
+      scopes_query: %{"0" => "query:endpoint:1"}
+    })
+
+    assert Logflare.Auth.list_valid_access_tokens(user) == []
+  end
+
+  test "create token - rejects unknown scopes from crafted form payload", %{
+    conn: conn,
+    user: user
+  } do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    assert view |> element("button", "Create access token") |> render_click()
+
+    html =
+      view
+      |> element("form")
+      |> render_submit(%{
+        description: "crafted",
+        scopes_main: ["ingest", "admin", "root"],
+        scopes_ingest: ["ingest:source:not-a-number"],
+        scopes_query: ["query:endpoint:abc"]
+      })
+
+    assert html =~ "Could not create access token"
+    assert Logflare.Auth.list_valid_access_tokens(user) == []
   end
 
   test "show private token", %{conn: conn, user: user} do

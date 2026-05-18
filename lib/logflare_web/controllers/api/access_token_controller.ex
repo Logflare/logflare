@@ -8,6 +8,7 @@ defmodule LogflareWeb.Api.AccessTokenController do
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApi.Unauthorized
+  alias LogflareWeb.OpenApi.UnprocessableEntity
   alias LogflareWeb.OpenApiSchemas.AccessToken
   alias LogflareWeb.Api.FallbackController
 
@@ -26,24 +27,19 @@ defmodule LogflareWeb.Api.AccessTokenController do
   end
 
   operation(:create,
-    summary: "Create source",
+    summary: "Create access token",
     request_body: AccessToken.params(),
     responses: %{
       201 => Created.response(AccessToken),
       401 => Unauthorized.response(),
-      404 => NotFound.response()
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
-    opts =
-      case Map.fetch(params, "scopes") do
-        {:ok, scopes} when is_binary(scopes) -> [scopes: scopes]
-        _ -> []
-      end
-
     with {:ok, access_token} <-
-           Auth.create_access_token(user, Map.take(params, ["description"]), opts) do
+           Auth.create_access_token(user, Map.take(params, ["description", "scopes"])) do
       conn
       |> put_status(201)
       |> json(access_token)

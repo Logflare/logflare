@@ -1,6 +1,7 @@
 defmodule LogflareWeb.AccessTokensLive do
   @moduledoc false
   use LogflareWeb, :live_view
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
   require Logger
   alias Logflare.Auth
   alias Logflare.Sources
@@ -152,19 +153,17 @@ defmodule LogflareWeb.AccessTokensLive do
     "scopes_main" => ["ingest"]
   }
 
-  @scopes_main_allowed ~w(ingest query private)
-  @scopes_ingest_pattern ~r/^ingest:source:\d+$/
-  @scopes_query_pattern ~r/^query:endpoint:\d+$/
-
-  defp filter_param(values, allowed) when is_list(values) and is_list(allowed) do
-    Enum.filter(values, &(&1 in allowed))
+  defp coerce_scope_list(value) do
+    value
+    |> List.wrap()
+    |> Enum.filter(&is_non_empty_binary/1)
   end
 
-  defp filter_param(values, %Regex{} = pattern) when is_list(values) do
-    Enum.filter(values, &(is_binary(&1) and Regex.match?(pattern, &1)))
+  defp coerce_scope_fields(data, keys) do
+    Enum.reduce(keys, data, fn key, acc ->
+      Map.replace_lazy(acc, key, &coerce_scope_list/1)
+    end)
   end
-
-  defp filter_param(_values, _allowed), do: []
 
   def mount(_params, _session, socket) do
     %{assigns: %{user: user}} = socket
@@ -202,14 +201,9 @@ defmodule LogflareWeb.AccessTokensLive do
       "Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}"
     )
 
-    scopes_ingest_params =
-      params |> Map.get("scopes_ingest", []) |> filter_param(@scopes_ingest_pattern)
-
-    scopes_query_params =
-      params |> Map.get("scopes_query", []) |> filter_param(@scopes_query_pattern)
-
-    scopes_main_params =
-      params |> Map.get("scopes_main", []) |> filter_param(@scopes_main_allowed)
+    scopes_ingest_params = params |> Map.get("scopes_ingest", []) |> coerce_scope_list()
+    scopes_query_params = params |> Map.get("scopes_query", []) |> coerce_scope_list()
+    scopes_main_params = params |> Map.get("scopes_main", []) |> coerce_scope_list()
 
     scopes_main =
       if scopes_ingest_params != [],
@@ -221,19 +215,28 @@ defmodule LogflareWeb.AccessTokensLive do
 
     scopes = scopes_main ++ scopes_ingest_params ++ scopes_query_params
 
-    attrs = Map.take(params, ["description"])
-    scopes_string = Enum.join(scopes, " ")
+    attrs =
+      params
+      |> Map.take(["description"])
+      |> Map.put("scopes", Enum.join(scopes, " "))
 
-    {:ok, token} = Auth.create_access_token(user, attrs, scopes: scopes_string)
+    case Auth.create_access_token(user, attrs) do
+      {:ok, token} ->
+        socket =
+          socket
+          |> do_refresh()
+          |> assign(:show_create_form, false)
+          |> assign(:create_token_form, @default_create_form)
+          |> assign(:created_token, token)
 
-    socket =
-      socket
-      |> do_refresh()
-      |> assign(:show_create_form, false)
-      |> assign(:create_token_form, @default_create_form)
-      |> assign(:created_token, token)
+        {:noreply, socket}
 
-    {:noreply, socket}
+      {:error, %Ecto.Changeset{} = changeset} ->
+        message =
+          LogflareWeb.Utils.stringify_changeset_errors(changeset, "Could not create access token")
+
+        {:noreply, put_flash(socket, :error, message)}
+    end
   end
 
   def handle_event(
@@ -241,17 +244,22 @@ defmodule LogflareWeb.AccessTokensLive do
         payload,
         socket
       ) do
-    data = Map.drop(payload, ["_csrf_token", "_target"])
+    data =
+      payload
+      |> Map.drop(["_csrf_token", "_target"])
+      |> coerce_scope_fields(~w(scopes_main scopes_ingest scopes_query))
+
+    scopes_main = Map.get(data, "scopes_main", [])
 
     data =
-      if "ingest" in Map.get(data, "scopes_main", []) do
+      if "ingest" in scopes_main do
         data
       else
         Map.put(data, "scopes_ingest", [])
       end
 
     data =
-      if "query" in Map.get(data, "scopes_main", []) do
+      if "query" in scopes_main do
         data
       else
         Map.put(data, "scopes_query", [])
