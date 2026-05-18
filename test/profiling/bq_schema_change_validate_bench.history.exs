@@ -1,6 +1,40 @@
 [
   %{
     meta: %{
+      captured_at: "2026-05-18T16:07:16.468644Z",
+      git_sha: "8d6838a9a",
+      label: "o11y-1829 drop is_binary join_key",
+      machine: "Apple M5"
+    },
+    results: %{
+      "empty schema short-circuit" => %{
+        ips: 1_257_155,
+        memory_avg_bytes: 968,
+        reductions_avg: 134,
+        wall_avg_us: 0.8,
+        wall_median_us: 0.5,
+        wall_p99_us: 5.54
+      },
+      "lists (third_with_lists)" => %{
+        ips: 171_710,
+        memory_avg_bytes: 3272,
+        reductions_avg: 552,
+        wall_avg_us: 5.82,
+        wall_median_us: 4.63,
+        wall_p99_us: 25.46
+      },
+      "scalars (third)" => %{
+        ips: 190_613,
+        memory_avg_bytes: 2592,
+        reductions_avg: 526,
+        wall_avg_us: 5.25,
+        wall_median_us: 4.21,
+        wall_p99_us: 18.29
+      }
+    }
+  },
+  %{
+    meta: %{
       captured_at: "2026-05-18T15:50:24.421713Z",
       git_sha: "236d147ff",
       label: "o11y-1829 tightened validate loop",
