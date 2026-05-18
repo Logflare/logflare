@@ -482,7 +482,8 @@ defmodule LogflareWeb.LogControllerTest do
               "level" => "info",
               "message" => "bert body source_name test",
               "metadata" => %{},
-              "timestamp" => "2026-05-14T17:00:00Z"
+              "timestamp" =>
+                DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
             }
           ]
         })
