@@ -43,15 +43,19 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   end
 
   defp walk_map(map, prefix, schema_flat_map) do
-    Enum.each(map, fn {k, v} ->
-      if not_empty_container?(v) and not skip?(prefix, k) do
-        check_field(v, join_key(prefix, k), schema_flat_map)
-      end
-    end)
+    :maps.fold(&walk_entry/3, {prefix, schema_flat_map}, map)
   end
 
-  defp skip?("", k), do: k in @skip_top_level_keys
-  defp skip?(_, _), do: false
+  defp walk_entry(_k, [], acc), do: acc
+  defp walk_entry(_k, m, acc) when is_map(m) and map_size(m) == 0, do: acc
+  defp walk_entry(_k, [[]], acc), do: acc
+  defp walk_entry(_k, [m], acc) when is_map(m) and map_size(m) == 0, do: acc
+  defp walk_entry(k, _v, {"", _} = acc) when k in @skip_top_level_keys, do: acc
+
+  defp walk_entry(k, v, {prefix, schema_flat_map} = acc) do
+    check_field(v, join_key(prefix, k), schema_flat_map)
+    acc
+  end
 
   defp check_field(%DateTime{}, key, schema_flat_map),
     do: enforce_type(:datetime, key, schema_flat_map)
@@ -63,7 +67,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
     case hd(v) do
       head when is_map(head) ->
         enforce_type(:map, key, schema_flat_map)
-        Enum.each(v, &walk_map(&1, key, schema_flat_map))
+        walk_maps(v, key, schema_flat_map)
 
       head ->
         enforce_type({:list, SchemaTypes.type_of(head)}, key, schema_flat_map)
@@ -77,6 +81,13 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
 
   defp check_field(v, key, schema_flat_map),
     do: enforce_type(SchemaTypes.type_of(v), key, schema_flat_map)
+
+  defp walk_maps([], _prefix, _schema_flat_map), do: :ok
+
+  defp walk_maps([h | t], prefix, schema_flat_map) do
+    walk_map(h, prefix, schema_flat_map)
+    walk_maps(t, prefix, schema_flat_map)
+  end
 
   defp enforce_type(incoming, key, schema_flat_map) do
     case Map.fetch(schema_flat_map, key) do
@@ -93,15 +104,8 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
     end
   end
 
+  defp join_key("", key) when is_binary(key), do: key
   defp join_key("", key), do: to_string(key)
+  defp join_key(prefix, key) when is_binary(key), do: prefix <> "." <> key
   defp join_key(prefix, key), do: prefix <> "." <> to_string(key)
-
-  defp not_empty_container?(value)
-       when value == []
-       when value == %{}
-       when value == [[]]
-       when value == [%{}],
-       do: false
-
-  defp not_empty_container?(_), do: true
 end
