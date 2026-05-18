@@ -77,6 +77,13 @@ config :logger,
   handle_sasl_reports: false,
   level: :info
 
+config :logger, :default_handler,
+  config: %{
+    sync_mode_qlen: 10_000,
+    drop_mode_qlen: 10_000,
+    flush_qlen: 20_000
+  }
+
 config :logger_json, :backend,
   metadata: :all,
   json_encoder: Jason,
