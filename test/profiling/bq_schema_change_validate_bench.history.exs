@@ -1,6 +1,40 @@
 [
   %{
     meta: %{
+      captured_at: "2026-05-18T16:23:19.604582Z",
+      git_sha: "7c4c80103",
+      label: "o11y-1829 per-element scalar list validation",
+      machine: "Apple M5"
+    },
+    results: %{
+      "empty schema short-circuit" => %{
+        ips: 1_325_297,
+        memory_avg_bytes: 968,
+        reductions_avg: 134,
+        wall_avg_us: 0.75,
+        wall_median_us: 0.5,
+        wall_p99_us: 5.46
+      },
+      "lists (third_with_lists)" => %{
+        ips: 175_574,
+        memory_avg_bytes: 3728,
+        reductions_avg: 616,
+        wall_avg_us: 5.7,
+        wall_median_us: 4.92,
+        wall_p99_us: 17.46
+      },
+      "scalars (third)" => %{
+        ips: 206_438,
+        memory_avg_bytes: 2592,
+        reductions_avg: 526,
+        wall_avg_us: 4.84,
+        wall_median_us: 4.08,
+        wall_p99_us: 15.21
+      }
+    }
+  },
+  %{
+    meta: %{
       captured_at: "2026-05-18T16:07:16.468644Z",
       git_sha: "8d6838a9a",
       label: "o11y-1829 drop is_binary join_key",
