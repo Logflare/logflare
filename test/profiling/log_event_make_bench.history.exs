@@ -4,7 +4,7 @@
       captured_at: "2026-05-16T20:44:01.594108Z",
       git_sha: "640151ae9",
       label: "o11y-1829 single-pass validate",
-      machine: nil
+      machine: "Apple M5"
     },
     results: %{
       "edge log" => %{
@@ -110,7 +110,7 @@
       captured_at: "2026-05-16T20:41:11.642611Z",
       git_sha: "8e03624a4",
       label: "o11y-1829 baseline (main)",
-      machine: nil
+      machine: "Apple M5"
     },
     results: %{
       "edge log" => %{
