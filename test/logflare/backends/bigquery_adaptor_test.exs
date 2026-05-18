@@ -48,10 +48,13 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       pid = self()
 
       Logflare.Google.BigQuery
-      |> expect(:stream_batch!, fn arg, _ ->
-        assert arg.bigquery_project_id == "some-project"
-        assert arg.bigquery_dataset_id == "some-id"
-        send(pid, :ok)
+      |> stub(:stream_batch!, fn arg, _ ->
+        if arg.source_id == source.id do
+          assert arg.bigquery_project_id == "some-project"
+          assert arg.bigquery_dataset_id == "some-id"
+          send(pid, :ok)
+        end
+
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
@@ -311,10 +314,13 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       pid = self()
 
       Logflare.Google.BigQuery
-      |> expect(:stream_batch!, fn arg, _ ->
-        assert arg.bigquery_project_id == "some-project"
-        assert arg.bigquery_dataset_id == "some-id"
-        send(pid, :ok)
+      |> stub(:stream_batch!, fn arg, _ ->
+        if arg.source_id == source.id do
+          assert arg.bigquery_project_id == "some-project"
+          assert arg.bigquery_dataset_id == "some-id"
+          send(pid, :ok)
+        end
+
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
