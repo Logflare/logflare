@@ -47,7 +47,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, view, _html} =
         conn
         |> login_user(attacker)
-        |> live(~p"/alerts")
+        |> live_with_redirect(~p"/alerts")
 
       render_hook(view, "delete", %{"alert_id" => to_string(alert.id)})
 
@@ -63,7 +63,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, view, _html} =
         conn
         |> login_user(attacker)
-        |> live(~p"/alerts/#{attacker_alert.id}")
+        |> live_with_redirect(~p"/alerts/#{attacker_alert.id}")
 
       render_hook(view, "add-backend", %{
         "backend" => %{"backend_id" => to_string(victim_backend.id)}
@@ -87,7 +87,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, view, _html} =
         conn
         |> login_user(attacker)
-        |> live(~p"/alerts/#{attacker_alert.id}")
+        |> live_with_redirect(~p"/alerts/#{attacker_alert.id}")
 
       render_hook(view, "remove-backend", %{"backend_id" => to_string(victim_backend.id)})
 
@@ -107,12 +107,12 @@ defmodule LogflareWeb.AlertsLiveTest do
       # This reproduces a bug where list_sources_by_user/1 expects an integer
       conn = Plug.Test.init_test_session(conn, %{"user_id" => Integer.to_string(user.id)})
 
-      assert {:ok, _view, html} = live(conn, Routes.alerts_path(conn, :index))
+      assert {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts")
       assert html =~ "Alerts"
     end
 
     test "lists all alert_queries", %{conn: conn, alert_query: alert_query, team: team} do
-      {:ok, view, html} = live(conn, Routes.alerts_path(conn, :index))
+      {:ok, view, html} = live_with_redirect(conn, ~p"/alerts")
       assert html =~ alert_query.name
       assert html =~ "Alerts"
       # link to show
@@ -134,7 +134,7 @@ defmodule LogflareWeb.AlertsLiveTest do
     } do
       backend = insert(:backend, user: user)
 
-      {:ok, view, _html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       # toggle open the backend form
       view
@@ -160,7 +160,7 @@ defmodule LogflareWeb.AlertsLiveTest do
     end
 
     test "validates query", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/alerts/new")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/new")
 
       valid_query = "select current_timestamp() as my_time"
       invalid_query = "bad_query"
@@ -175,9 +175,32 @@ defmodule LogflareWeb.AlertsLiveTest do
              |> render_hook("parse-query", %{"value" => valid_query}) =~ "SQL Parse error!"
     end
 
-    test "show for nonexistent query", %{conn: conn} do
+    test "show for nonexistent query", %{conn: conn, team: team} do
       {:error, {:live_redirect, %{flash: %{"info" => "Alert not found" <> _}}}} =
-        live(conn, ~p"/alerts/123")
+        live(conn, ~p"/alerts/123?t=#{team.id}")
+    end
+
+    test "adds team param from alert resource", %{conn: conn, user: user} do
+      other_user = insert(:user)
+      other_team = insert(:team, user: other_user)
+      insert(:team_user, team: other_team, email: user.email)
+      alert_query = insert(:alert, user: other_user)
+      expected_path = "/alerts/#{alert_query.id}?t=#{other_team.id}"
+
+      assert {:error, {:live_redirect, %{to: ^expected_path}}} =
+               live(conn, ~p"/alerts/#{alert_query.id}")
+    end
+
+    test "updates team param from alert resource", %{conn: conn, user: user, team: team} do
+      other_user = insert(:user)
+      other_team = insert(:team, user: other_user)
+      alert_query = insert(:alert, user: other_user)
+      insert(:team_user, team: other_team, email: user.email)
+
+      expected_path = "/alerts/#{alert_query.id}?t=#{other_team.id}"
+
+      assert {:error, {:live_redirect, %{to: ^expected_path}}} =
+               live(conn, ~p"/alerts/#{alert_query.id}?t=#{team.id}")
     end
 
     test "can remove backend from the alert query", %{
@@ -186,7 +209,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       alert_query: alert_query
     } do
       backend = insert(:backend, user: user, alert_queries: [alert_query])
-      {:ok, view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
       assert html =~ backend.name
 
       view
@@ -197,7 +220,7 @@ defmodule LogflareWeb.AlertsLiveTest do
     end
 
     test "saves new alert_query", %{conn: conn, user: user} do
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :index))
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts")
       user = Logflare.Repo.preload(user, :team)
 
       assert view
@@ -229,7 +252,7 @@ defmodule LogflareWeb.AlertsLiveTest do
     end
 
     test "saves new alert_query with errors, shows flash message", %{conn: conn, user: user} do
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :index))
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts")
       user = Logflare.Repo.preload(user, :team)
 
       assert view
@@ -254,7 +277,7 @@ defmodule LogflareWeb.AlertsLiveTest do
     end
 
     test "update alert_query", %{conn: conn, alert_query: alert_query} do
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :index))
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts")
 
       view
       |> element("li a", alert_query.name)
@@ -277,19 +300,20 @@ defmodule LogflareWeb.AlertsLiveTest do
       refute html =~ alert_query.query
     end
 
-    test "deletes alert_query in listing", %{conn: conn, alert_query: alert_query} do
-      {:ok, view, _html} = live(conn, ~p"/alerts/#{alert_query.id}/edit")
+    test "deletes alert_query in listing", %{conn: conn, alert_query: alert_query, team: team} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}/edit")
 
-      assert view
-             |> element("button", "Delete")
-             |> render_click() =~ "has been deleted"
+      assert {:error, {:live_redirect, %{to: "/alerts?t=" <> _}}} =
+               view
+               |> element("button", "Delete")
+               |> render_click()
 
-      assert_patch(view, "/alerts")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts?t=#{team.id}")
       refute view |> has_element?("li", alert_query.name)
     end
 
     test "remove slack hook", %{conn: conn, alert_query: alert_query} do
-      {:ok, view, _html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert view
              |> element("button", "Remove Slack")
@@ -320,7 +344,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
       end)
 
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert view
              |> element("button", "Run query")
@@ -333,7 +357,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         {:ok, TestUtils.gen_bq_response([])}
       end)
 
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       html =
         view
@@ -349,7 +373,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         {:error, TestUtils.gen_bq_error("some error")}
       end)
 
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert view
              |> element("button", "Run query")
@@ -367,7 +391,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
       end)
 
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert view
              |> element("button", "Run query")
@@ -382,7 +406,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         {:error, TestUtils.gen_bq_error("some error")}
       end)
 
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert view
              |> element("button", "Run query")
@@ -402,7 +426,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         {:ok, TestUtils.gen_bq_response([%{"test_col" => "edit-results"}])}
       end)
 
-      {:ok, view, _html} = live(conn, ~p"/alerts/#{alert_query.id}/edit")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}/edit")
 
       html =
         view
@@ -423,7 +447,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         {:ok, TestUtils.gen_bq_response([%{"test_col" => "new-results"}])}
       end)
 
-      {:ok, view, _html} = live(conn, ~p"/alerts/new")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/new")
 
       html =
         view
@@ -440,7 +464,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         {:ok, TestUtils.gen_bq_response([])}
       end)
 
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert view
              |> element("button", "Run query")
@@ -474,7 +498,10 @@ defmodule LogflareWeb.AlertsLiveTest do
       |> Logflare.Repo.insert!()
     end
 
-    test "displays past executions with results", %{conn: conn, alert_query: alert_query} do
+    test "displays past executions with results", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
       _job =
         insert_oban_job(alert_query, %{
           meta: %{
@@ -487,7 +514,7 @@ defmodule LogflareWeb.AlertsLiveTest do
           }
         })
 
-      {:ok, view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert html =~ "Past Executions"
       assert html =~ "Fired"
@@ -514,7 +541,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         meta: %{"result" => %{"fired" => false, "rows" => []}}
       })
 
-      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert html =~ "Not Fired"
     end
@@ -529,7 +556,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         meta: %{"result" => %{"fired" => false, "rows" => []}}
       })
 
-      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert html =~ "Past Executions"
       refute html =~ "Show scheduled jobs"
@@ -546,7 +573,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         attempted_by: nil
       })
 
-      {:ok, view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert html =~ "Execution History"
 
@@ -560,18 +587,24 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert html =~ "scheduled"
     end
 
-    test "displays error reason for failed jobs", %{conn: conn, alert_query: alert_query} do
+    test "displays error reason for failed jobs", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
       insert_oban_job(alert_query, %{
         state: "discarded",
         meta: %{"reason" => "BigQuery error: table not found"}
       })
 
-      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       assert html =~ "BigQuery error: table not found"
     end
 
-    test "truncates long error reason with popover", %{conn: conn, alert_query: alert_query} do
+    test "truncates long error reason with popover", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
       long_reason = String.duplicate("a", 120)
 
       insert_oban_job(alert_query, %{
@@ -579,7 +612,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         meta: %{"reason" => long_reason}
       })
 
-      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       # Should show truncated text
       assert html =~ String.slice(long_reason, 0, 80) <> "..."
@@ -608,7 +641,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         })
       end
 
-      {:ok, view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       # Should show pagination and 25 total entries
       assert html =~ "Past Executions (25)"
@@ -628,19 +661,19 @@ defmodule LogflareWeb.AlertsLiveTest do
     setup [:create_alert_query]
 
     test "edit form shows enabled checkbox", %{conn: conn, alert_query: alert_query} do
-      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}/edit")
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}/edit")
       assert html =~ "enabled-checkbox"
       assert html =~ "Enabled"
     end
 
     test "show page displays Enabled badge", %{conn: conn, alert_query: alert_query} do
-      {:ok, _view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
       assert html =~ "Enabled"
     end
 
     test "index shows Disabled badge for disabled alert", %{conn: conn, user: user} do
       _disabled_alert = insert(:alert, user_id: user.id, enabled: false, name: "Disabled Alert")
-      {:ok, _view, html} = live(conn, ~p"/alerts")
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts")
       assert html =~ "Disabled Alert"
       assert html =~ "Disabled"
     end
@@ -663,12 +696,12 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/alerts?t=#{team_user.team_id}")
+        |> live_with_redirect(~p"/alerts")
 
       assert html =~ alert_query.name
     end
 
-    test "team user can view alert without t= param", %{
+    test "team user can view alert", %{
       conn: conn,
       user: user,
       team_user: team_user,
@@ -677,7 +710,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/alerts/#{alert_query.id}")
+        |> live_with_redirect(~p"/alerts/#{alert_query.id}")
 
       assert html =~ alert_query.name
     end
@@ -689,7 +722,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       alert_query: alert_query
     } do
       {:ok, _view, html} =
-        conn |> login_user(user, team_user) |> live(~p"/alerts?t=#{team_user.team_id}")
+        conn |> login_user(user, team_user) |> live_with_redirect(~p"/alerts")
 
       assert html =~ ~r/alerts\/#{alert_query.id}[^"<]*t=#{team_user.team_id}/
     end
@@ -703,7 +736,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/alerts/#{alert_query}?t=#{team_user.team_id}")
+        |> live_with_redirect(~p"/alerts/#{alert_query}")
 
       assert html =~ ~r/alerts\/#{alert_query.id}\/edit[^"<]*t=#{team_user.team_id}/
     end
