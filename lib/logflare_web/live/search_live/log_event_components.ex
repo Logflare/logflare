@@ -135,10 +135,21 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       |> Enum.join("\n")
 
     """
-    #{formatted_timestamp(log, search_op.search_timezone)}    #{log.body["event_message"]}
+    #{format_timestamp_for_clipboard(log.body["timestamp"], search_op.search_timezone)}    #{log.body["event_message"]}
 
     #{select_fields}
     """
+  end
+
+  defp format_timestamp_for_clipboard(timestamp, timezone) do
+    format_timestamp(timestamp, timezone) <> timezone_offset(timezone)
+  end
+
+  defp timezone_offset(timezone) when is_binary(timezone) do
+    case Timex.Timezone.get(timezone) do
+      {:error, _} -> DateTimeUtils.humanize_timezone_offset(0)
+      timezone_info -> DateTimeUtils.humanize_timezone_offset(timezone_info.offset_utc)
+    end
   end
 
   attr :log_event, Logflare.LogEvent, required: true
@@ -192,16 +203,6 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     </mark>
     <mark :if={@log_level} class={"log-level-#{@log_level}"}>{@log_level}</mark>
     """
-  end
-
-  def formatted_timestamp(log_event, timezone) do
-    tz_part =
-      case Timex.Timezone.get(timezone) do
-        {:error, _} -> DateTimeUtils.humanize_timezone_offset(0)
-        tz_info -> DateTimeUtils.humanize_timezone_offset(tz_info.offset_utc)
-      end
-
-    format_timestamp(log_event.body["timestamp"], timezone) <> tz_part
   end
 
   attr :log_event, Logflare.LogEvent, required: true
