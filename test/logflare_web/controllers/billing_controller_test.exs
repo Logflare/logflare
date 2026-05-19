@@ -120,8 +120,8 @@ defmodule LogflareWeb.BillingControllerTest do
         stripe_subscriptions: nil
       )
 
-      expect(Stripe.Session, :create, fn _ ->
-        {:ok, %Stripe.Session{id: "cs_test123"}}
+      expect(Stripe.Checkout.Session, :create, fn _ ->
+        {:ok, %Stripe.Checkout.Session{id: "cs_test123"}}
       end)
 
       conn =
@@ -161,8 +161,8 @@ defmodule LogflareWeb.BillingControllerTest do
         stripe_subscriptions: nil
       )
 
-      expect(Stripe.Session, :create, fn _ ->
-        {:ok, %Stripe.Session{id: "cs_payment"}}
+      expect(Stripe.Checkout.Session, :create, fn _ ->
+        {:ok, %Stripe.Checkout.Session{id: "cs_payment"}}
       end)
 
       conn =
@@ -187,8 +187,8 @@ defmodule LogflareWeb.BillingControllerTest do
         stripe_subscriptions: nil
       )
 
-      expect(Stripe.Session, :create, fn _ ->
-        {:ok, %Stripe.Session{id: "cs_metered"}}
+      expect(Stripe.Checkout.Session, :create, fn _ ->
+        {:ok, %Stripe.Checkout.Session{id: "cs_metered"}}
       end)
 
       conn =
@@ -235,8 +235,8 @@ defmodule LogflareWeb.BillingControllerTest do
 
       expect(Source.Supervisor, :reset_all_user_sources, fn _ -> :ok end)
 
-      expect(Stripe.Session, :create, fn _ ->
-        {:ok, %Stripe.Session{id: "cs_test123"}}
+      expect(Stripe.Checkout.Session, :create, fn _ ->
+        {:ok, %Stripe.Checkout.Session{id: "cs_test123"}}
       end)
 
       conn =
@@ -355,8 +355,8 @@ defmodule LogflareWeb.BillingControllerTest do
         }
       )
 
-      expect(Stripe.Session, :create, fn _ ->
-        {:ok, %Stripe.Session{id: "cs_setup"}}
+      expect(Stripe.Checkout.Session, :create, fn _ ->
+        {:ok, %Stripe.Checkout.Session{id: "cs_setup"}}
       end)
 
       conn =
@@ -440,7 +440,7 @@ defmodule LogflareWeb.BillingControllerTest do
     test "updates payment method and billing account", %{conn: conn, user: user} do
       insert(:billing_account, user: user, stripe_customer: "cus_test123")
 
-      stripe_session = %Stripe.Session{id: "cs_test123"}
+      stripe_session = %Stripe.Checkout.Session{id: "cs_test123"}
 
       expect(Stripe.Event, :list, fn _ ->
         {:ok,
@@ -448,7 +448,7 @@ defmodule LogflareWeb.BillingControllerTest do
            data: [
              %Stripe.Event{
                data: %{
-                 object: %Stripe.Session{id: "cs_test123", setup_intent: "seti_test"}
+                 object: %Stripe.Checkout.Session{id: "cs_test123", setup_intent: "seti_test"}
                }
              }
            ]
@@ -483,14 +483,14 @@ defmodule LogflareWeb.BillingControllerTest do
     test "marks subscription as created", %{conn: conn, user: user} do
       insert(:billing_account, user: user, stripe_customer: "cus_test123")
 
-      stripe_session = %Stripe.Session{id: "cs_test123"}
+      stripe_session = %Stripe.Checkout.Session{id: "cs_test123"}
 
       expect(Stripe.Event, :list, fn _ ->
         {:ok,
          %Stripe.List{
            data: [
              %Stripe.Event{
-               data: %{object: %Stripe.Session{id: "cs_test123"}}
+               data: %{object: %Stripe.Checkout.Session{id: "cs_test123"}}
              }
            ]
          }}

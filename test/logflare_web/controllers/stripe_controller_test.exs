@@ -6,7 +6,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
 
   alias Logflare.Billing
 
-  @test_webhook_secret Application.compile_env!(:logflare, :stripe_webhook_secret)
+  @test_webhook_secret "whsec_test_only_secret_for_testing"
 
   setup do
     insert(:plan, name: "Free")
@@ -44,6 +44,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
   end
 
   describe "signature verification" do
+    test "rejects unsigned requests", %{conn: conn} do
       payload_json = Jason.encode!(stripe_event("invoice.payment_succeeded", invoice_object("cus_test123")))
 
       conn =
@@ -209,6 +210,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
 
       payload = %{
         "id" => "evt_detach",
+        "object" => "event",
         "type" => "payment_method.detached",
         "data" => %{
           "object" => %{"object" => "payment_method", "id" => "pm_detach123"},
@@ -225,6 +227,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
     test "returns 200 when payment method not found", %{conn: conn, billing_account: ba} do
       payload = %{
         "id" => "evt_detach",
+        "object" => "event",
         "type" => "payment_method.detached",
         "data" => %{
           "object" => %{"object" => "payment_method", "id" => "pm_nonexistent"},
@@ -252,6 +255,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
     test "returns 200 for event with no customer", %{conn: conn} do
       payload = %{
         "id" => "evt_unknown",
+        "object" => "event",
         "type" => "unknown.event",
         "data" => %{"object" => %{"object" => "invoice"}}
       }
@@ -266,6 +270,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
   defp stripe_event(type, object) do
     %{
       "id" => "evt_#{TestUtils.random_string()}",
+      "object" => "event",
       "type" => type,
       "data" => %{"object" => object}
     }

@@ -9,8 +9,8 @@ defmodule LogflareWeb.StripeWebhookHandler do
 
   @impl Stripe.WebhookHandler
   def handle_event(%Stripe.Event{id: id, type: type, data: data}) do
-    object = data.object
-    prev_attrs = data.previous_attributes
+    object = Map.get(data, :object)
+    prev_attrs = Map.get(data, :previous_attributes)
 
     customer = extract_customer(object, prev_attrs)
 

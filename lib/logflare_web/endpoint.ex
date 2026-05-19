@@ -40,10 +40,7 @@ defmodule LogflareWeb.Endpoint do
   plug(Stripe.WebhookPlug,
     at: "/webhooks/stripe",
     handler: LogflareWeb.StripeWebhookHandler,
-    secret: fn ->
-      Application.get_env(:logflare, :stripe_webhook_secret) ||
-        :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
-    end
+    secret: &LogflareWeb.Endpoint.stripe_webhook_secret/0
   )
 
   plug(Plug.Parsers,
@@ -60,4 +57,10 @@ defmodule LogflareWeb.Endpoint do
   plug(Plug.Session, @session_options)
 
   plug(LogflareWeb.Router)
+
+  @spec stripe_webhook_secret() :: String.t()
+  def stripe_webhook_secret do
+    Application.get_env(:logflare, :stripe_webhook_secret) ||
+      :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
+  end
 end

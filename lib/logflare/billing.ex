@@ -21,11 +21,10 @@ defmodule Logflare.Billing do
   Protocol.derive(Jason.Encoder, Stripe.Subscription)
   Protocol.derive(Jason.Encoder, Stripe.Plan)
   Protocol.derive(Jason.Encoder, Stripe.SubscriptionItem)
-  Protocol.derive(Jason.Encoder, Stripe.Session)
+  Protocol.derive(Jason.Encoder, Stripe.Checkout.Session)
   Protocol.derive(Jason.Encoder, Stripe.Invoice)
   Protocol.derive(Jason.Encoder, Stripe.LineItem)
   Protocol.derive(Jason.Encoder, Stripe.Price)
-  Protocol.derive(Jason.Encoder, Stripe.Discount)
   Protocol.derive(Jason.Encoder, Stripe.Coupon)
 
   # BillingAccount
