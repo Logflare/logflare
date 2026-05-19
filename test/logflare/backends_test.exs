@@ -11,6 +11,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Lql
@@ -795,9 +796,15 @@ defmodule Logflare.BackendsTest do
       le = build(:log_event, source: source, some: "event")
       assert {:ok, _} = Backends.ingest_logs([le], source)
 
-      TestUtils.retry_assert(fn ->
-        assert Backends.fetch_latest_timestamp(source) != 0
-      end)
+      # RecentInsertsCacher bridges Counters.increment/2 (called by ingest_logs)
+      # → Counters.increment_source_changed_at_unix_ts/2 (read by
+      # fetch_latest_timestamp/1). Trigger it explicitly and use :sys.get_state/1
+      # as a sync fence so the test doesn't depend on the cacher's timer.
+      cacher = GenServer.whereis(Backends.via_source(source, RecentInsertsCacher))
+      send(cacher, :do_cache)
+      :sys.get_state(cacher)
+
+      assert Backends.fetch_latest_timestamp(source) != 0
     end
 
     test "cache_estimated_buffer_lens/1 will cache all queue information", %{

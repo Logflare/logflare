@@ -145,6 +145,18 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_has("button > span", text: "Search", exact: true)
     end
 
+    test "show source uses default search LQL as search input value", %{conn: conn, user: user} do
+      source = insert(:source, user: user, default_search_lql: "level:error")
+
+      html =
+        conn
+        |> get(~p"/sources/#{source}")
+        |> html_response(200)
+
+      assert html =~ ~s|id="source-search-querystring"|
+      assert html =~ ~s|value="level:error "|
+    end
+
     test "show source's recent logs", %{conn: conn, source: source} do
       start_supervised!({SourceSup, source})
       le = build(:log_event, level: "debug", source: source)
@@ -1037,6 +1049,43 @@ defmodule LogflareWeb.SourceControllerTest do
 
       assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
       assert Phoenix.Flash.get(conn.assigns.flash, :error)
+    end
+  end
+
+  describe "default_search_lql" do
+    setup [:create_plan]
+
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:team, user: user)
+      source = insert(:source, user: user)
+      insert(:source_schema, source: source)
+
+      [conn: login_user(conn, user), user: user, source: source]
+    end
+
+    test "updates default search LQL successfully", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{
+          "source" => %{"default_search_lql" => "s:m.level"}
+        })
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+      assert Repo.reload(source).default_search_lql == "s:m.level"
+    end
+
+    test "shows error for unknown field in default search LQL", %{conn: conn, source: source} do
+      conn =
+        patch(conn, ~p"/sources/#{source}", %{
+          "source" => %{"default_search_lql" => "nonexistent_field:value"}
+        })
+
+      assert redirected_to(conn, 302) =~ ~p"/sources/#{source}/edit"
+
+      [flash | _] = Phoenix.Flash.get(conn.assigns.flash, :error)
+
+      assert flash =~ "LQL parser error: path `nonexistent_field`"
     end
   end
 

@@ -1,11 +1,62 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   use Logflare.DataCase
+  use ExUnitProperties
 
   import Ecto.Query
 
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+
+  # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
+  # identifier-quoting characters, whitespace, and shell metacharacters.
+  @injection_chars ~c";`.'\" -/\\#!@$%^&*()+={}[]|<>?,~"
+
+  defp dataset_id_with_injection do
+    gen all prefix <- string(:alphanumeric, min_length: 1),
+            bad_char <- member_of(@injection_chars),
+            suffix <- string(:alphanumeric) do
+      prefix <> <<bad_char>> <> suffix
+    end
+  end
+
+  describe "validate_config/1" do
+    test "accepts valid dataset_id and project_id" do
+      changeset =
+        BigQueryAdaptor.cast_config(%{dataset_id: "my_dataset_1", project_id: "my-project-id"})
+
+      assert BigQueryAdaptor.validate_config(changeset).valid?
+    end
+
+    property "rejects dataset_id containing any injection character" do
+      check all bad <- dataset_id_with_injection() do
+        changeset = BigQueryAdaptor.cast_config(%{dataset_id: bad, project_id: "my-project-id"})
+        validated = BigQueryAdaptor.validate_config(changeset)
+        refute validated.valid?
+        assert Keyword.has_key?(validated.errors, :dataset_id)
+      end
+    end
+
+    test "rejects project_id with injection characters" do
+      for bad <- [
+            "evil;drop",
+            "evil`proj",
+            "UPPERCASE_proj",
+            "ab",
+            "a" <> String.duplicate("b", 30)
+          ] do
+        changeset = BigQueryAdaptor.cast_config(%{dataset_id: "valid_dataset", project_id: bad})
+        validated = BigQueryAdaptor.validate_config(changeset)
+        refute validated.valid?
+        assert Keyword.has_key?(validated.errors, :project_id)
+      end
+    end
+
+    test "allows nil dataset_id and project_id" do
+      changeset = BigQueryAdaptor.cast_config(%{})
+      assert BigQueryAdaptor.validate_config(changeset).valid?
+    end
+  end
 
   describe "ecto_to_sql/2" do
     test "converts Ecto query to BigQuery SQL format" do

@@ -111,6 +111,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       source: source,
       source_schema_flat_map: assigns.source_schema_flat_map,
       search_params: assigns.search_params,
+      team: assigns.team,
       body: body,
       fmt_body: BqSchema.encode_metadata(body),
       message: body["event_message"],
@@ -131,6 +132,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   defp assign_defaults(socket, assigns) do
     user = socket.assigns[:user] || assigns[:user]
     team_user = socket.assigns[:team_user] || assigns[:team_user]
+    team = socket.assigns[:team] || assigns[:team]
     source = socket.assigns[:source] || assigns[:source]
     timestamp = socket.assigns[:timestamp] || assigns[:timestamp]
     lql = socket.assigns[:lql] || assigns[:lql] || assigns.params["lql"] || ""
@@ -144,6 +146,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     socket
     |> assign(:user, user)
     |> assign(:team_user, team_user)
+    |> assign(:team, team)
     |> assign(:source, source)
     |> assign(:timestamp, timestamp)
     |> assign(:lql, lql)
