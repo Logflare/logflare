@@ -1,6 +1,8 @@
 defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   @moduledoc false
 
+  import Logflare.Utils.Guards, only: [is_empty_map: 1]
+
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.LogEvent, as: LE
@@ -33,7 +35,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   end
 
   @spec check_body(map, map) :: :ok | {:error, String.t()}
-  defp check_body(_body, schema_flat_map) when map_size(schema_flat_map) == 0, do: :ok
+  defp check_body(_body, schema_flat_map) when is_empty_map(schema_flat_map), do: :ok
 
   defp check_body(body, schema_flat_map) when is_map(body) do
     walk_map(body, "", schema_flat_map)
@@ -47,9 +49,9 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   end
 
   defp walk_entry(_k, [], acc), do: acc
-  defp walk_entry(_k, m, acc) when is_map(m) and map_size(m) == 0, do: acc
+  defp walk_entry(_k, m, acc) when is_empty_map(m), do: acc
   defp walk_entry(_k, [[]], acc), do: acc
-  defp walk_entry(_k, [m], acc) when is_map(m) and map_size(m) == 0, do: acc
+  defp walk_entry(_k, [m], acc) when is_empty_map(m), do: acc
   defp walk_entry(k, _v, {"", _} = acc) when k in @skip_top_level_keys, do: acc
 
   defp walk_entry(k, v, {prefix, schema_flat_map} = acc) do
