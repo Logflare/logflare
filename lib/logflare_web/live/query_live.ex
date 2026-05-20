@@ -36,7 +36,7 @@ defmodule LogflareWeb.QueryLive do
     </section>
     <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
       <.form :let={f} for={query_form(@query_string)} phx-change="parse-query" phx-submit="run-query" class="tw-min-h-[80px] tw-flex tw-flex-col tw-gap-4">
-        <LogflareWeb.MonacoEditorComponentNew.code_editor id="monaco-hook" field={f[:value]} completions={@completions} />
+        <LogflareWeb.MonacoEditorComponent.code_editor id="monaco-hook" field={f[:value]} completions={@completions} />
         <div class="tw-ml-auto">
           <button type="submit" name="action" value="format" class="btn btn-secondary">
             Format

@@ -54,11 +54,11 @@
           Declare parameters using <code>@parameter_name</code> and pass it to the endpoint via query parameters <code>?parameter_name=some-value</code>
         </p>
 
-        <LogflareWeb.MonacoEditorComponentNew.code_editor
+        <LogflareWeb.MonacoEditorComponent.code_editor
           id="endpoint_query_editor"
           field={f[:query]}
           language="sql"
-          opts={LogflareWeb.MonacoEditorComponentNew.default_opts(%{"minHeight" => 240})}
+          opts={LogflareWeb.MonacoEditorComponent.default_opts(%{"minHeight" => 240})}
           completions={endpoint_query_completions(@sources, @endpoints, @alerts)}
           class="tw-mb-0"
           editor_class="tw-w-full tw-min-h-[240px]"
