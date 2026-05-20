@@ -43,11 +43,11 @@
         <p>
           This alert will execute this query periodically. If a non-zero number of rows are returned from this query, the notification will be triggered.
         </p>
-        <LogflareWeb.MonacoEditorComponentNew.code_editor
+        <LogflareWeb.MonacoEditorComponent.code_editor
           id="alert_query_editor"
           field={f[:query]}
           language="sql"
-          opts={LogflareWeb.MonacoEditorComponentNew.default_opts(%{"minHeight" => 240})}
+          opts={LogflareWeb.MonacoEditorComponent.default_opts(%{"minHeight" => 240})}
           completions={alert_query_completions(@sources, @endpoints, @alerts)}
           class="tw-mb-0"
           editor_class="tw-w-full tw-min-h-[240px]"
