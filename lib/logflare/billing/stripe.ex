@@ -207,15 +207,14 @@ defmodule Logflare.Billing.Stripe do
   end
 
   def attatch_payment_method(id, pm_id) do
-    Stripe.PaymentMethod.attach(%{customer: id, payment_method: pm_id})
+    Stripe.PaymentMethod.attach(pm_id, %{customer: id})
   end
 
   def detach_payment_method(pm_id) do
-    Stripe.PaymentMethod.detach(%{payment_method: pm_id})
+    Stripe.PaymentMethod.detach(pm_id)
   end
 
   def list_payment_methods(id) do
-    # TODO: once we upgrade to v3 of :stripity_stripe we should revert the type to atom :card
     Stripe.PaymentMethod.list(%{customer: id, type: "card"})
   end
 
