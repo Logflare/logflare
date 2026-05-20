@@ -1,6 +1,6 @@
 import "../css/app.scss";
-import "phoenix";
-import "phoenix_html";
+import "phoenix"
+import "phoenix_html"
 import { Socket } from "phoenix";
 import "../css/tailwind.css";
 
@@ -22,7 +22,6 @@ import "./command_palette_hook.jsx";
 import $ from "jquery";
 import moment from "moment";
 import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_monaco_editor.esm";
-import LqlEditorWrapper from "./lql_editor_wrapper_hook";
 import MonacoHook from "./monaco_hook";
 
 // set moment globally before daterangepicker
@@ -50,7 +49,6 @@ const hooks = {
   ...LiveModalHooks,
   ...BillingHooks,
   CodeEditorHook,
-  LqlEditorWrapper,
   MonacoHook,
 };
 
@@ -95,7 +93,7 @@ let liveSocket = new LiveSocket("/live", Socket, {
     },
   },
 });
-liveSocket.enableDebug();
+liveSocket.enableDebug()
 
 liveSocket.connect();
 window.initLiveReact = initLiveReact;
@@ -127,9 +125,7 @@ const buildLogListClipboardText = (selector) => {
 window.addEventListener("logflare:copy-to-clipboard", (event) => {
   if ("clipboard" in navigator) {
     const text = event.detail?.text || event.target.textContent;
-    const tooltip =
-      document.getElementById("copy-tooltip") ||
-      document.querySelector(".tooltip-inner");
+    const tooltip = document.getElementById("copy-tooltip") || document.querySelector(".tooltip-inner")
     if (tooltip) {
       tooltip.innerHTML = "Copied!";
     }
@@ -148,7 +144,7 @@ window.addEventListener("logflare:copy-to-clipboard", (event) => {
 window.addEventListener("logflare:copy-logs-list", (event) => {
   const selector = event.detail.selector;
   if (!selector) {
-    console.error("No selector provided for log list copy");
+    console.error("No selector provided for log list copy")
     return;
   }
 
@@ -157,8 +153,8 @@ window.addEventListener("logflare:copy-logs-list", (event) => {
   event.target.dispatchEvent(
     new CustomEvent("logflare:copy-to-clipboard", {
       bubbles: true,
-      detail: { text },
-    }),
+      detail: {text},
+    })
   );
 });
 

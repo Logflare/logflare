@@ -57,6 +57,7 @@ defmodule LogflareWeb.MonacoEditorComponentNew do
   attr :debounce, :string, default: nil
   attr :class, :string, default: "tw-mb-12"
   attr :editor_class, :string, default: "tw-w-full"
+  attr :emit_focus_events, :boolean, default: false
 
   def code_editor(assigns) do
     opts =
@@ -71,7 +72,7 @@ defmodule LogflareWeb.MonacoEditorComponentNew do
       |> assign(:suggested_searches_json, Jason.encode!(assigns.suggested_searches))
 
     ~H"""
-    <div class={@class} id={@id} phx-hook="MonacoHook" data-language={@language} data-options={@opts_json} data-completions={@completions_json} data-schema-fields-json={@schema_fields_json} data-suggested-searches-json={@suggested_searches_json}>
+    <div class={@class} id={@id} phx-hook="MonacoHook" data-language={@language} data-options={@opts_json} data-completions={@completions_json} data-schema-fields-json={@schema_fields_json} data-suggested-searches-json={@suggested_searches_json} data-emit-focus-events={@emit_focus_events}>
       <input id={"#{@id}-input"} type="hidden" name={@field.name} value={@field.value} phx-debounce={@debounce} data-editor-input />
       <div id={"#{@id}-editor"} phx-update="ignore" class={@editor_class}>
         <div id={"#{@id}-editor-container"} data-editor-container></div>
