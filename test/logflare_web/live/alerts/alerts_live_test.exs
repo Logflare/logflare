@@ -165,14 +165,41 @@ defmodule LogflareWeb.AlertsLiveTest do
       valid_query = "select current_timestamp() as my_time"
       invalid_query = "bad_query"
 
-      # triggering event handler directly since Monaco does this via JavaScript
       assert view
-             |> with_target("#alert_query_editor")
-             |> render_hook("parse-query", %{"value" => invalid_query}) =~ "SQL Parse error!"
+             |> element("form#alert")
+             |> render_change(%{
+               alert: %{
+                 query: invalid_query
+               }
+             }) =~ "SQL Parse error!"
 
       refute view
-             |> with_target("#alert_query_editor")
-             |> render_hook("parse-query", %{"value" => valid_query}) =~ "SQL Parse error!"
+             |> element("form#alert")
+             |> render_change(%{
+               alert: %{
+                 query: valid_query
+               }
+             }) =~ "SQL Parse error!"
+
+      unformatted_query = "select @my_param as valid"
+      {:ok, formatted_query} = SqlFmt.format_query(unformatted_query)
+
+      assert view
+             |> element("form#alert")
+             |> render_submit(%{
+               action: "format",
+               alert: %{
+                 name: "draft alert",
+                 cron: "*/5 * * * *",
+                 description: "draft description",
+                 query: unformatted_query
+               }
+             }) =~ formatted_query
+
+      refute render(view) =~ "can't be blank"
+      assert changeset_field(view, :name) == "draft alert"
+      assert changeset_field(view, :cron) == "*/5 * * * *"
+      assert changeset_field(view, :description) == "draft description"
     end
 
     test "show for nonexistent query", %{conn: conn, team: team} do
@@ -441,11 +468,21 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       html =
         view
-        |> element("form[phx-submit='run-query']")
-        |> render_submit(%{query: test_query})
+        |> element("form#alert")
+        |> render_submit(%{
+          action: "test-query",
+          alert: %{
+            name: "draft edit alert",
+            cron: "*/5 * * * *",
+            query: test_query
+          }
+        })
 
       assert html =~ "Query executed successfully"
       assert html =~ "edit-results"
+      assert html =~ test_query
+      assert changeset_field(view, :name) == "draft edit alert"
+      assert changeset_field(view, :cron) == "*/5 * * * *"
     end
 
     test "test query from edit page handles SQL validation errors", %{
@@ -456,8 +493,11 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       html =
         view
-        |> element("form[phx-submit='run-query']")
-        |> render_submit(%{query: "select * from `my-source`"})
+        |> element("form#alert")
+        |> render_submit(%{
+          action: "test-query",
+          alert: %{query: "select * from `my-source`"}
+        })
 
       assert html =~ "Error when running query: restricted wildcard (*) in a result column"
     end
@@ -476,11 +516,21 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       html =
         view
-        |> element("form[phx-submit='run-query']")
-        |> render_submit(%{query: test_query})
+        |> element("form#alert")
+        |> render_submit(%{
+          action: "test-query",
+          alert: %{
+            name: "draft new alert",
+            cron: "*/5 * * * *",
+            query: test_query
+          }
+        })
 
       assert html =~ "Query executed successfully"
       assert html =~ "new-results"
+      assert html =~ test_query
+      assert changeset_field(view, :name) == "draft new alert"
+      assert changeset_field(view, :cron) == "*/5 * * * *"
     end
 
     test "No rows returned", %{conn: conn, alert_query: alert_query} do
@@ -934,5 +984,12 @@ defmodule LogflareWeb.AlertsLiveTest do
         assert html =~ label
       end
     end
+  end
+
+  defp changeset_field(view, field) do
+    view.pid
+    |> :sys.get_state()
+    |> get_in([Access.key!(:socket), Access.key!(:assigns), Access.key!(:changeset)])
+    |> Ecto.Changeset.get_field(field)
   end
 end
