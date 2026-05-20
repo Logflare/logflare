@@ -11,6 +11,8 @@ defmodule LogflareWeb.QueryLiveTest do
 
   describe "query page" do
     test "run a valid query", %{conn: conn} do
+      start_supervised!(PhoenixTestJsdom)
+
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
         assert [body: %_{useQueryCache: false}] = opts
@@ -18,22 +20,32 @@ defmodule LogflareWeb.QueryLiveTest do
         {:ok, TestUtils.gen_bq_response([%{"ts" => "some-data"}])}
       end)
 
-      {:ok, view, _html} = live(conn, "/query")
+      query = "select current_timestamp() as ts"
 
-      # link to show
-      view
-      |> render_hook("parse-query", %{
-        value: "select current_timestamp() as ts"
-      })
+      {:ok, view, _html} = live(conn, "/query") |> PhoenixTestJsdom.mount()
 
       view
-      |> element("form")
-      |> render_submit(%{}) =~ "Ran query successfully"
+      |> PhoenixTestJsdom.wait_for(".monaco-editor textarea.inputarea", 10_000)
 
-      assert view |> render() =~ ~r/1 .+ processed/
+      assert {:ok, ^query} =
+               PhoenixTestJsdom.exec_js(view, """
+               const query = #{Jason.encode!(query)};
+               const model = window.monaco.editor.getModels()[0];
+               model.setValue(query);
+               model.getValue();
+               """)
 
-      assert_patch(view) =~ ~r/current_timestamp/
-      assert render(view) =~ "some-data"
+      view
+      |> PhoenixTestJsdom.click("Run query", selector: "button")
+      |> PhoenixTestJsdom.wait_for("table", 10_000)
+
+      html = PhoenixTestJsdom.render(view)
+
+      assert html =~ "Ran query successfully"
+      assert html =~ ~r/1 .+ processed/
+
+      assert PhoenixTestJsdom.current_path(view) =~ ~r/current_timestamp/
+      assert html =~ "some-data"
     end
 
     test "run a very long query", %{conn: conn} do
