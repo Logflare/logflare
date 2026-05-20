@@ -25,7 +25,7 @@ import moment from "moment";
 import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_monaco_editor.esm"
 import LqlEditorWrapper from "./lql_editor_wrapper_hook"
 import { scrollToPageBottom } from "./utils"
-
+import MonacoHook from "./monaco_hook";
 
 // set moment globally before daterangepicker
 window.moment = moment;
@@ -53,6 +53,7 @@ const hooks = {
   ...BillingHooks,
   CodeEditorHook,
   LqlEditorWrapper,
+  MonacoHook,
 };
 
 let liveSocket = new LiveSocket("/live", Socket, {
