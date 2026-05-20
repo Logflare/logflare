@@ -10,7 +10,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   alias Logflare.Lql.Rules
   alias Logflare.Sources.Source
   alias Logflare.Utils
-  alias LogflareWeb.MonacoEditorComponentNew
+  alias LogflareWeb.MonacoEditorComponent
   alias LogflareWeb.SearchLive.AiAssist
   alias Phoenix.HTML.Safe
 
@@ -225,11 +225,11 @@ defmodule LogflareWeb.SearchLive.FormComponents do
               <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
               <div class="tw-order-2 tw-basis-full tw-px-2 tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1 sm:tw-pt-4">
                 <div class="lql-editor-wrapper tw-mt-0 tw-flex tw-items-center tw-bg-[#282c34]">
-                  <MonacoEditorComponentNew.code_editor
+                  <MonacoEditorComponent.code_editor
                     id="lql-editor-hook"
                     field={@search_form[:querystring]}
                     language="lql"
-                    opts={MonacoEditorComponentNew.lql_editor_opts()}
+                    opts={MonacoEditorComponent.lql_editor_opts()}
                     schema_fields={@lql_schema_fields}
                     suggested_searches={@saved_searches}
                     class="tw-min-w-0 tw-flex-1 tw-mb-0"

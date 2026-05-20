@@ -23,7 +23,6 @@ import sourceLiveViewHooks from "./source_lv_hooks";
 import "./command_palette_hook.jsx";
 import $ from "jquery";
 import moment from "moment";
-import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_monaco_editor.esm";
 import QueryClassSettings from "./query_class_settings_hook";
 import { scrollToPageBottom } from "./utils";
 import MonacoHook from "./monaco_hook";
@@ -53,7 +52,6 @@ const hooks = {
   ...LiveModalHooks,
   ...ComboboxHooks,
   ...BillingHooks,
-  CodeEditorHook,
   QueryClassSettings,
   MonacoHook,
 };

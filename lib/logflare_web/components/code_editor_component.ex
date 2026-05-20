@@ -1,4 +1,4 @@
-defmodule LogflareWeb.MonacoEditorComponentNew do
+defmodule LogflareWeb.MonacoEditorComponent do
   use Phoenix.Component
 
   @default_opts %{
