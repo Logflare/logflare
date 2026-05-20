@@ -143,6 +143,17 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
       assert message =~ "Type error"
       assert message =~ "metadata.span.start_time"
     end
+
+    test "heterogeneous list-of-maps with non-map element raises Type error, not BadMapError" do
+      source = source_with_flat_map(%{"items" => :map, "items.a" => :integer})
+
+      le = LE.make(%{"items" => [%{"a" => 1}, "stray"]}, %{source: source})
+
+      assert {:error, message} = validate(le, source)
+      assert message =~ "Type error"
+      assert message =~ "items"
+      refute message =~ "expected a map"
+    end
   end
 
   describe "valid?/2" do

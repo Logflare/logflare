@@ -96,7 +96,11 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   defp walk_maps([], _prefix, _schema_flat_map), do: :ok
 
   defp walk_maps([h | t], prefix, schema_flat_map) do
-    walk_map(h, prefix, schema_flat_map)
+    case is_map(h) do
+      true -> walk_map(h, prefix, schema_flat_map)
+      false -> raise("Type error! Field `#{prefix}` has an unexpected type.")
+    end
+
     walk_maps(t, prefix, schema_flat_map)
   end
 
