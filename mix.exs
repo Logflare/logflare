@@ -72,14 +72,14 @@ defmodule Logflare.Mixfile do
       plt_local_path: "dialyzer",
       plt_core_path: "dialyzer",
       plt_add_deps: :apps_tree,
-      plt_add_apps: [:ex_unit, :mix],
+      plt_add_apps: [:ex_unit, :mix, :phoenix_test, :phoenix_test_playwright, :playwright_ex],
       ignore_warnings: ".dialyzer_ignore.exs"
     ]
   end
 
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:dev), do: ["lib", "priv/tasks", "test/support"]
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:test), do: ["lib", "test/support", "test/e2e"]
   defp elixirc_paths(_), do: ["lib", "priv/tasks"]
 
   defp deps do
@@ -155,6 +155,11 @@ defmodule Logflare.Mixfile do
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:phoenix_test, "~> 0.9.1", only: :test, runtime: false},
+      {:phoenix_test_jsdom,
+       github: "msmithstubbs/phoenix_test_jsdom",
+       branch: "feat/cookie-sessions",
+       only: :test,
+       runtime: false},
       {:phoenix_test_playwright, "~> 0.11.1", only: :test, runtime: false},
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
