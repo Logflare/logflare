@@ -197,23 +197,36 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         build(:log_event,
           metadata_user_id: "user_123",
           metadata_store_city: "San Francisco",
-          food: "Pizza"
+          food: "Pizza",
+          deployment_time: 1_777_263_766_765_189
         )
 
       select_fields = [
-        %{display: "metadata.user_id", key: "metadata_user_id"},
-        %{display: "metadata.store.city", key: "metadata_store_city"},
-        %{display: "food", key: "food"}
+        %{display: "metadata.user_id", key: "metadata_user_id", path: "metadata.user_id"},
+        %{
+          display: "metadata.store.city",
+          key: "metadata_store_city",
+          path: "metadata.store.city"
+        },
+        %{display: "food", key: "food", path: "food"},
+        %{display: "deployment_time", key: "deployment_time", path: "deployment_time"}
       ]
 
       assigns = %{
         log_event: log_event,
-        select_fields: select_fields
+        select_fields: select_fields,
+        source_schema_flat_map: %{"deployment_time" => :datetime},
+        timezone: "Australia/Brisbane"
       }
 
       html =
         rendered_to_string(~H"""
-        <LogEventComponents.selected_fields log_event={@log_event} select_fields={@select_fields} />
+        <LogEventComponents.selected_fields
+          log_event={@log_event}
+          select_fields={@select_fields}
+          source_schema_flat_map={@source_schema_flat_map}
+          timezone={@timezone}
+        />
         """)
 
       assert html =~ "user_id"
@@ -222,13 +235,27 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
       assert html =~ "San Francisco"
       assert html =~ "food"
       assert html =~ "Pizza"
+
+      {:ok, document} = Floki.parse_document(html)
+
+      deployment_field =
+        document
+        |> Floki.find("div.tw-flex")
+        |> Enum.find(&(Floki.text(&1) =~ "deployment_time"))
+
+      assert Floki.text(deployment_field) =~ "1777263766765189"
+      assert Floki.text(deployment_field) =~ "2026-04-27 14:22:46"
+
+      assert Floki.attribute(deployment_field, "span[title]", "title") == [
+               "2026-04-27T04:22:46Z"
+             ]
     end
 
     test "handles null values" do
       log_event = build(:log_event, metadata_user_id: nil)
 
       select_fields = [
-        %{display: "metadata.user_id", key: "metadata_user_id"}
+        %{display: "metadata.user_id", key: "metadata_user_id", path: "metadata.user_id"}
       ]
 
       assigns = %{
