@@ -70,6 +70,7 @@ defmodule Logflare.AuthTest do
     test "user token attrs rejects unrecognized scopes via changeset error", %{user: user} do
       assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest admin"}))
       assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest:source:not-a-number"}))
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest  partner"}))
     end
 
     test "partner token always receives partner scope regardless of attrs", %{partner: partner} do

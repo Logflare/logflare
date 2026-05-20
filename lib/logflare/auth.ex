@@ -192,7 +192,7 @@ defmodule Logflare.Auth do
 
   defp validate_scopes(changeset) do
     Changeset.validate_change(changeset, :scopes, fn field, scopes ->
-      tokens = String.split(scopes)
+      tokens = String.split(scopes) |> String.trim()
 
       cond do
         "partner" in tokens ->
