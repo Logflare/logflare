@@ -1196,6 +1196,14 @@
     },
     {
       "source": "smells",
+      "kind": "behaviour_candidate",
+      "fingerprint": "sha256:86b03b749331c98de527ebec1a029417ab62ed63598c14cfa725364dff0a3057",
+      "message": "3 modules expose the same 4 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "file": "lib/logflare_web/live/access_tokens_live.ex",
+      "line": 1
+    },
+    {
+      "source": "smells",
       "kind": "unsafe_atom_creation",
       "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
       "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
