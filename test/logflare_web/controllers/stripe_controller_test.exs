@@ -6,7 +6,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
 
   alias Logflare.Billing
 
-  @test_webhook_secret Application.compile_env!(:logflare, :stripe_webhook_secret)
+  @test_webhook_secret "whsec_test_only_secret_for_testing"
 
   setup do
     insert(:plan, name: "Free")
@@ -21,12 +21,17 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
   describe "signature verification - no webhook secret configured" do
     setup do
       Application.put_env(:logflare, :stripe_webhook_secret, nil)
-      on_exit(fn -> Application.put_env(:logflare, :stripe_webhook_secret, @test_webhook_secret) end)
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :stripe_webhook_secret, @test_webhook_secret)
+      end)
+
       :ok
     end
 
     test "rejects all requests", %{conn: conn} do
-      payload_json = Jason.encode!(stripe_event("invoice.payment_succeeded", invoice_object("cus_test123")))
+      payload_json =
+        Jason.encode!(stripe_event("invoice.payment_succeeded", invoice_object("cus_test123")))
 
       # Unsigned request
       assert conn
@@ -44,7 +49,9 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
   end
 
   describe "signature verification" do
-      payload_json = Jason.encode!(stripe_event("invoice.payment_succeeded", invoice_object("cus_test123")))
+    test "rejects unsigned requests", %{conn: conn} do
+      payload_json =
+        Jason.encode!(stripe_event("invoice.payment_succeeded", invoice_object("cus_test123")))
 
       conn =
         conn
@@ -55,7 +62,8 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
     end
 
     test "rejects requests with invalid stripe-signature", %{conn: conn} do
-      payload_json = Jason.encode!(stripe_event("invoice.payment_succeeded", invoice_object("cus_test123")))
+      payload_json =
+        Jason.encode!(stripe_event("invoice.payment_succeeded", invoice_object("cus_test123")))
 
       conn =
         conn
@@ -91,13 +99,21 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
         {:ok, %Stripe.List{data: []}}
       end)
 
-      conn = post_signed(conn, stripe_event("invoice.payment_succeeded", invoice_object(ba.stripe_customer)))
+      conn =
+        post_signed(
+          conn,
+          stripe_event("invoice.payment_succeeded", invoice_object(ba.stripe_customer))
+        )
 
       assert response(conn, 200)
     end
 
     test "returns 200 when customer not found", %{conn: conn} do
-      conn = post_signed(conn, stripe_event("invoice.payment_succeeded", invoice_object("cus_nonexistent")))
+      conn =
+        post_signed(
+          conn,
+          stripe_event("invoice.payment_succeeded", invoice_object("cus_nonexistent"))
+        )
 
       assert response(conn, 200)
     end
@@ -110,7 +126,9 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
 
       log =
         capture_log([level: :error], fn ->
-          conn = post_signed(conn, stripe_event("invoice.created", invoice_object(ba.stripe_customer)))
+          conn =
+            post_signed(conn, stripe_event("invoice.created", invoice_object(ba.stripe_customer)))
+
           assert response(conn, 400)
         end)
 
@@ -119,8 +137,16 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
   end
 
   describe "charge.succeeded (lifetime plan)" do
-    test "creates lifetime customer when charge amount is 50000", %{conn: conn, billing_account: ba} do
-      payload = stripe_event("charge.succeeded", charge_object(ba.stripe_customer, 50_000, "https://receipt.url"))
+    test "creates lifetime customer when charge amount is 50000", %{
+      conn: conn,
+      billing_account: ba
+    } do
+      payload =
+        stripe_event(
+          "charge.succeeded",
+          charge_object(ba.stripe_customer, 50_000, "https://receipt.url")
+        )
+
       conn = post_signed(conn, payload)
 
       assert response(conn, 200)
@@ -138,7 +164,12 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
     end
 
     test "returns 200 when customer not found for lifetime charge", %{conn: conn} do
-      payload = stripe_event("charge.succeeded", charge_object("cus_nonexistent", 50_000, "https://receipt.url"))
+      payload =
+        stripe_event(
+          "charge.succeeded",
+          charge_object("cus_nonexistent", 50_000, "https://receipt.url")
+        )
+
       conn = post_signed(conn, payload)
 
       assert response(conn, 200)
@@ -151,13 +182,21 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
         {:ok, %Stripe.List{data: []}}
       end)
 
-      conn = post_signed(conn, stripe_event("customer.subscription.created", subscription_object(ba.stripe_customer)))
+      conn =
+        post_signed(
+          conn,
+          stripe_event("customer.subscription.created", subscription_object(ba.stripe_customer))
+        )
 
       assert response(conn, 200)
     end
 
     test "returns 200 when customer not found", %{conn: conn} do
-      conn = post_signed(conn, stripe_event("customer.subscription.updated", subscription_object("cus_nonexistent")))
+      conn =
+        post_signed(
+          conn,
+          stripe_event("customer.subscription.updated", subscription_object("cus_nonexistent"))
+        )
 
       assert response(conn, 200)
     end
@@ -170,7 +209,15 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
 
       log =
         capture_log([level: :error], fn ->
-          conn = post_signed(conn, stripe_event("customer.subscription.deleted", subscription_object(ba.stripe_customer)))
+          conn =
+            post_signed(
+              conn,
+              stripe_event(
+                "customer.subscription.deleted",
+                subscription_object(ba.stripe_customer)
+              )
+            )
+
           assert response(conn, 400)
         end)
 
@@ -180,7 +227,12 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
 
   describe "payment_method.attached" do
     test "creates payment method when it does not exist", %{conn: conn, billing_account: ba} do
-      payload = stripe_event("payment_method.attached", payment_method_object(ba.stripe_customer, "pm_brand_new"))
+      payload =
+        stripe_event(
+          "payment_method.attached",
+          payment_method_object(ba.stripe_customer, "pm_brand_new")
+        )
+
       conn = post_signed(conn, payload)
 
       assert response(conn, 200)
@@ -196,7 +248,12 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
     test "returns 200 when payment method already exists", %{conn: conn, billing_account: ba} do
       insert(:payment_method, stripe_id: "pm_existing", customer_id: ba.stripe_customer)
 
-      payload = stripe_event("payment_method.attached", payment_method_object(ba.stripe_customer, "pm_existing"))
+      payload =
+        stripe_event(
+          "payment_method.attached",
+          payment_method_object(ba.stripe_customer, "pm_existing")
+        )
+
       conn = post_signed(conn, payload)
 
       assert response(conn, 200)
@@ -209,6 +266,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
 
       payload = %{
         "id" => "evt_detach",
+        "object" => "event",
         "type" => "payment_method.detached",
         "data" => %{
           "object" => %{"object" => "payment_method", "id" => "pm_detach123"},
@@ -225,6 +283,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
     test "returns 200 when payment method not found", %{conn: conn, billing_account: ba} do
       payload = %{
         "id" => "evt_detach",
+        "object" => "event",
         "type" => "payment_method.detached",
         "data" => %{
           "object" => %{"object" => "payment_method", "id" => "pm_nonexistent"},
@@ -252,6 +311,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
     test "returns 200 for event with no customer", %{conn: conn} do
       payload = %{
         "id" => "evt_unknown",
+        "object" => "event",
         "type" => "unknown.event",
         "data" => %{"object" => %{"object" => "invoice"}}
       }
@@ -266,6 +326,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
   defp stripe_event(type, object) do
     %{
       "id" => "evt_#{TestUtils.random_string()}",
+      "object" => "event",
       "type" => type,
       "data" => %{"object" => object}
     }
@@ -286,7 +347,11 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
   end
 
   defp subscription_object(customer) do
-    %{"object" => "subscription", "id" => "sub_#{TestUtils.random_string()}", "customer" => customer}
+    %{
+      "object" => "subscription",
+      "id" => "sub_#{TestUtils.random_string()}",
+      "customer" => customer
+    }
   end
 
   defp payment_method_object(customer, stripe_id) do
