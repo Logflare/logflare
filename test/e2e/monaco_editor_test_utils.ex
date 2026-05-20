@@ -1,6 +1,4 @@
 defmodule LogflareWeb.MonacoEditorTestUtils do
-  @moduledoc false
-
   alias PhoenixTest.Playwright
   alias PlaywrightEx.Frame
 
