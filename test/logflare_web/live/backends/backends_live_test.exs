@@ -13,9 +13,10 @@ defmodule LogflareWeb.BackendsLiveTest do
 
   defp log_in_user_with_source(%{conn: conn}) do
     user = insert(:user)
+    team = insert(:team, user: user)
     source = insert(:source, user_id: user.id)
 
-    %{conn: login_user(conn, user), user: user, source: source}
+    %{conn: login_user(conn, user), source: source, team: team, user: user}
   end
 
   describe "unauthorized" do
@@ -40,7 +41,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       {:ok, view, _html} =
         conn
         |> login_user(attacker)
-        |> live(~p"/backends")
+        |> live_with_redirect(~p"/backends")
 
       render_hook(view, "delete", %{"backend_id" => to_string(backend.id)})
 
@@ -58,7 +59,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       {:ok, view, _html} =
         conn
         |> login_user(attacker)
-        |> live(~p"/backends/#{attacker_backend.id}")
+        |> live_with_redirect(~p"/backends/#{attacker_backend.id}")
 
       render_hook(view, "save_rule", %{
         "rule" => %{
@@ -81,7 +82,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       {:ok, view, _html} =
         conn
         |> login_user(attacker)
-        |> live(~p"/backends/#{attacker_backend.id}")
+        |> live_with_redirect(~p"/backends/#{attacker_backend.id}")
 
       render_hook(view, "add_alert", %{
         "alert" => %{"alert_id" => to_string(victim_alert.id)}
@@ -107,7 +108,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       {:ok, view, _html} =
         conn
         |> login_user(attacker)
-        |> live(~p"/backends/#{attacker_backend.id}")
+        |> live_with_redirect(~p"/backends/#{attacker_backend.id}")
 
       render_hook(view, "remove_default_ingest", %{
         "source_id" => to_string(victim_source.id)
@@ -125,9 +126,9 @@ defmodule LogflareWeb.BackendsLiveTest do
   describe "index" do
     setup :log_in_user_with_source
 
-    test "render backends successfully", %{conn: conn, user: user, source: source} do
+    test "render backends successfully", %{conn: conn, source: source, user: user} do
       backend = insert(:backend, sources: [source], user: user)
-      {:ok, view, _html} = live(conn, ~p"/backends")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends")
 
       html = render(view)
       assert html =~ "rules: 0"
@@ -135,9 +136,9 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ Atom.to_string(backend.type)
     end
 
-    test "render backends with metadata", %{conn: conn, user: user, source: source} do
+    test "render backends with metadata", %{conn: conn, source: source, user: user} do
       insert(:backend, sources: [source], user: user, metadata: %{some: "custom-metadata"})
-      {:ok, view, _html} = live(conn, ~p"/backends")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends")
 
       html = render(view)
       assert html =~ "some: custom-metadata"
@@ -150,7 +151,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     } do
       rule = insert(:rule, source: source)
       backend = insert(:backend, rules: [rule], user: user)
-      {:ok, view, _html} = live(conn, ~p"/backends")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends")
 
       assert render(view) =~ "rules: 1"
 
@@ -165,16 +166,16 @@ defmodule LogflareWeb.BackendsLiveTest do
 
     test "bug: string user_id on session for team users", %{conn: conn, user: user} do
       conn = put_session(conn, :user_id, inspect(user.id))
-      assert {:ok, _view, _html} = live(conn, ~p"/backends")
+      assert {:ok, _view, _html} = live_with_redirect(conn, ~p"/backends")
     end
   end
 
   describe "show" do
     setup :log_in_user_with_source
 
-    test "render backend details", %{conn: conn, user: user, source: source} do
+    test "render backend details", %{conn: conn, source: source, user: user} do
       backend = insert(:backend, sources: [source], user: user)
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
       assert html =~ backend.name
@@ -187,16 +188,16 @@ defmodule LogflareWeb.BackendsLiveTest do
       source: source
     } do
       backend = insert(:backend, sources: [source], user: user)
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
       html = render(view)
       assert html =~ "&quot;dataset_id&quot;: &quot;**********&quot;"
     end
 
-    test "render backend with metadata", %{conn: conn, user: user, source: source} do
+    test "render backend with metadata", %{conn: conn, source: source, user: user} do
       backend =
         insert(:backend, sources: [source], user: user, metadata: %{some: "custom-metadata"})
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
       assert html =~ "some: custom-metadata"
@@ -208,7 +209,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       source: source
     } do
       backend = insert(:backend, rules: [], user: user)
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       assert view
              |> element("button", "Add a drain rule")
@@ -241,7 +242,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     test "add/delete an alert", %{conn: conn, user: user} do
       alert_query = insert(:alert, user: user)
       backend = insert(:backend, user: user, type: :incidentio)
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       view
       |> element("button", "Add an alert")
@@ -267,12 +268,13 @@ defmodule LogflareWeb.BackendsLiveTest do
   describe "new" do
     setup %{conn: conn} do
       user = insert(:user)
+      team = insert(:team, user: user)
 
-      %{conn: login_user(conn, user), user: user}
+      %{conn: login_user(conn, user), team: team, user: user}
     end
 
     test "can create a new backend", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/backends")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends")
 
       assert view
              |> element("a", "New backend")
@@ -301,7 +303,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     end
 
     test "bug: can create a new incidentio backend with metadata", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/backends")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends")
 
       assert view
              |> element("a", "New backend")
@@ -330,7 +332,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     end
 
     test "on backend type switch, will change the inputs", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/backends/new")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 
       refute render(view) =~ "Postgres URL"
 
@@ -350,7 +352,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     end
 
     test "change type will change inputs", %{conn: conn} do
-      assert {:ok, view, _html} = live(conn, ~p"/backends/new")
+      assert {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 
       assert view
              |> element("select#type")
@@ -366,7 +368,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     end
 
     test "cancel will nav back to index", %{conn: conn} do
-      assert {:ok, view, _html} = live(conn, ~p"/backends/new")
+      assert {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 
       view
       |> element("a", "Cancel")
@@ -376,7 +378,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     end
 
     test "clickhouse form shows async inserts checkbox", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/backends/new")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 
       html =
         view
@@ -388,7 +390,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     end
 
     test "can create clickhouse backend with async_insert enabled", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/backends/new")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 
       view
       |> element("select#type")
@@ -420,9 +422,9 @@ defmodule LogflareWeb.BackendsLiveTest do
   describe "edit" do
     setup :log_in_user_with_source
 
-    test "can edit backend", %{conn: conn, user: user, source: source} do
+    test "can edit backend", %{conn: conn, source: source, user: user} do
       backend = insert(:backend, sources: [source], user: user, type: :webhook)
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
 
       assert view |> element("label", "Name") |> has_element?()
 
@@ -446,7 +448,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
     test "will show correct config inputs", %{conn: conn, user: user} do
       backend = insert(:backend, type: :webhook, user: user)
-      assert {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+      assert {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
 
       assert render(view) =~ "URL"
 
@@ -455,7 +457,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
     test "cancel will nav back to show", %{conn: conn, user: user} do
       backend = insert(:backend, type: :webhook, user: user)
-      assert {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+      assert {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
 
       view
       |> element("a", "Cancel")
@@ -464,7 +466,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert_redirect(view, ~p"/backends")
     end
 
-    test "successful delete backend", %{conn: conn, user: user} do
+    test "successful delete backend", %{conn: conn, team: team, user: user} do
       backend =
         insert(:backend,
           sources: [],
@@ -476,13 +478,13 @@ defmodule LogflareWeb.BackendsLiveTest do
           }
         )
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
 
       refute view
              |> element("button", "Delete")
              |> render_click() =~ "localhost"
 
-      assert_patched(view, ~p"/backends")
+      assert_patched(view, ~p"/backends?t=#{team.id}")
       refute render(view) =~ "my webhook"
       assert render(view) =~ "Successfully deleted backend"
     end
@@ -493,7 +495,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       source: source
     } do
       backend = insert(:backend, sources: [source], user: user)
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
 
       assert view
              |> element("button", "Delete")
@@ -525,7 +527,7 @@ defmodule LogflareWeb.BackendsLiveTest do
           }
         )
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
       assert html =~ "Default Ingest Sources"
@@ -537,14 +539,18 @@ defmodule LogflareWeb.BackendsLiveTest do
       user: user
     } do
       backend = insert(:backend, user: user, type: :webhook, config: %{url: "http://test.com"})
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
       refute html =~ "Default Ingest Sources"
       refute html =~ "Add a Source"
     end
 
-    test "toggle form shows source selection", %{conn: conn, user: user, source: source} do
+    test "toggle form shows source selection", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
       {:ok, source} =
         Logflare.Sources.update_source(source, %{default_ingest_backend_enabled?: true})
 
@@ -559,7 +565,7 @@ defmodule LogflareWeb.BackendsLiveTest do
           }
         )
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       assert view
              |> element("button", "Add a Source")
@@ -570,7 +576,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "Choose a source"
     end
 
-    test "add source as default ingest", %{conn: conn, user: user, source: source} do
+    test "add source as default ingest", %{conn: conn, source: source, user: user} do
       {:ok, source} =
         Sources.update_source(source, %{default_ingest_backend_enabled?: true})
 
@@ -585,7 +591,7 @@ defmodule LogflareWeb.BackendsLiveTest do
           }
         )
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       view
       |> element("button", "Add a Source")
@@ -606,7 +612,11 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "uses this backend as default ingest"
     end
 
-    test "remove source from default ingest", %{conn: conn, user: user, source: source} do
+    test "remove source from default ingest", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
       {:ok, source} =
         Sources.update_source(source, %{default_ingest_backend_enabled?: true})
 
@@ -619,7 +629,7 @@ defmodule LogflareWeb.BackendsLiveTest do
         )
 
       {:ok, _} = Logflare.Backends.update_source_backends(source, [backend])
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
       assert html =~ source.name
@@ -662,7 +672,7 @@ defmodule LogflareWeb.BackendsLiveTest do
           }
         )
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       view
       |> element("button", "Add a Source")
@@ -691,7 +701,7 @@ defmodule LogflareWeb.BackendsLiveTest do
         )
 
       {:ok, _} = Logflare.Backends.update_source_backends(source, [backend])
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
 
@@ -700,7 +710,11 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ source.name
     end
 
-    test "can add multiple sources as default ingest", %{conn: conn, user: user, source: source} do
+    test "can add multiple sources as default ingest", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
       {:ok, source1} =
         Sources.update_source(source, %{default_ingest_backend_enabled?: true})
 
@@ -713,7 +727,7 @@ defmodule LogflareWeb.BackendsLiveTest do
           config: %{url: "http://localhost", database: "test", port: 8123}
         )
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       view |> element("button", "Add a Source") |> render_click()
 
@@ -747,7 +761,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute html =~ "Add a Source"
     end
 
-    test "can add all available sources at once", %{conn: conn, user: user, source: source} do
+    test "can add all available sources at once", %{conn: conn, source: source, user: user} do
       {:ok, source1} =
         Sources.update_source(source, %{default_ingest_backend_enabled?: true})
 
@@ -761,7 +775,7 @@ defmodule LogflareWeb.BackendsLiveTest do
           config: %{url: "http://localhost", database: "test", port: 8123}
         )
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       # Add first source individually to enable default_ingest? on the backend
       view |> element("button", "Add a Source") |> render_click()
@@ -809,7 +823,7 @@ defmodule LogflareWeb.BackendsLiveTest do
           config: %{url: "http://localhost", database: "test", port: 8123}
         )
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
       # Backend not yet default_ingest?, button should not show
@@ -844,7 +858,7 @@ defmodule LogflareWeb.BackendsLiveTest do
           config: %{url: "http://localhost", database: "test", port: 8123}
         )
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
       assert html =~ "Add a Source"
@@ -884,7 +898,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       {:ok, _} = Logflare.Backends.update_source_backends(source1, [backend])
       {:ok, _} = Logflare.Backends.update_source_backends(source2, [backend])
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
       assert html =~ source1.name
@@ -919,7 +933,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       {:ok, _} = Logflare.Backends.update_source_backends(source, [backend])
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
       assert html =~ source.name
@@ -946,7 +960,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       victim_source =
         insert(:source, user: victim, default_ingest_backend_enabled?: true)
 
-      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
 
       view
       |> element("button", "Add a Source")
@@ -1007,9 +1021,50 @@ defmodule LogflareWeb.BackendsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/backends/#{backend.id}")
+        |> live_with_redirect(~p"/backends/#{backend.id}")
 
       assert html =~ backend.name
+    end
+
+    test "backends index adds t= param",
+         %{conn: conn, user: user, team_user: team_user} do
+      assert {:error, {:live_redirect, %{to: path}}} =
+               conn
+               |> login_user(user, team_user)
+               |> Phoenix.LiveViewTest.live(~p"/backends")
+
+      assert path == ~p"/backends?t=#{team_user.team_id}"
+    end
+
+    test "backend show without t= param redirects to URL with backend team id", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      backend: backend
+    } do
+      assert {:error, {:live_redirect, %{to: path}}} =
+               conn
+               |> login_user(user, team_user)
+               |> Phoenix.LiveViewTest.live(~p"/backends/#{backend.id}")
+
+      assert path == ~p"/backends/#{backend.id}?t=#{team_user.team_id}"
+    end
+
+    test "backend show with wrong t= param redirects to URL with backend owner team id", %{
+      conn: conn
+    } do
+      user = insert(:user)
+      backend_team = insert(:team, user: user)
+      current_team = insert(:team)
+      insert(:team_user, team: current_team, email: user.email)
+      backend = insert(:backend, user: user)
+
+      assert {:error, {:live_redirect, %{to: path}}} =
+               conn
+               |> login_user(user)
+               |> Phoenix.LiveViewTest.live(~p"/backends/#{backend.id}?t=#{current_team.id}")
+
+      assert path == ~p"/backends/#{backend.id}?t=#{backend_team.id}"
     end
 
     test "backend links include team query param on index", %{

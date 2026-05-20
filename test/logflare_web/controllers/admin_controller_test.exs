@@ -2,6 +2,84 @@ defmodule LogflareWeb.AdminControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  import ExUnit.CaptureLog
+
+  setup do
+    prior = Application.get_env(:logflare, :node_shutdown_code)
+    Application.delete_env(:logflare, :node_shutdown_code)
+    on_exit(fn -> Application.put_env(:logflare, :node_shutdown_code, prior) end)
+    :ok
+  end
+
+  describe "shutdown_node/2" do
+    setup do
+      insert(:plan)
+      stub(Logflare.Admin, :shutdown, fn -> :ok end)
+      :ok
+    end
+
+    test "returns 401 when shutdown code is not configured", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("lf-shutdown-code", "anything")
+        |> put(~p"/admin/shutdown")
+
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when shutdown code env is empty string", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, "")
+
+      conn =
+        conn
+        |> put_req_header("lf-shutdown-code", "")
+        |> put(~p"/admin/shutdown")
+
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when header is absent", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, "secret")
+
+      conn = put(conn, ~p"/admin/shutdown")
+
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when provided code does not match", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, "correct-secret")
+
+      conn =
+        conn
+        |> put_req_header("lf-shutdown-code", "wrong-secret")
+        |> put(~p"/admin/shutdown")
+
+      assert json_response(conn, 401)
+    end
+
+    test "returns 401 when env is unset and no header sent", %{conn: conn} do
+      conn = put(conn, ~p"/admin/shutdown")
+
+      assert json_response(conn, 401)
+    end
+
+    test "shuts down node when secret matches header", %{conn: conn} do
+      Application.put_env(:logflare, :node_shutdown_code, "correct-secret")
+
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("lf-shutdown-code", "correct-secret")
+            |> put(~p"/admin/shutdown")
+
+          assert json_response(conn, 200)
+        end)
+
+      assert log =~ "Node shutdown initialized"
+    end
+  end
+
   describe "Admin controller" do
     setup do
       insert(:plan)
@@ -32,15 +110,16 @@ defmodule LogflareWeb.AdminControllerTest do
     end
 
     test "become functionality lets an admin turn into a google user", %{conn: conn, admin: admin} do
-      user = insert(:user, provider_uid: "google")
+      user = insert(:user, provider_uid: "google", team: insert(:team))
 
       conn =
         conn
         |> login_user(admin)
         |> get(~p"/admin/accounts/#{user.id}/become")
+        |> follow_redirect()
 
       assert redir_path = redirected_to(conn)
-      assert ~p"/dashboard" == redir_path
+      assert ~p"/dashboard?t=#{user.team.id}" == redir_path
       conn = get(recycle(conn), redir_path)
       assert html = html_response(conn, 200)
       assert html =~ user.email
@@ -78,9 +157,10 @@ defmodule LogflareWeb.AdminControllerTest do
         |> put_resp_cookie("_logflare_user_id", inspect(admin.id), max_age: 2_592_000)
         |> put_resp_cookie("_logflare_team_user_id", inspect(user_team.id), max_age: 2_592_000)
         |> get(~p"/admin/accounts/#{user.id}/become")
+        |> follow_redirect()
 
       assert redir_path = redirected_to(conn)
-      assert ~p"/dashboard" == redir_path
+      assert ~p"/dashboard?t=#{user_team.id}" == redir_path
       conn = get(recycle(conn), redir_path)
       assert html = html_response(conn, 200)
       assert html =~ user.email
@@ -135,12 +215,24 @@ defmodule LogflareWeb.AdminControllerTest do
       assert redir_path = redirected_to(conn)
       assert ~p"/dashboard" == redir_path
       refute get_session(conn, :last_switched_team_id)
-      conn = get(recycle(conn), redir_path)
-      assert html = html_response(conn, 200)
+
+      conn =
+        conn
+        |> recycle()
+        |> get(redir_path)
+        |> follow_redirect()
+
+      assert html = conn |> html_response(200)
       assert html =~ user.email
       assert html =~ user.name
       assert html =~ user_team.name
       refute html =~ admin_team.name
     end
+  end
+
+  defp follow_redirect(conn) do
+    conn
+    |> recycle()
+    |> get(redirected_to(conn))
   end
 end

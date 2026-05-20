@@ -12,7 +12,7 @@ defmodule Logflare.Backends.BackendTest do
       attrs = %{
         name: "Test BigQuery Backend",
         type: :bigquery,
-        config: %{project_id: "test-project", dataset_id: "test-dataset"},
+        config: %{project_id: "test-project", dataset_id: "test_dataset"},
         default_ingest?: true
       }
 
@@ -114,7 +114,7 @@ defmodule Logflare.Backends.BackendTest do
       attrs = %{
         name: "Test BigQuery Backend",
         type: :bigquery,
-        config: %{project_id: "test-project", dataset_id: "test-dataset"}
+        config: %{project_id: "test-project", dataset_id: "test_dataset"}
       }
 
       changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)

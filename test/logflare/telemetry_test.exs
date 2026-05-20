@@ -87,7 +87,6 @@ defmodule Logflare.TelemetryTest do
              :io_input,
              :io_output,
              :logical_processors,
-             :logical_processors_available,
              :logical_processors_online,
              :otp_release,
              :port_count,
@@ -95,7 +94,6 @@ defmodule Logflare.TelemetryTest do
              :process_count,
              :process_limit,
              :run_queue,
-             :schedulers,
              :schedulers_online,
              :total_active_tasks,
              :uptime
@@ -134,7 +132,7 @@ defmodule Logflare.TelemetryTest do
     on_exit(fn -> :telemetry.detach(ref) end)
 
     sample_duration = to_timeout(millisecond: 10)
-    Schedulers.async_dispatch_stats(sample_duration)
+    Schedulers.collect_dispatch_stats(sample_duration)
 
     assert_receive {^event, ^ref, %{utilization: _}, %{name: "total", type: "total"}}
     assert_receive {^event, ^ref, %{utilization: _}, %{name: "weighted", type: "weighted"}}

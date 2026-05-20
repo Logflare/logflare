@@ -47,9 +47,7 @@ defmodule LogflareWeb.SyslogParser do
             to_log_params(syslog_message)
 
           {:error, error} ->
-            Logger.error(
-              "Syslog message parsing error: #{error}, message: |#{syslog_message_string}|, source: #{conn.params["source"]}"
-            )
+            Logger.error("Syslog message parsing error: #{error}")
 
             nil
         end

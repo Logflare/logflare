@@ -115,6 +115,54 @@ defmodule LogflareWeb.UtilsTest do
     end
   end
 
+  describe "sql_params_to_sql/2" do
+    test "escapes single quotes in string parameters to produce valid SQL literals" do
+      sql = "SELECT * FROM t WHERE t.col = ?"
+
+      param = %{
+        parameterType: %{type: "STRING"},
+        parameterValue: %{value: "it's a trap'; DROP TABLE users --"}
+      }
+
+      result = Utils.sql_params_to_sql(sql, [param])
+      assert result == "SELECT * FROM t WHERE t.col = 'it''s a trap''; DROP TABLE users --'"
+      assert result =~ "''"
+    end
+
+    test "handles string values without special characters unchanged" do
+      sql = "SELECT * FROM t WHERE t.col = ?"
+
+      param = %{
+        parameterType: %{type: "STRING"},
+        parameterValue: %{value: "simple_value"}
+      }
+
+      assert Utils.sql_params_to_sql(sql, [param]) ==
+               "SELECT * FROM t WHERE t.col = 'simple_value'"
+    end
+  end
+
+  describe "replace_table_with_source_name/2" do
+    test "escapes backticks in source names to keep identifier quoting intact" do
+      table_id = "`myproject`.`mydataset`.`mytable`"
+      sql = "SELECT * FROM #{table_id}"
+
+      source = %{bq_table_id: table_id, name: "evil`injection"}
+
+      result = Utils.replace_table_with_source_name(sql, source)
+      assert result == "SELECT * FROM `evil\\`injection`"
+    end
+
+    test "handles normal source names without backticks" do
+      table_id = "`myproject`.`mydataset`.`mytable`"
+      sql = "SELECT * FROM #{table_id}"
+
+      source = %{bq_table_id: table_id, name: "My Log Source"}
+      result = Utils.replace_table_with_source_name(sql, source)
+      assert result == "SELECT * FROM `My Log Source`"
+    end
+  end
+
   describe "stringify_changeset_errors/1" do
     test "converts single field error to string" do
       user = insert(:user)

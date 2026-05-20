@@ -407,6 +407,14 @@
               Region of your cluster
             </small>
           </div>
+        <% "sentry" -> %>
+          <div class="form-group">
+            {label(f_config, :dsn, "DSN (Required)")}
+            {text_input(f_config, :dsn, class: "form-control")}
+            <small class="text-muted">
+              The DSN for Sentry SDK from the dashboard
+            </small>
+          </div>
         <% "syslog" -> %>
           <div class="form-group">
             {label(f_config, :host, "Host (Required)")}
@@ -425,6 +433,13 @@
           <div class="form-group">
             {label(f_config, :tls, "Use TLS?")}
             {checkbox(f_config, :tls, id: "tls")}
+          </div>
+          <div class="form-group">
+            {label(f_config, :max_message_bytes, "Max Message Size (Bytes)")}
+            {number_input(f_config, :max_message_bytes, class: "form-control", placeholder: "50000")}
+            <small class="text-muted">
+              Optional maximum size of the syslog message in bytes. Prevents downstream receivers from rejecting large payloads (e.g., 65536). Defaults to 50000 bytes.
+            </small>
           </div>
           <div class="form-group">
             {label(f_config, :structured_data, "Structured Data (RFC5424)")}

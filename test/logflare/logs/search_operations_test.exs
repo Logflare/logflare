@@ -10,6 +10,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Logs.SearchOperation, as: SO
+  alias Logflare.Lql
   alias Logflare.Logs.SearchOperations
   alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.ChartRule
@@ -320,10 +321,8 @@ defmodule Logflare.Logs.SearchOperationsTest do
   end
 
   describe "apply_local_timestamp_correction/1" do
-    test "skips timestamp filters with explicit timezone modifiers" do
+    test "skips timestamp filters with absolute timestamp origin" do
       value = ~N[2026-03-17 14:47:02]
-      range_start = ~N[2026-03-17 14:47:02]
-      range_end = ~N[2026-03-17 15:47:02]
 
       so =
         %SO{
@@ -336,20 +335,72 @@ defmodule Logflare.Logs.SearchOperationsTest do
               path: "timestamp",
               operator: :>,
               value: value,
-              modifiers: %{explicit_timezone: true}
-            },
-            %FilterRule{
-              path: "timestamp",
-              operator: :range,
-              value: nil,
-              values: [range_start, range_end],
-              modifiers: %{explicit_timezone: true}
+              modifiers: %{timestamp_origin: :absolute}
             }
           ],
           search_timezone: "Australia/Brisbane"
         }
 
       corrected = SearchOperations.apply_local_timestamp_correction(so)
+
+      assert corrected.lql_ts_filters == so.lql_ts_filters
+    end
+
+    test "shifts local timestamp filters using the search timezone" do
+      range_start = ~N[2026-03-17 14:47:02]
+      range_end = ~N[2026-03-17 15:47:02]
+
+      so =
+        %SO{
+          partition_by: :timestamp,
+          querystring: "",
+          tailing?: false,
+          chart_data_shape_id: nil,
+          lql_ts_filters: [
+            %FilterRule{
+              path: "timestamp",
+              operator: :range,
+              value: nil,
+              values: [range_start, range_end],
+              modifiers: %{timestamp_origin: :local}
+            }
+          ],
+          search_timezone: "Australia/Brisbane"
+        }
+
+      corrected = SearchOperations.apply_local_timestamp_correction(so)
+
+      assert [
+               %FilterRule{
+                 values: [~U[2026-03-17 04:47:02Z], ~U[2026-03-17 05:47:02Z]]
+               }
+             ] = corrected.lql_ts_filters
+    end
+
+    test "does not shift shorthand timestamps" do
+      querystring = "t:last@1hour"
+      schema = TestUtils.default_bq_schema()
+
+      {:ok, lql_rules} = Lql.decode(querystring, schema)
+      [timestamp_filter] = Enum.filter(lql_rules, &(&1.path == "timestamp"))
+
+      so =
+        %SO{
+          partition_by: :timestamp,
+          querystring: querystring,
+          tailing?: false,
+          chart_data_shape_id: nil,
+          lql_ts_filters: [timestamp_filter],
+          search_timezone: "Australia/Brisbane"
+        }
+
+      corrected = SearchOperations.apply_local_timestamp_correction(so)
+
+      assert %FilterRule{
+               operator: :range,
+               shorthand: "last@1hour",
+               modifiers: %{timestamp_origin: :absolute}
+             } = timestamp_filter
 
       assert corrected.lql_ts_filters == so.lql_ts_filters
     end

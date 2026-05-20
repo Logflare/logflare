@@ -1,5 +1,6 @@
 defmodule Logflare.AuthTest do
   use Logflare.DataCase
+
   alias Logflare.Auth
   alias Logflare.Factory
   alias Logflare.OauthAccessTokens.OauthAccessToken
@@ -27,6 +28,35 @@ defmodule Logflare.AuthTest do
 
       assert Auth.list_valid_access_tokens(user) |> length() == 3
       assert Auth.list_valid_access_tokens(partner) |> length() == 2
+    end
+
+    test "create_access_token/2 appends partner scope to provided scopes", %{partner: partner} do
+      assert {:ok, %PartnerOauthAccessToken{scopes: "ingest partner"}} =
+               Auth.create_access_token(partner, %{scopes: "ingest"})
+    end
+
+    test "get_access_token/2 retrieves a user token", %{user: user} do
+      assert {:ok, %OauthAccessToken{token: token_str}} = Auth.create_access_token(user)
+      assert %OauthAccessToken{token: ^token_str} = Auth.get_access_token(user, token_str)
+    end
+
+    test "get_access_token/2 retrieves a partner token", %{partner: partner} do
+      assert {:ok, %PartnerOauthAccessToken{token: token_str}} = Auth.create_access_token(partner)
+
+      assert %PartnerOauthAccessToken{token: ^token_str} =
+               Auth.get_access_token(partner, token_str)
+    end
+
+    test "get_valid_access_token/2 retrieves non-revoked tokens for user and partner", %{
+      user: user,
+      partner: partner
+    } do
+      {:ok, %OauthAccessToken{token: user_token}} = Auth.create_access_token(user)
+      {:ok, %PartnerOauthAccessToken{token: partner_token}} = Auth.create_access_token(partner)
+
+      assert %OauthAccessToken{token: ^user_token} = Auth.get_valid_access_token(user, user_token)
+      assert %{token: ^partner_token} = Auth.get_valid_access_token(partner, partner_token)
+      refute Auth.get_valid_access_token(user, "missing")
     end
 
     test "can revoke access tokens", %{user: user} do
