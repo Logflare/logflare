@@ -1,0 +1,511 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const defineTheme = vi.fn();
+const create = vi.fn();
+const setModelLanguage = vi.fn();
+const registerCompletionItemProvider = vi.fn();
+const register = vi.fn();
+const setMonarchTokensProvider = vi.fn();
+const setLanguageConfiguration = vi.fn();
+let editor;
+let model;
+
+vi.stubGlobal("window", {});
+
+vi.mock("monaco-editor/esm/vs/editor/edcore.main.js", () => ({
+  editor: {
+    create,
+    defineTheme,
+    setModelLanguage,
+  },
+  languages: {
+    CompletionItemKind: {
+      Field: "field",
+      Keyword: "keyword",
+      Module: "module",
+      Operator: "operator",
+      Snippet: "snippet",
+    },
+    CompletionItemInsertTextRule: {
+      InsertAsSnippet: "insert-as-snippet",
+    },
+    getLanguages: () => [],
+    register,
+    registerCompletionItemProvider,
+    setLanguageConfiguration,
+    setMonarchTokensProvider,
+  },
+  KeyCode: {
+    Enter: "Enter",
+  },
+}));
+
+vi.mock("monaco-editor/esm/vs/basic-languages/sql/sql.contribution.js", () => ({}));
+vi.mock("../monaco_editor_theme", () => ({ theme: {} }));
+
+const monacoHookModule = await import("../monaco_hook.js");
+const {
+  default: MonacoHook,
+  editorContentHeight,
+  loadJsonDataset,
+  parseJson,
+  resetMonacoEnvironmentForTests,
+  submitClosestForm,
+  syncFormField,
+} = monacoHookModule;
+
+function buildHook({ language = "lql", form, dataset = {} } = {}) {
+  const editorContainer = { style: {} };
+  const input = {
+    dispatchEvent: vi.fn(),
+    value: "m.level:error",
+  };
+  const root = {
+    dataset: {
+      language,
+      options: "{}",
+      completions: "[]",
+      schemaFieldsJson: "{}",
+      suggestedSearchesJson: "[]",
+      ...dataset,
+    },
+    isConnected: true,
+    closest: vi.fn(() => form),
+    querySelector: vi.fn((selector) => {
+      if (selector === "[data-editor-container]") return editorContainer;
+      if (selector === "[data-editor-input]") return input;
+      return null;
+    }),
+  };
+  const hook = { ...MonacoHook, el: root };
+
+  return { editorContainer, hook, input, root };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  resetMonacoEnvironmentForTests();
+
+  model = {
+    getFullModelRange: vi.fn(() => "full-range"),
+    getValue: vi.fn(() => "m.level:error"),
+  };
+
+  editor = {
+    addCommand: vi.fn(),
+    dispose: vi.fn(),
+    executeEdits: vi.fn(),
+    getContentHeight: vi.fn(() => 32),
+    getModel: vi.fn(() => model),
+    getValue: vi.fn(() => "m.level:error"),
+    hasTextFocus: vi.fn(() => false),
+    layout: vi.fn(),
+    onDidChangeModelContent: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidContentSizeChange: vi.fn(() => ({ dispose: vi.fn() })),
+  };
+
+  create.mockReturnValue(editor);
+  registerCompletionItemProvider.mockReturnValue({ dispose: vi.fn() });
+});
+
+describe("MonacoHook", () => {
+  it("does not install MonacoEnvironment just by importing the hook", () => {
+    expect(window.MonacoEnvironment).toBeUndefined();
+  });
+
+  it("installs MonacoEnvironment while mounted and restores it on destroy", () => {
+    const previousEnvironment = { getWorkerUrl: vi.fn(() => "/previous-worker.js") };
+    window.MonacoEnvironment = previousEnvironment;
+    const { hook } = buildHook({ language: "sql" });
+
+    hook.mounted();
+
+    expect(window.MonacoEnvironment).not.toBe(previousEnvironment);
+    expect(window.MonacoEnvironment.getWorkerUrl()).toBe(
+      "/js/monaco_editor_worker.js",
+    );
+
+    hook.destroyed();
+
+    expect(window.MonacoEnvironment).toBe(previousEnvironment);
+  });
+
+  it("removes MonacoEnvironment on destroy when there was no previous value", () => {
+    const { hook } = buildHook({ language: "sql" });
+
+    hook.mounted();
+    hook.destroyed();
+
+    expect(window.MonacoEnvironment).toBeUndefined();
+  });
+
+  it("creates the editor with merged options and keeps minHeight off Monaco options", () => {
+    const { editorContainer, hook, input } = buildHook({
+      language: "sql",
+      dataset: {
+        options: JSON.stringify({
+          fontSize: 16,
+          minHeight: 240,
+          scrollbar: { horizontal: "auto" },
+        }),
+      },
+    });
+
+    hook.mounted();
+
+    expect(defineTheme).toHaveBeenCalledWith("default", {});
+    expect(create).toHaveBeenCalledWith(
+      editorContainer,
+      expect.objectContaining({
+        fontSize: 16,
+        language: "sql",
+        scrollbar: { horizontal: "auto" },
+        value: input.value,
+      }),
+    );
+    expect(create.mock.calls[0][1]).not.toHaveProperty("minHeight");
+    expect(editorContainer.style.minHeight).toBe("240px");
+  });
+
+  it("syncs editor changes into the hidden form field", () => {
+    const { hook, input } = buildHook({ language: "sql" });
+
+    hook.mounted();
+    editor.getValue.mockReturnValue("select * from events");
+
+    const [onChange] = editor.onDidChangeModelContent.mock.calls[0];
+    onChange();
+
+    expect(input.value).toBe("select * from events");
+    expect(input.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ bubbles: true, type: "input" }),
+    );
+  });
+
+  it("keeps focused editor content when a LiveView patch has stale form field content", () => {
+    const { hook, input } = buildHook({ language: "sql" });
+
+    hook.mounted();
+    editor.hasTextFocus.mockReturnValue(true);
+    editor.getValue.mockReturnValue("select fresh");
+    input.value = "select stale";
+
+    hook.updated();
+
+    expect(input.value).toBe("select fresh");
+    expect(editor.executeEdits).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on update when form field and editor values already match", () => {
+    const { hook, input } = buildHook({ language: "sql" });
+
+    hook.mounted();
+    editor.getValue.mockReturnValue(input.value);
+
+    hook.updated();
+
+    expect(editor.hasTextFocus).not.toHaveBeenCalled();
+    expect(editor.executeEdits).not.toHaveBeenCalled();
+  });
+
+  it("ignores update before the editor is mounted", () => {
+    const { hook } = buildHook({ language: "sql" });
+
+    hook.updated();
+
+    expect(editor.getValue).not.toHaveBeenCalled();
+  });
+
+  it("applies changed form field content when the editor is not focused", () => {
+    const { hook, input } = buildHook({ language: "sql" });
+
+    hook.mounted();
+    editor.hasTextFocus.mockReturnValue(false);
+    editor.getValue.mockReturnValue("select old");
+    model.getValue.mockReturnValue("select old");
+    input.value = "select new";
+
+    hook.updated();
+
+    expect(editor.executeEdits).toHaveBeenCalledWith("server_update", [
+      {
+        range: "full-range",
+        text: "select new",
+      },
+    ]);
+  });
+
+  it("does not edit when setValue has no model or the model already has the value", () => {
+    const { hook } = buildHook({ language: "sql" });
+
+    hook.mounted();
+
+    editor.getModel.mockReturnValue(null);
+    hook.setValue("select new");
+
+    editor.getModel.mockReturnValue(model);
+    model.getValue.mockReturnValue("select new");
+    hook.setValue("select new");
+
+    expect(editor.executeEdits).not.toHaveBeenCalled();
+  });
+
+  it("ignores editor change events while applying server values", () => {
+    const { hook, input } = buildHook({ language: "sql" });
+
+    hook.mounted();
+    editor.getValue.mockReturnValue("select from callback");
+    model.getValue.mockReturnValue("select old");
+
+    editor.executeEdits.mockImplementation(() => {
+      const [onChange] = editor.onDidChangeModelContent.mock.calls[0];
+      onChange();
+    });
+
+    hook.setValue("select new");
+
+    expect(input.value).toBe("select new");
+    expect(input.dispatchEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "input" }),
+    );
+  });
+
+  it("resizes to the larger of content height and min height", () => {
+    const { editorContainer, hook } = buildHook({
+      language: "sql",
+      dataset: { options: JSON.stringify({ minHeight: 120 }) },
+    });
+
+    editor.getContentHeight.mockReturnValue(240);
+    hook.mounted();
+
+    expect(editorContainer.style.height).toBe("240px");
+    expect(editor.layout).toHaveBeenCalled();
+  });
+
+  it("does nothing when resizing before editor state is available", () => {
+    const { hook } = buildHook({ language: "sql" });
+
+    hook.resizeToContent();
+
+    expect(editor.getContentHeight).not.toHaveBeenCalled();
+  });
+
+  it("disposes registered subscriptions and the editor", () => {
+    const firstDisposable = { dispose: vi.fn() };
+    const secondDisposable = { dispose: vi.fn() };
+    const completionDisposable = { dispose: vi.fn() };
+    editor.onDidChangeModelContent.mockReturnValue(firstDisposable);
+    editor.onDidContentSizeChange.mockReturnValue(secondDisposable);
+    registerCompletionItemProvider.mockReturnValue(completionDisposable);
+    const { hook } = buildHook();
+
+    hook.mounted();
+    hook.destroyed();
+
+    expect(firstDisposable.dispose).toHaveBeenCalled();
+    expect(secondDisposable.dispose).toHaveBeenCalled();
+    expect(completionDisposable.dispose).toHaveBeenCalled();
+    expect(editor.dispose).toHaveBeenCalled();
+  });
+
+  it("does not fail destroying when no editor was created", () => {
+    const { hook } = buildHook();
+    hook.disposables = [{ dispose: vi.fn() }];
+
+    expect(() => hook.destroyed()).not.toThrow();
+    expect(editor.dispose).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a submit event when the LQL Enter command runs", () => {
+    const form = {
+      dispatchEvent: vi.fn(),
+      requestSubmit: vi.fn(),
+    };
+    const { hook } = buildHook({ form });
+
+    hook.mounted();
+
+    const [, submit] = editor.addCommand.mock.calls[0];
+    submit();
+
+    expect(form.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bubbles: true,
+        cancelable: true,
+        type: "submit",
+      }),
+    );
+    expect(form.requestSubmit).not.toHaveBeenCalled();
+  });
+
+  it("does not register an Enter submit command for SQL editors", () => {
+    const { hook } = buildHook({ language: "sql" });
+
+    hook.mounted();
+
+    expect(editor.addCommand).not.toHaveBeenCalled();
+  });
+
+  it("registers LQL language support", () => {
+    const { hook } = buildHook();
+
+    hook.mounted();
+
+    expect(register).toHaveBeenCalledWith({ id: "lql" });
+    expect(setMonarchTokensProvider).toHaveBeenCalledWith(
+      "lql",
+      expect.any(Object),
+    );
+    expect(setLanguageConfiguration).toHaveBeenCalledWith("lql", {
+      wordPattern: /[a-zA-Z_]\w*/,
+    });
+    expect(setModelLanguage).toHaveBeenCalledWith(model, "lql");
+  });
+
+  it("registers SQL completions for the active editor model only", () => {
+    const { hook } = buildHook({
+      language: "sql",
+      dataset: { completions: JSON.stringify(["events", "sources"]) },
+    });
+
+    hook.mounted();
+
+    const provider = registerCompletionItemProvider.mock.calls[0][1];
+    const position = { column: 3, lineNumber: 1 };
+    model.getWordUntilPosition = vi.fn(() => ({
+      endColumn: 3,
+      startColumn: 1,
+    }));
+
+    expect(provider.provideCompletionItems({}, position)).toEqual({
+      suggestions: [],
+    });
+
+    const completions = provider.provideCompletionItems(model, position);
+    expect(completions.suggestions).toEqual([
+      expect.objectContaining({
+        insertText: "events",
+        kind: "module",
+        label: "events",
+        range: {
+          endColumn: 3,
+          endLineNumber: 1,
+          startColumn: 1,
+          startLineNumber: 1,
+        },
+      }),
+      expect.objectContaining({ label: "sources" }),
+    ]);
+  });
+
+  it("does not register SQL completions when none are configured", () => {
+    const { hook } = buildHook({ language: "sql" });
+
+    hook.mounted();
+
+    expect(registerCompletionItemProvider).not.toHaveBeenCalled();
+  });
+
+  it("uses updated LQL schema fields in completion providers after LiveView patches", () => {
+    const { hook, root } = buildHook({
+      dataset: {
+        schemaFieldsJson: JSON.stringify({ "metadata.old": "string" }),
+      },
+    });
+
+    hook.mounted();
+
+    const provider = registerCompletionItemProvider.mock.calls[0][1];
+    root.dataset.schemaFieldsJson = JSON.stringify({ "metadata.new": "integer" });
+    hook.updated();
+
+    const suggestions = provider.provideCompletionItems(
+      {
+        getLineContent: () => "m.",
+        getLineMaxColumn: () => 3,
+        getValueInRange: () => "m.",
+        getWordUntilPosition: () => ({ startColumn: 1, endColumn: 3 }),
+      },
+      { column: 3, lineNumber: 1 },
+    ).suggestions;
+
+    expect(suggestions).toEqual([
+      expect.objectContaining({
+        detail: "integer",
+        label: "new",
+      }),
+    ]);
+  });
+});
+
+describe("MonacoHook helpers", () => {
+  it("parses JSON and returns null for invalid JSON", () => {
+    expect(parseJson('{"ok":true}')).toEqual({ ok: true });
+    expect(parseJson("{")).toBeNull();
+  });
+
+  it("caches parsed dataset values until the raw attribute changes", () => {
+    const context = {
+      el: {
+        dataset: {
+          options: JSON.stringify({ minHeight: 120 }),
+        },
+      },
+    };
+
+    const first = loadJsonDataset(context, "options", {});
+    const second = loadJsonDataset(context, "options", {});
+    context.el.dataset.options = JSON.stringify({ minHeight: 240 });
+    const third = loadJsonDataset(context, "options", {});
+
+    expect(first).toBe(second);
+    expect(third).toEqual({ minHeight: 240 });
+  });
+
+  it("falls back when dataset JSON is missing or invalid", () => {
+    const context = { el: { dataset: { options: "{" } } };
+    const fallback = { minHeight: 100 };
+
+    expect(loadJsonDataset(context, "options", fallback)).toBe(fallback);
+    expect(loadJsonDataset({ el: { dataset: {} } }, "missing", [])).toEqual([]);
+  });
+
+  it("syncs a form field value and dispatches input", () => {
+    const formField = { dispatchEvent: vi.fn(), value: "" };
+
+    syncFormField(formField, "select 1");
+
+    expect(formField.value).toBe("select 1");
+    expect(formField.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ bubbles: true, type: "input" }),
+    );
+  });
+
+  it("submits the closest form if one exists", () => {
+    const form = { dispatchEvent: vi.fn() };
+    const element = { closest: vi.fn(() => form) };
+
+    submitClosestForm(element);
+
+    expect(element.closest).toHaveBeenCalledWith("form");
+    expect(form.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bubbles: true,
+        cancelable: true,
+        type: "submit",
+      }),
+    );
+  });
+
+  it("does not throw when submitting without a containing form", () => {
+    const element = { closest: vi.fn(() => null) };
+
+    expect(() => submitClosestForm(element)).not.toThrow();
+  });
+
+  it("calculates editor content height from content and minimum height", () => {
+    expect(editorContentHeight({ getContentHeight: () => 32 }, 100)).toBe(100);
+    expect(editorContentHeight({ getContentHeight: () => 180 }, 100)).toBe(180);
+  });
+});
