@@ -214,4 +214,36 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   defp flatten_node(%{t: type}, key, acc) do
     Map.put(acc, key, type)
   end
+
+  @spec get_type_for_path([term()], map()) :: atom() | nil
+  def get_type_for_path(path, flat_schema_map) when is_list(path) and is_map(flat_schema_map) do
+    path
+    |> schema_keys_for_path()
+    |> Enum.find_value(fn key -> Map.get(flat_schema_map, key) end)
+  end
+
+  def get_type_for_path(_path, _flat_schema_map), do: nil
+
+  defp schema_keys_for_path(path) do
+    direct_key = path |> Enum.map(&to_string/1) |> Enum.join(".")
+
+    without_array_indexes =
+      path
+      |> Enum.reject(&array_index?/1)
+      |> Enum.map(&to_string/1)
+      |> Enum.join(".")
+
+    [direct_key, without_array_indexes]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  defp array_index?(segment) when is_integer(segment), do: true
+
+  defp array_index?(segment) do
+    case Integer.parse(to_string(segment)) do
+      {_index, ""} -> true
+      _ -> false
+    end
+  end
 end

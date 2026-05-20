@@ -5,10 +5,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
   import Phoenix.LiveViewTest
 
   alias Ecto.Adapters.SQL
+  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
+  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   alias Logflare.Backends
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Tasks
   alias LogflareWeb.Source.SearchLV
 
@@ -380,7 +383,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source = insert(:source, source_attrs)
       plan = insert(:plan)
 
-      bq_schema = TestUtils.build_bq_schema(%{"user_id" => "some_value"})
+      bq_schema =
+        Map.get(context, :source_schema, TestUtils.build_bq_schema(%{"user_id" => "some_value"}))
 
       insert(:source_schema,
         source: source,
@@ -1047,15 +1051,41 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert link =~ ~r/phx-value-lql="\w+/
     end
 
+    @tag source_schema:
+           %TS{
+             fields: [
+               %TFS{
+                 name: "metadata",
+                 type: "RECORD",
+                 mode: "REPEATED",
+                 fields: [
+                   %TFS{name: "deployment_time", type: "TIMESTAMP", mode: "NULLABLE"},
+                   %TFS{name: "release_time", type: "TIMESTAMP", mode: "NULLABLE"}
+                 ]
+               }
+             ]
+           }
+           |> then(&SchemaBuilder.build_table_schema(%{"user_id" => "string"}, &1))
     test "log event selected fields", %{conn: conn, source: source} do
+      response_schema =
+        TestUtils.build_bq_schema(%{
+          "event_message" => "string",
+          "testing" => "string",
+          "user_id" => "string",
+          "id" => "string"
+        })
+
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok,
-         TestUtils.gen_bq_response(%{
-           "event_message" => "some event message",
-           "testing" => "modal123",
-           "user_id" => "user-abc-123",
-           "id" => "some-uuid"
-         })}
+         TestUtils.gen_bq_response(
+           %{
+             "event_message" => "some event message",
+             "testing" => "modal123",
+             "user_id" => "user-abc-123",
+             "id" => "some-uuid"
+           },
+           response_schema
+         )}
       end)
 
       {:ok, view, _html} =
@@ -1079,23 +1109,56 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "log event modal", %{conn: conn, user: user} do
-      schema = TestUtils.build_bq_schema(%{"testing" => "string"})
+      schema =
+        %TS{
+          fields: [
+            %TFS{name: "deployment_time", type: "TIMESTAMP", mode: "NULLABLE"}
+          ]
+        }
+        |> then(&SchemaBuilder.build_table_schema(%{"testing" => "string"}, &1))
+
+      response_schema =
+        %TS{
+          fields: [
+            %TFS{name: "deployment_time", type: "TIMESTAMP"}
+          ]
+        }
+        |> then(&SchemaBuilder.build_table_schema(%{"testing" => "string"}, &1))
+
+      deployment_time = TestUtils.gen_bq_timestamp(~U[2026-04-27 04:22:46.765189Z])
+
+      {:ok, _user} =
+        Logflare.Users.update_user_with_preferences(user, %{
+          preferences: %{timezone: "Australia/Brisbane"}
+        })
+
       source = insert(:source, user: user)
-      insert(:source_schema, source: source, bigquery_schema: schema)
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: schema
+      )
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
       # TODO: use expect, remove UDFs creation query
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok,
-         TestUtils.gen_bq_response(%{
-           "event_message" => "some modal message",
-           "testing" => "modal123",
-           "id" => "some-uuid"
-         })}
+         TestUtils.gen_bq_response(
+           %{
+             "event_message" => "some modal message",
+             "testing" => "modal123",
+             "deployment_time" => deployment_time,
+             "id" => "some-uuid"
+           },
+           response_schema
+         )}
       end)
 
       {:ok, view, _html} =
         live_with_redirect(
           conn,
-          ~p"/sources/#{source.id}/search?#{%{querystring: "testing:modal123"}}"
+          ~p"/sources/#{source.id}/search?#{%{querystring: "testing:modal123", tz: "Australia/Brisbane"}}"
         )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
@@ -1105,9 +1168,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       view
       |> TestUtils.wait_for_render("li:first-of-type a[phx-value-log-event-id='some-uuid']")
 
-      schema = TestUtils.build_bq_schema(%{"testing" => "string"})
-      source = insert(:source, user: user)
-      insert(:source_schema, source: source, bigquery_schema: schema)
       pid = self()
 
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
@@ -1115,11 +1175,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
         send(pid, {:query, query})
 
         {:ok,
-         TestUtils.gen_bq_response(%{
-           "event_message" => "some modal message",
-           "testing" => "modal123",
-           "id" => "some-uuid"
-         })}
+         TestUtils.gen_bq_response(
+           %{
+             "event_message" => "some modal message",
+             "testing" => "modal123",
+             "deployment_time" => deployment_time,
+             "id" => "some-uuid"
+           },
+           response_schema
+         )}
       end)
 
       TestUtils.retry_assert(fn ->
@@ -1134,6 +1198,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
         assert html =~ "Raw JSON"
         assert html =~ "modal123"
         assert html =~ "some modal message"
+        assert html =~ "deployment_time"
+        assert html =~ "1777263766765189"
+        assert html =~ "2026-04-27 14:22:46"
+        assert html =~ ~s(title="2026-04-27T04:22:46Z")
       end)
 
       assert_receive {:query, query}

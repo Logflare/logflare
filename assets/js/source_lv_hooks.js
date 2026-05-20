@@ -1,5 +1,6 @@
 import {
-  activateClipboardForSelector
+  activateClipboardForSelector,
+  activateDelegatedTooltips
 } from "./utils"
 import $ from "jquery"
 import _ from "lodash"
@@ -23,6 +24,7 @@ hooks.SourceSchemaModalTable = {
 hooks.SourceLogsSearchList = {
   updated() {
     const hook = this
+    activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
 
     window.scrollTo(0, document.body.scrollHeight)
 
@@ -44,9 +46,14 @@ hooks.SourceLogsSearchList = {
     observer.observe(target)
   },
   mounted() {
+    activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
+
     $("html, body").animate({
       scrollTop: document.body.scrollHeight
     })
+  },
+  destroyed() {
+    $(this.el).tooltip("dispose")
   },
 }
 
@@ -302,10 +309,7 @@ hooks.DocumentVisibility = {
 
 hooks.LiveTooltips = {
   mounted() {
-    $(this.el).tooltip({
-      selector: ".logflare-tooltip",
-      delay: { show: 100, hide: 200 },
-    });
+    activateDelegatedTooltips(this.el, ".logflare-tooltip")
   },
   destroyed() {
     $(this.el).tooltip("dispose");
