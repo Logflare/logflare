@@ -105,10 +105,8 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
       {:ok, ^incoming} ->
         :ok
 
-      {:ok, existing} ->
-        raise(
-          "Type error! Field `#{key}` has type of `#{inspect(existing)}`. Incoming metadata has type of `#{inspect(incoming)}`."
-        )
+      {:ok, _existing} ->
+        raise("Type error! Field `#{key}` has an unexpected type.")
 
       :error ->
         :ok

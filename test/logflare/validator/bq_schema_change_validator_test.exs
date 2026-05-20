@@ -105,9 +105,8 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
         )
 
       assert {:error, message} = validate(le, source)
+      assert message =~ "Type error"
       assert message =~ "metadata.event.timestamp"
-      assert message =~ ":integer"
-      assert message =~ ":string"
     end
 
     test "skips top-level 'start_time' and 'end_time' integers against :datetime schema" do
@@ -141,9 +140,8 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
         )
 
       assert {:error, message} = validate(le, source)
+      assert message =~ "Type error"
       assert message =~ "metadata.span.start_time"
-      assert message =~ ":integer"
-      assert message =~ ":string"
     end
   end
 
