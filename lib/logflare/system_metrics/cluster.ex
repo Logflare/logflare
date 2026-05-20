@@ -35,36 +35,36 @@ defmodule Logflare.SystemMetrics.Cluster do
           Logflare.FinchQuery
         ],
         GenServer.whereis(pool) != nil do
-      case Finch.get_pool_status(pool, url) do
-        {:ok, metrics} ->
-          counts =
-            for metric <- metrics,
-                Map.get(metric, :in_flight_requests),
-                do: metric.in_flight_requests
+      dispatch_pool_telemetry(pool, url)
+    end
+  end
 
-          in_use_connections =
-            for metric <- metrics,
-                Map.get(metric, :in_use_connections),
-                do: metric.in_use_connections
-
-          available_connections =
-            for metric <- metrics,
-                Map.get(metric, :available_connections),
-                do: metric.available_connections
-
-          :telemetry.execute(
-            [:logflare, :system, :finch],
+  @spec dispatch_pool_telemetry(module(), String.t()) :: :ok | nil
+  defp dispatch_pool_telemetry(pool, url) do
+    with {:ok, metrics} <- Finch.get_pool_status(pool, url) do
+      measurements =
+        Enum.reduce(
+          metrics,
+          %{in_flight_requests: 0, in_use_connections: 0, available_connections: 0},
+          fn metric, acc ->
             %{
-              in_flight_requests: Enum.sum(counts),
-              in_use_connections: Enum.sum(in_use_connections),
-              available_connections: Enum.sum(available_connections)
-            },
-            %{url: url, pool: Atom.to_string(pool)}
-          )
+              in_flight_requests:
+                acc.in_flight_requests + (Map.get(metric, :in_flight_requests) || 0),
+              in_use_connections:
+                acc.in_use_connections + (Map.get(metric, :in_use_connections) || 0),
+              available_connections:
+                acc.available_connections + (Map.get(metric, :available_connections) || 0)
+            }
+          end
+        )
 
-        _ ->
-          nil
-      end
+      :telemetry.execute(
+        [:logflare, :system, :finch],
+        measurements,
+        %{url: url, pool: Atom.to_string(pool)}
+      )
+    else
+      _ -> nil
     end
   end
 end

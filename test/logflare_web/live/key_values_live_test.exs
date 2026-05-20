@@ -25,7 +25,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
     test "renders initial page with count and search prompt", %{conn: conn, user: user} do
       insert(:key_value, user: user, key: "k1", value: %{"org" => "abc"})
 
-      {:ok, _view, html} = live(conn, ~p"/key-values")
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/key-values")
 
       assert html =~ "key values"
       assert html =~ "Total: 1"
@@ -33,7 +33,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
     end
 
     test "search requires key filter", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/key-values")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/key-values")
 
       html =
         view
@@ -47,7 +47,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
       insert(:key_value, user: user, key: "target", value: %{"v" => "1"})
       insert(:key_value, user: user, key: "other", value: %{"v" => "2"})
 
-      {:ok, view, _html} = live(conn, ~p"/key-values")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/key-values")
 
       view
       |> form("#search-form", %{"key" => "target"})
@@ -59,7 +59,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
     end
 
     test "can create a key-value pair with JSON value", %{conn: conn} do
-      {:ok, view, html} = live(conn, ~p"/key-values")
+      {:ok, view, html} = live_with_redirect(conn, ~p"/key-values")
       assert html =~ "Total: 0"
 
       view |> element("button", "Create key-value pair") |> render_click()
@@ -76,7 +76,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
     test "create shows error on duplicate key", %{conn: conn, user: user} do
       insert(:key_value, user: user, key: "dup_key", value: %{"v" => "1"})
 
-      {:ok, view, _html} = live(conn, ~p"/key-values")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/key-values")
 
       view |> element("button", "Create key-value pair") |> render_click()
 
@@ -94,7 +94,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
       Plan.changeset(plan, %{limit_key_values: 0})
       |> Repo.update!()
 
-      {:ok, view, _html} = live(conn, ~p"/key-values")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/key-values")
 
       view |> element("button", "Create key-value pair") |> render_click()
 
@@ -110,7 +110,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
       insert(:key_value, user: user, key: "del_key", value: %{"v" => "1"})
       insert(:key_value, user: user, key: "keep_key", value: %{"v" => "2"})
 
-      {:ok, view, html} = live(conn, ~p"/key-values")
+      {:ok, view, html} = live_with_redirect(conn, ~p"/key-values")
       assert html =~ "Total: 2"
 
       # Search by key to see del_key
@@ -135,7 +135,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
     test "clear search resets to initial state", %{conn: conn, user: user} do
       insert(:key_value, user: user, key: "k1", value: %{"v" => "1"})
 
-      {:ok, view, _html} = live(conn, ~p"/key-values")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/key-values")
 
       view
       |> form("#search-form", %{"key" => "k1"})

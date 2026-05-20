@@ -76,6 +76,7 @@
           <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
             <JSONViewerComponent.json_viewer data={@fmt_body |> JSON.decode!()} id={"log-event-tree-#{@id}"}>
               <:action :let={node}>
+                <.formatted_timestamp :if={datetime_field?(node.path, @source_schema_flat_map)} value={node.value} timezone={@local_timezone} />
                 <.quick_filter lql={@lql || ""} node={node} source={@source} source_schema_flat_map={@source_schema_flat_map} lql_schema={@lql_schema} search_params={@search_params} team={@team} />
               </:action>
             </JSONViewerComponent.json_viewer>

@@ -45,9 +45,7 @@ defmodule Logflare.Rules.Cache do
 
   def get_rules(ids) do
     Cachex.execute!(__MODULE__, fn cache ->
-      for id <- ids do
-        ContextCache.fetch(cache, {:get_rule, [id]}, fn -> Rules.get_rule(id) end)
-      end
+      Enum.map(ids, &fetch_rule(cache, &1))
     end)
   end
 
@@ -76,6 +74,10 @@ defmodule Logflare.Rules.Cache do
         acc + delete_and_count(worker, k)
       end)
     end)
+  end
+
+  defp fetch_rule(cache, id) do
+    ContextCache.fetch(cache, {:get_rule, [id]}, fn -> Rules.get_rule(id) end)
   end
 
   defp delete_and_count(cache, key) do

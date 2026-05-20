@@ -240,6 +240,14 @@ defmodule LogflareWeb.Router do
       live("/backends/new", BackendsLive, :new)
       live("/backends/:id", BackendsLive, :show)
       live("/backends/:id/edit", BackendsLive, :edit)
+      live("/key-values", KeyValuesLive, :index)
+
+      scope "/alerts" do
+        live "/", AlertsLive, :index
+        live "/new", AlertsLive, :new
+        live "/:id", AlertsLive, :show
+        live "/:id/edit", AlertsLive, :edit
+      end
 
       scope "/endpoints" do
         live "/", EndpointsLive, :index
@@ -252,22 +260,10 @@ defmodule LogflareWeb.Router do
     live_session :without_team_param, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
       live("/access-tokens", AccessTokensLive, :index)
       live("/query", QueryLive, :index)
-      live("/key-values", KeyValuesLive, :index)
 
       scope "/integrations" do
         live("/vercel/edit", VercelLogDrainsLive, :edit)
       end
-    end
-  end
-
-  scope "/alerts", LogflareWeb do
-    pipe_through([:browser, :require_auth])
-
-    live_session :alerts, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
-      live "/", AlertsLive, :index
-      live "/new", AlertsLive, :new
-      live "/:id", AlertsLive, :show
-      live "/:id/edit", AlertsLive, :edit
     end
   end
 
