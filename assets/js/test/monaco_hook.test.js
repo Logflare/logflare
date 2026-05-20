@@ -97,6 +97,8 @@ beforeEach(() => {
     layout: vi.fn(),
     onDidChangeModelContent: vi.fn(() => ({ dispose: vi.fn() })),
     onDidContentSizeChange: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidFocusEditorText: vi.fn(() => ({ dispose: vi.fn() })),
   };
 
   create.mockReturnValue(editor);
@@ -158,6 +160,50 @@ describe("MonacoHook", () => {
       expect(input.dispatchEvent).toHaveBeenCalledWith(
         expect.objectContaining({ bubbles: true, type: "input" }),
       );
+    });
+
+    it("pushes focus and blur events with the current editor value", () => {
+      const { hook } = buildHook({
+        language: "sql",
+        dataset: { emitFocusEvents: "" },
+      });
+      hook.pushEvent = vi.fn();
+
+      hook.mounted();
+      editor.getValue.mockReturnValue("select * from events");
+
+      const [onFocus] = editor.onDidFocusEditorText.mock.calls[0];
+      const [onBlur] = editor.onDidBlurEditorText.mock.calls[0];
+      onFocus();
+      onBlur();
+
+      expect(hook.pushEvent).toHaveBeenCalledWith("form_focus", {
+        value: "select * from events",
+      });
+      expect(hook.pushEvent).toHaveBeenCalledWith("form_blur", {
+        value: "select * from events",
+      });
+    });
+
+    it("does not register focus and blur events by default", () => {
+      const { hook } = buildHook({ language: "sql" });
+
+      hook.mounted();
+
+      expect(editor.onDidFocusEditorText).not.toHaveBeenCalled();
+      expect(editor.onDidBlurEditorText).not.toHaveBeenCalled();
+    });
+
+    it("does not register focus and blur events when explicitly disabled", () => {
+      const { hook } = buildHook({
+        language: "sql",
+        dataset: { emitFocusEvents: "false" },
+      });
+
+      hook.mounted();
+
+      expect(editor.onDidFocusEditorText).not.toHaveBeenCalled();
+      expect(editor.onDidBlurEditorText).not.toHaveBeenCalled();
     });
   });
 

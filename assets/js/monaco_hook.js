@@ -45,6 +45,8 @@ const MonacoHook = {
       this.registerConfiguredCompletions();
     }
 
+    this.registerFocusEvents();
+
     this.disposables.push(
       this.editor.onDidChangeModelContent(() => {
         if (this.ignoreEditorChange) return;
@@ -95,6 +97,25 @@ const MonacoHook = {
     this.schemaFields = this.loadJsonDataset("schemaFieldsJson", {});
     this.suggestedSearches = this.loadJsonDataset("suggestedSearchesJson", []);
     this.minEditorHeight = this.options.minHeight || minEditorHeight;
+    this.emitFocusEvents =
+      this.el.dataset.emitFocusEvents !== undefined &&
+      this.el.dataset.emitFocusEvents !== "false";
+  },
+
+  registerFocusEvents() {
+    if (!this.emitFocusEvents) return;
+
+    this.disposables.push(
+      this.editor.onDidFocusEditorText(() => {
+        this.pushEvent("form_focus", { value: this.editor.getValue() });
+      }),
+    );
+
+    this.disposables.push(
+      this.editor.onDidBlurEditorText(() => {
+        this.pushEvent("form_blur", { value: this.editor.getValue() });
+      }),
+    );
   },
 
   setValue(value) {
