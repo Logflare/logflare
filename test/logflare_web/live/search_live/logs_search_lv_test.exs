@@ -2464,7 +2464,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     {:ok, document} = Floki.parse_document(html)
 
     document
-    |> Floki.find("#lql-editor-hook [data-editor-input]")
+    |> Floki.find("#lql-editor-hook input[data-editor-input]")
     |> Floki.attribute("value")
     |> hd()
   end

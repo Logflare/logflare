@@ -1,8 +1,7 @@
-// Copied from live_monaco_editor's bundled theme:
-// https://github.com/BeaconCMS/live_monaco_editor/blob/c5c11d9f3632ea110f86e7eb0b68e4f48dc2a14e/assets/js/live_monaco_editor/editor/themes.js
+// Copied from the previous bundled Monaco theme.
 // Copyright (c) 2023 DockYard, Inc
 // Licensed under MIT license
-// live_monaco_editor copied and modified the original work from:
+// The theme copied and modified the original work from:
 // https://github.com/livebook-dev/livebook/blob/23e58ac604de92ce54472f36fe3e28dc27576d6c/assets/js/hooks/cell_editor/live_editor/theme.js
 // Copyright (C) 2021 Dashbit
 // Licensed under Apache 2.0 available at https://www.apache.org/licenses/LICENSE-2.0

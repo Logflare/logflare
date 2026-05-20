@@ -45,7 +45,7 @@ defmodule LogflareWeb.QueryLive do
         <QueryComponents.backend_select :if={Enum.any?(@backends)} backends={@backends} form={@form} default_backend={@default_backend}>
           <:help>Choose which backend to execute this query against.</:help>
         </QueryComponents.backend_select>
-        <LogflareWeb.MonacoEditorComponentNew.code_editor id="monaco-hook" field={f[:value]} completions={@completions} />
+        <LogflareWeb.MonacoEditorComponent.code_editor id="monaco-hook" field={f[:value]} completions={@completions} />
         <div class="tw-ml-auto">
           <button type="submit" name="action" value="format" class="btn btn-secondary">
             Format
