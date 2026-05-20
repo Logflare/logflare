@@ -220,7 +220,7 @@ defmodule Logflare.Billing.Stripe do
   end
 
   def delete_subscription(id) do
-    Stripe.Subscription.delete(id)
+    Stripe.Subscription.cancel(id, %{})
   end
 
   def list_customer_subscriptions(stripe_customer_id) do

@@ -400,7 +400,7 @@ defmodule LogflareWeb.BillingControllerTest do
         }
       )
 
-      expect(Stripe.Subscription, :delete, fn "sub_test123" ->
+      expect(Stripe.Subscription, :cancel, fn "sub_test123", %{} ->
         {:ok, %Stripe.Subscription{id: "sub_test123"}}
       end)
 
