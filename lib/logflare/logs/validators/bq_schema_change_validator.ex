@@ -9,11 +9,18 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   alias Logflare.SourceSchemas
   alias Logflare.Sources.Source
 
-  # Logflare injects "timestamp" as integer microseconds in LogEvent.mapper/1,
-  # but the BQ schema types it as TIMESTAMP (:datetime). Skip at the top level
-  # so the integer/datetime mismatch doesn't trip validation. "id" and
-  # "event_message" are strings on both sides, so they don't need the skip.
-  @skip_top_level_keys ~w(timestamp)
+  # Some top-level fields arrive as unix-time integers but the BQ schema types
+  # them as TIMESTAMP (:datetime), so a naive type check would always conflict:
+  #
+  #   - "timestamp" — injected as integer microseconds by LogEvent.mapper/1.
+  #   - "start_time" / "end_time" — injected as integer nanoseconds by
+  #     OtelTrace/OtelMetric and promoted to TIMESTAMP for OTEL sources in
+  #     SchemaBuilder.determine_type/3.
+  #
+  # Skip these at the top level only; nested fields with the same names still
+  # get validated. "id" and "event_message" are strings on both sides, so they
+  # don't need the skip.
+  @skip_top_level_keys ~w(timestamp start_time end_time)
 
   @spec validate(LE.t(), Source.t()) :: :ok | {:error, String.t()}
   def validate(%LE{body: _body}, %Source{validate_schema: false}), do: :ok

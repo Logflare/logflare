@@ -109,6 +109,42 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
       assert message =~ ":integer"
       assert message =~ ":string"
     end
+
+    test "skips top-level 'start_time' and 'end_time' integers against :datetime schema" do
+      source =
+        source_with_flat_map(%{
+          "start_time" => :datetime,
+          "end_time" => :datetime
+        })
+
+      le =
+        LE.make(
+          %{"start_time" => 1_700_000_000_000_000_000, "end_time" => 1_700_000_000_000_000_001},
+          %{source: source}
+        )
+
+      assert validate(le, source) == :ok
+    end
+
+    test "validates nested 'start_time' / 'end_time' fields (top-level skip does not leak)" do
+      source =
+        source_with_flat_map(%{
+          "metadata" => :map,
+          "metadata.span" => :map,
+          "metadata.span.start_time" => :string
+        })
+
+      le =
+        LE.make(
+          %{"metadata" => %{"span" => %{"start_time" => 12_345}}},
+          %{source: source}
+        )
+
+      assert {:error, message} = validate(le, source)
+      assert message =~ "metadata.span.start_time"
+      assert message =~ ":integer"
+      assert message =~ ":string"
+    end
   end
 
   describe "valid?/2" do
