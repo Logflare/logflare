@@ -10,6 +10,14 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
       assert SchemaUtils.to_typemap(nil) == nil
     end
 
+    test "non-container inputs return %{} instead of raising" do
+      assert SchemaUtils.to_typemap("a string") == %{}
+      assert SchemaUtils.to_typemap(42) == %{}
+      assert SchemaUtils.to_typemap(true) == %{}
+      assert SchemaUtils.to_typemap([1, 2, 3]) == %{}
+      assert SchemaUtils.to_typemap([]) == %{}
+    end
+
     test "binary keys are atomized" do
       assert SchemaUtils.to_typemap(%{"name" => "x", "count" => 1}) == %{
                name: %{t: :string},
@@ -21,20 +29,6 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
       assert SchemaUtils.to_typemap(%{name: "x", count: 1}) == %{
                name: %{t: :string},
                count: %{t: :integer}
-             }
-    end
-
-    test "nested map keys are atomized at every level" do
-      assert SchemaUtils.to_typemap(%{"user" => %{"address" => %{"city" => "Dublin"}}}) == %{
-               user: %{
-                 t: :map,
-                 fields: %{
-                   address: %{
-                     t: :map,
-                     fields: %{city: %{t: :string}}
-                   }
-                 }
-               }
              }
     end
 
@@ -58,6 +52,102 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
       [normalized_key] = Map.keys(typemap)
       assert is_atom(normalized_key)
       assert String.valid?(Atom.to_string(normalized_key))
+    end
+
+    test "nested map keys are atomized at every level" do
+      assert SchemaUtils.to_typemap(%{"user" => %{"address" => %{"city" => "Dublin"}}}) == %{
+               user: %{
+                 t: :map,
+                 fields: %{
+                   address: %{
+                     t: :map,
+                     fields: %{city: %{t: :string}}
+                   }
+                 }
+               }
+             }
+    end
+
+    test "list of scalar values stays a scalar list type" do
+      assert SchemaUtils.to_typemap(%{"items" => ["a", "b"]}) == %{
+               items: %{t: {:list, :string}}
+             }
+    end
+
+    test "homogeneous list of maps merges all map fields into a single REPEATED RECORD" do
+      typemap = SchemaUtils.to_typemap(%{"items" => [%{"a" => 1}, %{"b" => 2}]})
+
+      assert typemap == %{
+               items: %{
+                 t: :map,
+                 fields: %{
+                   a: %{t: :integer},
+                   b: %{t: :integer}
+                 }
+               }
+             }
+    end
+
+    test "heterogeneous list-of-maps value skips non-map elements (map at head)" do
+      typemap = SchemaUtils.to_typemap(%{"items" => [%{"a" => 1}, "stray", %{"b" => 2}]})
+
+      assert typemap == %{
+               items: %{
+                 t: :map,
+                 fields: %{
+                   a: %{t: :integer},
+                   b: %{t: :integer}
+                 }
+               }
+             }
+    end
+
+    test "heterogeneous list with scalar at head still detects REPEATED RECORD" do
+      typemap = SchemaUtils.to_typemap(%{"items" => ["stray", %{"a" => 1}, %{"b" => 2}]})
+
+      assert typemap == %{
+               items: %{
+                 t: :map,
+                 fields: %{
+                   a: %{t: :integer},
+                   b: %{t: :integer}
+                 }
+               }
+             }
+    end
+
+    test "heterogeneous list with a list at head still detects REPEATED RECORD" do
+      typemap = SchemaUtils.to_typemap(%{"items" => [[1, 2], %{"a" => 1}, %{"b" => 2}]})
+
+      assert typemap == %{
+               items: %{
+                 t: :map,
+                 fields: %{
+                   a: %{t: :integer},
+                   b: %{t: :integer}
+                 }
+               }
+             }
+    end
+
+    test "list mixing empty maps and non-map elements still surfaces non-empty map fields" do
+      typemap = SchemaUtils.to_typemap(%{"items" => [%{}, "stray", %{"a" => 1}]})
+
+      assert typemap.items.fields == %{a: %{t: :integer}}
+    end
+
+    test "list with an embedded empty list still detects REPEATED RECORD without crashing" do
+      typemap = SchemaUtils.to_typemap(%{"items" => [%{"a" => 1}, [], %{"b" => 2}]})
+
+      assert typemap == %{
+               items: %{
+                 t: :map,
+                 fields: %{
+                   a: %{t: :integer},
+                   b: %{t: :integer}
+                 }
+               }
+             }
     end
   end
 
@@ -172,6 +262,34 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
   describe "bq_schema_to_flat_typemap/1" do
     test "nil schema returns empty map" do
       assert SchemaUtils.bq_schema_to_flat_typemap(nil) == %{}
+    end
+
+    test "scalar leaf fields are dot-keyed with their atom types" do
+      flat =
+        TestUtils.build_bq_schema(%{"name" => "x", "count" => 1, "active" => true})
+        |> SchemaUtils.bq_schema_to_flat_typemap()
+
+      assert flat["name"] == :string
+      assert flat["count"] == :integer
+      assert flat["active"] == :boolean
+    end
+
+    test "nested record fields produce a parent :map entry and child dot-paths" do
+      flat =
+        TestUtils.build_bq_schema(%{"user" => %{"address" => %{"city" => "Dublin"}}})
+        |> SchemaUtils.bq_schema_to_flat_typemap()
+
+      assert flat["user"] == :map
+      assert flat["user.address"] == :map
+      assert flat["user.address.city"] == :string
+    end
+
+    test "repeated scalar fields flatten to a {:list, type} entry" do
+      flat =
+        TestUtils.build_bq_schema(%{"tags" => ["a", "b"]})
+        |> SchemaUtils.bq_schema_to_flat_typemap()
+
+      assert flat["tags"] == {:list, :string}
     end
   end
 
