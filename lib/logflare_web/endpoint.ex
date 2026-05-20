@@ -37,7 +37,7 @@ defmodule LogflareWeb.Endpoint do
 
   plug(Plug.Logger, log: :debug)
 
-  plug(Stripe.WebhookPlug,
+  plug(LogflareWeb.Plugs.StripeWebhook,
     at: "/webhooks/stripe",
     handler: LogflareWeb.StripeWebhookHandler,
     secret: &LogflareWeb.Endpoint.stripe_webhook_secret/0
