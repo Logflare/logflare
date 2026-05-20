@@ -97,7 +97,10 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
   defp stripe_sign(raw_body) do
     timestamp = System.system_time(:second)
     signed = "#{timestamp}.#{raw_body}"
-    hmac = :crypto.mac(:hmac, :sha256, @test_webhook_secret, signed) |> Base.encode16(case: :lower)
+
+    hmac =
+      :crypto.mac(:hmac, :sha256, @test_webhook_secret, signed) |> Base.encode16(case: :lower)
+
     "t=#{timestamp},v1=#{hmac}"
   end
 

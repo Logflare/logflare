@@ -140,7 +140,11 @@ defmodule LogflareWeb.StripeWebhookHandler do
 
   defp log_customer_not_found do
     billing = LogflareLogger.context().billing
-    Logger.warning("Stripe webhook: #{billing.webhook_type} - customer not found: #{billing.customer}")
+
+    Logger.warning(
+      "Stripe webhook: #{billing.webhook_type} - customer not found: #{billing.customer}"
+    )
+
     :ok
   end
 
