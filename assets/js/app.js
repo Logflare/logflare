@@ -27,7 +27,7 @@ import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_m
 import LqlEditorWrapper from "./lql_editor_wrapper_hook"
 import QueryClassSettings from "./query_class_settings_hook";
 import { scrollToPageBottom } from "./utils"
-
+import MonacoHook from "./monaco_hook";
 
 // set moment globally before daterangepicker
 window.moment = moment;
@@ -57,6 +57,7 @@ const hooks = {
   CodeEditorHook,
   LqlEditorWrapper,
   QueryClassSettings,
+  MonacoHook,
 };
 
 let liveSocket = new LiveSocket("/live", Socket, {
