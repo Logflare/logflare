@@ -3,6 +3,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
   use ExUnitProperties
 
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.TestUtils
 
   describe "flatten_typemap/1" do
     test "nil and empty map both return empty map" do
@@ -157,5 +158,42 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
           Map.put(acc, flat_key, type)
       end
     end)
+  end
+
+  describe "get_type_for_path/2" do
+    setup do
+      flat_schema =
+        %{
+          "metadata" => %{
+            "timestamp" => 1_777_263_766_765_189,
+            "count" => 1,
+            "items" => [%{"name" => "item"}]
+          }
+        }
+        |> TestUtils.build_bq_schema()
+        |> SchemaUtils.bq_schema_to_flat_typemap()
+
+      %{flat_schema: flat_schema}
+    end
+
+    test "returns the correct type for paths", %{flat_schema: flat_schema} do
+      assert SchemaUtils.get_type_for_path(["metadata", "timestamp"], flat_schema) == :integer
+      assert SchemaUtils.get_type_for_path(["metadata", "count"], flat_schema) == :integer
+      assert SchemaUtils.get_type_for_path(["metadata", "items", "name"], flat_schema) == :string
+    end
+
+    test "handles array indices correctly", %{flat_schema: flat_schema} do
+      assert SchemaUtils.get_type_for_path(["metadata", "items", 0, "name"], flat_schema) ==
+               :string
+
+      assert SchemaUtils.get_type_for_path(["metadata", "items", "1", "name"], flat_schema) ==
+               :string
+    end
+
+    test "returns nil for unknown paths or invalid inputs", %{flat_schema: flat_schema} do
+      assert SchemaUtils.get_type_for_path(["metadata", "unknown"], flat_schema) == nil
+      assert SchemaUtils.get_type_for_path(nil, flat_schema) == nil
+      assert SchemaUtils.get_type_for_path(["metadata", "timestamp"], nil) == nil
+    end
   end
 end
