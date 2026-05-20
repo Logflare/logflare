@@ -5,6 +5,7 @@ defmodule LogflareWeb.QueryComponents do
   alias Logflare.Logs.SearchOperations.Helpers
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Teams.Team
   alias LogflareWeb.Utils
   alias Phoenix.LiveView.JS
 
@@ -31,6 +32,7 @@ defmodule LogflareWeb.QueryComponents do
   attr :source_schema_flat_map, :map, required: true
   attr :lql_schema, :map, required: true
   attr :search_params, :map, default: %{}
+  attr :team, :any, default: nil
 
   def quick_filter(%{node: %{path: [path]}} = assigns)
       when path in ["id", "event_message", "timestamp"] and not is_map_key(assigns, :class) do
@@ -50,7 +52,8 @@ defmodule LogflareWeb.QueryComponents do
           assigns.source,
           assigns.source_schema_flat_map,
           assigns.lql_schema,
-          assigns.search_params
+          assigns.search_params,
+          assigns.team
         )
       )
       |> assign(:value_ok?, quick_filter_value_ok?(assigns.node))
@@ -112,7 +115,15 @@ defmodule LogflareWeb.QueryComponents do
     )
   end
 
-  @spec append_to_query(String.t(), map(), Logflare.Sources.Source.t(), map(), map(), map()) ::
+  @spec append_to_query(
+          String.t(),
+          map(),
+          Logflare.Sources.Source.t(),
+          map(),
+          map(),
+          map(),
+          Team.t() | nil
+        ) ::
           String.t() | nil
   def append_to_query(
         lql,
@@ -120,7 +131,8 @@ defmodule LogflareWeb.QueryComponents do
         source,
         flat_map,
         lql_schema,
-        search_params
+        search_params,
+        team \\ nil
       ) do
     case lookup_schema_path(path, flat_map) do
       {normalized_key, list_includes?} ->
@@ -138,6 +150,7 @@ defmodule LogflareWeb.QueryComponents do
           |> Map.merge(%{querystring: updated_lql, tailing?: false})
 
         ~p"/sources/#{source}/search?#{params}"
+        |> Utils.with_team_param(team)
 
       nil ->
         nil

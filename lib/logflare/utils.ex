@@ -11,6 +11,8 @@ defmodule Logflare.Utils do
   import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
+  @sensitive_header_names ["authorization", "x-api-key", "Authorization", "X-API-Key"]
+
   @doc """
   Checks if a feature flag is enabled.
   If SDK key is not set, will always return false.
@@ -332,7 +334,7 @@ defmodule Logflare.Utils do
   iex> ip_version(nil)
   nil
   """
-  @spec ip_version(String.t() | nil) :: :inet | :inet6 | nil
+  @spec ip_version(String.t() | nil) :: :inet | :inet6 | :nxdomain | nil
   def ip_version(address) when is_binary(address) do
     address = String.to_charlist(address)
 
@@ -349,7 +351,7 @@ defmodule Logflare.Utils do
   @doc """
   Redacts sensitive headers from a list of Tesla.Env headers. Used for automatic redaction.
   """
-  @spec redact_sensitive_headers(map()) :: list(tuple())
+  @spec redact_sensitive_headers(map()) :: map()
   def redact_sensitive_headers(%{} = value) do
     # iteraptor does not handle structs as the main Enum, we need to wrap it
     List.wrap(value)
@@ -357,7 +359,7 @@ defmodule Logflare.Utils do
       fn
         {[key | _], value}
         when is_binary(value) and
-               key in ["authorization", "x-api-key", "Authorization", "X-API-Key"] ->
+               key in @sensitive_header_names ->
           "REDACTED"
 
         self ->
@@ -370,8 +372,15 @@ defmodule Logflare.Utils do
   end
 
   @doc """
-  Receives the previous inspect function and performs redaction if it is a Tesla.Env.
-  Does nothing if it is not a Tesla.Env or Tesla.Client.
+  Receives the previous inspect function and redacts sensitive fields
+  before inspect output for the following structs:
+
+    - `Tesla.Env` or `Tesla.Client` - HTTP request/response data
+    - `Backend` - strips `:config` and `:config_encrypted`
+    - `User` - strips `:api_key` and `:old_api_key`
+    - `OauthAccessToken` or `PartnerOauthAccessToken` - strips OAuth tokens
+
+  Redaction is skipped in `:test` and `:dev` environments.
   """
   def inspect_fun(prev_fun, value, opts)
       when is_struct(value, Tesla.Env) or is_struct(value, Tesla.Client) or
@@ -434,8 +443,6 @@ defmodule Logflare.Utils do
     redact_sensitive_headers(value)
   end
 
-  @sensitive_header_names ["authorization", "x-api-key", "Authorization", "X-API-Key"]
-
   defp redact_header_list(headers) do
     Enum.map(headers, fn
       {name, _value} when name in @sensitive_header_names -> {name, "REDACTED"}
@@ -477,7 +484,7 @@ defmodule Logflare.Utils do
   @doc """
   Tries to stop a process gracefully. If it fails, it sends a signal to the process.
   """
-  @spec try_to_stop_process(pid(), atom()) :: :ok | :noop
+  @spec try_to_stop_process(pid(), term(), term()) :: :ok | :noop
   def try_to_stop_process(pid, signal \\ :shutdown, force_signal \\ :kill) do
     GenServer.stop(pid, signal, 5_000)
     :ok

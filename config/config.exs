@@ -27,6 +27,8 @@ config :logflare, :postgres_backend_adapter, pool_size: 3
 
 config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 0
 
+config :logflare, :bigquery_pipeline, max_retries: 0
+
 config :logflare, :clickhouse_backend_adaptor,
   engine: "MergeTree",
   pool_size: 3,
@@ -74,6 +76,13 @@ config :logger,
   handle_otp_reports: true,
   handle_sasl_reports: false,
   level: :info
+
+config :logger, :default_handler,
+  config: %{
+    sync_mode_qlen: 10_000,
+    drop_mode_qlen: 10_000,
+    flush_qlen: 20_000
+  }
 
 config :logger_json, :backend,
   metadata: :all,

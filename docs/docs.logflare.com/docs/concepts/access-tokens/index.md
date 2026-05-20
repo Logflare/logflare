@@ -6,7 +6,7 @@ sidebar_position: 4
 
 Logflare uses access tokens for user API authentication. These access tokens must be provided with each API requests, with the exception of resources that have authentication disabled by the user.
 
-[Access Tokens Dashboard](https://logflare.app/account/access-tokens)
+[Access Tokens Dashboard](https://logflare.app/access-tokens)
 
 ## Scopes
 
@@ -20,7 +20,7 @@ Access tokens can be scoped to specific functionality.
 
 ## Managing Access Tokens
 
-Access tokens can be created under the [Manage Access Tokens page](https://logflare.app/account/access-tokens).
+Access tokens can be created under the [Manage Access Tokens page](https://logflare.app/access-tokens).
 
 First, click on **Create access token** button.
 

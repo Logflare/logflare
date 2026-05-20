@@ -3,6 +3,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.PubSubRates.Cache, as: PubSubRatesCache
 
   import ExUnit.CaptureLog
 
@@ -30,6 +31,40 @@ defmodule Logflare.Backends.BufferProducerTest do
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     # marked as :ingested
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+  end
+
+  test "pops events when ingestion rate high" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    le = build(:log_event, source: source)
+
+    buffer_producer_pid =
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+
+    sid_bid_pid = {source.id, nil, buffer_producer_pid}
+    :timer.sleep(100)
+    :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+    PubSubRatesCache.cache_rates(source.token, %{
+      Node.self() => %{
+        average_rate: 500,
+        last_rate: 500,
+        max_rate: 500,
+        limiter_metrics: %{
+          average: 0,
+          duration: 60,
+          sum: 0
+        }
+      }
+    })
+
+    GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+    |> Enum.take(1)
+
+    assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+    # popped during ingest
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
   end
 
   test "moves events in IngestEventQueue to other queues on termination" do
@@ -72,7 +107,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     |> Enum.take(1)
 
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # marked as :ingested
+    # marked ingested
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
   end
 
