@@ -1,6 +1,40 @@
 [
   %{
     meta: %{
+      captured_at: "2026-05-20T19:54:49.078966Z",
+      git_sha: "cdebbbebd",
+      label: "o11y-1829 walk_maps is_map guard",
+      machine: "Apple M5"
+    },
+    results: %{
+      "empty schema short-circuit" => %{
+        ips: 1_257_134,
+        memory_avg_bytes: 968,
+        reductions_avg: 134,
+        wall_avg_us: 0.8,
+        wall_median_us: 0.54,
+        wall_p99_us: 5.58
+      },
+      "lists (third_with_lists)" => %{
+        ips: 159_760,
+        memory_avg_bytes: 3728,
+        reductions_avg: 616,
+        wall_avg_us: 6.26,
+        wall_median_us: 5.25,
+        wall_p99_us: 29.33
+      },
+      "scalars (third)" => %{
+        ips: 194_905,
+        memory_avg_bytes: 2592,
+        reductions_avg: 526,
+        wall_avg_us: 5.13,
+        wall_median_us: 4.29,
+        wall_p99_us: 17.63
+      }
+    }
+  },
+  %{
+    meta: %{
       captured_at: "2026-05-18T16:23:19.604582Z",
       git_sha: "7c4c80103",
       label: "o11y-1829 per-element scalar list validation",
