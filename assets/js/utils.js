@@ -1,4 +1,12 @@
 import ClipboardJS from "clipboard"
+import $ from "jquery"
+
+export function activateDelegatedTooltips(el, selector) {
+  $(el).tooltip({
+    selector,
+    delay: { show: 100, hide: 200 },
+  })
+}
 
 export function activateClipboardForSelector(selector, options) {
   const clipboard = new ClipboardJS(selector, options)

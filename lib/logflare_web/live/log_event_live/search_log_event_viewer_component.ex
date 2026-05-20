@@ -120,6 +120,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       lql_schema: get_lql_schema(source),
       timestamp: timestamp,
       local_timezone: tz,
+      search_timezone: assigns.search_params["tz"] || tz,
       local_timestamp: local_timestamp
     )
   end
