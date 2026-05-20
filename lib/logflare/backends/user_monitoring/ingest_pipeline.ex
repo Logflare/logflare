@@ -12,8 +12,8 @@ defmodule Logflare.Backends.UserMonitoring.IngestPipeline do
     Broadway.start_link(__MODULE__,
       name: __MODULE__,
       producer: [
-        module: {PullProducer, metric_store_name: :user_metrics_exporter, pull_interval: 100},
-        concurrency: 1,
+        module: {PullProducer, metric_store_name: :user_metrics_exporter, pull_interval: 1000},
+        concurrency: 2,
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [
@@ -22,7 +22,7 @@ defmodule Logflare.Backends.UserMonitoring.IngestPipeline do
       batchers: [
         default: [
           concurrency: System.schedulers_online(),
-          batch_size: 10,
+          batch_size: 200,
           batch_timeout: 500
         ]
       ]
