@@ -6,6 +6,7 @@ defmodule LogflareWeb.KeyValuesLive do
   alias Logflare.KeyValues
   alias Logflare.KeyValues.Cache
   alias Logflare.Repo
+  alias LogflareWeb.Utils
 
   @page_size 500
 
@@ -49,7 +50,8 @@ defmodule LogflareWeb.KeyValuesLive do
     key = params["key"]
 
     if non_blank?(key) do
-      {:noreply, push_patch(socket, to: ~p"/key-values?#{%{"key" => key}}")}
+      path = Utils.with_team_param(~p"/key-values?#{%{"key" => key}}", socket.assigns[:team])
+      {:noreply, push_patch(socket, to: path)}
     else
       {:noreply, put_flash(socket, :error, "Key filter is required")}
     end
@@ -97,7 +99,8 @@ defmodule LogflareWeb.KeyValuesLive do
   end
 
   def handle_event("clear-search", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/key-values")}
+    path = Utils.with_team_param(~p"/key-values", socket.assigns[:team])
+    {:noreply, push_patch(socket, to: path)}
   end
 
   defp create_key_value(socket, key, value) do
