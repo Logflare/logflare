@@ -36,7 +36,10 @@ vi.mock("monaco-editor/esm/vs/editor/edcore.main.js", () => ({
     setMonarchTokensProvider,
   },
   KeyCode: {
-    Enter: "Enter",
+    Enter: 3,
+  },
+  KeyMod: {
+    CtrlCmd: 2048,
   },
 }));
 
@@ -65,6 +68,8 @@ function buildHook({ language = "lql", form, dataset = {} } = {}) {
       ...dataset,
     },
     isConnected: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
     closest: vi.fn(() => form),
     querySelector: vi.fn((selector) => {
       if (selector === "[data-editor-container]") return editorContainer;
@@ -97,6 +102,8 @@ beforeEach(() => {
     layout: vi.fn(),
     onDidChangeModelContent: vi.fn(() => ({ dispose: vi.fn() })),
     onDidContentSizeChange: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidFocusEditorText: vi.fn(() => ({ dispose: vi.fn() })),
   };
 
   create.mockReturnValue(editor);
@@ -158,6 +165,50 @@ describe("MonacoHook", () => {
       expect(input.dispatchEvent).toHaveBeenCalledWith(
         expect.objectContaining({ bubbles: true, type: "input" }),
       );
+    });
+
+    it("pushes focus and blur events with the current editor value", () => {
+      const { hook } = buildHook({
+        language: "sql",
+        dataset: { emitFocusEvents: "" },
+      });
+      hook.pushEvent = vi.fn();
+
+      hook.mounted();
+      editor.getValue.mockReturnValue("select * from events");
+
+      const [onFocus] = editor.onDidFocusEditorText.mock.calls[0];
+      const [onBlur] = editor.onDidBlurEditorText.mock.calls[0];
+      onFocus();
+      onBlur();
+
+      expect(hook.pushEvent).toHaveBeenCalledWith("form_focus", {
+        value: "select * from events",
+      });
+      expect(hook.pushEvent).toHaveBeenCalledWith("form_blur", {
+        value: "select * from events",
+      });
+    });
+
+    it("does not register focus and blur events by default", () => {
+      const { hook } = buildHook({ language: "sql" });
+
+      hook.mounted();
+
+      expect(editor.onDidFocusEditorText).not.toHaveBeenCalled();
+      expect(editor.onDidBlurEditorText).not.toHaveBeenCalled();
+    });
+
+    it("does not register focus and blur events when explicitly disabled", () => {
+      const { hook } = buildHook({
+        language: "sql",
+        dataset: { emitFocusEvents: "false" },
+      });
+
+      hook.mounted();
+
+      expect(editor.onDidFocusEditorText).not.toHaveBeenCalled();
+      expect(editor.onDidBlurEditorText).not.toHaveBeenCalled();
     });
   });
 
@@ -320,6 +371,41 @@ describe("MonacoHook", () => {
         }),
       );
       expect(form.requestSubmit).not.toHaveBeenCalled();
+    });
+
+    it("submits current editor text and trimmed recommended fields for AI search", () => {
+      const button = { focus: vi.fn(), click: vi.fn() };
+      const form = {
+        querySelector: vi.fn(() => button),
+        querySelectorAll: vi.fn(() => [
+          { name: "fields[metadata.project]", value: "  my-project\n" },
+          { name: "fields[metadata.region]", value: " ap-southeast-2 " },
+        ]),
+      };
+      const { hook, root } = buildHook({ form });
+      hook.pushEvent = vi.fn();
+      editor.getValue.mockReturnValue("errors from the last hour");
+      hook.mounted();
+
+      const [key, shortcut] = editor.addCommand.mock.calls[1];
+      expect(key).toBe(2051);
+      shortcut();
+      expect(button.focus).toHaveBeenCalled();
+      expect(button.click).toHaveBeenCalled();
+
+      const [event, submit] = root.addEventListener.mock.calls[0];
+      expect(event).toBe("lql:ai-submit");
+      submit();
+      expect(hook.pushEvent).toHaveBeenCalledWith("start_ai_search", {
+        querystring: "errors from the last hour",
+        fields: {
+          "metadata.project": "my-project",
+          "metadata.region": "ap-southeast-2",
+        },
+      });
+
+      hook.destroyed();
+      expect(root.removeEventListener).toHaveBeenCalledWith("lql:ai-submit", submit);
     });
 
     it("uses mounted LQL schema fields in completion providers", () => {

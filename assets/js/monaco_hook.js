@@ -48,9 +48,13 @@ const MonacoHook = {
       this.registerLqlLanguage();
       this.registerLqlCompletions();
       this.registerLqlSubmitCommand();
+      this.onAiSubmit = () => this.submitAiSearch();
+      this.el.addEventListener("lql:ai-submit", this.onAiSubmit);
     } else {
       this.registerConfiguredCompletions();
     }
+
+    this.registerFocusEvents();
 
     this.disposables.push(
       this.editor.onDidChangeModelContent(() => {
@@ -88,6 +92,8 @@ const MonacoHook = {
   },
 
   destroyed() {
+    this.el.removeEventListener("lql:ai-submit", this.onAiSubmit);
+
     for (const disposable of this.disposables) {
       disposable.dispose();
     }
@@ -104,6 +110,25 @@ const MonacoHook = {
     this.schemaFields = this.loadJsonDataset("schemaFieldsJson", {});
     this.suggestedSearches = this.loadJsonDataset("suggestedSearchesJson", []);
     this.minEditorHeight = this.options.minHeight || minEditorHeight;
+    this.emitFocusEvents =
+      this.el.dataset.emitFocusEvents !== undefined &&
+      this.el.dataset.emitFocusEvents !== "false";
+  },
+
+  registerFocusEvents() {
+    if (!this.emitFocusEvents) return;
+
+    this.disposables.push(
+      this.editor.onDidFocusEditorText(() => {
+        this.pushEvent("form_focus", { value: this.editor.getValue() });
+      }),
+    );
+
+    this.disposables.push(
+      this.editor.onDidBlurEditorText(() => {
+        this.pushEvent("form_blur", { value: this.editor.getValue() });
+      }),
+    );
   },
 
   // Update the Monaco editor value; temporarily ignores editor change events to avoid an update loop.
@@ -192,6 +217,30 @@ const MonacoHook = {
       },
       "!suggestWidgetVisible",
     );
+
+    this.editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+      () => {
+        const button = this.el.closest("form")?.querySelector("#ai-search-button");
+        button?.focus();
+        button?.click();
+      },
+    );
+  },
+
+  submitAiSearch() {
+    const fields = {};
+    const inputs = this.el.closest("form")?.querySelectorAll('#recommended_fields input') ?? [];
+
+    for (const input of inputs) {
+      const name = input.name.match(/^fields\[(.+)\]$/)?.[1];
+      if (name) fields[name] = input.value.trim();
+    }
+
+    this.pushEvent("start_ai_search", {
+      querystring: this.editor.getValue(),
+      fields,
+    });
   },
 
   // Updates the form field value and dispatches an input event to trigger phx-change
