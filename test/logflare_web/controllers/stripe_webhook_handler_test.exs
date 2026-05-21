@@ -1,6 +1,6 @@
 defmodule LogflareWeb.StripeWebhookHandlerTest do
   @moduledoc false
-  use LogflareWeb.ConnCase, async: false
+  use LogflareWeb.ConnCase
 
   import ExUnit.CaptureLog
 
