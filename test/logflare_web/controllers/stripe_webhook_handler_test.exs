@@ -6,7 +6,12 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
 
   alias Logflare.Billing
 
-  @test_webhook_secret "whsec_test_only_secret_for_testing"
+  @test_webhook_secret Application.compile_env(:logflare, :stripe_webhook_secret)
+
+  setup_all do
+    Mimic.copy(LogflareWeb.Endpoint)
+    :ok
+  end
 
   setup do
     insert(:plan, name: "Free")
@@ -20,10 +25,8 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
 
   describe "signature verification - no webhook secret configured" do
     setup do
-      Application.put_env(:logflare, :stripe_webhook_secret, nil)
-
-      on_exit(fn ->
-        Application.put_env(:logflare, :stripe_webhook_secret, @test_webhook_secret)
+      stub(LogflareWeb.Endpoint, :stripe_webhook_secret, fn ->
+        :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
       end)
 
       :ok
