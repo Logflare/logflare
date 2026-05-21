@@ -35,7 +35,8 @@ defmodule Logflare.Sources.Source do
              :transform_key_values,
              :transform_drop_fields,
              :bigquery_clustering_fields,
-             :default_ingest_backend_enabled?
+             :default_ingest_backend_enabled?,
+             :system_backend_enabled?
            ]}
 
   defmodule Metrics do
@@ -156,6 +157,10 @@ defmodule Logflare.Sources.Source do
       source: :default_ingest_backend_enabled,
       default: false
 
+    field :system_backend_enabled?, :boolean,
+      source: :system_backend_enabled,
+      default: true
+
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
@@ -213,6 +218,7 @@ defmodule Logflare.Sources.Source do
       :transform_drop_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
+      :system_backend_enabled?,
       :bq_storage_write_api,
       :labels,
       :system_source,
@@ -249,6 +255,7 @@ defmodule Logflare.Sources.Source do
       :transform_drop_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
+      :system_backend_enabled?,
       :bq_storage_write_api,
       :labels
     ])

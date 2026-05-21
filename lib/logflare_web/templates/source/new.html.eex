@@ -26,6 +26,28 @@
       Don't worry, you can change the name later.
     </small>
   </div>
+
+  <div class="form-group">
+    <label>System Backend Ingestion</label>
+    <p class="text-muted small">
+      When enabled, events are stored in the default system backend (BigQuery or PostgreSQL).
+      Disable this to route events exclusively to custom backends configured after source creation.
+    </p>
+    <div class="custom-control custom-switch">
+      <%= checkbox f, :system_backend_enabled?, checked: true, class: "custom-control-input", id: "source_system_backend_enabled" %>
+      <%= label f, :system_backend_enabled?, "Enable system backend ingestion", class: "custom-control-label", for: "source_system_backend_enabled" %>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Default Search LQL <small class="text-muted">(optional)</small></label>
+    <p class="text-muted small">
+      LQL query pre-populated in the search box when opening this source.
+    </p>
+    <%= text_input f, :default_search_lql, placeholder: "e.g. s:m.level s:m.status", class: "form-control form-control-margin" %>
+    <%= error_tag f, :default_search_lql %>
+  </div>
+
   <%= submit "Add source", class: "btn btn-primary form-button" %>
   <% end %>
 </div>

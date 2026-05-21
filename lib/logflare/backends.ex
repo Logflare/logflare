@@ -724,7 +724,10 @@ defmodule Logflare.Backends do
   defp dispatch_to_backends(source, nil, log_events) do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
-    for backend <- [nil | backends] do
+    system_backend =
+      if Map.get(source, :system_backend_enabled?, true), do: [nil], else: []
+
+    for backend <- system_backend ++ backends do
       {queue_key, backend_type} =
         case backend do
           nil ->
