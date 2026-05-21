@@ -72,7 +72,10 @@ defmodule LogflareWeb.StripeWebhookHandler do
 
   defp dispatch(
          "payment_method.attached",
-         %{id: stripe_id, card: %{brand: brand, exp_month: exp_month, exp_year: exp_year, last4: last_four}},
+         %{
+           id: stripe_id,
+           card: %{brand: brand, exp_month: exp_month, exp_year: exp_year, last4: last_four}
+         },
          customer
        ) do
     params = %{
