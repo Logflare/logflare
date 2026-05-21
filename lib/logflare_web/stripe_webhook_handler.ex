@@ -3,6 +3,8 @@ defmodule LogflareWeb.StripeWebhookHandler do
 
   require Logger
 
+  import Logflare.Utils.Guards
+
   alias Logflare.Billing
   alias Logflare.Billing.BillingAccount
   alias Logflare.Billing.PaymentMethod
@@ -36,10 +38,8 @@ defmodule LogflareWeb.StripeWebhookHandler do
     end
   end
 
-  defp dispatch("charge.succeeded", object, customer) do
+  defp dispatch("charge.succeeded", %{receipt_url: receipt_url} = object, customer) do
     if lifetime_plan_charge?(object) do
-      receipt_url = Map.get(object, :receipt_url) || Map.get(object, "receipt_url")
-
       with %BillingAccount{} = ba <- Billing.get_billing_account_by(stripe_customer: customer),
            {:ok, _} <-
              Billing.update_billing_account(ba, %{
@@ -70,16 +70,17 @@ defmodule LogflareWeb.StripeWebhookHandler do
     end
   end
 
-  defp dispatch("payment_method.attached", object, customer) do
-    stripe_id = Map.get(object, :id) || Map.get(object, "id")
-    card = Map.get(object, :card) || Map.get(object, "card") || %{}
-
+  defp dispatch(
+         "payment_method.attached",
+         %{id: stripe_id, card: %{brand: brand, exp_month: exp_month, exp_year: exp_year, last4: last_four}},
+         customer
+       ) do
     params = %{
       customer_id: customer,
-      brand: Map.get(card, :brand) || Map.get(card, "brand"),
-      exp_month: Map.get(card, :exp_month) || Map.get(card, "exp_month"),
-      exp_year: Map.get(card, :exp_year) || Map.get(card, "exp_year"),
-      last_four: Map.get(card, :last4) || Map.get(card, "last4"),
+      brand: brand,
+      exp_month: exp_month,
+      exp_year: exp_year,
+      last_four: last_four,
       stripe_id: stripe_id
     }
 
@@ -98,9 +99,7 @@ defmodule LogflareWeb.StripeWebhookHandler do
     end
   end
 
-  defp dispatch("payment_method.detached", object, _customer) do
-    stripe_id = Map.get(object, :id) || Map.get(object, "id")
-
+  defp dispatch("payment_method.detached", %{id: stripe_id}, _customer) do
     with %PaymentMethod{} = pm <- Billing.get_payment_method_by(stripe_id: stripe_id),
          {:ok, _} <- Billing.delete_payment_method(pm) do
       Phoenix.PubSub.broadcast(
@@ -120,23 +119,19 @@ defmodule LogflareWeb.StripeWebhookHandler do
 
   @spec extract_customer(map() | nil, map() | nil) :: String.t() | nil
   defp extract_customer(object, prev_attrs) do
-    customer_from_object =
-      object && (Map.get(object, :customer) || Map.get(object, "customer"))
-
-    customer_from_prev =
-      prev_attrs && (get_in(prev_attrs, [:customer]) || get_in(prev_attrs, ["customer"]))
+    customer_from_object = object && Map.get(object, :customer)
+    customer_from_prev = prev_attrs && get_in(prev_attrs, [:customer])
 
     cond do
-      is_binary(customer_from_object) -> customer_from_object
-      is_binary(customer_from_prev) -> customer_from_prev
+      is_non_empty_binary(customer_from_object) -> customer_from_object
+      is_non_empty_binary(customer_from_prev) -> customer_from_prev
       true -> nil
     end
   end
 
   @spec lifetime_plan_charge?(map()) :: boolean()
-  defp lifetime_plan_charge?(object) do
-    (Map.get(object, :amount) || Map.get(object, "amount")) == 50_000
-  end
+  defp lifetime_plan_charge?(%{amount: amount}), do: amount == 50_000
+  defp lifetime_plan_charge?(_), do: false
 
   defp log_customer_not_found do
     billing = LogflareLogger.context().billing
