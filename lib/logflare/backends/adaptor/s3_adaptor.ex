@@ -97,17 +97,8 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     config = Adaptor.get_backend_config(backend)
     path = "s3://#{config.s3_bucket}/_logflare_connection_test.parquet"
 
-    df =
-      DataFrame.new([%{probe: "logflare-connection-test"}], dtypes: [{:probe, :string}])
-
-    result =
-      DataFrame.to_parquet(df, path,
-        config: [
-          access_key_id: config.access_key_id,
-          secret_access_key: config.secret_access_key,
-          region: config.storage_region
-        ]
-      )
+    df = DataFrame.new([%{probe: "connection-test"}], dtypes: [{:probe, :string}])
+    result = DataFrame.to_parquet(df, path, config: fss_s3_config(config))
 
     case result do
       :ok -> :ok
@@ -205,11 +196,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
       )
       |> DataFrame.to_parquet(s3_file_path,
         streaming: true,
-        config: [
-          access_key_id: config.access_key_id,
-          secret_access_key: config.secret_access_key,
-          region: config.storage_region
-        ]
+        config: fss_s3_config(config)
       )
     end
   end
@@ -238,5 +225,13 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     token
     |> Atom.to_string()
     |> String.replace("-", "_")
+  end
+
+  defp fss_s3_config(backend_config) do
+    [
+      access_key_id: backend_config.access_key_id,
+      secret_access_key: backend_config.secret_access_key,
+      region: backend_config.storage_region
+    ]
   end
 end
