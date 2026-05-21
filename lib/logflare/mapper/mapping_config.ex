@@ -67,7 +67,7 @@ defmodule Logflare.Mapper.MappingConfig do
   use TypedEctoSchema
 
   import Ecto.Changeset
-  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
+  import Logflare.Utils.Guards, only: [is_empty_map: 1, is_non_empty_binary: 1]
 
   alias __MODULE__.FieldConfig
   alias __MODULE__.InferCondition
@@ -171,7 +171,7 @@ defmodule Logflare.Mapper.MappingConfig do
 
   @spec maybe_add_filters(map(), map() | nil) :: map()
   defp maybe_add_filters(map, nil), do: map
-  defp maybe_add_filters(map, filters) when filters == %{}, do: map
+  defp maybe_add_filters(map, filters) when is_empty_map(filters), do: map
 
   defp maybe_add_filters(map, filters) do
     nif_filters =
