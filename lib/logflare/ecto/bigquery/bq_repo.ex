@@ -71,23 +71,20 @@ defmodule Logflare.BqRepo do
       |> warn_if_cost_above_limit(query_request.labels, user)
 
     with {:ok, response} <- result do
-      response =
-        response
-        |> Map.update!(:rows, &SchemaUtils.merge_rows_with_schema(response.schema, &1))
-        |> Map.update(:totalBytesProcessed, 0, &maybe_string_to_integer_or_zero/1)
-        |> Map.update(:totalRows, 0, &maybe_string_to_integer_or_zero/1)
-        |> Map.from_struct()
-        |> Enum.map(fn {key, value} ->
-          key
-          |> Atom.to_string()
-          |> Recase.to_snake()
-          |> String.to_atom()
-          |> then(fn key -> {key, value} end)
-        end)
-        |> Map.new()
-
-      {:ok, response}
+      {:ok, transform_response(response)}
     end
+  end
+
+  defp transform_response(response) do
+    response
+    |> Map.update!(:rows, &SchemaUtils.merge_rows_with_schema(response.schema, &1))
+    |> Map.update(:totalBytesProcessed, 0, &maybe_string_to_integer_or_zero/1)
+    |> Map.update(:totalRows, 0, &maybe_string_to_integer_or_zero/1)
+    |> Map.from_struct()
+    |> Map.new(fn {key, value} ->
+      snake_key = key |> Atom.to_string() |> Recase.to_snake() |> String.to_atom()
+      {snake_key, value}
+    end)
   end
 
   defp warn_if_cost_above_limit(
