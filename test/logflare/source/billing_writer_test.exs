@@ -18,7 +18,7 @@ defmodule Logflare.Sources.Source.BillingWriterTest do
     pid = start_supervised!({BillingWriter, source: source})
 
     # Stripe mocks
-    Stripe.SubscriptionItem.Usage
+    Stripe.UsageRecord
     |> expect(:create, fn sub_item_id, _params ->
       if is_nil(sub_item_id) do
         raise "subscription item id should not be nil"
