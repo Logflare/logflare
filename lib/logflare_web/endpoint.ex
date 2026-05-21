@@ -60,7 +60,9 @@ defmodule LogflareWeb.Endpoint do
 
   @spec stripe_webhook_secret() :: String.t()
   def stripe_webhook_secret do
-    Application.get_env(:logflare, :stripe_webhook_secret) ||
-      :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
+    case Application.get_env(:logflare, :stripe_webhook_secret) do
+      secret when is_binary(secret) and byte_size(secret) > 0 -> secret
+      _ -> :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
+    end
   end
 end
