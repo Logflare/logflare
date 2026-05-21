@@ -56,6 +56,12 @@ defmodule Logflare.Users do
   - `limit`: max returned users. Defaults to #{@max_limit}
 
   """
+  @spec list_users_with_system_monitoring() :: [User.t()]
+  def list_users_with_system_monitoring do
+    from(u in User, where: u.system_monitoring == true)
+    |> Repo.all()
+  end
+
   @spec list_users(keyword()) :: [User.t()]
   def list_users(kw) do
     {opts, filters} =

@@ -110,7 +110,7 @@ defmodule Logflare.Sources.Source do
     end
   end
 
-  @system_source_types [:metrics, :logs]
+  @system_source_types [:metrics, :logs, :traces]
   @reserved_drop_field_heads ~w(id event_message timestamp)
 
   typed_schema "sources" do

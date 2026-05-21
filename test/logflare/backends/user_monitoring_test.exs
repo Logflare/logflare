@@ -2,6 +2,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
   use Logflare.DataCase, async: false
 
   require Logger
+  require Record
+  require OpenTelemetry.Tracer
 
   import ExUnit.CaptureLog
 
@@ -10,9 +12,13 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring
+  alias Logflare.Backends.UserMonitoring.SpanProcessor
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
   alias Logflare.Endpoints
+
+  @span_fields Record.extract(:span, from: "deps/opentelemetry/include/otel_span.hrl")
+  Record.defrecordp(:span, @span_fields)
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
@@ -365,6 +371,137 @@ defmodule Logflare.Backends.UserMonitoringTest do
                         | _
                       ]},
                      5_000
+    end
+  end
+
+  describe "traces" do
+    setup :source_and_user
+
+    setup do
+      :ok = :otel_simple_processor.set_exporter(:otel_exporter_pid, self())
+      on_exit(fn -> :otel_simple_processor.set_exporter(:none) end)
+      :ok
+    end
+
+    test "routes span with source_id attribute to system.traces when monitoring enabled", %{
+      user: user,
+      source: source
+    } do
+      {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
+      traces_source = Sources.get_by(user_id: user.id, system_source_type: :traces)
+      start_supervised!({SourceSup, traces_source}, id: :traces_source)
+
+      span = build_test_span("test.operation", %{"source_id" => source.id})
+      SpanProcessor.on_end(span, %{})
+
+      TestUtils.retry_assert(fn ->
+        assert Enum.any?(
+                 Backends.list_recent_logs(traces_source),
+                 &match?(%{body: %{"event_message" => "test.operation"}}, &1)
+               )
+      end)
+    end
+
+    test "does not route span when system_monitoring is disabled", %{user: user, source: source} do
+      traces_source = insert(:source, user: user, system_source_type: :traces)
+      start_supervised!({SourceSup, traces_source}, id: :traces_source)
+
+      span = build_test_span("test.nomon", %{"source_id" => source.id})
+      SpanProcessor.on_end(span, %{})
+
+      :timer.sleep(200)
+      assert [] = Backends.list_recent_logs_local(traces_source)
+    end
+
+    test "does not route span from ingestion API paths", %{user: user, source: source} do
+      {:ok, _user} = Users.update_user_allowed(user, %{system_monitoring: true})
+      traces_source = Sources.get_by(user_id: user.id, system_source_type: :traces)
+      start_supervised!({SourceSup, traces_source}, id: :traces_source)
+
+      for {name, path} <- [
+            {"HTTP POST", "/logs/json"},
+            {"HTTP POST", "/api/logs/json"},
+            {"HTTP POST", "/api/events"},
+            {"ingest.batch", nil}
+          ] do
+        attrs = Map.merge(%{"source_id" => source.id}, if(path, do: %{"url.path" => path}, else: %{}))
+        span = build_test_span(name, attrs)
+        SpanProcessor.on_end(span, %{})
+      end
+
+      :timer.sleep(200)
+      assert [] = Backends.list_recent_logs_local(traces_source)
+    end
+
+    test "does not route spans from system sources", %{user: user, source: source} do
+      {:ok, _user} = Users.update_user_allowed(user, %{system_monitoring: true})
+      traces_source = Sources.get_by(user_id: user.id, system_source_type: :traces)
+      start_supervised!({SourceSup, traces_source}, id: :traces_source)
+
+      span = build_test_span("test.system", %{"source_id" => source.id, "system_source" => true})
+      SpanProcessor.on_end(span, %{})
+
+      :timer.sleep(200)
+      assert [] = Backends.list_recent_logs_local(traces_source)
+    end
+
+    test "span event includes trace and span ids", %{user: user, source: source} do
+      {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
+      traces_source = Sources.get_by(user_id: user.id, system_source_type: :traces)
+      start_supervised!({SourceSup, traces_source}, id: :traces_source)
+
+      span = build_test_span("test.ids", %{"source_id" => source.id})
+      SpanProcessor.on_end(span, %{})
+
+      TestUtils.retry_assert(fn ->
+        events = Backends.list_recent_logs(traces_source)
+
+        assert Enum.any?(
+                 events,
+                 &match?(
+                   %{
+                     body: %{
+                       "event_message" => "test.ids",
+                       "trace_id" => trace_id,
+                       "span_id" => span_id
+                     }
+                   }
+                   when is_binary(trace_id) and is_binary(span_id),
+                   &1
+                 )
+               )
+      end)
+    end
+
+    defp build_test_span(name, extra_attrs \\ %{}) do
+      trace_id = :otel_id_generator.generate_trace_id()
+      span_id = :otel_id_generator.generate_span_id()
+      now = :opentelemetry.timestamp()
+
+      attrs =
+        :otel_attributes.new(
+          Map.merge(%{"logflare.test" => true}, extra_attrs),
+          128,
+          :infinity
+        )
+
+      span(
+        name: name,
+        trace_id: trace_id,
+        span_id: span_id,
+        parent_span_id: 0,
+        start_time: now,
+        end_time: now + 1_000_000,
+        attributes: attrs,
+        events: :otel_events.new(128, 128, :infinity),
+        links: :otel_links.new(128, 128, :infinity),
+        kind: :internal,
+        status: :undefined,
+        resource: :otel_resource.create(%{}),
+        instrumentation_scope: :undefined,
+        is_recording: true,
+        tracestate: :otel_tracestate.new()
+      )
     end
   end
 end

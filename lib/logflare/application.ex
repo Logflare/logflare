@@ -11,10 +11,12 @@ defmodule Logflare.Application do
   alias Logflare.ContextCache
   alias Logflare.Logs
   alias Logflare.SingleTenant
+  alias Logflare.Sources
   alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
   alias Logflare.PubSubRates
+  alias Logflare.Users
   alias Logflare.Utils
 
   def start(_type, _args) do
@@ -41,6 +43,7 @@ defmodule Logflare.Application do
     if Application.get_env(:logflare, :opentelemetry_enabled?) do
       OpentelemetryBandit.setup()
       OpentelemetryPhoenix.setup(adapter: :bandit)
+      :opentelemetry.add_span_processor(UserMonitoring.get_span_processor())
     end
 
     # See https://hexdocs.pm/elixir/Supervisor.html
@@ -206,5 +209,12 @@ defmodule Logflare.Application do
     if Application.get_env(:logflare, Logflare.Alerting)[:enabled] do
       AlertSchedulerWorker.new(%{}) |> Oban.insert()
     end
+
+    provision_missing_system_sources()
+  end
+
+  defp provision_missing_system_sources do
+    Users.list_users_with_system_monitoring()
+    |> Enum.each(&Sources.create_user_system_sources(&1.id))
   end
 end

@@ -4,11 +4,15 @@ defmodule Logflare.Backends.UserMonitoring do
   """
 
   import Telemetry.Metrics
+  alias Logflare.Backends.UserMonitoring.SpanProcessor
   alias Logflare.Logs
   alias Logflare.Logs.OtelMetric
   alias Logflare.Logs.Processor
   alias Logflare.Sources
   alias Logflare.Users
+
+  @spec get_span_processor() :: {module(), map()}
+  def get_span_processor, do: {SpanProcessor, %{}}
 
   def get_otel_exporter do
     export_period =
