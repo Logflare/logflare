@@ -67,11 +67,41 @@ defmodule LogflareWeb.Api.AccessTokensTest do
       assert response["scopes"] =~ "public"
     end
 
+    test "creates a token with a requested scope", %{conn: conn, user: user} do
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/access-tokens", %{scopes: "ingest"})
+        |> json_response(201)
+
+      assert response["scopes"] == "ingest"
+    end
+
     test "cannot create partner scope", %{conn: conn, user: user} do
-      conn
-      |> add_access_token(user, "private")
-      |> post("/api/access-tokens", %{scopes: "partner"})
-      |> json_response(401)
+      assert %{"errors" => %{"scopes" => _}} =
+               conn
+               |> add_access_token(user, "private")
+               |> post("/api/access-tokens", %{scopes: "partner"})
+               |> json_response(422)
+    end
+
+    test "cannot smuggle partner scope alongside other scopes", %{conn: conn, user: user} do
+      assert %{"errors" => %{"scopes" => _}} =
+               conn
+               |> add_access_token(user, "private")
+               |> post("/api/access-tokens", %{scopes: "ingest partner"})
+               |> json_response(422)
+    end
+
+    test "cannot mass-assign the token value", %{conn: conn, user: user} do
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/access-tokens", %{token: "attacker-chosen", scopes: "public"})
+        |> json_response(201)
+
+      refute response["token"] == "attacker-chosen"
+      assert response["token"]
     end
 
     test "must use private token", %{conn: conn, user: user} do
