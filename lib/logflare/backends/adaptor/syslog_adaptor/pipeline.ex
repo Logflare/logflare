@@ -28,7 +28,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
       ],
       context: %{
         source_id: source.id,
+        source_token: source.token,
         backend_id: backend.id,
+        backend_token: backend.token,
+        user_id: source.user_id,
         pool: pool
       }
     )
@@ -48,6 +51,20 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
       for %Broadway.Message{data: log_event} <- messages do
         Syslog.format(log_event, config)
       end
+
+    request_bytes = Enum.reduce(content, 0, fn frame, acc -> acc + IO.iodata_length(frame) end)
+
+    :telemetry.execute(
+      [:logflare, :backends, :ingest, :egress],
+      %{request_bytes: request_bytes},
+      %{
+        "source_id" => context.source_id,
+        "source_uuid" => context.source_token,
+        "backend_id" => context.backend_id,
+        "backend_uuid" => context.backend_token,
+        "user_id" => context.user_id
+      }
+    )
 
     case Pool.send(pool, content) do
       :ok -> messages
