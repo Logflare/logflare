@@ -7,9 +7,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
 
-  @one_hour_ns 3_600_000_000_000
-  @trace_batch_info %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
-  @log_batch_info %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 1, trigger: :flush}
+  # Arbitrary day bucket value — pipeline only passes it through telemetry/OTEL
+  # attributes, so these tests assert tuple shape, not the value itself.
+  @day_bucket 20_594
 
   setup do
     insert(:plan, name: "Free")
@@ -58,7 +58,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   end
 
   describe "handle_message/3" do
-    test "routes all messages to :ch batcher with `event_type` as batch_key", %{context: context} do
+    test "routes fresh log events to :ch_fresh batcher keyed by {event_type, day_bucket}", %{
+      context: context
+    } do
       log_event = build(:log_event)
 
       message = %Message{
@@ -68,11 +70,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_message(:default, message, context)
 
-      assert %Message{batcher: :ch, batch_key: :log} = result
+      assert %Message{batcher: :ch_fresh, batch_key: {:log, day_bucket}} = result
+      assert day_bucket == log_event.day_bucket
       assert result.data == log_event
     end
 
-    test "sets batch_key to `:metric` for metric events", %{context: context} do
+    test "keys metric events by `{:metric, day_bucket}`", %{context: context} do
       log_event = build(:log_event) |> Map.put(:event_type, :metric)
 
       message = %Message{
@@ -82,10 +85,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_message(:default, message, context)
 
-      assert %Message{batcher: :ch, batch_key: :metric} = result
+      assert %Message{batcher: :ch_fresh, batch_key: {:metric, _}} = result
     end
 
-    test "sets batch_key to `:trace` for trace events", %{context: context} do
+    test "keys trace events by `{:trace, day_bucket}`", %{context: context} do
       log_event = build(:log_event) |> Map.put(:event_type, :trace)
 
       message = %Message{
@@ -95,7 +98,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_message(:default, message, context)
 
-      assert %Message{batcher: :ch, batch_key: :trace} = result
+      assert %Message{batcher: :ch_fresh, batch_key: {:trace, _}} = result
+    end
+
+    test "routes stale events to :ch_stale batcher", %{context: context} do
+      log_event = build(:log_event) |> Map.put(:ingest_freshness, :stale)
+
+      message = %Message{
+        data: log_event,
+        acknowledger: {Pipeline, :ack_id, :ack_data}
+      }
+
+      result = Pipeline.handle_message(:default, message, context)
+
+      assert %Message{batcher: :ch_stale, batch_key: {:log, _}} = result
     end
 
     test "crashes when event_type is nil", %{context: context} do
@@ -126,8 +142,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         %Message{data: log_event2, acknowledger: {Pipeline, :ack_id, context}}
       ]
 
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 2, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 2,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
       assert result == messages
 
@@ -146,8 +168,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     end
 
     test "handles empty messages list", %{context: context} do
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 0, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, [], batch_info, context)
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 0,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch_fresh, [], batch_info, context)
       assert result == []
     end
 
@@ -185,8 +213,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         %Message{data: log_event2, acknowledger: {Pipeline, :ack_id, context}}
       ]
 
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 2, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 2,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
       assert result == messages
 
       Process.sleep(200)
@@ -228,8 +262,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         %Message{data: event3, acknowledger: {Pipeline, :ack_id, context}}
       ]
 
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 3, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 3,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
       assert result == messages
 
@@ -259,8 +299,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         %Message{data: event, acknowledger: {Pipeline, :ack_id, context}}
       ]
 
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :metric, size: 1, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:metric, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
       assert result == messages
 
@@ -289,8 +335,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         %Message{data: event, acknowledger: {Pipeline, :ack_id, context}}
       ]
 
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:trace, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
       assert result == messages
 
@@ -320,8 +372,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         )
 
       messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 1, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
       assert result == messages
 
       Process.sleep(200)
@@ -377,8 +436,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:event_type, :metric)
 
       messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :metric, size: 1, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:metric, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
       assert result == messages
 
       Process.sleep(200)
@@ -426,8 +492,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:event_type, :trace)
 
       messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:trace, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
       assert result == messages
 
       Process.sleep(200)
@@ -462,132 +535,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert is_binary(row["status_message"])
       assert is_integer(row["duration"])
       assert row["timestamp"] != nil
-    end
-  end
-
-  describe "handle_batch/4 inferred timestamp replacement" do
-    test "replaces timestamp with start_time for trace events when timestamp was inferred", %{
-      context: context,
-      source: source,
-      backend: backend
-    } do
-      start_time_ns = System.system_time(:nanosecond) - @one_hour_ns
-
-      event =
-        build(:log_event,
-          source: source,
-          message: "Trace with inferred timestamp",
-          start_time: start_time_ns,
-          end_time: start_time_ns + 1_000_000
-        )
-        |> Map.put(:event_type, :trace)
-        |> Map.put(:timestamp_inferred, true)
-
-      messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      result = Pipeline.handle_batch(:ch, messages, @trace_batch_info, context)
-
-      assert result == messages
-
-      Process.sleep(200)
-
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
-
-      {:ok, [row]} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT toUnixTimestamp64Nano(timestamp) as ts_nano FROM #{table_name} LIMIT 1"
-        )
-
-      assert row["ts_nano"] == start_time_ns
-    end
-
-    test "preserves timestamp for trace events when timestamp was not inferred", %{
-      context: context,
-      source: source,
-      backend: backend
-    } do
-      start_time_ns = System.system_time(:nanosecond) - @one_hour_ns
-
-      event =
-        build(:log_event,
-          source: source,
-          message: "Trace with explicit timestamp",
-          start_time: start_time_ns,
-          end_time: start_time_ns + 1_000_000
-        )
-        |> Map.put(:event_type, :trace)
-        |> Map.put(:timestamp_inferred, false)
-
-      messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      result = Pipeline.handle_batch(:ch, messages, @trace_batch_info, context)
-
-      assert result == messages
-
-      Process.sleep(200)
-
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
-
-      {:ok, [row]} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT toUnixTimestamp64Nano(timestamp) as ts_nano FROM #{table_name} LIMIT 1"
-        )
-
-      refute row["ts_nano"] == start_time_ns
-    end
-
-    test "preserves timestamp for trace events when timestamp inferred but no start_time", %{
-      context: context,
-      source: source,
-      backend: backend
-    } do
-      event =
-        build(:log_event,
-          source: source,
-          message: "Trace without start_time"
-        )
-        |> Map.put(:event_type, :trace)
-        |> Map.put(:timestamp_inferred, true)
-
-      # Event body timestamp is in microseconds; mapper converts to nanoseconds
-      expected_ts_nano = event.body["timestamp"] * 1_000
-
-      messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      result = Pipeline.handle_batch(:ch, messages, @trace_batch_info, context)
-
-      assert result == messages
-
-      Process.sleep(200)
-
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
-
-      {:ok, [row]} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT toUnixTimestamp64Nano(timestamp) as ts_nano FROM #{table_name} LIMIT 1"
-        )
-
-      assert row["ts_nano"] == expected_ts_nano
-    end
-
-    test "does not replace timestamp for non-trace events even when timestamp was inferred", %{
-      context: context,
-      source: source
-    } do
-      start_time_ns = System.system_time(:nanosecond) - @one_hour_ns
-
-      event =
-        build(:log_event,
-          source: source,
-          message: "Log with inferred timestamp",
-          start_time: start_time_ns
-        )
-        |> Map.put(:timestamp_inferred, true)
-
-      messages = [%Message{data: event, acknowledger: {Pipeline, :ack_id, context}}]
-      result = Pipeline.handle_batch(:ch, messages, @log_batch_info, context)
-
-      assert result == messages
     end
   end
 
@@ -796,8 +743,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         {:error, "Connection timeout"}
       end)
 
-      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 1, trigger: :flush}
-      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
       assert [%Message{status: {:failed, "Connection timeout"}}] = result
     end

@@ -34,7 +34,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @min_pipelines 1
   @resolve_interval 10_000
-  @scaling_threshold 5_000
+  @scaling_threshold 15_000
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -512,7 +512,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
     sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
 
-    # Higher threshold (5,000) to allow more buffering before scaling
     any_above_threshold? = Enum.any?(lens_no_startup_values, &(&1 >= @scaling_threshold))
 
     cond do
