@@ -1,18 +1,42 @@
-alias Logflare.Sources
-alias Logflare.Users
+# Usage: MIX_ENV=test mix run test/profiling/multi_source_ingest_bench.exs
+
+import Logflare.Factory
+
 require Phoenix.ConnTest
+
+{:ok, _} = Application.ensure_all_started(:mimic)
+
 Mimic.copy(Broadway)
 Mimic.copy(Logflare.Backends)
-Mimic.copy(Logflare.Logs)
+Mimic.copy(Goth)
 Mimic.copy(Logflare.Partners)
+Mimic.copy(Logflare.Sources.Source.Data)
 
-Mimic.stub(Logflare.Backends, :ingest_logs, fn _, _ -> :ok end)
-Mimic.stub(Logflare.Logs, :ingest_logs, fn _, _ -> :ok end)
+# RateCounterServer boots in SourceSup and calls Goth / Data.get_log_count; private-mode
+# Mimic stubs would not apply. Global mode mirrors ExUnit setups that stub GenServers.
+Mimic.set_mimic_global()
 
-v1_source = Sources.get(:"9f37d86e-e4fa-4ef2-a47e-e8d4ac1fceba")
-v2_source = Sources.get(:"94d07aab-30f5-460e-8871-eb85f4674e35")
+Mimic.stub(Goth)
 
-user = Users.get(v1_source.user_id)
+Mimic.stub(Logflare.Sources.Source.Data, :get_log_count, fn _, _ ->
+  0
+end)
+
+Mimic.stub(Logflare.Backends, :ingest_logs, fn events, _ ->
+  {:ok, length(events)}
+end)
+
+pid =
+  Ecto.Adapters.SQL.Sandbox.start_owner!(Logflare.Repo,
+    shared: true,
+    ownership_timeout: 1_200_000
+  )
+
+insert(:plan)
+
+user = insert(:user)
+v1_source = insert(:source, user: user)
+v2_source = insert(:source, user: user)
 
 token_a = Atom.to_string(v1_source.token)
 token_b = Atom.to_string(v2_source.token)
@@ -50,13 +74,11 @@ Benchee.run(
     "VerifyDeclaredSources - passthrough (no __LF_SOURCE)" =>
       {fn conn ->
          LogflareWeb.Plugs.VerifyDeclaredSources.call(conn, [])
-       end,
-       before_each: fn _ -> build_single_source_conn.() end},
+       end, before_each: fn _ -> build_single_source_conn.() end},
     "VerifyDeclaredSources - multi-source (2 sources, 10 events)" =>
       {fn conn ->
          LogflareWeb.Plugs.VerifyDeclaredSources.call(conn, [])
-       end,
-       before_each: fn _ -> build_multi_source_conn.() end},
+       end, before_each: fn _ -> build_multi_source_conn.() end},
     "Full ingest pipeline - single source (baseline)" =>
       {fn _ ->
          Phoenix.ConnTest.build_conn()

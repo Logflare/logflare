@@ -137,7 +137,7 @@ defmodule LogflareWeb.LogController do
   end
 
   defp event_source_token(%{@lf_source_key => token}), do: token
-  defp event_source_token(%{:"__LF_SOURCE" => token}), do: token
+  defp event_source_token(%{:__LF_SOURCE => token}), do: token
   defp event_source_token(_), do: nil
 
   defp aggregate_results(results, errors) do

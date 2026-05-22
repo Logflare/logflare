@@ -101,15 +101,16 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSourcesTest do
   describe "authorization failures" do
     test "halts with 401 for unauthorized sources", %{user: user} do
       source_a = insert(:source, user: user)
+      source_b = insert(:source, user: user)
       other_source = insert(:source, user: insert(:user))
+
       {:ok, scoped_token} =
         Logflare.Auth.create_access_token(user, %{scopes: "ingest:source:#{source_a.id}"})
 
       for {label, body, extra_assigns} <- [
             {"source owned by another user",
              %{"batch" => [%{"__LF_SOURCE" => Atom.to_string(other_source.token)}]}, []},
-            {"non-existent UUID",
-             %{"batch" => [%{"__LF_SOURCE" => Ecto.UUID.generate()}]}, []},
+            {"non-existent UUID", %{"batch" => [%{"__LF_SOURCE" => Ecto.UUID.generate()}]}, []},
             {"one of many sources unauthorized",
              %{
                "batch" => [
@@ -118,7 +119,7 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSourcesTest do
                ]
              }, []},
             {"scope does not cover declared source",
-             %{"batch" => [%{"__LF_SOURCE" => Atom.to_string(source_a.token)}]},
+             %{"batch" => [%{"__LF_SOURCE" => Atom.to_string(source_b.token)}]},
              [access_token: scoped_token]}
           ] do
         conn =

@@ -3,6 +3,52 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
   use LogflareWeb.ConnCase
   alias LogflareWeb.Plugs.RateLimiter
 
+  describe "multi-source mode" do
+    test "passes when all declared sources are within rate limits" do
+      plan = insert(:plan, limit_rate_limit: 5)
+      user = insert(:user)
+      source_a = insert(:source, user_id: user.id)
+      source_b = insert(:source, user_id: user.id)
+
+      conn =
+        build_conn(:post, "/logs")
+        |> assign(:user, user)
+        |> assign(:source, nil)
+        |> assign(:plan, plan)
+        |> assign(:declared_sources, %{
+          Atom.to_string(source_a.token) => source_a,
+          Atom.to_string(source_b.token) => source_b
+        })
+        |> RateLimiter.call()
+
+      refute conn.halted
+    end
+
+    test "halts with 429 when any declared source exceeds its rate limit" do
+      plan = insert(:plan, limit_source_rate_limit: 0)
+      user = insert(:user)
+      source_a = insert(:source, user_id: user.id)
+      source_b = insert(:source, user_id: user.id)
+
+      conn =
+        build_conn(:post, "/logs")
+        |> assign(:user, user)
+        |> assign(:source, nil)
+        |> assign(:plan, plan)
+        |> assign(:declared_sources, %{
+          Atom.to_string(source_a.token) => source_a,
+          Atom.to_string(source_b.token) => source_b
+        })
+        |> RateLimiter.call()
+
+      assert conn.halted
+      assert json_response(conn, 429) == %{
+               "error" =>
+                 "Source rate is over the API quota. Email support@logflare.app to increase your rate limit."
+             }
+    end
+  end
+
   describe "rate limiter plug works correctly" do
     test "doesn't halt when POST logs action is allowed" do
       plan = insert(:plan, limit_rate_limit: 5)
