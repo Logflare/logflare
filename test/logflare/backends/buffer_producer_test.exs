@@ -19,7 +19,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     le = build(:log_event, source: source)
 
     buffer_producer_pid =
-      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, backend_type: :bigquery})
 
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
     :timer.sleep(100)
@@ -40,7 +40,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     le = build(:log_event, source: source)
 
     buffer_producer_pid =
-      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, backend_type: :bigquery})
 
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
     :timer.sleep(100)
@@ -74,7 +74,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     le = build(:log_event, source: source)
 
     buffer_producer_pid =
-      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, backend_type: :bigquery})
 
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
     startup_table_key = {source.id, nil, nil}
@@ -99,7 +99,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     :ok = IngestEventQueue.add_to_table(startup_key, [le])
 
     buffer_producer_pid =
-      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, backend_type: :bigquery})
 
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
 
@@ -116,7 +116,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     source = insert(:source, user: user)
 
     pid =
-      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, buffer_size: 10})
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, backend_type: :bigquery, buffer_size: 10})
 
     le = build(:log_event)
     items = List.duplicate(le, 100)
@@ -163,7 +163,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       buffer_producer_pid =
         start_supervised!(
-          {BufferProducer, backend_id: backend.id, consolidated: true, interval: 100}
+          {BufferProducer, backend_id: backend.id, consolidated: true, interval: 100, backend_type: :bigquery}
         )
 
       consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
@@ -189,7 +189,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       buffer_producer_pid =
         start_supervised!(
-          {BufferProducer, backend_id: backend.id, consolidated: true, interval: 100}
+          {BufferProducer, backend_id: backend.id, consolidated: true, interval: 100, backend_type: :bigquery}
         )
 
       consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
@@ -208,7 +208,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       buffer_producer_pid =
         start_supervised!(
-          {BufferProducer, backend_id: backend.id, consolidated: true, interval: 100}
+          {BufferProducer, backend_id: backend.id, consolidated: true, interval: 100, backend_type: :bigquery}
         )
 
       consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
@@ -231,7 +231,7 @@ defmodule Logflare.Backends.BufferProducerTest do
       pid =
         start_supervised!(
           {BufferProducer,
-           backend_id: backend.id, consolidated: true, interval: 100, buffer_size: 10}
+           backend_id: backend.id, consolidated: true, interval: 100, buffer_size: 10, backend_type: :bigquery}
         )
 
       le = build(:log_event)

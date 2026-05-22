@@ -11,10 +11,12 @@ defmodule Logflare.Backends.BufferProducer do
 
   require Logger
 
-  alias Logflare.Backends
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
   alias Logflare.Sources
+
+  @valid_backend_types Map.keys(Backend.adaptor_mapping())
 
   @type state :: %{
           consolidated: boolean(),
@@ -40,22 +42,39 @@ defmodule Logflare.Backends.BufferProducer do
   def init(opts) do
     Process.flag(:trap_exit, true)
 
+    backend_type = fetch_backend_type!(opts)
     consolidated? = Keyword.get(opts, :consolidated, false)
     backend_id = opts[:backend_id]
     interval = Keyword.get(opts, :interval, @default_interval)
 
     state =
       if consolidated? do
-        init_consolidated_state(backend_id, interval, opts)
+        init_consolidated_state(backend_id, backend_type, interval, opts)
       else
-        init_standard_state(opts, interval)
+        init_standard_state(opts, backend_type, interval)
       end
 
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
   end
 
-  @spec init_standard_state(keyword(), pos_integer()) :: state()
-  defp init_standard_state(opts, interval) do
+  @spec fetch_backend_type!(keyword()) :: atom()
+  defp fetch_backend_type!(opts) do
+    case Keyword.fetch(opts, :backend_type) do
+      :error ->
+        raise ArgumentError, "BufferProducer requires :backend_type opt"
+
+      {:ok, type} when type in @valid_backend_types ->
+        type
+
+      {:ok, type} ->
+        raise ArgumentError,
+              "BufferProducer :backend_type #{inspect(type)} is not a valid Backend type. " <>
+                "Expected one of: #{inspect(@valid_backend_types)}"
+    end
+  end
+
+  @spec init_standard_state(keyword(), atom(), pos_integer()) :: state()
+  defp init_standard_state(opts, backend_type, interval) do
     source = Sources.Cache.get_by_id(opts[:source_id])
 
     state = %{
@@ -64,7 +83,7 @@ defmodule Logflare.Backends.BufferProducer do
       source_id: opts[:source_id],
       source_token: source.token,
       backend_id: opts[:backend_id],
-      backend_type: lookup_backend_type(opts[:backend_id]),
+      backend_type: backend_type,
       last_discard_log_dt: nil,
       interval: interval
     }
@@ -78,15 +97,15 @@ defmodule Logflare.Backends.BufferProducer do
     state
   end
 
-  @spec init_consolidated_state(pos_integer(), pos_integer(), keyword()) :: state()
-  defp init_consolidated_state(backend_id, interval, opts) do
+  @spec init_consolidated_state(pos_integer(), atom(), pos_integer(), keyword()) :: state()
+  defp init_consolidated_state(backend_id, backend_type, interval, opts) do
     state = %{
       consolidated: true,
       demand: 0,
       source_id: nil,
       source_token: nil,
       backend_id: backend_id,
-      backend_type: lookup_backend_type(backend_id),
+      backend_type: backend_type,
       last_discard_log_dt: nil,
       interval: interval
     }
@@ -236,10 +255,10 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [LogEvent.t()]
-  defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
+  defp do_fetch(%{consolidated: true, backend_id: bid, backend_type: bt} = _state, n) do
     key = {:consolidated, bid, self()}
 
-    do_pop_key(key, n)
+    do_pop_key(key, n, bt)
   end
 
   defp do_fetch(
@@ -297,13 +316,4 @@ defmodule Logflare.Backends.BufferProducer do
     end
   end
 
-  @spec lookup_backend_type(pos_integer() | nil) :: atom()
-  defp lookup_backend_type(nil), do: :unknown
-
-  defp lookup_backend_type(backend_id) do
-    case Backends.Cache.get_backend(backend_id) do
-      %{type: type} when is_atom(type) -> type
-      _ -> :unknown
-    end
-  end
 end

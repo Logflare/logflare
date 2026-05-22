@@ -18,7 +18,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
       producer: [
         module:
           {BufferProducer,
-           [source_id: adaptor_state.source.id, backend_id: adaptor_state.backend.id]},
+           [
+             source_id: adaptor_state.source.id,
+             backend_id: adaptor_state.backend.id,
+             backend_type: :postgres
+           ]},
         transformer: {__MODULE__, :transform, []},
         concurrency: 1
       ],

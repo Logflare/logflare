@@ -26,7 +26,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
           {BufferProducer,
            [
              backend_id: backend.id,
-             source_id: source.id
+             source_id: source.id,
+             backend_type: backend.type
            ]},
         transformer: {__MODULE__, :transform, []},
         concurrency: 1

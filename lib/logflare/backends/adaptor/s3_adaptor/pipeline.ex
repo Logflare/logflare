@@ -41,7 +41,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
           fullsweep_after: 10
         ],
         producer: [
-          module: {BufferProducer, [source_id: source_id, backend_id: backend_id]},
+          module: {BufferProducer, [source_id: source_id, backend_id: backend_id, backend_type: :s3]},
           transformer: {__MODULE__, :transform, []},
           concurrency: @producer_concurrency
         ],
