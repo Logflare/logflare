@@ -100,11 +100,32 @@ services:
           isDefault: true
           version: 1
           editable: false
+        - name: VictoriaMetrics
+          type: prometheus
+          access: proxy
+          orgId: 1
+          url: http://victoriametrics:8428
+          basicAuth: false
+          isDefault: false
+          version: 1
+          editable: false
         EOF
         /run.sh
     image: grafana/grafana:latest
     ports:
       - "3000:3000"
+    depends_on:
+      - loki
+      - victoriametrics
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.106.1
+    ports:
+      - "8428:8428"
+    command:
+      - "--storageDataPath=/storage"
+      - "--retentionPeriod=1w"
+    volumes:
+      - vm-data:/storage
   collector:
     image: otel/opentelemetry-collector-contrib:0.118.0
     volumes:
@@ -153,3 +174,4 @@ services:
       - 6515:6515
 volumes:
   pg-data:
+  vm-data:

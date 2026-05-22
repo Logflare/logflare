@@ -138,6 +138,7 @@ defmodule Logflare.Mixfile do
       {:earmark, "~> 1.4.33"},
 
       # Outbound Requests
+      {:snappyer, "~> 1.2"},
       {:castore, "~> 1.0"},
       {:finch, "~> 0.20.0"},
       {:mint, "~> 1.0"},
