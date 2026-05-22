@@ -30,7 +30,8 @@ defmodule Logflare.Backends.Backend do
     signoz: Adaptor.SigNozAdaptor,
     syslog: Adaptor.SyslogAdaptor,
     splunk: Adaptor.SplunkAdaptor,
-    google_secops: Adaptor.GoogleSecOpsAdaptor
+    google_secops: Adaptor.GoogleSecOpsAdaptor,
+    victoria_metrics: Adaptor.VictoriaMetricsAdaptor
   }
 
   @type_labels %{
@@ -50,6 +51,7 @@ defmodule Logflare.Backends.Backend do
     signoz: "SigNoz",
     syslog: "Syslog",
     splunk: "Splunk",
+    victoria_metrics: "VictoriaMetrics",
     webhook: "Webhook"
   }
 
