@@ -5,10 +5,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
   import Phoenix.LiveViewTest
 
   alias Ecto.Adapters.SQL
+  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
+  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   alias Logflare.Backends
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Tasks
   alias LogflareWeb.Source.SearchLV
 
@@ -53,16 +56,17 @@ defmodule LogflareWeb.Source.SearchLVTest do
   # to simulate signed in user.
   defp setup_user_session(%{conn: conn, user: user, plan: plan}) do
     _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
-    user = user |> Logflare.Repo.preload(:billing_account)
+
+    user = user |> Logflare.Repo.preload([:billing_account, :team])
     conn = conn |> login_user(user)
+
     [conn: conn]
   end
 
   defp setup_team_user_session(%{conn: conn, user: user, plan: plan, team_user: team_user}) do
-    _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
-    user = user |> Logflare.Repo.preload(:billing_account)
+    [conn: conn] = setup_user_session(%{conn: conn, user: user, plan: plan})
 
-    [conn: login_user(conn, user, team_user)]
+    [conn: login_user(conn, user, team_user), team: team_user.team]
   end
 
   defp allow_sandbox(search_executor_pid) do
@@ -94,6 +98,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
         user1: user1,
         user2: user2,
         plan: plan,
+        team1: team1,
+        team2: team2,
         team_user1: team_user1,
         team_user2: team_user2
       ]
@@ -101,6 +107,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "invited team user can view source", %{
       conn: conn,
+      team1: team1,
       user1: user1,
       team_user1: team_user1,
       team_user2: _team_user2
@@ -108,12 +115,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source = insert(:source, user: user1)
       # set session for team_user1
       conn = conn |> login_user(team_user1.team.user, team_user1)
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?t=#{team1.id}")
       assert view |> element(".subhead") |> render() =~ source.name
     end
 
     test "switches team automatically if viewing", %{
       conn: conn,
+      team1: team1,
       user1: user1,
       team_user1: team_user1,
       team_user2: team_user2
@@ -121,12 +129,29 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source = insert(:source, user: user1)
       # set session for team_user1
       conn = conn |> login_user(team_user1.team.user, team_user2)
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?t=#{team1.id}")
       assert view |> element(".subhead") |> render() =~ source.name
+    end
+
+    test "updates team param to source team", %{
+      conn: conn,
+      team1: team1,
+      team2: team2,
+      user1: user1,
+      team_user2: team_user2
+    } do
+      source = insert(:source, user: user1)
+      conn = conn |> login_user(team_user2.team.user, team_user2)
+
+      assert {:error, {:live_redirect, %{to: path}}} =
+               live(conn, ~p"/sources/#{source.id}/search?t=#{team2.id}")
+
+      assert path == ~p"/sources/#{source.id}/search?t=#{team1.id}"
     end
 
     test "uninvited user cannot view source", %{
       conn: conn,
+      team2: team2,
       user1: user1,
       user2: user2,
       team_user1: _team_user1,
@@ -137,7 +162,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source = insert(:source, user: user1)
       # set session for team_user2
       conn = conn |> login_user(user2)
-      assert conn |> get(~p"/sources/#{source.id}/search") |> html_response(404)
+      assert conn |> get(~p"/sources/#{source.id}/search?t=#{team2.id}") |> html_response(404)
     end
 
     test "uninvited team user cannot view source", %{
@@ -153,7 +178,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source = insert(:source, user: user1)
       # set session for team_user2
       conn = conn |> login_user(other_user, other_team_user)
-      assert conn |> get(~p"/sources/#{source.id}/search") |> html_response(404)
+
+      assert conn
+             |> get(~p"/sources/#{source.id}/search?t=#{other_team.id}")
+             |> html_response(404)
     end
   end
 
@@ -168,15 +196,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
     setup [:setup_user_session]
 
     test "subheader - default timezone is Etc/UTC", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
       assert view
              |> element("#results-actions_search_timezone option[selected]")
              |> render() =~ "UTC"
     end
 
-    test "subheader - switch dispalyed timezone with dropdown", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+    test "subheader - switch dispalyed timezone with dropdown", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
       assert view
              |> element(".subhead form#results-actions")
@@ -187,8 +218,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ "+08:00"
     end
 
-    test "subheader - switch displayed timezone with UTC button", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?tz=Singapore")
+    test "subheader - switch displayed timezone with UTC button", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search?tz=Singapore")
 
       assert view |> element(".subhead") |> render() =~ "(+08:00)"
 
@@ -212,7 +246,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
         })
 
       {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing=F&tz=Asia/Singapore")
+        live_with_redirect(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=&tailing=F&tz=Asia/Singapore"
+        )
 
       assert view
              |> element(
@@ -229,7 +266,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source: source
     } do
       {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=&tz=Singapore")
+        live_with_redirect(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=&tailing%3F=&tz=Singapore"
+        )
 
       assert view |> element(".subhead") |> render() =~ "(+08:00)"
     end
@@ -247,7 +287,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "subheader - if no tz, will redirect to preference tz", %{conn: conn, source: source} do
       {:error, {:live_redirect, %{to: to}}} =
-        live(conn, ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=")
+        live_with_redirect(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F="
+        )
 
       assert to =~ "US%2FArizona"
       assert to =~ "something123"
@@ -258,7 +301,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source: source
     } do
       {:ok, view, _html} =
-        live(
+        live_with_redirect(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
         )
@@ -269,7 +312,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "chart - timezone passed to chart component", %{conn: conn, source: source} do
       {:ok, view, _html} =
-        live(
+        live_with_redirect(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
         )
@@ -330,12 +373,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   describe "search tasks" do
-    setup do
+    setup context do
       user = insert(:user)
-      source = insert(:source, user: user, bigquery_clustering_fields: "user_id")
+
+      source_attrs =
+        [user: user, bigquery_clustering_fields: "user_id"]
+        |> Keyword.merge(Map.get(context, :source_attrs, []))
+
+      source = insert(:source, source_attrs)
       plan = insert(:plan)
 
-      bq_schema = TestUtils.build_bq_schema(%{"user_id" => "some_value"})
+      bq_schema =
+        Map.get(context, :source_schema, TestUtils.build_bq_schema(%{"user_id" => "some_value"}))
 
       insert(:source_schema,
         source: source,
@@ -349,7 +398,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     setup [:setup_mocks, :setup_user_session]
 
     test "subheader - lql docs", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?querystring=something123")
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/sources/#{source.id}/search?querystring=something123")
 
       assert view
              |> element("a", "LQL")
@@ -357,7 +407,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "subheader - schema modal", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
       assert view
              |> element(".subhead a", "schema")
@@ -365,7 +415,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "subheader - events", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
       assert view
              |> element(".subhead a", "events")
@@ -395,7 +445,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "subheader - aggregeate", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -423,7 +473,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "subheader - saved searches", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
 
@@ -440,7 +490,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       saved_search = insert(:saved_search, %{source: source})
 
       _ = Logflare.SavedSearches.Cache.bust_by(source_id: saved_search.source_id)
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
       assert view
              |> element(".subhead a", "saved")
@@ -457,7 +507,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "load page", %{conn: conn, source: source} do
-      {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
 
@@ -500,6 +550,80 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert querystring =~ "c:count(*) c:group_by(t::minute)"
     end
 
+    @tag source_attrs: [default_search_lql: "s:m.level"]
+    test "appends source default LQL when querystring param is absent", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      querystring = find_querystring(html)
+
+      assert querystring =~ "s:m.level"
+      assert querystring =~ "c:count(*) c:group_by(t::minute)"
+    end
+
+    @tag source_attrs: [default_search_lql: "s:m.level"]
+    test "appends source default LQL to an empty querystring", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, html} =
+        live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id, querystring: ""))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      querystring = find_querystring(html)
+
+      assert querystring =~ "s:m.level"
+      assert querystring =~ "c:count(*) c:group_by(t::minute)"
+    end
+
+    @tag source_attrs: [default_search_lql: "s:m.level"]
+    test "does not append default LQL to querystring param", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, html} =
+        live_with_redirect(
+          conn,
+          Routes.live_path(conn, SearchLV, source.id, querystring: "error")
+        )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      querystring = find_querystring(html)
+
+      assert querystring =~ "error"
+      refute querystring =~ "s:m.level"
+    end
+
+    @tag source_attrs: [default_search_lql: "s:m.level"]
+    test "does not append default LQL when removed from query", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      assert find_querystring(html) =~ "s:m.level"
+
+      render_change(view, :start_search, %{
+        "querystring" => "c:count(*) c:group_by(t::minute) error"
+      })
+
+      html = render(view)
+      refute find_querystring(html) =~ "s:m.level"
+      assert find_querystring(html) =~ "error"
+    end
+
     test "query field has schema fields and saved searches", %{
       conn: conn,
       source: source
@@ -532,7 +656,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       _ = Logflare.SavedSearches.Cache.bust_by(source_id: source.id)
       Cachex.clear(Logflare.SourceSchemas.Cache)
 
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
@@ -578,7 +702,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         end
       end)
 
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
 
@@ -640,7 +764,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         end
       end)
 
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
 
@@ -678,12 +802,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "page title includes source name", %{conn: conn, source: source} do
-      {:ok, _view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, _view, html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
       assert html =~ "<title>#{source.name} | Logflare"
     end
 
     test "lql filters", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
       pid = self()
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -741,7 +865,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {:ok, TestUtils.gen_bq_response(%{"event_message" => "test message"})}
       end)
 
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       render_change(view, :start_search, %{
         "querystring" => "c:countd(event_message) c:group_by(t::hour)"
@@ -790,7 +914,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         end
       end)
 
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
 
@@ -828,7 +952,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {:ok, TestUtils.gen_bq_response()}
       end)
 
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -853,7 +977,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       query = "t:2025-08-01T00:00:00..2025-08-02T00:00:00"
 
       {:ok, view, _html} =
-        live(conn, Routes.live_path(conn, SearchLV, source.id, tailing?: false))
+        live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id, tailing?: false))
 
       # Increasing the chart period
       assert view
@@ -902,7 +1026,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
          })}
       end)
 
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -927,19 +1051,48 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert link =~ ~r/phx-value-lql="\w+/
     end
 
+    @tag source_schema:
+           %TS{
+             fields: [
+               %TFS{
+                 name: "metadata",
+                 type: "RECORD",
+                 mode: "REPEATED",
+                 fields: [
+                   %TFS{name: "deployment_time", type: "TIMESTAMP", mode: "NULLABLE"},
+                   %TFS{name: "release_time", type: "TIMESTAMP", mode: "NULLABLE"}
+                 ]
+               }
+             ]
+           }
+           |> then(&SchemaBuilder.build_table_schema(%{"user_id" => "string"}, &1))
     test "log event selected fields", %{conn: conn, source: source} do
+      response_schema =
+        TestUtils.build_bq_schema(%{
+          "event_message" => "string",
+          "testing" => "string",
+          "user_id" => "string",
+          "id" => "string"
+        })
+
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok,
-         TestUtils.gen_bq_response(%{
-           "event_message" => "some event message",
-           "testing" => "modal123",
-           "user_id" => "user-abc-123",
-           "id" => "some-uuid"
-         })}
+         TestUtils.gen_bq_response(
+           %{
+             "event_message" => "some event message",
+             "testing" => "modal123",
+             "user_id" => "user-abc-123",
+             "id" => "some-uuid"
+           },
+           response_schema
+         )}
       end)
 
       {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "s:user.id"}}")
+        live_with_redirect(
+          conn,
+          ~p"/sources/#{source.id}/search?#{%{querystring: "s:user.id"}}"
+        )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -956,21 +1109,57 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "log event modal", %{conn: conn, user: user} do
-      schema = TestUtils.build_bq_schema(%{"testing" => "string"})
+      schema =
+        %TS{
+          fields: [
+            %TFS{name: "deployment_time", type: "TIMESTAMP", mode: "NULLABLE"}
+          ]
+        }
+        |> then(&SchemaBuilder.build_table_schema(%{"testing" => "string"}, &1))
+
+      response_schema =
+        %TS{
+          fields: [
+            %TFS{name: "deployment_time", type: "TIMESTAMP"}
+          ]
+        }
+        |> then(&SchemaBuilder.build_table_schema(%{"testing" => "string"}, &1))
+
+      deployment_time = TestUtils.gen_bq_timestamp(~U[2026-04-27 04:22:46.765189Z])
+
+      {:ok, _user} =
+        Logflare.Users.update_user_with_preferences(user, %{
+          preferences: %{timezone: "Australia/Brisbane"}
+        })
+
       source = insert(:source, user: user)
-      insert(:source_schema, source: source, bigquery_schema: schema)
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: schema
+      )
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
       # TODO: use expect, remove UDFs creation query
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok,
-         TestUtils.gen_bq_response(%{
-           "event_message" => "some modal message",
-           "testing" => "modal123",
-           "id" => "some-uuid"
-         })}
+         TestUtils.gen_bq_response(
+           %{
+             "event_message" => "some modal message",
+             "testing" => "modal123",
+             "deployment_time" => deployment_time,
+             "id" => "some-uuid"
+           },
+           response_schema
+         )}
       end)
 
       {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "testing:modal123"}}")
+        live_with_redirect(
+          conn,
+          ~p"/sources/#{source.id}/search?#{%{querystring: "testing:modal123", tz: "Australia/Brisbane"}}"
+        )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -979,9 +1168,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       view
       |> TestUtils.wait_for_render("li:first-of-type a[phx-value-log-event-id='some-uuid']")
 
-      schema = TestUtils.build_bq_schema(%{"testing" => "string"})
-      source = insert(:source, user: user)
-      insert(:source_schema, source: source, bigquery_schema: schema)
       pid = self()
 
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
@@ -989,11 +1175,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
         send(pid, {:query, query})
 
         {:ok,
-         TestUtils.gen_bq_response(%{
-           "event_message" => "some modal message",
-           "testing" => "modal123",
-           "id" => "some-uuid"
-         })}
+         TestUtils.gen_bq_response(
+           %{
+             "event_message" => "some modal message",
+             "testing" => "modal123",
+             "deployment_time" => deployment_time,
+             "id" => "some-uuid"
+           },
+           response_schema
+         )}
       end)
 
       TestUtils.retry_assert(fn ->
@@ -1008,6 +1198,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
         assert html =~ "Raw JSON"
         assert html =~ "modal123"
         assert html =~ "some modal message"
+        assert html =~ "deployment_time"
+        assert html =~ "1777263766765189"
+        assert html =~ "2026-04-27 14:22:46"
+        assert html =~ ~s(title="2026-04-27T04:22:46Z")
       end)
 
       assert_receive {:query, query}
@@ -1030,7 +1224,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "testing:modal123"}}")
+        live_with_redirect(
+          conn,
+          ~p"/sources/#{source.id}/search?#{%{querystring: "testing:modal123"}}"
+        )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -1071,7 +1268,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, view, _html} =
-        live(
+        live_with_redirect(
           conn,
           ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:\"abc-123\"|, tz: "Africa/Lagos"}}"
         )
@@ -1120,7 +1317,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: ""}}")
+        live_with_redirect(
+          conn,
+          ~p"/sources/#{source.id}/search?#{%{querystring: ""}}"
+        )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -1146,7 +1346,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "shows flash error for malformed query", %{conn: conn, source: source} do
       assert {:ok, view, _html} =
-               live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
+               live_with_redirect(
+                 conn,
+                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
+               )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -1159,7 +1362,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source: source
     } do
       assert {:ok, view, _html} =
-               live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
+               live_with_redirect(
+                 conn,
+                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
+               )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -1181,11 +1387,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "redirected for non-owner user", %{conn: conn, source: source} do
       non_owner_user = insert(:user)
+      non_owner_team = insert(:team, user: non_owner_user)
 
       conn =
         conn
         |> login_user(non_owner_user)
-        |> get(Routes.live_path(conn, SearchLV, source))
+        |> get(Routes.live_path(conn, SearchLV, source, t: non_owner_team.id))
 
       assert html_response(conn, 404) =~ "not found"
     end
@@ -1204,7 +1411,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "stop/start live search", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source))
       %{executor_pid: search_executor_pid} = view |> get_view_assigns()
       allow_sandbox(search_executor_pid)
 
@@ -1232,7 +1439,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "datetime_update", %{conn: conn, source: source} do
       {:ok, view, _html} =
-        live(conn, Routes.live_path(conn, SearchLV, source, querystring: "error"))
+        live_with_redirect(conn, Routes.live_path(conn, SearchLV, source, querystring: "error"))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -1411,7 +1618,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         end
       end)
 
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       %{executor_pid: search_executor_pid} = view |> get_view_assigns()
       allow_sandbox(search_executor_pid)
@@ -1475,7 +1682,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       matching_message: matching_message,
       non_matching_message: non_matching_message
     } do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -1489,6 +1696,90 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert view |> element("#logs-list-container") |> render() =~ matching_message
       refute view |> element("#logs-list-container") |> render() =~ non_matching_message
+    end
+  end
+
+  describe "single tenant postgres shorthand timestamp search" do
+    TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
+
+    setup do
+      start_supervised!(Logflare.SystemMetricsSup)
+
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user)
+      plan = SingleTenant.get_default_plan()
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: TestUtils.build_bq_schema(%{"event_message" => "test"})
+      )
+
+      %{user: user, source: source, plan: plan}
+    end
+
+    setup [:setup_user_session]
+
+    test "shorthand timestamp filters are not shifted by search timezone", %{
+      conn: conn,
+      source: source
+    } do
+      now = DateTime.utc_now()
+      today_start = DateTime.new!(DateTime.to_date(now), ~T[00:00:00], "Etc/UTC")
+      yesterday_start = DateTime.add(today_start, -1, :day)
+
+      cases = [
+        {"t:last@5m", :second, {DateTime.add(now, -1, :minute), DateTime.add(now, 30, :second)}},
+        {"t:this@day", :hour,
+         {DateTime.add(now, -1, :minute), DateTime.add(today_start, -1, :minute)}},
+        {"t:yesterday", :hour, {DateTime.add(yesterday_start, 12, :hour), now}}
+      ]
+
+      Enum.each(cases, fn {querystring, chart_period, {included_timestamp, excluded_timestamp}} ->
+        matching_message = "included-#{System.unique_integer([:positive])}"
+        non_matching_message = "excluded-#{System.unique_integer([:positive])}"
+
+        {:ok, 2} =
+          [
+            %{
+              "event_message" => matching_message,
+              "timestamp" => included_timestamp |> DateTime.to_iso8601()
+            },
+            %{
+              "event_message" => non_matching_message,
+              "timestamp" => excluded_timestamp |> DateTime.to_iso8601()
+            }
+          ]
+          |> Backends.ingest_logs(source)
+
+        Enum.each(["UTC", "Singapore"], fn timezone ->
+          {:ok, view, _html} =
+            live_with_redirect(
+              conn,
+              Routes.live_path(conn, SearchLV, source.id,
+                tailing?: false,
+                tz: timezone
+              )
+            )
+
+          %{executor_pid: search_executor_pid} = get_view_assigns(view)
+          allow_sandbox(search_executor_pid)
+
+          TestUtils.retry_assert(fn ->
+            prev_completed_at = get_view_assigns(view)[:last_query_completed_at]
+
+            render_change(view, :start_search, %{
+              "querystring" => "#{querystring} c:count(*) c:group_by(t::#{chart_period})"
+            })
+
+            wait_for_search_completed(prev_completed_at)
+
+            html = view |> element("#logs-list-container") |> render()
+
+            assert html =~ matching_message
+            refute html =~ non_matching_message
+          end)
+        end)
+      end)
     end
   end
 
@@ -1513,7 +1804,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn: conn,
       source: source
     } do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       view
       |> TestUtils.wait_for_render("#logs-list-container")
@@ -1534,7 +1825,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn: conn,
       source: source
     } do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       view
       |> TestUtils.wait_for_render("#logs-list-container")
@@ -1551,7 +1842,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn: conn,
       source_without_suggestion: source
     } do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       view
       |> TestUtils.wait_for_render("#logs-list-container li")
@@ -1580,7 +1871,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn: conn,
       source: source
     } do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       view
       |> TestUtils.wait_for_render("#logs-list-container")
@@ -1601,7 +1892,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn: conn,
       source: source
     } do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       view
       |> TestUtils.wait_for_render("#logs-list-container")
@@ -1639,8 +1930,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     setup [:setup_user_session]
 
-    test "renders inputs for suggested and cluster fields", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+    test "renders inputs for suggested and cluster fields", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       assert has_element?(view, "label", "session_id")
       assert has_element?(view, "label", "metadata.level")
@@ -1652,16 +1946,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn: conn,
       source_without_recommendations: source
     } do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       refute has_element?(view, "input[id^='search-field-']")
     end
 
     # Search initiated from SourceController.show
-    test "search with field params are appended", %{
-      conn: conn,
-      source: source
-    } do
+    test "search with field params are appended", %{conn: conn, source: source} do
       query_params = [
         {"fields[metadata.level]", "error"},
         {"fields[metadata.user_id]", "123"},
@@ -1673,7 +1964,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       path = ~p"/sources/#{source.id}/search?#{query_params}"
 
       {:error, {:live_redirect, %{to: to}}} =
-        live(conn, path)
+        live_with_redirect(conn, path)
 
       refute to =~ "fields%5B"
 
@@ -1691,7 +1982,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       conn: conn,
       source: source
     } do
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
@@ -1737,7 +2028,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=true")
+        live_with_redirect(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=true"
+        )
 
       refute get_view_assigns(view).tailing?
 
@@ -1775,7 +2069,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
            source: source
          } do
       {:ok, view, _html} =
-        live(
+        live_with_redirect(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
         )
@@ -1798,7 +2092,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source: source
     } do
       {:ok, view, _html} =
-        live(
+        live_with_redirect(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
         )
@@ -1820,7 +2114,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source: source
     } do
       {:ok, view, _html} =
-        live(
+        live_with_redirect(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
         )
@@ -1842,7 +2136,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source: source
     } do
       {:ok, view, _html} =
-        live(
+        live_with_redirect(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
         )
@@ -1890,7 +2184,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, _view, _html} =
-        live(
+        live_with_redirect(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=false"
         )
@@ -1920,7 +2214,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, _view, _html} =
-        live(
+        live_with_redirect(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=false"
         )
@@ -1953,9 +2247,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       team_user: team_user
     } do
       {:ok, _view, html} =
-        live(
+        live_with_redirect(
           conn,
-          ~p"/sources/#{source}/search?querystring=test&tailing%3F=false&t=#{team_user.team_id}"
+          ~p"/sources/#{source}/search?querystring=test&tailing%3F=false"
         )
 
       for path <- ["sources/#{source.id}"] do
@@ -1963,19 +2257,32 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end
     end
 
-    test "search page without t= param assigns team context and preserves it in links", %{
+    test "search page assigns team context and preserves it in links", %{
       conn: conn,
       source: source,
       team_user: team_user
     } do
       {:ok, view, html} =
-        live(
+        live_with_redirect(
           conn,
           ~p"/sources/#{source}/search?querystring=test&tailing%3F=false"
         )
 
       assert html =~ source.name
       assert view |> has_element?(~s|a[href="/sources/#{source.id}?t=#{team_user.team_id}"]|)
+    end
+  end
+
+  defp wait_for_search_completed(prev_completed_at, timeout \\ 2_000) do
+    receive do
+      {:wait_for_render, %{last_query_completed_at: completed_at}}
+      when completed_at != prev_completed_at and not is_nil(completed_at) ->
+        :ok
+
+      {:wait_for_render, _assigns} ->
+        wait_for_search_completed(prev_completed_at, timeout)
+    after
+      timeout -> :timeout
     end
   end
 

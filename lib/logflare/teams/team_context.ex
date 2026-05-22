@@ -7,6 +7,12 @@ defmodule Logflare.Teams.TeamContext do
   If `team_id_param` is nil or empty, the user's home team is used.
   """
 
+  import Ecto.Query
+
+  alias Logflare.Alerting.AlertQuery
+  alias Logflare.Backends.Backend
+  alias Logflare.Endpoints
+  alias Logflare.Sources
   alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.Teams
@@ -113,6 +119,37 @@ defmodule Logflare.Teams.TeamContext do
   def build(assigns) do
     %__MODULE__{user: assigns.user, team: assigns.team, team_user: assigns[:team_user]}
   end
+
+  @spec resource_team_id_query(module(), map(), User.t() | TeamUser.t()) :: Ecto.Query.t() | nil
+  def resource_team_id_query(LogflareWeb.AlertsLive, %{"id" => id}, user) do
+    AlertQuery
+    |> Teams.filter_by_user_access(user)
+    |> where([alert], alert.id == ^id)
+    |> select([resource_team: team], team.id)
+  end
+
+  def resource_team_id_query(LogflareWeb.BackendsLive, %{"id" => backend_id}, user) do
+    Backend
+    |> Teams.filter_by_user_access(user)
+    |> where([backend], backend.id == ^backend_id)
+    |> select([resource_team: team], team.id)
+  end
+
+  def resource_team_id_query(LogflareWeb.EndpointsLive, %{"id" => endpoint_id}, user) do
+    Endpoints.Query
+    |> Teams.filter_by_user_access(user)
+    |> where([endpoint], endpoint.id == ^endpoint_id)
+    |> select([resource_team: team], team.id)
+  end
+
+  def resource_team_id_query(LogflareWeb.Source.SearchLV, %{"source_id" => source_id}, user) do
+    Sources.Source
+    |> Teams.filter_by_user_access(user)
+    |> where([source], source.id == ^source_id)
+    |> select([resource_team: team], team.id)
+  end
+
+  def resource_team_id_query(_view, _params, _user), do: nil
 
   def home_team?(team, %__MODULE__{team_user: team_user}) when is_struct(team_user),
     do: team_owner?(team, team_user.email)

@@ -8,10 +8,13 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   import LogflareWeb.ModalLiveHelpers
 
   alias Logflare.DateTimeUtils
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Sources.Source
+  alias LogflareWeb.FormattedTimestampComponent
+  alias LogflareWeb.Search.LogEventViewerComponent
   alias Phoenix.LiveView.JS
 
   @log_levels ~W(debug info warning error alert critical notice emergency)
@@ -24,6 +27,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :tailing?, :boolean, required: true
   attr :querystring, :string, required: true
   attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
+  attr :source_schema_flat_map, :map, default: %{}
   attr :search_op, Logflare.Logs.SearchOperation
 
   def results_list(assigns) do
@@ -32,12 +36,12 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     ~H"""
     <div :if={@search_op_log_events} id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} phx-hook="SourceLogsSearchList" class="mt-4">
       <ul id="logs-list" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
-        <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)}>
+        <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)} source_schema_flat_map={@source_schema_flat_map}>
           {log.body["event_message"]}
           <:actions phx-no-format>
           <div class={if(Enum.any?(@select_fields), do: "tw-ml-[13rem] tw-pb-1.5", else: "tw-inline")}>
           <.modal_link
-                   component={LogflareWeb.Search.LogEventViewerComponent}
+                   component={LogEventViewerComponent}
                    class="tw-text-[0.65rem]"
                    modal_id={:log_event_viewer}
                    title="Log Event"
@@ -135,10 +139,21 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       |> Enum.join("\n")
 
     """
-    #{formatted_timestamp(log, search_op.search_timezone)}    #{log.body["event_message"]}
+    #{format_timestamp_for_clipboard(log.body["timestamp"], search_op.search_timezone)}    #{log.body["event_message"]}
 
     #{select_fields}
     """
+  end
+
+  defp format_timestamp_for_clipboard(timestamp, timezone) do
+    format_timestamp(timestamp, timezone) <> timezone_offset(timezone)
+  end
+
+  defp timezone_offset(timezone) when is_binary(timezone) do
+    case Timex.Timezone.get(timezone) do
+      {:error, _} -> DateTimeUtils.humanize_timezone_offset(0)
+      timezone_info -> DateTimeUtils.humanize_timezone_offset(timezone_info.offset_utc)
+    end
   end
 
   attr :log_event, Logflare.LogEvent, required: true
@@ -146,6 +161,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :timezone, :string, required: true
   attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
   attr :select_fields, :list, default: []
+  attr :source_schema_flat_map, :map, default: %{}
   attr :rest, :global, default: %{class: "tw-group"}
   slot :inner_block
   slot :actions
@@ -172,7 +188,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       </.metadata>
       <%= if @message do %>
         {render_slot(@inner_block) || @message}
-        <.selected_fields :if={@select_fields != []} log_event={@log_event} select_fields={@select_fields} />
+        <.selected_fields :if={@select_fields != []} log_event={@log_event} select_fields={@select_fields} source_schema_flat_map={@source_schema_flat_map} timezone={@timezone} />
       <% else %>
         <span class="tw-italic tw-text-gray-500">{@empty_event_message_placeholder}</span>
       <% end %>
@@ -194,18 +210,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     """
   end
 
-  def formatted_timestamp(log_event, timezone) do
-    tz_part =
-      case Timex.Timezone.get(timezone) do
-        {:error, _} -> DateTimeUtils.humanize_timezone_offset(0)
-        tz_info -> DateTimeUtils.humanize_timezone_offset(tz_info.offset_utc)
-      end
-
-    format_timestamp(log_event.body["timestamp"], timezone) <> tz_part
-  end
-
   attr :log_event, Logflare.LogEvent, required: true
   attr :select_fields, :list, required: true
+  attr :source_schema_flat_map, :map, default: %{}
+  attr :timezone, :string, default: nil
 
   def selected_fields(assigns) do
     ~H"""
@@ -215,7 +223,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
           <div class="tw-w-[13rem] tw-text-right ">
             <span class="tw-whitespace-nowrap tw-w-fit tw-px-1 tw-py-0.5 tw-bg-neutral-600 tw-text-white tw-mr-2">{truncate_display(field.display)}</span>
           </div>
-          <span class="tw-text-white">{get_field_value(@log_event.body, field.key)}</span>
+          <span class="tw-text-white">
+            {get_field_value(@log_event.body, field.key)}
+            <FormattedTimestampComponent.formatted_timestamp :if={datetime_field?(field.path, @source_schema_flat_map)} value={Map.get(@log_event.body, field.key)} timezone={@timezone} />
+          </span>
         </div>
       <% end %>
     </div>
@@ -242,10 +253,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       %{path: path, alias: nil} ->
         key = String.replace(path, ".", "_")
         display = path |> String.split(".") |> List.last()
-        %{display: display, key: key}
+        %{display: display, key: key, path: path}
 
-      %{path: _path, alias: alias} ->
-        %{display: alias, key: alias}
+      %{path: path, alias: alias} ->
+        %{display: alias, key: alias, path: path}
     end)
     |> Enum.reject(fn field -> is_nil(field.display) end)
   end
@@ -319,6 +330,21 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
     ~p"/sources/#{search_op.source}/search?#{[querystring: query, tailing?: false]}"
   end
+
+  @spec datetime_field?(String.t() | [term()], map() | nil) :: boolean()
+  def datetime_field?(path, source_schema_flat_map)
+      when is_binary(path) and is_map(source_schema_flat_map) do
+    path
+    |> String.split(".")
+    |> datetime_field?(source_schema_flat_map)
+  end
+
+  def datetime_field?(path, source_schema_flat_map)
+      when is_list(path) and is_map(source_schema_flat_map) do
+    SchemaUtils.get_type_for_path(path, source_schema_flat_map) == :datetime
+  end
+
+  def datetime_field?(_path, _source_schema_flat_map), do: false
 
   defp first_date_with_results(%{rows: rows}) when is_list(rows) do
     Enum.find(

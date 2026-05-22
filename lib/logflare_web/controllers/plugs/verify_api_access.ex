@@ -20,7 +20,13 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   def init(args), do: args |> Enum.into(%{})
 
   def call(conn, opts) do
-    opts = Enum.into(opts, %{scopes: []})
+    # The plug may run before Plug.Parsers on ingest pipelines (so that
+    # unauthenticated requests cannot reach the parsers), in which case
+    # conn.params is unfetched. Make sure at least query params are available
+    # so legacy `?api_key=` clients still authenticate.
+    conn = fetch_query_params(conn)
+
+    opts = Enum.into(opts, %{scopes: [], require_token: false})
     resource_type = Map.get(conn.assigns, :resource_type)
 
     impersonate_user_token = get_req_header(conn, "x-lf-partner-user") |> List.first()
@@ -57,7 +63,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
         # either nil or %OauthAccessToken{}
         |> assign(:access_token, token)
 
-      {:error, :no_token} when resource_type != nil ->
+      # Public-endpoint queries (enable_auth: false) reach VerifyResourceAccess
+      # without a token; let those through. Ingest pipelines pass
+      # require_token: true so the 401 happens here, before Plug.Parsers.
+      {:error, :no_token} when resource_type != nil and not opts.require_token ->
         conn
 
       _ ->

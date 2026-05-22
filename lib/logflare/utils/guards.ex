@@ -26,6 +26,16 @@ defmodule Logflare.Utils.Guards do
   defguard is_non_empty_binary(value) when is_binary(value) and value != ""
 
   @doc """
+  Guard that indicates if the value provided is a map with at least one key.
+  """
+  defguard is_non_empty_map(value) when is_map(value) and map_size(value) > 0
+
+  @doc """
+  Guard that indicates if the value provided is a map with no keys.
+  """
+  defguard is_empty_map(value) when is_map(value) and map_size(value) == 0
+
+  @doc """
   Checks to see if the value is an `atom`, but _not_ a boolean or nil value.
   """
   defguard is_atom_value(value)

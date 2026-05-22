@@ -123,4 +123,29 @@ defmodule LogflareWeb.ConnCase do
   def assert_schema(data, schema_name) do
     OpenApiSpex.TestAssertions.assert_schema(data, schema_name, LogflareWeb.ApiSpec.spec())
   end
+
+  @doc """
+  Call live/3 and automatically follow the first live redirect.
+
+  Useful for the common case of a live view redirecting to add the `t=` param.
+  """
+  defmacro live_with_redirect(conn, path \\ nil, opts \\ []) do
+    quote bind_quoted: [conn: conn, path: path, opts: opts] do
+      result = Phoenix.LiveViewTest.live(conn, path, opts)
+
+      case result do
+        {:ok, _view, _html} ->
+          result
+
+        {:error, {:live_redirect, %{to: to}}} ->
+          Phoenix.LiveViewTest.live(conn, to, opts)
+
+        {:error, {:redirect, %{to: to}}} ->
+          {:ok, Phoenix.ConnTest.get(conn, to)}
+
+        _ ->
+          result
+      end
+    end
+  end
 end

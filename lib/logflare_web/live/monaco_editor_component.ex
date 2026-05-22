@@ -84,7 +84,7 @@ defmodule LogflareWeb.MonacoEditorComponent do
           hook.pushEventTo(ev.target, "format-query", { value: value });
         })
 
-        const completions = <%= Jason.encode!(@completions) |> raw() %>
+        const completions = <%= Jason.encode!(@completions, escape: :html_safe) |> raw() %>
 
         if (completions.length == 0) { return; }
 

@@ -16,8 +16,9 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   def setup_user(_) do
     plan = insert(:plan)
     user = insert(:user)
+    team = insert(:team, user: user)
     _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
-    [user: user, plan: plan]
+    [user: user, team: team, plan: plan]
   end
 
   defp setup_mocks(context) do
@@ -252,7 +253,8 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
             Enum.map(1..10, &%{"event_message" => "event message #{&1}"})
             |> TestUtils.gen_bq_response()}
     test "viewing event context", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?tailing=false")
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/sources/#{source.id}/search?tailing=false")
 
       html =
         view
@@ -271,7 +273,8 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
 
     @tag bq_response: {:error, TestUtils.gen_bq_error("bad query")}
     test "renders the error message", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?tailing=false")
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/sources/#{source.id}/search?tailing=false")
 
       view
       |> TestUtils.wait_for_render("#logs-list li:first-of-type a")

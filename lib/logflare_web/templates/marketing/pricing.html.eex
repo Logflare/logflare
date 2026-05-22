@@ -26,7 +26,7 @@
           be charged, and you'll be charged monthly or yearly depending on your plan.</p>
       <h1 class="scroll-margin" id="sources">What is a source?</h1>
       <p>A source is where your log events go. If you use Cloudflare you'll have a source for your Cloudflare
-          logs. If you're sending log files from a server with our FluentBit config, you'll have a source for
+          logs. If you're sending log files from a server with our Fluent Bit config, you'll have a source for
           those.</p>
       <h1 class="scroll-margin" id="dashboards">How do you do dashboards?</h1>
       <p>Because of our tight integration with BigQuery we get Google Data Studio for free. Like Logflare,

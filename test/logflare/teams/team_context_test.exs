@@ -2,6 +2,7 @@ defmodule Logflare.Teams.TeamContextTest do
   use Logflare.DataCase
 
   alias Logflare.Teams.TeamContext
+  alias LogflareWeb.Source.SearchLV
 
   setup do
     user = insert(:user)
@@ -158,6 +159,30 @@ defmodule Logflare.Teams.TeamContextTest do
     test "resolve with forbidden team_id returns error", %{user: user} do
       forbidden_team = insert(:team)
       assert {:error, :not_authorized} = TeamContext.resolve(forbidden_team.id, user.email)
+    end
+  end
+
+  describe "resource_team_id_query/3" do
+    test "returns a source team id query for SearchLV and an accessible source" do
+      user = insert(:user)
+      team = insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      query = TeamContext.resource_team_id_query(SearchLV, %{"source_id" => source.id}, user)
+
+      assert Repo.one(query) == team.id
+    end
+
+    test "returns nil for SearchLV without source params" do
+      user = insert(:user)
+
+      assert TeamContext.resource_team_id_query(SearchLV, %{}, user) == nil
+    end
+
+    test "returns nil for unsupported views" do
+      user = insert(:user)
+
+      assert TeamContext.resource_team_id_query(LogflareWeb.DashboardLive, %{}, user) == nil
     end
   end
 end

@@ -1,5 +1,6 @@
 defmodule LogflareWeb.EndpointsLive do
   @moduledoc false
+
   use LogflareWeb, :live_view
   use Phoenix.Component
 
@@ -98,7 +99,6 @@ defmodule LogflareWeb.EndpointsLive do
     socket =
       socket
       |> assign(:show_endpoint, endpoint)
-      |> maybe_assign_team_context(params, endpoint)
       |> then(fn
         socket when endpoint != nil ->
           {:ok, parsed_result} =
@@ -498,10 +498,4 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   defp maybe_redact_query(query, _redact_pii), do: query
-
-  defp maybe_assign_team_context(socket, %{"t" => _team_id}, _endpoint), do: socket
-
-  defp maybe_assign_team_context(socket, _params, endpoint) do
-    LogflareWeb.AuthLive.assign_context_by_resource(socket, endpoint, socket.assigns.user.email)
-  end
 end

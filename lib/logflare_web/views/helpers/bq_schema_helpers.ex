@@ -4,8 +4,10 @@ defmodule LogflareWeb.Helpers.BqSchema do
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.JSON
+  alias Logflare.Utils
 
   @type field_and_type :: {String.t(), String.t()}
+  @type timestamp_format_opts :: [format: String.t()]
 
   def format_bq_schema(nil), do: ""
 
@@ -30,21 +32,29 @@ defmodule LogflareWeb.Helpers.BqSchema do
     |> Enum.sort_by(fn {k, _v} -> k end)
   end
 
-  @fmt_string "%a %b %d %Y %H:%M:%S"
-  def format_timestamp(timestamp) do
+  @timestamp_format "%a %b %d %Y %H:%M:%S"
+
+  @spec format_timestamp(integer(), String.t() | nil, timestamp_format_opts()) :: String.t()
+  def format_timestamp(timestamp, search_timezone \\ nil, opts \\ [])
+      when is_integer(timestamp) do
+    format = Keyword.get(opts, :format, @timestamp_format)
+
     timestamp
-    |> Timex.from_unix(:microsecond)
-    |> Timex.format!(@fmt_string, :strftime)
+    |> Utils.to_microseconds()
+    |> DateTime.from_unix!(:microsecond)
+    |> convert_timezone(search_timezone)
+    |> Timex.format!(format, :strftime)
   end
 
-  def format_timestamp(timestamp, search_timezone) do
-    dt = Timex.from_unix(timestamp, :microsecond)
-
-    case Timex.Timezone.convert(dt, search_timezone) do
-      {:error, _} -> Timex.format!(dt, @fmt_string, :strftime)
-      converted -> Timex.format!(converted, @fmt_string, :strftime)
+  defp convert_timezone(%DateTime{} = datetime, timezone) when is_binary(timezone) do
+    with %DateTime{} = converted <- Timex.Timezone.convert(datetime, timezone) do
+      converted
+    else
+      _ -> datetime
     end
   end
+
+  defp convert_timezone(%DateTime{} = datetime, _timezone), do: datetime
 
   def encode_metadata(metadata) do
     metadata

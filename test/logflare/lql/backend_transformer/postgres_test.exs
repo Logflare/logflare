@@ -1,11 +1,11 @@
 defmodule Logflare.Lql.BackendTransformer.PostgresTest do
   use Logflare.DataCase, async: true
+  use ExUnitProperties
 
   import Ecto.Query
 
   alias Ecto.Query
   alias Ecto.Query.BooleanExpr
-  alias Ecto.Query.DynamicExpr
   alias Logflare.Lql.BackendTransformer.Postgres
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
@@ -58,7 +58,8 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       result = Postgres.transform_filter_rule(filter_rule, %{})
-      assert %DynamicExpr{} = result
+
+      assert inspect(result) == ~s|dynamic([l], field(l, "event_message") == ^"error")|
     end
 
     test "transforms equality filter on nested JSONB field" do
@@ -71,106 +72,9 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       result = Postgres.transform_filter_rule(filter_rule, %{})
-      assert %DynamicExpr{} = result
 
-      query = from(l in "logs")
-      query_with_filter = where(query, ^result)
-      assert %Ecto.Query{wheres: [_where_clause]} = query_with_filter
-    end
-
-    test "transforms regex filter with PostgreSQL ~ operator" do
-      filter_rule =
-        FilterRule.build(
-          path: "event_message",
-          operator: :"~",
-          value: "server.*error",
-          modifiers: %{}
-        )
-
-      result = Postgres.transform_filter_rule(filter_rule, %{})
-      assert %DynamicExpr{} = result
-    end
-
-    test "transforms regex filter on JSONB field" do
-      filter_rule =
-        FilterRule.build(
-          path: "m.message",
-          operator: :"~",
-          value: "server.*error",
-          modifiers: %{}
-        )
-
-      result = Postgres.transform_filter_rule(filter_rule, %{})
-      assert %DynamicExpr{} = result
-
-      query = from(l in "logs")
-      query_with_filter = where(query, ^result)
-      assert %Ecto.Query{wheres: [_where_clause]} = query_with_filter
-    end
-
-    test "transforms string_contains filter" do
-      filter_rule =
-        FilterRule.build(
-          path: "event_message",
-          operator: :string_contains,
-          value: "error",
-          modifiers: %{}
-        )
-
-      result = Postgres.transform_filter_rule(filter_rule, %{})
-      assert %DynamicExpr{} = result
-    end
-
-    test "transforms numeric comparison with type casting on JSONB" do
-      filter_rule =
-        FilterRule.build(
-          path: "m.latency",
-          operator: :>,
-          value: 100,
-          modifiers: %{}
-        )
-
-      result = Postgres.transform_filter_rule(filter_rule, %{})
-      assert %DynamicExpr{} = result
-    end
-
-    test "transforms list_includes with JSONB @> operator" do
-      filter_rule =
-        FilterRule.build(
-          path: "m.tags",
-          operator: :list_includes,
-          value: "production",
-          modifiers: %{}
-        )
-
-      result = Postgres.transform_filter_rule(filter_rule, %{})
-      assert %DynamicExpr{} = result
-    end
-
-    test "transforms range operator on top-level field" do
-      filter_rule =
-        FilterRule.build(
-          path: "timestamp",
-          operator: :range,
-          values: [~U[2024-01-01 00:00:00Z], ~U[2024-01-02 00:00:00Z]],
-          modifiers: %{}
-        )
-
-      result = Postgres.transform_filter_rule(filter_rule, %{})
-      assert %DynamicExpr{} = result
-    end
-
-    test "transforms range operator on JSONB field" do
-      filter_rule =
-        FilterRule.build(
-          path: "m.count",
-          operator: :range,
-          values: [1, 100],
-          modifiers: %{}
-        )
-
-      result = Postgres.transform_filter_rule(filter_rule, %{})
-      assert %DynamicExpr{} = result
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? = ?", ^"body->'metadata'->>'status'", ^"error"))|
     end
 
     test "transforms negated filter" do
@@ -183,7 +87,295 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         )
 
       result = Postgres.transform_filter_rule(filter_rule, %{})
-      assert %DynamicExpr{} = result
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? IS NULL", field(l, "event_message")) or not (field(l, "event_message") == ^"error"))|
+    end
+
+    test "transforms `= :NULL` into an IS NULL fragment" do
+      filter_rule =
+        FilterRule.build(
+          path: "event_message",
+          operator: :=,
+          value: :NULL,
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? IS NULL", field(l, "event_message")))|
+    end
+
+    test "transforms `= :NULL` on a JSONB path into an IS NULL fragment" do
+      filter_rule =
+        FilterRule.build(
+          path: "m.status",
+          operator: :=,
+          value: :NULL,
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? IS NULL", ^"body->'metadata'->>'status'"))|
+    end
+
+    test "transforms a negated comparison on a JSONB path" do
+      filter_rule =
+        FilterRule.build(
+          path: "m.status",
+          operator: :=,
+          value: "ok",
+          modifiers: %{negate: true}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], not fragment("? = ?", ^"body->'metadata'->>'status'", ^"ok"))|
+    end
+
+    test "transforms a negated `= :NULL` (special-cased to NOT IS NULL)" do
+      filter_rule =
+        FilterRule.build(
+          path: "event_message",
+          operator: :=,
+          value: :NULL,
+          modifiers: %{negate: true}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], not fragment("? IS NULL", field(l, "event_message")))|
+    end
+
+    test "treats a multi-segment path without `m.` prefix as a JSONB path" do
+      filter_rule =
+        FilterRule.build(
+          path: "metadata.user.email",
+          operator: :=,
+          value: "a@b.c",
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? = ?", ^"body->'metadata'->'user'->>'email'", ^"a@b.c"))|
+    end
+
+    test "transforms regex filter with PostgreSQL ~ operator" do
+      filter_rule =
+        FilterRule.build(
+          path: "event_message",
+          operator: :"~",
+          value: "server.*error",
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? ~ ?", field(l, "event_message"), ^"server.*error"))|
+    end
+
+    test "transforms regex filter on JSONB field" do
+      filter_rule =
+        FilterRule.build(
+          path: "m.message",
+          operator: :"~",
+          value: "server.*error",
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? ~ ?", ^"body->'metadata'->>'message'", ^"server.*error"))|
+    end
+
+    test "transforms string_contains filter" do
+      filter_rule =
+        FilterRule.build(
+          path: "event_message",
+          operator: :string_contains,
+          value: "error",
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? LIKE ?", field(l, "event_message"), ^"%error%"))|
+    end
+
+    test "transforms `string_contains` on a JSONB path" do
+      filter_rule =
+        FilterRule.build(
+          path: "m.message",
+          operator: :string_contains,
+          value: "boom",
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? LIKE ?", ^"body->'metadata'->>'message'", ^"%boom%"))|
+    end
+
+    test "transforms numeric comparison with type casting on JSONB" do
+      filter_rule =
+        FilterRule.build(
+          path: "m.latency",
+          operator: :>,
+          value: 100,
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("(?)::numeric > ?", ^"body->'metadata'->>'latency'", ^100))|
+    end
+
+    test "transforms list_includes with JSONB @> operator" do
+      filter_rule =
+        FilterRule.build(
+          path: "m.tags",
+          operator: :list_includes,
+          value: "production",
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? @> ?::jsonb", ^"body->'metadata'->'tags'", ^"[\\"production\\"]"))|
+    end
+
+    test "transforms `list_includes` on a top-level array field" do
+      filter_rule =
+        FilterRule.build(
+          path: "id",
+          operator: :list_includes,
+          value: "abc",
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("? @> ?::jsonb", field(l, "id"), ^"[\\"abc\\"]"))|
+    end
+
+    test "transforms range operator on top-level field" do
+      filter_rule =
+        FilterRule.build(
+          path: "timestamp",
+          operator: :range,
+          values: [~U[2024-01-01 00:00:00Z], ~U[2024-01-02 00:00:00Z]],
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment(\n  "? BETWEEN ? AND ?",\n  field(l, "timestamp"),\n  ^~U[2024-01-01 00:00:00Z],\n  ^~U[2024-01-02 00:00:00Z]\n))|
+    end
+
+    test "transforms range operator on JSONB field" do
+      filter_rule =
+        FilterRule.build(
+          path: "m.count",
+          operator: :range,
+          values: [1, 100],
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment("(?)::numeric BETWEEN ? AND ?", ^"body->'metadata'->>'count'", ^1, ^100))|
+    end
+
+    test "transforms `list_includes_regexp` on a top-level array field" do
+      filter_rule =
+        FilterRule.build(
+          path: "id",
+          operator: :list_includes_regexp,
+          value: "abc.*",
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment(\n  "EXISTS(SELECT 1 FROM jsonb_array_elements_text(?) AS x WHERE x ~ ?)",\n  field(l, "id"),\n  ^"abc.*"\n))|
+    end
+
+    test "transforms `list_includes_regexp` on a JSONB array path" do
+      filter_rule =
+        FilterRule.build(
+          path: "m.tags",
+          operator: :list_includes_regexp,
+          value: "prod-.*",
+          modifiers: %{}
+        )
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) ==
+               ~s|dynamic([l], fragment(\n  "EXISTS(SELECT 1 FROM jsonb_array_elements_text(?) AS x WHERE x ~ ?)",\n  ^"body->'metadata'->'tags'",\n  ^"prod-.*"\n))|
+    end
+
+    test "treats a non-special single field name as a top-level field" do
+      filter_rule =
+        FilterRule.build(path: "level", operator: :=, value: "info", modifiers: %{})
+
+      result = Postgres.transform_filter_rule(filter_rule, %{})
+
+      assert inspect(result) == ~s|dynamic([l], field(l, "level") == ^"info")|
+    end
+
+    property "transforms ordering operators on the `timestamp` field for any DateTime value" do
+      check all op <- member_of([:>, :>=, :<, :<=]),
+                unix <- integer(0..4_102_444_800),
+                dt = DateTime.from_unix!(unix) do
+        filter_rule =
+          FilterRule.build(
+            path: "timestamp",
+            operator: op,
+            value: dt,
+            modifiers: %{}
+          )
+
+        result = Postgres.transform_filter_rule(filter_rule, %{})
+
+        assert inspect(result) ==
+                 ~s|dynamic([l], field(l, "timestamp") #{Atom.to_string(op)} ^~U[#{DateTime.to_string(dt)}])|
+      end
+    end
+
+    property "transforms numeric ordering operators on a JSONB path for any integer value" do
+      check all op <- member_of([:>=, :<, :<=]),
+                value <- integer() do
+        filter_rule =
+          FilterRule.build(
+            path: "m.latency",
+            operator: op,
+            value: value,
+            modifiers: %{}
+          )
+
+        result = Postgres.transform_filter_rule(filter_rule, %{})
+
+        assert inspect(result) ==
+                 ~s|dynamic([l], fragment("(?)::numeric #{Atom.to_string(op)} ?", ^"body->'metadata'->>'latency'", ^#{value}))|
+      end
     end
   end
 
@@ -212,172 +404,49 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
       result = Postgres.apply_filter_rules_to_query(query, [], [])
       assert result == query
     end
+
+    test "applies a JSONB range rule via where_match_filter_rule" do
+      query = from(l in "logs")
+
+      rule =
+        FilterRule.build(path: "m.count", operator: :range, values: [1, 100], modifiers: %{})
+
+      result = Postgres.apply_filter_rules_to_query(query, [rule])
+
+      assert %Ecto.Query{wheres: [_]} = result
+    end
+
+    test "is callable without the trailing opts argument" do
+      query = from(l in "logs")
+      assert Postgres.apply_filter_rules_to_query(query, []) == query
+    end
   end
 
   describe "transform_chart_rule/5" do
-    test "generates count aggregation by second" do
-      query = from(l in "logs")
-
-      result =
-        Postgres.transform_chart_rule(
-          query,
-          :count,
-          "timestamp",
-          :second,
-          "timestamp"
-        )
-
-      assert %Ecto.Query{} = result
-      assert result.group_bys != []
-      assert result.order_bys != []
-      assert result.select != nil
-      assert_select_keys(result, [:timestamp, :count])
+    setup do
+      {:ok, query: from(l in "logs")}
     end
 
-    test "generates count aggregation by minute" do
-      query = from(l in "logs")
+    @chart_aggregates [:count, :countd, :avg, :sum, :max, :p50, :p95, :p99]
+    @chart_periods [:second, :minute, :hour, :day]
 
-      result =
-        Postgres.transform_chart_rule(
-          query,
-          :count,
-          "timestamp",
-          :minute,
-          "timestamp"
-        )
+    for aggregate <- @chart_aggregates, period <- @chart_periods do
+      test "generates #{aggregate} aggregation by #{period}", %{query: query} do
+        result =
+          Postgres.transform_chart_rule(
+            query,
+            unquote(aggregate),
+            "m.latency",
+            unquote(period),
+            "timestamp"
+          )
 
-      assert %Ecto.Query{} = result
-      assert result.group_bys != []
-      assert result.order_bys != []
-      assert_select_keys(result, [:timestamp, :count])
-    end
-
-    test "generates count aggregation by hour" do
-      query = from(l in "logs")
-
-      result =
-        Postgres.transform_chart_rule(
-          query,
-          :count,
-          "timestamp",
-          :hour,
-          "timestamp"
-        )
-
-      assert %Ecto.Query{} = result
-      assert_select_keys(result, [:timestamp, :count])
-    end
-
-    test "generates count aggregation by day" do
-      query = from(l in "logs")
-
-      result =
-        Postgres.transform_chart_rule(
-          query,
-          :count,
-          "timestamp",
-          :day,
-          "timestamp"
-        )
-
-      assert %Ecto.Query{} = result
-      assert_select_keys(result, [:timestamp, :count])
-    end
-
-    test "generates avg aggregation on JSONB field" do
-      query = from(l in "logs")
-
-      result =
-        Postgres.transform_chart_rule(
-          query,
-          :avg,
-          "m.latency",
-          :minute,
-          "timestamp"
-        )
-
-      assert %Ecto.Query{} = result
-      assert_select_keys(result, [:timestamp, :count])
-    end
-
-    test "generates sum aggregation on JSONB field" do
-      query = from(l in "logs")
-
-      result =
-        Postgres.transform_chart_rule(
-          query,
-          :sum,
-          "m.bytes",
-          :hour,
-          "timestamp"
-        )
-
-      assert %Ecto.Query{} = result
-      assert_select_keys(result, [:timestamp, :count])
-    end
-
-    test "generates max aggregation on JSONB field" do
-      query = from(l in "logs")
-
-      result =
-        Postgres.transform_chart_rule(
-          query,
-          :max,
-          "m.response_time",
-          :minute,
-          "timestamp"
-        )
-
-      assert %Ecto.Query{} = result
-      assert_select_keys(result, [:timestamp, :count])
-    end
-
-    test "generates percentile aggregation (p50)" do
-      query = from(l in "logs")
-
-      result =
-        Postgres.transform_chart_rule(
-          query,
-          :p50,
-          "m.response_time",
-          :minute,
-          "timestamp"
-        )
-
-      assert %Ecto.Query{} = result
-      assert_select_keys(result, [:timestamp, :count])
-    end
-
-    test "generates percentile aggregation (p95)" do
-      query = from(l in "logs")
-
-      result =
-        Postgres.transform_chart_rule(
-          query,
-          :p95,
-          "m.response_time",
-          :minute,
-          "timestamp"
-        )
-
-      assert %Ecto.Query{} = result
-      assert_select_keys(result, [:timestamp, :count])
-    end
-
-    test "generates percentile aggregation (p99)" do
-      query = from(l in "logs")
-
-      result =
-        Postgres.transform_chart_rule(
-          query,
-          :p99,
-          "m.latency",
-          :hour,
-          "timestamp"
-        )
-
-      assert %Ecto.Query{} = result
-      assert_select_keys(result, [:timestamp, :count])
+        assert %Ecto.Query{} = result
+        assert result.group_bys != []
+        assert result.order_bys != []
+        assert result.select != nil
+        assert_select_keys(result, [:timestamp, :count])
+      end
     end
   end
 
@@ -399,6 +468,11 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
       result = Postgres.transform_select_rule(select_rule, %{})
       assert result == {:nested_field, "m.status", []}
     end
+
+    test "returns an error tuple for invalid select rules" do
+      assert {:error, message} = Postgres.transform_select_rule(%{not: "valid"}, %{})
+      assert message =~ "Invalid SelectRule"
+    end
   end
 
   describe "apply_select_rules_to_query/3" do
@@ -414,6 +488,11 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
       query = from(l in "logs")
       result = Postgres.apply_select_rules_to_query(query, [], [])
       assert result == query
+    end
+
+    test "is callable without the trailing opts argument" do
+      query = from(l in "logs")
+      assert Postgres.apply_select_rules_to_query(query, []) == query
     end
 
     test "builds combined select for specific fields" do
@@ -457,6 +536,16 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
 
       assert %Ecto.Query{select: %{expr: expr}} = result
       assert expr |> Macro.to_string() =~ "user_id"
+    end
+
+    test "applies a nested JSONB field without an alias" do
+      query = from(l in "logs")
+      select_rule = %SelectRule{path: "m.status"}
+
+      result = Postgres.apply_select_rules_to_query(query, [select_rule], [])
+
+      assert %Ecto.Query{select: %{expr: expr}} = result
+      assert Macro.to_string(expr) =~ "m.status"
     end
   end
 
