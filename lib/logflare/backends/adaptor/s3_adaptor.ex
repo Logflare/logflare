@@ -95,7 +95,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
   def test_connection(%Backend{} = backend) do
     config = Adaptor.get_backend_config(backend)
-    path = "s3://#{config.s3_bucket}/_logflare_connection_test.parquet"
+    path = "s3://#{config.s3_bucket}/_connection_test.parquet"
 
     df = DataFrame.new([%{probe: "connection-test"}], dtypes: [{:probe, :string}])
     result = DataFrame.to_parquet(df, path, config: fss_s3_config(config))
