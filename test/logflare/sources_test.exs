@@ -31,14 +31,15 @@ defmodule Logflare.SourcesTest do
       assert changes == %{labels: "test=some_label"}
     end
 
-    test "bug: update_by_user_changeset  empty string should clear labels" do
+    test "update_by_user_changeset does not override labels with empty string" do
       source = insert(:source, user: insert(:user), labels: "status=m.level")
 
       changeset = Source.update_by_user_changeset(source, %{})
       assert Ecto.Changeset.get_field(changeset, :labels) == "status=m.level"
 
       changeset = Source.update_by_user_changeset(source, %{labels: ""})
-      assert Ecto.Changeset.get_field(changeset, :labels) == ""
+      assert Ecto.Changeset.get_field(changeset, :labels) == "status=m.level"
+      assert changeset.changes[:labels] == nil
     end
 
     test "update_by_user_changeset trims description and turns blank into nil" do

@@ -480,6 +480,40 @@ defmodule LogflareWeb.SourceControllerTest do
       assert s1_new.labels == "test=some_label"
     end
 
+    test "does not clear labels when empty string is submitted",
+         %{conn: conn, users: [u1, _u2]} do
+      source = insert(:source, user_id: u1.id, labels: "env=production")
+
+      conn =
+        conn
+        |> login_user(u1)
+        |> patch(~p"/sources/#{source}", %{
+          "id" => source.id,
+          "source" => %{"labels" => ""}
+        })
+
+      source_new = Sources.get_by(id: source.id)
+
+      assert html_response(conn, 302) =~ "redirected"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+      assert source_new.labels == "env=production"
+    end
+
+    test "edit form renders existing labels value",
+         %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
+      user = Repo.update!(Ecto.Changeset.change(u1, system_monitoring: true))
+      source = Repo.update!(Ecto.Changeset.change(s1, labels: "env=production"))
+
+      html =
+        conn
+        |> login_user(user)
+        |> get(~p"/sources/#{source}/edit")
+        |> html_response(200)
+        |> Floki.parse_document!()
+
+      assert Floki.attribute(html, "input[name='source[labels]']", "value") == ["env=production"]
+    end
+
     test "returns 406 with invalid params", %{
       conn: conn,
       users: [u1, _u2],
