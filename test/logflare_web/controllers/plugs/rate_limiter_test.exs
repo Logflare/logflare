@@ -42,6 +42,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
         |> RateLimiter.call()
 
       assert conn.halted
+
       assert json_response(conn, 429) == %{
                "error" =>
                  "Source rate is over the API quota. Email support@logflare.app to increase your rate limit."
