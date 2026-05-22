@@ -640,9 +640,9 @@ defmodule LogflareWeb.LogControllerTest do
           Routes.log_path(conn, :create),
           %{
             "batch" => [
-              %{"__LF_SOURCE" => source_a.token, "event_message" => "to_a_1"},
-              %{"__LF_SOURCE" => source_b.token, "event_message" => "to_b"},
-              %{"__LF_SOURCE" => source_a.token, "event_message" => "to_a_2"}
+              %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "to_a_1"},
+              %{"__LF_SOURCE" => Atom.to_string(source_b.token), "event_message" => "to_b"},
+              %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "to_a_2"}
             ]
           }
         )
@@ -690,8 +690,8 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(
           Routes.log_path(conn, :create),
           Jason.encode!([
-            %{"__LF_SOURCE" => source_a.token, "event_message" => "to_a"},
-            %{"__LF_SOURCE" => source_b.token, "event_message" => "to_b"}
+            %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "to_a"},
+            %{"__LF_SOURCE" => Atom.to_string(source_b.token), "event_message" => "to_b"}
           ])
         )
 
@@ -703,7 +703,7 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test "batch referencing an unowned source returns 401 from the plug",
-         %{conn: conn, user: user} do
+         %{conn: conn} do
       other_source = insert(:source, user: insert(:user))
 
       conn =
@@ -712,7 +712,7 @@ defmodule LogflareWeb.LogControllerTest do
           Routes.log_path(conn, :create),
           %{
             "batch" => [
-              %{"__LF_SOURCE" => other_source.token, "event_message" => "x"}
+              %{"__LF_SOURCE" => Atom.to_string(other_source.token), "event_message" => "x"}
             ]
           }
         )
@@ -742,7 +742,7 @@ defmodule LogflareWeb.LogControllerTest do
           Routes.log_path(conn, :create),
           %{
             "batch" => [
-              %{"__LF_SOURCE" => source_a.token, "event_message" => "with"},
+              %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "with"},
               %{"event_message" => "without"}
             ]
           }
