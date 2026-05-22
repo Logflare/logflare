@@ -58,7 +58,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       hibernate_after: 5_000,
       spawn_opt: [fullsweep_after: 100],
       producer: [
-        module: {BufferProducer, [backend_id: backend.id, consolidated: true, backend_type: :clickhouse]},
+        module: {BufferProducer, [backend_id: backend.id, consolidated: true]},
         transformer: {__MODULE__, :transform, [backend_id: backend.id]},
         concurrency: @producer_concurrency
       ],
@@ -158,9 +158,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   end
 
   @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
-  def ack(_ack_ref, _successful, []), do: :ok
+  def ack(_ack_ref, successful, failed) do
+    successful
+    |> Enum.map(& &1.data)
+    |> IngestEventQueue.emit_dwell_telemetry(:clickhouse)
 
-  def ack(_ack_ref, _successful, failed) do
     failed
     |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} -> ack_data end)
     |> Enum.each(fn {%{backend_id: backend_id}, messages} ->
@@ -172,6 +174,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       drop_exhausted_messages(exhausted, backend_id)
       requeue_retriable_messages(retriable, backend_id)
     end)
+
+    :ok
   end
 
   @spec drop_exhausted_messages(exhausted :: [Message.t()], backend_id :: pos_integer()) :: :ok

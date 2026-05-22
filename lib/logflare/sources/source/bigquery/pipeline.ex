@@ -58,8 +58,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
               {BufferProducer,
                [
                  source_id: source.id,
-                 backend_id: backend.id,
-                 backend_type: :bigquery
+                 backend_id: backend.id
                ]},
             transformer:
               {__MODULE__, :transform,
@@ -146,6 +145,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           emit_event_telemetry(queue, source, le, backend_metadata)
         end
     end
+
+    successful
+    |> Enum.map(& &1.data)
+    |> IngestEventQueue.emit_dwell_telemetry(:bigquery)
 
     :ok
   end

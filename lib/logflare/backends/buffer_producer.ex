@@ -11,12 +11,9 @@ defmodule Logflare.Backends.BufferProducer do
 
   require Logger
 
-  alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
   alias Logflare.Sources
-
-  @valid_backend_types Map.keys(Backend.adaptor_mapping())
 
   @type state :: %{
           consolidated: boolean(),
@@ -24,7 +21,6 @@ defmodule Logflare.Backends.BufferProducer do
           source_id: pos_integer() | nil,
           source_token: atom() | nil,
           backend_id: pos_integer(),
-          backend_type: atom(),
           last_discard_log_dt: DateTime.t() | nil,
           interval: pos_integer()
         }
@@ -42,39 +38,22 @@ defmodule Logflare.Backends.BufferProducer do
   def init(opts) do
     Process.flag(:trap_exit, true)
 
-    backend_type = fetch_backend_type!(opts)
     consolidated? = Keyword.get(opts, :consolidated, false)
     backend_id = opts[:backend_id]
     interval = Keyword.get(opts, :interval, @default_interval)
 
     state =
       if consolidated? do
-        init_consolidated_state(backend_id, backend_type, interval, opts)
+        init_consolidated_state(backend_id, interval, opts)
       else
-        init_standard_state(opts, backend_type, interval)
+        init_standard_state(opts, interval)
       end
 
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
   end
 
-  @spec fetch_backend_type!(keyword()) :: atom()
-  defp fetch_backend_type!(opts) do
-    case Keyword.fetch(opts, :backend_type) do
-      :error ->
-        raise ArgumentError, "BufferProducer requires :backend_type opt"
-
-      {:ok, type} when type in @valid_backend_types ->
-        type
-
-      {:ok, type} ->
-        raise ArgumentError,
-              "BufferProducer :backend_type #{inspect(type)} is not a valid Backend type. " <>
-                "Expected one of: #{inspect(@valid_backend_types)}"
-    end
-  end
-
-  @spec init_standard_state(keyword(), atom(), pos_integer()) :: state()
-  defp init_standard_state(opts, backend_type, interval) do
+  @spec init_standard_state(keyword(), pos_integer()) :: state()
+  defp init_standard_state(opts, interval) do
     source = Sources.Cache.get_by_id(opts[:source_id])
 
     state = %{
@@ -83,7 +62,6 @@ defmodule Logflare.Backends.BufferProducer do
       source_id: opts[:source_id],
       source_token: source.token,
       backend_id: opts[:backend_id],
-      backend_type: backend_type,
       last_discard_log_dt: nil,
       interval: interval
     }
@@ -97,15 +75,14 @@ defmodule Logflare.Backends.BufferProducer do
     state
   end
 
-  @spec init_consolidated_state(pos_integer(), atom(), pos_integer(), keyword()) :: state()
-  defp init_consolidated_state(backend_id, backend_type, interval, opts) do
+  @spec init_consolidated_state(pos_integer(), pos_integer(), keyword()) :: state()
+  defp init_consolidated_state(backend_id, interval, opts) do
     state = %{
       consolidated: true,
       demand: 0,
       source_id: nil,
       source_token: nil,
       backend_id: backend_id,
-      backend_type: backend_type,
       last_discard_log_dt: nil,
       interval: interval
     }
@@ -255,29 +232,26 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [LogEvent.t()]
-  defp do_fetch(%{consolidated: true, backend_id: bid, backend_type: bt} = _state, n) do
+  defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
     key = {:consolidated, bid, self()}
 
-    do_pop_key(key, n, bt)
+    do_pop_key(key, n)
   end
 
-  defp do_fetch(
-         %{source_id: sid, backend_id: bid, backend_type: bt, source_token: source_token} = _state,
-         n
-       ) do
+  defp do_fetch(%{source_id: sid, backend_id: bid, source_token: source_token} = _state, n) do
     key = {sid, bid, self()}
 
     Sources.get_source_metrics_for_ingest(source_token)
     |> case do
-      %{avg: avg} when avg > @max_avg_before_pop -> do_pop_key(key, n, bt)
-      _ -> do_take_key(key, n, bt)
+      %{avg: avg} when avg > @max_avg_before_pop -> do_pop_key(key, n)
+      _ -> do_take_key(key, n)
     end
   end
 
-  @spec do_take_key(key :: table_key(), count :: non_neg_integer(), backend_type :: atom()) :: [
+  @spec do_take_key(key :: table_key(), count :: non_neg_integer()) :: [
           LogEvent.t()
         ]
-  defp do_take_key({sid, bid, _pid} = key, n, backend_type) do
+  defp do_take_key({sid, bid, _pid} = key, n) do
     case IngestEventQueue.take_pending(key, n) do
       {:error, :not_initialized} ->
         Logger.warning(
@@ -291,17 +265,17 @@ defmodule Logflare.Backends.BufferProducer do
         []
 
       {:ok, events} ->
-        {:ok, _} = IngestEventQueue.mark_ingested(key, events, backend_type: backend_type)
+        {:ok, _} = IngestEventQueue.mark_ingested(key, events)
 
         events
     end
   end
 
-  @spec do_pop_key(key :: table_key(), count :: non_neg_integer(), backend_type :: atom()) :: [
+  @spec do_pop_key(key :: table_key(), count :: non_neg_integer()) :: [
           LogEvent.t()
         ]
-  defp do_pop_key({sid, bid, _pid} = key, n, backend_type) do
-    case IngestEventQueue.pop_pending(key, n, backend_type: backend_type) do
+  defp do_pop_key({sid, bid, _pid} = key, n) do
+    case IngestEventQueue.pop_pending(key, n) do
       {:error, :not_initialized} ->
         Logger.warning(
           "IngestEventQueue not initialized, could not fetch events. source_id: #{sid}",

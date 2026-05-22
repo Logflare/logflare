@@ -322,10 +322,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
-    test "mark_ingested/3 emits dwell telemetry tagged by backend_type",
-         %{source_backend_pid: sbp} do
+    test "emit_dwell_telemetry/2 emits aggregated dwell event tagged by backend_type" do
       test_pid = self()
-      handler = "dwell-mark-#{TestUtils.random_string()}"
+      handler = "dwell-helper-#{TestUtils.random_string()}"
 
       :telemetry.attach(
         handler,
@@ -337,11 +336,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       on_exit(fn -> :telemetry.detach(handler) end)
 
       ts = DateTime.add(DateTime.utc_now(), -250, :millisecond)
-      batch = for _ <- 1..3, do: build(:log_event, ingested_at: ts)
-      :ok = IngestEventQueue.add_to_table(sbp, batch)
+      events = for _ <- 1..3, do: build(:log_event, ingested_at: ts)
 
-      assert {:ok, 3} =
-               IngestEventQueue.mark_ingested(sbp, batch, backend_type: :bigquery)
+      assert :ok = IngestEventQueue.emit_dwell_telemetry(events, :bigquery)
 
       assert_received {:dwell, m, %{backend_type: :bigquery}}
       assert m.count == 3
@@ -349,34 +346,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert m.max_ms >= m.duration_ms
     end
 
-    test "pop_pending/3 emits dwell telemetry tagged by backend_type",
-         %{source_backend_pid: sbp} do
-      test_pid = self()
-      handler = "dwell-pop-#{TestUtils.random_string()}"
-
-      :telemetry.attach(
-        handler,
-        [:logflare, :backends, :ingest_event_queue, :dwell],
-        fn _e, m, md, _ -> send(test_pid, {:dwell, m, md}) end,
-        nil
-      )
-
-      on_exit(fn -> :telemetry.detach(handler) end)
-
-      ts = DateTime.add(DateTime.utc_now(), -100, :millisecond)
-      batch = for _ <- 1..2, do: build(:log_event, ingested_at: ts)
-      :ok = IngestEventQueue.add_to_table(sbp, batch)
-
-      assert {:ok, [_ | _]} =
-               IngestEventQueue.pop_pending(sbp, 10, backend_type: :clickhouse)
-
-      assert_received {:dwell, m, %{backend_type: :clickhouse}}
-      assert m.count == 2
-      assert m.duration_ms >= 50
-    end
-
-    test "pop_pending/3 with no events emits no dwell telemetry",
-         %{source_backend_pid: sbp} do
+    test "emit_dwell_telemetry/2 with empty list emits nothing" do
       test_pid = self()
       handler = "dwell-empty-#{TestUtils.random_string()}"
 
@@ -389,8 +359,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       on_exit(fn -> :telemetry.detach(handler) end)
 
-      assert {:ok, []} =
-               IngestEventQueue.pop_pending(sbp, 10, backend_type: :bigquery)
+      assert :ok = IngestEventQueue.emit_dwell_telemetry([], :bigquery)
 
       refute_received {:dwell, _, _}
     end

@@ -357,17 +357,13 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec mark_ingested(source_backend_pid(), [LogEvent.t()]) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
-  @spec mark_ingested(source_backend_pid(), [LogEvent.t()], Keyword.t()) ::
-          {:ok, non_neg_integer()} | {:error, :not_initialized}
-  def mark_ingested(sid_bid_pid, events, opts \\ []) do
+  def mark_ingested(sid_bid_pid, events) do
     tid = get_tid(sid_bid_pid)
 
     if tid != nil do
       for event <- events do
         :ets.update_element(tid, event.id, {2, :ingested})
       end
-
-      emit_dwell_telemetry(events, opts)
 
       {:ok, Enum.count(events)}
     else
@@ -496,12 +492,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec pop_pending(table_key() | consolidated_table_key(), integer()) ::
           {:ok, [LogEvent.t()]} | {:error, :not_initialized}
-  @spec pop_pending(table_key() | consolidated_table_key(), integer(), Keyword.t()) ::
-          {:ok, [LogEvent.t()]} | {:error, :not_initialized}
-  def pop_pending(_, 0, _opts), do: {:ok, []}
-  def pop_pending(key, n), do: pop_pending(key, n, [])
+  def pop_pending(_, 0), do: {:ok, []}
 
-  def pop_pending(sid_bid_pid, n, opts) when is_integer(n) do
+  def pop_pending(sid_bid_pid, n) when is_integer(n) do
     select_ms =
       Ex2ms.fun do
         {event_id, :pending, event} -> {event_id, event}
@@ -516,8 +509,6 @@ defmodule Logflare.Backends.IngestEventQueue do
           event
         end
 
-      emit_dwell_telemetry(events, opts)
-
       {:ok, events}
     else
       nil -> {:error, :not_initialized}
@@ -525,11 +516,21 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  @spec emit_dwell_telemetry([LogEvent.t()], Keyword.t()) :: :ok
-  defp emit_dwell_telemetry([], _opts), do: :ok
+  @doc """
+  Emits a `[:logflare, :backends, :ingest_event_queue, :dwell]` telemetry
+  event summarising how long the given events sat in the queue before
+  successful ingestion. Intended to be called from Broadway ack callbacks.
 
-  defp emit_dwell_telemetry(events, opts) do
-    backend_type = Keyword.get(opts, :backend_type, :unknown)
+  Measurements: `duration_ms` (avg), `max_ms`, `count`.
+  Metadata: `%{backend_type: atom()}`.
+
+  Events without a `%DateTime{}` `ingested_at` are skipped. No event is
+  emitted when the resulting count is zero.
+  """
+  @spec emit_dwell_telemetry([LogEvent.t()], atom()) :: :ok
+  def emit_dwell_telemetry([], _backend_type), do: :ok
+
+  def emit_dwell_telemetry(events, backend_type) when is_atom(backend_type) do
     now = DateTime.utc_now()
 
     {sum_ms, max_ms, count} =

@@ -17,7 +17,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
     Broadway.start_link(__MODULE__,
       name: name,
       producer: [
-        module: {Backends.BufferProducer, backend_id: backend.id, source_id: source.id, backend_type: :syslog},
+        module: {Backends.BufferProducer, backend_id: backend.id, source_id: source.id},
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [
