@@ -1,16 +1,16 @@
 defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.VictoriaMetricsAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   # docker-compose `vm` service — see docker-compose.yml
-  @vm_host "http://localhost:8428"
-  @vm_remote_write_url @vm_host <> "/api/v1/write"
-  @vm_query_url @vm_host <> "/api/v1/query"
+  @vm_remote_write_url "http://localhost:8428/api/v1/write"
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -298,16 +298,44 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     @describetag :integration
 
     setup do
+      # The global Mimic.stub(Finch) in test_helper.exs intercepts all Finch
+      # calls. Override with passthrough so the Broadway pipeline can actually
+      # POST to the docker-compose `vm` service.
+      Mimic.stub(Finch, :build, fn m, u, h, b ->
+        Mimic.call_original(Finch, :build, [m, u, h, b])
+      end)
+
+      Mimic.stub(Finch, :build, fn m, u, h, b, o ->
+        Mimic.call_original(Finch, :build, [m, u, h, b, o])
+      end)
+
+      Mimic.stub(Finch, :request, fn r, n ->
+        Mimic.call_original(Finch, :request, [r, n])
+      end)
+
+      Mimic.stub(Finch, :request, fn r, n, o ->
+        Mimic.call_original(Finch, :request, [r, n, o])
+      end)
+
       insert(:plan)
       user = insert(:user)
-      source = insert(:source, user: user, name: "vm_e2e_test")
-      [source: source]
+      source = insert(:source, user: user, name: "vm_e2e_test_#{System.unique_integer([:positive])}")
+
+      backend =
+        insert(:backend,
+          type: :victoria_metrics,
+          sources: [source],
+          config: %{url: @vm_remote_write_url}
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}})
+      :timer.sleep(500)
+      [source: source, backend: backend]
     end
 
-    test "encoded payload is accepted and queryable from VictoriaMetrics", %{source: source} do
-      # unique metric name per run so repeated test runs don't collide
+    test "metrics flow through the pipeline and are queryable via execute_query/3",
+         %{source: source, backend: backend} do
       metric_name = "logflare_e2e_#{System.unique_integer([:positive])}"
-      timestamp_ns = System.system_time(:nanosecond)
       expected_value = 42.0
 
       le =
@@ -316,38 +344,17 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           event_message: metric_name,
           metric_type: "gauge",
           value: expected_value,
-          timestamp: timestamp_ns,
+          timestamp: System.system_time(:nanosecond),
           metadata: %{"type" => "metric"},
           attributes: %{"env" => "test"}
         )
 
-      body = @subject.format_batch([le])
+      assert {:ok, _} = Backends.ingest_logs([le], source)
 
-      headers = [
-        {"Content-Type", "application/x-protobuf"},
-        {"Content-Encoding", "snappy"},
-        {"X-Prometheus-Remote-Write-Version", "0.1.0"}
-      ]
-
-      assert {:ok, %HTTPoison.Response{status_code: status}} =
-               HTTPoison.post(@vm_remote_write_url, body, headers)
-
-      assert status in 200..299, "VM rejected remote write: status #{status}"
-
-      # VM flushes incoming samples on a short interval; poll until visible.
       assert eventually(fn ->
-               case HTTPoison.get(@vm_query_url <> "?query=" <> URI.encode(metric_name)) do
-                 {:ok, %HTTPoison.Response{status_code: 200, body: resp}} ->
-                   %{"data" => %{"result" => result}} = Jason.decode!(resp)
-
-                   case result do
-                     [%{"metric" => labels, "value" => [_ts, value_str]} | _] ->
-                       value_str == "#{expected_value}" and labels["source"] == source.name and
-                         labels["env"] == "test"
-
-                     _ ->
-                       false
-                   end
+               case @subject.execute_query(backend, metric_name) do
+                 {:ok, %{rows: [%{"value" => value, "source" => src, "env" => env} | _]}} ->
+                   value == expected_value and src == source.name and env == "test"
 
                  _ ->
                    false

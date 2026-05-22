@@ -14,6 +14,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   event attributes on key collision).
   """
 
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Sources
@@ -98,7 +99,89 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     WebhookAdaptor.test_connection(backend, empty_body)
   end
 
+  @doc """
+  Executes a PromQL query against the backend's VictoriaMetrics instance.
+
+  Accepts either an instant query string (PromQL) or `{query, params}` where
+  params is a keyword list of extra query-string params (e.g. `time:`, `step:`).
+
+  Each result row is normalized to a map with `__name__`, label key/value pairs,
+  `value` (float) and `timestamp` (integer seconds — VM returns float seconds,
+  we coerce to integer).
+  """
+  @impl Logflare.Backends.Adaptor
+  @spec execute_query(Backend.t() | pid() | tuple(), String.t() | {String.t(), keyword()}, keyword()) ::
+          {:ok, QueryResult.t()} | {:error, term()}
+  def execute_query(backend_or_id, query, opts \\ [])
+
+  def execute_query(%Backend{config: config}, query, opts) do
+    {promql, extra_params} =
+      case query do
+        {q, params} when is_binary(q) and is_list(params) -> {q, params}
+        q when is_binary(q) -> {q, []}
+      end
+
+    url = query_url(config) <> "?" <> URI.encode_query([{"query", promql} | extra_params])
+    headers = auth_headers(config)
+
+    case HTTPoison.get(url, headers, recv_timeout: Keyword.get(opts, :timeout, 5_000)) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"status" => "success", "data" => %{"result" => result}}} ->
+            rows = Enum.map(result, &normalize_query_result/1)
+            {:ok, QueryResult.new(rows, %{query_string: promql})}
+
+          {:ok, %{"status" => "error", "error" => err}} ->
+            {:error, "VictoriaMetrics error: #{err}"}
+
+          {:ok, other} ->
+            {:error, "Unexpected response shape: #{inspect(other)}"}
+
+          {:error, decode_err} ->
+            {:error, "JSON decode failed: #{inspect(decode_err)}"}
+        end
+
+      {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
+        {:error, "VictoriaMetrics returned #{status}: #{body}"}
+
+      {:error, %HTTPoison.Error{reason: reason}} ->
+        {:error, "Request error: #{inspect(reason)}"}
+    end
+  end
+
   # --- private helpers ---
+
+  defp query_url(%{url: url}) do
+    uri = URI.parse(url)
+    %URI{scheme: uri.scheme, host: uri.host, port: uri.port, path: "/api/v1/query"} |> URI.to_string()
+  end
+
+  defp auth_headers(config) do
+    case Utils.encode_basic_auth(config) do
+      nil -> []
+      encoded -> [{"Authorization", "Basic #{encoded}"}]
+    end
+  end
+
+  defp normalize_query_result(%{"metric" => labels, "value" => [ts, value_str]}) do
+    labels
+    |> Map.put("timestamp", trunc(to_number(ts)))
+    |> Map.put("value", to_number(value_str))
+  end
+
+  defp normalize_query_result(other), do: other
+
+  defp to_number(v) when is_number(v), do: v
+
+  defp to_number(v) when is_binary(v) do
+    case Float.parse(v) do
+      {f, _} -> f
+      :error -> 0.0
+    end
+  end
+
+  defp to_number(_), do: 0.0
+
 
   defp encode_write_request(%Prometheus.WriteRequest{} = req) do
     {:ok, compressed} = req |> Prometheus.WriteRequest.encode() |> :snappyer.compress()
