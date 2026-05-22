@@ -7,17 +7,7 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSourcesTest do
   setup do
     insert(:plan)
     user = insert(:user)
-    source_a = insert(:source, user: user)
-    source_b = insert(:source, user: user)
-    other_user = insert(:user)
-    other_source = insert(:source, user: other_user)
-
-    {:ok,
-     user: user,
-     source_a: source_a,
-     source_b: source_b,
-     other_user: other_user,
-     other_source: other_source}
+    {:ok, user: user}
   end
 
   defp build_ingest_conn(body, user) do
@@ -27,31 +17,19 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSourcesTest do
   end
 
   describe "passthrough" do
-    test "no __LF_SOURCE on first event - single event map", %{user: user} do
-      conn =
-        build_ingest_conn(%{"message" => "hi"}, user)
-        |> VerifyDeclaredSources.call(%{})
+    test "no __LF_SOURCE on first event is a no-op for all body shapes", %{user: user} do
+      for body <- [
+            %{"message" => "hi"},
+            %{"batch" => [%{"message" => "a"}, %{"message" => "b"}]},
+            %{"_json" => [%{"message" => "a"}]}
+          ] do
+        conn =
+          build_ingest_conn(body, user)
+          |> VerifyDeclaredSources.call(%{})
 
-      refute conn.halted
-      refute Map.get(conn.assigns, :declared_sources)
-    end
-
-    test "no __LF_SOURCE on first event - batch", %{user: user} do
-      conn =
-        build_ingest_conn(%{"batch" => [%{"message" => "a"}, %{"message" => "b"}]}, user)
-        |> VerifyDeclaredSources.call(%{})
-
-      refute conn.halted
-      refute Map.get(conn.assigns, :declared_sources)
-    end
-
-    test "no __LF_SOURCE on first event - _json batch", %{user: user} do
-      conn =
-        build_ingest_conn(%{"_json" => [%{"message" => "a"}]}, user)
-        |> VerifyDeclaredSources.call(%{})
-
-      refute conn.halted
-      refute Map.get(conn.assigns, :declared_sources)
+        refute conn.halted
+        refute Map.get(conn.assigns, :declared_sources)
+      end
     end
 
     test "missing resource_type", %{user: user} do
@@ -64,7 +42,7 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSourcesTest do
       refute Map.get(conn.assigns, :declared_sources)
     end
 
-    test "missing user", %{} do
+    test "missing user" do
       conn =
         build_conn(:post, "/logs", %{"batch" => [%{"__LF_SOURCE" => "x"}]})
         |> assign(:resource_type, :source)
@@ -76,27 +54,27 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSourcesTest do
   end
 
   describe "multi-source mode" do
-    test "resolves single declared source in batch", %{user: user, source_a: source_a} do
-      token = Atom.to_string(source_a.token)
+    test "resolves single declared source across all body shapes", %{user: user} do
+      source = insert(:source, user: user)
+      token = Atom.to_string(source.token)
 
-      conn =
-        build_ingest_conn(
-          %{"batch" => [%{"__LF_SOURCE" => token, "message" => "a"}]},
-          user
-        )
-        |> VerifyDeclaredSources.call(%{})
+      for body <- [
+            %{"batch" => [%{"__LF_SOURCE" => token, "message" => "a"}]},
+            %{"_json" => [%{"__LF_SOURCE" => token, "message" => "a"}]},
+            %{"__LF_SOURCE" => token, "message" => "a"}
+          ] do
+        conn =
+          build_ingest_conn(body, user)
+          |> VerifyDeclaredSources.call(%{})
 
-      refute conn.halted
-      declared = conn.assigns.declared_sources
-      assert Map.has_key?(declared, token)
-      assert declared[token].id == source_a.id
+        refute conn.halted
+        assert conn.assigns.declared_sources[token].id == source.id
+      end
     end
 
-    test "resolves multiple distinct declared sources", %{
-      user: user,
-      source_a: source_a,
-      source_b: source_b
-    } do
+    test "resolves multiple distinct declared sources", %{user: user} do
+      source_a = insert(:source, user: user)
+      source_b = insert(:source, user: user)
       token_a = Atom.to_string(source_a.token)
       token_b = Atom.to_string(source_b.token)
 
@@ -118,136 +96,63 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSourcesTest do
       assert conn.assigns.declared_sources[token_a].id == source_a.id
       assert conn.assigns.declared_sources[token_b].id == source_b.id
     end
-
-    test "single event map with __LF_SOURCE", %{user: user, source_a: source_a} do
-      token = Atom.to_string(source_a.token)
-
-      conn =
-        build_ingest_conn(%{"__LF_SOURCE" => token, "message" => "a"}, user)
-        |> VerifyDeclaredSources.call(%{})
-
-      refute conn.halted
-      assert conn.assigns.declared_sources[token].id == source_a.id
-    end
-
-    test "_json batch shape with __LF_SOURCE", %{user: user, source_a: source_a} do
-      token = Atom.to_string(source_a.token)
-
-      conn =
-        build_ingest_conn(
-          %{"_json" => [%{"__LF_SOURCE" => token, "message" => "a"}]},
-          user
-        )
-        |> VerifyDeclaredSources.call(%{})
-
-      refute conn.halted
-      assert conn.assigns.declared_sources[token].id == source_a.id
-    end
   end
 
   describe "authorization failures" do
-    test "halts when declared source is owned by a different user", %{
-      user: user,
-      other_source: other_source
-    } do
-      token = Atom.to_string(other_source.token)
+    test "halts with 401 for unauthorized sources", %{user: user} do
+      source_a = insert(:source, user: user)
+      other_source = insert(:source, user: insert(:user))
+      {:ok, scoped_token} =
+        Logflare.Auth.create_access_token(user, %{scopes: "ingest:source:#{source_a.id}"})
+
+      for {label, body, extra_assigns} <- [
+            {"source owned by another user",
+             %{"batch" => [%{"__LF_SOURCE" => Atom.to_string(other_source.token)}]}, []},
+            {"non-existent UUID",
+             %{"batch" => [%{"__LF_SOURCE" => Ecto.UUID.generate()}]}, []},
+            {"one of many sources unauthorized",
+             %{
+               "batch" => [
+                 %{"__LF_SOURCE" => Atom.to_string(source_a.token)},
+                 %{"__LF_SOURCE" => Atom.to_string(other_source.token)}
+               ]
+             }, []},
+            {"scope does not cover declared source",
+             %{"batch" => [%{"__LF_SOURCE" => Atom.to_string(source_a.token)}]},
+             [access_token: scoped_token]}
+          ] do
+        conn =
+          build_ingest_conn(body, user)
+          |> then(fn c ->
+            Enum.reduce(extra_assigns, c, fn {k, v}, c -> assign(c, k, v) end)
+          end)
+          |> VerifyDeclaredSources.call(%{})
+
+        assert conn.halted, "expected halt for: #{label}"
+        assert conn.status == 401, "expected 401 for: #{label}"
+      end
+    end
+
+    test "allows when access token scope covers all declared sources", %{user: user} do
+      source = insert(:source, user: user)
+      {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: "ingest"})
+      token = Atom.to_string(source.token)
 
       conn =
         build_ingest_conn(
           %{"batch" => [%{"__LF_SOURCE" => token, "message" => "a"}]},
           user
         )
-        |> VerifyDeclaredSources.call(%{})
-
-      assert conn.halted
-      assert conn.status == 401
-    end
-
-    test "halts when declared source UUID does not exist", %{user: user} do
-      unknown_uuid = Ecto.UUID.generate()
-
-      conn =
-        build_ingest_conn(
-          %{"batch" => [%{"__LF_SOURCE" => unknown_uuid, "message" => "a"}]},
-          user
-        )
-        |> VerifyDeclaredSources.call(%{})
-
-      assert conn.halted
-      assert conn.status == 401
-    end
-
-    test "halts when one of many sources is unauthorized", %{
-      user: user,
-      source_a: source_a,
-      other_source: other_source
-    } do
-      token_a = Atom.to_string(source_a.token)
-      token_other = Atom.to_string(other_source.token)
-
-      conn =
-        build_ingest_conn(
-          %{
-            "batch" => [
-              %{"__LF_SOURCE" => token_a, "message" => "a"},
-              %{"__LF_SOURCE" => token_other, "message" => "b"}
-            ]
-          },
-          user
-        )
-        |> VerifyDeclaredSources.call(%{})
-
-      assert conn.halted
-      assert conn.status == 401
-    end
-
-    test "halts when access token scope does not cover declared source", %{
-      user: user,
-      source_a: source_a,
-      source_b: source_b
-    } do
-      {:ok, access_token} =
-        Logflare.Auth.create_access_token(user, %{scopes: "ingest:source:#{source_a.id}"})
-
-      token_b = Atom.to_string(source_b.token)
-
-      conn =
-        build_ingest_conn(
-          %{"batch" => [%{"__LF_SOURCE" => token_b, "message" => "b"}]},
-          user
-        )
-        |> assign(:access_token, access_token)
-        |> VerifyDeclaredSources.call(%{})
-
-      assert conn.halted
-      assert conn.status == 401
-    end
-
-    test "allows when access token scope covers all declared sources", %{
-      user: user,
-      source_a: source_a
-    } do
-      {:ok, access_token} =
-        Logflare.Auth.create_access_token(user, %{scopes: "ingest"})
-
-      token_a = Atom.to_string(source_a.token)
-
-      conn =
-        build_ingest_conn(
-          %{"batch" => [%{"__LF_SOURCE" => token_a, "message" => "a"}]},
-          user
-        )
         |> assign(:access_token, access_token)
         |> VerifyDeclaredSources.call(%{})
 
       refute conn.halted
-      assert conn.assigns.declared_sources[token_a].id == source_a.id
+      assert conn.assigns.declared_sources[token].id == source.id
     end
   end
 
   describe "invalid __LF_SOURCE values" do
-    test "non-UUID value on first event still triggers multi-source mode but no declared sources resolved",
-         %{user: user} do
+    test "non-UUID value triggers multi-source mode but resolves no sources", %{user: user} do
       conn =
         build_ingest_conn(
           %{"batch" => [%{"__LF_SOURCE" => "not-a-uuid", "message" => "a"}]},

@@ -51,14 +51,13 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSources do
     access_token = Map.get(conn.assigns, :access_token)
 
     tokens =
-      events
-      |> Enum.reduce(MapSet.new(), fn event, acc ->
-        case Utils.Map.get(event, :"#{@lf_source_key}") do
-          token when is_binary(token) -> MapSet.put(acc, token)
-          _ -> acc
-        end
-      end)
-      |> Enum.filter(&uuid?/1)
+      for event <- events,
+          token = Utils.Map.get(event, :"#{@lf_source_key}"),
+          is_binary(token),
+          uuid?(token),
+          into: MapSet.new() do
+        token
+      end
 
     case resolve_sources(tokens, user, access_token) do
       {:ok, declared} ->
