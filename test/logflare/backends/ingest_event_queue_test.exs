@@ -7,6 +7,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   alias Logflare.Backends.IngestEventQueue.MapperJanitor
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.TestUtils
 
   setup do
     insert(:plan)
@@ -324,7 +325,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     test "mark_ingested/3 emits dwell telemetry tagged by backend_type",
          %{source_backend_pid: sbp} do
       test_pid = self()
-      handler = "dwell-mark-#{System.unique_integer([:positive])}"
+      handler = "dwell-mark-#{TestUtils.random_string()}"
 
       :telemetry.attach(
         handler,
@@ -351,7 +352,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     test "pop_pending/3 emits dwell telemetry tagged by backend_type",
          %{source_backend_pid: sbp} do
       test_pid = self()
-      handler = "dwell-pop-#{System.unique_integer([:positive])}"
+      handler = "dwell-pop-#{TestUtils.random_string()}"
 
       :telemetry.attach(
         handler,
@@ -377,7 +378,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     test "pop_pending/3 with no events emits no dwell telemetry",
          %{source_backend_pid: sbp} do
       test_pid = self()
-      handler = "dwell-empty-#{System.unique_integer([:positive])}"
+      handler = "dwell-empty-#{TestUtils.random_string()}"
 
       :telemetry.attach(
         handler,
@@ -746,7 +747,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     IngestEventQueue.add_to_table(table, build_list(3, :log_event, source: source))
 
     test_pid = self()
-    handler = "depth-#{System.unique_integer([:positive])}"
+    handler = "depth-#{TestUtils.random_string()}"
 
     :telemetry.attach(
       handler,
