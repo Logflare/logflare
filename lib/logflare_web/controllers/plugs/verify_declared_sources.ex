@@ -28,12 +28,9 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSources do
 
   def call(%{assigns: %{resource_type: :source, user: %User{} = user}} = conn, _opts) do
     case extract_events(conn.body_params) do
-      [first | _] = events when is_map(first) ->
-        if Utils.Map.get(first, :"#{@lf_source_key}") do
-          resolve_and_verify(conn, events, user)
-        else
-          conn
-        end
+      [first | _] = events
+      when is_map(first) and (is_map_key(first, :__LF_SOURCE) or is_map_key(first, "__LF_SOURCE")) ->
+        resolve_and_verify(conn, events, user)
 
       _ ->
         conn
