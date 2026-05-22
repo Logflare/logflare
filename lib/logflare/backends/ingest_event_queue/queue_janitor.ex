@@ -16,6 +16,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources
+  alias Logflare.System
 
   require Logger
 
@@ -124,7 +125,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     size = IngestEventQueue.get_table_size(table_key)
 
     if is_integer(size) and size > state.max and pid != nil do
-      to_drop = round(state.purge_ratio * size)
+      effective_ratio = effective_purge_ratio(state.purge_ratio)
+      to_drop = round(effective_ratio * size)
       IngestEventQueue.drop(table_key, :pending, to_drop)
 
       log_msg =
@@ -143,6 +145,23 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
         ingest_drop_count: to_drop
       )
     end
+  end
+
+  # Scale the configured purge ratio up under memory pressure so overflows
+  # clear more aggressively as the BEAM approaches the health-check threshold.
+  @spec effective_purge_ratio(float()) :: float()
+  defp effective_purge_ratio(base_ratio) do
+    util = System.memory_utilization()
+
+    factor =
+      cond do
+        util >= 0.85 -> 20.0
+        util >= 0.75 -> 5.0
+        util >= 0.6 -> 2.0
+        true -> 1.0
+      end
+
+    min(1.0, base_ratio * factor)
   end
 
   # schedule work based on rps
