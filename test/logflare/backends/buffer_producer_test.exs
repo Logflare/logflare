@@ -3,6 +3,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue.QueueJanitor
   alias Logflare.PubSubRates.Cache, as: PubSubRatesCache
 
   import ExUnit.CaptureLog
@@ -246,6 +247,141 @@ defmodule Logflare.Backends.BufferProducerTest do
         end)
 
       assert captured =~ "Consolidated GenStage producer has discarded"
+    end
+  end
+
+  describe "janitor overflow signaling" do
+    @overflow_threshold IngestEventQueue.max_queue_size()
+
+    test "signals notify_overflow/2 when queue exceeds threshold" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+
+      producer_pid =
+        start_supervised!({BufferProducer, source_id: source.id, backend_id: backend.id})
+
+      table_key = {source.id, backend.id, producer_pid}
+      events = List.duplicate(build(:log_event, source: source), @overflow_threshold + 1)
+      :ok = IngestEventQueue.add_to_table(table_key, events)
+
+      Mimic.expect(QueueJanitor, :notify_overflow, fn sid, bid ->
+        assert sid == source.id
+        assert bid == backend.id
+        :ok
+      end)
+
+      send(producer_pid, :scheduled_resolve)
+      :timer.sleep(200)
+
+      Mimic.verify!(QueueJanitor)
+    end
+
+    test "does not signal when queue is under threshold" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+
+      producer_pid =
+        start_supervised!({BufferProducer, source_id: source.id, backend_id: backend.id})
+
+      table_key = {source.id, backend.id, producer_pid}
+      events = List.duplicate(build(:log_event, source: source), 10)
+      :ok = IngestEventQueue.add_to_table(table_key, events)
+
+      Mimic.reject(&QueueJanitor.notify_overflow/2)
+
+      send(producer_pid, :scheduled_resolve)
+      :timer.sleep(200)
+    end
+
+    test "producer debounce suppresses second signal within 2.5s" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+
+      producer_pid =
+        start_supervised!({BufferProducer, source_id: source.id, backend_id: backend.id})
+
+      table_key = {source.id, backend.id, producer_pid}
+      events = List.duplicate(build(:log_event, source: source), @overflow_threshold + 1)
+      :ok = IngestEventQueue.add_to_table(table_key, events)
+
+      # Expect exactly one call despite two resolve cycles
+      Mimic.expect(QueueJanitor, :notify_overflow, 1, fn _sid, _bid -> :ok end)
+
+      send(producer_pid, :scheduled_resolve)
+      :timer.sleep(50)
+      send(producer_pid, :scheduled_resolve)
+      :timer.sleep(200)
+
+      Mimic.verify!(QueueJanitor)
+    end
+
+    @tag :slow
+    test "producer signals again after 2.5s debounce window expires" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+
+      producer_pid =
+        start_supervised!({BufferProducer, source_id: source.id, backend_id: backend.id})
+
+      table_key = {source.id, backend.id, producer_pid}
+      events = List.duplicate(build(:log_event, source: source), @overflow_threshold + 1)
+      :ok = IngestEventQueue.add_to_table(table_key, events)
+
+      # Expect exactly two calls — one now, one after the window expires
+      Mimic.expect(QueueJanitor, :notify_overflow, 2, fn _sid, _bid -> :ok end)
+
+      send(producer_pid, :scheduled_resolve)
+      :timer.sleep(2_600)
+      send(producer_pid, :scheduled_resolve)
+      :timer.sleep(200)
+
+      Mimic.verify!(QueueJanitor)
+    end
+
+    test "consolidated path calls notify_overflow_consolidated/1" do
+      user = insert(:user)
+      backend = insert(:backend, user: user)
+
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+
+      producer_pid =
+        start_supervised!({BufferProducer, backend_id: backend.id, consolidated: true})
+
+      table_key = {:consolidated, backend.id, producer_pid}
+      events = List.duplicate(build(:log_event), @overflow_threshold + 1)
+      :ok = IngestEventQueue.add_to_table(table_key, events)
+
+      Mimic.expect(QueueJanitor, :notify_overflow_consolidated, fn bid ->
+        assert bid == backend.id
+        :ok
+      end)
+
+      send(producer_pid, :scheduled_resolve)
+      :timer.sleep(200)
+
+      Mimic.verify!(QueueJanitor)
+    end
+
+    test "does not signal when backend_id is nil" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      producer_pid =
+        start_supervised!({BufferProducer, source_id: source.id, backend_id: nil})
+
+      table_key = {source.id, nil, producer_pid}
+      events = List.duplicate(build(:log_event, source: source), @overflow_threshold + 1)
+      :ok = IngestEventQueue.add_to_table(table_key, events)
+
+      Mimic.reject(&QueueJanitor.notify_overflow/2)
+      Mimic.reject(&QueueJanitor.notify_overflow_consolidated/1)
+
+      send(producer_pid, :scheduled_resolve)
+      :timer.sleep(200)
     end
   end
 end

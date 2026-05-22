@@ -830,7 +830,101 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-  test "MapperJanitor cleans up stale tids" do
+  describe "QueueJanitor responsiveness" do
+    test ":check cast triggers cleanup faster than polling interval" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      pid = self()
+      table = {source.id, backend.id, pid}
+
+      IngestEventQueue.upsert_tid(table)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(table, [le])
+      IngestEventQueue.mark_ingested(table, [le])
+      assert IngestEventQueue.get_table_size(table) == 1
+
+      # Long interval — polling alone would never fire within the test
+      start_supervised!(
+        {QueueJanitor, source: source, backend: backend, interval: 60_000, remainder: 0}
+      )
+
+      QueueJanitor.notify_overflow(source.id, backend.id)
+      :timer.sleep(200)
+
+      assert IngestEventQueue.get_table_size(table) == 0
+    end
+
+    test ":check has no janitor-side debounce — rapid casts each clean up" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      pid = self()
+      table = {source.id, backend.id, pid}
+
+      IngestEventQueue.upsert_tid(table)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(table, [le])
+      IngestEventQueue.mark_ingested(table, [le])
+
+      start_supervised!(
+        {QueueJanitor, source: source, backend: backend, interval: 60_000, remainder: 0}
+      )
+
+      QueueJanitor.notify_overflow(source.id, backend.id)
+      :timer.sleep(100)
+      assert IngestEventQueue.get_table_size(table) == 0
+
+      # Add another ingested event and cast again immediately
+      le2 = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(table, [le2])
+      IngestEventQueue.mark_ingested(table, [le2])
+      assert IngestEventQueue.get_table_size(table) == 1
+
+      QueueJanitor.notify_overflow(source.id, backend.id)
+      :timer.sleep(100)
+      assert IngestEventQueue.get_table_size(table) == 0
+    end
+
+    test "notify_overflow/2 is a no-op when no janitor is registered" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      # No janitor started — cast should return :ok without crashing
+      assert QueueJanitor.notify_overflow(source.id, backend.id) == :ok
+    end
+
+    test "janitor is discoverable via Backends.via_source/3 after start" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+
+      start_supervised!({QueueJanitor, source: source, backend: backend, interval: 60_000})
+
+      via = Backends.via_source(source, QueueJanitor, backend)
+      assert is_pid(GenServer.whereis(via))
+    end
+
+    test "consolidated janitor is discoverable via Backends.via_backend/2 after start" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+
+      start_supervised!(
+        {QueueJanitor,
+         source: source,
+         backend: backend,
+         interval: 60_000,
+         consolidated: true,
+         consolidated_key: {:consolidated, backend.id}}
+      )
+
+      via = Backends.via_backend(backend, QueueJanitor)
+      assert is_pid(GenServer.whereis(via))
+    end
+  end
+
+
     user = insert(:user)
     source = insert(:source, user: user)
     backend = insert(:backend, user: user)
