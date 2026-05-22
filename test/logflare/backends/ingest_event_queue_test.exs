@@ -320,6 +320,79 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert :ok = IngestEventQueue.truncate_table(sbp, :pending, 0)
       assert IngestEventQueue.total_pending(sbp) == 0
     end
+
+    test "mark_ingested/3 emits dwell telemetry tagged by backend_type",
+         %{source_backend_pid: sbp} do
+      test_pid = self()
+      handler = "dwell-mark-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler,
+        [:logflare, :backends, :ingest_event_queue, :dwell],
+        fn _e, m, md, _ -> send(test_pid, {:dwell, m, md}) end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      ts = DateTime.add(DateTime.utc_now(), -250, :millisecond)
+      batch = for _ <- 1..3, do: build(:log_event, ingested_at: ts)
+      :ok = IngestEventQueue.add_to_table(sbp, batch)
+
+      assert {:ok, 3} =
+               IngestEventQueue.mark_ingested(sbp, batch, backend_type: :bigquery)
+
+      assert_received {:dwell, m, %{backend_type: :bigquery}}
+      assert m.count == 3
+      assert m.duration_ms >= 200
+      assert m.max_ms >= m.duration_ms
+    end
+
+    test "pop_pending/3 emits dwell telemetry tagged by backend_type",
+         %{source_backend_pid: sbp} do
+      test_pid = self()
+      handler = "dwell-pop-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler,
+        [:logflare, :backends, :ingest_event_queue, :dwell],
+        fn _e, m, md, _ -> send(test_pid, {:dwell, m, md}) end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      ts = DateTime.add(DateTime.utc_now(), -100, :millisecond)
+      batch = for _ <- 1..2, do: build(:log_event, ingested_at: ts)
+      :ok = IngestEventQueue.add_to_table(sbp, batch)
+
+      assert {:ok, [_ | _]} =
+               IngestEventQueue.pop_pending(sbp, 10, backend_type: :clickhouse)
+
+      assert_received {:dwell, m, %{backend_type: :clickhouse}}
+      assert m.count == 2
+      assert m.duration_ms >= 50
+    end
+
+    test "pop_pending/3 with no events emits no dwell telemetry",
+         %{source_backend_pid: sbp} do
+      test_pid = self()
+      handler = "dwell-empty-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler,
+        [:logflare, :backends, :ingest_event_queue, :dwell],
+        fn _e, m, md, _ -> send(test_pid, {:dwell, m, md}) end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      assert {:ok, []} =
+               IngestEventQueue.pop_pending(sbp, 10, backend_type: :bigquery)
+
+      refute_received {:dwell, _, _}
+    end
   end
 
   describe "`add_to_table/3` distribution with queues_key" do
@@ -660,6 +733,34 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     # Verify worker cached the values automatically (without manual cache calls)
     assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
     assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
+  end
+
+  test "BufferCacheWorker emits depth telemetry aggregated by backend_type" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user)
+    pid = self()
+    table = {source.id, backend.id, pid}
+
+    IngestEventQueue.upsert_tid(table)
+    IngestEventQueue.add_to_table(table, build_list(3, :log_event, source: source))
+
+    test_pid = self()
+    handler = "depth-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      handler,
+      [:logflare, :backends, :ingest_event_queue, :depth],
+      fn _e, m, md, _ -> send(test_pid, {:depth, m, md}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    start_supervised!({BufferCacheWorker, interval: 50})
+
+    assert_receive {:depth, %{count: count}, %{backend_type: :bigquery}}, 1_000
+    assert count >= 3
   end
 
   test "QueueJanitor cleans up :ingested events" do
