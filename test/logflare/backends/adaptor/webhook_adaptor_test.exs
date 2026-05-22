@@ -196,7 +196,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
       for url <- blocked do
         cs = Adaptor.cast_and_validate_config(@subject, %{url: url})
-        assert @ssrf_error in cs.errors[:url], "expected SSRF block for #{url}"
+        assert cs.errors[:url] == @ssrf_error, "expected SSRF block for #{url}"
       end
     end
 

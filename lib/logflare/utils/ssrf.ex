@@ -3,6 +3,8 @@ defmodule Logflare.Utils.SSRF do
   Helpers for detecting private/reserved IP addresses to prevent SSRF.
   """
 
+  import Bitwise
+
   @typep ipv4 :: :inet.ip4_address()
   @typep ipv6 :: :inet.ip6_address()
 
