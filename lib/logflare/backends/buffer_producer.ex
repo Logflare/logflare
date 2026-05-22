@@ -12,6 +12,7 @@ defmodule Logflare.Backends.BufferProducer do
   require Logger
 
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue.QueueJanitor
   alias Logflare.LogEvent
   alias Logflare.Sources
 
@@ -22,13 +23,16 @@ defmodule Logflare.Backends.BufferProducer do
           source_token: atom() | nil,
           backend_id: pos_integer(),
           last_discard_log_dt: DateTime.t() | nil,
-          interval: pos_integer()
+          interval: pos_integer(),
+          last_janitor_signal_at: non_neg_integer()
         }
 
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
   @default_interval 1_000
   @max_avg_before_pop 100
+  @janitor_signal_debounce_ms 2_500
+  @janitor_overflow_threshold IngestEventQueue.max_queue_size()
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
@@ -63,7 +67,8 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: source.token,
       backend_id: opts[:backend_id],
       last_discard_log_dt: nil,
-      interval: interval
+      interval: interval,
+      last_janitor_signal_at: 0
     }
 
     table_key = {state.source_id, state.backend_id, self()}
@@ -84,7 +89,8 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: nil,
       backend_id: backend_id,
       last_discard_log_dt: nil,
-      interval: interval
+      interval: interval,
+      last_janitor_signal_at: 0
     }
 
     table_key = {:consolidated, backend_id, self()}
@@ -228,8 +234,48 @@ defmodule Logflare.Backends.BufferProducer do
         total_demand - event_count
       end
 
+    state = maybe_signal_janitor(state)
+
     {events, %{state | demand: new_demand}}
   end
+
+  defp maybe_signal_janitor(%{consolidated: true, backend_id: bid} = state) do
+    now = System.monotonic_time(:millisecond)
+
+    if now - state.last_janitor_signal_at >= @janitor_signal_debounce_ms do
+      table_key = {:consolidated, bid, self()}
+      size = IngestEventQueue.get_table_size(table_key)
+
+      if is_integer(size) and size > @janitor_overflow_threshold do
+        QueueJanitor.notify_overflow_consolidated(bid)
+        %{state | last_janitor_signal_at: now}
+      else
+        state
+      end
+    else
+      state
+    end
+  end
+
+  defp maybe_signal_janitor(%{source_id: sid, backend_id: bid} = state) when is_integer(bid) do
+    now = System.monotonic_time(:millisecond)
+
+    if now - state.last_janitor_signal_at >= @janitor_signal_debounce_ms do
+      table_key = {sid, bid, self()}
+      size = IngestEventQueue.get_table_size(table_key)
+
+      if is_integer(size) and size > @janitor_overflow_threshold do
+        QueueJanitor.notify_overflow(sid, bid)
+        %{state | last_janitor_signal_at: now}
+      else
+        state
+      end
+    else
+      state
+    end
+  end
+
+  defp maybe_signal_janitor(state), do: state
 
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [LogEvent.t()]
   defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do

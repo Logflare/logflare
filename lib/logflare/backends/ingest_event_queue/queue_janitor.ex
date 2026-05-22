@@ -13,6 +13,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   """
   use GenServer
 
+  alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources
 
@@ -23,9 +24,27 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   @default_purge_ratio 0.05
   @default_max round(Logflare.Backends.max_buffer_queue_len() * 1.2)
   @consolidated_max_multiplier 10
+  @signal_debounce_ms 2_500
 
   def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts)
+    source = Keyword.get(opts, :source)
+    backend = Keyword.get(opts, :backend)
+    backend_id = if backend, do: backend.id
+    consolidated? = Keyword.get(opts, :consolidated, false)
+
+    gen_opts =
+      cond do
+        consolidated? and is_integer(backend_id) ->
+          [name: Backends.via_backend(backend, __MODULE__)]
+
+        is_integer(backend_id) ->
+          [name: Backends.via_source(source, __MODULE__, backend)]
+
+        true ->
+          []
+      end
+
+    GenServer.start_link(__MODULE__, opts, gen_opts)
   end
 
   def init(opts) do
@@ -44,7 +63,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       max: if(consolidated?, do: base_max * @consolidated_max_multiplier, else: base_max),
       purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio),
       consolidated?: consolidated?,
-      consolidated_key: consolidated_key
+      consolidated_key: consolidated_key,
+      last_signal_at: 0
     }
 
     handle_info(:work, state)
@@ -59,6 +79,30 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     schedule(state, scale?, metrics)
 
     {:noreply, state}
+  end
+
+  def handle_cast(:check, state) do
+    now = System.monotonic_time(:millisecond)
+
+    if now - state.last_signal_at >= @signal_debounce_ms do
+      metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+      do_drop(state, metrics)
+      {:noreply, %{state | last_signal_at: now}}
+    else
+      {:noreply, state}
+    end
+  end
+
+  @doc "Signals the janitor for a standard source+backend queue to run immediately (debounced)."
+  @spec notify_overflow(pos_integer(), pos_integer()) :: :ok
+  def notify_overflow(source_id, backend_id) do
+    GenServer.cast(Backends.via_source(source_id, __MODULE__, backend_id), :check)
+  end
+
+  @doc "Signals the janitor for a consolidated backend queue to run immediately (debounced)."
+  @spec notify_overflow_consolidated(pos_integer()) :: :ok
+  def notify_overflow_consolidated(backend_id) do
+    GenServer.cast(Backends.via_backend(backend_id, __MODULE__), :check)
   end
 
   # expose for benchmarking
@@ -126,13 +170,13 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
           state.interval
 
         metrics.avg < 100 ->
-          state.interval * 10
-
-        metrics.avg < 1000 ->
           state.interval * 5
 
+        metrics.avg < 1000 ->
+          state.interval * 3
+
         metrics.avg < 2000 ->
-          state.interval * 2.5
+          state.interval * 2
 
         true ->
           state.interval
