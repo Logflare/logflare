@@ -68,7 +68,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     end
   end
 
-  describe "test_connection/1" do
+  describe "test_connection/1 (error handling)" do
     setup do
       insert(:plan)
       user = insert(:user)
@@ -82,24 +82,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         )
 
       [backend: backend]
-    end
-
-    test "POSTs a snappy-compressed empty WriteRequest", %{backend: backend} do
-      @client
-      |> expect(:send, fn req ->
-        assert req[:url] == "http://vm:8428/api/v1/write"
-        assert req[:headers]["Content-Type"] == "application/x-protobuf"
-        assert req[:headers]["Content-Encoding"] == "snappy"
-        assert req[:headers]["X-Prometheus-Remote-Write-Version"] == "0.1.0"
-
-        {:ok, decompressed} = :snappyer.decompress(req[:body])
-        decoded = Prometheus.WriteRequest.decode(decompressed)
-        assert decoded.timeseries == []
-
-        {:ok, %Tesla.Env{status: 204, body: ""}}
-      end)
-
-      assert :ok = @subject.test_connection(backend)
     end
 
     test "returns error on non-2xx response", %{backend: backend} do
@@ -239,62 +221,16 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert [%{value: 10.0}] = inf_ts.samples
     end
 
-    test "metric name is sanitized" do
-      insert(:plan)
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      le =
-        build(:log_event,
-          source: source,
-          event_message: "http.server/duration-ms",
-          metric_type: "gauge",
-          value: 1.0,
-          timestamp: 1_700_000_000_000_000_000,
-          metadata: %{"type" => "metric"}
-        )
-
-      result = @subject.format_batch([le])
-      {:ok, decompressed} = :snappyer.decompress(result)
-      decoded = Prometheus.WriteRequest.decode(decompressed)
-
-      [ts] = decoded.timeseries
-      label_map = Map.new(ts.labels, fn %{name: k, value: v} -> {k, v} end)
-      assert label_map["__name__"] == "http_server_duration_ms"
-    end
-
-    # Prometheus remote write v1 has no native encoding for exponential
-    # histograms (introduced in OTLP for sparse high-resolution histograms),
-    # so the adaptor drops them rather than emit a misleading series.
-    test "exponential_histogram events are dropped" do
-      insert(:plan)
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      le =
-        build(:log_event,
-          source: source,
-          event_message: "exp_hist",
-          metric_type: "exponential_histogram",
-          timestamp: 1_700_000_000_000_000_000,
-          metadata: %{"type" => "metric"}
-        )
-
-      result = @subject.format_batch([le])
-      {:ok, decompressed} = :snappyer.decompress(result)
-      decoded = Prometheus.WriteRequest.decode(decompressed)
-      assert decoded.timeseries == []
-    end
   end
 
-  # End-to-end test against the docker-compose `vm` service.
+  # End-to-end tests against the docker-compose `vm` service.
   #
-  # Requires `docker compose up -d vm` and is excluded by default
-  # (see :integration tag in test/test_helper.exs).
+  # Requires `docker compose up -d vm`. Excluded by default via the
+  # :integration tag (see test/test_helper.exs).
   #
   # Run with:
   #   mix test test/logflare/backends/adaptor/victoria_metrics_adaptor_test.exs --include integration
-  describe "victoriametrics ingestion (e2e)" do
+  describe "victoriametrics e2e" do
     @describetag :integration
 
     setup do
@@ -319,7 +255,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
       insert(:plan)
       user = insert(:user)
-      source = insert(:source, user: user, name: "vm_e2e_test_#{System.unique_integer([:positive])}")
+
+      source =
+        insert(:source, user: user, name: "vm_e2e_#{System.unique_integer([:positive])}")
 
       backend =
         insert(:backend,
@@ -331,6 +269,11 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       start_supervised!({AdaptorSupervisor, {source, backend}})
       :timer.sleep(500)
       [source: source, backend: backend]
+    end
+
+    test "test_connection/1 succeeds against the running VM service",
+         %{backend: backend} do
+      assert :ok = @subject.test_connection(backend)
     end
 
     test "metrics flow through the pipeline and are queryable via execute_query/3",
@@ -351,36 +294,82 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
 
-      assert eventually(fn ->
-               case @subject.execute_query(backend, metric_name) do
-                 {:ok, %{rows: [%{"value" => value, "source" => src, "env" => env} | _]}} ->
-                   value == expected_value and src == source.name and env == "test"
+      TestUtils.retry_assert(fn ->
+        {:ok, %{rows: rows}} = @subject.execute_query(backend, metric_name)
 
-                 _ ->
-                   false
-               end
-             end),
-             "metric #{metric_name} was not visible in VictoriaMetrics within timeout"
+        assert [%{"value" => ^expected_value, "source" => src, "env" => "test"} | _] = rows
+        assert src == source.name
+      end)
     end
-  end
 
-  defp eventually(fun, timeout_ms \\ 5_000, interval_ms \\ 200) do
-    deadline = System.monotonic_time(:millisecond) + timeout_ms
-    do_eventually(fun, deadline, interval_ms)
-  end
+    # The adaptor sanitizes Prometheus identifiers (replacing `.`, `/`, `-`
+    # etc. with `_`). Verify by ingesting under the raw name and asserting
+    # that VM has the series under the sanitized name.
+    test "metric names are sanitized into Prometheus identifiers",
+         %{source: source, backend: backend} do
+      suffix = System.unique_integer([:positive])
+      raw_name = "logflare.e2e/duration-ms_#{suffix}"
+      sanitized = "logflare_e2e_duration_ms_#{suffix}"
 
-  defp do_eventually(fun, deadline, interval_ms) do
-    case fun.() do
-      true ->
-        true
+      le =
+        build(:log_event,
+          source: source,
+          event_message: raw_name,
+          metric_type: "gauge",
+          value: 7.0,
+          timestamp: System.system_time(:nanosecond),
+          metadata: %{"type" => "metric"}
+        )
 
-      _ ->
-        if System.monotonic_time(:millisecond) < deadline do
-          Process.sleep(interval_ms)
-          do_eventually(fun, deadline, interval_ms)
-        else
-          false
-        end
+      assert {:ok, _} = Backends.ingest_logs([le], source)
+
+      TestUtils.retry_assert(fn ->
+        {:ok, %{rows: rows}} = @subject.execute_query(backend, sanitized)
+        assert [%{"__name__" => ^sanitized} | _] = rows
+      end)
+    end
+
+    # Prometheus remote write v1 has no native encoding for exponential
+    # histograms, so the adaptor drops them. Verify nothing reaches VM by
+    # ingesting a control gauge alongside, waiting for the gauge to appear,
+    # then asserting the exponential_histogram series is absent.
+    test "exponential_histogram events are dropped during ingestion",
+         %{source: source, backend: backend} do
+      suffix = System.unique_integer([:positive])
+      exp_name = "logflare_e2e_exp_#{suffix}"
+      control_name = "logflare_e2e_control_#{suffix}"
+      ts = System.system_time(:nanosecond)
+
+      exp_event =
+        build(:log_event,
+          source: source,
+          event_message: exp_name,
+          metric_type: "exponential_histogram",
+          timestamp: ts,
+          metadata: %{"type" => "metric"}
+        )
+
+      control_event =
+        build(:log_event,
+          source: source,
+          event_message: control_name,
+          metric_type: "gauge",
+          value: 1.0,
+          timestamp: ts,
+          metadata: %{"type" => "metric"}
+        )
+
+      assert {:ok, _} = Backends.ingest_logs([exp_event, control_event], source)
+
+      # Wait until the control gauge is visible — that means VM has flushed
+      # this batch, so anything missing now was dropped, not just late.
+      TestUtils.retry_assert(fn ->
+        {:ok, %{rows: rows}} = @subject.execute_query(backend, control_name)
+        assert [_ | _] = rows
+      end)
+
+      {:ok, %{rows: rows}} = @subject.execute_query(backend, exp_name)
+      assert rows == []
     end
   end
 end
