@@ -163,6 +163,57 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccessTest do
     refute conn.halted
   end
 
+  test "source resource_type with nil source and declared_sources passes through",
+       %{user: user, source: source} do
+    conn =
+      build_conn(:post, "/logs", %{})
+      |> assign(:user, user)
+      |> assign(:resource_type, :source)
+      |> assign(:source, nil)
+      |> assign(:declared_sources, %{Atom.to_string(source.token) => source})
+      |> VerifyResourceAccess.call(%{})
+
+    refute conn.halted
+  end
+
+  test "source resource_type with nil source and no declared_sources still 401s",
+       %{user: user} do
+    conn =
+      build_conn(:post, "/logs", %{})
+      |> assign(:user, user)
+      |> assign(:resource_type, :source)
+      |> assign(:source, nil)
+      |> VerifyResourceAccess.call(%{})
+
+    assert conn.halted
+    assert conn.status == 401
+  end
+
+  test "source resource_type with nil source and empty declared_sources still 401s",
+       %{user: user} do
+    conn =
+      build_conn(:post, "/logs", %{})
+      |> assign(:user, user)
+      |> assign(:resource_type, :source)
+      |> assign(:source, nil)
+      |> assign(:declared_sources, %{})
+      |> VerifyResourceAccess.call(%{})
+
+    assert conn.halted
+    assert conn.status == 401
+  end
+
+  test "non-source resource_type with no resource still 401s", %{user: user} do
+    conn =
+      build_conn(:get, "/endpoints/x", %{})
+      |> assign(:user, user)
+      |> assign(:resource_type, :endpoint)
+      |> VerifyResourceAccess.call(%{})
+
+    assert conn.halted
+    assert conn.status == 401
+  end
+
   test "no user/resource provided" do
     conn = build_conn(:get, "/any", %{})
     refute conn.halted
