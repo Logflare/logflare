@@ -44,21 +44,17 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @doc false
   @impl Adaptor
   def cast_config(%{} = params, existing_config \\ %{}) do
-    {existing_config,
-     %{
-       s3_bucket: :string,
-       storage_region: :string,
-       access_key_id: :string,
-       secret_access_key: :string,
-       batch_timeout: :integer
-     }}
-    |> Changeset.cast(params, [
-      :s3_bucket,
-      :storage_region,
-      :access_key_id,
-      :secret_access_key,
-      :batch_timeout
-    ])
+    types = %{
+      endpoint: :string,
+      s3_bucket: :string,
+      storage_region: :string,
+      access_key_id: :string,
+      secret_access_key: :string,
+      batch_timeout: :integer
+    }
+
+    {existing_config, types}
+    |> Changeset.cast(params, Map.keys(types))
   end
 
   @doc false
@@ -68,7 +64,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
     changeset
     |> validate_required([:s3_bucket, :storage_region, :access_key_id, :secret_access_key])
-    |> Changeset.validate_number(:batch_timeout,
+    |> validate_number(:batch_timeout,
       greater_than_or_equal_to: @min_batch_timeout,
       less_than_or_equal_to: @max_batch_timeout
     )
@@ -229,6 +225,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
   defp fss_s3_config(backend_config) do
     [
+      endpoint: backend_config[:endpoint],
       access_key_id: backend_config.access_key_id,
       secret_access_key: backend_config.secret_access_key,
       region: backend_config.storage_region
