@@ -16,7 +16,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources
-  alias Logflare.System
+  alias Logflare.System, as: SystemUtils
 
   require Logger
 
@@ -24,7 +24,6 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   @default_remainder 100
   @default_purge_ratio 0.05
   @default_max round(Logflare.Backends.max_buffer_queue_len() * 1.2)
-  @consolidated_max_multiplier 10
 
   def start_link(opts) do
     source = Keyword.get(opts, :source)
@@ -45,6 +44,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     consolidated? = Keyword.get(opts, :consolidated, false)
     consolidated_key = Keyword.get(opts, :consolidated_key)
     base_max = Keyword.get(opts, :max, @default_max)
+    consolidated_max_multiplier = System.schedulers_online()
 
     state = %{
       source_id: source.id,
@@ -52,7 +52,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       backend_id: bid,
       interval: Keyword.get(opts, :interval, @default_interval),
       remainder: Keyword.get(opts, :remainder, @default_remainder),
-      max: if(consolidated?, do: base_max * @consolidated_max_multiplier, else: base_max),
+      max: if(consolidated?, do: base_max * consolidated_max_multiplier, else: base_max),
       purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio),
       consolidated?: consolidated?,
       consolidated_key: consolidated_key
@@ -151,7 +151,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   # clear more aggressively as the BEAM approaches the health-check threshold.
   @spec effective_purge_ratio(float()) :: float()
   defp effective_purge_ratio(base_ratio) do
-    util = System.memory_utilization()
+    util = SystemUtils.memory_utilization()
 
     factor =
       cond do

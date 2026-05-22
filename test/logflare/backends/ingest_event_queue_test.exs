@@ -986,7 +986,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-
+  test "MapperJanitor cleans up stale tids" do
     user = insert(:user)
     source = insert(:source, user: user)
     backend = insert(:backend, user: user)
