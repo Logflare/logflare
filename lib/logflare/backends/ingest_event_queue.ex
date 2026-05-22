@@ -357,13 +357,17 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec mark_ingested(source_backend_pid(), [LogEvent.t()]) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
-  def mark_ingested(sid_bid_pid, events) do
+  @spec mark_ingested(source_backend_pid(), [LogEvent.t()], Keyword.t()) ::
+          {:ok, non_neg_integer()} | {:error, :not_initialized}
+  def mark_ingested(sid_bid_pid, events, opts \\ []) do
     tid = get_tid(sid_bid_pid)
 
     if tid != nil do
       for event <- events do
         :ets.update_element(tid, event.id, {2, :ingested})
       end
+
+      emit_dwell_telemetry(events, opts)
 
       {:ok, Enum.count(events)}
     else
@@ -492,9 +496,12 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec pop_pending(table_key() | consolidated_table_key(), integer()) ::
           {:ok, [LogEvent.t()]} | {:error, :not_initialized}
-  def pop_pending(_, 0), do: {:ok, []}
+  @spec pop_pending(table_key() | consolidated_table_key(), integer(), Keyword.t()) ::
+          {:ok, [LogEvent.t()]} | {:error, :not_initialized}
+  def pop_pending(_, 0, _opts), do: {:ok, []}
+  def pop_pending(key, n), do: pop_pending(key, n, [])
 
-  def pop_pending(sid_bid_pid, n) when is_integer(n) do
+  def pop_pending(sid_bid_pid, n, opts) when is_integer(n) do
     select_ms =
       Ex2ms.fun do
         {event_id, :pending, event} -> {event_id, event}
@@ -509,11 +516,42 @@ defmodule Logflare.Backends.IngestEventQueue do
           event
         end
 
+      emit_dwell_telemetry(events, opts)
+
       {:ok, events}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, []}
     end
+  end
+
+  @spec emit_dwell_telemetry([LogEvent.t()], Keyword.t()) :: :ok
+  defp emit_dwell_telemetry([], _opts), do: :ok
+
+  defp emit_dwell_telemetry(events, opts) do
+    backend_type = Keyword.get(opts, :backend_type, :unknown)
+    now = DateTime.utc_now()
+
+    {sum_ms, max_ms, count} =
+      Enum.reduce(events, {0, 0, 0}, fn
+        %LogEvent{ingested_at: %DateTime{} = ts}, {sum, max, count} ->
+          d = DateTime.diff(now, ts, :millisecond)
+          d = if d < 0, do: 0, else: d
+          {sum + d, if(d > max, do: d, else: max), count + 1}
+
+        _, acc ->
+          acc
+      end)
+
+    if count > 0 do
+      :telemetry.execute(
+        [:logflare, :backends, :ingest_event_queue, :dwell],
+        %{duration_ms: div(sum_ms, count), max_ms: max_ms, count: count},
+        %{backend_type: backend_type}
+      )
+    end
+
+    :ok
   end
 
   @spec fetch_events(source_backend_pid(), integer()) ::
