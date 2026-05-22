@@ -239,39 +239,24 @@ defmodule Logflare.Backends.BufferProducer do
     {events, %{state | demand: new_demand}}
   end
 
-  defp maybe_signal_janitor(%{consolidated: true, backend_id: bid} = state) do
+  defp maybe_signal_janitor(%{backend_id: bid} = state) when is_integer(bid) do
     now = System.monotonic_time(:millisecond)
 
-    if now - state.last_janitor_signal_at >= @janitor_signal_debounce_ms do
-      table_key = {:consolidated, bid, self()}
-      size = IngestEventQueue.get_table_size(table_key)
+    table_key =
+      if state.consolidated,
+        do: {:consolidated, bid, self()},
+        else: {state.source_id, bid, self()}
 
-      if is_integer(size) and size > @janitor_overflow_threshold do
-        QueueJanitor.notify_overflow_consolidated(bid)
-        %{state | last_janitor_signal_at: now}
-      else
-        state
-      end
+    with true <- now - state.last_janitor_signal_at >= @janitor_signal_debounce_ms,
+         size when is_integer(size) <- IngestEventQueue.get_table_size(table_key),
+         true <- size > @janitor_overflow_threshold do
+      if state.consolidated,
+        do: QueueJanitor.notify_overflow_consolidated(bid),
+        else: QueueJanitor.notify_overflow(state.source_id, bid)
+
+      %{state | last_janitor_signal_at: now}
     else
-      state
-    end
-  end
-
-  defp maybe_signal_janitor(%{source_id: sid, backend_id: bid} = state) when is_integer(bid) do
-    now = System.monotonic_time(:millisecond)
-
-    if now - state.last_janitor_signal_at >= @janitor_signal_debounce_ms do
-      table_key = {sid, bid, self()}
-      size = IngestEventQueue.get_table_size(table_key)
-
-      if is_integer(size) and size > @janitor_overflow_threshold do
-        QueueJanitor.notify_overflow(sid, bid)
-        %{state | last_janitor_signal_at: now}
-      else
-        state
-      end
-    else
-      state
+      _ -> state
     end
   end
 
