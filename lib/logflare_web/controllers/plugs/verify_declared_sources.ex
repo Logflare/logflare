@@ -71,18 +71,21 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSources do
     Enum.reduce_while(tokens, {:ok, %{}}, fn token, {:ok, acc} ->
       case Sources.Cache.get_by_and_preload_rules(token: token) do
         %Source{} = source ->
-          source = Sources.refresh_source_metrics_for_ingest(source)
-
-          if VerifyResourceAccess.verify_source_access(source, user, access_token) do
-            {:cont, {:ok, Map.put(acc, token, source)}}
-          else
-            {:halt, :error}
-          end
+          put_verified_declared(acc, token, source, user, access_token)
 
         _ ->
           {:halt, :error}
       end
     end)
+  end
+
+  defp put_verified_declared(acc, token, source, user, access_token) do
+    source = Sources.refresh_source_metrics_for_ingest(source)
+
+    case VerifyResourceAccess.verify_source_access(source, user, access_token) do
+      true -> {:cont, {:ok, Map.put(acc, token, source)}}
+      false -> {:halt, :error}
+    end
   end
 
   defp uuid?(value) when is_binary(value) do
