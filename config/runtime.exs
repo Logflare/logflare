@@ -281,6 +281,10 @@ config :stripity_stripe,
        )
 
 if config_env() != :test do
+  config :logflare, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SECRET")
+end
+
+if config_env() != :test do
   config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()
 end
 

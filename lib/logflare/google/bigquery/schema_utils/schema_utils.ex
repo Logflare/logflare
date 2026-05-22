@@ -72,7 +72,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
-  @spec to_typemap(map | TS.t() | nil) :: %{required(atom) => map | atom}
+  @spec to_typemap(term()) :: map() | nil
   def to_typemap(nil), do: nil
 
   def to_typemap(%TS{} = schema), do: to_typemap(schema, from: :bigquery_schema)
@@ -85,13 +85,13 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
               match?(%NaiveDateTime{}, v) ->
             %{t: :datetime}
 
-          is_list(v) and is_map(hd(v)) ->
+          is_list(v) and Enum.any?(v, &is_map/1) ->
             %{
               t: :map,
               fields: Enum.reduce(v, %{}, &Map.merge(&2, to_typemap(&1)))
             }
 
-          is_list(v) and not is_map(hd(v)) ->
+          is_list(v) ->
             %{t: {:list, type_of(hd(v))}}
 
           is_map(v) ->
@@ -111,6 +111,11 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
       {k, v}
     end
   end
+
+  # Reached recursively from the list-of-maps branch above when an element
+  # isn't a map (e.g. [%{...}, "x"]). Returning %{} keeps the surrounding
+  # Map.merge a no-op without crashing the walk.
+  def to_typemap(_), do: %{}
 
   defp decode_until_valid!(k, encodings \\ [:utf8, :unicode, :latin1])
 

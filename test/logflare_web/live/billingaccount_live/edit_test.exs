@@ -21,30 +21,35 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
     test "handles Stripe webhook events", %{conn: conn} do
       billing_account = insert(:billing_account)
 
-      stripe_webhook_payload = %{
-        "id" => "evt_#{TestUtils.random_string()}",
-        "type" => "payment_method.attached",
-        "data" => %{
-          "object" => %{
-            "id" => "pm_#{TestUtils.random_string()}",
-            "customer" => billing_account.stripe_customer,
-            "card" => %{
-              "brand" => "visa",
-              "exp_month" => "03",
-              "exp_year" => "1995",
-              "last4" => "4242"
+      payload_json =
+        Jason.encode!(%{
+          "id" => "evt_#{TestUtils.random_string()}",
+          "object" => "event",
+          "type" => "payment_method.attached",
+          "data" => %{
+            "object" => %{
+              "object" => "payment_method",
+              "id" => "pm_#{TestUtils.random_string()}",
+              "customer" => billing_account.stripe_customer,
+              "card" => %{
+                "brand" => "visa",
+                "exp_month" => "03",
+                "exp_year" => "1995",
+                "last4" => "4242"
+              }
             }
           }
-        }
-      }
+        })
 
       {:ok, view, html} = live(conn, ~p"/billing/edit")
 
       refute html =~ "VISA ending in 4242 expires 3/1995"
 
       assert conn
-             |> post(~p"/webhooks/stripe", stripe_webhook_payload)
-             |> json_response(200) == %{"message" => "ok"}
+             |> put_req_header("content-type", "application/json")
+             |> put_req_header("stripe-signature", stripe_sign(payload_json))
+             |> post(~p"/webhooks/stripe", payload_json)
+             |> response(200)
 
       TestUtils.retry_assert(fn ->
         assert render(view) =~ "VISA ending in 4242 expires 3/1995"
@@ -85,6 +90,18 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
     insert(:plan, name: "Metered BYOB")
 
     :ok
+  end
+
+  @test_webhook_secret "whsec_test_only_secret_for_testing"
+
+  defp stripe_sign(raw_body) do
+    timestamp = System.system_time(:second)
+    signed = "#{timestamp}.#{raw_body}"
+
+    hmac =
+      :crypto.mac(:hmac, :sha256, @test_webhook_secret, signed) |> Base.encode16(case: :lower)
+
+    "t=#{timestamp},v1=#{hmac}"
   end
 
   defp create_billing_account(%{conn: conn}) do

@@ -21,11 +21,10 @@ defmodule Logflare.Billing do
   Protocol.derive(Jason.Encoder, Stripe.Subscription)
   Protocol.derive(Jason.Encoder, Stripe.Plan)
   Protocol.derive(Jason.Encoder, Stripe.SubscriptionItem)
-  Protocol.derive(Jason.Encoder, Stripe.Session)
+  Protocol.derive(Jason.Encoder, Stripe.Checkout.Session)
   Protocol.derive(Jason.Encoder, Stripe.Invoice)
   Protocol.derive(Jason.Encoder, Stripe.LineItem)
   Protocol.derive(Jason.Encoder, Stripe.Price)
-  Protocol.derive(Jason.Encoder, Stripe.Discount)
   Protocol.derive(Jason.Encoder, Stripe.Coupon)
 
   # BillingAccount
@@ -140,6 +139,13 @@ defmodule Logflare.Billing do
 
   @doc "retrieves the stripe plan stored on the BillingAccount"
   @spec get_billing_account_stripe_plan(BillingAccount.t()) :: nil | map()
+  def get_billing_account_stripe_plan(%BillingAccount{
+        stripe_subscriptions: %{
+          "data" => [%{"items" => %{"data" => [%{"plan" => plan} | _]}} | _]
+        }
+      }),
+      do: plan
+
   def get_billing_account_stripe_plan(%BillingAccount{
         stripe_subscriptions: %{"data" => [%{"plan" => plan} | _]}
       }),

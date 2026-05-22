@@ -78,13 +78,34 @@ defmodule Logflare.Profiling do
 
   @spec save_snapshot(Path.t(), [entry]) :: :ok
   def save_snapshot(path, history) do
-    File.write!(
-      path,
-      inspect(history, pretty: true, limit: :infinity, custom_options: [sort_maps: true]) <> "\n"
-    )
+    content =
+      history
+      |> inspect(pretty: true, limit: :infinity, custom_options: [sort_maps: true])
+      |> underscore_integers()
+
+    File.write!(path, content <> "\n")
 
     IO.puts("\nSaved snapshot to #{path}")
     :ok
+  end
+
+  # Adds `_` thousands separators to integer literals (5+ digits) in inspect/2
+  # output. The lookbehind/lookahead anchor matches to pretty-printed map-value
+  # context, so digit runs inside quoted strings (timestamps, SHAs) are left
+  # alone.
+  defp underscore_integers(text) do
+    Regex.replace(~r/(?<=[: ])(-?\d{5,})(?=[,\n}\)\]])/, text, fn _, num ->
+      underscore_digits(num)
+    end)
+  end
+
+  defp underscore_digits("-" <> rest), do: "-" <> underscore_digits(rest)
+
+  defp underscore_digits(digits) do
+    digits
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1_")
+    |> String.reverse()
   end
 
   @spec print_delta(%{required(String.t()) => stats}, [entry]) :: :ok
