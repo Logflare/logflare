@@ -140,6 +140,7 @@ defmodule Logflare.Mixfile do
 
       # Outbound Requests
       {:inet_cidr, "~> 1.0"},
+      {:snappyer, "~> 1.2"},
       {:castore, "~> 1.0"},
       {:finch, "~> 0.20.0"},
       {:mint, "~> 1.0"},
