@@ -138,7 +138,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_url: :string,
        insert_protocol: :string,
        native_port: :integer,
-       native_pool_size: :integer
+       native_pool_size: :integer,
+       min_pool_count: :integer,
+       max_pool_count: :integer
      }}
     |> Changeset.cast(params, [
       :url,
@@ -150,7 +152,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_url,
       :insert_protocol,
       :native_port,
-      :native_pool_size
+      :native_pool_size,
+      :min_pool_count,
+      :max_pool_count
     ])
     |> Logflare.Utils.default_field_value(:insert_protocol, "http")
   end
@@ -161,6 +165,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     import Ecto.Changeset
 
     {min_pool, max_pool} = NativeIngester.Pool.pool_size_range()
+    app_config = Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)
+    global_max_pool_count = app_config[:max_pool_count] || 16
 
     changeset
     |> validate_required([:url, :database, :port])
@@ -176,6 +182,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       greater_than_or_equal_to: min_pool,
       less_than_or_equal_to: max_pool
     )
+    |> validate_number(:min_pool_count,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: global_max_pool_count
+    )
+    |> validate_number(:max_pool_count,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: global_max_pool_count
+    )
+    |> validate_pool_count_range()
   end
 
   @doc """
@@ -564,6 +579,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
       true ->
         state.pipeline_count
+    end
+  end
+
+  @spec validate_pool_count_range(Changeset.t()) :: Changeset.t()
+  defp validate_pool_count_range(changeset) do
+    import Ecto.Changeset
+
+    min = get_field(changeset, :min_pool_count)
+    max = get_field(changeset, :max_pool_count)
+
+    if is_integer(min) and is_integer(max) and min > max do
+      add_error(changeset, :min_pool_count, "must be less than or equal to max_pool_count")
+    else
+      changeset
     end
   end
 

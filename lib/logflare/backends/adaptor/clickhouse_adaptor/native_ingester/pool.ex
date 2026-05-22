@@ -24,31 +24,36 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
   @secure_native_port 9440
 
   @doc """
-  Returns the via tuple for a pool registered under a given backend.
+  Returns the via tuple for pool index 0 under a given backend.
   """
   @spec via(Backend.t()) :: GenServer.name()
-  def via(%Backend{} = backend) do
-    Logflare.Backends.via_backend(backend, __MODULE__)
+  def via(%Backend{} = backend), do: via(backend, 0)
+
+  @doc """
+  Returns the via tuple for a specific pool index under a given backend.
+  """
+  @spec via(Backend.t(), non_neg_integer()) :: GenServer.name()
+  def via(%Backend{} = backend, index) when is_integer(index) and index >= 0 do
+    Logflare.Backends.via_backend(backend, {__MODULE__, index})
   end
 
   @doc false
-  def child_spec(%Backend{} = backend) do
+  def child_spec(%Backend{} = backend), do: child_spec({backend, 0})
+
+  def child_spec({%Backend{} = backend, index}) when is_integer(index) and index >= 0 do
     %{
-      id: {__MODULE__, backend.id},
-      start: {__MODULE__, :start_link, [backend]},
+      id: {__MODULE__, backend.id, index},
+      start: {__MODULE__, :start_link, [{backend, index}]},
       type: :worker,
       restart: :permanent
     }
   end
 
   @doc """
-  Starts the connection pool for a backend.
-
-  Extracts connection options (host, port, database, username, password, compression)
-  from the backend config and starts a NimblePool with the configured pool size.
+  Starts the connection pool for a backend at a given pool index.
   """
-  @spec start_link(Backend.t()) :: GenServer.on_start()
-  def start_link(%Backend{} = backend) do
+  @spec start_link({Backend.t(), non_neg_integer()}) :: GenServer.on_start()
+  def start_link({%Backend{} = backend, index}) when is_integer(index) and index >= 0 do
     connect_opts = build_connect_opts(backend)
     pool_size = resolve_pool_size(backend.config)
 
@@ -57,7 +62,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
       pool_size: pool_size,
       lazy: true,
       worker_idle_timeout: @worker_idle_timeout,
-      name: via(backend)
+      name: via(backend, index)
     )
   end
 
@@ -88,7 +93,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
   end
 
   @doc """
-  Checks out a connection, passes it to `fun`, and returns it to the pool.
+  Checks out a connection from pool index 0, passes it to `fun`, and returns it to the pool.
 
   The callback receives a `Connection` struct and must return a
   `{client_result, checkin_instruction}` tuple where `checkin_instruction` is
@@ -97,8 +102,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
   """
   @spec checkout(Backend.t(), (Connection.t() -> {term(), Connection.t() | :remove})) :: term()
   def checkout(%Backend{} = backend, fun) when is_function(fun, 1) do
+    checkout(backend, 0, fun)
+  end
+
+  @doc """
+  Checks out a connection from a specific pool index, passes it to `fun`, and returns it to the pool.
+  """
+  @spec checkout(
+          Backend.t(),
+          non_neg_integer(),
+          (Connection.t() -> {term(), Connection.t() | :remove})
+        ) :: term()
+  def checkout(%Backend{} = backend, index, fun)
+      when is_integer(index) and index >= 0 and is_function(fun, 1) do
     NimblePool.checkout!(
-      via(backend),
+      via(backend, index),
       :checkout,
       fn _pool, conn -> fun.(conn) end,
       @checkout_timeout
