@@ -106,45 +106,49 @@ defmodule LogflareWeb.LogController do
 
   defp group_events_by_source(events, declared, default_source) do
     {groups, errors} =
-      Enum.reduce(events, {%{}, []}, fn event, {groups, errors} ->
-        token = event_source_token(event)
-        stripped = Map.drop(event, [@lf_source_key, :"#{@lf_source_key}"])
+      for event <- events, reduce: {%{}, []} do
+        {groups, errors} ->
+          token = event_source_token(event)
+          stripped = Map.drop(event, [@lf_source_key, :"#{@lf_source_key}"])
 
-        cond do
-          is_binary(token) and is_map_key(declared, token) ->
-            source = Map.fetch!(declared, token)
-            {Map.update(groups, source, [stripped], &[stripped | &1]), errors}
+          cond do
+            is_binary(token) and is_map_key(declared, token) ->
+              source = Map.fetch!(declared, token)
+              {Map.update(groups, source, [stripped], &[stripped | &1]), errors}
 
-          is_binary(token) ->
-            {groups, ["event references unknown or unauthorized source #{token}" | errors]}
+            is_binary(token) ->
+              {groups, ["event references unknown or unauthorized source #{token}" | errors]}
 
-          token != nil ->
-            {groups, ["invalid __LF_SOURCE value" | errors]}
+            token != nil ->
+              {groups, ["invalid __LF_SOURCE value" | errors]}
 
-          default_source != nil ->
-            {Map.update(groups, default_source, [stripped], &[stripped | &1]), errors}
+            default_source != nil ->
+              {Map.update(groups, default_source, [stripped], &[stripped | &1]), errors}
 
-          true ->
-            {groups, ["event missing __LF_SOURCE and no source query param" | errors]}
-        end
-      end)
+            true ->
+              {groups, ["event missing __LF_SOURCE and no source query param" | errors]}
+          end
+      end
 
     grouped = for {source, batch} <- groups, do: {source, Enum.reverse(batch)}
     {grouped, Enum.reverse(errors)}
   end
 
-  defp event_source_token(event) when is_map(event) do
-    Map.get(event, @lf_source_key) || Map.get(event, :"#{@lf_source_key}")
-  end
+  defp event_source_token(%{@lf_source_key => token}), do: token
+  defp event_source_token(%{:"__LF_SOURCE" => token}), do: token
+  defp event_source_token(_), do: nil
 
   defp aggregate_results(results, errors) do
     {count, all_errors} =
-      Enum.reduce(results, {0, errors}, fn
-        {:ok, n}, {acc, errs} -> {acc + n, errs}
-        :ok, {acc, errs} -> {acc, errs}
-        {:error, more}, {acc, errs} when is_list(more) -> {acc, errs ++ more}
-        {:error, err}, {acc, errs} -> {acc, errs ++ [err]}
-      end)
+      for result <- results, reduce: {0, errors} do
+        {acc, errs} ->
+          case result do
+            {:ok, n} -> {acc + n, errs}
+            :ok -> {acc, errs}
+            {:error, more} when is_list(more) -> {acc, errs ++ more}
+            {:error, err} -> {acc, errs ++ [err]}
+          end
+      end
 
     if all_errors == [], do: {:ok, count}, else: {:error, all_errors}
   end

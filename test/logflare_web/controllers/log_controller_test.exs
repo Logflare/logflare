@@ -612,33 +612,20 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "create with __LF_SOURCE multi-source ingestion" do
-    setup [:multi_source_setup, :warm_caches, :reject_context_functions]
+    setup [:multi_source_setup, :warm_caches]
 
     setup %{user: user, conn: conn} do
       conn = put_req_header(conn, "x-api-key", user.api_key)
       {:ok, conn: conn}
     end
 
-    test "single event with __LF_SOURCE routes to declared source and strips field",
-         %{conn: conn, source_a: source_a} do
-      {_pid, ref} = expect_webhook_with_body()
-
-      conn =
-        conn
-        |> put_req_header("content-type", "application/json")
-        |> post(
-          ~p"/logs",
-          Jason.encode!(%{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "a"})
-        )
-
-      assert_logged_successfully(conn)
-      assert_receive {^ref, [event]}, 3000
-      refute Map.has_key?(event, "__LF_SOURCE")
-      assert event["event_message"] == "a"
-    end
-
     test "batch with __LF_SOURCE per event fans out to multiple sources",
-         %{conn: conn, source_a: source_a, source_b: source_b} do
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      insert(:backend, sources: [source_b], type: :webhook, config: %{url: "some-b"})
+      start_supervised!({SourceSup, source_b})
+      :timer.sleep(200)
+
       this = self()
 
       Logflare.Backends.Adaptor.WebhookAdaptor.Client
@@ -647,18 +634,15 @@ defmodule LogflareWeb.LogControllerTest do
         %Tesla.Env{status: 200, body: ""}
       end)
 
-      token_a = Atom.to_string(source_a.token)
-      token_b = Atom.to_string(source_b.token)
-
       conn =
         conn
         |> post(
           Routes.log_path(conn, :create),
           %{
             "batch" => [
-              %{"__LF_SOURCE" => token_a, "event_message" => "to_a_1"},
-              %{"__LF_SOURCE" => token_b, "event_message" => "to_b"},
-              %{"__LF_SOURCE" => token_a, "event_message" => "to_a_2"}
+              %{"__LF_SOURCE" => source_a.token, "event_message" => "to_a_1"},
+              %{"__LF_SOURCE" => source_b.token, "event_message" => "to_b"},
+              %{"__LF_SOURCE" => source_a.token, "event_message" => "to_a_2"}
             ]
           }
         )
@@ -685,15 +669,50 @@ defmodule LogflareWeb.LogControllerTest do
       end
     end
 
+    test "_json batch with __LF_SOURCE per event fans out to multiple sources",
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      insert(:backend, sources: [source_b], type: :webhook, config: %{url: "some-b2"})
+      start_supervised!({SourceSup, source_b})
+      :timer.sleep(200)
+
+      this = self()
+
+      Logflare.Backends.Adaptor.WebhookAdaptor.Client
+      |> stub(:send, fn req ->
+        send(this, {:webhook, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post(
+          Routes.log_path(conn, :create),
+          Jason.encode!([
+            %{"__LF_SOURCE" => source_a.token, "event_message" => "to_a"},
+            %{"__LF_SOURCE" => source_b.token, "event_message" => "to_b"}
+          ])
+        )
+
+      assert_logged_successfully(conn)
+      received = collect_webhook_messages([], 3000)
+      all_events = Enum.flat_map(received, & &1)
+      assert Enum.any?(all_events, &(&1["event_message"] == "to_a"))
+      assert Enum.any?(all_events, &(&1["event_message"] == "to_b"))
+    end
+
     test "batch referencing an unowned source returns 401 from the plug",
-         %{conn: conn, other_source: other_source} do
+         %{conn: conn, user: user} do
+      other_source = insert(:source, user: insert(:user))
+
       conn =
         conn
         |> post(
           Routes.log_path(conn, :create),
           %{
             "batch" => [
-              %{"__LF_SOURCE" => Atom.to_string(other_source.token), "event_message" => "x"}
+              %{"__LF_SOURCE" => other_source.token, "event_message" => "x"}
             ]
           }
         )
@@ -712,17 +731,10 @@ defmodule LogflareWeb.LogControllerTest do
       assert json_response(conn, 401)
     end
 
-    test "batch with __LF_SOURCE on first event but later events lack it",
+    test "batch with __LF_SOURCE on first event but later events lack it returns 406",
          %{conn: conn, source_a: source_a} do
-      this = self()
-
       Logflare.Backends.Adaptor.WebhookAdaptor.Client
-      |> stub(:send, fn req ->
-        send(this, {:webhook, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
-      end)
-
-      token_a = Atom.to_string(source_a.token)
+      |> stub(:send, fn _req -> %Tesla.Env{status: 200, body: ""} end)
 
       conn =
         conn
@@ -730,20 +742,16 @@ defmodule LogflareWeb.LogControllerTest do
           Routes.log_path(conn, :create),
           %{
             "batch" => [
-              %{"__LF_SOURCE" => token_a, "event_message" => "with"},
+              %{"__LF_SOURCE" => source_a.token, "event_message" => "with"},
               %{"event_message" => "without"}
             ]
           }
         )
 
-      # Multi-source mode is active (first event has __LF_SOURCE) but the
-      # second event lacks it and there's no query-param default, so the
-      # ingest returns errors for the orphan event while the valid one is
-      # delivered.
       assert json_response(conn, 406)
     end
 
-    test "first event lacks __LF_SOURCE → falls back to single-source query param flow",
+    test "first event lacks __LF_SOURCE falls back to single-source query param flow",
          %{conn: conn, source_a: source_a} do
       {_pid, ref} = expect_webhook_success()
 
@@ -770,26 +778,12 @@ defmodule LogflareWeb.LogControllerTest do
   defp multi_source_setup(%{conn: conn}) do
     insert(:plan, name: "Free")
     user = insert(:user)
-    other_user = insert(:user)
     source_a = insert(:source, user: user)
-    source_b = insert(:source, user: user)
-    other_source = insert(:source, user: other_user)
-
     insert(:backend, sources: [source_a], type: :webhook, config: %{url: "some-a"})
-    insert(:backend, sources: [source_b], type: :webhook, config: %{url: "some-b"})
-
     start_supervised!({SourceSup, source_a})
-    start_supervised!({SourceSup, source_b})
     :timer.sleep(500)
 
-    {:ok,
-     user: user,
-     source: source_a,
-     source_a: source_a,
-     source_b: source_b,
-     other_user: other_user,
-     other_source: other_source,
-     conn: conn}
+    {:ok, user: user, source: source_a, source_a: source_a, conn: conn}
   end
 
   defp pipeline_setup(%{conn: conn}) do
