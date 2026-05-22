@@ -19,6 +19,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.BlockEncoder
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolScaler
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.SchemaCache
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
@@ -91,50 +92,63 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   defp do_pooled_insert(backend, table, events, column_names, settings) do
     cache_key = "#{backend.config.database}.#{table}"
     cached_schema = SchemaCache.get(backend.id, cache_key)
+    pool_index = PoolScaler.pick_pool(backend)
+    start_us = System.monotonic_time(:microsecond)
 
-    Pool.checkout(backend, fn conn ->
-      sql = build_insert_sql(conn.database, table, column_names)
+    result =
+      try do
+        Pool.checkout(backend, pool_index, fn conn ->
+          sql = build_insert_sql(conn.database, table, column_names)
 
-      result =
-        if cached_schema do
-          do_cached_insert(conn, sql, events, cached_schema, backend.id, cache_key, settings)
-        else
-          do_uncached_insert(conn, sql, events, backend.id, cache_key, settings)
-        end
+          result =
+            if cached_schema do
+              do_cached_insert(conn, sql, events, cached_schema, backend.id, cache_key, settings)
+            else
+              do_uncached_insert(conn, sql, events, backend.id, cache_key, settings)
+            end
 
-      case result do
-        {:ok, updated_conn} ->
-          {:ok, updated_conn}
+          case result do
+            {:ok, updated_conn} ->
+              {:ok, updated_conn}
 
-        {:error, {:exception, code, message}} = error ->
-          Logger.error(
-            "ClickHouse NativeIngester: exception during insert into #{table}, " <>
-              "code=#{code} message=#{inspect(message)}, removing connection"
+            {:error, {:exception, code, message}} = error ->
+              Logger.error(
+                "ClickHouse NativeIngester: exception during insert into #{table}, " <>
+                  "code=#{code} message=#{inspect(message)}, removing connection"
+              )
+
+              {error, :remove}
+
+            {:error, {:column_mismatch, _} = detail} = error ->
+              Logger.error(
+                "ClickHouse NativeIngester: column mismatch during insert into #{table}, " <>
+                  "detail=#{inspect(detail)}, removing connection"
+              )
+
+              {error, :remove}
+
+            {:error, reason} = error ->
+              Logger.error(
+                "ClickHouse NativeIngester: error during insert into #{table}, " <>
+                  "reason=#{inspect(reason)}, removing connection"
+              )
+
+              {error, :remove}
+          end
+        end)
+      catch
+        :exit, {:timeout, _} ->
+          Logger.warning(
+            "ClickHouse NativeIngester: pool checkout timeout for insert into #{table}"
           )
 
-          {error, :remove}
-
-        {:error, {:column_mismatch, _} = detail} = error ->
-          Logger.error(
-            "ClickHouse NativeIngester: column mismatch during insert into #{table}, " <>
-              "detail=#{inspect(detail)}, removing connection"
-          )
-
-          {error, :remove}
-
-        {:error, reason} = error ->
-          Logger.error(
-            "ClickHouse NativeIngester: error during insert into #{table}, " <>
-              "reason=#{inspect(reason)}, removing connection"
-          )
-
-          {error, :remove}
+          {:error, :checkout_timeout}
       end
-    end)
-  catch
-    :exit, {:timeout, _} ->
-      Logger.warning("ClickHouse NativeIngester: pool checkout timeout for insert into #{table}")
-      {:error, :checkout_timeout}
+
+    duration_us = System.monotonic_time(:microsecond) - start_us
+    sample_result = if result == {:error, :checkout_timeout}, do: :timeout, else: :ok
+    PoolScaler.record_sample(backend, duration_us, sample_result)
+    result
   end
 
   @spec do_cached_insert(

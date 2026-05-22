@@ -216,6 +216,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert changeset.valid?
     end
+
+    test "accepts valid min_pool_count and max_pool_count" do
+      changeset = cast_and_validate_config(min_pool_count: 1, max_pool_count: 4)
+      assert changeset.valid?
+    end
+
+    test "accepts min_pool_count equal to max_pool_count" do
+      changeset = cast_and_validate_config(min_pool_count: 2, max_pool_count: 2)
+      assert changeset.valid?
+    end
+
+    test "rejects min_pool_count greater than max_pool_count" do
+      changeset = cast_and_validate_config(min_pool_count: 4, max_pool_count: 2)
+      refute changeset.valid?
+      assert {:min_pool_count, _} = hd(changeset.errors)
+    end
+
+    test "rejects min_pool_count less than 1" do
+      changeset = cast_and_validate_config(min_pool_count: 0, max_pool_count: 4)
+      refute changeset.valid?
+    end
+
+    test "rejects max_pool_count above global maximum" do
+      global_max =
+        Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:max_pool_count]
+
+      changeset = cast_and_validate_config(min_pool_count: 1, max_pool_count: global_max + 1)
+      refute changeset.valid?
+    end
   end
 
   defp cast_and_validate_config(attrs \\ []) do

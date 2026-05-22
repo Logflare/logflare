@@ -22,12 +22,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     } do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, :closed}
       end)
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         :ok
       end)
@@ -42,12 +42,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "retries on :timeout", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, :timeout}
       end)
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         :ok
       end)
@@ -62,12 +62,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "retries on :econnrefused", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, :econnrefused}
       end)
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         :ok
       end)
@@ -82,12 +82,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "retries on :econnreset", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, :econnreset}
       end)
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         :ok
       end)
@@ -102,12 +102,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "retries on :checkout_timeout", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         exit({:timeout, {NimblePool, :checkout, []}})
       end)
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         :ok
       end)
@@ -124,12 +124,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "retries on TOO_MANY_PARTS (252)", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, {:exception, 252, "Too many parts"}}
       end)
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         :ok
       end)
@@ -144,12 +144,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "retries on TIMEOUT_EXCEEDED (159)", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, {:exception, 159, "Timeout exceeded"}}
       end)
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         :ok
       end)
@@ -164,12 +164,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "retries on TOO_MANY_SIMULTANEOUS_QUERIES (202)", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, {:exception, 202, "Too many simultaneous queries"}}
       end)
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         :ok
       end)
@@ -184,12 +184,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "retries on MEMORY_LIMIT_EXCEEDED (241)", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, {:exception, 241, "Memory limit exceeded"}}
       end)
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         :ok
       end)
@@ -204,12 +204,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "retries on READONLY (164)", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, {:exception, 164, "Table is in readonly mode"}}
       end)
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         :ok
       end)
@@ -226,7 +226,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "does not retry on :column_mismatch", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, {:column_mismatch, expected: [], got: []}}
       end)
@@ -243,7 +243,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     test "does not retry on :unexpected_packet_type", %{source: source, backend: backend} do
       test_pid = self()
 
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, {:unexpected_packet_type, 99}}
       end)
@@ -261,7 +261,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       test_pid = self()
 
       # Code 60 = UNKNOWN_TABLE
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, {:exception, 60, "Table does not exist"}}
       end)
@@ -281,13 +281,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       test_pid = self()
 
       # First attempt
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, :closed}
       end)
 
       # Retry attempt (max_retries = 1, so this is the last try)
-      Mimic.expect(Pool, :checkout, fn _backend, _fun ->
+      Mimic.expect(Pool, :checkout, fn _backend, _index, _fun ->
         send(test_pid, :attempt)
         {:error, :closed}
       end)
