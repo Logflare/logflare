@@ -2,12 +2,15 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends
-  alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.VictoriaMetricsAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
+
+  # docker-compose `vm` service — see docker-compose.yml
+  @vm_host "http://localhost:8428"
+  @vm_remote_write_url @vm_host <> "/api/v1/write"
+  @vm_query_url @vm_host <> "/api/v1/query"
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -260,6 +263,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert label_map["__name__"] == "http_server_duration_ms"
     end
 
+    # Prometheus remote write v1 has no native encoding for exponential
+    # histograms (introduced in OTLP for sparse high-resolution histograms),
+    # so the adaptor drops them rather than emit a misleading series.
     test "exponential_histogram events are dropped" do
       insert(:plan)
       user = insert(:user)
@@ -281,50 +287,93 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     end
   end
 
-  describe "logs ingestion" do
+  # End-to-end test against the docker-compose `vm` service.
+  #
+  # Requires `docker compose up -d vm` and is excluded by default
+  # (see :integration tag in test/test_helper.exs).
+  #
+  # Run with:
+  #   mix test test/logflare/backends/adaptor/victoria_metrics_adaptor_test.exs --include integration
+  describe "victoriametrics ingestion (e2e)" do
+    @describetag :integration
+
     setup do
       insert(:plan)
       user = insert(:user)
-      source = insert(:source, user: user)
-
-      backend =
-        insert(:backend,
-          type: :victoria_metrics,
-          sources: [source],
-          config: %{url: "http://vm:8428/api/v1/write"}
-        )
-
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
-      [backend: backend, source: source]
+      source = insert(:source, user: user, name: "vm_e2e_test")
+      [source: source]
     end
 
-    test "metric events are forwarded as protobuf payload", %{source: source} do
-      this = self()
-      ref = make_ref()
-
-      @client
-      |> expect(:send, fn req ->
-        send(this, {ref, req[:body]})
-        %Tesla.Env{status: 204, body: ""}
-      end)
+    test "encoded payload is accepted and queryable from VictoriaMetrics", %{source: source} do
+      # unique metric name per run so repeated test runs don't collide
+      metric_name = "logflare_e2e_#{System.unique_integer([:positive])}"
+      timestamp_ns = System.system_time(:nanosecond)
+      expected_value = 42.0
 
       le =
         build(:log_event,
           source: source,
-          event_message: "requests_total",
+          event_message: metric_name,
           metric_type: "gauge",
-          value: 1.0,
-          timestamp: 1_700_000_000_000_000_000,
-          metadata: %{"type" => "metric"}
+          value: expected_value,
+          timestamp: timestamp_ns,
+          metadata: %{"type" => "metric"},
+          attributes: %{"env" => "test"}
         )
 
-      assert {:ok, _} = Backends.ingest_logs([le], source)
-      assert_receive {^ref, body}, 2000
+      body = @subject.format_batch([le])
 
-      {:ok, decompressed} = :snappyer.decompress(body)
-      decoded = Prometheus.WriteRequest.decode(decompressed)
-      assert length(decoded.timeseries) == 1
+      headers = [
+        {"Content-Type", "application/x-protobuf"},
+        {"Content-Encoding", "snappy"},
+        {"X-Prometheus-Remote-Write-Version", "0.1.0"}
+      ]
+
+      assert {:ok, %HTTPoison.Response{status_code: status}} =
+               HTTPoison.post(@vm_remote_write_url, body, headers)
+
+      assert status in 200..299, "VM rejected remote write: status #{status}"
+
+      # VM flushes incoming samples on a short interval; poll until visible.
+      assert eventually(fn ->
+               case HTTPoison.get(@vm_query_url <> "?query=" <> URI.encode(metric_name)) do
+                 {:ok, %HTTPoison.Response{status_code: 200, body: resp}} ->
+                   %{"data" => %{"result" => result}} = Jason.decode!(resp)
+
+                   case result do
+                     [%{"metric" => labels, "value" => [_ts, value_str]} | _] ->
+                       value_str == "#{expected_value}" and labels["source"] == source.name and
+                         labels["env"] == "test"
+
+                     _ ->
+                       false
+                   end
+
+                 _ ->
+                   false
+               end
+             end),
+             "metric #{metric_name} was not visible in VictoriaMetrics within timeout"
+    end
+  end
+
+  defp eventually(fun, timeout_ms \\ 5_000, interval_ms \\ 200) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_eventually(fun, deadline, interval_ms)
+  end
+
+  defp do_eventually(fun, deadline, interval_ms) do
+    case fun.() do
+      true ->
+        true
+
+      _ ->
+        if System.monotonic_time(:millisecond) < deadline do
+          Process.sleep(interval_ms)
+          do_eventually(fun, deadline, interval_ms)
+        else
+          false
+        end
     end
   end
 end

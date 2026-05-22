@@ -104,7 +104,7 @@ services:
           type: prometheus
           access: proxy
           orgId: 1
-          url: http://victoriametrics:8428
+          url: http://vm:8428
           basicAuth: false
           isDefault: false
           version: 1
@@ -116,8 +116,8 @@ services:
       - "3000:3000"
     depends_on:
       - loki
-      - victoriametrics
-  victoriametrics:
+      - vm
+  vm:
     image: victoriametrics/victoria-metrics:v1.106.1
     ports:
       - "8428:8428"
