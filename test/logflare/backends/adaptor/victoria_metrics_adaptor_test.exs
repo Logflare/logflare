@@ -234,25 +234,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     @describetag :integration
 
     setup do
-      # The global Mimic.stub(Finch) in test_helper.exs intercepts all Finch
-      # calls. Override with passthrough so the Broadway pipeline can actually
-      # POST to the docker-compose `vm` service.
-      Mimic.stub(Finch, :build, fn m, u, h, b ->
-        Mimic.call_original(Finch, :build, [m, u, h, b])
-      end)
-
-      Mimic.stub(Finch, :build, fn m, u, h, b, o ->
-        Mimic.call_original(Finch, :build, [m, u, h, b, o])
-      end)
-
-      Mimic.stub(Finch, :request, fn r, n ->
-        Mimic.call_original(Finch, :request, [r, n])
-      end)
-
-      Mimic.stub(Finch, :request, fn r, n, o ->
-        Mimic.call_original(Finch, :request, [r, n, o])
-      end)
-
       insert(:plan)
       user = insert(:user)
 
