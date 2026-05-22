@@ -768,8 +768,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   end
 
   describe "QueueJanitor dynamic purge ratio under memory pressure" do
-    test "scales 2x at moderate memory utilization (>= 60%)" do
-      Mimic.stub(Logflare.System, :memory_utilization, fn -> 0.65 end)
+    test "scales 2x at high memory utilization (>= 75%)" do
+      Mimic.stub(Logflare.System, :memory_utilization, fn -> 0.78 end)
 
       user = insert(:user)
       source = insert(:source, user: user)
@@ -788,8 +788,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == 80
     end
 
-    test "scales 5x at high memory utilization (>= 75%)" do
-      Mimic.stub(Logflare.System, :memory_utilization, fn -> 0.78 end)
+    test "scales 5x at critical memory utilization (>= 85%) but does not purge everything" do
+      Mimic.stub(Logflare.System, :memory_utilization, fn -> 0.9 end)
 
       user = insert(:user)
       source = insert(:source, user: user)
@@ -808,28 +808,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == 50
     end
 
-    test "purges everything at critical memory utilization (>= 85%)" do
-      Mimic.stub(Logflare.System, :memory_utilization, fn -> 0.9 end)
-
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, user: user)
-      pid = self()
-      IngestEventQueue.upsert_tid({source.id, backend.id, pid})
-      batch = for _ <- 1..100, do: build(:log_event, source: source)
-      IngestEventQueue.add_to_table({source.id, backend.id, pid}, batch)
-
-      start_supervised!(
-        {QueueJanitor, source: source, backend: backend, interval: 50, max: 90, purge_ratio: 0.1}
-      )
-
-      :timer.sleep(550)
-      # 0.1 * 20.0 = 2.0, capped to 1.0 → entire pending queue dropped
-      assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == 0
-    end
-
-    test "uses base ratio when memory utilization is low (< 60%)" do
-      Mimic.stub(Logflare.System, :memory_utilization, fn -> 0.3 end)
+    test "uses base ratio when memory utilization is below 75%" do
+      Mimic.stub(Logflare.System, :memory_utilization, fn -> 0.7 end)
 
       user = insert(:user)
       source = insert(:source, user: user)

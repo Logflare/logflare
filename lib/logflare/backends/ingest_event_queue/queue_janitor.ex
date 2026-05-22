@@ -155,9 +155,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
     factor =
       cond do
-        util >= 0.85 -> 20.0
-        util >= 0.75 -> 5.0
-        util >= 0.6 -> 2.0
+        util >= 0.85 -> 5.0
+        util >= 0.75 -> 2.0
         true -> 1.0
       end
 
