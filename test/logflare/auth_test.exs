@@ -1,5 +1,6 @@
 defmodule Logflare.AuthTest do
   use Logflare.DataCase
+
   alias Logflare.Auth
   alias Logflare.Factory
   alias Logflare.OauthAccessTokens.OauthAccessToken
@@ -27,6 +28,87 @@ defmodule Logflare.AuthTest do
 
       assert Auth.list_valid_access_tokens(user) |> length() == 3
       assert Auth.list_valid_access_tokens(partner) |> length() == 2
+    end
+
+    test "user token attrs rejects partner scope via changeset error", %{user: user} do
+      assert_scope_error(Auth.create_access_token(user, %{"scopes" => "partner"}))
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "partner"}))
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest partner"}))
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "partner ingest"}))
+    end
+
+    test "create_access_token/2 ignores caller-supplied :token for users", %{user: user} do
+      attacker = "attacker-chosen-#{Logflare.TestUtils.random_string(12)}"
+
+      {:ok, token_atom} = Auth.create_access_token(user, %{token: attacker})
+      assert token_atom.token != attacker
+
+      {:ok, token_string} = Auth.create_access_token(user, %{"token" => attacker})
+      assert token_string.token != attacker
+    end
+
+    test "create_access_token/2 ignores caller-supplied :token for partners", %{partner: partner} do
+      attacker = "attacker-chosen-#{Logflare.TestUtils.random_string(12)}"
+
+      {:ok, token_atom} = Auth.create_access_token(partner, %{token: attacker})
+      assert token_atom.token != attacker
+
+      {:ok, token_string} = Auth.create_access_token(partner, %{"token" => attacker})
+      assert token_string.token != attacker
+    end
+
+    test "create_access_token_with_token/2 honors caller-supplied :token", %{user: user} do
+      explicit = "server-controlled-#{Logflare.TestUtils.random_string(12)}"
+
+      {:ok, token} =
+        Auth.create_access_token_with_token(user, %{token: explicit, scopes: "public"})
+
+      assert token.token == explicit
+      assert token.scopes == "public"
+    end
+
+    test "user token attrs rejects unrecognized scopes via changeset error", %{user: user} do
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest admin"}))
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest:source:not-a-number"}))
+      assert_scope_error(Auth.create_access_token(user, %{scopes: "ingest  partner"}))
+    end
+
+    test "partner token always receives partner scope regardless of attrs", %{partner: partner} do
+      {:ok, token} = Auth.create_access_token(partner, %{})
+      assert token.scopes == "partner"
+
+      {:ok, token} = Auth.create_access_token(partner, %{scopes: "ingest"})
+      assert token.scopes == "partner"
+    end
+
+    test "team-owned token forwards attrs to the underlying user", %{team: team} do
+      {:ok, token} = Auth.create_access_token(team, %{scopes: "private"})
+      assert token.scopes == "private"
+      assert {:ok, _, _} = Auth.verify_access_token(token, ~w(private))
+    end
+
+    test "get_access_token/2 retrieves a user token", %{user: user} do
+      assert {:ok, %OauthAccessToken{token: token_str}} = Auth.create_access_token(user)
+      assert %OauthAccessToken{token: ^token_str} = Auth.get_access_token(user, token_str)
+    end
+
+    test "get_access_token/2 retrieves a partner token", %{partner: partner} do
+      assert {:ok, %PartnerOauthAccessToken{token: token_str}} = Auth.create_access_token(partner)
+
+      assert %PartnerOauthAccessToken{token: ^token_str} =
+               Auth.get_access_token(partner, token_str)
+    end
+
+    test "get_valid_access_token/2 retrieves non-revoked tokens for user and partner", %{
+      user: user,
+      partner: partner
+    } do
+      {:ok, %OauthAccessToken{token: user_token}} = Auth.create_access_token(user)
+      {:ok, %PartnerOauthAccessToken{token: partner_token}} = Auth.create_access_token(partner)
+
+      assert %OauthAccessToken{token: ^user_token} = Auth.get_valid_access_token(user, user_token)
+      assert %{token: ^partner_token} = Auth.get_valid_access_token(partner, partner_token)
+      refute Auth.get_valid_access_token(user, "missing")
     end
 
     test "can revoke access tokens", %{user: user} do
@@ -58,7 +140,9 @@ defmodule Logflare.AuthTest do
     # scope to a specific resource
     # source and collection are resource aliases. i.e. they refer to the same resource.
     for name <- ["source", "collection"] do
-      {:ok, key} = Auth.create_access_token(user, %{scopes: "ingest:#{name}:3 ingest:#{name}:1"})
+      {:ok, key} =
+        Auth.create_access_token(user, %{scopes: "ingest:#{name}:3 ingest:#{name}:1"})
+
       assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest:#{name}:1))
       assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest:#{name}:3))
     end
@@ -146,5 +230,10 @@ defmodule Logflare.AuthTest do
   defp access_token_fixture(user_or_team_or_partner) do
     {:ok, key} = Auth.create_access_token(user_or_team_or_partner)
     key
+  end
+
+  defp assert_scope_error(result) do
+    assert {:error, %Ecto.Changeset{errors: errors}} = result
+    assert Keyword.has_key?(errors, :scopes)
   end
 end

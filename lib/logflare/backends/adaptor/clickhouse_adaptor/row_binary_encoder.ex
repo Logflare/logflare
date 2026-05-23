@@ -353,7 +353,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
           key_encoder :: (term() -> binary() | iodata()),
           value_encoder :: (term() -> binary() | iodata())
         ) :: iodata()
-  def map(items, _key_encoder, _value_encoder) when items == %{}, do: [<<0>>]
+  def map(items, _key_encoder, _value_encoder) when is_empty_map(items), do: [<<0>>]
   def map([], _key_encoder, _value_encoder), do: [<<0>>]
 
   def map(items, key_encoder, value_encoder)

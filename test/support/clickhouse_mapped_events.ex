@@ -8,6 +8,7 @@ defmodule Logflare.ClickHouseMappedEvents do
   """
 
   import Logflare.Factory
+  import Logflare.Utils.Guards, only: [is_empty_map: 1]
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
   alias Logflare.Mapper
@@ -145,7 +146,7 @@ defmodule Logflare.ClickHouseMappedEvents do
 
   defp resolve_severity_number(body), do: body
 
-  defp deep_merge_opts(base, overrides) when map_size(overrides) == 0, do: base
+  defp deep_merge_opts(base, overrides) when is_empty_map(overrides), do: base
 
   defp deep_merge_opts(base, overrides) do
     Map.merge(base, overrides, fn

@@ -1,25 +1,7 @@
-# credo:disable-for-this-file Credo.Check.Refactor.IoPuts
-#
-# Usage: MIX_ENV=test mix run test/profiling/log_event_make_profile.exs
-#
-# Surfaces per-function time inside LogEvent.make/2 via :tprof, using the
-# realistic edge_log and otel_trace fixtures from log_event_make_bench.exs.
-# The edge_log payload (~80 leaves of mixed-case Cloudflare metadata across
-# 4-5 nesting levels) is the larger stress case and the default.
-#
-# Env:
-#   ITERATIONS — iterations per profile run (default 2000)
-#   TPROF_TYPE — time | calls | memory (default time)
-#   FIXTURE    — edge_log | otel_trace (default edge_log)
+alias Logflare.Logs.Ingest.MetadataCleaner
 
-alias Logflare.LogEvent
-
-import Logflare.Factory
-
-user = insert(:user)
-source = insert(:source, user: user)
-
-otel_trace_params = %{
+# OTEL trace shape (shallow, ~15 leaves, depth 2-3)
+otel_trace = %{
   "attributes" => %{
     "_client_address" => "2600:1fc4:22a5:ae73:2887:684b:66c0:1f85",
     "_http_request_method" => "POST",
@@ -48,11 +30,12 @@ otel_trace_params = %{
   },
   "span_id" => "c99f33f1bfa4fb8f",
   "start_time" => "2026-01-21T17:54:48.144506Z",
-  "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
+  "timestamp" => "2026-01-21T17:54:48.144506Z",
   "trace_id" => "f9918d38f5d1cb74ec5656b9a315e5f6"
 }
 
-edge_log_params = %{
+# Edge log shape (~80 leaves, depth 4-5)
+edge_log = %{
   "event_message" =>
     "POST | 200 | 3.254.227.51 | 9ca90d4f3f7cc99e | https://example.supabase.co/rest/v1/calls",
   "id" => "3701391c-dead-405d-9943-61cc7576da87",
@@ -139,27 +122,33 @@ edge_log_params = %{
   },
   "project" => "example_project",
   "request_id" => "a99b2a69-dead-752e-78bb-14ca90530fe1",
-  "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
+  "timestamp" => "2026-01-21T17:54:48.144506Z"
 }
 
-fixtures = %{"otel_trace" => otel_trace_params, "edge_log" => edge_log_params}
-fixture_name = System.get_env("FIXTURE") || "edge_log"
-params = Map.fetch!(fixtures, fixture_name)
+# List-heavy payload (stacktrace-like; exercises do_flatten_list / index keys)
+list_heavy = %{
+  "stacktrace" =>
+    for i <- 0..49 do
+      %{
+        "file" => "lib/some/module#{i}.ex",
+        "function" => "do_thing/#{rem(i, 5)}",
+        "line" => i * 7,
+        "module" => "Some.Module#{i}",
+        "arity_or_args" => [i, "arg", %{"k" => i}]
+      }
+    end,
+  "tags" => for(i <- 0..19, do: "tag-#{i}"),
+  "event_message" => "exception"
+}
 
-iterations = String.to_integer(System.get_env("ITERATIONS") || "2000")
-type = String.to_atom(System.get_env("TPROF_TYPE") || "time")
-
-for _ <- 1..500, do: LogEvent.make(params, %{source: source})
-
-IO.puts(
-  "\n== :tprof #{type} over #{iterations} iterations of LogEvent.make/2 (#{fixture_name}) ==\n"
-)
-
-Mix.Tasks.Profile.Tprof.profile(
-  fn ->
-    for _ <- 1..iterations, do: LogEvent.make(params, %{source: source})
-  end,
-  type: type,
-  warmup: 0,
-  sort: :per_call
+Benchee.run(
+  %{
+    "otel trace" => fn -> MetadataCleaner.flatten(otel_trace) end,
+    "edge log" => fn -> MetadataCleaner.flatten(edge_log) end,
+    "list heavy" => fn -> MetadataCleaner.flatten(list_heavy) end
+  },
+  time: 5,
+  warmup: 2,
+  memory_time: 3,
+  reduction_time: 3
 )

@@ -1,20 +1,19 @@
 defmodule Logflare.BigQuery.PipelineTest do
   @moduledoc false
   use Logflare.DataCase
+  use ExUnitProperties
 
   import ExUnit.CaptureLog
 
+  alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
+  alias Logflare.Backends
+  alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
-  alias Logflare.LogEvent
   alias Logflare.User
-  alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
-  alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.Backend
-  alias Logflare.Backends
-  alias Logflare.PubSubRates.Cache, as: PubSubRatesCache
-  use ExUnitProperties
 
   @pipeline_name :test_pipeline
   describe "pipeline" do

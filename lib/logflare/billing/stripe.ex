@@ -9,7 +9,7 @@ defmodule Logflare.Billing.Stripe do
   alias Logflare.Billing
   alias Logflare.User
   alias Logflare.Sources
-  alias Stripe.SubscriptionItem.Usage, as: SubscriptionItemUsage
+  alias Stripe.UsageRecord
 
   @trial_days_default 15
 
@@ -26,7 +26,7 @@ defmodule Logflare.Billing.Stripe do
       setup_intent_data: %{metadata: %{subscription_id: subscription["id"]}}
     }
 
-    Stripe.Session.create(params)
+    Stripe.Checkout.Session.create(params)
   end
 
   def create_payment_session(
@@ -47,7 +47,7 @@ defmodule Logflare.Billing.Stripe do
       ]
     }
 
-    Stripe.Session.create(params)
+    Stripe.Checkout.Session.create(params)
   end
 
   def create_customer_session(
@@ -71,7 +71,7 @@ defmodule Logflare.Billing.Stripe do
       subscription_data: %{trial_from_plan: true}
     }
 
-    Stripe.Session.create(params)
+    Stripe.Checkout.Session.create(params)
   end
 
   def create_metered_customer_session(
@@ -93,13 +93,13 @@ defmodule Logflare.Billing.Stripe do
       subscription_data: %{trial_end: trial_end()}
     }
 
-    Stripe.Session.create(params)
+    Stripe.Checkout.Session.create(params)
   end
 
   def find_completed_session(session_id) do
     with {:ok, %Stripe.List{data: events}} <-
            list_stripe_events_by(%{type: "checkout.session.completed"}),
-         %Stripe.Event{data: %{object: %Stripe.Session{} = stripe_session}} <-
+         %Stripe.Event{data: %{object: %Stripe.Checkout.Session{} = stripe_session}} <-
            Enum.find(events, fn %Stripe.Event{} = e -> e.data.object.id == session_id end) do
       {:ok, stripe_session}
     else
@@ -207,20 +207,19 @@ defmodule Logflare.Billing.Stripe do
   end
 
   def attatch_payment_method(id, pm_id) do
-    Stripe.PaymentMethod.attach(%{customer: id, payment_method: pm_id})
+    Stripe.PaymentMethod.attach(pm_id, %{customer: id})
   end
 
   def detach_payment_method(pm_id) do
-    Stripe.PaymentMethod.detach(%{payment_method: pm_id})
+    Stripe.PaymentMethod.detach(pm_id)
   end
 
   def list_payment_methods(id) do
-    # TODO: once we upgrade to v3 of :stripity_stripe we should revert the type to atom :card
     Stripe.PaymentMethod.list(%{customer: id, type: "card"})
   end
 
   def delete_subscription(id) do
-    Stripe.Subscription.delete(id)
+    Stripe.Subscription.cancel(id, %{})
   end
 
   def list_customer_subscriptions(stripe_customer_id) do
@@ -256,7 +255,7 @@ defmodule Logflare.Billing.Stripe do
       timestamp: timestamp
     }
 
-    SubscriptionItemUsage.create(subscription_item_id, params)
+    UsageRecord.create(subscription_item_id, params)
   end
 
   def trial_end(days \\ @trial_days_default) do

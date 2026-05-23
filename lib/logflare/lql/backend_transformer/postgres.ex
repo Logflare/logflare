@@ -55,16 +55,10 @@ defmodule Logflare.Lql.BackendTransformer.Postgres do
   def apply_select_rules_to_query(query, [], _opts), do: query
 
   def apply_select_rules_to_query(query, select_rules, _opts) do
-    normalized_rules =
-      case Enum.find(select_rules, & &1.wildcard) do
-        nil -> select_rules
-        _wildcard -> [%{wildcard: true, path: "*"}]
-      end
-
-    case normalized_rules do
-      [] -> query
-      [%{wildcard: true}] -> query
-      rules -> build_combined_select(query, rules)
+    if Enum.any?(select_rules, & &1.wildcard) do
+      query
+    else
+      build_combined_select(query, select_rules)
     end
   end
 

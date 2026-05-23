@@ -23,6 +23,8 @@ defmodule Logflare.Application do
     Inspect.Opts.default_inspect_fun(&Utils.inspect_fun(prev, &1, &2))
 
     start_user_log_interceptor()
+    add_logger_backends()
+    warn_if_stripe_webhook_secret_unset()
 
     env = Application.get_env(:logflare, :env)
     # TODO: Set node status in GCP when sigterm is received
@@ -124,6 +126,14 @@ defmodule Logflare.Application do
       ]
   end
 
+  defp warn_if_stripe_webhook_secret_unset do
+    unless Application.get_env(:logflare, :stripe_webhook_secret) do
+      Logger.warning(
+        "STRIPE_WEBHOOK_SECRET is not set — all Stripe webhook requests will be rejected"
+      )
+    end
+  end
+
   defp start_user_log_interceptor do
     if Application.get_env(:logflare, :env) == :test do
       :ok
@@ -132,6 +142,12 @@ defmodule Logflare.Application do
         :user_log_intercetor,
         {&UserMonitoring.log_interceptor/2, []}
       )
+    end
+  end
+
+  defp add_logger_backends do
+    for backend <- Application.get_env(:logflare, :logger_backends, []) do
+      {:ok, _pid} = LoggerBackends.add(backend)
     end
   end
 

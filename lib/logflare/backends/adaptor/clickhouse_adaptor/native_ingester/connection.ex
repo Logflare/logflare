@@ -436,14 +436,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   @spec skip_settings_loop(t()) :: {:ok, t()} | {:error, term()}
   defp skip_settings_loop(conn) do
     with {:ok, name, conn} <- read_string(conn) do
-      if name == "" do
-        {:ok, conn}
-      else
-        with {:ok, _flags, conn} <- read_varuint(conn),
-             {:ok, _value, conn} <- read_string(conn) do
-          skip_settings_loop(conn)
-        end
-      end
+      skip_setting(conn, name)
+    end
+  end
+
+  defp skip_setting(conn, ""), do: {:ok, conn}
+
+  defp skip_setting(conn, _name) do
+    with {:ok, _flags, conn} <- read_varuint(conn),
+         {:ok, _value, conn} <- read_string(conn) do
+      skip_settings_loop(conn)
     end
   end
 
@@ -694,50 +696,47 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   defp read_query_response_loop(%__MODULE__{} = conn, column_info) do
     with {:ok, packet_type, conn} <- read_varuint(conn),
          {:ok, conn} <- maybe_decompress_server_payload(conn, packet_type) do
-      case packet_type do
-        1 ->
-          with {:ok, new_column_info, conn} <- read_data_block(conn) do
-            if new_column_info != [] do
-              {:ok, new_column_info, conn}
-            else
-              read_query_response_loop(conn, column_info)
-            end
-          end
+      handle_query_response_packet(conn, packet_type, column_info)
+    end
+  end
 
-        2 ->
-          read_exception(conn)
-
-        3 ->
-          with {:ok, conn} <- skip_progress(conn) do
-            read_query_response_loop(conn, column_info)
-          end
-
-        5 ->
-          if column_info do
-            {:ok, column_info, conn}
-          else
-            {:error, :no_column_info}
-          end
-
-        10 ->
-          with {:ok, conn} <- skip_data_block(conn) do
-            read_query_response_loop(conn, column_info)
-          end
-
-        11 ->
-          with {:ok, conn} <- skip_table_columns(conn) do
-            read_query_response_loop(conn, column_info)
-          end
-
-        14 ->
-          with {:ok, conn} <- skip_data_block(conn) do
-            read_query_response_loop(conn, column_info)
-          end
-
-        other ->
-          {:error, {:unexpected_packet_type, other}}
+  @spec handle_query_response_packet(t(), non_neg_integer(), column_info() | nil) ::
+          {:ok, column_info(), t()} | {:error, term()}
+  defp handle_query_response_packet(conn, 1, column_info) do
+    with {:ok, new_column_info, conn} <- read_data_block(conn) do
+      case new_column_info do
+        [] -> read_query_response_loop(conn, column_info)
+        info -> {:ok, info, conn}
       end
     end
+  end
+
+  defp handle_query_response_packet(conn, 2, _column_info), do: read_exception(conn)
+
+  defp handle_query_response_packet(conn, 3, column_info) do
+    with {:ok, conn} <- skip_progress(conn) do
+      read_query_response_loop(conn, column_info)
+    end
+  end
+
+  defp handle_query_response_packet(_conn, 5, nil), do: {:error, :no_column_info}
+  defp handle_query_response_packet(conn, 5, column_info), do: {:ok, column_info, conn}
+
+  defp handle_query_response_packet(conn, packet_type, column_info)
+       when packet_type in [10, 14] do
+    with {:ok, conn} <- skip_data_block(conn) do
+      read_query_response_loop(conn, column_info)
+    end
+  end
+
+  defp handle_query_response_packet(conn, 11, column_info) do
+    with {:ok, conn} <- skip_table_columns(conn) do
+      read_query_response_loop(conn, column_info)
+    end
+  end
+
+  defp handle_query_response_packet(_conn, other, _column_info) do
+    {:error, {:unexpected_packet_type, other}}
   end
 
   @spec read_data_block(t()) :: {:ok, column_info(), t()} | {:error, term()}
@@ -781,21 +780,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
     with {:ok, checksum, conn} <- read_bytes(conn, 16),
          {:ok, <<method::8>>, conn} <- read_bytes(conn, 1),
          {:ok, <<compressed_size::little-unsigned-32>>, conn} <- read_bytes(conn, 4),
-         {:ok, <<uncompressed_size::little-unsigned-32>>, conn} <- read_bytes(conn, 4) do
-      data_size = compressed_size - @compressed_header_size
+         {:ok, <<uncompressed_size::little-unsigned-32>>, conn} <- read_bytes(conn, 4),
+         data_size = compressed_size - @compressed_header_size,
+         {:ok, compressed_data, conn} <- read_bytes(conn, data_size) do
+      envelope =
+        <<checksum::binary, method::8, compressed_size::little-unsigned-32,
+          uncompressed_size::little-unsigned-32, compressed_data::binary>>
 
-      with {:ok, compressed_data, conn} <- read_bytes(conn, data_size) do
-        envelope =
-          <<checksum::binary, method::8, compressed_size::little-unsigned-32,
-            uncompressed_size::little-unsigned-32, compressed_data::binary>>
+      case Compression.decompress(envelope) do
+        {:ok, decompressed} ->
+          {:ok, %{conn | buffer: decompressed <> conn.buffer}}
 
-        case Compression.decompress(envelope) do
-          {:ok, decompressed} ->
-            {:ok, %{conn | buffer: decompressed <> conn.buffer}}
-
-          {:error, reason} ->
-            {:error, {:decompression_error, reason}}
-        end
+        {:error, reason} ->
+          {:error, {:decompression_error, reason}}
       end
     end
   end
@@ -839,24 +836,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   @spec read_block_info_loop(t()) :: {:ok, t()} | {:error, term()}
   defp read_block_info_loop(conn) do
     with {:ok, field_num, conn} <- read_varuint(conn) do
-      case field_num do
-        0 ->
-          {:ok, conn}
-
-        1 ->
-          with {:ok, _is_overflows, conn} <- read_uint8(conn), do: read_block_info_loop(conn)
-
-        2 ->
-          with {:ok, _bucket_num, conn} <- read_int32(conn), do: read_block_info_loop(conn)
-
-        3 ->
-          with {:ok, conn} <- skip_int32_vector(conn), do: read_block_info_loop(conn)
-
-        _other ->
-          read_block_info_loop(conn)
-      end
+      handle_block_info_field(conn, field_num)
     end
   end
+
+  @spec handle_block_info_field(t(), non_neg_integer()) :: {:ok, t()} | {:error, term()}
+  defp handle_block_info_field(conn, 0), do: {:ok, conn}
+
+  defp handle_block_info_field(conn, 1) do
+    with {:ok, _is_overflows, conn} <- read_uint8(conn) do
+      read_block_info_loop(conn)
+    end
+  end
+
+  defp handle_block_info_field(conn, 2) do
+    with {:ok, _bucket_num, conn} <- read_int32(conn) do
+      read_block_info_loop(conn)
+    end
+  end
+
+  defp handle_block_info_field(conn, 3) do
+    with {:ok, conn} <- skip_int32_vector(conn) do
+      read_block_info_loop(conn)
+    end
+  end
+
+  defp handle_block_info_field(conn, _other), do: read_block_info_loop(conn)
 
   @spec skip_int32_vector(t()) :: {:ok, t()} | {:error, term()}
   defp skip_int32_vector(conn) do
@@ -980,26 +985,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
   defp read_insert_response_loop(%__MODULE__{} = conn) do
     with {:ok, packet_type, conn} <- read_varuint(conn),
          {:ok, conn} <- maybe_decompress_server_payload(conn, packet_type) do
-      case packet_type do
-        5 ->
-          drain_trailing_packets(conn)
-
-        2 ->
-          read_exception(conn)
-
-        3 ->
-          with {:ok, conn} <- skip_progress(conn), do: read_insert_response_loop(conn)
-
-        10 ->
-          with {:ok, conn} <- skip_data_block(conn), do: read_insert_response_loop(conn)
-
-        14 ->
-          with {:ok, conn} <- skip_data_block(conn), do: read_insert_response_loop(conn)
-
-        other ->
-          {:error, {:unexpected_packet_type, other}}
-      end
+      handle_insert_response_packet(conn, packet_type)
     end
+  end
+
+  @spec handle_insert_response_packet(t(), non_neg_integer()) :: {:ok, t()} | {:error, term()}
+  defp handle_insert_response_packet(conn, 5), do: drain_trailing_packets(conn)
+  defp handle_insert_response_packet(conn, 2), do: read_exception(conn)
+
+  defp handle_insert_response_packet(conn, 3) do
+    with {:ok, conn} <- skip_progress(conn) do
+      read_insert_response_loop(conn)
+    end
+  end
+
+  defp handle_insert_response_packet(conn, 10) do
+    with {:ok, conn} <- skip_data_block(conn) do
+      read_insert_response_loop(conn)
+    end
+  end
+
+  defp handle_insert_response_packet(conn, 14) do
+    with {:ok, conn} <- skip_data_block(conn) do
+      read_insert_response_loop(conn)
+    end
+  end
+
+  defp handle_insert_response_packet(_conn, other) do
+    {:error, {:unexpected_packet_type, other}}
   end
 
   @spec drain_trailing_packets(t()) :: {:ok, t()}
@@ -1007,19 +1020,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
        when byte_size(buffer) > 0 do
     with {:ok, packet_type, conn} <- read_varuint(conn),
          {:ok, conn} <- maybe_decompress_server_payload(conn, packet_type) do
-      case packet_type do
-        14 ->
-          with {:ok, conn} <- skip_data_block(conn), do: drain_trailing_packets(conn)
-
-        3 ->
-          with {:ok, conn} <- skip_progress(conn), do: drain_trailing_packets(conn)
-
-        10 ->
-          with {:ok, conn} <- skip_data_block(conn), do: drain_trailing_packets(conn)
-
-        _ ->
-          {:ok, conn}
-      end
+      handle_drain_packet(conn, packet_type)
     else
       _ -> {:ok, conn}
     end
@@ -1041,6 +1042,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection 
         {:ok, %{conn | recv_timeout: @default_recv_timeout}}
     end
   end
+
+  @spec handle_drain_packet(t(), non_neg_integer()) :: {:ok, t()} | {:error, term()}
+  defp handle_drain_packet(conn, packet_type) when packet_type in [10, 14] do
+    with {:ok, conn} <- skip_data_block(conn) do
+      drain_trailing_packets(conn)
+    end
+  end
+
+  defp handle_drain_packet(conn, 3) do
+    with {:ok, conn} <- skip_progress(conn) do
+      drain_trailing_packets(conn)
+    end
+  end
+
+  defp handle_drain_packet(conn, _other), do: {:ok, conn}
 
   # ---------------------------------------------------------------------------
   # Exception parsing

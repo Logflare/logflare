@@ -1,9 +1,10 @@
 defmodule LogflareWeb.BackendsLive do
   @moduledoc false
+
   use LogflareWeb, :live_view
 
   import LogflareWeb.Backends.Components
-  import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
+  import LogflareWeb.Utils, only: [stringify_changeset_errors: 1, with_team_param: 2]
 
   alias Logflare.Backends
   alias Logflare.Rules
@@ -79,7 +80,7 @@ defmodule LogflareWeb.BackendsLive do
           |> refresh_backend(backend.id)
           |> refresh_backends()
           |> put_flash(:info, "Successfully updated backend")
-          |> push_patch(to: ~p"/backends/#{backend.id}")
+          |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
 
         {:error, changeset} ->
           message = stringify_changeset_errors(changeset)
@@ -103,7 +104,7 @@ defmodule LogflareWeb.BackendsLive do
           |> assign(:show_rule_form?, false)
           |> assign(:backends, [backend | socket.assigns.backends])
           |> put_flash(:info, "Successfully created backend")
-          |> push_patch(to: ~p"/backends/#{backend.id}")
+          |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
 
         {:error, changeset} ->
           message = stringify_changeset_errors(changeset)
@@ -528,7 +529,7 @@ defmodule LogflareWeb.BackendsLive do
         socket
         |> put_flash(:info, "Successfully deleted backend of type #{backend.type}")
         |> refresh_backends()
-        |> push_patch(to: ~p"/backends")
+        |> push_patch(to: with_team_param(~p"/backends", socket.assigns.team))
 
       {:noreply, socket}
     else

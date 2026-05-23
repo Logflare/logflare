@@ -72,7 +72,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
-  @spec to_typemap(map | TS.t() | nil) :: %{required(atom) => map | atom}
+  @spec to_typemap(term()) :: map() | nil
   def to_typemap(nil), do: nil
 
   def to_typemap(%TS{} = schema), do: to_typemap(schema, from: :bigquery_schema)
@@ -85,13 +85,13 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
               match?(%NaiveDateTime{}, v) ->
             %{t: :datetime}
 
-          is_list(v) and is_map(hd(v)) ->
+          is_list(v) and Enum.any?(v, &is_map/1) ->
             %{
               t: :map,
               fields: Enum.reduce(v, %{}, &Map.merge(&2, to_typemap(&1)))
             }
 
-          is_list(v) and not is_map(hd(v)) ->
+          is_list(v) ->
             %{t: {:list, type_of(hd(v))}}
 
           is_map(v) ->
@@ -111,6 +111,11 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
       {k, v}
     end
   end
+
+  # Reached recursively from the list-of-maps branch above when an element
+  # isn't a map (e.g. [%{...}, "x"]). Returning %{} keeps the surrounding
+  # Map.merge a no-op without crashing the walk.
+  def to_typemap(_), do: %{}
 
   defp decode_until_valid!(k, encodings \\ [:utf8, :unicode, :latin1])
 
@@ -200,12 +205,12 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   defp do_flatten_typemap(typemap, prefix, acc) do
     Enum.reduce(typemap, acc, fn {key, value}, acc ->
-      flat_key =
-        if prefix == "", do: to_string(key), else: prefix <> "." <> to_string(key)
-
-      flatten_node(value, flat_key, acc)
+      flatten_node(value, join_key(prefix, key), acc)
     end)
   end
+
+  defp join_key("", key), do: to_string(key)
+  defp join_key(prefix, key), do: prefix <> "." <> to_string(key)
 
   defp flatten_node(%{t: :map, fields: fields}, key, acc) do
     do_flatten_typemap(fields, key, Map.put(acc, key, :map))
@@ -213,5 +218,37 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   defp flatten_node(%{t: type}, key, acc) do
     Map.put(acc, key, type)
+  end
+
+  @spec get_type_for_path([term()], map()) :: atom() | nil
+  def get_type_for_path(path, flat_schema_map) when is_list(path) and is_map(flat_schema_map) do
+    path
+    |> schema_keys_for_path()
+    |> Enum.find_value(fn key -> Map.get(flat_schema_map, key) end)
+  end
+
+  def get_type_for_path(_path, _flat_schema_map), do: nil
+
+  defp schema_keys_for_path(path) do
+    direct_key = path |> Enum.map(&to_string/1) |> Enum.join(".")
+
+    without_array_indexes =
+      path
+      |> Enum.reject(&array_index?/1)
+      |> Enum.map(&to_string/1)
+      |> Enum.join(".")
+
+    [direct_key, without_array_indexes]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  defp array_index?(segment) when is_integer(segment), do: true
+
+  defp array_index?(segment) do
+    case Integer.parse(to_string(segment)) do
+      {_index, ""} -> true
+      _ -> false
+    end
   end
 end

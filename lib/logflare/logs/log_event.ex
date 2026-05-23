@@ -171,7 +171,8 @@ defmodule Logflare.LogEvent do
   defp transform(%LE{valid: true} = le, %Source{} = source) do
     with {:ok, le} <- bigquery_spec(le),
          {:ok, le} <- copy_fields(le, source),
-         {:ok, le} <- kv_enrich(le, source) do
+         {:ok, le} <- kv_enrich(le, source),
+         {:ok, le} <- drop_fields(le, source) do
       le
     else
       {:error, message} ->
@@ -194,34 +195,30 @@ defmodule Logflare.LogEvent do
   end
 
   @spec copy_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
-  defp copy_fields(%LE{} = le, %Source{transform_copy_fields: nil}), do: {:ok, le}
+  defp copy_fields(%LE{} = le, %Source{
+         transform_copy_fields_parsed: nil,
+         transform_copy_fields: blank
+       })
+       when blank in [nil, ""],
+       do: {:ok, le}
 
-  defp copy_fields(le, source) do
-    instructions = String.split(source.transform_copy_fields, ~r/\n/, trim: true)
+  defp copy_fields(%LE{} = le, %Source{transform_copy_fields_parsed: []}), do: {:ok, le}
 
+  defp copy_fields(%LE{} = le, %Source{transform_copy_fields_parsed: parsed})
+       when is_list(parsed) do
     new_body =
-      for instruction <- instructions, instruction = String.trim(instruction), reduce: le.body do
-        acc ->
-          case String.split(instruction, ":", parts: 2) do
-            [from, to] ->
-              from = String.replace_prefix(from, "m.", "metadata.")
-              from_path = String.split(from, ".")
+      Enum.reduce(parsed, le.body, fn %{from_path: from_path, to_path: to_path}, acc ->
+        case get_in(acc, from_path) do
+          nil -> acc
+          value -> put_at_path(acc, to_path, value)
+        end
+      end)
 
-              to = String.replace_prefix(to, "m.", "metadata.")
-              to_path = String.split(to, ".")
+    {:ok, %{le | body: new_body}}
+  end
 
-              if value = get_in(acc, from_path) do
-                put_in(acc, Enum.map(to_path, &Access.key(&1, %{})), value)
-              else
-                acc
-              end
-
-            _ ->
-              acc
-          end
-      end
-
-    {:ok, Map.put(le, :body, new_body)}
+  defp copy_fields(%LE{} = le, %Source{} = source) do
+    copy_fields(le, Source.parse_copy_fields_config(source))
   end
 
   @spec kv_enrich(LE.t(), Source.t()) :: {:ok, LE.t()}
@@ -237,7 +234,7 @@ defmodule Logflare.LogEvent do
         apply_kv_instruction(acc, instruction, user_id)
       end)
 
-    {:ok, Map.put(le, :body, new_body)}
+    {:ok, %{le | body: new_body}}
   end
 
   # Fallback: parse at ingestion time when parsed field is not populated
@@ -258,11 +255,51 @@ defmodule Logflare.LogEvent do
          true <- Logflare.Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-
            KeyValues.Cache.lookup(user_id, raw_string, accessor_path) do
-      put_in(body, Enum.map(to_path, &Access.key(&1, %{})), value)
+      put_at_path(body, to_path, value)
     else
       _ -> body
     end
   end
+
+  @spec put_at_path(map(), [String.t()], term()) :: map()
+  defp put_at_path(map, [leaf], value) when is_map(map), do: Map.put(map, leaf, value)
+
+  defp put_at_path(map, [head | rest], value) when is_map(map) do
+    child = Map.get(map, head, %{})
+    Map.put(map, head, put_at_path(child, rest, value))
+  end
+
+  @spec drop_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
+  defp drop_fields(%LE{} = le, %Source{
+         transform_drop_fields_parsed: nil,
+         transform_drop_fields: blank
+       })
+       when blank in [nil, ""],
+       do: {:ok, le}
+
+  defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: []}), do: {:ok, le}
+
+  defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: parsed})
+       when is_list(parsed) do
+    new_body = Enum.reduce(parsed, le.body, fn keys, acc -> drop_field_at(acc, keys) end)
+    {:ok, %{le | body: new_body}}
+  end
+
+  defp drop_fields(%LE{} = le, %Source{} = source) do
+    drop_fields(le, Source.parse_drop_fields_config(source))
+  end
+
+  @spec drop_field_at(term(), [String.t()]) :: term()
+  defp drop_field_at(body, [leaf]) when is_map(body), do: Map.delete(body, leaf)
+
+  defp drop_field_at(body, [head | rest]) when is_map(body) do
+    case Map.fetch(body, head) do
+      {:ok, child} when is_map(child) -> Map.put(body, head, drop_field_at(child, rest))
+      _ -> body
+    end
+  end
+
+  defp drop_field_at(body, _), do: body
 
   @doc """
   Generates a custom event message from source settings.any()

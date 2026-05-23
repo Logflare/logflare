@@ -152,10 +152,13 @@ defmodule Logflare.Teams do
   def filter_by_user_access(queryable, %User{id: user_id, email: email}) do
     from entity in queryable,
       left_join: u in User,
+      as: :resource_owner,
       on: entity.user_id == u.id,
       left_join: t in Team,
+      as: :resource_team,
       on: t.user_id == u.id,
       left_join: tu in TeamUser,
+      as: :resource_team_user,
       on: t.id == tu.team_id,
       where: entity.user_id == ^user_id or tu.email == ^email,
       distinct: true
@@ -164,10 +167,13 @@ defmodule Logflare.Teams do
   def filter_by_user_access(queryable, %TeamUser{id: team_user_id, team_id: team_id, email: email}) do
     from entity in queryable,
       left_join: u in User,
+      as: :resource_owner,
       on: entity.user_id == u.id,
       left_join: t in Team,
+      as: :resource_team,
       on: t.user_id == u.id,
       left_join: tu in TeamUser,
+      as: :resource_team_user,
       on: t.id == tu.team_id,
       where:
         t.id == ^team_id or tu.id == ^team_user_id or u.email == ^email or tu.email == ^email,

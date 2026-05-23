@@ -920,6 +920,237 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, input, user)
       assert transformed =~ ~s("#{PostgresAdaptor.table_name(source)}")
     end
+
+    test "rejects DML UPDATE statements", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "UPDATE #{name} SET admin = true WHERE id = 1", user)
+
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects DML INSERT statements", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "INSERT INTO #{name} (col) VALUES ('val')", user)
+
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects DML DELETE statements", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "DELETE FROM #{name} WHERE id = 1", user)
+
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects multiple statements", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(
+                 :pg_sql,
+                 "SELECT id FROM #{name}; SELECT id FROM #{name}",
+                 user
+               )
+
+      assert msg =~ "Only singular query allowed"
+    end
+
+    test "rejects wildcard SELECT", %{source: %{name: name}, user: user} do
+      assert {:error, msg} = Sql.transform(:pg_sql, "SELECT * FROM #{name}", user)
+      assert msg =~ "wildcard"
+    end
+
+    test "rejects restricted function current_user", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT current_user, id FROM #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects restricted function pg_read_file", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT pg_read_file('/etc/passwd'), id FROM #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects restricted function lo_import", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT lo_import('/etc/passwd'), id FROM #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects restricted function lo_export", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT lo_export(1234, '/tmp/out'), id FROM #{name}", user)
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects COPY TO PROGRAM DDL statement", %{source: %{name: name}, user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "COPY (SELECT id FROM #{name}) TO PROGRAM 'id'", user)
+
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects writable CTE with embedded DELETE", %{source: %{name: name}, user: user} do
+      query = "WITH x AS (DELETE FROM #{name} WHERE id > 0 RETURNING id) SELECT id FROM x"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "found: DELETE"
+    end
+
+    test "rejects writable CTE with embedded INSERT", %{source: %{name: name}, user: user} do
+      query =
+        "WITH x AS (INSERT INTO #{name} (id) VALUES (1) RETURNING id) SELECT id FROM x"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects writable CTE with embedded UPDATE", %{source: %{name: name}, user: user} do
+      query =
+        "WITH x AS (UPDATE #{name} SET id = 1 WHERE id = 0 RETURNING id) SELECT id FROM x"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "Only SELECT queries allowed"
+    end
+
+    test "rejects schema-qualified TVF pg_catalog.pg_ls_dir in FROM clause", %{
+      source: %{name: name},
+      user: user
+    } do
+      assert {:error, msg} =
+               Sql.transform(
+                 :pg_sql,
+                 "SELECT id FROM pg_catalog.pg_ls_dir('/'), #{name}",
+                 user
+               )
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects schema-qualified TVF pg_catalog.dblink in FROM clause", %{
+      source: %{name: name},
+      user: user
+    } do
+      assert {:error, msg} =
+               Sql.transform(
+                 :pg_sql,
+                 "SELECT id FROM pg_catalog.dblink('host=attacker', 'SELECT 1'), #{name}",
+                 user
+               )
+
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects restricted function passed as TVF argument via CTE alias", %{user: user} do
+      query =
+        "WITH f AS (SELECT 1) SELECT * FROM f(pg_read_file('/etc/passwd')) AS t"
+
+      assert {:error, msg} = Sql.transform(:pg_sql, query, user)
+      assert msg =~ "Restricted function"
+    end
+
+    test "rejects unknown source tables", %{user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT id FROM nonexistent_table", user)
+
+      assert msg =~ "can't find source"
+    end
+
+    test "rejects UNION TABLE set expression targeting system table", %{user: user} do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT 1 UNION TABLE pg_shadow", user)
+
+      assert msg =~ "wildcard"
+    end
+
+    test "rejects UNION TABLE set expression targeting an allowed source", %{
+      source: %{name: name},
+      user: user
+    } do
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT 1 UNION TABLE #{name}", user)
+
+      assert msg =~ "wildcard"
+    end
+
+    for fn_call <- [
+          "pg_promote()",
+          "pg_advisory_lock(1)",
+          "pg_stat_reset()",
+          "pg_get_functiondef(1)",
+          "pg_logical_emit_message(true, 'a', 'b')",
+          "pg_export_snapshot()",
+          "pg_signal_backend(1)",
+          "pg_replication_origin_create('x')",
+          "pg_ls_logicalmapdir()",
+          "pg_ls_logicalsnapdir()",
+          "pg_ls_replslotdir('x')",
+          "pg_ls_logdir()",
+          "pg_ls_waldir()",
+          "lo_creat(-1)",
+          "lo_create(0)",
+          "lo_from_bytea(0, '\\\\x00'::bytea)",
+          "lo_put(1, 0, '\\\\x00'::bytea)",
+          "lo_get(1)",
+          "lo_truncate(1, 0)",
+          "dblink_open('c', 'SELECT 1')",
+          "dblink_send_query('c', 'SELECT 1')",
+          "dblink_get_result('c')",
+          "pg_total_relation_size('pg_shadow')",
+          "pg_table_size('pg_shadow')",
+          "pg_relation_size('pg_shadow')",
+          "pg_indexes_size('pg_shadow')",
+          "pg_database_size('postgres')",
+          "has_table_privilege('pg_shadow', 'SELECT')",
+          "has_schema_privilege('public', 'USAGE')",
+          "has_database_privilege('postgres', 'CONNECT')",
+          "current_role",
+          "current_catalog"
+        ] do
+      test "rejects restricted function #{fn_call}", %{source: %{name: name}, user: user} do
+        assert {:error, msg} =
+                 Sql.transform(
+                   :pg_sql,
+                   "SELECT #{unquote(fn_call)} AS v, id FROM #{name}",
+                   user
+                 )
+
+        assert msg =~ "Restricted function"
+      end
+    end
+
+    for fn_call <- [
+          "pg_typeof(id)",
+          "pg_size_pretty(1024::bigint)",
+          "pg_column_size(id)"
+        ] do
+      test "allows safe function #{fn_call}", %{source: %{name: name}, user: user} do
+        assert {:ok, _} =
+                 Sql.transform(
+                   :pg_sql,
+                   "SELECT #{unquote(fn_call)} AS v, id FROM #{name}",
+                   user
+                 )
+      end
+    end
+
+    for {label, stmt} <- [
+          {"CREATE INDEX", "CREATE INDEX idx ON source_a (id)"},
+          {"SET ROLE", "SET ROLE postgres"},
+          {"LISTEN", "LISTEN my_channel"},
+          {"START TRANSACTION", "START TRANSACTION"},
+          {"COMMENT ON", "COMMENT ON TABLE source_a IS 'x'"},
+          {"DECLARE CURSOR", "DECLARE c CURSOR FOR SELECT 1"},
+          {"ANALYZE", "ANALYZE source_a"},
+          {"PREPARE", "PREPARE x AS SELECT 1"}
+        ] do
+      test "rejects non-SELECT statement: #{label}", %{user: user} do
+        assert {:error, _msg} = Sql.transform(:pg_sql, unquote(stmt), user)
+      end
+    end
   end
 
   describe "contains_cte?/2" do

@@ -177,6 +177,38 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
     end
   end
 
+  describe "require_token option" do
+    setup do
+      conn =
+        build_conn(:post, "/logs", %{})
+        |> assign(:resource_type, :source)
+
+      {:ok, conn: conn}
+    end
+
+    test "default opts pass through with resource_type and no token (preserves public endpoints)",
+         %{conn: conn} do
+      conn = VerifyApiAccess.call(conn, %{})
+      assert conn.halted == false
+      assert Map.get(conn.assigns, :user) == nil
+    end
+
+    test "require_token: true halts with 401 when no token is present", %{conn: conn} do
+      conn
+      |> VerifyApiAccess.call(%{require_token: true})
+      |> assert_unauthorized()
+    end
+
+    test "require_token: true still accepts ?api_key= query auth", %{conn: conn, user: user} do
+      new_params = Map.merge(conn.params, %{"api_key" => user.api_key})
+
+      conn
+      |> Map.put(:params, new_params)
+      |> VerifyApiAccess.call(%{require_token: true})
+      |> assert_authorized(user)
+    end
+  end
+
   test "private scope", %{user: user} do
     {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: "private"})
 

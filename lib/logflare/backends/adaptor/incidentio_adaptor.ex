@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
   use LogflareWeb, :routes
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Backend
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -101,5 +102,27 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
     Map.put(config, :api_token, "REDACTED")
+  end
+
+  @doc """
+  Probes the alert events endpoint by posting a `resolved` alert with a
+  stable deduplication key. Subsequent probes overwrite the same alert in
+  the customer's incident.io account, so at most one resolved test alert
+  ever appears per backend.
+  """
+  @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    body = %{
+      "deduplication_key" => "logflare-connection-test-#{backend.id}",
+      "title" => "Logflare connection test",
+      "description" => "Probe sent by Logflare to verify connectivity. No action required.",
+      "status" => "resolved",
+      "metadata" => %{},
+      "source_url" => url(~p"/backends/#{backend.id}")
+    }
+
+    backend = %{backend | config: transform_config(backend)}
+    WebhookAdaptor.test_connection(backend, body)
   end
 end

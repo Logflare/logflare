@@ -20,7 +20,8 @@ defmodule LogflareWeb.Router do
                            do: [LogflareWeb.Hooks.AllowTestSandbox],
                            else: []
 
-  @dashboard_hooks [LogflareWeb.AuthLive]
+  @auth_live_hooks [LogflareWeb.AuthLive]
+  @team_param_live_hooks [LogflareWeb.AuthLive, {LogflareWeb.AuthLive, :ensure_team_param}]
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -89,8 +90,35 @@ defmodule LogflareWeb.Router do
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
   end
 
-  pipeline :otlp_api do
+  # Authenticated ingest. VerifyApiAccess runs before body parsing so
+  # unauthenticated requests can never trigger the parsers. FetchResource and
+  # VerifyResourceAccess run after parsing because some clients (e.g. the
+  # BERT logger) identify the source via a body field.
+  pipeline :ingest_api do
     plug(Plug.RequestId)
+    plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
+
+    plug(Plug.Parsers,
+      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
+      json_decoder: Jason,
+      body_reader: {PlugCaisson, :read_body, []},
+      length: 12_000_000
+    )
+
+    plug(LogflareWeb.Plugs.FetchResource)
+    plug(LogflareWeb.Plugs.VerifyResourceAccess)
+    plug(:accepts, ["json", "bert"])
+    plug(LogflareWeb.Plugs.SetHeaders)
+    plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
+    plug(LogflareWeb.Plugs.SetPlanFromCache)
+    plug(LogflareWeb.Plugs.RateLimiter)
+    plug(LogflareWeb.Plugs.BufferLimiter)
+  end
+
+  pipeline :ingest_otlp_api do
+    plug(Plug.RequestId)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
 
     plug(Plug.Parsers,
       parsers: [ProtobufParser],
@@ -99,26 +127,20 @@ defmodule LogflareWeb.Router do
       length: 12_000_000
     )
 
+    plug(LogflareWeb.Plugs.FetchResource)
+    plug(LogflareWeb.Plugs.VerifyResourceAccess)
     plug(:accepts, ["json", "protobuf"])
     plug(LogflareWeb.Plugs.SetHeaders)
     plug(LogflareWeb.Plugs.BlockSystemSource)
+    plug(LogflareWeb.Plugs.SetPlanFromCache)
+    plug(LogflareWeb.Plugs.RateLimiter)
+    plug(LogflareWeb.Plugs.BufferLimiter)
   end
 
   pipeline :require_endpoint_auth do
     plug(LogflareWeb.Plugs.VerifyApiAccess)
     plug(LogflareWeb.Plugs.FetchResource)
     plug(LogflareWeb.Plugs.VerifyResourceAccess)
-  end
-
-  pipeline :require_ingest_api_auth do
-    plug(LogflareWeb.Plugs.VerifyApiAccess)
-    plug(LogflareWeb.Plugs.FetchResource)
-    plug(LogflareWeb.Plugs.VerifyResourceAccess)
-    # We are ensuring source start in Logs.ingest
-    # plug LogflareWeb.Plugs.EnsureSourceStarted
-    plug(LogflareWeb.Plugs.SetPlanFromCache)
-    plug(LogflareWeb.Plugs.RateLimiter)
-    plug(LogflareWeb.Plugs.BufferLimiter)
   end
 
   pipeline :require_mgmt_api_auth do
@@ -212,41 +234,36 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live_session :dashboard, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
+    live_session :dashboard, on_mount: @common_on_mount_hooks ++ @team_param_live_hooks do
       live("/dashboard", DashboardLive, :index)
-      live("/access-tokens", AccessTokensLive, :index)
       live("/backends", BackendsLive, :index)
       live("/backends/new", BackendsLive, :new)
       live("/backends/:id", BackendsLive, :show)
       live("/backends/:id/edit", BackendsLive, :edit)
-      live("/query", QueryLive, :index)
       live("/key-values", KeyValuesLive, :index)
+
+      scope "/alerts" do
+        live "/", AlertsLive, :index
+        live "/new", AlertsLive, :new
+        live "/:id", AlertsLive, :show
+        live "/:id/edit", AlertsLive, :edit
+      end
+
+      scope "/endpoints" do
+        live "/", EndpointsLive, :index
+        live "/new", EndpointsLive, :new
+        live "/:id", EndpointsLive, :show
+        live "/:id/edit", EndpointsLive, :edit
+      end
+    end
+
+    live_session :without_team_param, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
+      live("/access-tokens", AccessTokensLive, :index)
+      live("/query", QueryLive, :index)
 
       scope "/integrations" do
         live("/vercel/edit", VercelLogDrainsLive, :edit)
       end
-    end
-  end
-
-  scope "/endpoints", LogflareWeb do
-    pipe_through([:browser, :require_auth])
-
-    live_session :endpoints, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
-      live("/", EndpointsLive, :index)
-      live("/new", EndpointsLive, :new)
-      live("/:id", EndpointsLive, :show)
-      live("/:id/edit", EndpointsLive, :edit)
-    end
-  end
-
-  scope "/alerts", LogflareWeb do
-    pipe_through([:browser, :require_auth])
-
-    live_session :alerts, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
-      live "/", AlertsLive, :index
-      live "/new", AlertsLive, :new
-      live "/:id", AlertsLive, :show
-      live "/:id/edit", AlertsLive, :edit
     end
   end
 
@@ -289,7 +306,7 @@ defmodule LogflareWeb.Router do
 
     resources "/", SourceController, except: [:index, :new, :create, :delete] do
       live_session(:rules,
-        on_mount: @common_on_mount_hooks ++ @dashboard_hooks,
+        on_mount: @common_on_mount_hooks ++ @auth_live_hooks,
         root_layout: {LogflareWeb.LayoutView, :root}
       ) do
         live("/rules", Sources.RulesLive)
@@ -411,8 +428,8 @@ defmodule LogflareWeb.Router do
   scope "/webhooks", LogflareWeb do
     pipe_through(:api)
     post("/cloudflare/v1", CloudflareControllerV1, :event)
-    post("/stripe", StripeController, :event)
     # post "/vercel", VercelController, :event
+    # Stripe webhooks are handled by Stripe.WebhookPlug in the endpoint
   end
 
   scope "/health", LogflareWeb do
@@ -513,7 +530,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/v1", LogflareWeb, assigns: %{resource_type: :source} do
-    pipe_through([:otlp_api, :require_ingest_api_auth])
+    pipe_through([:ingest_otlp_api])
 
     post(
       "/traces",
@@ -539,7 +556,7 @@ defmodule LogflareWeb.Router do
 
   for path <- ["/logs", "/api/logs", "/api/events"] do
     scope path, LogflareWeb, assigns: %{resource_type: :source} do
-      pipe_through([:api, :require_ingest_api_auth])
+      pipe_through([:ingest_api])
 
       post("/", LogController, :create)
       options("/", LogController, :create)
@@ -567,7 +584,7 @@ defmodule LogflareWeb.Router do
 
     # logpush
     scope "#{path}/cloudflare", LogflareWeb, assigns: %{resource_type: :source} do
-      pipe_through([:logpush, :api, :require_ingest_api_auth])
+      pipe_through([:logpush, :ingest_api])
       post("/", LogController, :cloudflare)
     end
   end
