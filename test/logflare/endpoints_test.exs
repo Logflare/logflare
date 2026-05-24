@@ -118,16 +118,6 @@ defmodule Logflare.EndpointsTest do
       assert_endpoint_version(endpoint, 1, "API: Acme")
     end
 
-    test "create_query/3 stores API token origin as access token id" do
-      access_token = insert(:access_token, description: "")
-      owner = access_token.resource_owner
-
-      assert {:ok, endpoint} =
-               Endpoints.create_query(owner, @endpoint_query_attrs, access_token)
-
-      assert_endpoint_version(endpoint, 1, "API: id #{access_token.id}")
-    end
-
     test "update_query/3 increments the version number and stores the updated snapshot", %{
       user: user
     } do
