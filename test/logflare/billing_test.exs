@@ -284,7 +284,7 @@ defmodule Logflare.BillingTest do
     test "create_payment_method_with_stripe/1 and delete_payment_method_with_stripe/1 interfaces with stripe",
          %{billing_account: ba} do
       Stripe.PaymentMethod
-      |> expect(:attach, 3, fn _ -> {:ok, %{}} end)
+      |> expect(:attach, 3, fn _, _ -> {:ok, %{}} end)
       |> expect(:detach, fn _ -> {:ok, %{}} end)
 
       [pm, another_pm, last_pm] =

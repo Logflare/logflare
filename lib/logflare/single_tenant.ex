@@ -145,7 +145,7 @@ defmodule Logflare.SingleTenant do
       end
 
       {:ok, _res} =
-        Auth.create_access_token(user, %{
+        Auth.create_access_token_with_token(user, %{
           token: public,
           scopes: "public",
           description: @public_env_var
@@ -159,7 +159,7 @@ defmodule Logflare.SingleTenant do
       end
 
       {:ok, _res} =
-        Auth.create_access_token(user, %{
+        Auth.create_access_token_with_token(user, %{
           token: private,
           scopes: "private",
           description: @private_env_var

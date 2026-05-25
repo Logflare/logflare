@@ -37,6 +37,12 @@ defmodule LogflareWeb.Endpoint do
 
   plug(Plug.Logger, log: :debug)
 
+  plug(LogflareWeb.Plugs.StripeWebhook,
+    at: "/webhooks/stripe",
+    handler: LogflareWeb.StripeWebhookHandler,
+    secret: &LogflareWeb.Endpoint.stripe_webhook_secret/0
+  )
+
   plug(Plug.Parsers,
     parsers: [:urlencoded, :multipart],
     pass: ["*/*"]
@@ -51,4 +57,12 @@ defmodule LogflareWeb.Endpoint do
   plug(Plug.Session, @session_options)
 
   plug(LogflareWeb.Router)
+
+  @spec stripe_webhook_secret() :: String.t()
+  def stripe_webhook_secret do
+    case Application.get_env(:logflare, :stripe_webhook_secret) do
+      secret when is_binary(secret) and byte_size(secret) > 0 -> secret
+      _ -> :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
+    end
+  end
 end

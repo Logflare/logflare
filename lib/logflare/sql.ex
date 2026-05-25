@@ -28,6 +28,55 @@ defmodule Logflare.Sql do
     "session_user"
   ]
 
+  @dml_statement_keys ~w(Delete Insert Update Truncate Merge Drop ShowVariable Copy SetVariable Grant Revoke CreateTable CreateFunction AlterTable AlterSystem Execute Do CreateView Call)
+
+  # Postgres validation blocks all `pg_*`, `lo_*`, and `dblink*` functions by
+  # prefix, plus the non-prefixed functions below. The small allowlist exempts
+  # benign helpers users embed in analytics SELECTs.
+  @pg_safe_prefixed_functions ~w(
+    pg_typeof
+    pg_size_pretty
+    pg_column_size
+  )
+
+  # sqlparser emits `current_role` as a bare `Identifier`, not a `Function`,
+  # so it bypasses @pg_other_restricted_functions. Block at the identifier level.
+  @pg_bareword_restricted_identifiers ~w(
+    current_role
+  )
+
+  @pg_other_restricted_functions ~w(
+    current_catalog
+    current_database
+    current_role
+    current_setting
+    current_schema
+    current_schemas
+    current_user
+    cursor_to_xml
+    database_to_xml
+    database_to_xml_and_xmlschema
+    database_to_xmlschema
+    inet_client_addr
+    inet_client_port
+    inet_server_addr
+    inet_server_port
+    loread
+    lowrite
+    query_to_xml
+    query_to_xml_and_xmlschema
+    query_to_xmlschema
+    schema_to_xml
+    schema_to_xml_and_xmlschema
+    schema_to_xmlschema
+    session_user
+    set_config
+    table_to_xml
+    table_to_xml_and_xmlschema
+    table_to_xmlschema
+    version
+  )
+
   @ch_restricted_functions [
     "azureblobstorage",
     "buildid",
@@ -226,15 +275,20 @@ defmodule Logflare.Sql do
 
     Logger.metadata(query_string: query, user_id: user.id)
 
-    with {:ok, statements} <- Parser.parse(sql_dialect, query) do
+    with {:ok, statements} <- Parser.parse(sql_dialect, query),
+         data = %{
+           sources: sources,
+           source_mapping: source_mapping,
+           source_names: Map.keys(source_mapping),
+           dialect: sql_dialect,
+           ast: statements,
+           user_project_id: nil,
+           logflare_project_id: nil,
+           sandboxed_query_ast: nil
+         },
+         :ok <- validate_query(statements, data) do
       statements
-      |> do_transform(%{
-        sources: sources,
-        source_mapping: source_mapping,
-        source_names: Map.keys(source_mapping),
-        dialect: sql_dialect,
-        ast: statements
-      })
+      |> do_transform(data)
       |> Parser.to_string()
     end
   end
@@ -513,8 +567,8 @@ defmodule Logflare.Sql do
 
   # applies to both ctes, sandboxed queries, and non-ctes
   defp validate_query(ast, %{dialect: dialect} = data) when is_list(ast) do
-    with :ok <- check_select_statement_only(ast),
-         :ok <- check_single_query_only(ast),
+    with :ok <- check_single_query_only(ast),
+         :ok <- check_select_statement_only(ast, dialect),
          :ok <- maybe_check_restricted_functions(ast, dialect, data),
          :ok <- has_wildcard_in_select(ast),
          :ok <- check_all_sources_allowed(ast, data) do
@@ -523,7 +577,7 @@ defmodule Logflare.Sql do
   end
 
   defp maybe_check_restricted_functions(ast, dialect, data)
-       when dialect in ~w(bigquery clickhouse),
+       when dialect in ~w(bigquery clickhouse postgres),
        do: has_restricted_functions(ast, data)
 
   defp maybe_check_restricted_functions(_ast, _dialect, _data), do: :ok
@@ -614,78 +668,61 @@ defmodule Logflare.Sql do
 
   defp check_single_query_only(_ast), do: {:error, "Only singular query allowed"}
 
-  defp check_select_statement_only(ast) do
-    check = fn input ->
-      case input do
-        %{"Insert" => _} ->
-          true
-
-        %{"Update" => _} ->
-          true
-
-        %{"Delete" => _} ->
-          true
-
-        %{"Truncate" => _} ->
-          true
-
-        %{"Merge" => _} ->
-          true
-
-        %{"Drop" => _} ->
-          true
-
-        %{"ShowVariable" => _} ->
-          true
-
-        _ ->
-          false
-      end
+  defp check_select_statement_only(ast, "postgres") do
+    with [%{"Query" => _}] <- ast,
+         [] <- AstUtils.collect_from_ast(ast, &do_find_dml_statement/1) do
+      :ok
+    else
+      _ -> {:error, "Only SELECT queries allowed"}
     end
+  end
 
-    restricted = for statement <- ast, res = check.(statement), res, do: res
+  defp check_select_statement_only(ast, _dialect) do
+    found = AstUtils.collect_from_ast(ast, &do_find_dml_statement/1)
 
-    if Enum.empty?(restricted) do
+    if Enum.empty?(found) do
       :ok
     else
       {:error, "Only SELECT queries allowed"}
     end
   end
 
+  defp do_find_dml_statement({key, _}) when key in @dml_statement_keys,
+    do: {:collect, key}
+
+  defp do_find_dml_statement(_), do: :skip
+
   defp has_restricted_functions(ast, data) when is_list(ast),
     do: has_restricted_functions(ast, :ok, data)
 
-  defp has_restricted_functions({"Function", %{"name" => [%{"value" => _} | _] = names}}, :ok, %{
+  defp has_restricted_functions({"Function", %{"name" => names}}, :ok, %{
          dialect: dialect
-       }) do
-    restricted_list = list_restricted_functions_for_dialect(dialect)
+       })
+       when is_list(names) do
+    check_names_against_dialect(names, dialect)
+  end
 
-    found_restricted =
-      for name <- names,
-          normalized = String.downcase(name["value"]),
-          normalized in restricted_list do
-        normalized
-      end
-
-    if Enum.empty?(found_restricted) do
-      :ok
+  defp has_restricted_functions(
+         {"Identifier", %{"value" => value}},
+         :ok,
+         %{dialect: "postgres"}
+       )
+       when is_binary(value) do
+    if String.downcase(value) in @pg_bareword_restricted_identifiers do
+      {:error, "Restricted function #{String.downcase(value)}"}
     else
-      {:error, "Restricted function #{Enum.join(found_restricted, ", ")}"}
+      :ok
     end
   end
 
   defp has_restricted_functions(
-         {"Table", %{"args" => [_ | _], "name" => [%{"value" => name} | _]}},
+         {"Table", %{"args" => args, "name" => [%{"value" => _} | _] = names}},
          :ok,
-         %{dialect: dialect}
-       ) do
-    restricted_list = list_restricted_functions_for_dialect(dialect)
-    normalized = String.downcase(name)
-
-    if normalized in restricted_list do
-      {:error, "Restricted function #{normalized}"}
-    else
-      :ok
+         %{dialect: dialect} = data
+       )
+       when is_list(args) do
+    with :ok <- check_names_against_dialect(names, dialect) do
+      has_restricted_functions(args, :ok, data)
     end
   end
 
@@ -700,10 +737,37 @@ defmodule Logflare.Sql do
 
   defp has_restricted_functions(_kv, acc, _data), do: acc
 
-  @spec list_restricted_functions_for_dialect(String.t()) :: [String.t()]
-  defp list_restricted_functions_for_dialect("bigquery"), do: @bq_restricted_functions
-  defp list_restricted_functions_for_dialect("clickhouse"), do: @ch_restricted_functions
-  defp list_restricted_functions_for_dialect(_), do: []
+  defp check_names_against_dialect(names, dialect) do
+    found_restricted =
+      for name <- names,
+          normalized = String.downcase(name["value"]),
+          function_restricted?(normalized, dialect) do
+        normalized
+      end
+
+    if Enum.empty?(found_restricted) do
+      :ok
+    else
+      {:error, "Restricted function #{Enum.join(found_restricted, ", ")}"}
+    end
+  end
+
+  @spec function_restricted?(String.t(), String.t()) :: boolean()
+  defp function_restricted?(name, "postgres") do
+    cond do
+      name in @pg_safe_prefixed_functions -> false
+      String.starts_with?(name, "pg_") -> true
+      String.starts_with?(name, "lo_") -> true
+      String.starts_with?(name, "dblink") -> true
+      name in @pg_other_restricted_functions -> true
+      String.starts_with?(name, "has_") -> true
+      true -> false
+    end
+  end
+
+  defp function_restricted?(name, "bigquery"), do: name in @bq_restricted_functions
+  defp function_restricted?(name, "clickhouse"), do: name in @ch_restricted_functions
+  defp function_restricted?(_name, _dialect), do: false
 
   defp has_restricted_sources(cte_ast, ast) when is_list(ast) do
     aliases =
@@ -761,6 +825,11 @@ defmodule Logflare.Sql do
       true -> {:error, "restricted wildcard (*) in a result column"}
       false -> :ok
     end
+  end
+
+  defp has_wildcard_in_select({"Table", %{"table_name" => name}}, _acc)
+       when is_binary(name) do
+    {:error, "restricted wildcard (*) in a result column"}
   end
 
   defp has_wildcard_in_select(kv, acc) when is_list(kv) or is_map(kv) do
