@@ -290,7 +290,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     snapshot = Map.get(version.meta, "endpoint_snapshot", %{})
 
     %Query{}
-    |> Ecto.Changeset.cast(snapshot, Endpoints.version_snapshot_fields())
+    |> Ecto.Changeset.cast(snapshot, Endpoints.Query.version_snapshot_fields())
     |> Ecto.Changeset.apply_changes()
   end
 

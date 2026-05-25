@@ -200,37 +200,9 @@ defmodule Logflare.Endpoints do
   defp version_meta(changeset, version_number) do
     %{
       version_number: version_number,
-      endpoint_snapshot: endpoint_version_snapshot(changeset)
+      endpoint_snapshot: Query.version_snapshot(changeset)
     }
     |> maybe_put_query_diff(changeset)
-  end
-
-  @spec version_snapshot_fields() :: [atom()]
-  def version_snapshot_fields do
-    [
-      :token,
-      :name,
-      :query,
-      :description,
-      :language,
-      :source_mapping,
-      :sandboxable,
-      :cache_duration_seconds,
-      :proactive_requerying_seconds,
-      :max_limit,
-      :enable_auth,
-      :redact_pii,
-      :enable_dynamic_reservation,
-      :labels,
-      :backend_id
-    ]
-  end
-
-  @spec endpoint_version_snapshot(Ecto.Changeset.t()) :: map()
-  defp endpoint_version_snapshot(changeset) do
-    changeset
-    |> Ecto.Changeset.apply_changes()
-    |> Map.take(version_snapshot_fields())
   end
 
   @spec maybe_put_query_diff(map(), Ecto.Changeset.t()) :: map()
