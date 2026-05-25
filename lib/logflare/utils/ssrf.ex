@@ -8,20 +8,20 @@ defmodule Logflare.Utils.SSRF do
   @private_ranges Enum.map(
                     [
                       # IPv4
-                      "0.0.0.0/8",
-                      "10.0.0.0/8",
-                      "100.64.0.0/10",
-                      "127.0.0.0/8",
-                      "169.254.0.0/16",
-                      "172.16.0.0/12",
-                      "192.168.0.0/16",
-                      "255.255.255.255/32",
+                      "0.0.0.0/8",          # all-zeros
+                      "10.0.0.0/8",         # RFC 1918 private
+                      "100.64.0.0/10",      # CGNAT
+                      "127.0.0.0/8",        # loopback
+                      "169.254.0.0/16",     # link-local / AWS IMDS
+                      "172.16.0.0/12",      # RFC 1918 private
+                      "192.168.0.0/16",     # RFC 1918 private
+                      "255.255.255.255/32", # broadcast
                       # IPv6
-                      "::/128",
-                      "::1/128",
-                      "::ffff:0:0/96",
-                      "fc00::/7",
-                      "fe80::/10"
+                      "::/128",             # all-zeros
+                      "::1/128",            # loopback
+                      "::ffff:0:0/96",      # IPv4-mapped IPv6
+                      "fc00::/7",           # unique-local (covers fd00::/8 = AWS IMDS fd00:ec2::254)
+                      "fe80::/10"           # link-local
                     ],
                     &InetCidr.parse_cidr!/1
                   )
@@ -74,7 +74,7 @@ defmodule Logflare.Utils.SSRF do
   defp resolve_hostname(charlist, family) do
     with {:ok, addrs} <- :inet.getaddrs(charlist, family),
          {:private, false} <- {:private, Enum.any?(addrs, &private_ip?/1)} do
-      List.first(addrs)
+      {:ok, List.first(addrs)}
     else
       {:private, true} -> {:error, @private_ip_error}
       {:error, _} -> :unresolved
