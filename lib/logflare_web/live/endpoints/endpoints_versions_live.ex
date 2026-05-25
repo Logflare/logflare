@@ -62,20 +62,15 @@ defmodule LogflareWeb.EndpointsVersionsLive do
       :if={@selected_version}
       module={LogflareWeb.ModalComponent}
       id="endpoint-version-snapshot-modal"
-      title={snapshot_to_endpoint(@selected_version).description}
-      return_to={
-        LogflareWeb.Utils.with_team_param(
-          ~p"/endpoints/#{@endpoint.id}/versions",
-          @team
-        )
-      }
+      title={@endpoint_snapshot.description}
+      return_to={LogflareWeb.Utils.with_team_param(~p"/endpoints/#{@endpoint.id}/versions", @team)}
       component={SnapshotModalComponent}
       is_template?={false}
       opts={
         %{
           id: "endpoint-version-snapshot-content",
           version: @selected_version,
-          snapshot: snapshot_to_endpoint(@selected_version)
+          snapshot: @endpoint_snapshot
         }
       }
     />
@@ -166,6 +161,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
              Endpoints.get_endpoint_query_version(endpoint.id, version_number) do
         socket
         |> assign(:selected_version, selected_version)
+        |> assign(:endpoint_snapshot, snapshot_to_endpoint(selected_version))
       else
         _ ->
           socket

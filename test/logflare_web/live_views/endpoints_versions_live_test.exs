@@ -19,9 +19,10 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
   describe "endpoint versions" do
     test "empty state when endpoint has no versions", %{
       conn: conn,
-      endpoint: endpoint
+      endpoint: endpoint,
+      team: team
     } do
-      {:ok, view, html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions")
+      {:ok, view, html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
       assert html =~ "No versions recorded for this endpoint."
       refute has_element?(view, "#endpoint-versions a[id^='versions-']")
@@ -30,7 +31,8 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
     test "lists versions, newest first", %{
       conn: conn,
       user: user,
-      endpoint: endpoint
+      endpoint: endpoint,
+      team: team
     } do
       version_1 =
         insert(:endpoint_version,
@@ -73,7 +75,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
           }
         )
 
-      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions")
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
       assert view |> element(endpoint_version_row(version_3)) |> render() |> normalized_text() =~
                normalized_text("""
@@ -140,7 +142,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
           }
         )
 
-      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions")
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
       view
       |> element(endpoint_version_row(version))
@@ -174,6 +176,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
     test "loads additional versions", %{
       conn: conn,
       endpoint: endpoint,
+      team: team,
       user: user
     } do
       for version_number <- 1..26 do
@@ -186,7 +189,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
         )
       end
 
-      {:ok, view, html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions")
+      {:ok, view, html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
       assert html =~ "version-26-description"
       assert html =~ "version-2-description"
@@ -218,12 +221,13 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
                live(conn, ~p"/endpoints/#{victim_endpoint.id}/versions")
     end
 
-    test "team user can view versions without team param and links preserve resolved team", %{
-      conn: conn,
-      endpoint: endpoint,
-      team: team,
-      user: user
-    } do
+    test "team user is redirected to versions with team param end links preserve resolved team",
+         %{
+           conn: conn,
+           endpoint: endpoint,
+           team: team,
+           user: user
+         } do
       team_user = insert(:team_user, team: team)
 
       insert(:endpoint_version,
@@ -237,7 +241,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/endpoints/#{endpoint.id}/versions")
+        |> live(~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
       text = normalized_text(html)
 
@@ -258,7 +262,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       {:ok, view, _html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/endpoints/#{endpoint.id}/edit?t=#{team.id}")
+        |> live(~p"/endpoints/#{endpoint.id}/edit?t=#{team}")
 
       view
       |> element("form#endpoint")
@@ -271,7 +275,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live(~p"/endpoints/#{endpoint.id}/versions?t=#{team.id}")
+        |> live(~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
       text = normalized_text(html)
 
@@ -281,7 +285,8 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
 
     test "ignores malformed and missing version query params", %{
       conn: conn,
-      endpoint: endpoint
+      endpoint: endpoint,
+      team: team
     } do
       insert(:endpoint_version,
         endpoint: endpoint,
@@ -290,10 +295,14 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
         snapshot_overrides: %{"description" => "existing version"}
       )
 
-      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?version_number=abc")
+      {:ok, view, _html} =
+        live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}&version_number=abc")
+
       refute has_element?(view, "#endpoint-version-snapshot-modal")
 
-      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?version_number=999")
+      {:ok, view, _html} =
+        live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}&version_number=999")
+
       refute has_element?(view, "#endpoint-version-snapshot-modal")
     end
   end

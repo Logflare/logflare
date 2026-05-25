@@ -153,7 +153,7 @@ defmodule Logflare.Endpoints do
     end)
     |> case do
       {:ok, %{model: updated_query}} ->
-        changeset = Query.update_by_user_changeset(query, params)
+        changeset = query |> Repo.preload(:user) |> Query.update_by_user_changeset(params)
         maybe_kill_endpoint_caches(updated_query, changeset.changes)
         {:ok, updated_query}
 

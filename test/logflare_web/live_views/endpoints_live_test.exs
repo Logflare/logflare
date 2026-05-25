@@ -132,7 +132,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       endpoint: endpoint,
       team: team
     } do
-      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}")
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}?t=#{team}")
 
       assert {:error, {:live_redirect, %{to: to}}} =
                view
