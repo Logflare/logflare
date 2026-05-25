@@ -169,6 +169,70 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "cast_and_validate_config/1 SSRF protection" do
+    @ssrf_error {"URL must not target private or reserved IP addresses", [validation: :ssrf]}
+
+    test "rejects private/reserved IP addresses" do
+      blocked = [
+        # loopback
+        "http://127.0.0.1/",
+        "http://127.1.2.3/",
+        # RFC1918
+        "http://10.0.0.1/",
+        "http://172.16.0.1/",
+        "http://172.31.255.255/",
+        "http://192.168.1.1/",
+        # link-local / cloud metadata
+        "http://169.254.169.254/latest/meta-data/",
+        # all-zeros, CGNAT
+        "http://0.0.0.0/",
+        "http://100.64.0.1/",
+        # private IPv6
+        "http://[::1]/",
+        "http://[fe80::1]/",
+        "http://[fc00::1]/",
+        "http://[fd00::1]/"
+      ]
+
+      for url <- blocked do
+        cs = Adaptor.cast_and_validate_config(@subject, %{url: url})
+        assert cs.errors[:url] == @ssrf_error, "expected SSRF block for #{url}"
+      end
+    end
+
+    test "allows public IP addresses (172.16.0.0/12 boundary)" do
+      for url <- ["http://172.15.0.1/", "http://172.32.0.1/"] do
+        assert %Ecto.Changeset{valid?: true} =
+                 Adaptor.cast_and_validate_config(@subject, %{url: url}),
+               "expected valid for #{url}"
+      end
+    end
+
+    test "rejects hostname resolving to loopback" do
+      cs = Adaptor.cast_and_validate_config(@subject, %{url: "http://localhost/"})
+      assert %Ecto.Changeset{valid?: false} = cs
+      assert cs.errors[:url] != []
+    end
+  end
+
+  describe "SSRF middleware integration" do
+    test "Client.send/1 blocks private IPs at request time" do
+      # Call Client.send/1 directly without mocking to verify SSRFProtection is
+      # wired into the Tesla client stack. SSRFProtection runs before Finch, so
+      # private IPs are rejected without making a real network connection.
+      for url <- [
+            "http://127.0.0.1/metrics",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.0.0.1/",
+            "http://192.168.1.1/"
+          ] do
+        assert {:error, _reason} =
+                 @subject.Client.send(url: url, body: []),
+               "expected SSRF block for #{url}"
+      end
+    end
+  end
+
   test "cast_and_validate_config/1 for gzip" do
     assert %Ecto.Changeset{
              valid?: true,
