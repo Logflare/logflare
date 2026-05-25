@@ -179,15 +179,16 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       team: team,
       user: user
     } do
-      for version_number <- 1..26 do
-        insert(:endpoint_version,
-          endpoint: endpoint,
-          version_number: version_number,
-          origin: user.email,
-          item_changes: %{"description" => "version-#{version_number}-description"},
-          snapshot_overrides: %{"description" => "version-#{version_number}-description"}
-        )
-      end
+      versions =
+        for version_number <- 1..26 do
+          insert(:endpoint_version,
+            endpoint: endpoint,
+            version_number: version_number,
+            origin: user.email,
+            item_changes: %{"description" => "version-#{version_number}-description"},
+            snapshot_overrides: %{"description" => "version-#{version_number}-description"}
+          )
+        end
 
       {:ok, view, html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
@@ -196,13 +197,17 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       refute html =~ "version-1-description"
       assert has_element?(view, "button", "Load more")
 
-      view
-      |> element("button", "Load more")
-      |> render_click()
+      loading_html =
+        view
+        |> element("button", "Load more")
+        |> render_click()
 
-      html = render(view)
+      assert loading_html =~ "Loading..."
+
+      html = render_async(view)
 
       assert html =~ "version-1-description"
+      assert html =~ ~s|id="versions-#{List.first(versions).id}"|
       refute has_element?(view, "button", "Load more")
     end
 

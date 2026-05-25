@@ -13,6 +13,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   alias LogflareWeb.Endpoints.SnapshotModalComponent
 
   alias PaperTrail.Version
+  alias Phoenix.LiveView.AsyncResult
 
   @page_size 25
 
@@ -27,7 +28,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
       </:path>
     </.subheader>
 
-    <.versions versions={@streams.versions} current_version_id={@current_version_id} load_more?={not is_nil(@next_cursor_id)}>
+    <.versions versions={@streams.versions} current_version_id={@current_version_id} load_more?={not is_nil(@next_cursor_id)} loading?={@load_more_versions.loading}>
       <:col :let={version} class="lg:tw-col-span-1" label="Version">
         <span :if={version.id == @current_version_id} class="tw-inline-flex tw-items-center tw-rounded-sm tw-bg-[#2155a3] tw-px-2 tw-py-1 tw-text-xs tw-font-medium tw-text-white">
           current
@@ -80,6 +81,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   attr :versions, :any, required: true
   attr :current_version_id, :integer, default: nil
   attr :load_more?, :boolean, default: false
+  attr :loading?, :boolean, default: false
 
   slot :col do
     attr :label, :string
@@ -119,8 +121,8 @@ defmodule LogflareWeb.EndpointsVersionsLive do
       </div>
 
       <div :if={@load_more?} class="tw-flex tw-justify-center">
-        <button type="button" phx-click="load-more" class="btn btn-primary">
-          Load more
+        <button type="button" phx-click="load-more" class="btn btn-primary" disabled={@loading?}>
+          {if @loading?, do: "Loading...", else: "Load more"}
         </button>
       </div>
     </section>
@@ -143,6 +145,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
           |> assign(:endpoint, endpoint)
           |> assign(:current_version_id, current_version_id(versions))
           |> assign(:next_cursor_id, next_cursor_id)
+          |> assign(:load_more_versions, AsyncResult.ok(nil))
           |> assign(:selected_version, nil)
           |> maybe_assign_team_context(params, endpoint)
           |> stream(:versions, versions, reset: true)
@@ -173,22 +176,30 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("load-more", _params, socket) do
-    case socket.assigns.next_cursor_id do
-      nil ->
-        {:noreply, socket}
-
-      after_version_id ->
-        {versions, next_cursor_id} = fetch_page(socket.assigns.endpoint.id, after_version_id)
-
-        {:noreply,
-         socket
-         |> assign(:next_cursor_id, next_cursor_id)
-         |> stream(:versions, versions)}
-    end
+  def handle_event("load-more", _params, %{assigns: %{next_cursor_id: nil}} = socket) do
+    {:noreply, socket}
   end
 
-  @impl true
+  def handle_event(
+        "load-more",
+        _params,
+        %{assigns: %{load_more_versions: %AsyncResult{loading: loading}}} = socket
+      )
+      when not is_nil(loading) do
+    {:noreply, socket}
+  end
+
+  def handle_event("load-more", _params, socket) do
+    %{endpoint: %{id: endpoint_id}, next_cursor_id: after_version_id} = socket.assigns
+
+    {:noreply,
+     socket
+     |> assign(:load_more_versions, AsyncResult.loading())
+     |> start_async(:load_more_versions, fn ->
+       fetch_page(endpoint_id, after_version_id)
+     end)}
+  end
+
   def handle_event("show-version", %{"version-number" => version_number}, socket) do
     endpoint = socket.assigns.endpoint
 
@@ -200,6 +211,25 @@ defmodule LogflareWeb.EndpointsVersionsLive do
            socket.assigns[:team]
          )
      )}
+  end
+
+  @impl true
+  def handle_async(:load_more_versions, {:ok, {versions, next_cursor_id}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:next_cursor_id, next_cursor_id)
+     |> assign(:load_more_versions, AsyncResult.ok(nil))
+     |> stream(:versions, versions)}
+  end
+
+  def handle_async(:load_more_versions, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(
+       :load_more_versions,
+       AsyncResult.failed(socket.assigns.load_more_versions, {:exit, reason})
+     )
+     |> put_flash(:error, "Unable to load more versions.")}
   end
 
   @spec fetch_page(integer(), integer() | nil) :: {[Version.t()], integer() | nil}
