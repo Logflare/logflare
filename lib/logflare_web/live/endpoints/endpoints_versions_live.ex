@@ -163,7 +163,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     socket =
       with {version_number, ""} <- Integer.parse(version_number),
            selected_version when is_struct(selected_version) <-
-             Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, version_number) do
+             Endpoints.get_endpoint_query_version(endpoint.id, version_number) do
         socket
         |> assign(:selected_version, selected_version)
       else

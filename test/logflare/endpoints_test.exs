@@ -142,7 +142,7 @@ defmodule Logflare.EndpointsTest do
       assert {:error, %Ecto.Changeset{}} =
                Endpoints.update_query(endpoint, %{query: "select b from unknown"}, user)
 
-      assert nil == Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 2)
+      assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 2)
     end
 
     test "delete_query/2 stores the next version after prior history", %{user: user} do
@@ -154,7 +154,7 @@ defmodule Logflare.EndpointsTest do
       assert_endpoint_version(deleted_endpoint, 2, user.email, endpoint.token)
     end
 
-    test "get_endpoint_query_version_by_version_number/2 returns the requested version", %{
+    test "get_endpoint_query_version/2 returns the requested version", %{
       user: user
     } do
       assert {:ok, endpoint} =
@@ -173,9 +173,9 @@ defmodule Logflare.EndpointsTest do
       requested_version_number = 1
 
       assert %Version{meta: %{"version_number" => ^requested_version_number}} =
-               Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 1)
+               Endpoints.get_endpoint_query_version(endpoint.id, 1)
 
-      assert nil == Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 99)
+      assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 99)
     end
   end
 
@@ -340,7 +340,7 @@ defmodule Logflare.EndpointsTest do
                expected_endpoint_snapshot(deleted_endpoint)
     end
 
-    test "get_endpoint_query_version_by_version_number/2 resolves integer inputs", %{
+    test "get_endpoint_query_version/2 resolves integer inputs", %{
       user: user,
       endpoint_params: endpoint_params
     } do
@@ -350,14 +350,14 @@ defmodule Logflare.EndpointsTest do
                Endpoints.update_query(endpoint, %{labels: "environment"}, user)
 
       assert %Version{id: version_1_id} =
-               Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 1)
+               Endpoints.get_endpoint_query_version(endpoint.id, 1)
 
       assert %Version{id: version_2_id} =
-               Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 2)
+               Endpoints.get_endpoint_query_version(endpoint.id, 2)
 
       assert version_1_id != version_2_id
-      assert nil == Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, 3)
-      assert nil == Endpoints.get_endpoint_query_version_by_version_number(endpoint.id + 1, 1)
+      assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 3)
+      assert nil == Endpoints.get_endpoint_query_version(endpoint.id + 1, 1)
     end
   end
 
@@ -987,7 +987,7 @@ defmodule Logflare.EndpointsTest do
 
   defp assert_endpoint_version(endpoint, version_number, expected_origin, expected_token \\ nil) do
     assert version =
-             Endpoints.get_endpoint_query_version_by_version_number(endpoint.id, version_number)
+             Endpoints.get_endpoint_query_version(endpoint.id, version_number)
 
     assert version.origin == expected_origin
     assert version.meta["version_number"] == version_number

@@ -296,8 +296,8 @@ defmodule Logflare.Endpoints do
     :ok
   end
 
-  @spec get_endpoint_query_version_by_version_number(integer(), integer()) :: Version.t() | nil
-  def get_endpoint_query_version_by_version_number(endpoint_id, version_number)
+  @spec get_endpoint_query_version(integer(), integer()) :: Version.t() | nil
+  def get_endpoint_query_version(endpoint_id, version_number)
       when is_integer(endpoint_id) and is_integer(version_number) do
     from(version in Version,
       where:
