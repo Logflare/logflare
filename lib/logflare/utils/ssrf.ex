@@ -8,20 +8,33 @@ defmodule Logflare.Utils.SSRF do
   @private_ranges Enum.map(
                     [
                       # IPv4
-                      "0.0.0.0/8",          # all-zeros
-                      "10.0.0.0/8",         # RFC 1918 private
-                      "100.64.0.0/10",      # CGNAT
-                      "127.0.0.0/8",        # loopback
-                      "169.254.0.0/16",     # link-local / AWS IMDS
-                      "172.16.0.0/12",      # RFC 1918 private
-                      "192.168.0.0/16",     # RFC 1918 private
-                      "255.255.255.255/32", # broadcast
+                      # all-zeros
+                      "0.0.0.0/8",
+                      # RFC 1918 private
+                      "10.0.0.0/8",
+                      # CGNAT
+                      "100.64.0.0/10",
+                      # loopback
+                      "127.0.0.0/8",
+                      # link-local / AWS IMDS
+                      "169.254.0.0/16",
+                      # RFC 1918 private
+                      "172.16.0.0/12",
+                      # RFC 1918 private
+                      "192.168.0.0/16",
+                      # broadcast
+                      "255.255.255.255/32",
                       # IPv6
-                      "::/128",             # all-zeros
-                      "::1/128",            # loopback
-                      "::ffff:0:0/96",      # IPv4-mapped IPv6
-                      "fc00::/7",           # unique-local (covers fd00::/8 = AWS IMDS fd00:ec2::254)
-                      "fe80::/10"           # link-local
+                      # all-zeros
+                      "::/128",
+                      # loopback
+                      "::1/128",
+                      # IPv4-mapped IPv6
+                      "::ffff:0:0/96",
+                      # unique-local (covers fd00::/8 = AWS IMDS fd00:ec2::254)
+                      "fc00::/7",
+                      # link-local
+                      "fe80::/10"
                     ],
                     &InetCidr.parse_cidr!/1
                   )

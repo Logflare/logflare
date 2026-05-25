@@ -165,6 +165,9 @@ defmodule Logflare.BackendsTest do
 
   describe "backend management" do
     setup do
+      # Stub SSRF resolution so tests aren't sensitive to whether a fixture
+      # hostname (e.g. "some.url") happens to resolve in the test environment.
+      Mimic.stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {1, 2, 3, 4}} end)
       user = insert(:user)
       [source: insert(:source, user_id: user.id), user: user]
     end

@@ -5,7 +5,9 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtectionTest do
   alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
 
   defp ok_next(env), do: {:ok, env}
-  defp call(url), do: SSRFProtection.call(%Tesla.Env{url: url, headers: []}, &ok_next/1, [])
+
+  defp call(url),
+    do: SSRFProtection.call(%Tesla.Env{url: url, headers: []}, [{:fn, &ok_next/1}], [])
 
   describe "call/3 with HTTP URLs" do
     test "blocks private IPv4 at request time" do
@@ -25,15 +27,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtectionTest do
     end
 
     test "rewrites HTTP URL to resolved IP and preserves Host header" do
-      {:ok, env} = call("http://127.0.0.1/")
-      # Only reaches here for public IPs — use a public literal to verify rewrite
-      # (127.0.0.1 is blocked; test rewrite with a non-blocked literal)
-      {:ok, env} =
-        SSRFProtection.call(
-          %Tesla.Env{url: "http://1.2.3.4/path", headers: []},
-          &ok_next/1,
-          []
-        )
+      {:ok, env} = call("http://1.2.3.4/path")
 
       assert env.url == "http://1.2.3.4/path"
       assert {"host", "1.2.3.4"} in env.headers
@@ -50,7 +44,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtectionTest do
       {:ok, env} =
         SSRFProtection.call(
           %Tesla.Env{url: "https://1.2.3.4/path", headers: []},
-          &ok_next/1,
+          [{:fn, &ok_next/1}],
           []
         )
 

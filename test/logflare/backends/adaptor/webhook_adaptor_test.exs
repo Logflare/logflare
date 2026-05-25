@@ -215,6 +215,24 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "SSRF middleware integration" do
+    test "Client.send/1 blocks private IPs at request time" do
+      # Call Client.send/1 directly without mocking to verify SSRFProtection is
+      # wired into the Tesla client stack. SSRFProtection runs before Finch, so
+      # private IPs are rejected without making a real network connection.
+      for url <- [
+            "http://127.0.0.1/metrics",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.0.0.1/",
+            "http://192.168.1.1/"
+          ] do
+        assert {:error, _reason} =
+                 @subject.Client.send(url: url, body: []),
+               "expected SSRF block for #{url}"
+      end
+    end
+  end
+
   test "cast_and_validate_config/1 for gzip" do
     assert %Ecto.Changeset{
              valid?: true,
