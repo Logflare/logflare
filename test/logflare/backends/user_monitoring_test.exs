@@ -244,8 +244,10 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
   describe "egress" do
     setup :start_otel_exporter
+    setup :set_mimic_global
 
     setup do
+      Mimic.stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
       start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
