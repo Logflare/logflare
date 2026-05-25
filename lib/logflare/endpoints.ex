@@ -300,8 +300,8 @@ defmodule Logflare.Endpoints do
 
   @spec should_kill_caches?(map()) :: boolean()
   defp should_kill_caches?(changes) when is_map(changes) do
-    Enum.any?(Map.keys(changes), fn key ->
-      key in [
+    Enum.any?(
+      [
         :query,
         :sandboxable,
         :cache_duration_seconds,
@@ -309,8 +309,9 @@ defmodule Logflare.Endpoints do
         :max_limit,
         :enable_auth,
         :labels
-      ]
-    end)
+      ],
+      &is_map_key(changes, &1)
+    )
   end
 
   @spec maybe_kill_endpoint_caches(Query.t(), boolean()) :: :ok | [term()]
