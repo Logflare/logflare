@@ -140,7 +140,8 @@ defmodule Logflare.Endpoints do
     |> Query.update_by_user_changeset(attrs)
   end
 
-  @spec update_query(Query.t(), map(), origin()) :: {:ok, Query.t()} | {:error, any()}
+  @spec update_query(Query.t(), map(), origin()) ::
+          {:ok, Query.t()} | {:error, Ecto.Changeset.t()}
   def update_query(%Query{} = query, params, origin) when is_map(params) do
     Repo.transact(fn ->
       query = lock_endpoint_query(query)
@@ -148,21 +149,16 @@ defmodule Logflare.Endpoints do
       changeset = Query.update_by_user_changeset(query, params)
       opts = paper_trail_opts(changeset, origin, version_number)
 
-      case PaperTrail.update(changeset, opts) do
-        {:ok, %{model: query}} ->
-          {:ok, {query, should_kill_caches?(changeset.changes)}}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
+      PaperTrail.update(changeset, opts)
     end)
     |> case do
-      {:ok, {query, should_kill_caches?}} ->
-        maybe_kill_endpoint_caches(query, should_kill_caches?)
-        {:ok, query}
+      {:ok, %{model: updated_query}} ->
+        changeset = Query.update_by_user_changeset(query, params)
+        maybe_kill_endpoint_caches(updated_query, changeset.changes)
+        {:ok, updated_query}
 
-      {:error, reason} ->
-        {:error, reason}
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -286,16 +282,18 @@ defmodule Logflare.Endpoints do
     )
   end
 
-  @spec maybe_kill_endpoint_caches(Query.t(), boolean()) :: :ok | [term()]
-  defp maybe_kill_endpoint_caches(_endpoint, false), do: :ok
-
-  defp maybe_kill_endpoint_caches(endpoint, true) do
-    for pid <- Resolver.list_caches(endpoint) do
-      Utils.Tasks.async(fn ->
-        ResultsCache.invalidate(pid)
-      end)
+  @spec maybe_kill_endpoint_caches(Query.t(), map()) :: :ok
+  defp maybe_kill_endpoint_caches(endpoint, changes) do
+    if should_kill_caches?(changes) do
+      for pid <- Resolver.list_caches(endpoint) do
+        Utils.Tasks.async(fn ->
+          ResultsCache.invalidate(pid)
+        end)
+      end
+      |> Task.await_many(30_000)
     end
-    |> Task.await_many(30_000)
+
+    :ok
   end
 
   @spec get_endpoint_query_version_by_version_number(integer(), integer()) :: Version.t() | nil
