@@ -71,11 +71,9 @@ defmodule LogflareWeb.Utils do
     end
   end
 
-  defp _to_string(val) when is_list(val) do
-    Enum.join(val, ", ")
-  end
-
-  defp _to_string(val), do: to_string(val)
+  defp _to_string(val) when is_list(val), do: Enum.join(val, ", ")
+  defp _to_string(val) when is_binary(val) or is_atom(val) or is_number(val), do: to_string(val)
+  defp _to_string(val), do: inspect(val)
 
   @doc """
   Converts a bytes count to human readable scale.

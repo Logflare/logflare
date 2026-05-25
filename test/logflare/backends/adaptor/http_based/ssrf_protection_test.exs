@@ -28,11 +28,12 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtectionTest do
       {:ok, env} = call("http://127.0.0.1/")
       # Only reaches here for public IPs — use a public literal to verify rewrite
       # (127.0.0.1 is blocked; test rewrite with a non-blocked literal)
-      {:ok, env} = SSRFProtection.call(
-        %Tesla.Env{url: "http://1.2.3.4/path", headers: []},
-        &ok_next/1,
-        []
-      )
+      {:ok, env} =
+        SSRFProtection.call(
+          %Tesla.Env{url: "http://1.2.3.4/path", headers: []},
+          &ok_next/1,
+          []
+        )
 
       assert env.url == "http://1.2.3.4/path"
       assert {"host", "1.2.3.4"} in env.headers
@@ -46,11 +47,12 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtectionTest do
     end
 
     test "does not rewrite URL for HTTPS (preserves TLS SNI)" do
-      {:ok, env} = SSRFProtection.call(
-        %Tesla.Env{url: "https://1.2.3.4/path", headers: []},
-        &ok_next/1,
-        []
-      )
+      {:ok, env} =
+        SSRFProtection.call(
+          %Tesla.Env{url: "https://1.2.3.4/path", headers: []},
+          &ok_next/1,
+          []
+        )
 
       assert env.url == "https://1.2.3.4/path"
       refute List.keymember?(env.headers, "host", 0)
