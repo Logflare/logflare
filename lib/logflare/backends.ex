@@ -411,34 +411,42 @@ defmodule Logflare.Backends do
       clear_list_backends_cache(source.id)
 
       if source_sup_started?(source) do
-        previous_backends = source_with_backends.backends
-        current_backends = backends
-
-        added_backends =
-          Enum.filter(current_backends, fn cb ->
-            not Enum.any?(previous_backends, &(&1.id == cb.id))
-          end)
-
-        removed_backends =
-          Enum.filter(previous_backends, fn pb ->
-            not Enum.any?(current_backends, &(&1.id == pb.id))
-          end)
-
-        for backend <- added_backends do
-          SourceSup.start_backend_child(source, backend)
-          Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
-        end
-
-        for backend <- removed_backends do
-          SourceSup.stop_backend_child(source, backend)
-          Cluster.Utils.rpc_multicall(SourceSup, :stop_backend_child, [source, backend])
-        end
+        sync_backend_children(source, source_with_backends.backends, backends)
       else
         :ok
       end
 
       result
     end
+  end
+
+  @spec sync_backend_children(
+          source :: Source.t(),
+          previous_backends :: [Backend.t()],
+          current_backends :: [Backend.t()]
+        ) :: :ok
+  defp sync_backend_children(source, previous_backends, current_backends) do
+    added_backends =
+      Enum.filter(current_backends, fn cb ->
+        not Enum.any?(previous_backends, &(&1.id == cb.id))
+      end)
+
+    removed_backends =
+      Enum.filter(previous_backends, fn pb ->
+        not Enum.any?(current_backends, &(&1.id == pb.id))
+      end)
+
+    for backend <- added_backends do
+      SourceSup.start_backend_child(source, backend)
+      Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
+    end
+
+    for backend <- removed_backends do
+      SourceSup.stop_backend_child(source, backend)
+      Cluster.Utils.rpc_multicall(SourceSup, :stop_backend_child, [source, backend])
+    end
+
+    :ok
   end
 
   @doc """
@@ -725,35 +733,44 @@ defmodule Logflare.Backends do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
     for backend <- [nil | backends] do
-      {queue_key, backend_type} =
-        case backend do
-          nil ->
-            {{source.id, nil}, SingleTenant.backend_type()}
-
-          %Backend{consolidated_ingest?: true} ->
-            {{:consolidated, backend.id}, backend.type}
-
-          %Backend{} ->
-            {{source.id, backend.id}, backend.type}
-        end
-
-      telemetry_metadata = %{backend_type: backend_type}
-
-      :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
-        log_events =
-          if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
-
-        IngestEventQueue.add_to_table(queue_key, log_events)
-
-        :telemetry.execute(
-          [:logflare, :backends, :ingest, :dispatch],
-          %{count: length(log_events)},
-          %{backend_type: backend_type}
-        )
-
-        {:ok, telemetry_metadata}
-      end)
+      dispatch_to_default_backend(source, backend, log_events)
     end
+  end
+
+  @spec dispatch_to_default_backend(
+          source :: Source.t(),
+          backend :: Backend.t() | nil,
+          log_events :: [LogEvent.t()]
+        ) :: any()
+  defp dispatch_to_default_backend(source, backend, log_events) do
+    {queue_key, backend_type} =
+      case backend do
+        nil ->
+          {{source.id, nil}, SingleTenant.backend_type()}
+
+        %Backend{consolidated_ingest?: true} ->
+          {{:consolidated, backend.id}, backend.type}
+
+        %Backend{} ->
+          {{source.id, backend.id}, backend.type}
+      end
+
+    telemetry_metadata = %{backend_type: backend_type}
+
+    :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
+      log_events =
+        if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
+
+      IngestEventQueue.add_to_table(queue_key, log_events)
+
+      :telemetry.execute(
+        [:logflare, :backends, :ingest, :dispatch],
+        %{count: length(log_events)},
+        %{backend_type: backend_type}
+      )
+
+      {:ok, telemetry_metadata}
+    end)
   end
 
   defp maybe_pre_ingest(source, backend, events) do
