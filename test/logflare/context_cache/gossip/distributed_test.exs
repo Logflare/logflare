@@ -108,7 +108,17 @@ defmodule Logflare.ContextCache.Gossip.DistributedTest do
       end
     end
 
-    :erpc.call(node, Application, :put_env, [:logflare, LogflareWeb.Endpoint, [server: false]])
+    endpoint_config =
+      :erpc.call(node, Application, :get_env, [:logflare, LogflareWeb.Endpoint])
+      |> Keyword.put(:server, false)
+
+    :erpc.call(node, Application, :put_env, [
+      :logflare,
+      LogflareWeb.Endpoint,
+      endpoint_config,
+      [persistent: true]
+    ])
+
     :erpc.call(node, Application, :put_env, [:logflare, :enable_cainophile, false])
     :erpc.call(node, Application, :ensure_all_started, [:logflare])
 
