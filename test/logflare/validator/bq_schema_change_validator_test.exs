@@ -154,6 +154,33 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
       assert message =~ "items"
       refute message =~ "expected a map"
     end
+
+    test "accepts integer value against :float schema (BQ INT64 -> FLOAT64 coercion)" do
+      source = source_with_flat_map(%{"metadata" => :map, "metadata.value" => :float})
+
+      le = LE.make(%{"metadata" => %{"value" => 42}}, %{source: source})
+
+      assert validate(le, source) == :ok
+    end
+
+    test "accepts list of integers against {:list, :float} schema" do
+      source =
+        source_with_flat_map(%{"metadata" => :map, "metadata.bounds" => {:list, :float}})
+
+      le = LE.make(%{"metadata" => %{"bounds" => [1, 2, 3]}}, %{source: source})
+
+      assert validate(le, source) == :ok
+    end
+
+    test "still rejects :float incoming against :integer schema (no reverse coercion)" do
+      source = source_with_flat_map(%{"metadata" => :map, "metadata.count" => :integer})
+
+      le = LE.make(%{"metadata" => %{"count" => 1.5}}, %{source: source})
+
+      assert {:error, message} = validate(le, source)
+      assert message =~ "Type error"
+      assert message =~ "metadata.count"
+    end
   end
 
   describe "valid?/2" do
