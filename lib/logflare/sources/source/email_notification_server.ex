@@ -62,20 +62,16 @@ defmodule Logflare.Sources.Source.EmailNotificationServer do
   end
 
   defp notify_other_emails(source, rate) do
-    stranger_emails = source.notifications.other_email_notifications
-
-    if stranger_emails do
+    if stranger_emails = source.notifications.other_email_notifications do
       stranger_emails
       |> String.split(",")
-      |> Enum.each(&deliver_to_other(&1, rate, source))
+      |> Enum.each(fn email ->
+        email
+        |> String.trim()
+        |> AccountEmail.source_notification_for_others(rate, source)
+        |> Mailer.deliver()
+      end)
     end
-  end
-
-  defp deliver_to_other(email, rate, source) do
-    email
-    |> String.trim()
-    |> AccountEmail.source_notification_for_others(rate, source)
-    |> Mailer.deliver()
   end
 
   defp notify_team_users(source, rate) do
