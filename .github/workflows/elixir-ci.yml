@@ -170,10 +170,20 @@ jobs:
         with:
           node-version: ${{ needs.versions.outputs.node }}
           cache: npm
-          cache-dependency-path: deps/phoenix_test_jsdom/priv/package-lock.json
+          cache-dependency-path: |
+            deps/phoenix_test_jsdom/priv/package-lock.json
+            assets/package-lock.json
 
       - name: Install phoenix_test_jsdom Node dependencies
         run: npm ci --prefix deps/phoenix_test_jsdom/priv
+
+      - name: Install frontend dependencies
+        if: matrix.commands.name == 'Tests'
+        run: npm ci --prefix assets
+
+      - name: Build frontend assets
+        if: matrix.commands.name == 'Tests'
+        run: npm run deploy --prefix assets
 
       - name: Compile dependencies
         run: mix deps.compile
