@@ -155,11 +155,6 @@ defmodule Logflare.Mixfile do
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:phoenix_test, "~> 0.9.1", only: :test, runtime: false},
-      {:phoenix_test_jsdom,
-       github: "msmithstubbs/phoenix_test_jsdom",
-       branch: "feat/cookie-sessions",
-       only: :test,
-       runtime: false},
       {:phoenix_test_playwright, "~> 0.11.1", only: :test, runtime: false},
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
@@ -262,7 +257,21 @@ defmodule Logflare.Mixfile do
       {:otel_metric_exporter,
        git: "https://github.com/supabase/elixir-otel-metric-exporter", branch: "release/20260519"},
       {:live_monaco_editor, "~> 0.2"}
-    ]
+    ] ++ phoenix_test_jsdom_dep()
+  end
+
+  defp phoenix_test_jsdom_dep do
+    if System.get_env("JSDOM") in ["true", "1"] do
+      [
+        {:phoenix_test_jsdom,
+         github: "msmithstubbs/phoenix_test_jsdom",
+         branch: "feat/cookie-sessions",
+         only: :test,
+         runtime: false}
+      ]
+    else
+      []
+    end
   end
 
   defp aliases do

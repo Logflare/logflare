@@ -18,7 +18,7 @@ config :logflare, LogflareWeb.Endpoint,
       ]
     ]
   ],
-  server: true
+  server: System.get_env("JSDOM") in ["true", "1"]
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 

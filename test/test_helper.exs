@@ -90,6 +90,7 @@ ExUnit.configure(
     not_implemented: true,
     feature: true,
     integration: true,
+    jsdom: true,
     failing: true,
     benchmark: true
   ]
