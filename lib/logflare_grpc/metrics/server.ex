@@ -3,6 +3,8 @@ defmodule LogflareGrpc.Metrics.Server do
   GRPC Server for the Logflare Metrics Service
   """
 
+  require Logger
+
   alias Logflare.Logs.Processor
   alias Logflare.Logs.OtelMetric
 
@@ -15,7 +17,20 @@ defmodule LogflareGrpc.Metrics.Server do
     http_transcode: true
 
   def export(%ExportMetricsServiceRequest{resource_metrics: metrics}, stream) do
-    Processor.ingest(metrics, OtelMetric, stream.local.source)
+    source = stream.local.source
+
+    case Processor.ingest(metrics, OtelMetric, source) do
+      {:error, errors} when is_list(errors) ->
+        Logger.warning("OTLP gRPC ingest rejected #{length(errors)} event(s) at validation",
+          source_token: source.token,
+          source_id: source.id,
+          sample_errors: errors |> Enum.uniq() |> Enum.take(3)
+        )
+
+      _ ->
+        :ok
+    end
+
     GRPC.Server.set_trailers(stream, %{"grpc-status" => "0"})
     %ExportMetricsServiceResponse{}
   end

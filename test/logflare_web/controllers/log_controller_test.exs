@@ -127,6 +127,45 @@ defmodule LogflareWeb.LogControllerTest do
       end)
     end
 
+    for {path, request_module, response_module} <- [
+          {:otel_metrics, ExportMetricsServiceRequest, ExportMetricsServiceResponse},
+          {:otel_traces, ExportTraceServiceRequest, ExportTraceServiceResponse},
+          {:otel_logs, ExportLogsServiceRequest, ExportLogsServiceResponse}
+        ] do
+      test "#{path} returns 200 (not 500) when validation rejects events", %{
+        conn: conn,
+        source: source,
+        user: user
+      } do
+        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source ->
+          {:error, ["Type error! Field `value` has an unexpected type."]}
+        end)
+
+        body =
+          case unquote(path) do
+            :otel_metrics -> TestUtilsGrpc.random_otel_metrics_request()
+            :otel_traces -> TestUtilsGrpc.random_export_service_request()
+            :otel_logs -> TestUtilsGrpc.random_otel_logs_request()
+          end
+          |> unquote(request_module).encode()
+
+        log =
+          capture_log(fn ->
+            conn =
+              conn
+              |> put_req_header("x-api-key", user.api_key)
+              |> put_req_header("x-source", Atom.to_string(source.token))
+              |> put_req_header("content-type", "application/x-protobuf")
+              |> post(Routes.log_path(conn, unquote(path)), body)
+
+            assert protobuf_response(conn, 200, unquote(response_module)) ==
+                     struct!(unquote(response_module), partial_success: nil)
+          end)
+
+        assert log =~ "OTLP ingest rejected"
+      end
+    end
+
     test ":otel_logs ingestion", %{conn: conn, source: source, user: user} do
       {_this, ref} = expect_webhook_with_body()
 

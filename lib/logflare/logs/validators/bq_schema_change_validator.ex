@@ -106,16 +106,22 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
 
   defp enforce_type(incoming, key, schema_flat_map) do
     case Map.fetch(schema_flat_map, key) do
-      {:ok, ^incoming} ->
-        :ok
-
-      {:ok, _existing} ->
-        raise("Type error! Field `#{key}` has an unexpected type.")
-
-      :error ->
-        :ok
+      {:ok, expected} -> check_type(incoming, expected, key)
+      :error -> :ok
     end
   end
+
+  defp check_type(same, same, _key), do: :ok
+
+  # BigQuery implicitly coerces INT64 -> FLOAT64 on insert, so integer values
+  # against a FLOAT column are valid even though :integer != :float as Erlang
+  # terms. Mirrors that coercion at validation time. Same for REPEATED FLOAT
+  # columns receiving a list of integers.
+  defp check_type(:integer, :float, _key), do: :ok
+  defp check_type({:list, :integer}, {:list, :float}, _key), do: :ok
+
+  defp check_type(_incoming, _expected, key),
+    do: raise("Type error! Field `#{key}` has an unexpected type.")
 
   defp join_key("", key), do: to_string(key)
   defp join_key(prefix, key), do: prefix <> "." <> to_string(key)
