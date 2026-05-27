@@ -22,6 +22,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Utils
+  alias Logflare.Utils.SSRF
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -56,6 +57,23 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Ecto.Changeset.validate_inclusion(:http, ["http1", "http2"])
+    |> validate_no_ssrf()
+  end
+
+  @spec validate_no_ssrf(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  defp validate_no_ssrf(changeset) do
+    case Ecto.Changeset.get_field(changeset, :url) do
+      nil ->
+        changeset
+
+      url ->
+        host = URI.parse(url).host
+
+        case SSRF.safe_resolve(host) do
+          {:ok, _} -> changeset
+          {:error, reason} -> Ecto.Changeset.add_error(changeset, :url, reason, validation: :ssrf)
+        end
+    end
   end
 
   @impl Logflare.Backends.Adaptor
@@ -112,6 +130,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   defmodule Client do
     @moduledoc false
     alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
+    alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
     use Tesla, docs: false
 
     defguardp is_possible_pool(value)
@@ -143,6 +162,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           Tesla.Middleware.Telemetry,
           Tesla.Middleware.JSON,
           if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
+          SSRFProtection,
           EgressTracer
         ]
         |> Enum.filter(& &1),

@@ -290,11 +290,11 @@ defmodule LogflareWeb.BackendsLiveTest do
                  name: "my webhook",
                  type: "webhook",
                  config: %{
-                   url: "http://localhost:1234"
+                   url: "https://example.com"
                  }
                }
              })
-             |> render_submit() =~ "localhost"
+             |> render_submit() =~ "example"
 
       refute render(view) =~ "URL"
 
@@ -435,13 +435,13 @@ defmodule LogflareWeb.BackendsLiveTest do
             description: "some description",
             name: "some other name",
             config: %{
-              url: "https://some-other-url.com"
+              url: "https://example.org"
             }
           }
         })
         |> render_submit()
 
-      assert html =~ "some-other-url.com"
+      assert html =~ "example.org"
       assert html =~ "some other name"
       assert html =~ "some description"
     end

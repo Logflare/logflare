@@ -138,6 +138,7 @@ defmodule Logflare.Mixfile do
       {:earmark, "~> 1.4.33"},
 
       # Outbound Requests
+      {:inet_cidr, "~> 1.0"},
       {:castore, "~> 1.0"},
       {:finch, "~> 0.20.0"},
       {:mint, "~> 1.0"},
@@ -204,7 +205,7 @@ defmodule Logflare.Mixfile do
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
 
       # Billing
-      {:stripity_stripe, "~> 2.9.0"},
+      {:stripity_stripe, "~> 3.2.0"},
       {:money, "~> 1.14"},
 
       # Utils

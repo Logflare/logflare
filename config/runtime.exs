@@ -38,7 +38,7 @@ logflare_metadata =
 logflare_health =
   [
     memory_utilization:
-      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.80") |> String.to_float()
+      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.95") |> String.to_float()
   ]
   |> filter_nil_kv_pairs.()
 
@@ -279,6 +279,10 @@ config :stripity_stripe,
          api_key: System.get_env("STRIPE_API_KEY"),
          publishable_key: System.get_env("STRIPE_PUBLISHABLE_KEY")
        )
+
+if config_env() != :test do
+  config :logflare, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SECRET")
+end
 
 if config_env() != :test do
   config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()

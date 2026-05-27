@@ -2,6 +2,8 @@ defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  require Logger
+
   alias Logflare.Logs
   alias Logflare.Logs.Processor
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
@@ -299,8 +301,16 @@ defmodule LogflareWeb.LogController do
       reraise exception, __STACKTRACE__
   end
 
-  defp protobuf_response({:error, _}, conn, _success_response) do
-    send_proto_error(conn, 500, "Internal server error")
+  defp protobuf_response({:error, errors}, conn, success_response) when is_list(errors) do
+    source = conn.assigns.source
+
+    Logger.warning("OTLP ingest rejected #{length(errors)} event(s) at validation",
+      source_token: source.token,
+      source_id: source.id,
+      sample_errors: errors |> Enum.uniq() |> Enum.take(3)
+    )
+
+    send_proto_resp(conn, success_response)
   end
 
   defp protobuf_response(_, conn, success_response) do

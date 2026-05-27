@@ -3,6 +3,8 @@ defmodule LogflareGrpc.Trace.Server do
   GRPC Server for the Logflare Trace Service
   """
 
+  require Logger
+
   alias Logflare.Logs.Processor
   alias Logflare.Logs.OtelTrace
 
@@ -15,7 +17,20 @@ defmodule LogflareGrpc.Trace.Server do
     http_transcode: true
 
   def export(%ExportTraceServiceRequest{resource_spans: spans}, stream) do
-    Processor.ingest(spans, OtelTrace, stream.local.source)
+    source = stream.local.source
+
+    case Processor.ingest(spans, OtelTrace, source) do
+      {:error, errors} when is_list(errors) ->
+        Logger.warning("OTLP gRPC ingest rejected #{length(errors)} event(s) at validation",
+          source_token: source.token,
+          source_id: source.id,
+          sample_errors: errors |> Enum.uniq() |> Enum.take(3)
+        )
+
+      _ ->
+        :ok
+    end
+
     GRPC.Server.set_trailers(stream, %{"grpc-status" => "0"})
     %ExportTraceServiceResponse{}
   end
