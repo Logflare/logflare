@@ -596,19 +596,19 @@ defmodule Logflare.Backends do
         {events, errors, total, dropped_old, dropped_future} ->
           case param_to_log_event(param, source) do
             %{drop: true} ->
-              do_telemetry(:drop, source)
+              do_telemetry(:drop_lql, source)
               {events, errors, total + 1, dropped_old, dropped_future}
 
             %{pipeline_error: %_{message: message}, valid: false} ->
-              do_telemetry(:invalid, source)
+              do_telemetry(:rejected, source)
               {events, [message | errors], total + 1, dropped_old, dropped_future}
 
             %{body: %{"timestamp" => timestamp}} when timestamp < min_allowed ->
-              do_telemetry(:drop, source)
+              do_telemetry(:drop_stale, source)
               {events, errors, total + 1, dropped_old + 1, dropped_future}
 
             %{body: %{"timestamp" => timestamp}} when timestamp > max_allowed ->
-              do_telemetry(:drop, source)
+              do_telemetry(:drop_future, source)
               {events, errors, total + 1, dropped_old, dropped_future + 1}
 
             le ->
@@ -1145,18 +1145,11 @@ defmodule Logflare.Backends do
     end
   end
 
-  defp do_telemetry(:drop, source) do
+  defp do_telemetry(reason, source)
+       when reason in [:drop_lql, :drop_stale, :drop_future, :rejected] do
     :telemetry.execute(
-      [:logflare, :logs, :ingest_logs],
-      %{drop: true},
-      %{source_id: source.id, source_token: source.token}
-    )
-  end
-
-  defp do_telemetry(:invalid, source) do
-    :telemetry.execute(
-      [:logflare, :logs, :ingest_logs],
-      %{rejected: true},
+      [:logflare, :logs, :ingest_logs, reason],
+      %{count: 1},
       %{source_id: source.id, source_token: source.token}
     )
   end

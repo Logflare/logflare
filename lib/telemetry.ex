@@ -174,13 +174,24 @@ defmodule Logflare.Telemetry do
         description: "Sum of batch sizes for broadway pipeline by backend type"
       ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
-      counter("logflare.logs.ingest_logs.drop",
-        description: "Ingest drops"
+      counter("logflare.logs.ingest_logs.drop_lql",
+        event_name: [:logflare, :logs, :ingest_logs, :drop_lql],
+        description: "Ingest drops (LQL rule match)"
+      ),
+      counter("logflare.logs.ingest_logs.drop_stale",
+        event_name: [:logflare, :logs, :ingest_logs, :drop_stale],
+        description: "Ingest drops (timestamp older than 72h)"
+      ),
+      counter("logflare.logs.ingest_logs.drop_future",
+        event_name: [:logflare, :logs, :ingest_logs, :drop_future],
+        description: "Ingest drops (timestamp more than 1h in the future)"
       ),
       counter("logflare.logs.ingest_logs.rejected",
+        event_name: [:logflare, :logs, :ingest_logs, :rejected],
         description: "Ingest rejects"
       ),
       counter("logflare.logs.ingest_logs.buffer_full",
+        event_name: [:logflare, :logs, :ingest_logs, :buffer_full],
         description: "Ingest buffer fulls"
       ),
       counter("logflare.rate_limiter.rejected",
