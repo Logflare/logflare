@@ -148,8 +148,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     source_id = source.id
     source_token = source.token
 
-    assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :buffer_full],
-                    %{count: 1}, %{source_id: ^source_id, source_token: ^source_token}}
+    assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :buffer_full], %{count: 1},
+                    %{source_id: ^source_id, source_token: ^source_token}}
   end
 
   describe "default ingest feature" do
