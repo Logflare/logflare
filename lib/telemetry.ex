@@ -194,13 +194,14 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         description: "Ingest rejects"
       ),
-      counter("logflare.logs.ingest_logs.buffer_full",
-        event_name: [:logflare, :logs, :ingest_logs, :buffer_full],
-        measurement: :count,
-        description: "Ingest buffer fulls"
-      ),
       counter("logflare.rate_limiter.rejected",
         description: "Rate limited API hits"
+      ),
+      counter("logflare.ingest.requests.buffer_full",
+        event_name: [:logflare, :ingest, :requests, :buffer_full],
+        measurement: :count,
+        description:
+          "Ingest requests rejected (429) — pending buffer full (per request, not per event)"
       ),
       last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
       distribution("logflare.backends.dynamic_pipeline.pipeline_count"),

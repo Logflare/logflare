@@ -23,7 +23,7 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   def call(%{assigns: %{source: %Source{} = source}} = conn, _opts) do
     if Backends.cached_local_pending_buffer_full?(source) do
       :telemetry.execute(
-        [:logflare, :logs, :ingest_logs, :buffer_full],
+        [:logflare, :ingest, :requests, :buffer_full],
         %{count: 1},
         %{source_id: source.id, source_token: source.token}
       )

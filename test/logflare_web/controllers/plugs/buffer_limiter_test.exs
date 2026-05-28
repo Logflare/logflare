@@ -124,7 +124,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     source: source,
     table_key: table_key
   } do
-    TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :buffer_full])
+    TestUtils.attach_forwarder([:logflare, :ingest, :requests, :buffer_full])
 
     Backends.cache_local_buffer_lens(source.id, nil)
 
@@ -132,7 +132,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     |> assign(:source, source)
     |> BufferLimiter.call(%{})
 
-    refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :buffer_full], _, _}
+    refute_receive {:telemetry_event, [:logflare, :ingest, :requests, :buffer_full], _, _}
 
     for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
       le = build(:log_event)
@@ -148,7 +148,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     source_id = source.id
     source_token = source.token
 
-    assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :buffer_full], %{count: 1},
+    assert_receive {:telemetry_event, [:logflare, :ingest, :requests, :buffer_full], %{count: 1},
                     %{source_id: ^source_id, source_token: ^source_token}}
   end
 
