@@ -30,8 +30,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
   end
 
   def start_otel_exporter(_context) do
-    [spec] = UserMonitoring.get_otel_exporter()
-    start_supervised!(spec)
+    start_supervised!(Logflare.UserMetrics)
     :ok
   end
 

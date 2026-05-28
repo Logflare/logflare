@@ -84,7 +84,7 @@ defmodule Logflare.Application do
     # set goth early in the supervision tree
     Networking.pools() ++
       conditional_children() ++
-      UserMonitoring.get_otel_exporter() ++
+      [Logflare.UserMetrics] ++
       [
         Logflare.ErlSysMon,
         {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
