@@ -867,11 +867,46 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source})
       :timer.sleep(1000)
 
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_lql])
+
       le = build(:log_event, message: "testing 123", source: source)
 
       assert {:ok, 0} = Backends.ingest_logs([le], source)
       assert [] = Backends.list_recent_logs_local(source)
+
+      source_id = source.id
+      source_token = source.token
+
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_lql], %{count: 1},
+                      %{source_id: ^source_id, source_token: ^source_token}}
+
       :timer.sleep(1000)
+    end
+
+    test "emits rejected telemetry for events with pipeline_error", %{user: user} do
+      source = insert(:source, user: user)
+
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :rejected])
+
+      le = %Logflare.LogEvent{
+        source_id: source.id,
+        source_uuid: source.token,
+        body: %{"message" => "bad event"},
+        valid: false,
+        pipeline_error: %Logflare.LogEvent.PipelineError{
+          stage: "test",
+          type: "test",
+          message: "test rejection"
+        }
+      }
+
+      assert {:error, ["test rejection"]} = Backends.ingest_logs([le], source)
+
+      source_id = source.id
+      source_token = source.token
+
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :rejected], %{count: 1},
+                      %{source_id: ^source_id, source_token: ^source_token}}
     end
 
     test "route to source with lql", %{user: user} do
@@ -1519,21 +1554,37 @@ defmodule Logflare.BackendsTest do
     end
 
     test "drops events older than 72 hours", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
+
       now_us = System.system_time(:microsecond)
       old_timestamp = now_us - 73 * 3_600 * 1_000_000
 
       params = [%{"message" => "old event", "timestamp" => old_timestamp}]
 
       assert {:ok, 0} = Backends.ingest_logs(params, source)
+
+      source_id = source.id
+      source_token = source.token
+
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale],
+                      %{count: 1}, %{source_id: ^source_id, source_token: ^source_token}}
     end
 
     test "drops events more than 1 hour in the future", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_future])
+
       now_us = System.system_time(:microsecond)
       future_timestamp = now_us + 2 * 3_600 * 1_000_000
 
       params = [%{"message" => "future event", "timestamp" => future_timestamp}]
 
       assert {:ok, 0} = Backends.ingest_logs(params, source)
+
+      source_id = source.id
+      source_token = source.token
+
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future],
+                      %{count: 1}, %{source_id: ^source_id, source_token: ^source_token}}
     end
 
     test "accepts events within valid time range", %{source: source} do

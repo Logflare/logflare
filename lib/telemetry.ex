@@ -176,22 +176,27 @@ defmodule Logflare.Telemetry do
       counter("logflare.cache_buster.to_bust.count", tags: []),
       counter("logflare.logs.ingest_logs.drop_lql",
         event_name: [:logflare, :logs, :ingest_logs, :drop_lql],
+        measurement: :count,
         description: "Ingest drops (LQL rule match)"
       ),
       counter("logflare.logs.ingest_logs.drop_stale",
         event_name: [:logflare, :logs, :ingest_logs, :drop_stale],
+        measurement: :count,
         description: "Ingest drops (timestamp older than 72h)"
       ),
       counter("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],
+        measurement: :count,
         description: "Ingest drops (timestamp more than 1h in the future)"
       ),
       counter("logflare.logs.ingest_logs.rejected",
         event_name: [:logflare, :logs, :ingest_logs, :rejected],
+        measurement: :count,
         description: "Ingest rejects"
       ),
       counter("logflare.logs.ingest_logs.buffer_full",
         event_name: [:logflare, :logs, :ingest_logs, :buffer_full],
+        measurement: :count,
         description: "Ingest buffer fulls"
       ),
       counter("logflare.rate_limiter.rejected",
