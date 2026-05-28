@@ -14,6 +14,8 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
+  alias Logflare.LogEvent
+  alias Logflare.LogEvent.PipelineError
   alias Logflare.Lql
   alias Logflare.PubSubRates
   alias Logflare.Repo
@@ -888,12 +890,12 @@ defmodule Logflare.BackendsTest do
 
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :rejected])
 
-      le = %Logflare.LogEvent{
+      le = %LogEvent{
         source_id: source.id,
         source_uuid: source.token,
         body: %{"message" => "bad event"},
         valid: false,
-        pipeline_error: %Logflare.LogEvent.PipelineError{
+        pipeline_error: %PipelineError{
           stage: "test",
           type: "test",
           message: "test rejection"
@@ -907,6 +909,33 @@ defmodule Logflare.BackendsTest do
 
       assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :rejected], %{count: 1},
                       %{source_id: ^source_id, source_token: ^source_token}}
+    end
+
+    test "aggregates per-outcome counts into a single telemetry event per batch", %{user: user} do
+      {:ok, lql_filters} = Lql.Parser.parse("testing", TestUtils.default_bq_schema())
+
+      source =
+        insert(:source, user: user, drop_lql_string: "testing", drop_lql_filters: lql_filters)
+
+      start_supervised!({SourceSup, source})
+      :timer.sleep(1000)
+
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_lql])
+
+      events =
+        for _ <- 1..3, do: build(:log_event, message: "testing 123", source: source)
+
+      assert {:ok, 0} = Backends.ingest_logs(events, source)
+
+      source_id = source.id
+      source_token = source.token
+
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_lql], %{count: 3},
+                      %{source_id: ^source_id, source_token: ^source_token}}
+
+      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_lql], _, _}
+
+      :timer.sleep(1000)
     end
 
     test "route to source with lql", %{user: user} do
