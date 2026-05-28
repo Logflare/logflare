@@ -57,7 +57,7 @@ defmodule Logflare.Backends.ConsolidatedSup do
   @doc """
   Stops a consolidated pipeline for a backend.
   """
-  @spec stop_pipeline(Backend.t() | pos_integer()) :: :ok | {:error, :not_found}
+  @spec stop_pipeline(Backend.t() | pos_integer() | nil) :: :ok | {:error, :not_found}
   def stop_pipeline(%Backend{} = backend) do
     case find_pipeline_pid(backend) do
       nil ->
@@ -68,7 +68,7 @@ defmodule Logflare.Backends.ConsolidatedSup do
     end
   end
 
-  def stop_pipeline(backend_id) when is_integer(backend_id) do
+  def stop_pipeline(backend_id) when is_integer(backend_id) or is_nil(backend_id) do
     case find_pipeline_pid_by_backend_id(backend_id) do
       nil ->
         {:error, :not_found}
@@ -81,12 +81,12 @@ defmodule Logflare.Backends.ConsolidatedSup do
   @doc """
   Checks if a consolidated pipeline is running for a backend.
   """
-  @spec pipeline_running?(Backend.t() | pos_integer()) :: boolean()
+  @spec pipeline_running?(Backend.t() | pos_integer() | nil) :: boolean()
   def pipeline_running?(%Backend{} = backend) do
     find_pipeline_pid(backend) != nil
   end
 
-  def pipeline_running?(backend_id) when is_integer(backend_id) do
+  def pipeline_running?(backend_id) when is_integer(backend_id) or is_nil(backend_id) do
     case Backends.Cache.get_backend(backend_id) do
       nil -> false
       backend -> pipeline_running?(backend)
@@ -106,7 +106,7 @@ defmodule Logflare.Backends.ConsolidatedSup do
   @doc """
   Returns all currently running consolidated pipeline PIDs and their backend IDs.
   """
-  @spec list_pipelines() :: [{backend_id :: integer(), pid()}]
+  @spec list_pipelines() :: [{backend_id :: integer() | nil, pid()}]
   def list_pipelines do
     @dynamic_sup_name
     |> DynamicSupervisor.which_children()
@@ -124,7 +124,8 @@ defmodule Logflare.Backends.ConsolidatedSup do
     end
   end
 
-  defp find_pipeline_pid_by_backend_id(backend_id) when is_integer(backend_id) do
+  defp find_pipeline_pid_by_backend_id(backend_id)
+       when is_integer(backend_id) or is_nil(backend_id) do
     list_pipelines()
     |> Enum.find_value(fn
       {^backend_id, pid} -> pid

@@ -185,7 +185,7 @@ defmodule Logflare.Application do
   def startup_tasks do
     Logger.info("Executing startup tasks")
 
-    if !SingleTenant.postgres_backend?() do
+    if !SingleTenant.postgres_backend?() and !SingleTenant.clickhouse_backend?() do
       BigQueryAdaptor.create_managed_service_accounts()
       BigQueryAdaptor.update_iam_policy()
     end
@@ -202,7 +202,7 @@ defmodule Logflare.Application do
       SingleTenant.create_supabase_endpoints()
       SingleTenant.ensure_supabase_sources_started()
 
-      unless SingleTenant.postgres_backend?() do
+      unless SingleTenant.postgres_backend?() or SingleTenant.clickhouse_backend?() do
         # buffer time for all sources to init and create tables
         # in case of latency.
         :timer.sleep(3_000)

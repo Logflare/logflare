@@ -174,7 +174,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end)
   end
 
-  @spec drop_exhausted_messages(exhausted :: [Message.t()], backend_id :: pos_integer()) :: :ok
+  @spec drop_exhausted_messages(exhausted :: [Message.t()], backend_id :: pos_integer() | nil) ::
+          :ok
   defp drop_exhausted_messages([], _backend_id), do: :ok
 
   defp drop_exhausted_messages(exhausted, backend_id) do
@@ -192,7 +193,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
-  @spec requeue_retriable_messages(retriable :: [Message.t()], backend_id :: pos_integer()) :: :ok
+  @spec requeue_retriable_messages(retriable :: [Message.t()], backend_id :: pos_integer() | nil) ::
+          :ok
   defp requeue_retriable_messages([], _backend_id), do: :ok
 
   defp requeue_retriable_messages(retriable, backend_id) do

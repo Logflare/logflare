@@ -20,7 +20,7 @@ defmodule Logflare.Backends.BufferProducer do
           demand: non_neg_integer(),
           source_id: pos_integer() | nil,
           source_token: atom() | nil,
-          backend_id: pos_integer(),
+          backend_id: pos_integer() | nil,
           last_discard_log_dt: DateTime.t() | nil,
           interval: pos_integer()
         }
@@ -75,7 +75,7 @@ defmodule Logflare.Backends.BufferProducer do
     state
   end
 
-  @spec init_consolidated_state(pos_integer(), pos_integer(), keyword()) :: state()
+  @spec init_consolidated_state(pos_integer() | nil, pos_integer(), keyword()) :: state()
   defp init_consolidated_state(backend_id, interval, opts) do
     state = %{
       consolidated: true,

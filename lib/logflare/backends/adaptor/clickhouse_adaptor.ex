@@ -695,10 +695,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  @spec maybe_start_query_connection_manager(pid() | nil, pos_integer()) :: :ok | {:error, term()}
-  defp maybe_start_query_connection_manager(nil, backend_id) when is_integer(backend_id) do
+  @spec maybe_start_query_connection_manager(pid() | nil, pos_integer() | nil) ::
+          :ok | {:error, term()}
+  defp maybe_start_query_connection_manager(nil, backend_id)
+       when is_integer(backend_id) or is_nil(backend_id) do
     backend = Backends.Cache.get_backend(backend_id)
 
+    if is_nil(backend) do
+      {:error, :backend_not_found}
+    else
+      start_query_connection_manager(backend)
+    end
+  end
+
+  defp maybe_start_query_connection_manager(_pid, _backend_id), do: :ok
+
+  @spec start_query_connection_manager(Backend.t()) :: :ok | {:error, term()}
+  defp start_query_connection_manager(%Backend{} = backend) do
     with child_spec <- ConnectionManager.child_spec(backend),
          {:ok, _pid} <- __MODULE__.QueryConnectionSup.start_connection_manager(child_spec) do
       Logger.info(
@@ -714,15 +727,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       {:error, reason} = error ->
         Logger.warning(
           "Failed to start query ConnectionManager for backend",
-          backend_id: backend_id,
+          backend_id: backend.id,
           reason: reason
         )
 
         error
     end
   end
-
-  defp maybe_start_query_connection_manager(_pid, _backend_id), do: :ok
 
   @spec ensure_pool_and_notify(Backend.t()) :: :ok
   defp ensure_pool_and_notify(%Backend{} = backend) do

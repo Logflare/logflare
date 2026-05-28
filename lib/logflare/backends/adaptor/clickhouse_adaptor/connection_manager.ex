@@ -20,7 +20,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @ch_query_conn_timeout :timer.minutes(1)
 
   typedstruct do
-    field :backend_id, pos_integer(), enforce: true
+    field :backend_id, pos_integer() | nil, enforce: true
     field :pool_pid, pid() | nil, default: nil
     field :last_activity, integer() | nil, default: nil
     field :resolve_timer_ref, reference() | nil, default: nil

@@ -56,6 +56,9 @@ make setup
 # start in single tenant postgres backend
 make start.st.pg
 
+# start in single tenant clickhouse backend
+make start.st.ch
+
 # run tests
 mix test
 mix test.watch
@@ -78,6 +81,7 @@ Use the single tenant `make start.*` variations. This works by switching out the
 ```bash
 make start.st.pg
 make start.st.bq
+make start.st.ch
 ```
 
 To develop with Supabase mode:
@@ -85,6 +89,7 @@ To develop with Supabase mode:
 ```bash
 make start.sb.bq
 make start.sb.pg
+make start.sb.ch
 ```
 
 ### Running with Docker Compose

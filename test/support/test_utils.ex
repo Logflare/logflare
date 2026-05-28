@@ -91,6 +91,28 @@ defmodule Logflare.TestUtils do
     end
   end
 
+  defp setup_single_tenant_backend(%{backend_type: :clickhouse}) do
+    quote do
+      setup do
+        Goth
+        |> reject(:fetch, 1)
+
+        previous = Application.get_env(:logflare, :clickhouse_backend_adaptor)
+
+        Application.put_env(:logflare, :clickhouse_backend_adaptor,
+          url: "http://localhost:8123",
+          database: "logflare_test",
+          username: "default",
+          password: "",
+          port: 8123
+        )
+
+        on_exit(fn -> Application.put_env(:logflare, :clickhouse_backend_adaptor, previous) end)
+        :ok
+      end
+    end
+  end
+
   defp setup_single_tenant_backend(%{backend_type: :bigquery} = opts) do
     quote do
       setup do

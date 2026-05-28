@@ -141,6 +141,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert ^tid = IngestEventQueue.get_tid(key)
     end
 
+    test "upsert_tid/1 and get_tid/1 work with virtual consolidated backend keys" do
+      key = {:consolidated, nil, self()}
+      assert {:ok, tid} = IngestEventQueue.upsert_tid(key)
+      assert ^tid = IngestEventQueue.get_tid(key)
+    end
+
     test "upsert_tid/1 returns error if tid already exists for consolidated key", %{
       backend: backend
     } do
@@ -186,6 +192,15 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       le = build(:log_event)
 
       assert :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, [le])
+      assert IngestEventQueue.total_pending(startup_key) == 1
+    end
+
+    test "add_to_table/2 distributes virtual consolidated backend events to startup queue" do
+      startup_key = {:consolidated, nil, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+      le = build(:log_event)
+
+      assert :ok = IngestEventQueue.add_to_table({:consolidated, nil}, [le])
       assert IngestEventQueue.total_pending(startup_key) == 1
     end
 

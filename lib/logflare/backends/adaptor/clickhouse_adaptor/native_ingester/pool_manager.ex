@@ -21,7 +21,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolManager
   @warm_up_count System.schedulers_online()
 
   typedstruct do
-    field :backend_id, pos_integer(), enforce: true
+    field :backend_id, pos_integer() | nil, enforce: true
     field :pool_pid, pid() | nil, default: nil
     field :last_activity, integer() | nil, default: nil
     field :resolve_timer_ref, reference() | nil, default: nil

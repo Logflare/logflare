@@ -22,8 +22,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   @type table_key :: {pos_integer(), pos_integer() | nil, pid() | nil}
   @type table_obj :: {table_key(), :ets.tid()}
   @type queues_key :: {pos_integer(), pos_integer() | nil}
-  @type consolidated_queues_key :: {:consolidated, pos_integer()}
-  @type consolidated_table_key :: {:consolidated, pos_integer(), pid() | nil}
+  @type consolidated_queues_key :: {:consolidated, pos_integer() | nil}
+  @type consolidated_table_key :: {:consolidated, pos_integer() | nil, pid() | nil}
 
   defguardp is_pid_or_nil(value) when is_pid(value) or is_nil(value)
 
@@ -61,7 +61,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   Retrieves a private tid of a given source-backend combination or consolidated queue.
   """
   @spec get_tid(table_key() | consolidated_table_key()) :: :ets.tid() | nil
-  def get_tid({:consolidated, bid, pid}) when is_integer(bid),
+  def get_tid({:consolidated, bid, pid}) when is_integer(bid) or is_nil(bid),
     do: do_get_tid({:consolidated, bid}, pid)
 
   def get_tid({sid, bid, pid}) when is_integer(sid),
@@ -83,7 +83,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec upsert_tid(table_key() | consolidated_table_key()) ::
           {:ok, :ets.tid()} | {:error, :already_exists, :ets.tid()}
-  def upsert_tid({:consolidated, bid, pid} = key) when is_integer(bid) and is_pid_or_nil(pid) do
+  def upsert_tid({:consolidated, bid, pid} = key)
+      when (is_integer(bid) or is_nil(bid)) and is_pid_or_nil(pid) do
     case get_tid(key) do
       nil ->
         tid =
@@ -175,7 +176,8 @@ defmodule Logflare.Backends.IngestEventQueue do
         ) :: :ok | {:error, :not_initialized}
   def add_to_table(sid_bid_or_sid_bid_pid, batch, opts \\ [])
 
-  def add_to_table({:consolidated, bid} = key, batch, opts) when is_integer(bid) do
+  def add_to_table({:consolidated, bid} = key, batch, opts)
+      when is_integer(bid) or is_nil(bid) do
     chunk_size = Keyword.get(opts, :chunk_size, 100)
     no_get_tid = Keyword.get(opts, :no_get_tid, true)
     check_queue_size = Keyword.get(opts, :check_queue_size, true)
@@ -761,7 +763,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec list_queues(queues_key() | consolidated_queues_key()) ::
           [table_key() | consolidated_table_key()]
-  def list_queues({:consolidated, bid}) when is_integer(bid) do
+  def list_queues({:consolidated, bid}) when is_integer(bid) or is_nil(bid) do
     ms =
       Ex2ms.fun do
         {{:consolidated, ^bid}, pid, _tid} -> {:consolidated, ^bid, pid}
@@ -792,7 +794,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec list_queues_with_tids(queues_key() | consolidated_queues_key()) ::
           [{table_key() | consolidated_table_key(), :ets.tid()}]
-  def list_queues_with_tids({:consolidated, bid}) when is_integer(bid) do
+  def list_queues_with_tids({:consolidated, bid}) when is_integer(bid) or is_nil(bid) do
     ms =
       Ex2ms.fun do
         {{:consolidated, ^bid}, pid, tid} -> {{:consolidated, ^bid, pid}, tid}
@@ -826,7 +828,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   def traverse_queues(key, func, acc \\ nil, opts \\ [])
 
-  def traverse_queues({:consolidated, bid}, func, acc, _opts) when is_integer(bid) do
+  def traverse_queues({:consolidated, bid}, func, acc, _opts)
+      when is_integer(bid) or is_nil(bid) do
     :ets.safe_fixtable(@ets_table_mapper, true)
 
     ms =

@@ -30,12 +30,14 @@ defmodule Logflare.Backends do
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
+  alias Logflare.Users
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
   @max_event_age_us 72 * 3_600 * 1_000_000
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
+  @single_tenant_clickhouse_backend_token "00000000-0000-0000-0000-000000000000"
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
 
@@ -186,35 +188,51 @@ defmodule Logflare.Backends do
     end
   end
 
+  @doc """
+  Returns the single-tenant backend configuration.
+  """
+  @spec get_single_tenant_backend() :: Backend.t() | nil
+  def get_single_tenant_backend do
+    cond do
+      SingleTenant.single_tenant?() and SingleTenant.clickhouse_backend?() ->
+        SingleTenant.clickhouse_backend_adapter_opts()
+        |> build_virtual_backend(:clickhouse, "Default clickhouse backend")
+        |> Map.put(:token, @single_tenant_clickhouse_backend_token)
+        |> Map.put(:consolidated_ingest?, true)
+
+      SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() ->
+        SingleTenant.postgres_backend_adapter_opts()
+        |> build_virtual_backend(:postgres, "Default postgres backend")
+
+      true ->
+        nil
+    end
+  end
+
   def get_default_backend(%User{} = user) do
-    if SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() do
-      opts = SingleTenant.postgres_backend_adapter_opts()
+    case get_single_tenant_backend() do
+      %Backend{} = backend ->
+        %{backend | user_id: user.id}
 
-      %Backend{
-        type: :postgres,
-        config: Map.new(opts),
-        user_id: user.id,
-        name: "Default postgres backend"
-      }
-    else
-      {project_id, dataset_id} =
-        if user.bigquery_project_id do
-          {user.bigquery_project_id, user.bigquery_dataset_id}
-        else
-          project_id = User.bq_project_id()
-          dataset_id = User.generate_bq_dataset_id(user.id)
-          {project_id, dataset_id}
-        end
+      nil ->
+        {project_id, dataset_id} =
+          if user.bigquery_project_id do
+            {user.bigquery_project_id, user.bigquery_dataset_id}
+          else
+            project_id = User.bq_project_id()
+            dataset_id = User.generate_bq_dataset_id(user.id)
+            {project_id, dataset_id}
+          end
 
-      %Backend{
-        type: :bigquery,
-        config: %{
-          project_id: project_id,
-          dataset_id: dataset_id
-        },
-        user_id: user.id,
-        name: "Default bigquery backend"
-      }
+        %Backend{
+          type: :bigquery,
+          config: %{
+            project_id: project_id,
+            dataset_id: dataset_id
+          },
+          user_id: user.id,
+          name: "Default bigquery backend"
+        }
     end
   end
 
@@ -469,10 +487,19 @@ defmodule Logflare.Backends do
     |> Map.put(:consolidated_ingest?, Adaptor.consolidated_ingest?(backend))
   end
 
+  @spec build_virtual_backend(Keyword.t() | nil, Backend.__schema__(:type, :type), String.t()) ::
+          Backend.t()
+  defp build_virtual_backend(opts, type, name) do
+    %Backend{type: type, config_encrypted: Map.new(opts || []), name: name}
+    |> typecast_config_string_map_to_atom_map()
+  end
+
   @doc """
   Retrieves a Backend by id.
   """
-  @spec get_backend(integer()) :: Backend.t() | nil
+  @spec get_backend(integer() | nil) :: Backend.t() | nil
+  def get_backend(nil), do: get_single_tenant_backend()
+
   def get_backend(id) do
     backend = Repo.get(Backend, id)
 
@@ -723,8 +750,9 @@ defmodule Logflare.Backends do
 
   defp dispatch_to_backends(source, nil, log_events) do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
+    default_backend = default_dispatch_backend(source)
 
-    for backend <- [nil | backends] do
+    for backend <- [default_backend | backends] do
       {queue_key, backend_type} =
         case backend do
           nil ->
@@ -743,6 +771,10 @@ defmodule Logflare.Backends do
         log_events =
           if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
 
+        if match?(%Backend{consolidated_ingest?: true}, backend) do
+          maybe_start_consolidated_pipeline(backend)
+        end
+
         IngestEventQueue.add_to_table(queue_key, log_events)
 
         :telemetry.execute(
@@ -753,6 +785,14 @@ defmodule Logflare.Backends do
 
         {:ok, telemetry_metadata}
       end)
+    end
+  end
+
+  defp default_dispatch_backend(%Source{} = source) do
+    if SingleTenant.clickhouse_backend?() do
+      source.user_id
+      |> Users.Cache.get()
+      |> get_default_backend()
     end
   end
 
@@ -794,10 +834,10 @@ defmodule Logflare.Backends do
   @doc """
   Registers a unique backend-related process on the backend registry.
   """
-  @spec via_backend(Backend.t() | non_neg_integer(), module()) :: {:via, module(), term()}
+  @spec via_backend(Backend.t() | non_neg_integer() | nil, module()) :: {:via, module(), term()}
   def via_backend(%Backend{id: id}, mod), do: via_backend(id, mod)
 
-  def via_backend(backend_id, mod) when is_number(backend_id) do
+  def via_backend(backend_id, mod) when is_number(backend_id) or is_nil(backend_id) do
     {:via, Registry, {BackendRegistry, {mod, backend_id}}}
   end
 

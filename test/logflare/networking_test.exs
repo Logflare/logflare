@@ -67,4 +67,23 @@ defmodule Logflare.NetworkingTest do
              ] = Networking.pools()
     end
   end
+
+  describe "single tenant mode using ClickHouse" do
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
+
+    test "returns only non-bigquery connection pools" do
+      finch_names =
+        Networking.pools()
+        |> Enum.filter(fn
+          {mod, _} -> mod == Finch
+          _ -> false
+        end)
+        |> Enum.map(fn {Finch, opts} -> Keyword.get(opts, :name) end)
+
+      assert finch_names == [
+               Logflare.FinchDefault,
+               Logflare.FinchClickHouseIngest
+             ]
+    end
+  end
 end

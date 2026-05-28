@@ -126,6 +126,16 @@ Without these two additional permissions, the managed service accounts feature w
 | `POSTGRES_BACKEND_URL`    | string, required                       | PostgreSQL connection string, for connecting to the database. User must have sufficient permssions to manage the schema. |
 | `POSTGRES_BACKEND_SCHEMA` | string, optional, defaults to `public` | Specifies the database schema to scope all operations.                                                                   |
 
+### ClickHouse Backend Configuration
+
+| Env Var                       | Type                                  | Description                                                                                                                                                                                                 |
+| ----------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLICKHOUSE_BACKEND_URL`      | string, required                      | ClickHouse HTTP endpoint URL. Use this with `LOGFLARE_SINGLE_TENANT=true` to run single-tenant ingestion on ClickHouse.                                                                                    |
+| `CLICKHOUSE_BACKEND_DATABASE` | string, required                      | ClickHouse database for Logflare-managed ingest tables. The configured user must have sufficient permissions to create, alter, insert into, select from, and drop tables/views in this database.           |
+| `CLICKHOUSE_BACKEND_USERNAME` | string, optional                      | ClickHouse username. If provided, `CLICKHOUSE_BACKEND_PASSWORD` must also be provided.                                                                                                                      |
+| `CLICKHOUSE_BACKEND_PASSWORD` | string, optional                      | ClickHouse password. If provided, `CLICKHOUSE_BACKEND_USERNAME` must also be provided.                                                                                                                      |
+| `CLICKHOUSE_BACKEND_PORT`     | integer, optional, defaults from URL  | ClickHouse HTTP port. Defaults to the port in `CLICKHOUSE_BACKEND_URL`, `8443` for `https`, or `8123` for `http`.                                                                                          |
+
 ## Database SSL Configuration
 
 Logflare supports secure SSL/TLS connections to its internal database (not the PostgreSQL backend). This is configured using the `DB_SSL` environment variable and certificate files.
@@ -253,6 +263,13 @@ services:
       # Required for Postgres backend
       - POSTGRES_BACKEND_URL=postgresql://user:pass@host:port/db
       - POSTGRES_BACKEND_SCHEMA=my_schema
+
+      # Required for ClickHouse backend
+      - CLICKHOUSE_BACKEND_URL=http://clickhouse:8123
+      - CLICKHOUSE_BACKEND_DATABASE=logflare
+      - CLICKHOUSE_BACKEND_USERNAME=default
+      - CLICKHOUSE_BACKEND_PASSWORD=
+      - CLICKHOUSE_BACKEND_PORT=8123
     volumes:
       - type: bind
         source: ${PWD}/.env

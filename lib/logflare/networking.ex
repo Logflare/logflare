@@ -5,7 +5,7 @@ defmodule Logflare.Networking do
   alias Logflare.SingleTenant
 
   def pools do
-    if SingleTenant.postgres_backend?() do
+    if SingleTenant.postgres_backend?() or SingleTenant.clickhouse_backend?() do
       finch_pools(true)
     else
       finch_pools(false) ++ grpc_pools()

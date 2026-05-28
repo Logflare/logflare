@@ -70,7 +70,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   @doc """
   Returns all currently running query `ConnectionManager` PIDs and their backend IDs.
   """
-  @spec list_query_connection_managers() :: [{backend_id :: integer(), pid()}]
+  @spec list_query_connection_managers() :: [{backend_id :: integer() | nil, pid()}]
   def list_query_connection_managers do
     @dynamic_sup_name
     |> DynamicSupervisor.which_children()
@@ -78,7 +78,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
     |> Enum.reject(&is_nil/1)
   end
 
-  @spec extract_backend_info(DynamicSupervisor.child()) :: {integer(), pid()} | nil
+  @spec extract_backend_info(DynamicSupervisor.child()) :: {integer() | nil, pid()} | nil
   defp extract_backend_info({id, pid, :worker, _modules}) when is_tuple(id) do
     case id do
       {_module, {backend_id}} -> {backend_id, pid}

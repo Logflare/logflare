@@ -23,18 +23,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.SchemaCache
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
-  @spec get(pos_integer(), String.t()) :: Connection.column_info() | nil
+  @spec get(pos_integer() | nil, String.t()) :: Connection.column_info() | nil
   def get(backend_id, cache_key)
-      when is_integer(backend_id) and is_non_empty_binary(cache_key) do
+      when (is_integer(backend_id) or is_nil(backend_id)) and is_non_empty_binary(cache_key) do
     case :ets.lookup(@table, {backend_id, cache_key}) do
       [{_, schema}] -> schema
       [] -> nil
     end
   end
 
-  @spec put(pos_integer(), String.t(), Connection.column_info()) :: true
+  @spec put(pos_integer() | nil, String.t(), Connection.column_info()) :: true
   def put(backend_id, cache_key, schema)
-      when is_integer(backend_id) and is_non_empty_binary(cache_key) and is_list(schema) do
+      when (is_integer(backend_id) or is_nil(backend_id)) and is_non_empty_binary(cache_key) and
+             is_list(schema) do
     :ets.insert(@table, {{backend_id, cache_key}, schema})
   end
 

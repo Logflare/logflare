@@ -81,7 +81,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   @spec drop_queue(
           map(),
           {pos_integer(), pos_integer() | nil, pid() | nil}
-          | {:consolidated, pos_integer(), pid() | nil},
+          | {:consolidated, pos_integer() | nil, pid() | nil},
           pid() | nil,
           boolean(),
           :consolidated | :source

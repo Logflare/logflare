@@ -69,8 +69,9 @@ defmodule Logflare.PubSubRates.Cache do
   @typep node_buffers :: %{atom() => non_neg_integer()}
   @spec cache_buffers(non_neg_integer() | :consolidated, non_neg_integer() | nil, node_buffers()) ::
           {:ok, true}
-  def cache_buffers(:consolidated, backend_id, buffers) when is_integer(backend_id),
-    do: do_cache_buffers({:consolidated, backend_id}, buffers)
+  def cache_buffers(:consolidated, backend_id, buffers)
+      when is_integer(backend_id) or is_nil(backend_id),
+      do: do_cache_buffers({:consolidated, backend_id}, buffers)
 
   def cache_buffers(source_id, backend_id, buffers) when is_integer(source_id),
     do: do_cache_buffers({source_id, backend_id}, buffers)
