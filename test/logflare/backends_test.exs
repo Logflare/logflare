@@ -1641,6 +1641,36 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 2} = Backends.ingest_logs(params, source)
     end
 
+    test "tallies each drop reason separately within a single batch", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_future])
+
+      now_us = System.system_time(:microsecond)
+      old_timestamp = now_us - 73 * 3_600 * 1_000_000
+      future_timestamp = now_us + 2 * 3_600 * 1_000_000
+
+      params = [
+        %{"message" => "valid now", "timestamp" => now_us},
+        %{"message" => "too old 1", "timestamp" => old_timestamp},
+        %{"message" => "too old 2", "timestamp" => old_timestamp},
+        %{"message" => "too future", "timestamp" => future_timestamp}
+      ]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+
+      source_id = source.id
+      source_token = source.token
+
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale],
+                      %{count: 2}, %{source_id: ^source_id, source_token: ^source_token}}
+
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future],
+                      %{count: 1}, %{source_id: ^source_id, source_token: ^source_token}}
+
+      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale], _, _}
+      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future], _, _}
+    end
+
     test "accepts events at exact boundary (72 hours ago)", %{source: source} do
       now_us = System.system_time(:microsecond)
       boundary_timestamp = now_us - (71 * 3_600 + 59 * 60) * 1_000_000
