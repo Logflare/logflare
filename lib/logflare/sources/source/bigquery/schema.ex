@@ -99,11 +99,9 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   def handle_cast({:update, counter, log_event, source}, state) do
-    try do
-      handle_update(log_event, source, state)
-    after
-      checkin_update(counter)
-    end
+    handle_update(log_event, source, state)
+  after
+    checkin_update(counter)
   end
 
   defp handle_update(%LogEvent{}, %Source{lock_schema: true}, state), do: {:noreply, state}
