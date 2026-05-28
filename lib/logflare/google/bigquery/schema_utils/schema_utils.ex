@@ -12,7 +12,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   Transform BigQuery query response into a map.
   via https://stackoverflow.com/questions/53913182/decoding-googleapi-bigquery-object-elixir
   """
-  @spec deep_sort_by_fields_name(TFS.t()) :: TFS.t()
+  @spec deep_sort_by_fields_name(TS.t() | TFS.t()) :: TS.t() | TFS.t()
   def deep_sort_by_fields_name(%{fields: nil} = schema), do: schema
 
   def deep_sort_by_fields_name(%{fields: fields} = schema) when is_list(fields) do
@@ -72,87 +72,15 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
-  @spec to_typemap(term()) :: map() | nil
-  def to_typemap(nil), do: nil
-
-  def to_typemap(%TS{} = schema), do: to_typemap(schema, from: :bigquery_schema)
-
-  def to_typemap(metadata) when is_map(metadata) do
-    for {k, v} <- metadata, not_empty_container?(v), into: Map.new() do
-      v =
-        cond do
-          match?(%DateTime{}, v) or
-              match?(%NaiveDateTime{}, v) ->
-            %{t: :datetime}
-
-          is_list(v) and Enum.any?(v, &is_map/1) ->
-            %{
-              t: :map,
-              fields: Enum.reduce(v, %{}, &Map.merge(&2, to_typemap(&1)))
-            }
-
-          is_list(v) ->
-            %{t: {:list, type_of(hd(v))}}
-
-          is_map(v) ->
-            %{t: :map, fields: to_typemap(v)}
-
-          true ->
-            %{t: type_of(v)}
-        end
-
-      k =
-        cond do
-          is_atom(k) -> k
-          String.valid?(k) -> String.to_atom(k)
-          true -> decode_until_valid!(k)
-        end
-
-      {k, v}
-    end
+  @doc """
+  Converts a BigQuery table schema into the nested typemap used by schema formatting.
+  """
+  @spec to_typemap_from_bigquery_schema(TS.t()) :: %{required(atom) => map | atom}
+  def to_typemap_from_bigquery_schema(%TS{fields: fields} = schema) when is_map(schema) do
+    do_to_typemap_from_bigquery_schema(fields)
   end
 
-  # Reached recursively from the list-of-maps branch above when an element
-  # isn't a map (e.g. [%{...}, "x"]). Returning %{} keeps the surrounding
-  # Map.merge a no-op without crashing the walk.
-  def to_typemap(_), do: %{}
-
-  defp decode_until_valid!(k, encodings \\ [:utf8, :unicode, :latin1])
-
-  defp decode_until_valid!(k, []) do
-    raise("Incoming field #{inspect(k)} is not a valid string")
-  end
-
-  defp decode_until_valid!(k, [encoding | encodings]) when is_binary(k) do
-    case :unicode.characters_to_binary(k, encoding) do
-      {:error, _, _} ->
-        decode_until_valid!(k, encodings)
-
-      k ->
-        k
-        |> Unicode.unaccent()
-        |> String.to_atom()
-    end
-  end
-
-  def not_empty_container?(value)
-      when value == []
-      when value == %{}
-      when value == [[]]
-      when value == [%{}] do
-    false
-  end
-
-  def not_empty_container?(_) do
-    true
-  end
-
-  @spec to_typemap(TS.t() | list(TS.t()), keyword) :: %{required(atom) => map | atom}
-  def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
-    to_typemap(fields, from: :bigquery_schema)
-  end
-
-  def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
+  defp do_to_typemap_from_bigquery_schema(fields) when is_list(fields) do
     Map.new(fields, fn
       %TFS{fields: fields, name: n, type: t, mode: mode} ->
         k = String.to_atom(n)
@@ -178,7 +106,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
         v =
           if fields do
-            Map.put(v, :fields, to_typemap(fields, from: :bigquery_schema))
+            Map.put(v, :fields, do_to_typemap_from_bigquery_schema(fields))
           else
             v
           end
@@ -192,14 +120,11 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def bq_schema_to_flat_typemap(%TS{} = schema) do
     schema
-    |> to_typemap()
+    |> to_typemap_from_bigquery_schema()
     |> flatten_typemap()
   end
 
-  @spec flatten_typemap(map | nil) :: map
-  def flatten_typemap(nil), do: %{}
-
-  def flatten_typemap(typemap) when is_map(typemap) do
+  defp flatten_typemap(typemap) when is_map(typemap) do
     do_flatten_typemap(typemap, "", %{})
   end
 
