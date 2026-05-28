@@ -174,25 +174,25 @@ defmodule Logflare.Telemetry do
         description: "Sum of batch sizes for broadway pipeline by backend type"
       ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
-      counter("logflare.logs.ingest_logs.drop_lql",
+      sum("logflare.logs.ingest_logs.drop_lql",
         event_name: [:logflare, :logs, :ingest_logs, :drop_lql],
         measurement: :count,
-        description: "Ingest drops (LQL rule match)"
+        description: "Sum of events dropped (LQL rule match)"
       ),
-      counter("logflare.logs.ingest_logs.drop_stale",
+      sum("logflare.logs.ingest_logs.drop_stale",
         event_name: [:logflare, :logs, :ingest_logs, :drop_stale],
         measurement: :count,
-        description: "Ingest drops (timestamp older than 72h)"
+        description: "Sum of events dropped (timestamp older than 72h)"
       ),
-      counter("logflare.logs.ingest_logs.drop_future",
+      sum("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],
         measurement: :count,
-        description: "Ingest drops (timestamp more than 1h in the future)"
+        description: "Sum of events dropped (timestamp more than 1h in the future)"
       ),
-      counter("logflare.logs.ingest_logs.rejected",
+      sum("logflare.logs.ingest_logs.rejected",
         event_name: [:logflare, :logs, :ingest_logs, :rejected],
         measurement: :count,
-        description: "Ingest rejects"
+        description: "Sum of events rejected (validation/pipeline error)"
       ),
       counter("logflare.rate_limiter.rejected",
         description: "Rate limited API hits"

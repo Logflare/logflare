@@ -591,31 +591,31 @@ defmodule Logflare.Backends do
     min_allowed = now_us - @max_event_age_us
     max_allowed = now_us + @max_future_event_us
 
-    {events, errors, total, dropped_old, dropped_future} =
-      for param <- event_params, reduce: {[], [], 0, 0, 0} do
-        {events, errors, total, dropped_old, dropped_future} ->
+    {events, errors, total, tally} =
+      for param <- event_params, reduce: {[], [], 0, %{}} do
+        {events, errors, total, tally} ->
           case param_to_log_event(param, source) do
             %{drop: true} ->
-              do_telemetry(:drop_lql, source)
-              {events, errors, total + 1, dropped_old, dropped_future}
+              {events, errors, total + 1, bump(tally, :drop_lql)}
 
             %{pipeline_error: %_{message: message}, valid: false} ->
-              do_telemetry(:rejected, source)
-              {events, [message | errors], total + 1, dropped_old, dropped_future}
+              {events, [message | errors], total + 1, bump(tally, :rejected)}
 
             %{body: %{"timestamp" => timestamp}} when timestamp < min_allowed ->
-              do_telemetry(:drop_stale, source)
-              {events, errors, total + 1, dropped_old + 1, dropped_future}
+              {events, errors, total + 1, bump(tally, :drop_stale)}
 
             %{body: %{"timestamp" => timestamp}} when timestamp > max_allowed ->
-              do_telemetry(:drop_future, source)
-              {events, errors, total + 1, dropped_old, dropped_future + 1}
+              {events, errors, total + 1, bump(tally, :drop_future)}
 
             le ->
-              {[le | events], errors, total + 1, dropped_old, dropped_future}
+              {[le | events], errors, total + 1, tally}
           end
       end
 
+    emit_ingest_telemetry(tally, source)
+
+    dropped_old = Map.get(tally, :drop_stale, 0)
+    dropped_future = Map.get(tally, :drop_future, 0)
     dropped_total = dropped_old + dropped_future
 
     if dropped_total > 0 do
@@ -1145,12 +1145,15 @@ defmodule Logflare.Backends do
     end
   end
 
-  defp do_telemetry(reason, source)
-       when reason in [:drop_lql, :drop_stale, :drop_future, :rejected] do
-    :telemetry.execute(
-      [:logflare, :logs, :ingest_logs, reason],
-      %{count: 1},
-      %{source_id: source.id, source_token: source.token}
-    )
+  defp bump(tally, reason), do: Map.update(tally, reason, 1, &(&1 + 1))
+
+  defp emit_ingest_telemetry(tally, source) do
+    for {reason, count} <- tally do
+      :telemetry.execute(
+        [:logflare, :logs, :ingest_logs, reason],
+        %{count: count},
+        %{source_id: source.id, source_token: source.token}
+      )
+    end
   end
 end
