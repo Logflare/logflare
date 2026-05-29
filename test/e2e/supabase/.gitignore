@@ -1,6 +1,9 @@
 # Supabase
 supabase/
 
+# GCP service account key for the BigQuery backend (BACKEND=bigquery)
+gcloud.json
+
 # Playwright
 node_modules/
 /test-results/

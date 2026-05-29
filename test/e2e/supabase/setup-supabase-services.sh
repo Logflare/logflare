@@ -6,6 +6,17 @@ BASE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
 
 source "$BASE_DIR/config.sh"
 
+# BigQuery seeding (dataset/table creation + sample ingestion against the real
+# GCP project) is slower than the local Postgres backend, so give the stack
+# readiness checks more headroom in that mode.
+if [ "$BACKEND" = "bigquery" ]; then
+  STACK_WAIT_TIMEOUT=300
+  READINESS_TIMEOUT=180
+else
+  STACK_WAIT_TIMEOUT=180
+  READINESS_TIMEOUT=60
+fi
+
 compose() {
   $BASE_DIR/bin/compose "$@"
 }
@@ -50,6 +61,24 @@ fi
 cp .env.example .env
 endgroup
 
+if [ "$BACKEND" = "bigquery" ]; then
+  log "Configuring BigQuery backend for analytics..."
+  : "${GOOGLE_PROJECT_ID:?GOOGLE_PROJECT_ID must be set when BACKEND=bigquery}"
+  : "${GOOGLE_PROJECT_NUMBER:?GOOGLE_PROJECT_NUMBER must be set when BACKEND=bigquery}"
+
+  if [ ! -f "$BASE_DIR/gcloud.json" ]; then
+    error "BACKEND=bigquery but $BASE_DIR/gcloud.json not found (the GCP service account key)."
+    exit 1
+  fi
+
+  cp "$BASE_DIR/gcloud.json" gcloud.json
+  {
+    echo "GOOGLE_PROJECT_ID=$GOOGLE_PROJECT_ID"
+    echo "GOOGLE_PROJECT_NUMBER=$GOOGLE_PROJECT_NUMBER"
+  } >> .env
+  endgroup
+fi
+
 cd ../..
 
 [ ! "$GITHUB_ACTIONS" = "true" ] && log "Build logflare image..." && compose build analytics
@@ -59,7 +88,7 @@ compose pull
 endgroup
 
 log "Starting Supabase stack (inside docker containers)..."
-if ! compose up -d --wait --wait-timeout 180; then
+if ! compose up -d --wait --wait-timeout "$STACK_WAIT_TIMEOUT"; then
   if [ "$GITHUB_ACTIONS" = "true" ]; then
     endgroup
     echo -n "::group::"
@@ -134,7 +163,7 @@ probe_source() {
   echo "$out"
 }
 
-DEADLINE=$((SECONDS + 60))
+DEADLINE=$((SECONDS + READINESS_TIMEOUT))
 for source in "${SOURCES[@]}"; do
   last_code=""
   while true; do
@@ -143,7 +172,7 @@ for source in "${SOURCES[@]}"; do
       2*) break ;;
     esac
     if [ "$SECONDS" -gt "$DEADLINE" ]; then
-      error "Source '$source' not ready after 60s (last status: $last_code)."
+      error "Source '$source' not ready after ${READINESS_TIMEOUT}s (last status: $last_code)."
       warn  "This usually means Logflare's startup_tasks crashed during seeding."
       warn  "Last 50 lines of analytics log:"
       compose logs --no-log-prefix --tail 50 analytics

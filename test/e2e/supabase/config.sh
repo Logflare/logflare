@@ -15,3 +15,9 @@ BRANCH="master"
 SPARSE_PATH="docker"
 SUPABASE_DIR="supabase"
 GITHUB_ACTIONS="${GITHUB_ACTIONS:-false}"
+
+# Analytics backend for the Logflare (analytics) service: "postgres" (default)
+# or "bigquery". When "bigquery", bin/compose layers
+# docker-compose.e2e.bigquery.yml and setup-supabase-services.sh wires up the
+# GCP credentials. See docker-compose.e2e.bigquery.yml for details.
+BACKEND="${BACKEND:-postgres}"

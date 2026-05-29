@@ -1,0 +1,16 @@
+services:
+  analytics:
+    volumes:
+      - type: bind
+        source: ${PWD}/gcloud.json
+        target: /opt/app/rel/logflare/bin/gcloud.json
+        read_only: true
+    environment:
+      # `!reset null` removes the inherited Postgres backend env vars entirely — setting
+      # them to "" is not enough, because Logflare's runtime.exs treats a non-nil
+      # POSTGRES_BACKEND_URL (empty string included) as "use the Postgres backend".
+      POSTGRES_BACKEND_URL: !reset null
+      POSTGRES_BACKEND_SCHEMA: !reset null
+      LOGFLARE_FEATURE_FLAG_OVERRIDE: !reset null
+      GOOGLE_PROJECT_ID: ${GOOGLE_PROJECT_ID}
+      GOOGLE_PROJECT_NUMBER: ${GOOGLE_PROJECT_NUMBER}
