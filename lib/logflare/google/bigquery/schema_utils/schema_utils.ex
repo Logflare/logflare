@@ -77,10 +77,12 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   Use `bq_schema_to_flat_typemap/1` when callers need dot-path lookups.
   """
-  @spec to_typemap_from_bigquery_schema(TS.t()) :: %{required(atom) => map | atom}
+  @spec to_typemap_from_bigquery_schema(term()) :: %{required(atom) => map | atom}
   def to_typemap_from_bigquery_schema(%TS{fields: fields} = schema) when is_map(schema) do
     do_to_typemap_from_bigquery_schema(fields)
   end
+
+  def to_typemap_from_bigquery_schema(_), do: %{}
 
   defp do_to_typemap_from_bigquery_schema(fields) when is_list(fields) do
     Map.new(fields, fn

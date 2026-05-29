@@ -7,6 +7,17 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.TestUtils
 
+  describe "to_typemap_from_bigquery_schema/1" do
+    test "non-schema inputs return an empty typemap" do
+      assert SchemaUtils.to_typemap_from_bigquery_schema(nil) == %{}
+      assert SchemaUtils.to_typemap_from_bigquery_schema("a string") == %{}
+      assert SchemaUtils.to_typemap_from_bigquery_schema(42) == %{}
+      assert SchemaUtils.to_typemap_from_bigquery_schema(true) == %{}
+      assert SchemaUtils.to_typemap_from_bigquery_schema([1, 2, 3]) == %{}
+      assert SchemaUtils.to_typemap_from_bigquery_schema([]) == %{}
+    end
+  end
+
   describe "bq_schema_to_flat_typemap/1" do
     test "nil schema returns empty map" do
       assert SchemaUtils.bq_schema_to_flat_typemap(nil) == %{}

@@ -3,7 +3,6 @@ defmodule Logflare.SourceSchemas do
   Source schemas in Postgres
   """
 
-  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Repo
   alias Logflare.SourceSchemas.Cache
@@ -133,13 +132,8 @@ defmodule Logflare.SourceSchemas do
   end
 
   def format_schema(%SourceSchema{bigquery_schema: bq_schema}, :json_schema, to_merge) do
-    typemap =
-      case bq_schema do
-        %TS{} -> SchemaUtils.to_typemap_from_bigquery_schema(bq_schema)
-        _ -> %{}
-      end
-
-    typemap
+    bq_schema
+    |> SchemaUtils.to_typemap_from_bigquery_schema()
     |> typemap_to_json_schema()
     |> Map.merge(to_merge)
     |> Map.put(
