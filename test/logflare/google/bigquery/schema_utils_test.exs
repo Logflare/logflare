@@ -12,18 +12,18 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
     end
 
     test "scalar leaf fields are dot-keyed with their atom types" do
-      assert_flat_typemap(%{"name" => "x", "count" => 1, "active" => true}, %{
-        "name" => :string,
-        "count" => :integer,
-        "active" => :boolean
-      })
+      assert build_bq_schema_flat_typemap(%{"name" => "x", "count" => 1, "active" => true}) == %{
+               "name" => :string,
+               "count" => :integer,
+               "active" => :boolean
+             }
     end
 
     test "binary keys are preserved as string paths" do
-      assert_flat_typemap(%{"name" => "x", "count" => 1}, %{
-        "name" => :string,
-        "count" => :integer
-      })
+      assert build_bq_schema_flat_typemap(%{"name" => "x", "count" => 1}) == %{
+               "name" => :string,
+               "count" => :integer
+             }
     end
 
     test "field names are converted into string paths" do
@@ -41,25 +41,26 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
     end
 
     test "nested map keys are flattened at every level" do
-      assert_flat_typemap(%{"user" => %{"address" => %{"city" => "Dublin"}}}, %{
-        "user" => :map,
-        "user.address" => :map,
-        "user.address.city" => :string
-      })
+      assert build_bq_schema_flat_typemap(%{"user" => %{"address" => %{"city" => "Dublin"}}}) ==
+               %{
+                 "user" => :map,
+                 "user.address" => :map,
+                 "user.address.city" => :string
+               }
     end
 
     test "list of scalar values stays a scalar list type" do
-      assert_flat_typemap(%{"items" => ["a", "b"]}, %{
-        "items" => {:list, :string}
-      })
+      assert build_bq_schema_flat_typemap(%{"items" => ["a", "b"]}) == %{
+               "items" => {:list, :string}
+             }
     end
 
     test "homogeneous list of maps merges all map fields into a repeated record path" do
-      assert_flat_typemap(%{"items" => [%{"a" => 1}, %{"b" => 2}]}, %{
-        "items" => :map,
-        "items.a" => :integer,
-        "items.b" => :integer
-      })
+      assert build_bq_schema_flat_typemap(%{"items" => [%{"a" => 1}, %{"b" => 2}]}) == %{
+               "items" => :map,
+               "items.a" => :integer,
+               "items.b" => :integer
+             }
     end
 
     test "heterogeneous list-of-maps value skips non-map elements when map is at head" do
@@ -107,37 +108,39 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
     end
 
     test "list with an embedded empty list still detects repeated record paths without crashing" do
-      assert_flat_typemap(%{"items" => [%{"a" => 1}, [], %{"b" => 2}]}, %{
-        "items" => :map,
-        "items.a" => :integer,
-        "items.b" => :integer
-      })
+      assert build_bq_schema_flat_typemap(%{"items" => [%{"a" => 1}, [], %{"b" => 2}]}) == %{
+               "items" => :map,
+               "items.a" => :integer,
+               "items.b" => :integer
+             }
     end
 
     test "deeply nested maps preserve dot-delimited paths" do
-      assert_flat_typemap(
-        %{"request" => %{"headers" => %{"content_type" => "application/json"}}},
-        %{
-          "request" => :map,
-          "request.headers" => :map,
-          "request.headers.content_type" => :string
-        }
-      )
+      assert build_bq_schema_flat_typemap(%{
+               "request" => %{"headers" => %{"content_type" => "application/json"}}
+             }) == %{
+               "request" => :map,
+               "request.headers" => :map,
+               "request.headers.content_type" => :string
+             }
     end
 
     test "mixed top-level leaves and nested maps" do
-      assert_flat_typemap(%{"custom_id" => 123, "metadata" => %{"request_id" => "abc"}}, %{
-        "custom_id" => :integer,
-        "metadata" => :map,
-        "metadata.request_id" => :string
-      })
+      assert build_bq_schema_flat_typemap(%{
+               "custom_id" => 123,
+               "metadata" => %{"request_id" => "abc"}
+             }) == %{
+               "custom_id" => :integer,
+               "metadata" => :map,
+               "metadata.request_id" => :string
+             }
     end
 
     test "nested list-typed leaf inside a nested map" do
-      assert_flat_typemap(%{"metadata" => %{"tags" => ["a", "b"]}}, %{
-        "metadata" => :map,
-        "metadata.tags" => {:list, :string}
-      })
+      assert build_bq_schema_flat_typemap(%{"metadata" => %{"tags" => ["a", "b"]}}) == %{
+               "metadata" => :map,
+               "metadata.tags" => {:list, :string}
+             }
     end
 
     test "manually built BigQuery schemas are flattened" do
@@ -206,13 +209,11 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
     end
   end
 
-  defp assert_flat_typemap(input, expected) do
-    flat =
-      input
-      |> TestUtils.build_bq_schema()
-      |> SchemaUtils.bq_schema_to_flat_typemap()
-
-    assert Map.take(flat, Map.keys(expected)) == expected
+  defp build_bq_schema_flat_typemap(input) do
+    input
+    |> TestUtils.build_bq_schema()
+    |> SchemaUtils.bq_schema_to_flat_typemap()
+    |> Map.drop(["event_message", "id", "timestamp"])
   end
 
   defp items_record_schema do
