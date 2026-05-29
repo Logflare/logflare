@@ -45,8 +45,7 @@ fn compile_mapping<'a>(env: Env<'a>, config: Term<'a>) -> NifResult<Term<'a>> {
 ///
 /// When `flat_keys` is `true`, dotted paths like `$.resource.service.name`
 /// are resolved as literal key lookups on the input map instead of nested
-/// map navigation. This allows mapping against pre-flattened input
-/// (e.g., `LogEvent.flattened_body`).
+/// map navigation. This allows mapping against pre-flattened input.
 #[rustler::nif]
 fn map<'a>(
     env: Env<'a>,

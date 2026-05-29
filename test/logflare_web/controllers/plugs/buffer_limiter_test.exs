@@ -119,6 +119,39 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     assert conn.halted == false
   end
 
+  test "emits buffer_full telemetry only when buffer is full", %{
+    conn: conn,
+    source: source,
+    table_key: table_key
+  } do
+    TestUtils.attach_forwarder([:logflare, :ingest, :requests, :buffer_full])
+
+    Backends.cache_local_buffer_lens(source.id, nil)
+
+    conn
+    |> assign(:source, source)
+    |> BufferLimiter.call(%{})
+
+    refute_receive {:telemetry_event, [:logflare, :ingest, :requests, :buffer_full], _, _}
+
+    for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(table_key, [le])
+    end
+
+    Backends.cache_local_buffer_lens(source.id, nil)
+
+    conn
+    |> assign(:source, source)
+    |> BufferLimiter.call(%{})
+
+    source_id = source.id
+    source_token = source.token
+
+    assert_receive {:telemetry_event, [:logflare, :ingest, :requests, :buffer_full], %{count: 1},
+                    %{source_id: ^source_id, source_token: ^source_token}}
+  end
+
   describe "default ingest feature" do
     setup do
       user = insert(:user)

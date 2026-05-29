@@ -68,5 +68,24 @@ defmodule Logflare.Logs.OtelLogTest do
       assert is_integer(params["timestamp"])
       assert Integer.digits(params["timestamp"]) |> length() == 19
     end
+
+    test "flattens nested resources, scopes, and records into a single list", %{
+      resource_logs: resource_logs,
+      source: source
+    } do
+      [base] = resource_logs
+      [scope_logs] = base.scope_logs
+      [record] = scope_logs.log_records
+
+      duped_scope = %{scope_logs | log_records: [record, record]}
+      duped_resource = %{base | scope_logs: [duped_scope, duped_scope]}
+      nested = [duped_resource, duped_resource]
+
+      batch = OtelLog.handle_batch(nested, source)
+
+      assert length(batch) == 2 * 2 * 2
+      assert Enum.all?(batch, &is_map/1)
+      refute Enum.any?(batch, &is_list/1)
+    end
   end
 end
