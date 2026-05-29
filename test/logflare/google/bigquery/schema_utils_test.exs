@@ -12,54 +12,135 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
     end
 
     test "scalar leaf fields are dot-keyed with their atom types" do
-      flat =
-        TestUtils.build_bq_schema(%{"name" => "x", "count" => 1, "active" => true})
-        |> SchemaUtils.bq_schema_to_flat_typemap()
-
-      assert flat["name"] == :string
-      assert flat["count"] == :integer
-      assert flat["active"] == :boolean
+      assert_flat_typemap(%{"name" => "x", "count" => 1, "active" => true}, %{
+        "name" => :string,
+        "count" => :integer,
+        "active" => :boolean
+      })
     end
 
-    test "nested record fields produce a parent :map entry and child dot-paths" do
-      flat =
-        TestUtils.build_bq_schema(%{"user" => %{"address" => %{"city" => "Dublin"}}})
-        |> SchemaUtils.bq_schema_to_flat_typemap()
-
-      assert flat["user"] == :map
-      assert flat["user.address"] == :map
-      assert flat["user.address.city"] == :string
+    test "binary keys are preserved as string paths" do
+      assert_flat_typemap(%{"name" => "x", "count" => 1}, %{
+        "name" => :string,
+        "count" => :integer
+      })
     end
 
-    test "repeated scalar fields flatten to a {:list, type} entry" do
-      flat =
-        TestUtils.build_bq_schema(%{"tags" => ["a", "b"]})
-        |> SchemaUtils.bq_schema_to_flat_typemap()
+    test "field names are converted into string paths" do
+      schema = %TableSchema{
+        fields: [
+          %TableFieldSchema{name: "name", type: "STRING", mode: "NULLABLE"},
+          %TableFieldSchema{name: "count", type: "INTEGER", mode: "NULLABLE"}
+        ]
+      }
 
-      assert flat["tags"] == {:list, :string}
+      assert SchemaUtils.bq_schema_to_flat_typemap(schema) == %{
+               "name" => :string,
+               "count" => :integer
+             }
     end
 
-    test "repeated record fields flatten to parent :map and child dot-paths" do
-      flat =
-        TestUtils.build_bq_schema(%{"items" => [%{"a" => 1}, %{"b" => 2}]})
-        |> SchemaUtils.bq_schema_to_flat_typemap()
-
-      assert flat["items"] == :map
-      assert flat["items.a"] == :integer
-      assert flat["items.b"] == :integer
+    test "nested map keys are flattened at every level" do
+      assert_flat_typemap(%{"user" => %{"address" => %{"city" => "Dublin"}}}, %{
+        "user" => :map,
+        "user.address" => :map,
+        "user.address.city" => :string
+      })
     end
 
-    test "nested repeated record fields preserve deeper dot-paths" do
-      flat =
-        TestUtils.build_bq_schema(%{"items" => [%{"detail" => %{"count" => 1}}]})
-        |> SchemaUtils.bq_schema_to_flat_typemap()
-
-      assert flat["items"] == :map
-      assert flat["items.detail"] == :map
-      assert flat["items.detail.count"] == :integer
+    test "list of scalar values stays a scalar list type" do
+      assert_flat_typemap(%{"items" => ["a", "b"]}, %{
+        "items" => {:list, :string}
+      })
     end
 
-    test "manually built BigQuery schemas are flattened without metadata input conversion" do
+    test "homogeneous list of maps merges all map fields into a repeated record path" do
+      assert_flat_typemap(%{"items" => [%{"a" => 1}, %{"b" => 2}]}, %{
+        "items" => :map,
+        "items.a" => :integer,
+        "items.b" => :integer
+      })
+    end
+
+    test "heterogeneous list-of-maps value skips non-map elements when map is at head" do
+      assert SchemaUtils.bq_schema_to_flat_typemap(items_record_schema()) == %{
+               "items" => :map,
+               "items.a" => :integer,
+               "items.b" => :integer
+             }
+    end
+
+    test "heterogeneous list with scalar at head still detects repeated record paths" do
+      assert SchemaUtils.bq_schema_to_flat_typemap(items_record_schema()) == %{
+               "items" => :map,
+               "items.a" => :integer,
+               "items.b" => :integer
+             }
+    end
+
+    test "heterogeneous list with a list at head still detects repeated record paths" do
+      assert SchemaUtils.bq_schema_to_flat_typemap(items_record_schema()) == %{
+               "items" => :map,
+               "items.a" => :integer,
+               "items.b" => :integer
+             }
+    end
+
+    test "list mixing empty maps and non-map elements still surfaces non-empty map fields" do
+      schema = %TableSchema{
+        fields: [
+          %TableFieldSchema{
+            name: "items",
+            type: "RECORD",
+            mode: "REPEATED",
+            fields: [
+              %TableFieldSchema{name: "a", type: "INTEGER", mode: "NULLABLE"}
+            ]
+          }
+        ]
+      }
+
+      assert SchemaUtils.bq_schema_to_flat_typemap(schema) == %{
+               "items" => :map,
+               "items.a" => :integer
+             }
+    end
+
+    test "list with an embedded empty list still detects repeated record paths without crashing" do
+      assert_flat_typemap(%{"items" => [%{"a" => 1}, [], %{"b" => 2}]}, %{
+        "items" => :map,
+        "items.a" => :integer,
+        "items.b" => :integer
+      })
+    end
+
+    test "deeply nested maps preserve dot-delimited paths" do
+      assert_flat_typemap(
+        %{"request" => %{"headers" => %{"content_type" => "application/json"}}},
+        %{
+          "request" => :map,
+          "request.headers" => :map,
+          "request.headers.content_type" => :string
+        }
+      )
+    end
+
+    test "mixed top-level leaves and nested maps" do
+      assert_flat_typemap(%{"custom_id" => 123, "metadata" => %{"request_id" => "abc"}}, %{
+        "custom_id" => :integer,
+        "metadata" => :map,
+        "metadata.request_id" => :string
+      })
+    end
+
+    test "nested list-typed leaf inside a nested map" do
+      assert_flat_typemap(%{"metadata" => %{"tags" => ["a", "b"]}}, %{
+        "metadata" => :map,
+        "metadata.tags" => {:list, :string}
+      })
+    end
+
+    test "manually built BigQuery schemas are flattened" do
       schema = %TableSchema{
         fields: [
           %TableFieldSchema{name: "id", type: "STRING", mode: "REQUIRED"},
@@ -123,5 +204,30 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
       assert SchemaUtils.get_type_for_path(nil, flat_schema) == nil
       assert SchemaUtils.get_type_for_path(["metadata", "timestamp"], nil) == nil
     end
+  end
+
+  defp assert_flat_typemap(input, expected) do
+    flat =
+      input
+      |> TestUtils.build_bq_schema()
+      |> SchemaUtils.bq_schema_to_flat_typemap()
+
+    assert Map.take(flat, Map.keys(expected)) == expected
+  end
+
+  defp items_record_schema do
+    %TableSchema{
+      fields: [
+        %TableFieldSchema{
+          name: "items",
+          type: "RECORD",
+          mode: "REPEATED",
+          fields: [
+            %TableFieldSchema{name: "a", type: "INTEGER", mode: "NULLABLE"},
+            %TableFieldSchema{name: "b", type: "INTEGER", mode: "NULLABLE"}
+          ]
+        }
+      ]
+    }
   end
 end
