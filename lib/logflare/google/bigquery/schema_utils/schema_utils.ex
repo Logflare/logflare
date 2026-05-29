@@ -73,7 +73,9 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
   @doc """
-  Converts a BigQuery table schema into the nested typemap used by schema formatting.
+  Converts a BigQuery table schema into the nested typemap representation.
+
+  Use `bq_schema_to_flat_typemap/1` when callers need dot-path lookups.
   """
   @spec to_typemap_from_bigquery_schema(TS.t()) :: %{required(atom) => map | atom}
   def to_typemap_from_bigquery_schema(%TS{fields: fields} = schema) when is_map(schema) do
