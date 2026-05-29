@@ -1726,11 +1726,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
       now = DateTime.utc_now()
       today_start = DateTime.new!(DateTime.to_date(now), ~T[00:00:00], "Etc/UTC")
       yesterday_start = DateTime.add(today_start, -1, :day)
+      one_second_ago = DateTime.add(now, -1, :second)
+      included_for_today = Enum.max([one_second_ago, today_start], DateTime)
+      seconds_since_today_start = DateTime.diff(now, today_start, :second)
+
+      today_chart_period =
+        cond do
+          seconds_since_today_start <= 1_000 -> :second
+          div(seconds_since_today_start, 60) <= 1_000 -> :minute
+          true -> :hour
+        end
 
       cases = [
         {"t:last@5m", :second, {DateTime.add(now, -1, :minute), DateTime.add(now, 30, :second)}},
-        {"t:this@day", :hour,
-         {DateTime.add(now, -1, :minute), DateTime.add(today_start, -1, :minute)}},
+        {"t:this@day", today_chart_period,
+         {included_for_today, DateTime.add(today_start, -1, :minute)}},
         {"t:yesterday", :hour, {DateTime.add(yesterday_start, 12, :hour), now}}
       ]
 
