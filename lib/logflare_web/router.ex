@@ -54,6 +54,7 @@ defmodule LogflareWeb.Router do
 
     plug(LogflareWeb.Plugs.SetTeamIfNil)
     plug(LogflareWeb.Plugs.SetTeamContext)
+    plug(LogflareWeb.Plugs.SetTraceUser)
     plug(LogflareWeb.Plugs.SetPlan)
     plug(LogflareWeb.Plugs.EnsureSourceStarted)
     plug(LogflareWeb.Plugs.SetHeaders)
@@ -70,6 +71,7 @@ defmodule LogflareWeb.Router do
     plug(:fetch_flash)
     plug(LogflareWeb.Plugs.SetTeamIfNil)
     plug(LogflareWeb.Plugs.SetTeamContext)
+    plug(LogflareWeb.Plugs.SetTraceUser)
     plug(LogflareWeb.Plugs.SetPlan)
     plug(LogflareWeb.Plugs.SetHeaders)
   end
@@ -98,6 +100,7 @@ defmodule LogflareWeb.Router do
     plug(Plug.RequestId)
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
     plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
+    plug(LogflareWeb.Plugs.SetTraceUser)
 
     plug(Plug.Parsers,
       parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
@@ -119,6 +122,7 @@ defmodule LogflareWeb.Router do
   pipeline :ingest_otlp_api do
     plug(Plug.RequestId)
     plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
+    plug(LogflareWeb.Plugs.SetTraceUser)
 
     plug(Plug.Parsers,
       parsers: [ProtobufParser],
@@ -139,12 +143,14 @@ defmodule LogflareWeb.Router do
 
   pipeline :require_endpoint_auth do
     plug(LogflareWeb.Plugs.VerifyApiAccess)
+    plug(LogflareWeb.Plugs.SetTraceUser)
     plug(LogflareWeb.Plugs.FetchResource)
     plug(LogflareWeb.Plugs.VerifyResourceAccess)
   end
 
   pipeline :require_mgmt_api_auth do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private))
+    plug(LogflareWeb.Plugs.SetTraceUser)
   end
 
   pipeline :require_auth do
@@ -182,6 +188,7 @@ defmodule LogflareWeb.Router do
 
   pipeline :partner_api do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(partner))
+    plug(LogflareWeb.Plugs.SetTraceUser)
   end
 
   # Oauth2 Provider Routes
