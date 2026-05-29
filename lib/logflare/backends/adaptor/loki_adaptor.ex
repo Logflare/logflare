@@ -46,30 +46,29 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
 
     streams =
       for {{_source_id, name}, events} <- stream_map do
-        formatted_events =
-          Enum.map(events, fn event ->
-            formatted_ts = event.body["timestamp"] * 1000
-
-            structured_metadata =
-              event.body
-              |> Iteraptor.to_flatmap(delimiter: "_")
-              |> Iteraptor.map(fn
-                {_, v} when is_binary(v) -> v
-                {_, v} -> Utils.stringify(v)
-              end)
-              |> Map.drop(["timestamp", "event_message"])
-
-            ["#{formatted_ts}", event.body["event_message"] || "", structured_metadata]
-          end)
-
         %{
           stream: %{source: "supabase", service: name},
-          values: formatted_events
+          values: Enum.map(events, &format_event/1)
         }
       end
 
     %{streams: streams}
   end
+
+  defp format_event(event) do
+    formatted_ts = event.body["timestamp"] * 1000
+
+    structured_metadata =
+      event.body
+      |> Iteraptor.to_flatmap(delimiter: "_")
+      |> Iteraptor.map(&stringify_metadata_value/1)
+      |> Map.drop(["timestamp", "event_message"])
+
+    ["#{formatted_ts}", event.body["event_message"] || "", structured_metadata]
+  end
+
+  defp stringify_metadata_value({_, v}) when is_binary(v), do: v
+  defp stringify_metadata_value({_, v}), do: Utils.stringify(v)
 
   @impl Logflare.Backends.Adaptor
   def transform_config(%_{config: config}) do

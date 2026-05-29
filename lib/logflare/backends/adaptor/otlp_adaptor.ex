@@ -12,6 +12,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   @behaviour Adaptor
   @behaviour HttpBased.Client
 
+  @sensitive_headers ["authorization", "x-api-key", "x-auth-token"]
+
   @doc """
   Returns a list of supported protocols
   """
@@ -61,17 +63,19 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
 
   @impl Adaptor
   def redact_config(config) do
-    sensitive_headers = ["authorization", "x-api-key", "x-auth-token"]
+    Map.update!(config, :headers, &redact_headers/1)
+  end
 
-    Map.update!(config, :headers, fn headers ->
-      for {k, v} <- headers, into: %{} do
-        if Enum.member?(sensitive_headers, String.downcase(k)) do
-          {k, "REDACTED"}
-        else
-          {k, v}
-        end
-      end
-    end)
+  defp redact_headers(headers) do
+    for {k, v} <- headers, into: %{}, do: redact_header(k, v)
+  end
+
+  defp redact_header(k, v) do
+    if Enum.member?(@sensitive_headers, String.downcase(k)) do
+      {k, "REDACTED"}
+    else
+      {k, v}
+    end
   end
 
   @impl Adaptor
