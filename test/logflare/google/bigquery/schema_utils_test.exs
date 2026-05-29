@@ -1,5 +1,6 @@
 defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
   use ExUnit.Case, async: true
+  use ExUnitProperties
 
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema
   alias GoogleApi.BigQuery.V2.Model.TableSchema
@@ -170,6 +171,13 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
                "request.status" => :integer
              }
     end
+
+    property "generated metadata schemas include every field in the flat map" do
+      check all(metadata <- metadata_generator(), max_runs: 50) do
+        assert build_bq_schema_flat_typemap(%{"metadata" => metadata}) ==
+                 expected_flat_map(metadata, "metadata")
+      end
+    end
   end
 
   describe "get_type_for_path/2" do
@@ -215,6 +223,98 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
     |> SchemaUtils.bq_schema_to_flat_typemap()
     |> Map.drop(["event_message", "id", "timestamp"])
   end
+
+  defp metadata_generator(depth \\ 2) do
+    StreamData.map_of(key_generator(), metadata_value_generator(depth),
+      min_length: 1,
+      max_length: 4
+    )
+  end
+
+  defp metadata_value_generator(0) do
+    StreamData.one_of([
+      scalar_generator(),
+      scalar_list_generator()
+    ])
+  end
+
+  defp metadata_value_generator(depth) do
+    StreamData.one_of([
+      scalar_generator(),
+      scalar_list_generator(),
+      metadata_generator(depth - 1),
+      StreamData.list_of(metadata_generator(depth - 1), min_length: 1, max_length: 1)
+    ])
+  end
+
+  defp key_generator do
+    first_chars = string_chars(?A..?Z) ++ string_chars(?a..?z) ++ ["_"]
+    chars = first_chars ++ string_chars(?0..?9)
+
+    StreamData.map(
+      {StreamData.member_of(first_chars),
+       StreamData.list_of(StreamData.member_of(chars), max_length: 7)},
+      fn {first, rest} -> first <> Enum.join(rest) end
+    )
+  end
+
+  defp string_chars(range), do: Enum.map(range, &<<&1::utf8>>)
+
+  defp scalar_generator do
+    StreamData.one_of([
+      StreamData.string(:alphanumeric, min_length: 1, max_length: 12),
+      StreamData.integer(),
+      StreamData.float(min: -1_000.0, max: 1_000.0),
+      StreamData.boolean()
+    ])
+  end
+
+  defp scalar_list_generator do
+    StreamData.one_of([
+      StreamData.list_of(StreamData.string(:alphanumeric, min_length: 1, max_length: 12),
+        min_length: 1,
+        max_length: 4
+      ),
+      StreamData.list_of(StreamData.integer(), min_length: 1, max_length: 4),
+      StreamData.list_of(StreamData.float(min: -1_000.0, max: 1_000.0),
+        min_length: 1,
+        max_length: 4
+      ),
+      StreamData.list_of(StreamData.boolean(), min_length: 1, max_length: 4)
+    ])
+  end
+
+  defp expected_flat_map(map, prefix) do
+    Enum.reduce(map, %{prefix => :map}, fn {key, value}, acc ->
+      path = prefix <> "." <> key
+
+      Map.merge(acc, expected_flat_entry(value, path))
+    end)
+  end
+
+  defp expected_flat_entry(value, path) when is_map(value), do: expected_flat_map(value, path)
+
+  defp expected_flat_entry(value, path) when is_list(value) do
+    value
+    |> Enum.filter(&is_map/1)
+    |> expected_flat_entry_from_list(value, path)
+  end
+
+  defp expected_flat_entry(value, path), do: %{path => scalar_type(value)}
+
+  defp expected_flat_entry_from_list([], value, path),
+    do: %{path => {:list, scalar_type(hd(value))}}
+
+  defp expected_flat_entry_from_list(maps, _value, path) do
+    Enum.reduce(maps, %{path => :map}, fn item, acc ->
+      Map.merge(acc, expected_flat_map(item, path))
+    end)
+  end
+
+  defp scalar_type(value) when is_binary(value), do: :string
+  defp scalar_type(value) when is_integer(value), do: :integer
+  defp scalar_type(value) when is_float(value), do: :float
+  defp scalar_type(value) when is_boolean(value), do: :boolean
 
   defp items_record_schema do
     %TableSchema{
