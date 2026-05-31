@@ -152,6 +152,33 @@ defmodule LogflareWeb.QueryLiveTest do
              "Expected successful query execution for team member submitting query via form. Got: #{String.slice(html, 0, 2000)}"
     end
 
+    test "switches team context when query references other team source", %{
+      conn: conn,
+      user: user
+    } do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{}])}
+      end)
+
+      team_owner = insert(:user)
+      other_team = insert(:team, user: team_owner)
+      insert(:team_user, email: user.email, team: other_team)
+      insert(:source, user: team_owner, name: "other_team_source")
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
+
+      view
+      |> render_hook("parse-query", %{
+        value: "SELECT id, timestamp FROM `other_team_source`"
+      })
+
+      html = submit_query_form(view, conn)
+
+      assert html =~ "Ran query successfully"
+      assert_patch(view) =~ ~s(t=#{other_team.id})
+    end
+
     test "preserves team context when `t` param matches query source team", %{
       conn: conn,
       user: user
@@ -166,7 +193,28 @@ defmodule LogflareWeb.QueryLiveTest do
       assert html =~ "my_source"
     end
 
-    test "updates team param from source in query URL", %{
+    test "keeps requested team when t param is present and source name is ambiguous",
+         %{
+           conn: conn,
+           user: user,
+           team: team
+         } do
+      insert(:source, user: user, name: "canonical_source")
+
+      team_owner = insert(:user)
+      other_team = insert(:team, user: team_owner)
+      insert(:team_user, email: user.email, team: other_team)
+      insert(:source, user: team_owner, name: "canonical_source")
+
+      query = "SELECT id, timestamp FROM `canonical_source`"
+
+      assert {:ok, view, html} = live(conn, ~p"/query?#{%{q: query, t: team.id}}")
+
+      assert html =~ ~s(/dashboard?t=#{team.id})
+      assert render(view) =~ "canonical_source"
+    end
+
+    test "updates team param from uniquely matched source in query URL", %{
       conn: conn,
       user: user,
       team: team
@@ -179,7 +227,7 @@ defmodule LogflareWeb.QueryLiveTest do
       query = "SELECT id, timestamp FROM `canonical_source`"
 
       assert {:error, {:live_redirect, %{to: patch}}} =
-               live(conn, ~p"/query?#{%{q: query, t: team.id}}")
+               live(conn, ~p"/query?#{%{q: query}}")
 
       params = URI.parse(patch).query |> URI.decode_query()
 

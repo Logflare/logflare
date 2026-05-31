@@ -117,12 +117,24 @@ defmodule LogflareWeb.AuthLive do
   defp team_param_matches?(%{"t" => team_id}, %Team{id: id}), do: team_id == to_string(id)
   defp team_param_matches?(_params, _team), do: false
 
+  defp maybe_assign_team_from_resource(
+         %{"t" => _team_id},
+         %{view: LogflareWeb.QueryLive} = socket
+       ),
+       do: socket
+
   defp maybe_assign_team_from_resource(params, %{view: view} = socket) do
     effective_user = socket.assigns[:team_user] || socket.assigns.user
 
     case TeamContext.resource_team_id_query(view, params, effective_user) do
-      nil -> socket
-      query -> assign_context_by_team_id(socket, Repo.one(query), effective_user.email)
+      nil ->
+        socket
+
+      query ->
+        case Repo.all(query) do
+          [team_id] -> assign_context_by_team_id(socket, team_id, effective_user.email)
+          _ -> socket
+        end
     end
   end
 

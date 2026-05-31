@@ -143,13 +143,14 @@ defmodule Logflare.Teams.TeamContext do
     |> select([resource_team: team], team.id)
   end
 
-  def resource_team_id_query(LogflareWeb.QueryLive, %{"q" => query}, user)
+  def resource_team_id_query(LogflareWeb.QueryLive, %{"q" => query}, user_or_team_user)
       when is_binary(query) and query != "" do
     with {:ok, formatted} <- SqlFmt.format_query(query),
          {:ok, [source_name | _]} <- Sql.extract_table_names(formatted) do
       Sources.Source
-      |> Teams.filter_by_user_access(user)
+      |> Teams.filter_by_user_access(user_or_team_user)
       |> where([source], source.name == ^source_name)
+      |> limit(2)
       |> select([resource_team: team], team.id)
     else
       _ -> nil

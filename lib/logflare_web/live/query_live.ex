@@ -216,7 +216,10 @@ defmodule LogflareWeb.QueryLive do
         socket
 
       query ->
-        AuthLive.assign_context_by_team_id(socket, Repo.one(query), effective_user.email)
+        case Repo.all(query) do
+          [team_id] -> AuthLive.assign_context_by_team_id(socket, team_id, effective_user.email)
+          _ -> socket
+        end
     end
   end
 
