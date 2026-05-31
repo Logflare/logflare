@@ -23,7 +23,6 @@ defmodule Logflare.LogEvent do
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
     field :body, :map, default: %{}
-    field :flattened_body, :map, default: %{}
     field :valid, :boolean
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
@@ -108,12 +107,7 @@ defmodule Logflare.LogEvent do
     |> struct!(le_map)
     |> transform(source)
     |> validate(source)
-    |> flatten_body()
   end
-
-  @spec flatten_body(LE.t()) :: LE.t()
-  defp flatten_body(%LE{valid: false} = le), do: le
-  defp flatten_body(%LE{} = le), do: %{le | flattened_body: MetadataCleaner.flatten(le.body)}
 
   @spec mapper(map(), TypeDetection.event_type()) :: %{String.t() => term}
   defp mapper(params, event_type) do
@@ -330,7 +324,6 @@ defmodule Logflare.LogEvent do
 
     le
     |> Kernel.put_in([Access.key(:body), "event_message"], message)
-    |> Kernel.put_in([Access.key(:flattened_body), "event_message"], message)
   end
 
   @doc """

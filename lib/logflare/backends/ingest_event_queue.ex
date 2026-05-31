@@ -202,9 +202,7 @@ defmodule Logflare.Backends.IngestEventQueue do
           batch,
           available_queues,
           chunk_size,
-          fn chunk, target ->
-            add_to_table(target, chunk)
-          end
+          &add_to_target_table/2
         )
       else
         _ ->
@@ -221,10 +219,6 @@ defmodule Logflare.Backends.IngestEventQueue do
 
       procs = Enum.map(proc_counts, fn {proc_key, _count} -> proc_key end)
 
-      chunking_func = fn chunk, target ->
-        add_to_table(target, chunk)
-      end
-
       if procs == [] do
         add_to_table({:consolidated, bid, nil}, batch)
       else
@@ -232,7 +226,7 @@ defmodule Logflare.Backends.IngestEventQueue do
           batch,
           procs,
           chunk_size,
-          chunking_func
+          &add_to_target_table/2
         )
       end
     end
@@ -267,13 +261,10 @@ defmodule Logflare.Backends.IngestEventQueue do
           batch,
           available_queues,
           chunk_size,
-          fn chunk, target ->
-            add_to_table(target, chunk)
-          end
+          &add_to_target_table/2
         )
       else
         _ ->
-          # no available queues, add to startup queue
           add_to_table(startup_queue, batch)
       end
     else
@@ -281,26 +272,20 @@ defmodule Logflare.Backends.IngestEventQueue do
         list_counts(sid_bid)
         |> Enum.sort_by(fn {_key, count} -> count end, :asc)
         |> Enum.filter(fn
-          # exclude startup queue
           {{_, _, nil}, _} -> false
           {{_, _, _}, _} -> true
         end)
 
       procs = Enum.map(proc_counts, fn {key, _count} -> key end)
 
-      chunking_func = fn chunk, target ->
-        add_to_table(target, chunk)
-      end
-
       if procs == [] do
-        # not yet started, add to startup queue
         add_to_table({sid, bid, nil}, batch)
       else
         Logflare.Utils.chunked_round_robin(
           batch,
           procs,
           chunk_size,
-          chunking_func
+          &add_to_target_table/2
         )
       end
     end
@@ -328,6 +313,8 @@ defmodule Logflare.Backends.IngestEventQueue do
         add_to_table({sid_bid_pid, tid}, batch)
     end
   end
+
+  defp add_to_target_table(chunk, target), do: add_to_table(target, chunk)
 
   @doc """
   Moves an entire queue from an origin to a target.
@@ -541,10 +528,7 @@ defmodule Logflare.Backends.IngestEventQueue do
         fn objs, acc ->
           items =
             for {sid_bid_pid, _tid} <- objs do
-              case fetch_events(sid_bid_pid, n) do
-                {:ok, events} -> events
-                _ -> []
-              end
+              fetch_events_or_empty(sid_bid_pid, n)
             end
             |> List.flatten()
 
@@ -554,6 +538,13 @@ defmodule Logflare.Backends.IngestEventQueue do
       )
 
     {:ok, events}
+  end
+
+  defp fetch_events_or_empty(sid_bid_pid, n) do
+    case fetch_events(sid_bid_pid, n) do
+      {:ok, events} -> events
+      _ -> []
+    end
   end
 
   @doc """
@@ -598,22 +589,21 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     with tid when tid != nil <- get_tid(key),
          size when is_integer(size) <- :ets.info(tid, :size) do
-      to_insert =
-        if n == 0 do
-          []
-        else
-          :ets.select(tid, ms, min(n, max(size, 1)))
-          |> case do
-            {taken, _} -> taken
-            :"$end_of_table" -> []
-          end
-        end
-
+      to_insert = select_to_insert(tid, ms, size, n)
       :ets.select_delete(tid, del_ms)
       :ets.insert(tid, to_insert)
       :ok
     else
       nil -> {:error, :not_initialized}
+    end
+  end
+
+  defp select_to_insert(_tid, _ms, _size, 0), do: []
+
+  defp select_to_insert(tid, ms, size, n) do
+    case :ets.select(tid, ms, min(n, max(size, 1))) do
+      {taken, _} -> taken
+      :"$end_of_table" -> []
     end
   end
 

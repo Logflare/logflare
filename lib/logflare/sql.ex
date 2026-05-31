@@ -373,23 +373,22 @@ defmodule Logflare.Sql do
            ast
            |> find_all_source_names()
            |> Enum.filter(fn name -> name in source_names end) do
-      sources =
-        names
-        |> Enum.map(fn name ->
-          token =
-            source_mapping
-            |> Map.get(name)
-            |> Map.get(:token)
-            |> then(fn
-              v when is_atom_value(v) -> Atom.to_string(v)
-              v -> v
-            end)
+      {:ok, build_source_token_map(names, source_mapping)}
+    end
+  end
 
-          {name, token}
+  defp build_source_token_map(names, source_mapping) do
+    for name <- names, into: %{} do
+      token =
+        source_mapping
+        |> Map.get(name)
+        |> Map.get(:token)
+        |> then(fn
+          v when is_atom_value(v) -> Atom.to_string(v)
+          v -> v
         end)
-        |> Map.new()
 
-      {:ok, sources}
+      {name, token}
     end
   end
 

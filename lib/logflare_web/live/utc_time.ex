@@ -18,10 +18,6 @@ defmodule LogflareWeb.UtcTimeLive do
     {:noreply, put_date(socket)}
   end
 
-  def handle_event("nav", _path, socket) do
-    {:noreply, socket}
-  end
-
   defp put_date(socket) do
     date =
       DateTime.utc_now()
