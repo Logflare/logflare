@@ -5,6 +5,7 @@ defmodule Logflare.LogEventTest do
 
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
+  alias Logflare.Utils
 
   @subject LogEvent
 
@@ -798,7 +799,7 @@ defmodule Logflare.LogEventTest do
 
       le = LogEvent.make(params, %{source: source})
 
-      assert le.body["timestamp"] == div(start_time_ns, 1_000)
+      assert le.body["timestamp"] == Utils.to_microseconds(start_time_ns)
     end
 
     test "does not override an explicit timestamp for trace events", %{source: source} do

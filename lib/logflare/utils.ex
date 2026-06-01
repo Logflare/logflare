@@ -298,7 +298,7 @@ defmodule Logflare.Utils do
   """
   def to_microseconds(raw) when is_integer(raw) do
     case Integer.digits(raw) |> Enum.count() do
-      19 -> Kernel.round(raw / 1_000)
+      19 -> div(raw, 1_000)
       16 -> raw
       13 -> raw * 1_000
       10 -> raw * 1_000_000
