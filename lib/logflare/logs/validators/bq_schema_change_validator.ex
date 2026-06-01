@@ -40,7 +40,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   end
 
   @spec enabled?() :: boolean()
-  def enabled?, do: Application.get_env(:logflare, __MODULE__, [])[:enabled] == true
+  defp enabled?, do: Application.get_env(:logflare, __MODULE__, [])[:enabled] == true
 
   @spec valid?(map, map) :: boolean
   def valid?(body, schema) do
