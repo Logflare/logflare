@@ -413,6 +413,23 @@ defmodule LogflareWeb.AlertsLiveTest do
              |> render_click() =~ "some error"
     end
 
+    test "missing field errors are displayed with user-facing message", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("Unrecognized name: notthere at [1:8]")}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      assert view
+             |> element("button", "Run query")
+             |> render_click() =~
+               "Field &quot;notthere&quot; does not exist."
+    end
+
     test "test query from edit page uses the submitted query", %{
       conn: conn,
       alert_query: alert_query

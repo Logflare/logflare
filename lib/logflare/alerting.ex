@@ -15,10 +15,10 @@ defmodule Logflare.Alerting do
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Cluster
   alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Repo
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
@@ -467,23 +467,14 @@ defmodule Logflare.Alerting do
            ) do
       {:ok, result}
     else
-      {:error, %Tesla.Env{body: body}} ->
-        decoded = Jason.decode!(body)["error"]
-
-        error =
-          decoded
-          |> GenUtils.process_bq_errors(alert_query.user_id)
-          |> case do
-            %{"message" => msg} -> msg
-            other -> other
-          end
-
+      {:error, %QueryError{} = error} ->
         Logger.error("Alert query execution failed with bad response",
           user_id: alert_query.user_id,
           alert_query_id: alert_query.id,
           alert_name: alert_query.name,
-          possible_reservation_error: BigQueryAdaptor.reservation_error?(decoded),
-          error_string: inspect(error)
+          possible_reservation_error: BigQueryAdaptor.reservation_error?(error.raw_error),
+          error_code: error.code,
+          error_string: inspect(error.message)
         )
 
         {:error, error}

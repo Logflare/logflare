@@ -9,6 +9,7 @@ defmodule LogflareWeb.Source.SearchLV do
   import LogflareWeb.ModalLiveHelpers
   import LogflareWeb.SearchLV.Utils
 
+  alias Logflare.Backends.QueryError
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Logs.SearchOperations
@@ -24,6 +25,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.User
   alias Logflare.Users
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
+  alias LogflareWeb.QueryErrorHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchLive.FormComponents
   alias LogflareWeb.SearchLive.SubheadComponents
@@ -686,22 +688,9 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(chart_loading: false)
           |> put_halt_flash_message(search_op)
 
-        %Tesla.Env{status: 400} = err ->
-          Logger.error("Backend search error for source: #{source.token}",
-            error_string: inspect(err),
-            source_id: source.token
-          )
-
-          send(self(), :soft_pause)
-
-          socket
-          |> assign(loading: false)
-          |> assign(chart_loading: false)
-          |> put_flash_query_error(err)
-
         err ->
           Logger.error("Backend search error for source: #{source.token}",
-            error_string: inspect(err),
+            error_string: backend_search_error_string(err),
             source_id: source.token
           )
 
@@ -739,6 +728,9 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info({:put_flash, type, message}, socket) do
     {:noreply, put_flash(socket, type, message)}
   end
+
+  defp backend_search_error_string(%QueryError{raw_error: raw_error}), do: inspect(raw_error)
+  defp backend_search_error_string(error), do: inspect(error)
 
   defp assign_new_search_with_qs(socket, params, schema_flatmap) do
     %{querystring: qs, tailing?: tailing?} = params
@@ -1110,30 +1102,19 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  defp put_flash_query_error(socket, %Tesla.Env{status: 400} = response) do
-    case Jason.decode(response.body) do
-      {:ok, %{"error" => %{"message" => "Query exceeded limit for bytes billed:" <> rest}}} ->
-        [limit | _] = String.split(rest, ".")
-
-        {size, units} = limit |> String.trim() |> String.to_integer() |> Utils.humanize_bytes()
-
-        socket
-        |> put_flash(
-          :error,
-          "Query halted: total bytes processed for this query is expected to be greater than #{round(size)} #{units}"
-        )
-
+  defp put_flash_query_error(socket, response) do
+    with %QueryError{} = error <- response,
+         message when is_binary(message) and message != "" <-
+           QueryErrorHelpers.query_error_message(error) do
+      put_flash(socket, :error, "Query halted: " <> message)
+    else
       _ ->
-        put_flash_query_error(socket, nil)
+        put_flash(
+          socket,
+          :error,
+          "Backend error! Retry your query. Please contact support if this continues."
+        )
     end
-  end
-
-  defp put_flash_query_error(socket, _response) do
-    socket
-    |> put_flash(
-      :error,
-      "Backend error! Retry your query. Please contact support if this continues."
-    )
   end
 
   defp put_halt_flash_message(socket, search_op) do

@@ -23,6 +23,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
   alias Logflare.Sql
@@ -91,12 +92,17 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def execute_query(%Backend{} = backend, %Ecto.Query{} = query, _opts) do
     mod = PgRepo.create_repo(backend)
 
-    result =
-      query
-      |> mod.all()
-      |> Enum.map(&nested_map_update/1)
+    try do
+      result =
+        query
+        |> mod.all()
+        |> Enum.map(&nested_map_update/1)
 
-    {:ok, QueryResult.new(result, pg_meta(result))}
+      {:ok, QueryResult.new(result, pg_meta(result))}
+    rescue
+      error in [Postgrex.Error, DBConnection.ConnectionError, Ecto.QueryError] ->
+        {:error, to_query_error(error)}
+    end
   end
 
   def execute_query(%Backend{} = backend, query_string, opts)
@@ -119,6 +125,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
         end
 
       {:ok, QueryResult.new(rows, pg_meta(rows))}
+    else
+      {:error, :cannot_connect} = error ->
+        error
+
+      {:error, error} ->
+        {:error, to_query_error(error)}
     end
   end
 
@@ -210,6 +222,34 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     url = Map.get(config, :url) || Map.get(config, "url")
     updated = String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
     Map.put(config, :url, updated)
+  end
+
+  @spec to_query_error(term()) :: QueryError.t()
+  defp to_query_error(%Postgrex.Error{} = error) do
+    %QueryError{
+      message: Exception.message(error),
+      code: :invalid_query,
+      raw_error: error,
+      backend: Logflare.Backends.Adaptor.PostgresAdaptor
+    }
+  end
+
+  defp to_query_error(%DBConnection.ConnectionError{message: message} = error) do
+    %QueryError{
+      message: message,
+      code: :connection_error,
+      raw_error: error,
+      backend: Logflare.Backends.Adaptor.PostgresAdaptor
+    }
+  end
+
+  defp to_query_error(%Ecto.QueryError{message: message} = error) do
+    %QueryError{
+      message: message,
+      code: :invalid_query,
+      raw_error: error,
+      backend: Logflare.Backends.Adaptor.PostgresAdaptor
+    }
   end
 
   # expose PgRepo functions

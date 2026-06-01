@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
 
   # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
   # identifier-quoting characters, whitespace, and shell metacharacters.
@@ -217,6 +218,81 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                 total_rows: 1
               }} =
                result
+    end
+
+    test "execute_query translates errors to QueryError", %{user: user} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error,
+         TestUtils.gen_bq_error("Unrecognized name: notthere at [1:8]",
+           reason: "invalidQuery"
+         )}
+      end)
+
+      assert {:error,
+              %QueryError{
+                code: :invalid_query,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                message: "Unrecognized name: notthere at [1:8]",
+                description: nil,
+                raw_error: %{
+                  "message" => "Unrecognized name: notthere at [1:8]",
+                  "reason" => "invalidQuery"
+                }
+              }} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select notthere", []},
+                 []
+               )
+    end
+
+    test "execute_query normalizes bytes billed limit errors", %{user: user} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error,
+         TestUtils.gen_bq_error(
+           "Query exceeded limit for bytes billed: 2000000000. 20004857600 or higher required.",
+           reason: "billingTierLimitExceeded"
+         )}
+      end)
+
+      assert {:error,
+              %QueryError{
+                code: :invalid_query,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                message:
+                  "Query exceeded limit for bytes billed: 2000000000. 20004857600 or higher required.",
+                description: nil,
+                raw_error: %{
+                  "message" =>
+                    "Query exceeded limit for bytes billed: 2000000000. 20004857600 or higher required.",
+                  "reason" => "billingTierLimitExceeded"
+                }
+              }} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select count(*) from logs", []},
+                 []
+               )
+    end
+
+    test "execute_query normalizes transport timeout errors", %{user: user} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error, :timeout}
+      end)
+
+      assert {:error,
+              %QueryError{
+                code: :connection_error,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                message: "timeout",
+                description: nil,
+                raw_error: :timeout
+              }} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select count(*) from logs", []},
+                 []
+               )
     end
   end
 

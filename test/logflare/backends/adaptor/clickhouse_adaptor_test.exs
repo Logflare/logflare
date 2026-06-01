@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
   alias Logflare.Lql.Rules.FilterRule
 
@@ -87,7 +88,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       result =
         ClickHouseAdaptor.execute_ch_query(backend, "INVALID SQL QUERY")
 
-      assert {:error, _} = result
+      assert {:error, %QueryError{} = error} = result
+      assert error.backend == ClickHouseAdaptor
+      assert error.code in [:invalid_query, :connection_error]
+
+      if error.code == :invalid_query do
+        assert %Ch.Error{} = error.raw_error
+        assert error.description == nil
+      end
+    end
+
+    test "normalizes missing field query errors", %{backend: backend} do
+      expect(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error,
+         %Ch.Error{
+           message:
+             "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
+         }}
+      end)
+
+      result =
+        ClickHouseAdaptor.execute_ch_query(backend, "SELECT notthere")
+
+      assert {:error,
+              %QueryError{
+                code: :invalid_query,
+                backend: Logflare.Backends.Adaptor.ClickHouseAdaptor,
+                message:
+                  "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)",
+                raw_error: %Ch.Error{},
+                description: nil
+              }} = result
     end
 
     test "logs a warning when connection checkout is slow", %{backend: backend} do
