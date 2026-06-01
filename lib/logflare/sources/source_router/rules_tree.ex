@@ -10,11 +10,15 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   @behaviour Logflare.Sources.SourceRouter
 
   @type t() :: [entry()]
-  @type entry() :: {key(), [entry()]} | {operator(), [route()]}
+  @type entry() ::
+          {key(), [entry()]}
+          | {operator(), route()}
+          | {:eq_index, eq_index()}
   @type route() :: {:route, target() | [target()]}
   @type target() :: {Rule.id(), filter_set()}
   @type key() :: binary()
   @type operator() :: {atom(), any()}
+  @type eq_index() :: %{term() => target() | [target()]}
 
   @type filter_set() :: non_neg_integer()
 
@@ -70,6 +74,15 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
     for {op, nested_ops} <- ops, reduce: acc do
       acc -> find_matches(sub_part, op, nested_ops, acc)
+    end
+  end
+
+  # Hash-indexed positive equality: replaces a linear scan of sibling `:=` leaves
+  # at this path with a single lookup. Negated equality stays as a regular leaf.
+  defp find_matches(le_value, :eq_index, index_map, acc) when is_map(index_map) do
+    case Map.get(index_map, le_value) do
+      nil -> acc
+      rule_ids -> accumulate(rule_ids, acc)
     end
   end
 
@@ -139,6 +152,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   - a binary key - a traversal of log event structure by getting that key from a map
   - `{operator, compared_value}` - an operator testing log event value, as in #{inspect(FilterRule)}, always followed by route(s)
   - `{:not, {operator, compared_value}` - negated operator (prevents the need to store modifiers from #{inspect(FilterRule)})
+  - `{:eq_index, %{value => target | [target]}}` - hash-indexed fold of sibling positive `:=` leaves at a path node; one `Map.get/2` replaces a linear scan over equal-shape rules
   - `{:route, target}` - always under an operator, indicates where the rule_id that should be used for routing if the operator succeeds
 
   Such structure allows to access each key inside the log event structure at most once.
@@ -154,8 +168,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   |
   |- "metadata"
      |- "field1"
-        |- {:=, 8}
-           |- {route, rule(0)}
+        |- {:eq_index, %{8 => rule(0)}}
      |- "field2"
         |- {:~, "sth}
            |- {route, rule(1)}
@@ -169,7 +182,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   [
     {"metadata",
       [
-        {"field1", [{{:=, 8}, {:route, {0, 0b0}}}]},
+        {"field1", [{:eq_index, %{8 => {0, 0b0}}}]},
         {"field2", [{{:~, "sth"}, {:route, {1, 0b0}}}]}
       ]}
   ]
@@ -229,8 +242,23 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   end
 
   defp deep_to_list(kv) when is_map(kv) do
-    for {k, v} <- kv do
-      {k, deep_to_list(v)}
+    {eq_entries, rest_entries} =
+      Enum.split_with(kv, fn
+        {{:=, _value}, {:route, _targets}} -> true
+        _ -> false
+      end)
+
+    rest = for {k, v} <- rest_entries, do: {k, deep_to_list(v)}
+
+    case eq_entries do
+      [] ->
+        rest
+
+      _ ->
+        index =
+          Map.new(eq_entries, fn {{:=, value}, {:route, targets}} -> {value, targets} end)
+
+        [{:eq_index, index} | rest]
     end
   end
 

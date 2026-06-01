@@ -1,6 +1,7 @@
 defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
   use Logflare.DataCase
 
+  alias Logflare.LogEvent
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules.Rule
   alias Logflare.Sources.SourceRouter.RulesTree
@@ -44,8 +45,8 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
                [
                  {"metadata",
                   [
-                    {"field1", [{{:=, 0}, {:route, {0, 0b0}}}]},
-                    {"field2", [{{:=, "sth"}, {:route, {1, 0b0}}}]}
+                    {"field1", [{:eq_index, %{0 => {0, 0b0}}}]},
+                    {"field2", [{:eq_index, %{"sth" => {1, 0b0}}}]}
                   ]}
                ]
     end
@@ -64,10 +65,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
                 [
                   {"field1",
                    [
-                     {
-                       {:=, 0},
-                       {:route, targets}
-                     }
+                     {:eq_index, %{0 => targets}}
                    ]}
                 ]}
              ] = @subject.build(rules)
@@ -93,11 +91,82 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
                 [
                   {"field1",
                    [
-                     {{:=, 0}, {:route, {0, 0b0}}},
-                     {{:=, 1}, {:route, {1, 0b0}}}
+                     {:eq_index, %{0 => {0, 0b0}, 1 => {1, 0b0}}}
                    ]}
                 ]}
              ] = @subject.build(rules)
+    end
+  end
+
+  describe "matching_rule_ids/2" do
+    test "single positive equality matches when value present" do
+      rules = [rule(0, [filter("project", :=, "foo")])]
+      assert matching(rules, %{"project" => "foo"}) == [0]
+    end
+
+    test "single positive equality misses on differing value" do
+      rules = [rule(0, [filter("project", :=, "foo")])]
+      assert matching(rules, %{"project" => "bar"}) == []
+    end
+
+    test "single positive equality misses when key absent" do
+      rules = [rule(0, [filter("project", :=, "foo")])]
+      assert matching(rules, %{"other" => "foo"}) == []
+    end
+
+    test "multiple sibling positive equality leaves: exactly one matches" do
+      rules = for i <- 0..4, do: rule(i, [filter("project", :=, "v#{i}")])
+      assert matching(rules, %{"project" => "v3"}) == [3]
+    end
+
+    test "multiple sibling positive equality leaves: none match" do
+      rules = for i <- 0..4, do: rule(i, [filter("project", :=, "v#{i}")])
+      assert matching(rules, %{"project" => "miss"}) == []
+    end
+
+    test "positive equality coexists with regex, range, and negated equality on same path" do
+      rules = [
+        rule(0, [filter("level", :=, "info")]),
+        rule(1, [filter("level", :=, "warn")]),
+        rule(2, [filter("level", :"~", "err.*")]),
+        rule(3, [range_filter("level", 1, 5)]),
+        rule(4, [filter("level", :=, "drop_me", %{negate: true})])
+      ]
+
+      assert matching(rules, %{"level" => "info"}) == [0, 4]
+      assert matching(rules, %{"level" => "warn"}) == [1, 4]
+      assert matching(rules, %{"level" => "error_500"}) == [2, 4]
+      assert matching(rules, %{"level" => 3}) == [3, 4]
+      assert matching(rules, %{"level" => "drop_me"}) == []
+    end
+
+    test "multi-filter rule alongside single-filter rules at same path" do
+      rules = [
+        rule(0, [filter("project", :=, "foo")]),
+        rule(1, [filter("project", :=, "foo"), filter("level", :=, "error")])
+      ]
+
+      assert matching(rules, %{"project" => "foo", "level" => "error"}) == [0, 1]
+      assert matching(rules, %{"project" => "foo", "level" => "info"}) == [0]
+      assert matching(rules, %{"project" => "bar", "level" => "error"}) == []
+    end
+
+    test "two rules with identical filter both match (route list consolidation)" do
+      f = filter("project", :=, "foo")
+      rules = [rule(0, [f]), rule(1, [f])]
+      assert matching(rules, %{"project" => "foo"}) == [0, 1]
+    end
+
+    test "nested dotted path descends into maps" do
+      rules = [rule(0, [filter("metadata.response.status", :=, 200)])]
+      assert matching(rules, %{"metadata" => %{"response" => %{"status" => 200}}}) == [0]
+      assert matching(rules, %{"metadata" => %{"response" => %{"status" => 500}}}) == []
+    end
+
+    test "lists nested in body are traversed for descendant keys" do
+      rules = [rule(0, [filter("metadata.tag", :=, "x")])]
+      assert matching(rules, %{"metadata" => [%{"tag" => "y"}, %{"tag" => "x"}]}) == [0]
+      assert matching(rules, %{"metadata" => [%{"tag" => "y"}, %{"tag" => "z"}]}) == []
     end
   end
 
@@ -253,5 +322,23 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       # Name  Reduction count
       # build        172.99 K
     end
+  end
+
+  defp filter(path, operator, value, modifiers \\ %{}) do
+    %FilterRule{path: path, operator: operator, value: value, modifiers: modifiers}
+  end
+
+  defp range_filter(path, l, r) do
+    %FilterRule{path: path, operator: :range, values: [l, r], modifiers: %{}}
+  end
+
+  defp rule(id, filters), do: %Rule{id: id, lql_filters: filters}
+
+  defp matching(rules, body) do
+    tree = RulesTree.build(rules)
+
+    %LogEvent{body: body}
+    |> RulesTree.matching_rule_ids(tree)
+    |> Enum.sort()
   end
 end
