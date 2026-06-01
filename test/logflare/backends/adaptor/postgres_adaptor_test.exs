@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -93,6 +94,73 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                   ["test"]},
                  []
                )
+    end
+
+    test "execute_query/3 normalizes Ecto query undefined column errors", %{
+      backend: backend,
+      source: source
+    } do
+      log_event = build(:log_event, source: source, test: "data")
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+
+      query =
+        from(l in PostgresAdaptor.table_name(source),
+          select: field(l, :notthere)
+        )
+
+      TestUtils.retry_assert(fn ->
+        assert {:error,
+                %QueryError{
+                  code: :invalid_query,
+                  backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                  message: message,
+                  raw_error: %Postgrex.Error{},
+                  description: nil
+                }} = PostgresAdaptor.execute_query(backend, query, [])
+
+        assert message =~ "notthere"
+      end)
+    end
+
+    test "execute_query/3 normalizes raw SQL undefined column errors", %{
+      backend: backend,
+      source: source
+    } do
+      log_event = build(:log_event, source: source, test: "data")
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+
+      query = "select notthere from #{PostgresAdaptor.table_name(source)}"
+
+      TestUtils.retry_assert(fn ->
+        assert {:error,
+                %QueryError{
+                  code: :invalid_query,
+                  backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                  message: message,
+                  raw_error: %Postgrex.Error{},
+                  description: nil
+                }} = PostgresAdaptor.execute_query(backend, query, [])
+
+        assert message =~ "notthere"
+      end)
+    end
+
+    test "execute_query/3 normalizes raw SQL syntax errors", %{backend: backend} do
+      TestUtils.retry_assert(fn ->
+        assert {:error,
+                %QueryError{
+                  code: :invalid_query,
+                  backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                  message: message,
+                  raw_error: %Postgrex.Error{},
+                  description: nil
+                }} = PostgresAdaptor.execute_query(backend, "select from", [])
+
+        assert message =~ "syntax_error"
+        assert message =~ "syntax error"
+      end)
     end
 
     test "ingest/2 and execute_query/2 dispatched message with metadata transformation into list",

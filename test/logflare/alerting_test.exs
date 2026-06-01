@@ -6,6 +6,7 @@ defmodule Logflare.AlertingTest do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Utils.Tasks
 
   doctest Logflare.SynEventHandler
@@ -268,6 +269,32 @@ defmodule Logflare.AlertingTest do
 
       assert_receive {:reservation, reservation}
       assert reservation == user.bigquery_reservation_alerts
+    end
+
+    test "execute_alert_query returns normalized query error message", %{user: user} do
+      alert_query = insert(:alert, user: user) |> Logflare.Repo.preload([:user])
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        body =
+          %{
+            error: %{
+              message: "Unrecognized name: notthere at [1:8]",
+              reason: "invalidQuery"
+            }
+          }
+          |> Jason.encode!()
+
+        {:error, %Tesla.Env{status: 400, body: body}}
+      end)
+
+      assert {:error,
+              %QueryError{
+                code: :invalid_query,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                message: "Unrecognized name: notthere at [1:8]",
+                description: nil
+              }} =
+               Alerting.execute_alert_query(alert_query)
     end
 
     test "execute_alert_query with query composition" do

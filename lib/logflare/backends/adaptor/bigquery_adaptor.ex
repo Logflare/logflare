@@ -21,6 +21,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Billing
   alias Logflare.BqRepo
@@ -669,7 +670,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           query_opts :: Keyword.t()
         ) ::
           {:ok, QueryResult.t()}
-          | {:error, any()}
+          | {:error, QueryError.t()}
   defp execute_user_query(%User{} = user, project_id, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
     case BqRepo.query_with_sql_and_params(
@@ -688,17 +689,33 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
            bq_params: bq_params
          })}
 
-      {:error, %{body: body}} ->
-        decoded = Jason.decode!(body)["error"]
-        error = GenUtils.process_bq_errors(decoded, user.id)
-        maybe_warn_reservation_error(decoded, user, project_id, query_opts)
-        {:error, error}
+      {:error, error} ->
+        maybe_warn_reservation_error(error, user, project_id, query_opts)
 
-      {:error, err} when is_atom(err) ->
-        {:error, GenUtils.process_bq_errors(err, user.id)}
+        {:error, to_query_error(error, user.id)}
+    end
+  end
 
-      {:error, err} ->
-        {:error, err}
+  @spec to_query_error(term(), pos_integer()) :: QueryError.t()
+  defp to_query_error(error, _user_id) when error in [:timeout, :closed, :emfile] do
+    %QueryError{
+      message: GenUtils.get_tesla_error_message(error),
+      code: :connection_error,
+      raw_error: error,
+      backend: Logflare.Backends.Adaptor.BigQueryAdaptor
+    }
+  end
+
+  defp to_query_error(%{body: body}, user_id) do
+    with %{"error" => raw_error} <- Jason.decode!(body),
+         %{"message" => message} = processed_error <-
+           GenUtils.process_bq_errors(raw_error, user_id) do
+      %QueryError{
+        message: message,
+        code: :invalid_query,
+        raw_error: processed_error,
+        backend: Logflare.Backends.Adaptor.BigQueryAdaptor
+      }
     end
   end
 
@@ -725,13 +742,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @spec maybe_warn_reservation_error(
-          decoded :: any(),
+          error :: any(),
           user :: User.t(),
           project_id :: String.t(),
           query_opts :: Keyword.t()
         ) :: :ok
-  defp maybe_warn_reservation_error(decoded, %User{} = user, project_id, query_opts) do
-    if reservation_error?(decoded) and not caller_logs_own_errors?(query_opts) do
+  defp maybe_warn_reservation_error(%{body: body}, %User{} = user, project_id, query_opts) do
+    with %{"error" => decoded} <- Jason.decode!(body),
+         true <- reservation_error?(decoded),
+         false <- caller_logs_own_errors?(query_opts) do
       Logger.warning("Possible BigQuery reservation error",
         user_id: user.id,
         project_id: project_id,
@@ -743,6 +762,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
     :ok
   end
+
+  defp maybe_warn_reservation_error(_error, %User{}, _project_id, _query_opts), do: :ok
 
   @spec caller_logs_own_errors?(query_opts :: Keyword.t()) :: boolean()
   defp caller_logs_own_errors?(query_opts) do

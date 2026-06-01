@@ -18,7 +18,7 @@ defmodule Logflare.BqRepo do
           optional(atom()) => any()
         }
   @type query_result ::
-          {:ok, results()} | {:error, Tesla.Env.t()}
+          {:ok, results()} | {:error, Tesla.Env.t() | GenUtils.transport_error()}
 
   @spec query_with_sql_and_params(
           Logflare.User.t(),

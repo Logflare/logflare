@@ -30,7 +30,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       pid = self()
 
       expect(BigQueryJobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-        {:error, :failed_request}
+        {:error, TestUtils.gen_bq_error("failed_request")}
       end)
 
       conn =
