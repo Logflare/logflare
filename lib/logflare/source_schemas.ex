@@ -137,7 +137,7 @@ defmodule Logflare.SourceSchemas do
         %GoogleApi.BigQuery.V2.Model.TableSchema{} = schema ->
           SchemaUtils.to_typemap(schema, from: :bigquery_schema)
 
-        # Ecto.Term can contain malformed persisted or cached legacy values.
+        # fallback to empty map in case of malformed persisted or cached legacy values.
         _ ->
           %{}
       end
