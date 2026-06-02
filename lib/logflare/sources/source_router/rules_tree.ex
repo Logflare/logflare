@@ -15,7 +15,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
           | {operator(), route()}
           | {:eq_index, eq_index()}
   @type route() :: {:route, target() | [target()]}
-  @type target() :: {Rule.id(), filter_set()}
+  @type target() :: Rule.id() | {Rule.id(), filter_set()}
   @type key() :: binary()
   @type operator() :: {atom(), any()}
   @type eq_index() :: %{term() => target() | [target()]}
@@ -136,6 +136,10 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   defp accumulate([], acc), do: acc
   defp accumulate([h | tail], acc), do: accumulate(tail, accumulate(h, acc))
 
+  # Accumulate: single-filter rule without bitmask, use bare Rule.id()
+  defp accumulate(rule_id, acc) when is_integer(rule_id),
+    do: Map.put(acc, rule_id, 0)
+
   # Accumulate: handle rule id already present in accumulator
   defp accumulate({rule_id, bitmask}, acc) when is_map_key(acc, rule_id),
     do: %{acc | rule_id => apply_filter_bitmask(acc[rule_id], bitmask)}
@@ -182,11 +186,14 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   [
     {"metadata",
       [
-        {"field1", [{:eq_index, %{8 => {0, 0b0}}}]},
-        {"field2", [{{:~, "sth"}, {:route, {1, 0b0}}}]}
+        {"field1", [{:eq_index, %{8 => 0}}]},
+        {"field2", [{{:~, "sth"}, {:route, 1}}]}
       ]}
   ]
   ```
+  Single-filter rule targets are stored as bare `Rule.id()` integers (instead of
+  `{Rule.id(), filter_set()}` tuples).
+  Multi-filter rules keep the tuple form so the bitmask accumulates across paths.
 
   You can find more examples by looking at `rules_tree_test.exs`
   """
@@ -195,7 +202,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
     for rule <- rules,
         filters_num = length(rule.lql_filters),
         {filter, index} <- Enum.with_index(rule.lql_filters) do
-      target = {rule.id, build_filter_bitmask(filters_num, index)}
+      target = build_target(rule.id, filters_num, index)
 
       reverse_path = String.split(filter.path, ".") |> Enum.reverse()
 
@@ -207,6 +214,13 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
     end
     |> deep_group_keys()
   end
+
+  # Single-filter rule: emit bare rule_id. The accumulate clause for integers
+  # puts straight to 0 (matched), bypassing apply_filter_bitmask entirely.
+  defp build_target(rule_id, 1, 0), do: rule_id
+
+  defp build_target(rule_id, filters_num, index),
+    do: {rule_id, build_filter_bitmask(filters_num, index)}
 
   defp to_operator(%FilterRule{modifiers: %{negate: true}} = rule) do
     {:not, to_operator(%{rule | modifiers: %{rule.modifiers | negate: false}})}

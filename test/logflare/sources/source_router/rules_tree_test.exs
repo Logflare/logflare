@@ -45,8 +45,8 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
                [
                  {"metadata",
                   [
-                    {"field1", [{:eq_index, %{0 => {0, 0b0}}}]},
-                    {"field2", [{:eq_index, %{"sth" => {1, 0b0}}}]}
+                    {"field1", [{:eq_index, %{0 => 0}}]},
+                    {"field2", [{:eq_index, %{"sth" => 1}}]}
                   ]}
                ]
     end
@@ -70,8 +70,8 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
                 ]}
              ] = @subject.build(rules)
 
-      assert {0, 0b0} in targets
-      assert {1, 0b0} in targets
+      assert 0 in targets
+      assert 1 in targets
     end
 
     test "rules with similar filters" do
@@ -91,10 +91,52 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
                 [
                   {"field1",
                    [
-                     {:eq_index, %{0 => {0, 0b0}, 1 => {1, 0b0}}}
+                     {:eq_index, %{0 => 0, 1 => 1}}
                    ]}
                 ]}
              ] = @subject.build(rules)
+    end
+
+    test "Multi-filter rule" do
+      rules = [
+        %Rule{
+          id: 0,
+          lql_filters: [
+            %FilterRule{value: "foo", operator: :=, path: "project"},
+            %FilterRule{value: "error", operator: :=, path: "level"}
+          ]
+        }
+      ]
+
+      # Multi-filter rules keep the tuple target so the bitmask accumulates.
+      # filter 0 (project): bitmask = bxor(0b11, 0b01) = 0b10
+      # filter 1 (level):   bitmask = bxor(0b11, 0b10) = 0b01
+      assert @subject.build(rules) ==
+               [
+                 {"level", [{:eq_index, %{"error" => {0, 0b01}}}]},
+                 {"project", [{:eq_index, %{"foo" => {0, 0b10}}}]}
+               ]
+    end
+
+    test "Negated single-filter rule" do
+      rules = [
+        %Rule{
+          id: 0,
+          lql_filters: [
+            %FilterRule{
+              value: "drop_me",
+              operator: :=,
+              path: "level",
+              modifiers: %{negate: true}
+            }
+          ]
+        }
+      ]
+
+      # Negated equality is NOT folded into eq_index — stays as a regular
+      # operator leaf. Single-filter target is still a bare integer.
+      assert @subject.build(rules) ==
+               [{"level", [{{:not, {:=, "drop_me"}}, {:route, 0}}]}]
     end
   end
 
@@ -130,25 +172,47 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
         rule(1, [filter("level", :=, "warn")]),
         rule(2, [filter("level", :"~", "err.*")]),
         rule(3, [range_filter("level", 1, 5)]),
-        rule(4, [filter("level", :=, "drop_me", %{negate: true})])
+        rule(4, [filter("level", :=, "drop_me", %{negate: true})]),
+        # duplicate range — exercises route-list consolidation through a non-eq
+        # leaf (bare-int targets walked via accumulate's list head clause)
+        rule(5, [range_filter("level", 1, 5)])
       ]
 
       assert matching(rules, %{"level" => "info"}) == [0, 4]
       assert matching(rules, %{"level" => "warn"}) == [1, 4]
       assert matching(rules, %{"level" => "error_500"}) == [2, 4]
-      assert matching(rules, %{"level" => 3}) == [3, 4]
+      assert matching(rules, %{"level" => 3}) == [3, 4, 5]
       assert matching(rules, %{"level" => "drop_me"}) == []
     end
 
     test "multi-filter rule alongside single-filter rules at same path" do
       rules = [
         rule(0, [filter("project", :=, "foo")]),
-        rule(1, [filter("project", :=, "foo"), filter("level", :=, "error")])
+        # same value as rule 0 — homogeneous eq_index entry mixing bare-int + tuple
+        rule(1, [filter("project", :=, "foo"), filter("level", :=, "error")]),
+        # different value at same path — exercises heterogeneous eq_index map
+        # where one key resolves to a bare int and another to a tuple
+        rule(2, [filter("project", :=, "bar"), filter("level", :=, "error")]),
+        # 3 filters — exercises bitmask accumulation through more than 2 paths
+        rule(3, [
+          filter("project", :=, "foo"),
+          filter("level", :=, "info"),
+          filter("type", :=, "trace")
+        ])
       ]
 
       assert matching(rules, %{"project" => "foo", "level" => "error"}) == [0, 1]
       assert matching(rules, %{"project" => "foo", "level" => "info"}) == [0]
-      assert matching(rules, %{"project" => "bar", "level" => "error"}) == []
+      assert matching(rules, %{"project" => "bar", "level" => "error"}) == [2]
+      assert matching(rules, %{"project" => "bar", "level" => "info"}) == []
+      assert matching(rules, %{"project" => "baz", "level" => "error"}) == []
+
+      # 3-filter rule: all three match -> emitted alongside rule 0
+      assert matching(rules, %{"project" => "foo", "level" => "info", "type" => "trace"}) ==
+               [0, 3]
+
+      # 3-filter rule: two of three match (type missing) -> not emitted
+      assert matching(rules, %{"project" => "foo", "level" => "info", "type" => "log"}) == [0]
     end
 
     test "two rules with identical filter both match (route list consolidation)" do
@@ -167,6 +231,10 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       rules = [rule(0, [filter("metadata.tag", :=, "x")])]
       assert matching(rules, %{"metadata" => [%{"tag" => "y"}, %{"tag" => "x"}]}) == [0]
       assert matching(rules, %{"metadata" => [%{"tag" => "y"}, %{"tag" => "z"}]}) == []
+
+      # bare-int accumulate must be idempotent — a single-filter rule that matches
+      # twice via list traversal still appears exactly once in the result
+      assert matching(rules, %{"metadata" => [%{"tag" => "x"}, %{"tag" => "x"}]}) == [0]
     end
   end
 
