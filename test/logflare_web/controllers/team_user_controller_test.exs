@@ -1,6 +1,7 @@
 defmodule LogflareWeb.TeamUserControllerTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.TeamUsers
 
   setup do
@@ -49,6 +50,10 @@ defmodule LogflareWeb.TeamUserControllerTest do
     team = insert(:team, user: owner)
     team_user = insert(:team_user, team: team)
 
+    stub(BigQueryAdaptor, :update_iam_policy, fn ->
+      Mimic.call_original(BigQueryAdaptor, :update_iam_policy, [])
+    end)
+
     expect(
       GoogleApi.CloudResourceManager.V1.Api.Projects,
       :cloudresourcemanager_projects_set_iam_policy,
@@ -70,6 +75,10 @@ defmodule LogflareWeb.TeamUserControllerTest do
     team = insert(:team, user: owner)
     member_user = insert(:user)
     member_team_user = insert(:team_user, team: team, email: member_user.email)
+
+    stub(BigQueryAdaptor, :update_iam_policy, fn ->
+      Mimic.call_original(BigQueryAdaptor, :update_iam_policy, [])
+    end)
 
     expect(
       GoogleApi.CloudResourceManager.V1.Api.Projects,

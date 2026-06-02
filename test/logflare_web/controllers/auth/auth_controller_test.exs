@@ -3,15 +3,10 @@ defmodule LogflareWeb.AuthControllerTest do
   use Mimic
 
   alias Logflare.Auth
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.SingleTenant
 
   setup do
     insert(:plan)
-
-    stub(BigQueryAdaptor, :update_iam_policy, fn -> :ok end)
-    stub(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
-    stub(BigQueryAdaptor, :patch_dataset_access, fn _user -> {:ok, :patch_attempted} end)
 
     :ok
   end

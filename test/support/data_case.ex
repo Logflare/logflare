@@ -20,20 +20,23 @@ defmodule Logflare.DataCase do
 
   using do
     quote do
-      alias Logflare.Repo
-      alias Logflare.TestUtils
-      alias Logflare.TestUtilsGrpc
-      alias Logflare.Backends.Adaptor.ClickHouseAdaptor
-      alias Logflare.Backends.IngestEventQueue
-      alias Logflare.PubSubRates
-      require TestUtils
+      use Mimic
+
+      require Logflare.TestUtils
 
       import Ecto
       import Ecto.Changeset
       import Ecto.Query
       import Logflare.DataCase
       import Logflare.Factory
-      use Mimic
+
+      alias Logflare.Backends.Adaptor.BigQueryAdaptor
+      alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+      alias Logflare.Backends.IngestEventQueue
+      alias Logflare.PubSubRates
+      alias Logflare.Repo
+      alias Logflare.TestUtils
+      alias Logflare.TestUtilsGrpc
 
       setup context do
         Mimic.verify_on_exit!(context)
@@ -43,6 +46,10 @@ defmodule Logflare.DataCase do
         stub(Logflare.Cluster.Utils, :rpc_call, fn _node, func ->
           func.()
         end)
+
+        stub(BigQueryAdaptor, :update_iam_policy, fn -> :ok end)
+        stub(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
+        stub(BigQueryAdaptor, :patch_dataset_access, fn _user -> {:ok, :patch_attempted} end)
 
         caches = Logflare.ContextCache.Supervisor.list_caches()
         Enum.each(caches, &Cachex.reset(&1, hooks: [Cachex.Stats]))
