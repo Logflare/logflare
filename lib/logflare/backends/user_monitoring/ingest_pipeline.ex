@@ -27,7 +27,11 @@ defmodule Logflare.Backends.UserMonitoring.IngestPipeline do
         default: [concurrency: 1]
       ],
       batchers: [
-        default: [concurrency: System.schedulers_online(), batch_size: 200, batch_timeout: batch_timeout]
+        default: [
+          concurrency: System.schedulers_online(),
+          batch_size: 200,
+          batch_timeout: batch_timeout
+        ]
       ]
     )
   end
