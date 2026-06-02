@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
   alias Logflare.Sources
+  alias Logflare.Utils.SSRF
 
   @behaviour Adaptor
 
@@ -68,6 +69,16 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
       greater_than_or_equal_to: @min_batch_timeout,
       less_than_or_equal_to: @max_batch_timeout
     )
+    |> Changeset.validate_change(:endpoint, &no_ssrf_validator/2)
+  end
+
+  defp no_ssrf_validator(field, endpoint) do
+    host = URI.parse(endpoint).host
+
+    case SSRF.safe_resolve(host) do
+      {:ok, _} -> []
+      {:error, reason} -> [{field, {reason, validation: :ssrf}}]
+    end
   end
 
   @impl Adaptor
