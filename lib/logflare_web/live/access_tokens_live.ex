@@ -54,7 +54,7 @@ defmodule LogflareWeb.AccessTokensLive do
                 <label class="form-check-label tw-px-1" for={["scopes", "main", value]}>
                   {String.capitalize(value)}
                   <small class="form-text text-muted">{description}</small>
-                  <select :for={input_n <- 0..2} :if={value == "ingest" and value in @create_token_form["scopes_main"]} id={["scopes", "ingest", input_n]} name="scopes_ingest[]" class="mt-1 form-control form-control-sm">
+                  <select :for={input_n <- 0..4} :if={value == "ingest" and value in @create_token_form["scopes_main"]} id={["scopes", "ingest", input_n]} name="scopes_ingest[]" class="mt-1 form-control form-control-sm">
                     <option hidden value="">Ingest into a specific source...</option>
                     <option :for={source <- @sources} selected={"ingest:source:#{source.id}" == Enum.at(@create_token_form["scopes_ingest"], input_n)} value={"ingest:source:#{source.id}"} }>Ingest into {source.name} only</option>
                   </select>
