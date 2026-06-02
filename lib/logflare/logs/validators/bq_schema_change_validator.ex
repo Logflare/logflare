@@ -26,14 +26,21 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   def validate(%LE{body: _body}, %Source{validate_schema: false}), do: :ok
 
   def validate(%LE{body: body}, %Source{} = source) do
-    schema_flat_map =
-      case source.id && SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
-        %_{schema_flat_map: flat_map} when is_map(flat_map) -> flat_map
-        _ -> %{}
-      end
+    if enabled?() do
+      schema_flat_map =
+        case source.id && SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+          %_{schema_flat_map: flat_map} when is_map(flat_map) -> flat_map
+          _ -> %{}
+        end
 
-    check_body(body, schema_flat_map)
+      check_body(body, schema_flat_map)
+    else
+      :ok
+    end
   end
+
+  @spec enabled?() :: boolean()
+  defp enabled?, do: Application.get_env(:logflare, __MODULE__, [])[:enabled] == true
 
   @spec valid?(map, map) :: boolean
   def valid?(body, schema) do

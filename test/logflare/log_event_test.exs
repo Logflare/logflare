@@ -5,6 +5,7 @@ defmodule Logflare.LogEventTest do
 
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
+  alias Logflare.Utils
 
   @subject LogEvent
 
@@ -765,6 +766,71 @@ defmodule Logflare.LogEventTest do
       params = Map.put(@vallog_event_ids, "timestamp", "")
       le = LogEvent.make(params, %{source: source})
       assert le.timestamp_inferred == true
+    end
+  end
+
+  describe "trace start_time substitution" do
+    @one_hour_us 3_600_000_000
+
+    test "replaces inferred timestamp with start_time for OTEL span events", %{source: source} do
+      start_time_us = System.system_time(:microsecond) - @one_hour_us
+
+      params = %{
+        "event_message" => "trace with inferred timestamp",
+        "metadata" => %{"type" => "span"},
+        "start_time" => start_time_us
+      }
+
+      le = LogEvent.make(params, %{source: source})
+
+      assert le.event_type == :trace
+      assert le.timestamp_inferred == true
+      assert le.body["timestamp"] == start_time_us
+    end
+
+    test "honors `start_time_unix_nano` (OTEL processor key)", %{source: source} do
+      start_time_ns = System.system_time(:nanosecond) - 1_000_000_000
+
+      params = %{
+        "event_message" => "trace from otel processor",
+        "metadata" => %{"type" => "span"},
+        "start_time_unix_nano" => start_time_ns
+      }
+
+      le = LogEvent.make(params, %{source: source})
+
+      assert le.body["timestamp"] == Utils.to_microseconds(start_time_ns)
+    end
+
+    test "does not override an explicit timestamp for trace events", %{source: source} do
+      explicit_us = 1_700_000_000_000_000
+      start_time_us = explicit_us - @one_hour_us
+
+      params = %{
+        "event_message" => "trace with explicit timestamp",
+        "metadata" => %{"type" => "span"},
+        "timestamp" => explicit_us,
+        "start_time" => start_time_us
+      }
+
+      le = LogEvent.make(params, %{source: source})
+
+      assert le.timestamp_inferred == false
+      assert le.body["timestamp"] == explicit_us
+    end
+
+    test "does not substitute start_time for non-trace events", %{source: source} do
+      start_time_us = System.system_time(:microsecond) - @one_hour_us
+
+      params = %{
+        "event_message" => "log with start_time field",
+        "start_time" => start_time_us
+      }
+
+      le = LogEvent.make(params, %{source: source})
+
+      assert le.event_type == :log
+      refute le.body["timestamp"] == start_time_us
     end
   end
 
