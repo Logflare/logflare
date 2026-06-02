@@ -6,11 +6,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   consolidated queue and inserting them into the backend's type-specific
   ingest tables (otel_logs, otel_metrics, otel_traces).
 
-  Events are partitioned by `event_type` using batch keys, and multiple
-  sources are processed together in a single pipeline.
+  Events are routed to one of two batchers (`:ch_fresh` or `:ch_stale`)
+  based on `LogEvent.ingest_freshness`, and batched by a composite key of
+  `{event_type, day_bucket}` so each insert targets a single ClickHouse
+  partition. Multiple sources are processed together in a single pipeline.
   """
 
-  import Logflare.Utils.Guards
+  import Logflare.Utils.Guards, only: [is_event_type: 1]
 
   require Logger
   require OpenTelemetry.Tracer
@@ -27,10 +29,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.Utils
 
   @producer_concurrency 1
-  @processor_concurrency 4
-  @batcher_concurrency 2
-  @batch_size 50_000
-  @batch_timeout 4_000
+  @processor_concurrency 6
+  @fresh_batch_size 50_000
+  @fresh_batch_timeout 5_000
+  @fresh_batcher_concurrency 4
+  @stale_batch_size 50_000
+  @stale_batch_timeout 10_000
+  @stale_batcher_concurrency 2
   @max_retries 0
 
   @doc false
@@ -66,10 +71,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         default: [concurrency: @processor_concurrency, min_demand: 1, max_demand: 100]
       ],
       batchers: [
-        ch: [
-          concurrency: @batcher_concurrency,
-          batch_size: @batch_size,
-          batch_timeout: @batch_timeout
+        ch_fresh: [
+          concurrency: @fresh_batcher_concurrency,
+          batch_size: @fresh_batch_size,
+          batch_timeout: @fresh_batch_timeout
+        ],
+        ch_stale: [
+          concurrency: @stale_batcher_concurrency,
+          batch_size: @stale_batch_size,
+          batch_timeout: @stale_batch_timeout
         ]
       ],
       context: %{backend_id: backend.id}
@@ -87,14 +97,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           Message.t()
   def handle_message(
         _processor_name,
-        %Message{data: %LogEvent{event_type: event_type}} = message,
+        %Message{
+          data: %LogEvent{
+            event_type: event_type,
+            day_bucket: day_bucket,
+            ingest_freshness: ingest_freshness
+          }
+        } = message,
         _context
       )
       when is_event_type(event_type) do
     message
-    |> Message.put_batcher(:ch)
-    |> Message.put_batch_key(event_type)
+    |> Message.put_batcher(ingest_freshness_to_batcher(ingest_freshness))
+    |> Message.put_batch_key({event_type, day_bucket})
   end
+
+  @spec ingest_freshness_to_batcher(:fresh | :stale) :: :ch_fresh | :ch_stale
+  defp ingest_freshness_to_batcher(:fresh), do: :ch_fresh
+  defp ingest_freshness_to_batcher(:stale), do: :ch_stale
 
   @spec handle_batch(
           batcher :: atom(),
@@ -102,12 +122,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           batch_info :: Broadway.BatchInfo.t(),
           context :: map()
         ) :: [Message.t()]
-  def handle_batch(:ch, messages, %{batch_key: event_type} = batch_info, %{backend_id: backend_id})
-      when is_event_type(event_type) do
+  def handle_batch(
+        batcher,
+        messages,
+        %{batch_key: {event_type, day_bucket}} = batch_info,
+        %{backend_id: backend_id}
+      )
+      when batcher in [:ch_fresh, :ch_stale] and is_event_type(event_type) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
-      %{backend_type: :clickhouse, backend_id: backend_id, event_type: event_type}
+      %{
+        backend_type: :clickhouse,
+        backend_id: backend_id,
+        event_type: event_type,
+        batcher: batcher,
+        day_bucket: day_bucket
+      }
     )
 
     result =
@@ -116,7 +147,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           backend_id: backend_id,
           ingest_batch_size: batch_info.size,
           ingest_batch_trigger: batch_info.trigger,
-          event_type: event_type
+          event_type: event_type,
+          batcher: batcher,
+          day_bucket: day_bucket
         }
       } do
         backend = Backends.Cache.get_backend(backend_id)
@@ -129,7 +162,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
                 event.body
                 |> Mapper.map(compiled)
                 |> Map.put("mapping_config_id", config_id)
-                |> maybe_replace_inferred_timestamp(event, event_type)
                 |> maybe_compute_duration(event_type)
                 |> resolve_severity_number(event_type)
 
@@ -209,19 +241,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     IngestEventQueue.delete_batch({:consolidated, backend_id}, events)
     IngestEventQueue.add_to_table({:consolidated, backend_id}, events)
   end
-
-  @spec maybe_replace_inferred_timestamp(map(), LogEvent.t(), TypeDetection.event_type()) ::
-          map()
-  defp maybe_replace_inferred_timestamp(
-         %{"start_time" => start_time} = body,
-         %LogEvent{timestamp_inferred: true},
-         :trace
-       )
-       when is_pos_integer(start_time) do
-    %{body | "timestamp" => start_time}
-  end
-
-  defp maybe_replace_inferred_timestamp(body, _event, _event_type), do: body
 
   @spec maybe_compute_duration(map(), TypeDetection.event_type()) :: map()
   defp maybe_compute_duration(
