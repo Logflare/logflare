@@ -72,7 +72,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
-  @spec to_typemap(TS.t() | [TFS.t()], keyword) :: %{required(atom) => map | atom}
+  @spec to_typemap(TS.t() | [TFS.t()], from: :bigquery_schema) :: %{required(atom) => map | atom}
   def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
     to_typemap(fields, from: :bigquery_schema)
   end
