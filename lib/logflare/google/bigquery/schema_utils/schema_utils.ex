@@ -121,7 +121,10 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
     |> flatten_typemap()
   end
 
-  defp flatten_typemap(typemap) when is_map(typemap) do
+  @spec flatten_typemap(map | nil) :: map
+  def flatten_typemap(nil), do: %{}
+
+  def flatten_typemap(typemap) when is_map(typemap) do
     do_flatten_typemap(typemap, "", %{})
   end
 
