@@ -133,7 +133,7 @@ defmodule Logflare.SourceSchemas do
 
   def format_schema(%SourceSchema{bigquery_schema: bq_schema}, :json_schema, to_merge) do
     bq_schema
-    |> SchemaUtils.to_typemap_from_bigquery_schema()
+    |> SchemaUtils.to_typemap(from: :bigquery_schema)
     |> typemap_to_json_schema()
     |> Map.merge(to_merge)
     |> Map.put(
