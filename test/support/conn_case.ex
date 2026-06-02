@@ -39,6 +39,7 @@ defmodule LogflareWeb.ConnCase do
       import Plug.Conn
       import unquote(__MODULE__)
 
+      alias Logflare.Backends.Adaptor.BigQueryAdaptor
       alias Logflare.Backends.Adaptor.ClickHouseAdaptor
       alias Logflare.Backends.IngestEventQueue
       alias Logflare.PubSubRates
@@ -60,6 +61,10 @@ defmodule LogflareWeb.ConnCase do
         stub(Logflare.Cluster.Utils, :rpc_call, fn _node, func ->
           func.()
         end)
+
+        stub(BigQueryAdaptor, :update_iam_policy, fn -> :ok end)
+        stub(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
+        stub(BigQueryAdaptor, :patch_dataset_access, fn _user -> {:ok, :patch_attempted} end)
 
         caches = Logflare.ContextCache.Supervisor.list_caches()
         Enum.each(caches, &Cachex.reset(&1, hooks: [Cachex.Stats]))
