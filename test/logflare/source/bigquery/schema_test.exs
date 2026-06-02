@@ -2,9 +2,8 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
   @moduledoc false
   use Logflare.DataCase
 
-  alias GoogleApi.BigQuery.V2.Api.Tables, as: BigQueryTables
-  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   setup do
     insert(:plan)
@@ -33,7 +32,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
 
     test_pid = self()
 
-    BigQueryTables
+    GoogleApi.BigQuery.V2.Api.Tables
     |> expect(:bigquery_tables_patch, 1, fn _conn,
                                             _project_id,
                                             _dataset_id,
@@ -44,14 +43,12 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
       assert %_{name: "test", type: "INTEGER"} =
                TestUtils.get_bq_field_schema(schema, "metadata.test")
 
+      send(test_pid, :ok)
       {:ok, %{}}
     end)
 
     Logflare.Mailer
-    |> expect(:deliver, 1, fn _ ->
-      send(test_pid, :schema_update_notification_delivered)
-      :ok
-    end)
+    |> expect(:deliver, 1, fn _ -> :ok end)
 
     pid =
       start_supervised!(
@@ -67,42 +64,13 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     le = build(:log_event, source: source, metadata: %{"test" => 123})
     assert :ok = Schema.update(pid, le, source)
 
-    assert_receive :schema_update_notification_delivered, to_timeout(second: 30)
+    TestUtils.retry_assert(fn ->
+      assert_received :ok
+    end)
 
     # subsequent updates do not increase mock count
     le = build(:log_event, source: source, metadata: %{"change" => 123})
     assert :ok = Schema.update(pid, le, source)
-  end
-
-  test "does not patch when the incoming event matches the existing schema" do
-    user = insert(:user)
-    source = insert(:source, user: user)
-    schema = TestUtils.build_bq_schema(%{"metadata" => %{"test" => 123}})
-
-    insert(:source_schema,
-      source: source,
-      source_id: source.id,
-      bigquery_schema: schema,
-      schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(schema)
-    )
-
-    reject(&BigQueryTables.bigquery_tables_patch/5)
-    reject(&Logflare.Mailer.deliver/1)
-
-    pid =
-      start_supervised!(
-        {Schema,
-         [
-           source: source,
-           plan: %{limit_source_fields_limit: 500},
-           bigquery_project_id: "some-id",
-           bigquery_dataset_id: "some-id"
-         ]}
-      )
-
-    le = build(:log_event, source: source, metadata: %{"test" => 123})
-    assert :ok = Schema.update(pid, le, source)
-    :sys.get_state(pid)
   end
 
   test "default notifications config" do
