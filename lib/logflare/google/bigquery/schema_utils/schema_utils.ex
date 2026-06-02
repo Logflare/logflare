@@ -72,19 +72,12 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
-  @doc """
-  Converts a BigQuery table schema into the nested typemap representation.
-
-  Use `bq_schema_to_flat_typemap/1` when callers need dot-path lookups.
-  """
-  @spec to_typemap_from_bigquery_schema(term()) :: %{required(atom) => map | atom}
-  def to_typemap_from_bigquery_schema(%TS{fields: fields} = schema) when is_map(schema) do
-    do_to_typemap_from_bigquery_schema(fields)
+  @spec to_typemap(TS.t() | [TFS.t()], keyword) :: %{required(atom) => map | atom}
+  def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
+    to_typemap(fields, from: :bigquery_schema)
   end
 
-  def to_typemap_from_bigquery_schema(_), do: %{}
-
-  defp do_to_typemap_from_bigquery_schema(fields) when is_list(fields) do
+  def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
     Map.new(fields, fn
       %TFS{fields: fields, name: n, type: t, mode: mode} ->
         k = String.to_atom(n)
@@ -110,7 +103,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
         v =
           if fields do
-            Map.put(v, :fields, do_to_typemap_from_bigquery_schema(fields))
+            Map.put(v, :fields, to_typemap(fields, from: :bigquery_schema))
           else
             v
           end
@@ -124,7 +117,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def bq_schema_to_flat_typemap(%TS{} = schema) do
     schema
-    |> to_typemap_from_bigquery_schema()
+    |> to_typemap(from: :bigquery_schema)
     |> flatten_typemap()
   end
 
