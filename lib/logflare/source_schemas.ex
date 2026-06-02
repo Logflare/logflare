@@ -3,11 +3,11 @@ defmodule Logflare.SourceSchemas do
   Source schemas in Postgres
   """
 
-  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Repo
   alias Logflare.SourceSchemas.Cache
   alias Logflare.SourceSchemas.SourceSchema
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   @doc """
   Returns the list of source_schemas.
