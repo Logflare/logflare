@@ -13,6 +13,7 @@ defmodule Logflare.SingleTenantTest do
   alias Logflare.Auth
   alias Logflare.Backends.Backend
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   describe "single tenant mode using Big Query" do
     TestUtils.setup_single_tenant()
@@ -84,6 +85,8 @@ defmodule Logflare.SingleTenantTest do
     end
 
     test "Logflare.Application.startup_tasks/0 should insert plan and user" do
+      expect(BigQueryAdaptor, :update_iam_policy, fn -> :ok end)
+
       Logflare.Application.startup_tasks()
 
       assert [_] = Billing.list_plans()

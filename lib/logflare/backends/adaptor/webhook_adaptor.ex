@@ -78,16 +78,19 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
-    config
-    |> Map.update(:headers, %{}, fn headers ->
-      for {key, value} <- headers, into: %{} do
-        if String.downcase(key) == "authorization" do
-          {key, "REDACTED"}
-        else
-          {key, value}
-        end
-      end
-    end)
+    Map.update(config, :headers, %{}, &redact_headers/1)
+  end
+
+  defp redact_headers(headers) do
+    for {key, value} <- headers, into: %{}, do: redact_header(key, value)
+  end
+
+  defp redact_header(key, value) do
+    if String.downcase(key) == "authorization" do
+      {key, "REDACTED"}
+    else
+      {key, value}
+    end
   end
 
   @impl Logflare.Backends.Adaptor

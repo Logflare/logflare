@@ -10,6 +10,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   alias Logflare.Google.BigQuery.SchemaFactory
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.LogEvent, as: LE
+  alias Logflare.Logs.Validators.BigQuerySchemaChange
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Sources.Source
@@ -17,6 +18,10 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
 
   describe "validate/2" do
     setup do
+      previous = Application.get_env(:logflare, BigQuerySchemaChange, [])
+      Application.put_env(:logflare, BigQuerySchemaChange, Keyword.put(previous, :enabled, true))
+      on_exit(fn -> Application.put_env(:logflare, BigQuerySchemaChange, previous) end)
+
       Factory.insert(:plan)
       :ok
     end
