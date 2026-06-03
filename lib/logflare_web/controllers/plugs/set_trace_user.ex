@@ -19,15 +19,20 @@ defmodule LogflareWeb.Plugs.SetTraceUser do
   @spec call(Plug.Conn.t(), keyword()) :: Plug.Conn.t()
   def call(%{assigns: %{user: %User{} = user, team_user: %TeamUser{} = team_user}} = conn, _opts) do
     OpenTelemetry.Tracer.set_attributes(%{
-      "user.id": user.id,
-      "team_user.id": team_user.id
+      user_id: user.id,
+      user_email: user.email,
+      team_user_id: team_user.id,
+      team_user_email: team_user.email
     })
 
     conn
   end
 
   def call(%{assigns: %{user: %User{} = user}} = conn, _opts) do
-    OpenTelemetry.Tracer.set_attribute(:"user.id", user.id)
+    OpenTelemetry.Tracer.set_attributes(%{
+      user_id: user.id,
+      user_email: user.email
+    })
 
     conn
   end
