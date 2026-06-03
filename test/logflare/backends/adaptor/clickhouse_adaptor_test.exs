@@ -290,6 +290,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       [source: source, backend: backend]
     end
 
+    test "can insert log events with async enabled", %{source: source, backend: backend} do
+      log_event =
+        build_mapped_log_event(source: source, message: "Async test message")
+        |> Map.put(:id, "660e8400-e29b-41d4-a716-446655440001")
+
+      result = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log, async: true)
+      assert :ok = result
+
+      Process.sleep(500)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      query_result =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT id, source_name FROM #{table_name} WHERE id = '660e8400-e29b-41d4-a716-446655440001'"
+        )
+
+      assert {:ok, [row]} = query_result
+      assert row["id"] == "660e8400-e29b-41d4-a716-446655440001"
+      assert row["source_name"] == source.name
+    end
+
     test "can insert and retrieve log events", %{source: source, backend: backend} do
       log_events = [
         build_mapped_log_event(

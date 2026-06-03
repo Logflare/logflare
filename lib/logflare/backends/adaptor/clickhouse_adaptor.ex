@@ -35,6 +35,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @min_pipelines 1
   @resolve_interval 10_000
   @scaling_threshold 15_000
+  @async_insert_busy_timeout_max_ms 3_000
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -386,22 +387,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @doc """
   Inserts a list of `LogEvent` structs into a type-specific ingest table.
+
+  When `opts` includes `async: true`, the insert is routed through ClickHouse
+  async inserts so the server coalesces sparse, late-arriving batches into
+  fewer, fatter parts.
   """
-  @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type()) ::
+  @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type(), keyword()) ::
           :ok | {:error, String.t()}
-  def insert_log_events(%Backend{}, [], _event_type), do: :ok
+  def insert_log_events(backend, events, event_type, opts \\ [])
+
+  def insert_log_events(%Backend{}, [], _event_type, _opts), do: :ok
 
   def insert_log_events(
         %Backend{config: %{insert_protocol: "native"}} = backend,
         [%LogEvent{} | _] = events,
-        event_type
+        event_type,
+        opts
       )
       when is_event_type(event_type) do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
+    insert_opts = build_insert_opts(opts)
 
     with :ok <- NativePoolSup.ensure_started(backend),
-         :ok <- NativeIngester.insert(backend, table_name, events, event_type) do
+         :ok <- NativeIngester.insert(backend, table_name, events, event_type, insert_opts) do
       :ok
     else
       {:error, reason} ->
@@ -413,12 +422,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
+  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type, opts)
       when is_event_type(event_type) do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
+    insert_opts = build_insert_opts(opts)
 
-    case Ingester.insert(backend, table_name, events, event_type) do
+    case Ingester.insert(backend, table_name, events, event_type, insert_opts) do
       :ok ->
         :ok
 
@@ -429,6 +439,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
         {:error, reason}
     end
+  end
+
+  @spec build_insert_opts(keyword()) :: keyword()
+  defp build_insert_opts(opts) do
+    if Keyword.get(opts, :async, false), do: async_insert_opts(), else: []
+  end
+
+  @spec async_insert_opts() :: keyword()
+  defp async_insert_opts do
+    [
+      async_insert: 1,
+      wait_for_async_insert: 1,
+      async_insert_busy_timeout_max_ms: @async_insert_busy_timeout_max_ms
+    ]
   end
 
   @doc """

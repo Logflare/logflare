@@ -37,12 +37,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   the INSERT handshake, builds column data from the events' bodies, and sends
   the data. Retries on transient errors with a fresh connection.
   """
-  @spec insert(Backend.t(), String.t(), [LogEvent.t()], LogEvent.TypeDetection.event_type()) ::
+  @spec insert(
+          Backend.t(),
+          String.t(),
+          [LogEvent.t()],
+          LogEvent.TypeDetection.event_type(),
+          opts :: keyword()
+        ) ::
           :ok | {:error, term()}
-  def insert(%Backend{} = backend, table, [%LogEvent{} | _] = events, event_type)
+  def insert(%Backend{} = backend, table, [%LogEvent{} | _] = events, event_type, opts \\ [])
       when is_event_type(event_type) do
     column_names = QueryTemplates.columns_for_type(event_type)
-    do_insert_with_retry(backend, table, events, column_names, [], @max_retries)
+    do_insert_with_retry(backend, table, events, column_names, opts, @max_retries)
   end
 
   @spec build_insert_sql(String.t(), String.t(), [String.t()]) :: String.t()
@@ -56,12 +62,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
           table :: String.t(),
           [LogEvent.t()],
           column_names :: [String.t()],
-          settings :: keyword(),
+          opts :: keyword(),
           retries_left :: non_neg_integer()
         ) ::
           :ok | {:error, term()}
-  defp do_insert_with_retry(backend, table, events, column_names, settings, retries_left) do
-    case do_pooled_insert(backend, table, events, column_names, settings) do
+  defp do_insert_with_retry(backend, table, events, column_names, opts, retries_left) do
+    case do_pooled_insert(backend, table, events, column_names, opts) do
       :ok ->
         :ok
 
@@ -73,7 +79,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
           )
 
           Process.sleep(@retry_delay)
-          do_insert_with_retry(backend, table, events, column_names, settings, retries_left - 1)
+          do_insert_with_retry(backend, table, events, column_names, opts, retries_left - 1)
         else
           error
         end
@@ -82,7 +88,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
 
   @spec do_pooled_insert(Backend.t(), String.t(), [LogEvent.t()], [String.t()], keyword()) ::
           :ok | {:error, term()}
-  defp do_pooled_insert(backend, table, events, column_names, settings) do
+  defp do_pooled_insert(backend, table, events, column_names, opts) do
     cache_key = "#{backend.config.database}.#{table}"
     cached_schema = SchemaCache.get(backend.id, cache_key)
 
@@ -91,9 +97,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
 
       result =
         if cached_schema do
-          do_cached_insert(conn, sql, events, cached_schema, backend.id, cache_key, settings)
+          do_cached_insert(conn, sql, events, cached_schema, backend.id, cache_key, opts)
         else
-          do_uncached_insert(conn, sql, events, backend.id, cache_key, settings)
+          do_uncached_insert(conn, sql, events, backend.id, cache_key, opts)
         end
 
       case result do
@@ -140,12 +146,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
           String.t(),
           keyword()
         ) :: {:ok, Connection.t()} | {:error, term()}
-  defp do_cached_insert(conn, sql, events, cached_schema, backend_id, cache_key, settings) do
+  defp do_cached_insert(conn, sql, events, cached_schema, backend_id, cache_key, opts) do
     columns = build_columns_from_schema(events, cached_schema)
     normalized = normalize_columns(columns)
     encoded_blocks = encode_sub_blocks(normalized, conn.negotiated_rev)
 
-    with {:ok, server_columns, conn} <- Connection.send_query(conn, sql, settings) do
+    with {:ok, server_columns, conn} <- Connection.send_query(conn, sql, opts) do
       if server_columns == cached_schema do
         send_pre_encoded_blocks_and_confirm(conn, encoded_blocks)
       else
@@ -169,8 +175,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
           String.t(),
           keyword()
         ) :: {:ok, Connection.t()} | {:error, term()}
-  defp do_uncached_insert(conn, sql, events, backend_id, cache_key, settings) do
-    with {:ok, server_columns, conn} <- Connection.send_query(conn, sql, settings) do
+  defp do_uncached_insert(conn, sql, events, backend_id, cache_key, opts) do
+    with {:ok, server_columns, conn} <- Connection.send_query(conn, sql, opts) do
       columns = build_columns_from_schema(events, server_columns)
       normalized = normalize_columns(columns)
 

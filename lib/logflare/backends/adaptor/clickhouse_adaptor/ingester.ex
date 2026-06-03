@@ -23,21 +23,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   This function expects that all LogEvents share the same `event_type`.
 
-  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickHouseAdaptor.insert_log_events/3` instead.
+  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickHouseAdaptor.insert_log_events/4` instead.
   """
   @spec insert(
           Backend.t() | Keyword.t(),
           table :: String.t(),
           log_events :: [LogEvent.t()],
-          TypeDetection.event_type()
+          TypeDetection.event_type(),
+          opts :: keyword()
         ) ::
           :ok | {:error, String.t()}
-  def insert(_backend_or_conn_opts, _table, [], _event_type), do: :ok
+  def insert(backend_or_conn_opts, table, log_events, event_type, opts \\ [])
 
-  def insert(%Backend{} = backend, table, log_events, event_type)
+  def insert(_backend_or_conn_opts, _table, [], _event_type, _opts), do: :ok
+
+  def insert(%Backend{} = backend, table, log_events, event_type, opts)
       when is_list(log_events) and is_event_type(event_type) do
     with {:ok, connection_opts} <- build_connection_opts(backend) do
-      insert(connection_opts, table, log_events, event_type)
+      insert(connection_opts, table, log_events, event_type, opts)
     end
   end
 
@@ -45,18 +48,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         connection_opts,
         table,
         [%LogEvent{event_type: event_type} | _] = log_events,
-        event_type
+        event_type,
+        opts
       )
-      when is_list(connection_opts) and is_non_empty_binary(table) and is_event_type(event_type) do
+      when is_list(connection_opts) and is_non_empty_binary(table) and is_event_type(event_type) and
+             is_list(opts) do
     request_body = log_events |> encode_batch(event_type) |> :zlib.gzip()
-    do_insert(connection_opts, table, event_type, request_body)
+    do_insert(connection_opts, table, event_type, request_body, opts)
   end
 
-  @spec do_insert(Keyword.t(), String.t(), TypeDetection.event_type(), iodata()) ::
+  @spec do_insert(Keyword.t(), String.t(), TypeDetection.event_type(), iodata(), keyword()) ::
           :ok | {:error, String.t()}
-  defp do_insert(connection_opts, table, event_type, request_body) do
+  defp do_insert(connection_opts, table, event_type, request_body, opts) do
     client = build_client(connection_opts)
-    url = build_request_url(connection_opts, table, event_type)
+    url = build_request_url(connection_opts, table, event_type, opts)
 
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
@@ -293,9 +298,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @spec build_request_url(
           connection_opts :: Keyword.t(),
           table :: String.t(),
-          TypeDetection.event_type()
+          TypeDetection.event_type(),
+          opts :: keyword()
         ) :: String.t()
-  defp build_request_url(connection_opts, table, event_type) do
+  defp build_request_url(connection_opts, table, event_type, opts) do
     base_url = Keyword.get(connection_opts, :url)
     database = Keyword.get(connection_opts, :database)
 
@@ -315,9 +321,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         "query" => query,
         "low_cardinality_allow_in_native_format" => "0"
       }
+      |> merge_settings(opts)
       |> URI.encode_query()
 
     "#{scheme}://#{host}:#{port}/?#{params}"
+  end
+
+  @spec merge_settings(map(), keyword()) :: map()
+  defp merge_settings(params, opts) do
+    Enum.reduce(opts, params, fn {key, value}, acc ->
+      Map.put(acc, to_string(key), to_string(value))
+    end)
   end
 
   defp default_port("https"), do: 8443
