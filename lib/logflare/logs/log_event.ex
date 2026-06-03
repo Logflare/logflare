@@ -24,6 +24,7 @@ defmodule Logflare.LogEvent do
     field :is_from_stale_query, :boolean
     field :timestamp_inferred, :boolean, default: false
     field :ingested_at, :utc_datetime_usec
+    field :ingested_at_ms, :integer
     field :source_uuid, Ecto.UUID.Atom
     field :source_name, :string
     field :via_rule_id, :id
@@ -85,6 +86,7 @@ defmodule Logflare.LogEvent do
         source_name: source.name,
         valid: changeset.valid?,
         ingested_at: DateTime.utc_now(),
+        ingested_at_ms: System.system_time(:millisecond),
         id: changeset.changes.body["id"],
         event_type: TypeDetection.detect(params),
         timestamp_inferred: mapped["timestamp_inferred"]

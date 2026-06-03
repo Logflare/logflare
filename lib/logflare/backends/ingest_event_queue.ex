@@ -518,37 +518,28 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @doc """
   Emits a `[:logflare, :backends, :ingest_event_queue, :dwell]` telemetry
-  event summarising how long the given events sat in the queue before
-  successful ingestion. Intended to be called from Broadway ack callbacks.
+  event for each given LogEvent, measuring how long it sat in the queue
+  before successful ingestion. Intended to be called from Broadway ack
+  callbacks.
 
-  Measurements: `duration_ms` (avg), `max_ms`, `count`.
+  Measurements: `%{duration_ms: non_neg_integer()}`.
   Metadata: `%{backend_type: atom()}`.
 
-  Events without a `%DateTime{}` `ingested_at` are skipped. No event is
-  emitted when the resulting count is zero.
+  Events without an `ingested_at_ms` are skipped.
   """
   @spec emit_dwell_telemetry([LogEvent.t()], atom()) :: :ok
-  def emit_dwell_telemetry([], _backend_type), do: :ok
-
   def emit_dwell_telemetry(events, backend_type) when is_atom(backend_type) do
-    now = DateTime.utc_now()
+    now_ms = System.system_time(:millisecond)
+    metadata = %{backend_type: backend_type}
 
-    {sum_ms, max_ms, count} =
-      Enum.reduce(events, {0, 0, 0}, fn
-        %LogEvent{ingested_at: %DateTime{} = ts}, {sum, max, count} ->
-          d = DateTime.diff(now, ts, :millisecond)
-          d = if d < 0, do: 0, else: d
-          {sum + d, if(d > max, do: d, else: max), count + 1}
+    for %LogEvent{ingested_at_ms: ts} when is_integer(ts) <- events do
+      d = now_ms - ts
+      duration_ms = if d < 0, do: 0, else: d
 
-        _, acc ->
-          acc
-      end)
-
-    if count > 0 do
       :telemetry.execute(
         [:logflare, :backends, :ingest_event_queue, :dwell],
-        %{duration_ms: div(sum_ms, count), max_ms: max_ms, count: count},
-        %{backend_type: backend_type}
+        %{duration_ms: duration_ms},
+        metadata
       )
     end
 

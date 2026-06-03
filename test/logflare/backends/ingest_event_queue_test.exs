@@ -322,7 +322,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
-    test "emit_dwell_telemetry/2 emits aggregated dwell event tagged by backend_type" do
+    test "emit_dwell_telemetry/2 emits one dwell event per LogEvent tagged by backend_type" do
       test_pid = self()
       handler = "dwell-helper-#{TestUtils.random_string()}"
 
@@ -340,10 +340,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert :ok = IngestEventQueue.emit_dwell_telemetry(events, :bigquery)
 
-      assert_received {:dwell, m, %{backend_type: :bigquery}}
-      assert m.count == 3
-      assert m.duration_ms >= 200
-      assert m.max_ms >= m.duration_ms
+      for _ <- 1..3 do
+        assert_received {:dwell, %{duration_ms: d}, %{backend_type: :bigquery}}
+        assert d >= 200
+      end
+
+      refute_received {:dwell, _, _}
     end
 
     test "emit_dwell_telemetry/2 with empty list emits nothing" do

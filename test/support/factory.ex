@@ -167,6 +167,9 @@ defmodule Logflare.Factory do
     |> Map.update!(:ingested_at, fn v ->
       if ingested_at, do: ingested_at, else: v
     end)
+    |> Map.update!(:ingested_at_ms, fn v ->
+      if ingested_at, do: DateTime.to_unix(ingested_at, :millisecond), else: v
+    end)
   end
 
   def plan_factory do
