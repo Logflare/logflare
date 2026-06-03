@@ -159,27 +159,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   end
 
   describe "cast_and_validate_config" do
-    test "casts async_insert as boolean" do
-      changeset = cast_and_validate_config(async_insert: true)
-
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :async_insert) == true
-    end
-
-    test "defaults async_insert to false when not provided" do
-      changeset = cast_and_validate_config()
-
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :async_insert) == false
-    end
-
-    test "casts string async_insert value" do
-      changeset = cast_and_validate_config(async_insert: "true")
-
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :async_insert) == true
-    end
-
     test "casts read_only_url when provided" do
       changeset =
         cast_and_validate_config(read_only_url: "https://read-only.clickhouse.cloud:8443")
@@ -309,31 +288,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
       [source: source, backend: backend]
-    end
-
-    test "can insert log events with async_insert enabled", %{source: source, backend: backend} do
-      backend_with_async = %{backend | config: Map.put(backend.config, :async_insert, true)}
-
-      log_event =
-        build_mapped_log_event(source: source, message: "Async test message")
-        |> Map.put(:id, "660e8400-e29b-41d4-a716-446655440001")
-
-      result = ClickHouseAdaptor.insert_log_events(backend_with_async, [log_event], :log)
-      assert :ok = result
-
-      Process.sleep(500)
-
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
-
-      query_result =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT id, source_name FROM #{table_name} WHERE id = '660e8400-e29b-41d4-a716-446655440001'"
-        )
-
-      assert {:ok, [row]} = query_result
-      assert row["id"] == "660e8400-e29b-41d4-a716-446655440001"
-      assert row["source_name"] == source.name
     end
 
     test "can insert and retrieve log events", %{source: source, backend: backend} do

@@ -282,8 +282,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
        port: port,
        database: database,
        username: username,
-       password: password,
-       async_insert: Map.get(config, :async_insert, false)
+       password: password
      ]}
   end
 
@@ -299,7 +298,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp build_request_url(connection_opts, table, event_type) do
     base_url = Keyword.get(connection_opts, :url)
     database = Keyword.get(connection_opts, :database)
-    async_insert = Keyword.get(connection_opts, :async_insert, false)
 
     uri = URI.parse(base_url)
     scheme = uri.scheme || "http"
@@ -317,20 +315,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         "query" => query,
         "low_cardinality_allow_in_native_format" => "0"
       }
-      |> maybe_add_async_insert(async_insert)
       |> URI.encode_query()
 
     "#{scheme}://#{host}:#{port}/?#{params}"
   end
-
-  @spec maybe_add_async_insert(map(), boolean()) :: map()
-  defp maybe_add_async_insert(params, true) do
-    params
-    |> Map.put("async_insert", "1")
-    |> Map.put("wait_for_async_insert", "1")
-  end
-
-  defp maybe_add_async_insert(params, _), do: params
 
   defp default_port("https"), do: 8443
   defp default_port(_), do: 8123

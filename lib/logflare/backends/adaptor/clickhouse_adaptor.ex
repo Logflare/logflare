@@ -122,7 +122,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        database: :string,
        port: :integer,
        pool_size: :integer,
-       async_insert: :boolean,
        read_only_url: :string,
        insert_protocol: :string,
        native_port: :integer,
@@ -135,13 +134,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :database,
       :port,
       :pool_size,
-      :async_insert,
       :read_only_url,
       :insert_protocol,
       :native_port,
       :native_pool_size
     ])
-    |> Logflare.Utils.default_field_value(:async_insert, false)
     |> Logflare.Utils.default_field_value(:insert_protocol, "http")
   end
 

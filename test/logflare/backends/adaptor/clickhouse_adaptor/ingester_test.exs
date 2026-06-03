@@ -376,35 +376,5 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
       assert :ok = Ingester.insert(backend, table_name, [log_event], :log)
     end
-
-    test "uses async inserts with wait flag when async_insert config is true", %{
-      backend: backend,
-      table_name: table_name,
-      source: source
-    } do
-      backend_with_async = %{backend | config: Map.put(backend.config, :async_insert, true)}
-      log_event = build_mapped_log_event(source: source, message: "Test async")
-
-      Finch
-      |> expect(:request, fn request, _pool, _opts ->
-        url =
-          to_string(request.scheme) <>
-            "://" <>
-            request.host <> ":" <> to_string(request.port) <> request.path <> "?" <> request.query
-
-        assert url =~ "query=INSERT",
-               "Expected URL to contain INSERT query, got: #{url}"
-
-        assert url =~ "async_insert=1",
-               "Expected URL to contain async_insert=1 parameter, got: #{url}"
-
-        assert url =~ "wait_for_async_insert=1",
-               "Expected URL to contain wait_for_async_insert=1 parameter, got: #{url}"
-
-        {:ok, %Finch.Response{status: 200, body: ""}}
-      end)
-
-      assert :ok = Ingester.insert(backend_with_async, table_name, [log_event], :log)
-    end
   end
 end

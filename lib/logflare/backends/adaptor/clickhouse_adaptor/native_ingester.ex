@@ -39,16 +39,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   """
   @spec insert(Backend.t(), String.t(), [LogEvent.t()], LogEvent.TypeDetection.event_type()) ::
           :ok | {:error, term()}
-  def insert(%Backend{config: config} = backend, table, [%LogEvent{} | _] = events, event_type)
+  def insert(%Backend{} = backend, table, [%LogEvent{} | _] = events, event_type)
       when is_event_type(event_type) do
     column_names = QueryTemplates.columns_for_type(event_type)
-
-    settings =
-      if Map.get(config, :async_insert, false),
-        do: [async_insert: 1, wait_for_async_insert: 1],
-        else: []
-
-    do_insert_with_retry(backend, table, events, column_names, settings, @max_retries)
+    do_insert_with_retry(backend, table, events, column_names, [], @max_retries)
   end
 
   @spec build_insert_sql(String.t(), String.t(), [String.t()]) :: String.t()
