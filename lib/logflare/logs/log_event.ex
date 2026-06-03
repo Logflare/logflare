@@ -2,16 +2,21 @@ defmodule Logflare.LogEvent do
   use TypedEctoSchema
 
   import Ecto.Changeset
-  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_non_negative_integer: 1]
+
+  import Logflare.Utils.Guards,
+    only: [is_non_empty_binary: 1, is_non_negative_integer: 1, is_pos_integer: 1]
+
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
   alias __MODULE__, as: LE
+  alias __MODULE__.DayBucket
   alias __MODULE__.TypeDetection
   alias Logflare.KeyValues
   alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Logs.IngestTransformers
   alias Logflare.Logs.Validators.BigQuerySchemaChange
   alias Logflare.Sources.Source
+  alias Logflare.Utils
 
   @validators [BigQuerySchemaChange]
 
@@ -29,6 +34,8 @@ defmodule Logflare.LogEvent do
     field :retries, :integer, default: 0
     field :event_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
     field :source_id, :integer, default: nil
+    field :day_bucket, :integer
+    field :ingest_freshness, Ecto.Enum, values: [:fresh, :stale]
     # Indicates if the event was removed from ets during ingest
     field :is_popped, :boolean, virtual: true, default: false
 
@@ -46,7 +53,7 @@ defmodule Logflare.LogEvent do
   def make_from_db(params, %{source: %Source{} = source}) do
     params =
       params
-      |> mapper()
+      |> mapper(:log)
 
     %__MODULE__{}
     |> cast(params, [:valid, :id, :body])
@@ -60,7 +67,8 @@ defmodule Logflare.LogEvent do
   """
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
   def make(params, %{source: source}, _opts \\ []) do
-    mapped = mapper(params)
+    event_type = TypeDetection.detect(params)
+    mapped = mapper(params, event_type)
 
     changeset =
       %__MODULE__{}
@@ -76,6 +84,10 @@ defmodule Logflare.LogEvent do
           message: stringify_changeset_errors(changeset)
         }
 
+    body = changeset.changes.body
+    day_bucket = DayBucket.from_microseconds(body["timestamp"])
+    ingest_freshness = DayBucket.classify_freshness(day_bucket)
+
     le_map =
       Map.merge(changeset.changes, %{
         pipeline_error: pipeline_error,
@@ -84,9 +96,11 @@ defmodule Logflare.LogEvent do
         source_name: source.name,
         valid: changeset.valid?,
         ingested_at: DateTime.utc_now(),
-        id: changeset.changes.body["id"],
-        event_type: TypeDetection.detect(params),
-        timestamp_inferred: mapped["timestamp_inferred"]
+        id: body["id"],
+        event_type: event_type,
+        timestamp_inferred: mapped["timestamp_inferred"],
+        day_bucket: day_bucket,
+        ingest_freshness: ingest_freshness
       })
 
     Logflare.LogEvent
@@ -95,13 +109,13 @@ defmodule Logflare.LogEvent do
     |> validate(source)
   end
 
-  @spec mapper(map()) :: %{String.t() => term}
-  defp mapper(params) do
+  @spec mapper(map(), TypeDetection.event_type()) :: %{String.t() => term}
+  defp mapper(params, event_type) do
     # TODO: deprecate and remove `message`
     event_message = params["message"] || params["event_message"]
     id = id(params)
 
-    {timestamp, timestamp_inferred} = determine_timestamp(params)
+    {timestamp, timestamp_inferred} = determine_timestamp(params, event_type)
 
     base_merge = %{
       "timestamp" => timestamp,
@@ -246,7 +260,7 @@ defmodule Logflare.LogEvent do
 
     with raw when not is_nil(raw) <- get_in(body, from_path),
          raw_string <- to_string(raw),
-         true <- Logflare.Utils.flag("key_values", raw_string),
+         true <- Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-
            KeyValues.Cache.lookup(user_id, raw_string, accessor_path) do
       put_at_path(body, to_path, value)
@@ -379,6 +393,13 @@ defmodule Logflare.LogEvent do
     params["id"] || params[:id] || Ecto.UUID.generate()
   end
 
+  @spec determine_timestamp(map(), TypeDetection.event_type()) :: {integer(), boolean()}
+  defp determine_timestamp(params, event_type) do
+    params
+    |> determine_timestamp()
+    |> maybe_use_trace_start_time(event_type, params)
+  end
+
   @spec determine_timestamp(map()) :: {integer(), boolean()}
   defp determine_timestamp(params) when not is_map_key(params, "timestamp"),
     do: {default_timestamp(), true}
@@ -394,7 +415,7 @@ defmodule Logflare.LogEvent do
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_non_negative_integer(x) do
-    {Logflare.Utils.to_microseconds(x), false}
+    {Utils.to_microseconds(x), false}
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_float(x) do
@@ -402,6 +423,35 @@ defmodule Logflare.LogEvent do
   end
 
   defp determine_timestamp(_), do: {default_timestamp(), true}
+
+  @spec maybe_use_trace_start_time(
+          {integer(), boolean()},
+          TypeDetection.event_type(),
+          map()
+        ) :: {integer(), boolean()}
+  defp maybe_use_trace_start_time({_, true} = default, :trace, params) do
+    case extract_trace_start_time(params) do
+      nil -> default
+      start_time_us -> {start_time_us, true}
+    end
+  end
+
+  defp maybe_use_trace_start_time(result, _event_type, _params), do: result
+
+  @spec extract_trace_start_time(params :: map()) :: pos_integer() | nil
+  defp extract_trace_start_time(%{"start_time" => n}) when is_pos_integer(n),
+    do: Utils.to_microseconds(n)
+
+  defp extract_trace_start_time(%{"startTime" => n}) when is_pos_integer(n),
+    do: Utils.to_microseconds(n)
+
+  defp extract_trace_start_time(%{"start_time_unix_nano" => n}) when is_pos_integer(n),
+    do: Utils.to_microseconds(n)
+
+  defp extract_trace_start_time(%{"startTimeUnixNano" => n}) when is_pos_integer(n),
+    do: Utils.to_microseconds(n)
+
+  defp extract_trace_start_time(_params), do: nil
 
   @spec default_timestamp() :: integer()
   defp default_timestamp do
