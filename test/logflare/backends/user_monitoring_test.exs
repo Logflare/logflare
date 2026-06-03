@@ -30,9 +30,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
   end
 
   def start_otel_exporter(_context) do
-    UserMonitoring.get_otel_exporter()
-    |> Enum.each(&start_supervised!/1)
-
+    [spec] = UserMonitoring.get_otel_exporter()
+    start_supervised!(spec)
     :ok
   end
 

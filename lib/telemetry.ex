@@ -94,19 +94,12 @@ defmodule Logflare.Telemetry do
 
     database_metrics = [
       distribution("logflare.repo.query.total_time", unit: {:native, :millisecond}),
-      # decode_time and queue_time/idle_time can be nil for certain query types
-      # (e.g. Oban internal queries that bypass the pool). OtelMetricExporter crashes on
-      # round(nil) when converting native time units, detaching the whole event handler.
-      # Default nil to 0: semantically correct (nil queue_time = no pool wait).
+      # TODO: decode_time is `nil` in some of the ecto queries
+      # In most telemetry adapters this is fine, but it causes issues in OtelMetricExporter
+      # distribution("logflare.repo.query.decode_time", unit: {:native, :millisecond}),
       distribution("logflare.repo.query.query_time", unit: {:native, :millisecond}),
-      distribution("logflare.repo.query.queue_time",
-        measurement: fn m -> m[:queue_time] || 0 end,
-        unit: {:native, :millisecond}
-      ),
-      distribution("logflare.repo.query.idle_time",
-        measurement: fn m -> m[:idle_time] || 0 end,
-        unit: {:native, :millisecond}
-      )
+      distribution("logflare.repo.query.queue_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.idle_time", unit: {:native, :millisecond})
     ]
 
     vm_metrics = [
