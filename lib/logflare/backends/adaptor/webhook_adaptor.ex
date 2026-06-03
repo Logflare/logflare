@@ -111,7 +111,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # HTTP Client
   defmodule Client do
     @moduledoc false
-    alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
     use Tesla, docs: false
 
     defguardp is_possible_pool(value)
@@ -142,8 +141,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         [
           Tesla.Middleware.Telemetry,
           Tesla.Middleware.JSON,
-          if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
-          EgressTracer
+          if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"})
         ]
         |> Enum.filter(& &1),
         adaptor
@@ -214,7 +212,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         }
       )
 
-      %{metadata: backend_metadata} = backend = Backends.Cache.get_backend(context.backend_id)
+      backend = Backends.Cache.get_backend(context.backend_id)
       config = Backends.Adaptor.get_backend_config(backend)
 
       # convert this to a custom format if needed
@@ -226,16 +224,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           for %{data: le} <- messages, do: le.body
         end
 
-      process_data(payload, config, backend_metadata, context)
+      process_data(payload, config, context)
       messages
     end
 
-    defp process_data(payload, config, backend_metadata, context) do
-      backend_meta =
-        for {k, v} <- backend_metadata || %{}, into: %{} do
-          {"backend.#{k}", v}
-        end
-
+    defp process_data(payload, config, context) do
       Client.send(
         # if a `url_override` key is available in the merged config, use that before falling back to `url`
         url: Map.get(config, :url_override, config.url),
@@ -243,18 +236,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),
-        opts: [
-          # metadata map will get set as OTEL attributes in EgressTracer
-          metadata:
-            %{
-              "source_id" => context[:source_id],
-              "source_uuid" => context[:source_token],
-              "backend_id" => context[:backend_id],
-              "backend_uuid" => context[:backend_token],
-              "user_id" => context[:user_id]
-            }
-            |> Map.merge(backend_meta)
-        ],
         http: config[:http]
       )
     end

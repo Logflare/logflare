@@ -232,6 +232,78 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "pipeline telemetry" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          sources: [source],
+          config: %{http: "http1", url: "https://example.com"}
+        )
+
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+      [source: source, backend: backend]
+    end
+
+    test "emits handle_batch telemetry on ingest", %{source: source} do
+      pid = self()
+      ref = make_ref()
+      attach_id = "handle-batch-#{inspect(ref)}"
+
+      :telemetry.attach(
+        attach_id,
+        [:logflare, :backends, :pipeline, :handle_batch],
+        fn _event, _measurements, _meta, {p, r} -> send(p, {r, :handle_batch}) end,
+        {pid, ref}
+      )
+
+      on_exit(fn -> :telemetry.detach(attach_id) end)
+
+      @subject.Client
+      |> stub(:send, fn _ -> {:ok, %Tesla.Env{status: 200}} end)
+
+      le = build(:log_event, source: source)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert_receive {^ref, :handle_batch}, 2000
+    end
+  end
+
+  describe "Client telemetry" do
+    test "does not emit egress telemetry" do
+      Tesla.Adapter.Finch
+      |> stub(:call, fn env, _next, _opts ->
+        {:ok, %Tesla.Env{env | status: 200, body: ""}}
+      end)
+
+      pid = self()
+      ref = make_ref()
+      attach_id = "no-egress-#{inspect(ref)}"
+
+      :telemetry.attach(
+        attach_id,
+        [:logflare, :backends, :ingest, :egress],
+        fn _event, _measurements, _meta, {p, r} -> send(p, {r, :egress_emitted}) end,
+        {pid, ref}
+      )
+
+      on_exit(fn -> :telemetry.detach(attach_id) end)
+
+      @subject.Client.send(
+        url: "http://example.com",
+        body: [%{"test" => "event"}],
+        headers: %{},
+        gzip: false,
+        http: "http1"
+      )
+
+      refute_receive {^ref, :egress_emitted}, 500
+    end
+  end
+
   describe "benchmark" do
     @describetag :benchmark
 
