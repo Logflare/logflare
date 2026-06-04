@@ -14,6 +14,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   use GenServer
 
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources
   alias Logflare.System, as: SystemUtils
@@ -21,50 +22,72 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   require Logger
 
   @default_interval 1_000
-  @default_remainder 100
   @default_purge_ratio 0.05
-  @default_max round(Logflare.Backends.max_buffer_queue_len() * 1.2)
 
   def start_link(opts) do
     source = Keyword.get(opts, :source)
     backend = Keyword.get(opts, :backend)
-    consolidated? = Keyword.get(opts, :consolidated, false)
-
-    name =
-      if consolidated?,
-        do: Backends.via_backend(backend, __MODULE__),
-        else: Backends.via_source(source, __MODULE__, backend)
-
-    GenServer.start_link(__MODULE__, opts, name: name)
+    GenServer.start_link(__MODULE__, opts, name: name(source, backend))
   end
 
+  # API
+
+  @spec name(Source.t() | nil, Backend.t()) :: {:via, module(), term()}
+  def name(nil, %Backend{} = backend), do: Backends.via_backend(backend, __MODULE__)
+  def name(source, backend), do: Backends.via_source(source, __MODULE__, backend)
+
+  @doc "Signals the janitor to run cleanup immediately. Callers must debounce."
+  @spec notify_overflow(Backend.t() | pos_integer()) :: :ok
+  def notify_overflow(%Backend{id: id}), do: notify_overflow(id)
+  def notify_overflow(backend_id) when is_integer(backend_id) do
+    Backends.via_backend(backend_id, __MODULE__)
+    |> GenServer.cast(:cleanup)
+  end
+
+  @spec notify_overflow(Source.t() | pos_integer(), Backend.t() | nil | pos_integer()) ::
+          :ok
+  def notify_overflow(source, backend) do
+    name(source, backend)
+    |> GenServer.cast(:cleanup)
+  end
+
+  # Genserver
+
+  @impl GenServer
   def init(opts) do
     bid = if backend = Keyword.get(opts, :backend), do: backend.id
     source = Keyword.get(opts, :source)
-    consolidated? = Keyword.get(opts, :consolidated, false)
-    consolidated_key = Keyword.get(opts, :consolidated_key)
-    base_max = Keyword.get(opts, :max, @default_max)
-    consolidated_max_multiplier = System.schedulers_online()
+
+    default_max =
+      if source do
+        IngestEventQueue.max_queue_size() * 1.1
+      else
+        IngestEventQueue.max_consolidated_queue_size() * 1.1
+      end
+
+    default_remainder = if source, do: default_max, else: 0
 
     state = %{
-      source_id: source.id,
-      source_token: source.token,
+      source_id: Map.get(source || %{}, :id, nil),
+      source_token: Map.get(source || %{}, :token, nil),
       backend_id: bid,
       interval: Keyword.get(opts, :interval, @default_interval),
-      remainder: Keyword.get(opts, :remainder, @default_remainder),
-      max: if(consolidated?, do: base_max * consolidated_max_multiplier, else: base_max),
-      purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio),
-      consolidated?: consolidated?,
-      consolidated_key: consolidated_key
+      remainder: Keyword.get(opts, :remainder, default_remainder),
+      max: Keyword.get(opts, :max, default_max),
+      purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio)
     }
 
     handle_info(:work, state)
     {:ok, state}
   end
 
+  @impl GenServer
   def handle_info(:work, state) do
     scale? = if Application.get_env(:logflare, :env) == :test, do: false, else: true
-    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+
+    metrics =
+      if state.source_id, do: Sources.get_source_metrics_for_ingest(state.source_token), else: %{}
+
     do_drop(state, metrics)
 
     schedule(state, scale?, metrics)
@@ -72,29 +95,24 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     {:noreply, state}
   end
 
-  def handle_cast(:check, state) do
+  # Cleans up an individual queue
+  @impl GenServer
+  def handle_cast(:cleanup, %{source_id: nil} = state) do
+    do_drop(state, %{})
+    {:noreply, state}
+  end
+
+  def handle_cast(:cleanup, state) do
     metrics = Sources.get_source_metrics_for_ingest(state.source_token)
     do_drop(state, metrics)
     {:noreply, state}
   end
 
-  @doc "Signals the janitor for a standard source+backend queue to run cleanup immediately. Callers must debounce."
-  @spec notify_overflow(pos_integer(), pos_integer()) :: :ok
-  def notify_overflow(source_id, backend_id) do
-    GenServer.cast(Backends.via_source(source_id, __MODULE__, backend_id), :check)
-  end
-
-  @doc "Signals the janitor for a consolidated backend queue to run cleanup immediately. Callers must debounce."
-  @spec notify_overflow_consolidated(pos_integer()) :: :ok
-  def notify_overflow_consolidated(backend_id) do
-    GenServer.cast(Backends.via_backend(backend_id, __MODULE__), :check)
-  end
-
   # expose for benchmarking
-  def do_drop(%{consolidated?: true, consolidated_key: consolidated_key} = state, metrics) do
-    for {:consolidated, _bid, pid} = table_key <- IngestEventQueue.list_queues(consolidated_key) do
-      truncate_all? = metrics.avg > 100
-      drop_queue(state, table_key, pid, truncate_all?, :consolidated)
+  def do_drop(%{source_id: nil, backend_id: bid} = state, _metrics) do
+    for {:consolidated, _bid, pid} = table_key <-
+          IngestEventQueue.list_queues({:consolidated, bid}) do
+      cleanup_queue(state, table_key, pid, true)
     end
   end
 
@@ -103,19 +121,18 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
     for {_sid, bid, pid} = table_key <- IngestEventQueue.list_queues(sid_bid) do
       truncate_all? = metrics.avg > 100 or bid != nil
-      drop_queue(state, table_key, pid, truncate_all?, :source)
+      cleanup_queue(state, table_key, pid, truncate_all?)
     end
   end
 
-  @spec drop_queue(
+  @spec cleanup_queue(
           map(),
           {pos_integer(), pos_integer() | nil, pid() | nil}
           | {:consolidated, pos_integer(), pid() | nil},
           pid() | nil,
-          boolean(),
-          :consolidated | :source
+          boolean()
         ) :: :ok | nil
-  defp drop_queue(state, table_key, pid, truncate_all?, queue_type) do
+  defp cleanup_queue(state, table_key, pid, truncate_all?) do
     if truncate_all? do
       IngestEventQueue.truncate_table(table_key, :ingested, 0)
     else
@@ -130,12 +147,10 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       IngestEventQueue.drop(table_key, :pending, to_drop)
 
       log_msg =
-        case queue_type do
-          :consolidated ->
-            "IngestEventQueue consolidated :ets buffer exceeded max for backend_id=#{state.backend_id}, dropping #{to_drop} events"
-
-          :source ->
-            "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{to_drop} events"
+        if state.source_id == nil do
+          "IngestEventQueue consolidated :ets buffer exceeded max for backend_id=#{state.backend_id}, dropping #{to_drop} events"
+        else
+          "IngestEventQueue private :ets buffer exceeded max for source_id=#{state.source_id}, backend_id=#{state.backend_id}, dropping #{to_drop} events"
         end
 
       Logger.warning(log_msg,
@@ -164,6 +179,9 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   end
 
   # schedule work based on rps
+  defp schedule(%{source_id: nil, interval: interval}, _scale?, _metrics),
+    do: Process.send_after(self(), :work, interval)
+
   defp schedule(state, scale?, metrics) do
     # dynamically schedule based on metrics interval
     interval =

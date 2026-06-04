@@ -260,7 +260,7 @@ defmodule Logflare.Backends.BufferProducer do
          size when is_integer(size) <- IngestEventQueue.get_table_size(table_key),
          true <- size > state.overflow_threshold do
       if state.consolidated,
-        do: QueueJanitor.notify_overflow_consolidated(bid),
+        do: QueueJanitor.notify_overflow(bid),
         else: QueueJanitor.notify_overflow(state.source_id, bid)
 
       %{state | last_janitor_signal_at: now}

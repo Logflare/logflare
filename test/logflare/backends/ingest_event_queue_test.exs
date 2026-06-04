@@ -845,21 +845,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert IngestEventQueue.get_table_size(consolidated_key) == 5
 
-      start_supervised!(
-        {QueueJanitor,
-         source: source,
-         backend: backend,
-         interval: 50,
-         remainder: 0,
-         consolidated: true,
-         consolidated_key: {:consolidated, backend.id}}
-      )
+      start_supervised!({QueueJanitor, source: nil, backend: backend, interval: 50, remainder: 0})
 
       :timer.sleep(550)
       assert IngestEventQueue.get_table_size(consolidated_key) == 0
     end
 
-    test "uses larger max threshold for consolidated queues" do
+    test "conslidated ingest does not retain any events in queues" do
       user = insert(:user)
       backend = insert(:backend, user: user)
       source = insert(:source, user: user)
@@ -876,24 +868,16 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(consolidated_key) == 150
 
       start_supervised!(
-        {QueueJanitor,
-         source: source,
-         backend: backend,
-         interval: 50,
-         max: 100,
-         purge_ratio: 1.0,
-         consolidated: true,
-         consolidated_key: {:consolidated, backend.id}}
+        {QueueJanitor, source: nil, backend: backend, interval: 50, max: 100, purge_ratio: 1.0}
       )
 
       :timer.sleep(550)
-      # Events should remain because 150 < 1000 (consolidated max = 100 * 10)
-      assert IngestEventQueue.get_table_size(consolidated_key) == 150
+      assert IngestEventQueue.get_table_size(consolidated_key) == 0
     end
   end
 
   describe "QueueJanitor responsiveness" do
-    test ":check cast triggers cleanup faster than polling interval" do
+    test ":cleanup cast triggers cleanup faster than polling interval" do
       user = insert(:user)
       source = insert(:source, user: user)
       backend = insert(:backend, user: user)
@@ -972,14 +956,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       source = insert(:source, user: user)
       backend = insert(:backend, user: user)
 
-      start_supervised!(
-        {QueueJanitor,
-         source: source,
-         backend: backend,
-         interval: 60_000,
-         consolidated: true,
-         consolidated_key: {:consolidated, backend.id}}
-      )
+      start_supervised!({QueueJanitor, source: nil, backend: backend, interval: 60_000})
 
       via = Backends.via_backend(backend, QueueJanitor)
       assert is_pid(GenServer.whereis(via))

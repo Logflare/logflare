@@ -260,7 +260,7 @@ defmodule Logflare.Backends.BufferProducerTest do
       [user: user, source: source, backend: backend]
     end
 
-    test "signals notify_overflow/2 when queue exceeds threshold", %{
+    test "sourec-backend pair - signals notify_overflow/2 when queue exceeds threshold", %{
       source: source,
       backend: backend
     } do
@@ -289,7 +289,10 @@ defmodule Logflare.Backends.BufferProducerTest do
       Mimic.verify!(QueueJanitor)
     end
 
-    test "does not signal when queue is under threshold", %{source: source, backend: backend} do
+    test "source-backend pair - does not signal when queue is under threshold", %{
+      source: source,
+      backend: backend
+    } do
       producer_pid =
         start_supervised!(
           {BufferProducer,
@@ -365,7 +368,7 @@ defmodule Logflare.Backends.BufferProducerTest do
       Mimic.verify!(QueueJanitor)
     end
 
-    test "consolidated path calls notify_overflow_consolidated/1", %{backend: backend} do
+    test "consolidated path calls notify_overflow/1 with backend_id", %{backend: backend} do
       IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
 
       producer_pid =
@@ -381,7 +384,7 @@ defmodule Logflare.Backends.BufferProducerTest do
       events = for _ <- 1..(@overflow_threshold + 1), do: build(:log_event)
       :ok = IngestEventQueue.add_to_table(table_key, events)
 
-      Mimic.expect(QueueJanitor, :notify_overflow_consolidated, fn bid ->
+      Mimic.expect(QueueJanitor, :notify_overflow, fn bid ->
         assert bid == backend.id
         :ok
       end)
@@ -401,7 +404,6 @@ defmodule Logflare.Backends.BufferProducerTest do
       :ok = IngestEventQueue.add_to_table(table_key, events)
 
       reject(&QueueJanitor.notify_overflow/2)
-      reject(&QueueJanitor.notify_overflow_consolidated/1)
 
       send(producer_pid, :scheduled_resolve)
       :timer.sleep(200)

@@ -20,9 +20,9 @@ defmodule Logflare.Backends.ConsolidatedSup do
   use Supervisor
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.ConsolidatedSupWorker
+  alias Logflare.Backends.AdaptorSupervisor
 
   @dynamic_sup_name __MODULE__.DynamicSupervisor
 
@@ -49,8 +49,7 @@ defmodule Logflare.Backends.ConsolidatedSup do
   """
   @spec start_pipeline(Backend.t()) :: DynamicSupervisor.on_start_child()
   def start_pipeline(%Backend{} = backend) do
-    adaptor_module = Adaptor.get_adaptor(backend)
-    child_spec = adaptor_module.child_spec(backend)
+    child_spec = Backend.child_spec(nil, backend)
     DynamicSupervisor.start_child(@dynamic_sup_name, child_spec)
   end
 
@@ -115,8 +114,7 @@ defmodule Logflare.Backends.ConsolidatedSup do
   end
 
   defp find_pipeline_pid(%Backend{} = backend) do
-    adaptor_module = Adaptor.get_adaptor(backend)
-    via = Backends.via_backend(backend, adaptor_module)
+    via = Backends.via_backend(backend, AdaptorSupervisor)
 
     case GenServer.whereis(via) do
       pid when is_pid(pid) -> pid

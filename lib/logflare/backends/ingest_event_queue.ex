@@ -28,6 +28,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   defguardp is_pid_or_nil(value) when is_pid(value) or is_nil(value)
 
   def max_queue_size, do: @max_queue_size
+  def max_consolidated_queue_size, do: @max_queue_size * System.schedulers_online()
 
   @doc """
   Returns true if the key is a consolidated queue key.
@@ -180,12 +181,13 @@ defmodule Logflare.Backends.IngestEventQueue do
     no_get_tid = Keyword.get(opts, :no_get_tid, true)
     check_queue_size = Keyword.get(opts, :check_queue_size, true)
     startup_queue = {:consolidated, bid, nil}
+    max_consolidated_queue_size = max_consolidated_queue_size()
 
     reducer =
       if check_queue_size do
         fn
           {{:consolidated, _, nil}, _}, acc -> acc
-          {_obj, count}, acc when count >= @max_queue_size -> acc
+          {_obj, count}, acc when count >= max_consolidated_queue_size -> acc
           {obj, _count}, acc -> [obj | acc]
         end
       else
@@ -245,12 +247,13 @@ defmodule Logflare.Backends.IngestEventQueue do
     no_get_tid = Keyword.get(opts, :no_get_tid, true)
     check_queue_size = Keyword.get(opts, :check_queue_size, true)
     startup_queue = {sid, bid, nil}
+    max_queue_size = max_queue_size()
 
     reducer =
       if check_queue_size do
         fn
           {{_, _, nil}, _}, acc -> acc
-          {_obj, count}, acc when count >= @max_queue_size -> acc
+          {_obj, count}, acc when count >= max_queue_size -> acc
           {obj, _count}, acc -> [obj | acc]
         end
       else
