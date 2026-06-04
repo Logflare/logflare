@@ -166,6 +166,32 @@ defmodule LogflareWeb.EndpointsLive do
 
   def handle_event(
         "save-endpoint",
+        %{"action" => "format", "endpoint" => params},
+        socket
+      ) do
+    {:ok, formatted} = SqlFmt.format_query(Map.get(params, "query", ""))
+
+    endpoint_params = Map.put(params, "query", formatted)
+    selected_backend_id = Map.get(endpoint_params, "backend_id")
+    redact_pii = Map.get(endpoint_params, "redact_pii") == "true"
+
+    changeset =
+      socket.assigns.endpoint_changeset.data
+      |> Ecto.Changeset.change(query: formatted)
+
+    socket =
+      socket
+      |> assign(:endpoint_changeset, changeset)
+      |> assign(:selected_backend_id, selected_backend_id)
+      |> assign(:redact_pii, redact_pii)
+      |> assign_determined_language()
+      |> maybe_parse_endpoint_query(endpoint_params)
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "save-endpoint",
         %{"endpoint" => params},
         %{assigns: %{user: user, show_endpoint: show_endpoint, team: team}} = socket
       ) do
@@ -351,11 +377,6 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, put_flash(socket, :info, message)}
   end
 
-  def handle_event("validate", %{"_target" => ["live_monaco_editor", _]}, socket) do
-    # ignore change events from the editor field
-    {:noreply, socket}
-  end
-
   def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
     selected_backend_id = Map.get(endpoint_params, "backend_id")
     redact_pii = Map.get(endpoint_params, "redact_pii") == "true"
@@ -371,36 +392,13 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:selected_backend_id, selected_backend_id)
       |> assign(:redact_pii, redact_pii)
       |> assign_determined_language()
+      |> maybe_parse_endpoint_query(endpoint_params)
 
     {:noreply, socket}
   end
 
   def handle_event("validate", _params, socket) do
     # noop for other validation events
-    {:noreply, socket}
-  end
-
-  def handle_info({:query_string_updated, query_string}, socket) do
-    endpoint_language = get_current_endpoint_language(socket)
-
-    parsed_result =
-      Endpoints.parse_query_string(
-        endpoint_language,
-        query_string,
-        socket.assigns.endpoints,
-        socket.assigns.alerts
-      )
-
-    socket =
-      case parsed_result do
-        {:ok, %{parameters: parameters, expanded_query: expanded_query}} ->
-          socket
-          |> assign_updated_params_form(parameters, expanded_query)
-
-        _error ->
-          socket
-      end
-
     {:noreply, socket}
   end
 
@@ -412,6 +410,41 @@ defmodule LogflareWeb.EndpointsLive do
     |> assign(:query_string, query_string)
     |> assign(:declared_params, parameters)
     |> assign(:params_form, form)
+  end
+
+  defp maybe_parse_endpoint_query(socket, %{"query" => query_string}) do
+    case parse_endpoint_query(socket, query_string) do
+      {:ok, %{parameters: parameters, expanded_query: expanded_query}} ->
+        socket
+        |> assign(:parse_error_message, nil)
+        |> assign_updated_params_form(parameters, expanded_query)
+
+      {:error, message} ->
+        assign(socket, :parse_error_message, message)
+    end
+  end
+
+  defp maybe_parse_endpoint_query(socket, _params), do: socket
+
+  defp parse_endpoint_query(_socket, ""), do: {:ok, %{parameters: [], expanded_query: ""}}
+
+  defp parse_endpoint_query(socket, query_string) do
+    case Endpoints.parse_query_string(
+           get_current_endpoint_language(socket),
+           query_string,
+           socket.assigns.endpoints,
+           socket.assigns.alerts
+         ) do
+      {:ok, parsed_result} ->
+        {:ok, parsed_result}
+
+      {:error, "sql parser error: " <> message} ->
+        {:error, message}
+
+      {:error, error} ->
+        message = if is_binary(error), do: error, else: inspect(error)
+        {:error, message}
+    end
   end
 
   defp refresh_endpoints(%{assigns: assigns} = socket) do
@@ -461,6 +494,12 @@ defmodule LogflareWeb.EndpointsLive do
   defp assign_determined_language(socket) do
     determined_language = get_current_endpoint_language(socket)
     assign(socket, :determined_language, determined_language)
+  end
+
+  defp endpoint_query_completions(sources, endpoints, alerts) do
+    [sources, endpoints, alerts]
+    |> List.flatten()
+    |> Enum.map(& &1.name)
   end
 
   defp maybe_assign_transformed_query(socket, false, _endpoint, _params), do: socket
