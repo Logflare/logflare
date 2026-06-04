@@ -36,6 +36,65 @@ defmodule LogflareWeb.QueryLiveTest do
       assert render(view) =~ "some-data"
     end
 
+    test "runs the current form query value", %{conn: conn} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].query =~ "current_timestamp()"
+
+        {:ok, TestUtils.gen_bq_response([%{"ts" => "some-data"}])}
+      end)
+
+      {:ok, view, _html} = live(conn, "/query")
+
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{
+          "action" => "run",
+          "value" => "select current_timestamp() as ts"
+        })
+
+      assert html =~ "Ran query successfully"
+      assert_patch(view) =~ ~r/current_timestamp/
+    end
+
+    test "formats the current form query value", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/query")
+
+      html =
+        view
+        |> element("form")
+        |> render_submit(%{
+          "action" => "format",
+          "value" => "select current_timestamp() as ts"
+        })
+
+      assert html =~ "SELECT\n  CURRENT_TIMESTAMP() AS ts"
+    end
+
+    test "renders source, endpoint, and alert completions for the editor", %{
+      conn: conn,
+      user: user
+    } do
+      insert(:source, user: user, name: "Completion Source")
+      insert(:endpoint, user: user, name: "Completion Endpoint")
+      insert(:alert, user: user, name: "Completion Alert")
+
+      {:ok, _view, html} = live(conn, "/query")
+
+      completions =
+        html
+        |> Floki.parse_document!()
+        |> Floki.find("#monaco-hook")
+        |> Floki.attribute("data-completions")
+        |> List.first()
+        |> Jason.decode!()
+
+      assert "Completion Source" in completions
+      assert "Completion Endpoint" in completions
+      assert "Completion Alert" in completions
+    end
+
     test "run a very long query", %{conn: conn} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->

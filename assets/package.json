@@ -4,6 +4,7 @@
   "scripts": {
     "deploy": "node ./build.mjs",
     "test": "vitest run",
+    "test:coverage:monaco": "vitest run js/test/monaco_hook.test.js --coverage",
     "watch": "node ./build.mjs watch"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
     "lodash": "^4.18.1",
     "luxon": "^3.2.1",
     "moment": "^2.29.4",
+    "monaco-editor": "^0.55.1",
     "phoenix": "file:../deps/phoenix",
     "phoenix_html": "file:../deps/phoenix_html",
     "phoenix_live_react": "file:../deps/phoenix_live_react",
@@ -30,6 +32,7 @@
     "recharts": "^3.7.0"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^3.2.4",
     "autoprefixer": "^10.4.13",
     "esbuild": "^0.25.0",
     "esbuild-plugin-copy": "^2.0.2",

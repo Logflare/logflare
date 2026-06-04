@@ -72,14 +72,14 @@ defmodule Logflare.Mixfile do
       plt_local_path: "dialyzer",
       plt_core_path: "dialyzer",
       plt_add_deps: :apps_tree,
-      plt_add_apps: [:ex_unit, :mix],
+      plt_add_apps: [:ex_unit, :mix, :phoenix_test, :phoenix_test_playwright, :playwright_ex],
       ignore_warnings: ".dialyzer_ignore.exs"
     ]
   end
 
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:dev), do: ["lib", "priv/tasks", "test/support"]
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:test), do: ["lib", "test/support", "test/e2e"]
   defp elixirc_paths(_), do: ["lib", "priv/tasks"]
 
   defp deps do
@@ -257,7 +257,21 @@ defmodule Logflare.Mixfile do
       {:otel_metric_exporter,
        git: "https://github.com/supabase/elixir-otel-metric-exporter", branch: "release/20260519"},
       {:live_monaco_editor, "~> 0.2"}
-    ]
+    ] ++ phoenix_test_jsdom_dep()
+  end
+
+  defp phoenix_test_jsdom_dep do
+    if System.get_env("JSDOM") in ["true", "1"] do
+      [
+        {:phoenix_test_jsdom,
+         github: "msmithstubbs/phoenix_test_jsdom",
+         branch: "feat/cookie-sessions",
+         only: :test,
+         runtime: false}
+      ]
+    else
+      []
+    end
   end
 
   defp aliases do
