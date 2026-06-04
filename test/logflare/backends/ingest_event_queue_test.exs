@@ -953,7 +953,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     test "consolidated janitor is discoverable via Backends.via_backend/2 after start" do
       user = insert(:user)
-      source = insert(:source, user: user)
       backend = insert(:backend, user: user)
 
       start_supervised!({QueueJanitor, source: nil, backend: backend, interval: 60_000})

@@ -39,6 +39,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   @doc "Signals the janitor to run cleanup immediately. Callers must debounce."
   @spec notify_overflow(Backend.t() | pos_integer()) :: :ok
   def notify_overflow(%Backend{id: id}), do: notify_overflow(id)
+
   def notify_overflow(backend_id) when is_integer(backend_id) do
     Backends.via_backend(backend_id, __MODULE__)
     |> GenServer.cast(:cleanup)

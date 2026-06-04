@@ -51,8 +51,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @doc false
   @impl Logflare.Backends.Adaptor
-  @spec start_link({nil, Backend.t()}) :: Supervisor.on_start()
-  def start_link({nil, %Backend{} = backend}) do
+  @spec start_link(Backend.t()) :: Supervisor.on_start()
+  def start_link(%Backend{} = backend) do
     Supervisor.start_link(__MODULE__, backend, name: Backends.via_backend(backend, __MODULE__))
   end
 

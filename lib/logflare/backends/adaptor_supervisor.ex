@@ -24,17 +24,20 @@ defmodule Logflare.Backends.AdaptorSupervisor do
   @spec init({Source.t() | nil, Backend.t() | nil}) :: Supervisor.on_init()
   def init({source, backend}) do
     adaptor_module = Adaptor.get_adaptor(backend)
+    consolidated_ingest? = Adaptor.consolidated_ingest?(backend)
     # initialize startup queues
-    if source do
-      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
-    else
+    if consolidated_ingest? do
       IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+    else
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
     end
+
+    arg = if(consolidated_ingest?, do: backend, else: {source, backend})
 
     children =
       [
         {IngestEventQueue.QueueJanitor, source: source, backend: backend},
-        {adaptor_module, {source, backend}}
+        {adaptor_module, arg}
       ]
 
     Supervisor.init(children, strategy: :one_for_one)
