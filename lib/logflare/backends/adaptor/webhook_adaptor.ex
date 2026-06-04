@@ -26,6 +26,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @behaviour Logflare.Backends.Adaptor
 
+  # Sentinel value substituted for secret header values by redact_config/1.
+  @redacted_value "REDACTED"
+
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = args) do
     GenServer.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__, backend))
@@ -47,8 +50,44 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   def cast_config(params, existing_config \\ %{}) do
     {existing_config, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
     |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip])
+    |> unredact_headers(existing_config)
     |> Logflare.Utils.default_field_value(:http, "http2")
     |> Logflare.Utils.default_field_value(:gzip, true)
+  end
+
+  # Restores secret header values submitted back as the "REDACTED" sentinel.
+  #
+  # redact_config/1 masks secret headers (e.g. Authorization) when serializing a
+  # backend, so clients never receive the real value. On update the client echoes
+  # the sentinel back for unchanged headers; without this, casting would overwrite
+  # the stored secret with the literal string "REDACTED". For each submitted header
+  # still set to the sentinel we swap in the existing stored value (dropping it if
+  # there is nothing to restore). Headers the user actually changed pass through.
+  defp unredact_headers(changeset, existing_config) do
+    with headers when not is_nil(headers) <- Ecto.Changeset.get_change(changeset, :headers),
+         existing_headers <-
+           Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{} do
+      restored =
+        headers
+        |> Enum.reduce(%{}, fn
+          {key, @redacted_value}, acc ->
+            replace_header_with_existing(acc, existing_headers, key)
+
+          {key, value}, acc ->
+            Map.put(acc, key, value)
+        end)
+
+      Ecto.Changeset.put_change(changeset, :headers, restored)
+    else
+      _ -> changeset
+    end
+  end
+
+  defp replace_header_with_existing(headers, existing_headers, key) do
+    case Map.get(existing_headers, key) do
+      nil -> headers
+      value -> Map.put(headers, key, value)
+    end
   end
 
   @impl Logflare.Backends.Adaptor
@@ -87,7 +126,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   defp redact_header(key, value) do
     if String.downcase(key) == "authorization" do
-      {key, "REDACTED"}
+      {key, @redacted_value}
     else
       {key, value}
     end

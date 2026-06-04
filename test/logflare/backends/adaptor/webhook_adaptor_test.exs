@@ -296,6 +296,89 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "cast_config/2 header redaction round-trip" do
+    @existing %{
+      url: "https://example.com",
+      headers: %{
+        "Authorization" => "Bearer secret-token-123",
+        "Content-Type" => "application/json"
+      }
+    }
+
+    test "restores the stored secret when the REDACTED sentinel is submitted back" do
+      params = %{
+        url: "https://example.com",
+        headers: %{"Authorization" => "REDACTED", "Content-Type" => "application/json"}
+      }
+
+      changeset = @subject.cast_config(params, @existing)
+
+      assert Ecto.Changeset.get_field(changeset, :headers) == %{
+               "Authorization" => "Bearer secret-token-123",
+               "Content-Type" => "application/json"
+             }
+    end
+
+    test "preserves the stored secret while adding a new header" do
+      params = %{
+        url: "https://example.com",
+        headers: %{
+          "Authorization" => "REDACTED",
+          "Content-Type" => "application/json",
+          "x-custom" => "new-value"
+        }
+      }
+
+      changeset = @subject.cast_config(params, @existing)
+
+      assert Ecto.Changeset.get_field(changeset, :headers) == %{
+               "Authorization" => "Bearer secret-token-123",
+               "Content-Type" => "application/json",
+               "x-custom" => "new-value"
+             }
+    end
+
+    test "applies a new Authorization value when the user changes it" do
+      params = %{
+        url: "https://example.com",
+        headers: %{"Authorization" => "Bearer new-token-456"}
+      }
+
+      changeset = @subject.cast_config(params, @existing)
+
+      assert Ecto.Changeset.get_field(changeset, :headers) == %{
+               "Authorization" => "Bearer new-token-456"
+             }
+    end
+
+    test "clears headers when an empty map is submitted" do
+      params = %{url: "https://example.com", headers: %{}}
+
+      changeset = @subject.cast_config(params, @existing)
+
+      assert Ecto.Changeset.get_field(changeset, :headers) == %{}
+    end
+
+    test "keeps existing headers when none are submitted" do
+      params = %{url: "https://example.com"}
+
+      changeset = @subject.cast_config(params, @existing)
+
+      assert Ecto.Changeset.get_field(changeset, :headers) == @existing.headers
+    end
+
+    test "drops a sentinel with no stored value to restore" do
+      params = %{
+        url: "https://example.com",
+        headers: %{"Authorization" => "REDACTED"}
+      }
+
+      changeset = @subject.cast_config(params, %{url: "https://example.com", headers: %{}})
+
+      assert Ecto.Changeset.get_field(changeset, :headers) == %{}
+    end
+  end
+
   describe "benchmark" do
     @describetag :benchmark
 
