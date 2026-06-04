@@ -4,7 +4,6 @@ defmodule Logflare.Backends.UserMonitoring.IngestPipeline do
   use Broadway
 
   alias Broadway.Message
-  alias Logflare.Logs.OtelMetric
   alias Logflare.Logs.Processor
   alias Logflare.Logs.Raw
   alias Logflare.Sources
@@ -43,15 +42,15 @@ defmodule Logflare.Backends.UserMonitoring.IngestPipeline do
   def ack(_ack_ref, _successful, _failed), do: :ok
 
   @impl true
-  def handle_message(_processor, message, _context) do
-    Broadway.Message.update_data(message, &OtelMetric.handle_metric(&1, %{}, %{}))
-  end
+  # Events are now flat maps (one per ETS row) emitted directly by PullProducer.
+  # No transformation needed — data is already in the right shape for ingestion.
+  def handle_message(_processor, message, _context), do: message
 
   @impl true
   def handle_batch(:default, messages, _batch_info, _ctx) do
     messages
-    |> Enum.flat_map(& &1.data)
-    |> Enum.group_by(fn event -> Users.get_related_user_id(Map.get(event, "attributes")) end)
+    |> Enum.map(& &1.data)
+    |> Enum.group_by(fn event -> Users.get_related_user_id(event["attributes"]) end)
     |> ingest_grouped_metrics()
 
     messages
