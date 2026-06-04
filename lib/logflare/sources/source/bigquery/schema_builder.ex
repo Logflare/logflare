@@ -6,6 +6,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.BigQuery.SchemaTypes
   alias Model.TableFieldSchema, as: TFS
+  alias Model.TableSchema, as: TS
 
   @doc """
   Builds table schema from event metadata and prev schema.
@@ -123,7 +124,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
 
 
   """
-  @spec build_table_schema([map()] | map(), TFS.t()) :: TFS.t()
+  @spec build_table_schema([map()] | map(), TS.t()) :: TS.t()
 
   def build_table_schema(params, %{fields: old_fields}) do
     protected_keys = Enum.map(initial_table_schema().fields, & &1.name)

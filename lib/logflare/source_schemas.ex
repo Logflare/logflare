@@ -132,8 +132,17 @@ defmodule Logflare.SourceSchemas do
   end
 
   def format_schema(%SourceSchema{bigquery_schema: bq_schema}, :json_schema, to_merge) do
-    bq_schema
-    |> SchemaUtils.to_typemap()
+    typemap =
+      case bq_schema do
+        %GoogleApi.BigQuery.V2.Model.TableSchema{} = schema ->
+          SchemaUtils.to_typemap(schema, from: :bigquery_schema)
+
+        # fallback to empty map in case of malformed persisted or cached legacy values.
+        _ ->
+          %{}
+      end
+
+    typemap
     |> typemap_to_json_schema()
     |> Map.merge(to_merge)
     |> Map.put(
