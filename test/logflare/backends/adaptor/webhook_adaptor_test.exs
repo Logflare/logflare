@@ -299,7 +299,10 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   describe "cast_config/2 header redaction round-trip" do
     @existing %{
       url: "https://example.com",
-      headers: %{"Authorization" => "Bearer secret-token-123", "Content-Type" => "application/json"}
+      headers: %{
+        "Authorization" => "Bearer secret-token-123",
+        "Content-Type" => "application/json"
+      }
     }
 
     test "restores the stored secret when the REDACTED sentinel is submitted back" do
