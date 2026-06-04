@@ -221,8 +221,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   def le_to_bq_row(%LE{body: body, id: id}) do
-    {:ok, bq_timestamp} = DateTime.from_unix(body["timestamp"], :microsecond)
-
     body =
       for {k, v} <- body, into: %{} do
         if is_map(v) do
@@ -231,31 +229,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           {k, v}
         end
       end
-      |> Map.put("timestamp", bq_timestamp)
       |> Map.put("event_message", body["event_message"])
-      |> case do
-        %{"start_time" => start_time, "end_time" => end_time} = data
-        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
-          # round to microseconds
-          %{
-            data
-            | "start_time" => DateTime.from_unix!(start_time, :nanosecond),
-              "end_time" => DateTime.from_unix!(end_time, :nanosecond)
-          }
-
-        %{"start_time" => start_time} = data
-        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
-          # round to microseconds
-          %{data | "start_time" => DateTime.from_unix!(start_time, :nanosecond)}
-
-        %{"end_time" => end_time} = data
-        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
-          # round to microseconds
-          %{data | "end_time" => DateTime.from_unix!(end_time, :nanosecond)}
-
-        data ->
-          data
-      end
+      |> EventUtils.convert_to_seconds()
 
     %Model.TableDataInsertAllRequestRows{
       insertId: id,
