@@ -64,7 +64,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # still set to the sentinel we swap in the existing stored value (dropping it if
   # there is nothing to restore). Headers the user actually changed pass through.
   defp unredact_headers(changeset, existing_config) do
-    with headers when not is_nil(changeset) <- Ecto.Changeset.get_change(changeset, :headers),
+    with headers when not is_nil(headers) <- Ecto.Changeset.get_change(changeset, :headers),
          existing_headers <-
            Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{} do
       restored =
