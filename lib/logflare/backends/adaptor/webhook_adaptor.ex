@@ -64,28 +64,29 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # still set to the sentinel we swap in the existing stored value (dropping it if
   # there is nothing to restore). Headers the user actually changed pass through.
   defp unredact_headers(changeset, existing_config) do
-    case Ecto.Changeset.get_change(changeset, :headers) do
-      nil ->
-        changeset
+    with headers when not is_nil(changeset) <- Ecto.Changeset.get_change(changeset, :headers),
+         existing_headers <-
+           Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{} do
+      restored =
+        headers
+        |> Enum.reduce(%{}, fn
+          {key, @redacted_value}, acc ->
+            replace_header_with_existing(acc, existing_headers, key)
 
-      headers ->
-        existing_headers =
-          Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{}
+          {key, value}, acc ->
+            Map.put(acc, key, value)
+        end)
 
-        restored =
-          headers
-          |> Enum.reduce(%{}, fn
-            {key, @redacted_value}, acc ->
-              case Map.get(existing_headers, key) do
-                nil -> acc
-                value -> Map.put(acc, key, value)
-              end
+      Ecto.Changeset.put_change(changeset, :headers, restored)
+    else
+      _ -> changeset
+    end
+  end
 
-            {key, value}, acc ->
-              Map.put(acc, key, value)
-          end)
-
-        Ecto.Changeset.put_change(changeset, :headers, restored)
+  defp replace_header_with_existing(headers, existing_headers, key) do
+    case Map.get(existing_headers, key) do
+      nil -> headers
+      value -> Map.put(headers, key, value)
     end
   end
 
