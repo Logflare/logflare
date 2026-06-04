@@ -739,7 +739,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         }
       ]
 
-      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn _backend, _events, _event_type ->
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn _backend,
+                                                             _events,
+                                                             _event_type,
+                                                             _opts ->
         {:error, "Connection timeout"}
       end)
 
@@ -753,6 +756,75 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
       assert [%Message{status: {:failed, "Connection timeout"}}] = result
+    end
+  end
+
+  describe "handle_batch/4 async routing" do
+    setup %{source: source, backend: backend} do
+      log_event = build(:log_event, source: source, message: "Test message")
+
+      messages = [
+        %Message{
+          data: log_event,
+          acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+        }
+      ]
+
+      [messages: messages]
+    end
+
+    test "routes stale batches through async inserts", %{
+      context: context,
+      messages: messages
+    } do
+      test_pid = self()
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn _backend,
+                                                             _events,
+                                                             _event_type,
+                                                             opts ->
+        send(test_pid, {:insert_opts, opts})
+        :ok
+      end)
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_stale,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :timeout
+      }
+
+      Pipeline.handle_batch(:ch_stale, messages, batch_info, context)
+
+      assert_receive {:insert_opts, opts}
+      assert Keyword.get(opts, :async) == true
+    end
+
+    test "routes fresh batches through synchronous inserts", %{
+      context: context,
+      messages: messages
+    } do
+      test_pid = self()
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn _backend,
+                                                             _events,
+                                                             _event_type,
+                                                             opts ->
+        send(test_pid, {:insert_opts, opts})
+        :ok
+      end)
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+
+      assert_receive {:insert_opts, opts}
+      assert Keyword.get(opts, :async) == false
     end
   end
 end
