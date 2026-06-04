@@ -5,6 +5,38 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.TestUtils
 
+  describe "to_typemap/2" do
+    test "BigQuery schema field names are preserved as strings" do
+      assert %{"user" => %{"address" => %{"city" => "Dublin"}}, "tags" => ["a", "b"]}
+             |> TestUtils.build_bq_schema()
+             |> SchemaUtils.to_typemap(from: :bigquery_schema) == %{
+               "event_message" => %{t: :string},
+               "id" => %{t: :string},
+               "tags" => %{t: {:list, :string}},
+               "timestamp" => %{t: :datetime},
+               "user" => %{
+                 fields: %{"address" => %{fields: %{"city" => %{t: :string}}, t: :map}},
+                 t: :map
+               }
+             }
+    end
+
+    test "atom BigQuery schema field names are converted to strings" do
+      assert %{user: %{address: %{city: "Dublin"}}, tags: ["a", "b"]}
+             |> TestUtils.build_bq_schema()
+             |> SchemaUtils.to_typemap(from: :bigquery_schema) == %{
+               "event_message" => %{t: :string},
+               "id" => %{t: :string},
+               "tags" => %{t: {:list, :string}},
+               "timestamp" => %{t: :datetime},
+               "user" => %{
+                 fields: %{"address" => %{fields: %{"city" => %{t: :string}}, t: :map}},
+                 t: :map
+               }
+             }
+    end
+  end
+
   describe "flatten_typemap/1" do
     test "nil and empty map both return empty map" do
       assert SchemaUtils.flatten_typemap(nil) == %{}

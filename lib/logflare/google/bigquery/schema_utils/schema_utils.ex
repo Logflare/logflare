@@ -72,7 +72,9 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
-  @spec to_typemap(TS.t() | [TFS.t()], from: :bigquery_schema) :: %{required(atom) => map | atom}
+  @spec to_typemap(TS.t() | [TFS.t()], from: :bigquery_schema) :: %{
+          required(String.t()) => map | atom
+        }
   def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
     to_typemap(fields, from: :bigquery_schema)
   end
@@ -80,7 +82,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
     Map.new(fields, fn
       %TFS{fields: fields, name: n, type: t, mode: mode} ->
-        k = String.to_atom(n)
+        n = to_string(n)
 
         v =
           cond do
@@ -108,7 +110,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
             v
           end
 
-        {k, v}
+        {n, v}
     end)
   end
 
