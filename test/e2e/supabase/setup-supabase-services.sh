@@ -50,10 +50,20 @@ fi
 cp .env.example .env
 endgroup
 
-log "add logs config..."
-sh .run.sh config add logs
+cd ../..
 
+[ ! "$GITHUB_ACTIONS" = "true" ] && log "Build logflare image..." && compose build analytics
+
+log "Pulling docker images..."
+compose pull
 endgroup
+
+log "Starting Supabase stack (inside docker containers)..."
+if ! compose up -d --wait --wait-timeout 180; then
+  if [ "$GITHUB_ACTIONS" = "true" ]; then
+    endgroup
+    echo -n "::group::"
+  fi
 
   exited=$(compose ps --all --format '{{.Service}} {{.State}}' | awk '$2 == "exited" || $2 == "dead" {print $1}')
 
