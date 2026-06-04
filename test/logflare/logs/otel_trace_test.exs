@@ -77,6 +77,30 @@ defmodule Logflare.Logs.OtelTraceTest do
       assert Integer.digits(params["end_time"]) |> length() == 19
     end
 
+    test "flattens nested resources, scopes, and spans into a single list", %{
+      resource_spans: resource_spans,
+      source: source
+    } do
+      [base] = resource_spans
+      [scope_spans] = base.scope_spans
+      [span] = scope_spans.spans
+      events_per_span = length(span.events)
+
+      duped_scope = %{scope_spans | spans: [span, span]}
+      duped_resource = %{base | scope_spans: [duped_scope, duped_scope]}
+      nested = [duped_resource, duped_resource]
+
+      batch = OtelTrace.handle_batch(nested, source)
+
+      spans = Enum.filter(batch, fn p -> p["metadata"]["type"] == "span" end)
+      events = Enum.filter(batch, fn p -> p["metadata"]["type"] == "event" end)
+
+      assert length(spans) == 2 * 2 * 2
+      assert length(events) == 2 * 2 * 2 * events_per_span
+      assert length(batch) == length(spans) + length(events)
+      refute Enum.any?(batch, &is_list/1)
+    end
+
     test "correctly parses resource spans", %{
       source: source
     } do

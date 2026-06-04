@@ -83,6 +83,29 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     end
   end
 
+  @doc """
+  Probes connectivity, credentials, region, and bucket access by writing a
+  tiny sentinel parquet file to a fixed key at the bucket root. Subsequent
+  probes overwrite the same key, so at most one ~1 KB artifact ever exists.
+
+  Note: on buckets with versioning enabled, each probe creates a new
+  non-current version.
+  """
+  @impl Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  def test_connection(%Backend{} = backend) do
+    config = Adaptor.get_backend_config(backend)
+    path = "s3://#{config.s3_bucket}/_connection_test.parquet"
+
+    df = DataFrame.new([%{probe: "connection-test"}], dtypes: [{:probe, :string}])
+    result = DataFrame.to_parquet(df, path, config: fss_s3_config(config))
+
+    case result do
+      :ok -> :ok
+      {:error, reason} -> {:error, "S3 write failed: #{inspect(reason)}"}
+    end
+  end
+
   @impl Adaptor
   def supports_default_ingest?, do: true
 
@@ -173,11 +196,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
       )
       |> DataFrame.to_parquet(s3_file_path,
         streaming: true,
-        config: [
-          access_key_id: config.access_key_id,
-          secret_access_key: config.secret_access_key,
-          region: config.storage_region
-        ]
+        config: fss_s3_config(config)
       )
     end
   end
@@ -206,5 +225,13 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     token
     |> Atom.to_string()
     |> String.replace("-", "_")
+  end
+
+  defp fss_s3_config(backend_config) do
+    [
+      access_key_id: backend_config.access_key_id,
+      secret_access_key: backend_config.secret_access_key,
+      region: backend_config.storage_region
+    ]
   end
 end
