@@ -118,7 +118,7 @@ defmodule Logflare.Backends.Backend do
 
   defp validate_default_ingest(changeset), do: changeset
 
-  @spec child_spec(Source.t(), Backend.t()) :: map()
+  @spec child_spec(Source.t() | nil, Backend.t()) :: map()
   defdelegate child_spec(source, backend), to: Adaptor
 
   # secrets redacting for json encoding

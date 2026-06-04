@@ -17,6 +17,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.System, as: SystemUtils
 
   require Logger

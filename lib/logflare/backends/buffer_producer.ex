@@ -21,7 +21,7 @@ defmodule Logflare.Backends.BufferProducer do
           demand: non_neg_integer(),
           source_id: pos_integer() | nil,
           source_token: atom() | nil,
-          backend_id: pos_integer(),
+          backend_id: pos_integer() | nil,
           last_discard_log_dt: DateTime.t() | nil,
           interval: pos_integer(),
           last_janitor_signal_at: non_neg_integer(),
