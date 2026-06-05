@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
 
   alias Logflare.LogEvent
   alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
+  alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.HttpBased.LogEventTransformer
   alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
@@ -50,6 +51,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
   """
   @spec new(opts()) :: t()
   def new(opts \\ []) do
+    headers = Headers.drop_reserved(opts[:headers] || %{}, reserved_header_names(opts))
+
     Tesla.client(
       [
         Tesla.Middleware.Telemetry,
@@ -57,7 +60,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
         opts[:query] && {Tesla.Middleware.Query, opts[:query]},
         opts[:token] && {Tesla.Middleware.BearerAuth, token: opts[:token]},
         opts[:basic_auth] && {Tesla.Middleware.BasicAuth, opts[:basic_auth]},
-        headers_middleware(opts[:headers]),
+        headers_middleware(headers),
         Keyword.get(opts, :formatter, LogEventTransformer),
         Keyword.get(opts, :json, true) && Tesla.Middleware.JSON,
         opts[:gzip] && {Tesla.Middleware.CompressRequest, format: "gzip"},
@@ -66,6 +69,18 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
       |> Enum.filter(& &1),
       adapter_config(Keyword.get(opts, :http2, true), opts[:pool_name])
     )
+  end
+
+  # Header names the middleware will set, so they must be dropped from
+  # user-supplied headers to avoid duplicates (see `Headers.drop_reserved/2`).
+  # `content-type` is intentionally excluded: the request body is not available at
+  # client-build time, so we cannot tell whether `Tesla.Middleware.JSON` will
+  # encode it and own the header — current adaptors never pass a user content-type.
+  @spec reserved_header_names(opts()) :: [String.t()]
+  defp reserved_header_names(opts) do
+    encoding = if opts[:gzip], do: ["content-encoding"], else: []
+    auth = if opts[:token] || opts[:basic_auth], do: ["authorization"], else: []
+    encoding ++ auth
   end
 
   def headers_middleware(nil), do: nil
