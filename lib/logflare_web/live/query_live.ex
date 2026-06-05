@@ -11,6 +11,7 @@ defmodule LogflareWeb.QueryLive do
   alias Logflare.Teams.TeamContext
   alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
+  alias LogflareWeb.QueryErrorHelpers
   alias LogflareWeb.Utils
 
   def render(assigns) do
@@ -308,8 +309,10 @@ defmodule LogflareWeb.QueryLive do
         |> assign(:total_bytes_processed, total_bytes_processed)
 
       {:error, err} ->
+        message = if is_binary(err), do: err, else: QueryErrorHelpers.query_error_message(err)
+
         socket
-        |> put_flash(:error, "Error occurred when running query: #{inspect(err)}")
+        |> put_flash(:error, "Error occurred running query: #{message}")
     end
   end
 end

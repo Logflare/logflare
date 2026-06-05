@@ -367,7 +367,10 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert html =~ "No results from query. Alert will not fire."
     end
 
-    test "errors from BQ are displayed", %{conn: conn, alert_query: alert_query} do
+    test "unclassified BQ errors display a generic message", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:error, TestUtils.gen_bq_error("some error")}
@@ -375,9 +378,13 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
-      assert view
-             |> element("button", "Run query")
-             |> render_click() =~ "some error"
+      html =
+        view
+        |> element("button", "Run query")
+        |> render_click()
+
+      assert html =~ "Backend error! Retry your query. Please contact support if this continues."
+      refute html =~ "some error"
     end
   end
 
@@ -398,19 +405,6 @@ defmodule LogflareWeb.AlertsLiveTest do
              |> render_click() =~ "results-123"
 
       assert view |> render() =~ ~r/1 .+ processed/
-    end
-
-    test "errors from BQ are dispalyed", %{conn: conn, alert_query: alert_query} do
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
-        {:error, TestUtils.gen_bq_error("some error")}
-      end)
-
-      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
-
-      assert view
-             |> element("button", "Run query")
-             |> render_click() =~ "some error"
     end
 
     test "missing field errors are displayed with user-facing message", %{
@@ -452,6 +446,20 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       assert html =~ "Query executed successfully"
       assert html =~ "edit-results"
+    end
+
+    test "test query from edit page handles SQL validation errors", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}/edit")
+
+      html =
+        view
+        |> element("form[phx-submit='run-query']")
+        |> render_submit(%{query: "select * from `my-source`"})
+
+      assert html =~ "Error when running query: restricted wildcard (*) in a result column"
     end
 
     test "test query from new page uses the submitted query", %{conn: conn} do

@@ -90,9 +90,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert {:error, %QueryError{} = error} = result
       assert error.backend == ClickHouseAdaptor
-      assert error.code in [:invalid_query, :connection_error]
+      assert error.kind in [:invalid_query, :connection_error]
 
-      if error.code == :invalid_query do
+      if error.kind == :invalid_query do
         assert %Ch.Error{} = error.raw_error
         assert error.description == nil
       end
@@ -102,23 +102,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       expect(Ch, :query, fn _pool, _statement, _params, _opts ->
         {:error,
          %Ch.Error{
+           code: 47,
            message:
              "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
          }}
       end)
 
-      result =
-        ClickHouseAdaptor.execute_ch_query(backend, "SELECT notthere")
+      assert {:error,
+              %QueryError{
+                kind: :invalid_query,
+                backend: Logflare.Backends.Adaptor.ClickHouseAdaptor,
+                raw_error: %Ch.Error{
+                  code: 47,
+                  message:
+                    "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
+                },
+                description: nil
+              }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT notthere")
+    end
+
+    test "normalizes ClickHouse server errors as backend errors", %{backend: backend} do
+      expect(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error, %Ch.Error{code: 999, message: "Backend server error"}}
+      end)
 
       assert {:error,
               %QueryError{
-                code: :invalid_query,
+                kind: :backend_error,
                 backend: Logflare.Backends.Adaptor.ClickHouseAdaptor,
-                message:
-                  "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)",
-                raw_error: %Ch.Error{},
+                raw_error: %Ch.Error{code: 999, message: "Backend server error"},
                 description: nil
-              }} = result
+              }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1")
     end
 
     test "logs a warning when connection checkout is slow", %{backend: backend} do

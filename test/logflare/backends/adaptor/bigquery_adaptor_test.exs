@@ -228,11 +228,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
          )}
       end)
 
+      project_id = user.bigquery_project_id || "test-project"
+
       assert {:error,
               %QueryError{
-                code: :invalid_query,
+                kind: :invalid_query,
                 backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
-                message: "Unrecognized name: notthere at [1:8]",
                 description: nil,
                 raw_error: %{
                   "message" => "Unrecognized name: notthere at [1:8]",
@@ -240,7 +241,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                 }
               }} =
                BigQueryAdaptor.execute_query(
-                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {project_id, user.bigquery_dataset_id, user.id},
                  {"select notthere", []},
                  []
                )
@@ -257,10 +258,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
 
       assert {:error,
               %QueryError{
-                code: :invalid_query,
+                kind: :backend_error,
                 backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
-                message:
-                  "Query exceeded limit for bytes billed: 2000000000. 20004857600 or higher required.",
                 description: nil,
                 raw_error: %{
                   "message" =>
@@ -282,11 +281,32 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
 
       assert {:error,
               %QueryError{
-                code: :connection_error,
+                kind: :connection_error,
                 backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
-                message: "timeout",
                 description: nil,
                 raw_error: :timeout
+              }} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select count(*) from logs", []},
+                 []
+               )
+    end
+
+    test "execute_query maps non-invalid BigQuery reasons as backend errors", %{user: user} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("backend unavailable", reason: "backendError")}
+      end)
+
+      assert {:error,
+              %QueryError{
+                kind: :backend_error,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                description: nil,
+                raw_error: %{
+                  "message" => "backend unavailable",
+                  "reason" => "backendError"
+                }
               }} =
                BigQueryAdaptor.execute_query(
                  {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},

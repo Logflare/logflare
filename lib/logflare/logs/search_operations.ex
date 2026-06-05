@@ -24,6 +24,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Utils.Chart, as: ChartUtils
+  alias Logflare.Utils.LoggerMetadata
   alias Logflare.Utils.List, as: ListUtils
 
   @type chart_period :: :day | :hour | :minute | :second
@@ -70,20 +71,31 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec execute_backend_query(SO.t()) :: {:ok, map()} | {:error, term()}
   defp execute_backend_query(%SO{backend_type: :postgres} = so) do
-    backend = postgres_backend(so)
+    source_logger_metadata(so)
+    |> LoggerMetadata.with_metadata(fn ->
+      backend = postgres_backend(so)
 
-    PostgresAdaptor.execute_query(backend, so.query, query_type: :search)
+      PostgresAdaptor.execute_query(backend, so.query, query_type: :search)
+    end)
   end
 
   defp execute_backend_query(%SO{} = so) do
     bq_project_id = so.source.user.bigquery_project_id || GCPConfig.default_project_id()
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(so.source.token)
 
-    BigQueryAdaptor.execute_query(
-      {bq_project_id, dataset_id, so.source.user.id},
-      so.query,
-      query_type: :search
-    )
+    source_logger_metadata(so)
+    |> LoggerMetadata.with_metadata(fn ->
+      BigQueryAdaptor.execute_query(
+        {bq_project_id, dataset_id, so.source.user.id},
+        so.query,
+        query_type: :search
+      )
+    end)
+  end
+
+  @spec source_logger_metadata(SO.t()) :: Keyword.t()
+  defp source_logger_metadata(%SO{} = so) do
+    [source_id: so.source.token, source_token: so.source.token]
   end
 
   @spec put_sql_string(SO.t(), QueryResult.t()) :: SO.t()

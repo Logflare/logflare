@@ -408,10 +408,12 @@ defmodule LogflareWeb.AlertsLive do
   end
 
   defp format_query_error(%QueryError{} = error) do
-    QueryErrorHelpers.query_error_message(error) ||
-      "Backend error! Retry your query. Please contact support if this continues."
+    QueryErrorHelpers.query_error_message(error)
   end
-  end
+
+  defp format_query_error(error) when is_binary(error), do: error
+
+  defp format_query_error(_error), do: QueryErrorHelpers.generic_query_error_message()
 
   def handle_info({:query_string_updated, query_string}, socket) do
     {:noreply, assign(socket, :query_string, query_string)}

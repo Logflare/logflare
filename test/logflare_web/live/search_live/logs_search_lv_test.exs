@@ -1377,7 +1377,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       send_query_error(
         view,
-        message: message,
         backend: BigQueryAdaptor,
         raw_error: %{
           "message" => message,
@@ -1406,7 +1405,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       send_query_error(
         view,
-        message: message,
         backend: BigQueryAdaptor,
         raw_error: %{"message" => message}
       )
@@ -1432,7 +1430,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       send_query_error(
         view,
-        message: message,
         backend: BigQueryAdaptor,
         raw_error: %{"message" => message}
       )
@@ -1459,7 +1456,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       send_query_error(
         view,
-        message: message,
         backend: ClickHouseAdaptor,
         raw_error: %Ch.Error{message: message}
       )
@@ -1483,8 +1479,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       send_query_error(
         view,
-        message:
-          ~s|ERROR 42703 (undefined_column) column "notthere" does not exist\n\n    query: select notthere|,
         backend: PostgresAdaptor,
         raw_error: %Postgrex.Error{message: ~s|column "notthere" does not exist|}
       )
@@ -1508,7 +1502,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       send_query_error(
         view,
-        message: "raw backend syntax error",
         backend: BigQueryAdaptor,
         raw_error: %RuntimeError{message: "raw backend syntax error"},
         description: nil
@@ -2417,7 +2410,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   defp send_query_error(view, attrs) do
-    attrs = Keyword.put_new(attrs, :code, :invalid_query)
+    attrs = Keyword.put_new(attrs, :kind, :invalid_query)
     error = struct!(QueryError, attrs)
 
     send(view.pid, {:search_error, %{error: error}})

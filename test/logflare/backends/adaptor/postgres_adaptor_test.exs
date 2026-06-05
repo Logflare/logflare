@@ -112,14 +112,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       TestUtils.retry_assert(fn ->
         assert {:error,
                 %QueryError{
-                  code: :invalid_query,
+                  kind: :invalid_query,
                   backend: Logflare.Backends.Adaptor.PostgresAdaptor,
-                  message: message,
                   raw_error: %Postgrex.Error{},
                   description: nil
-                }} = PostgresAdaptor.execute_query(backend, query, [])
+                } = error} = PostgresAdaptor.execute_query(backend, query, [])
 
-        assert message =~ "notthere"
+        assert Exception.message(error.raw_error) =~ "notthere"
       end)
     end
 
@@ -136,14 +135,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       TestUtils.retry_assert(fn ->
         assert {:error,
                 %QueryError{
-                  code: :invalid_query,
+                  kind: :invalid_query,
                   backend: Logflare.Backends.Adaptor.PostgresAdaptor,
-                  message: message,
                   raw_error: %Postgrex.Error{},
                   description: nil
-                }} = PostgresAdaptor.execute_query(backend, query, [])
+                } = error} = PostgresAdaptor.execute_query(backend, query, [])
 
-        assert message =~ "notthere"
+        assert Exception.message(error.raw_error) =~ "notthere"
       end)
     end
 
@@ -151,13 +149,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       TestUtils.retry_assert(fn ->
         assert {:error,
                 %QueryError{
-                  code: :invalid_query,
+                  kind: :invalid_query,
                   backend: Logflare.Backends.Adaptor.PostgresAdaptor,
-                  message: message,
                   raw_error: %Postgrex.Error{},
                   description: nil
-                }} = PostgresAdaptor.execute_query(backend, "select from", [])
+                } = error} = PostgresAdaptor.execute_query(backend, "select from", [])
 
+        message = Exception.message(error.raw_error)
         assert message =~ "syntax_error"
         assert message =~ "syntax error"
       end)
@@ -233,7 +231,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
         {:error, :cannot_connect}
       end)
 
-      assert {:error, :cannot_connect} = PostgresAdaptor.test_connection(backend)
+      assert {:error,
+              %QueryError{
+                kind: :connection_error,
+                backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                raw_error: :cannot_connect,
+                description: nil
+              }} = PostgresAdaptor.test_connection(backend)
     end
   end
 

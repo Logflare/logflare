@@ -9,8 +9,9 @@ defmodule Logflare.Endpoints do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
-  alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.Resolver
@@ -35,7 +36,7 @@ defmodule Logflare.Endpoints do
   @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
-           | {:error, String.t()}
+           | {:error, String.t() | QueryError.t()}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 

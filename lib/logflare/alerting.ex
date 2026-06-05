@@ -15,7 +15,6 @@ defmodule Logflare.Alerting do
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
-  alias Logflare.Backends.QueryError
   alias Logflare.Cluster
   alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GCPConfig
@@ -23,6 +22,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
+  alias Logflare.Utils.LoggerMetadata
 
   require Logger
   require OpenTelemetry.Tracer
@@ -431,63 +431,51 @@ defmodule Logflare.Alerting do
   @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
           {:ok, QueryResult.t()} | {:error, any()}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
-    Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
+    LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
+      Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
-    endpoints = Endpoints.list_endpoints_by(user_id: alert_query.user_id)
-    use_query_cache = Keyword.get(opts, :use_query_cache, true)
+      endpoints = Endpoints.list_endpoints_by(user_id: alert_query.user_id)
+      use_query_cache = Keyword.get(opts, :use_query_cache, true)
 
-    alerts =
-      list_alert_queries_by_user_id(alert_query.user_id)
-      |> Enum.filter(&(&1.id != alert_query.id))
+      alerts =
+        list_alert_queries_by_user_id(alert_query.user_id)
+        |> Enum.filter(&(&1.id != alert_query.id))
 
-    with {:ok, expanded_query} <-
-           Logflare.Sql.expand_subqueries(
-             alert_query.language,
-             alert_query.query,
-             endpoints ++ alerts
-           ),
-         {:ok, transformed_query} <-
-           Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
-         {:ok, result} <-
-           BigQueryAdaptor.execute_query(
-             {
-               alert_query.user.bigquery_project_id || GCPConfig.default_project_id(),
-               alert_query.user.bigquery_dataset_id,
-               alert_query.user.id
-             },
-             {transformed_query, []},
-             parameterMode: "NAMED",
-             maxResults: 1000,
-             location: alert_query.user.bigquery_dataset_location,
-             use_query_cache: use_query_cache,
-             labels: %{
-               "alert_id" => alert_query.id
-             },
-             query_type: :alerts
-           ) do
-      {:ok, result}
-    else
-      {:error, %QueryError{} = error} ->
-        Logger.error("Alert query execution failed with bad response",
-          user_id: alert_query.user_id,
-          alert_query_id: alert_query.id,
-          alert_name: alert_query.name,
-          possible_reservation_error: BigQueryAdaptor.reservation_error?(error.raw_error),
-          error_code: error.code,
-          error_string: inspect(error.message)
-        )
+      with {:ok, expanded_query} <-
+             Logflare.Sql.expand_subqueries(
+               alert_query.language,
+               alert_query.query,
+               endpoints ++ alerts
+             ),
+           {:ok, transformed_query} <-
+             Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
+           {:ok, result} <-
+             BigQueryAdaptor.execute_query(
+               {
+                 alert_query.user.bigquery_project_id || GCPConfig.default_project_id(),
+                 alert_query.user.bigquery_dataset_id,
+                 alert_query.user.id
+               },
+               {transformed_query, []},
+               parameterMode: "NAMED",
+               maxResults: 1000,
+               location: alert_query.user.bigquery_dataset_location,
+               use_query_cache: use_query_cache,
+               labels: %{
+                 "alert_id" => alert_query.id
+               },
+               query_type: :alerts
+             ) do
+        {:ok, result}
+      end
+    end)
+  end
 
-        {:error, error}
-
-      {:error, error} ->
-        Logger.error("Alert query execution failed with an unknown error",
-          user_id: alert_query.user_id,
-          alert_query_id: alert_query.id,
-          alert_name: alert_query.name,
-          error_string: inspect(error)
-        )
-
-        {:error, error}
-    end
+  defp alert_query_logger_metadata(%AlertQuery{} = alert_query) do
+    [
+      user_id: alert_query.user_id,
+      alert_query_id: alert_query.id,
+      alert_name: alert_query.name
+    ]
   end
 end

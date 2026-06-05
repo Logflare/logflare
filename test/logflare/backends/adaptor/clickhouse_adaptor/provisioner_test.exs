@@ -91,7 +91,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
                         {:shutdown,
                          {:error,
                           %QueryError{
-                            code: :connection_error,
+                            kind: :connection_error,
                             backend: Logflare.Backends.Adaptor.ClickHouseAdaptor
                           }}}},
                        5_000
