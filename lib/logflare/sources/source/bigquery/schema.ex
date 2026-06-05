@@ -193,7 +193,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   defp count_fields(schema) do
     schema
-    |> BigQuery.SchemaUtils.to_typemap()
+    |> BigQuery.SchemaUtils.to_typemap(from: :bigquery_schema)
     |> BigQuery.SchemaUtils.flatten_typemap()
     |> Enum.count()
   end

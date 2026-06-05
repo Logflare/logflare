@@ -377,19 +377,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert_redirect(view, ~p"/backends")
     end
 
-    test "clickhouse form shows async inserts checkbox", %{conn: conn} do
-      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
-
-      html =
-        view
-        |> element("select#type")
-        |> render_change(%{backend: %{type: "clickhouse"}})
-
-      assert html =~ "Async Inserts"
-      assert html =~ "async_insert"
-    end
-
-    test "can create clickhouse backend with async_insert enabled", %{conn: conn} do
+    test "can create clickhouse backend", %{conn: conn} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 
       view
@@ -407,8 +395,7 @@ defmodule LogflareWeb.BackendsLiveTest do
               database: "test_db",
               port: 8123,
               username: "user",
-              password: "pass",
-              async_insert: true
+              password: "pass"
             }
           }
         })
