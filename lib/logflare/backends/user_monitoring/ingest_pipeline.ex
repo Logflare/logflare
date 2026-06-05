@@ -24,14 +24,16 @@ defmodule Logflare.Backends.UserMonitoring.IngestPipeline do
         concurrency: 1
       ],
       processors: [
-        default: [concurrency: System.schedulers_online()],
-        max_demand: batch_size
+        default: [
+          concurrency: System.schedulers_online(),
+          max_demand: Keyword.fetch!(opts, :batch_size)
+        ]
       ],
       batchers: [
         default: [
           concurrency: System.schedulers_online(),
-          batch_size: 10000,
-          batch_timeout: batch_size
+          batch_size: batch_size,
+          batch_timeout: batch_timeout
         ]
       ]
     )
