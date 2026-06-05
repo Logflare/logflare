@@ -570,14 +570,17 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @spec build_base_query_opts(user :: User.t(), opts :: Keyword.t()) :: Keyword.t()
   defp build_base_query_opts(%User{} = user, opts) do
+    query_type = Keyword.get(opts, :query_type)
+
     [
       location: user.bigquery_dataset_location,
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
       dryRun: Keyword.get(opts, :dry_run, false),
+      query_type: query_type,
       reservation:
         case Keyword.get(opts, :reservation) do
           nil ->
-            case Keyword.get(opts, :query_type) do
+            case query_type do
               :search -> user.bigquery_reservation_search
               :alerts -> user.bigquery_reservation_alerts
               _ -> nil
@@ -688,17 +691,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       {:error, %{body: body}} ->
         decoded = Jason.decode!(body)["error"]
         error = GenUtils.process_bq_errors(decoded, user.id)
-
-        if reservation_error?(decoded) do
-          Logger.warning("Possible BigQuery reservation error",
-            user_id: user.id,
-            project_id: project_id,
-            reservation_opt: Keyword.get(query_opts, :reservation),
-            query_type: Keyword.get(query_opts, :query_type),
-            bq_error_message: decoded["message"]
-          )
-        end
-
+        maybe_warn_reservation_error(decoded, user, project_id, query_opts)
         {:error, error}
 
       {:error, err} when is_atom(err) ->
@@ -731,10 +724,35 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     }
   end
 
-  @spec reservation_error?(error :: map() | any()) :: boolean()
-  defp reservation_error?(%{"message" => msg}) when is_non_empty_binary(msg) do
+  @spec maybe_warn_reservation_error(
+          decoded :: any(),
+          user :: User.t(),
+          project_id :: String.t(),
+          query_opts :: Keyword.t()
+        ) :: :ok
+  defp maybe_warn_reservation_error(decoded, %User{} = user, project_id, query_opts) do
+    if reservation_error?(decoded) and not caller_logs_own_errors?(query_opts) do
+      Logger.warning("Possible BigQuery reservation error",
+        user_id: user.id,
+        project_id: project_id,
+        reservation: Keyword.get(query_opts, :reservation),
+        query_type: Keyword.get(query_opts, :query_type),
+        bq_error_message: decoded["message"]
+      )
+    end
+
+    :ok
+  end
+
+  @spec caller_logs_own_errors?(query_opts :: Keyword.t()) :: boolean()
+  defp caller_logs_own_errors?(query_opts) do
+    Keyword.get(query_opts, :query_type) == :alerts
+  end
+
+  @spec reservation_error?(error :: any()) :: boolean()
+  def reservation_error?(%{"message" => msg}) when is_non_empty_binary(msg) do
     Regex.match?(@reservation_error_regex, msg)
   end
 
-  defp reservation_error?(_), do: false
+  def reservation_error?(_), do: false
 end

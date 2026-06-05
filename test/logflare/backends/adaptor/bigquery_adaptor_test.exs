@@ -342,6 +342,26 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       assert log =~ "Possible BigQuery reservation error"
     end
 
+    test "does not log centrally for alerts queries, which log their own errors", %{user: user} do
+      body =
+        ~s|{"error":{"message":"User specified reservation projects/p/locations/l/reservations/missing is not found","status":"NOT_FOUND"}}|
+
+      stub(BqJobs, :bigquery_jobs_query, fn _conn, _proj, _opts ->
+        {:error, %Tesla.Env{status: 404, body: body}}
+      end)
+
+      log =
+        capture_log([level: :warning], fn ->
+          BigQueryAdaptor.execute_query(
+            {"test-project", user.bigquery_dataset_id, user.id},
+            {"select 1", []},
+            query_type: :alerts
+          )
+        end)
+
+      refute log =~ "Possible BigQuery reservation error"
+    end
+
     test "does not log a warning for unrelated BigQuery errors", %{user: user} do
       body =
         ~s|{"error":{"message":"Table test-project:test_dataset.foo not found","status":"NOT_FOUND"}}|
