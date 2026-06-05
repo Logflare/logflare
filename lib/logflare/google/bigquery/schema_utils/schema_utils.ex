@@ -12,7 +12,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   Transform BigQuery query response into a map.
   via https://stackoverflow.com/questions/53913182/decoding-googleapi-bigquery-object-elixir
   """
-  @spec deep_sort_by_fields_name(TFS.t()) :: TFS.t()
+  @spec deep_sort_by_fields_name(TS.t() | TFS.t()) :: TS.t() | TFS.t()
   def deep_sort_by_fields_name(%{fields: nil} = schema), do: schema
 
   def deep_sort_by_fields_name(%{fields: fields} = schema) when is_list(fields) do
@@ -72,77 +72,9 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
-  @spec to_typemap(map | TS.t() | nil) :: %{required(atom) => map | atom}
-  def to_typemap(nil), do: nil
-
-  def to_typemap(%TS{} = schema), do: to_typemap(schema, from: :bigquery_schema)
-
-  def to_typemap(metadata) when is_map(metadata) do
-    for {k, v} <- metadata, not_empty_container?(v), into: Map.new() do
-      v =
-        cond do
-          match?(%DateTime{}, v) or
-              match?(%NaiveDateTime{}, v) ->
-            %{t: :datetime}
-
-          is_list(v) and is_map(hd(v)) ->
-            %{
-              t: :map,
-              fields: Enum.reduce(v, %{}, &Map.merge(&2, to_typemap(&1)))
-            }
-
-          is_list(v) and not is_map(hd(v)) ->
-            %{t: {:list, type_of(hd(v))}}
-
-          is_map(v) ->
-            %{t: :map, fields: to_typemap(v)}
-
-          true ->
-            %{t: type_of(v)}
-        end
-
-      k =
-        cond do
-          is_atom(k) -> k
-          String.valid?(k) -> String.to_atom(k)
-          true -> decode_until_valid!(k)
-        end
-
-      {k, v}
-    end
-  end
-
-  defp decode_until_valid!(k, encodings \\ [:utf8, :unicode, :latin1])
-
-  defp decode_until_valid!(k, []) do
-    raise("Incoming field #{inspect(k)} is not a valid string")
-  end
-
-  defp decode_until_valid!(k, [encoding | encodings]) when is_binary(k) do
-    case :unicode.characters_to_binary(k, encoding) do
-      {:error, _, _} ->
-        decode_until_valid!(k, encodings)
-
-      k ->
-        k
-        |> Unicode.unaccent()
-        |> String.to_atom()
-    end
-  end
-
-  def not_empty_container?(value)
-      when value == []
-      when value == %{}
-      when value == [[]]
-      when value == [%{}] do
-    false
-  end
-
-  def not_empty_container?(_) do
-    true
-  end
-
-  @spec to_typemap(TS.t() | list(TS.t()), keyword) :: %{required(atom) => map | atom}
+  @spec to_typemap(TS.t() | [TFS.t()], from: :bigquery_schema) :: %{
+          required(String.t()) => map | atom
+        }
   def to_typemap(%TS{fields: fields} = schema, from: :bigquery_schema) when is_map(schema) do
     to_typemap(fields, from: :bigquery_schema)
   end
@@ -150,7 +82,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
     Map.new(fields, fn
       %TFS{fields: fields, name: n, type: t, mode: mode} ->
-        k = String.to_atom(n)
+        n = to_string(n)
 
         v =
           cond do
@@ -178,7 +110,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
             v
           end
 
-        {k, v}
+        {n, v}
     end)
   end
 
@@ -187,7 +119,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def bq_schema_to_flat_typemap(%TS{} = schema) do
     schema
-    |> to_typemap()
+    |> to_typemap(from: :bigquery_schema)
     |> flatten_typemap()
   end
 
@@ -200,12 +132,12 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   defp do_flatten_typemap(typemap, prefix, acc) do
     Enum.reduce(typemap, acc, fn {key, value}, acc ->
-      flat_key =
-        if prefix == "", do: to_string(key), else: prefix <> "." <> to_string(key)
-
-      flatten_node(value, flat_key, acc)
+      flatten_node(value, join_key(prefix, key), acc)
     end)
   end
+
+  defp join_key("", key), do: to_string(key)
+  defp join_key(prefix, key), do: prefix <> "." <> to_string(key)
 
   defp flatten_node(%{t: :map, fields: fields}, key, acc) do
     do_flatten_typemap(fields, key, Map.put(acc, key, :map))
@@ -213,5 +145,37 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   defp flatten_node(%{t: type}, key, acc) do
     Map.put(acc, key, type)
+  end
+
+  @spec get_type_for_path([term()], map()) :: atom() | nil
+  def get_type_for_path(path, flat_schema_map) when is_list(path) and is_map(flat_schema_map) do
+    path
+    |> schema_keys_for_path()
+    |> Enum.find_value(fn key -> Map.get(flat_schema_map, key) end)
+  end
+
+  def get_type_for_path(_path, _flat_schema_map), do: nil
+
+  defp schema_keys_for_path(path) do
+    direct_key = path |> Enum.map(&to_string/1) |> Enum.join(".")
+
+    without_array_indexes =
+      path
+      |> Enum.reject(&array_index?/1)
+      |> Enum.map(&to_string/1)
+      |> Enum.join(".")
+
+    [direct_key, without_array_indexes]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  defp array_index?(segment) when is_integer(segment), do: true
+
+  defp array_index?(segment) do
+    case Integer.parse(to_string(segment)) do
+      {_index, ""} -> true
+      _ -> false
+    end
   end
 end

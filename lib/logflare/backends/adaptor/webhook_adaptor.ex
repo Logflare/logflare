@@ -22,8 +22,12 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Utils
+  alias Logflare.Utils.SSRF
 
   @behaviour Logflare.Backends.Adaptor
+
+  # Sentinel value substituted for secret header values by redact_config/1.
+  @redacted_value "REDACTED"
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = args) do
@@ -46,8 +50,44 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   def cast_config(params, existing_config \\ %{}) do
     {existing_config, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
     |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip])
+    |> unredact_headers(existing_config)
     |> Logflare.Utils.default_field_value(:http, "http2")
     |> Logflare.Utils.default_field_value(:gzip, true)
+  end
+
+  # Restores secret header values submitted back as the "REDACTED" sentinel.
+  #
+  # redact_config/1 masks secret headers (e.g. Authorization) when serializing a
+  # backend, so clients never receive the real value. On update the client echoes
+  # the sentinel back for unchanged headers; without this, casting would overwrite
+  # the stored secret with the literal string "REDACTED". For each submitted header
+  # still set to the sentinel we swap in the existing stored value (dropping it if
+  # there is nothing to restore). Headers the user actually changed pass through.
+  defp unredact_headers(changeset, existing_config) do
+    with headers when not is_nil(headers) <- Ecto.Changeset.get_change(changeset, :headers),
+         existing_headers <-
+           Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{} do
+      restored =
+        headers
+        |> Enum.reduce(%{}, fn
+          {key, @redacted_value}, acc ->
+            replace_header_with_existing(acc, existing_headers, key)
+
+          {key, value}, acc ->
+            Map.put(acc, key, value)
+        end)
+
+      Ecto.Changeset.put_change(changeset, :headers, restored)
+    else
+      _ -> changeset
+    end
+  end
+
+  defp replace_header_with_existing(headers, existing_headers, key) do
+    case Map.get(existing_headers, key) do
+      nil -> headers
+      value -> Map.put(headers, key, value)
+    end
   end
 
   @impl Logflare.Backends.Adaptor
@@ -56,20 +96,40 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Ecto.Changeset.validate_inclusion(:http, ["http1", "http2"])
+    |> validate_no_ssrf()
+  end
+
+  @spec validate_no_ssrf(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  defp validate_no_ssrf(changeset) do
+    case Ecto.Changeset.get_field(changeset, :url) do
+      nil ->
+        changeset
+
+      url ->
+        host = URI.parse(url).host
+
+        case SSRF.safe_resolve(host) do
+          {:ok, _} -> changeset
+          {:error, reason} -> Ecto.Changeset.add_error(changeset, :url, reason, validation: :ssrf)
+        end
+    end
   end
 
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
-    config
-    |> Map.update(:headers, %{}, fn headers ->
-      for {key, value} <- headers, into: %{} do
-        if String.downcase(key) == "authorization" do
-          {key, "REDACTED"}
-        else
-          {key, value}
-        end
-      end
-    end)
+    Map.update(config, :headers, %{}, &redact_headers/1)
+  end
+
+  defp redact_headers(headers) do
+    for {key, value} <- headers, into: %{}, do: redact_header(key, value)
+  end
+
+  defp redact_header(key, value) do
+    if String.downcase(key) == "authorization" do
+      {key, @redacted_value}
+    else
+      {key, value}
+    end
   end
 
   @impl Logflare.Backends.Adaptor
@@ -112,6 +172,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   defmodule Client do
     @moduledoc false
     alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
+    alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
     use Tesla, docs: false
 
     defguardp is_possible_pool(value)
@@ -143,6 +204,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           Tesla.Middleware.Telemetry,
           Tesla.Middleware.JSON,
           if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
+          SSRFProtection,
           EgressTracer
         ]
         |> Enum.filter(& &1),

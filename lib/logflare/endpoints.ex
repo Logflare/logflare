@@ -4,6 +4,8 @@ defmodule Logflare.Endpoints do
   import Ecto.Query
   import Logflare.Utils.Guards
 
+  require Logger
+
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
@@ -172,17 +174,23 @@ defmodule Logflare.Endpoints do
         end)
 
       if should_kill_caches? do
-        # kill all caches
-        for pid <- Resolver.list_caches(endpoint) do
-          Utils.Tasks.async(fn ->
-            ResultsCache.invalidate(pid)
-          end)
-        end
-        |> Task.await_many(30_000)
+        kill_endpoint_caches(endpoint)
       end
 
       {:ok, endpoint}
     end
+  end
+
+  @spec kill_endpoint_caches(endpoint :: Query.t()) :: :ok
+  defp kill_endpoint_caches(endpoint) do
+    for pid <- Resolver.list_caches(endpoint) do
+      Utils.Tasks.async(fn ->
+        ResultsCache.invalidate(pid)
+      end)
+    end
+    |> Task.await_many(30_000)
+
+    :ok
   end
 
   @spec delete_query(Query.t()) :: {:ok, Query.t()} | {:error, any()}
@@ -338,29 +346,33 @@ defmodule Logflare.Endpoints do
             params,
             opts
           )
-          |> then(fn
-            {:ok, data} = result ->
-              measurements = %{
-                total_bytes_processed: Map.get(data, :total_bytes_processed, 0)
-              }
-
-              metadata =
-                Map.merge(endpoint_query.parsed_labels || %{}, %{
-                  "endpoint_id" => endpoint_query.id,
-                  "endpoint_uuid" => Utils.stringify(endpoint_query.token),
-                  "user_id" => endpoint_query.user_id
-                })
-
-              :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)
-
-              {result, %{}}
-
-            result ->
-              {result, %{}}
-          end)
+          |> emit_query_telemetry(endpoint_query)
         end
       )
     end
+  end
+
+  @spec emit_query_telemetry(result :: run_query_return(), endpoint_query :: Query.t()) ::
+          {run_query_return(), map()}
+  defp emit_query_telemetry({:ok, data} = result, endpoint_query) do
+    measurements = %{
+      total_bytes_processed: Map.get(data, :total_bytes_processed, 0)
+    }
+
+    metadata =
+      Map.merge(endpoint_query.parsed_labels || %{}, %{
+        "endpoint_id" => endpoint_query.id,
+        "endpoint_uuid" => Utils.stringify(endpoint_query.token),
+        "user_id" => endpoint_query.user_id
+      })
+
+    :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)
+
+    {result, %{}}
+  end
+
+  defp emit_query_telemetry(result, _endpoint_query) do
+    {result, %{}}
   end
 
   @doc """
@@ -559,18 +571,7 @@ defmodule Logflare.Endpoints do
     with {:ok, %Backend{} = backend} <- get_backend_for_query(endpoint_query),
          adaptor <- Backends.Adaptor.get_adaptor(backend) do
       # let the adaptor transform the query if needed
-      final_query =
-        if Backends.Adaptor.can_transform_query?(backend) do
-          transformation_context = build_transformation_context(backend)
-
-          case adaptor.transform_query(transformed_query, sql_language, transformation_context) do
-            {:ok, adapted_query} -> adapted_query
-            # fallback to original if transformation fails
-            {:error, _} -> transformed_query
-          end
-        else
-          transformed_query
-        end
+      final_query = maybe_transform_query(backend, adaptor, transformed_query, sql_language)
 
       # handle parameter mapping
       query_args =
@@ -598,6 +599,34 @@ defmodule Logflare.Endpoints do
         {:error, error} ->
           {:error, error}
       end
+    end
+  end
+
+  @spec maybe_transform_query(
+          backend :: Backend.t(),
+          adaptor :: module(),
+          transformed_query :: String.t(),
+          sql_language :: atom()
+        ) :: String.t()
+  defp maybe_transform_query(backend, adaptor, transformed_query, sql_language) do
+    if Backends.Adaptor.can_transform_query?(backend) do
+      transformation_context = build_transformation_context(backend)
+
+      case adaptor.transform_query(transformed_query, sql_language, transformation_context) do
+        {:ok, adapted_query} ->
+          adapted_query
+
+        {:error, reason} ->
+          Logger.warning("transform_query failed, falling back to pre-transform query",
+            reason: inspect(reason),
+            language: sql_language,
+            backend_id: backend.id
+          )
+
+          transformed_query
+      end
+    else
+      transformed_query
     end
   end
 

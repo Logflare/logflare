@@ -20,12 +20,6 @@ config :logflare, Logflare.Repo,
   queue_target: 5_000,
   port: 5432
 
-config :logger, :default_handler,
-  config: %{
-    sync_mode_qlen: 10_000,
-    drop_mode_qlen: 10_000
-  }
-
 config :logger,
   compile_time_purge_matching: [
     [level_lower_than: :info]

@@ -37,6 +37,19 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     GenServer.cast(pid, {:update, log_event, source})
   end
 
+  # Public for profiling: benchmarks can target the GenServer's pure schema
+  # planning work without measuring mailbox scheduling or BigQuery side effects.
+  @doc false
+  def plan_update(body, db_schema, state) do
+    schema = try_schema_update(body, db_schema)
+
+    if schema_needs_update?(db_schema, schema, state) do
+      {:update, schema}
+    else
+      :noop
+    end
+  end
+
   # GenServer callbacks
 
   def init(args) do
@@ -96,18 +109,18 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
         do: source_schema.bigquery_schema,
         else: SchemaBuilder.initial_table_schema()
 
-    schema = try_schema_update(body, db_schema)
+    case plan_update(body, db_schema, state) do
+      {:update, schema} ->
+        case patch_bigquery_table(state, schema) do
+          {:ok, _table_info} ->
+            handle_successful_patch(state, schema, db_schema)
 
-    if schema_needs_update?(db_schema, schema, state) do
-      case patch_bigquery_table(state, schema) do
-        {:ok, _table_info} ->
-          handle_successful_patch(state, schema, db_schema)
+          {:error, response} ->
+            handle_patch_error(body, state, response)
+        end
 
-        {:error, response} ->
-          handle_patch_error(body, state, response)
-      end
-    else
-      {:noreply, state}
+      :noop ->
+        {:noreply, state}
     end
   end
 
@@ -180,7 +193,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   defp count_fields(schema) do
     schema
-    |> BigQuery.SchemaUtils.to_typemap()
+    |> BigQuery.SchemaUtils.to_typemap(from: :bigquery_schema)
     |> BigQuery.SchemaUtils.flatten_typemap()
     |> Enum.count()
   end

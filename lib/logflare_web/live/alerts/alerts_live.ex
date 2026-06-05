@@ -1,5 +1,6 @@
 defmodule LogflareWeb.AlertsLive do
   @moduledoc false
+
   use LogflareWeb, :live_view
   use Phoenix.Component
 
@@ -12,7 +13,6 @@ defmodule LogflareWeb.AlertsLive do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
   alias Logflare.Repo
-  alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
   alias LogflareWeb.Utils
 
@@ -95,7 +95,6 @@ defmodule LogflareWeb.AlertsLive do
         |> assign(:future_jobs, Alerting.list_future_jobs(alert.id))
         |> assign(:past_jobs_page, paginate_past_jobs(alert.id, page_num))
         |> assign(:changeset, Alerting.change_alert_query(alert))
-        |> AuthLive.assign_context_by_resource(alert, user.email)
       else
         nil ->
           socket

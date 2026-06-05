@@ -182,5 +182,15 @@ defmodule Logflare.SourceSchemasTest do
                }
              } = SourceSchemas.format_schema(schema, :json_schema)
     end
+
+    test "json schema returns a valid empty result when bigquery_schema is non-TS data" do
+      schema = %SourceSchema{bigquery_schema: "not a TS struct"}
+
+      assert SourceSchemas.format_schema(schema, :json_schema) == %{
+               "$schema" => "https://json-schema.org/draft/2020-12/schema",
+               "properties" => %{},
+               "type" => "object"
+             }
+    end
   end
 end

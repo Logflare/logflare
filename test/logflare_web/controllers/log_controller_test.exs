@@ -1,6 +1,7 @@
 defmodule LogflareWeb.LogControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+  import ExUnit.CaptureLog
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.SingleTenant
   alias Logflare.Users
@@ -126,6 +127,45 @@ defmodule LogflareWeb.LogControllerTest do
       end)
     end
 
+    for {path, request_module, response_module} <- [
+          {:otel_metrics, ExportMetricsServiceRequest, ExportMetricsServiceResponse},
+          {:otel_traces, ExportTraceServiceRequest, ExportTraceServiceResponse},
+          {:otel_logs, ExportLogsServiceRequest, ExportLogsServiceResponse}
+        ] do
+      test "#{path} returns 200 (not 500) when validation rejects events", %{
+        conn: conn,
+        source: source,
+        user: user
+      } do
+        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source ->
+          {:error, ["Type error! Field `value` has an unexpected type."]}
+        end)
+
+        body =
+          case unquote(path) do
+            :otel_metrics -> TestUtilsGrpc.random_otel_metrics_request()
+            :otel_traces -> TestUtilsGrpc.random_export_service_request()
+            :otel_logs -> TestUtilsGrpc.random_otel_logs_request()
+          end
+          |> unquote(request_module).encode()
+
+        log =
+          capture_log(fn ->
+            conn =
+              conn
+              |> put_req_header("x-api-key", user.api_key)
+              |> put_req_header("x-source", Atom.to_string(source.token))
+              |> put_req_header("content-type", "application/x-protobuf")
+              |> post(Routes.log_path(conn, unquote(path)), body)
+
+            assert protobuf_response(conn, 200, unquote(response_module)) ==
+                     struct!(unquote(response_module), partial_success: nil)
+          end)
+
+        assert log =~ "OTLP ingest rejected"
+      end
+    end
+
     test ":otel_logs ingestion", %{conn: conn, source: source, user: user} do
       {_this, ref} = expect_webhook_with_body()
 
@@ -179,6 +219,183 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(Routes.log_path(conn, :otel_metrics), @valid)
 
       assert json_response(conn, 401)
+    end
+  end
+
+  # The syslog Plug.Parsers parser used to run before auth, so an
+  # unauthenticated POST with a malformed payload could write attacker-supplied
+  # content to application logs via Logger.error. Auth now runs ahead of body
+  # parsing on ingest pipelines, and parser error logs no longer include the
+  # raw body either.
+  describe "ingest auth runs before parsers" do
+    @attacker_marker "MALICIOUS_LOG_INJECTION_MARKER_2026"
+    @malformed_syslog "not a valid syslog message #{@attacker_marker}\n"
+    @malformed_ndjson "{not json #{@attacker_marker}\n"
+
+    test "unauthenticated /logs/logplex returns 401 without parsing the body", %{conn: conn} do
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/logplex-1")
+            |> post(~p"/logs/logplex", @malformed_syslog)
+
+          assert json_response(conn, 401)
+        end)
+
+      refute log =~ @attacker_marker
+      refute log =~ "Syslog message parsing error"
+    end
+
+    test "unauthenticated /logs/cloudflare returns 401 without parsing the body", %{conn: conn} do
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/x-ndjson")
+            |> post(~p"/logs/cloudflare", @malformed_ndjson)
+
+          assert json_response(conn, 401)
+        end)
+
+      refute log =~ @attacker_marker
+      refute log =~ "NDJSON parser error"
+    end
+
+    test "unauthenticated /v1/logs returns 401 without parsing the body", %{conn: conn} do
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/x-protobuf")
+            |> post(~p"/v1/logs", "garbage protobuf #{@attacker_marker}")
+
+          assert json_response(conn, 401)
+        end)
+
+      refute log =~ @attacker_marker
+    end
+
+    test "invalid api key on /logs/logplex 401s before parsing the body", %{conn: conn} do
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/logplex-1")
+            |> put_req_header("x-api-key", "this-key-is-not-valid")
+            |> post(~p"/logs/logplex", @malformed_syslog)
+
+          assert json_response(conn, 401)
+        end)
+
+      refute log =~ @attacker_marker
+      refute log =~ "Syslog message parsing error"
+    end
+
+    test "invalid api key on /logs/cloudflare 401s before parsing the body", %{conn: conn} do
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/x-ndjson")
+            |> put_req_header("x-api-key", "this-key-is-not-valid")
+            |> post(~p"/logs/cloudflare", @malformed_ndjson)
+
+          assert json_response(conn, 401)
+        end)
+
+      refute log =~ @attacker_marker
+      refute log =~ "NDJSON parser error"
+    end
+
+    test "invalid api key on /v1/logs 401s before parsing the body", %{conn: conn} do
+      log =
+        capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/x-protobuf")
+            |> put_req_header("x-api-key", "this-key-is-not-valid")
+            |> post(~p"/v1/logs", "garbage protobuf #{@attacker_marker}")
+
+          assert json_response(conn, 401)
+        end)
+
+      refute log =~ @attacker_marker
+    end
+
+    test "authenticated /logs/logplex with malformed body does not log raw content", %{conn: conn} do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      insert(:plan, name: "Free")
+
+      log =
+        capture_log(fn ->
+          conn
+          |> put_req_header("x-api-key", user.api_key)
+          |> put_req_header("content-type", "application/logplex-1")
+          |> post(~p"/logs/logplex?#{[source: source.token]}", @malformed_syslog)
+        end)
+
+      assert log =~ "Syslog message parsing error"
+      refute log =~ @attacker_marker
+    end
+
+    test "authenticated /logs/cloudflare with malformed body does not log raw content", %{
+      conn: conn
+    } do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      insert(:plan, name: "Free")
+
+      log =
+        capture_log(fn ->
+          conn
+          |> put_req_header("x-api-key", user.api_key)
+          |> put_req_header("content-type", "application/x-ndjson")
+          |> post(~p"/logs/cloudflare?#{[source: source.token]}", @malformed_ndjson)
+        end)
+
+      assert log =~ "NDJSON parser error"
+      refute log =~ @attacker_marker
+    end
+
+    test "authenticated /logs/logplex error log does not include ?source= query param",
+         %{conn: conn} do
+      user = insert(:user)
+      insert(:plan, name: "Free")
+
+      log =
+        capture_log(fn ->
+          conn
+          |> put_req_header("x-api-key", user.api_key)
+          |> put_req_header("content-type", "application/logplex-1")
+          |> post(~p"/logs/logplex?#{[source: @attacker_marker]}", @malformed_syslog)
+        end)
+
+      assert log =~ "Syslog message parsing error"
+      refute log =~ @attacker_marker
+    end
+  end
+
+  describe "pipeline with ?api_key= query auth" do
+    setup [:pipeline_setup, :warm_caches, :reject_context_functions]
+
+    test ":create ingestion authenticates via ?api_key=", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      expect_bq_insert()
+
+      conn =
+        post(
+          conn,
+          ~p"/logs?#{[source: source.token, api_key: user.api_key]}",
+          @valid
+        )
+
+      assert_logged_successfully(conn)
+      assert_eventually_received(:inserted)
     end
   end
 
@@ -290,6 +507,58 @@ defmodule LogflareWeb.LogControllerTest do
                "message" => "Logged!"
              }
 
+      assert_eventually_received(:inserted)
+    end
+
+    test ":elixir_logger ingestion with source_name in BERT body", %{conn: conn, source: source} do
+      expect_bq_insert()
+
+      body =
+        Bertex.encode(%{
+          "source_name" => source.name,
+          "batch" => [
+            %{
+              "level" => "info",
+              "message" => "bert body source_name test",
+              "metadata" => %{},
+              "timestamp" => DateTime.to_iso8601(DateTime.utc_now())
+            }
+          ]
+        })
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/bert")
+        |> post(~p"/logs/elixir/logger", body)
+
+      assert_logged_successfully(conn)
+      assert_eventually_received(:inserted)
+    end
+
+    test ":create ingestion with source token in JSON body", %{conn: conn, source: source} do
+      expect_bq_insert()
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post(
+          ~p"/logs",
+          Jason.encode!(%{"source" => Atom.to_string(source.token), "event_message" => "x"})
+        )
+
+      assert_logged_successfully(conn)
+      assert_eventually_received(:inserted)
+    end
+
+    test ":create ingestion with source_name in JSON body", %{conn: conn, source: source} do
+      expect_bq_insert()
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post(~p"/logs", Jason.encode!(%{"source_name" => source.name, "event_message" => "x"}))
+
+      assert_logged_successfully(conn)
       assert_eventually_received(:inserted)
     end
   end

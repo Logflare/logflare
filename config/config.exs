@@ -21,6 +21,11 @@ config :logflare,
 
 config :logflare, Logflare.Alerting, enabled: true
 
+# Schema type verification on the ingest path. The verification logic was
+# silently broken for years (see #3489) and is being re-enabled gradually:
+# disabled by default until validated in production.
+config :logflare, Logflare.Logs.Validators.BigQuerySchemaChange, enabled: false
+
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
 config :logflare, :postgres_backend_adapter, pool_size: 3
@@ -76,6 +81,13 @@ config :logger,
   handle_otp_reports: true,
   handle_sasl_reports: false,
   level: :info
+
+config :logger, :default_handler,
+  config: %{
+    sync_mode_qlen: 10_000,
+    drop_mode_qlen: 10_000,
+    flush_qlen: 20_000
+  }
 
 config :logger_json, :backend,
   metadata: :all,

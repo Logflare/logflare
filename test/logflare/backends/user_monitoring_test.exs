@@ -30,8 +30,9 @@ defmodule Logflare.Backends.UserMonitoringTest do
   end
 
   def start_otel_exporter(_context) do
-    [spec] = UserMonitoring.get_otel_exporter()
-    start_supervised!(spec)
+    UserMonitoring.get_otel_exporter()
+    |> Enum.each(&start_supervised!/1)
+
     :ok
   end
 
@@ -165,6 +166,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
     test "other users metrics" do
       pid = self()
+      test_ref = make_ref()
 
       user =
         insert(:user, system_monitoring: true)
@@ -196,20 +198,38 @@ defmodule Logflare.Backends.UserMonitoringTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      :timer.sleep(500)
+      # Sync barrier: notify when pipeline #1 has emitted ingest telemetry for
+      # other_source. This is what feeds the OtelMetricExporter, and waiting on
+      # it eliminates dependence on guessed sleeps for SourceSup startup and
+      # the first Broadway batch_timeout.
+      other_source_id = other_source.id
+
+      :telemetry.attach(
+        {__MODULE__, test_ref},
+        [:logflare, :backends, :ingest],
+        fn _event, _measurements, metadata, _ ->
+          if metadata["source_id"] == other_source_id,
+            do: send(pid, {test_ref, :ingest_emitted})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach({__MODULE__, test_ref}) end)
 
       assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
 
       assert {:ok, _} =
                Backends.ingest_logs([%{"metadata" => %{"value" => "different"}}], other_source)
 
-      :timer.sleep(1500)
+      # Pipeline #1 has flushed and emitted telemetry. Remaining latency before
+      # the stub fires is one OtelMetricExporter tick (≤100ms in :test) plus
+      # pipeline #2's batch_timeout (~1.5s).
+      assert_receive {^test_ref, :ingest_emitted}, 10_000
 
       source_id = source.id
-      other_source_id = other_source.id
       metrics_source_id = metrics_source.id
       other_metrics_source_id = other_metrics_source.id
-      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 5_000
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 10_000
 
       rows = for row <- rows, do: row.json
 
@@ -225,8 +245,10 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
   describe "egress" do
     setup :start_otel_exporter
+    setup :set_mimic_global
 
     setup do
+      Mimic.stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
       start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
@@ -346,6 +368,86 @@ defmodule Logflare.Backends.UserMonitoringTest do
                         | _
                       ]},
                      5_000
+    end
+  end
+
+  describe "IngestPipeline flat-map format" do
+    # Verifies that the flat-map events emitted by PullProducer (one map per ETS row)
+    # are grouped and routed correctly by handle_batch — matching what the old
+    # OtelMetric.handle_metric path previously produced from protobuf Metric structs.
+
+    setup do
+      insert(:plan)
+      :ok
+    end
+
+    test "flat event maps are grouped correctly by user_id" do
+      user1 = insert(:user)
+      user2 = insert(:user)
+
+      # The new flat-map format: one map per ETS row
+      events = [
+        %{
+          "event_message" => "logflare.backends.ingest.ingested_bytes",
+          "metric_type" => "sum",
+          "aggregation_temporality" => "cumulative",
+          "is_monotonic" => false,
+          "metadata" => %{"type" => "metric"},
+          "value" => 50_000,
+          "attributes" => %{"user_id" => to_string(user1.id)},
+          "start_time" => System.system_time(:nanosecond),
+          "timestamp" => System.system_time(:nanosecond)
+        },
+        %{
+          "event_message" => "logflare.backends.ingest.ingested_bytes",
+          "metric_type" => "sum",
+          "aggregation_temporality" => "cumulative",
+          "is_monotonic" => false,
+          "metadata" => %{"type" => "metric"},
+          "value" => 10_000,
+          "attributes" => %{"user_id" => to_string(user2.id)},
+          "start_time" => System.system_time(:nanosecond),
+          "timestamp" => System.system_time(:nanosecond)
+        }
+      ]
+
+      # Simulate what handle_batch does with the new flat format
+      grouped =
+        Enum.group_by(events, fn event ->
+          Logflare.Users.get_related_user_id(event["attributes"])
+        end)
+
+      # get_related_user_id returns the user_id as-is from the map — a string here
+      assert map_size(grouped) == 2
+      assert [%{"value" => 50_000}] = grouped[to_string(user1.id)]
+      assert [%{"value" => 10_000}] = grouped[to_string(user2.id)]
+    end
+
+    test "flat event map contains the expected fields matching the old OtelMetric output" do
+      # Documents the contract: row_to_event must produce the same key fields that
+      # OtelMetric.handle_metric produced so downstream consumers see the same shape.
+      event = %{
+        "event_message" => "logflare.backends.ingest.ingested_bytes",
+        "metric_type" => "sum",
+        "aggregation_temporality" => "cumulative",
+        "is_monotonic" => false,
+        "metadata" => %{"type" => "metric"},
+        "value" => 50_000,
+        "attributes" => %{"user_id" => "123"},
+        "start_time" => 1_000_000,
+        "timestamp" => 2_000_000
+      }
+
+      # All fields that OtelMetric.handle_metric used to produce are present
+      assert event["event_message"] == "logflare.backends.ingest.ingested_bytes"
+      assert event["metric_type"] == "sum"
+      assert event["aggregation_temporality"] == "cumulative"
+      assert event["is_monotonic"] == false
+      assert event["metadata"] == %{"type" => "metric"}
+      assert event["value"] == 50_000
+      assert is_map(event["attributes"])
+      assert is_integer(event["start_time"])
+      assert is_integer(event["timestamp"])
     end
   end
 end

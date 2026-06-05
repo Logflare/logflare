@@ -5,8 +5,9 @@ defmodule LogflareWeb.QueryLiveTest do
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
+    team = insert(:team, user: user)
     conn = login_user(conn, user)
-    {:ok, user: user, conn: conn}
+    {:ok, user: user, team: team, conn: conn}
   end
 
   describe "query page" do
@@ -18,7 +19,7 @@ defmodule LogflareWeb.QueryLiveTest do
         {:ok, TestUtils.gen_bq_response([%{"ts" => "some-data"}])}
       end)
 
-      {:ok, view, _html} = live(conn, "/query")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
 
       # link to show
       view
@@ -26,9 +27,7 @@ defmodule LogflareWeb.QueryLiveTest do
         value: "select current_timestamp() as ts"
       })
 
-      view
-      |> element("form")
-      |> render_submit(%{}) =~ "Ran query successfully"
+      assert submit_query_form(view, conn) =~ "Ran query successfully"
 
       assert view |> render() =~ ~r/1 .+ processed/
 
@@ -42,7 +41,7 @@ defmodule LogflareWeb.QueryLiveTest do
         {:ok, TestUtils.gen_bq_response([%{"ts" => "some-data"}])}
       end)
 
-      {:ok, view, _html} = live(conn, "/query")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
 
       query = """
       with my_query as (
@@ -84,16 +83,14 @@ defmodule LogflareWeb.QueryLiveTest do
         value: query
       }) =~ "my_test_query"
 
-      assert view
-             |> element("form")
-             |> render_submit(%{}) =~ "Ran query successfully"
+      assert submit_query_form(view, conn) =~ "Ran query successfully"
 
       assert_patch(view) =~ ~r/my_test_query/
       assert render(view) =~ "some-data"
     end
 
     test "parser error", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/query")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
 
       assert view
              |> render_hook("parse-query", %{
@@ -119,13 +116,10 @@ defmodule LogflareWeb.QueryLiveTest do
 
       conn = login_user(conn, team_owner, team_user)
 
-      query = URI.encode("SELECT id, timestamp FROM `team_source`")
-      {:ok, view, _html} = live(conn, "/query?q=#{query}")
+      query = "SELECT id, timestamp FROM `team_source`"
+      {:ok, view, _html} = live(conn, ~p"/query?#{%{q: query, t: team.id}}")
 
-      html =
-        view
-        |> element("form")
-        |> render_submit(%{})
+      html = submit_query_form(view, conn)
 
       assert html =~ "Ran query successfully",
              "Expected successful query execution for team member accessing team source via URL. Got: #{String.slice(html, 0, 2000)}"
@@ -145,45 +139,111 @@ defmodule LogflareWeb.QueryLiveTest do
 
       conn = login_user(conn, team_owner, team_user)
 
-      {:ok, view, _html} = live(conn, "/query")
+      {:ok, view, _html} = live(conn, "/query?t=#{team.id}")
 
       view
       |> render_hook("parse-query", %{
         value: "SELECT id, timestamp FROM `form_source`"
       })
 
-      html =
-        view
-        |> element("form")
-        |> render_submit(%{})
+      html = submit_query_form(view, conn)
 
       assert html =~ "Ran query successfully",
              "Expected successful query execution for team member submitting query via form. Got: #{String.slice(html, 0, 2000)}"
     end
 
-    test "preserves team context when `t` param is provided", %{conn: conn, user: user} do
-      team = insert(:team, user: user)
+    test "switches team context when query references other team source", %{
+      conn: conn,
+      user: user
+    } do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{}])}
+      end)
+
+      team_owner = insert(:user)
+      other_team = insert(:team, user: team_owner)
+      insert(:team_user, email: user.email, team: other_team)
+      insert(:source, user: team_owner, name: "other_team_source")
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
+
+      view
+      |> render_hook("parse-query", %{
+        value: "SELECT id, timestamp FROM `other_team_source`"
+      })
+
+      html = submit_query_form(view, conn)
+
+      assert html =~ "Ran query successfully"
+      assert_patch(view) =~ ~s(t=#{other_team.id})
+    end
+
+    test "preserves team context when `t` param matches query source team", %{
+      conn: conn,
+      user: user
+    } do
+      user = Logflare.Repo.preload(user, :team)
       insert(:source, user: user, name: "my_source")
 
       query = URI.encode("SELECT id, timestamp FROM `my_source`")
 
-      {:ok, _view, html} = live(conn, "/query?q=#{query}&t=#{team.id}")
+      {:ok, _view, html} = live(conn, "/query?q=#{query}&t=#{user.team.id}")
 
       assert html =~ "my_source"
     end
 
+    test "keeps requested team when t param is present and source name is ambiguous",
+         %{
+           conn: conn,
+           user: user,
+           team: team
+         } do
+      insert(:source, user: user, name: "canonical_source")
+
+      team_owner = insert(:user)
+      other_team = insert(:team, user: team_owner)
+      insert(:team_user, email: user.email, team: other_team)
+      insert(:source, user: team_owner, name: "canonical_source")
+
+      query = "SELECT id, timestamp FROM `canonical_source`"
+
+      assert {:ok, view, html} = live(conn, ~p"/query?#{%{q: query, t: team.id}}")
+
+      assert html =~ ~s(/dashboard?t=#{team.id})
+      assert render(view) =~ "canonical_source"
+    end
+
+    test "updates team param from uniquely matched source in query URL", %{
+      conn: conn,
+      user: user,
+      team: team
+    } do
+      team_owner = insert(:user)
+      other_team = insert(:team, user: team_owner)
+      insert(:team_user, email: user.email, team: other_team)
+      insert(:source, user: team_owner, name: "canonical_source")
+
+      query = "SELECT id, timestamp FROM `canonical_source`"
+
+      assert {:error, {:live_redirect, %{to: patch}}} =
+               live(conn, ~p"/query?#{%{q: query}}")
+
+      params = URI.parse(patch).query |> URI.decode_query()
+
+      assert params["t"] == to_string(other_team.id)
+      assert params["q"] == query
+    end
+
     test "shows error when running query with non-existent source", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/query")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
 
       view
       |> render_hook("parse-query", %{
         value: "SELECT id, timestamp, metadata FROM `nonexistent_source`"
       })
 
-      html =
-        view
-        |> element("form")
-        |> render_submit(%{})
+      html = submit_query_form(view, conn)
 
       assert html =~ "can&#39;t find source nonexistent_source",
              "Expected error 'can't find source nonexistent_source' after running query. Got: #{String.slice(html, 0, 2000)}"
@@ -194,16 +254,13 @@ defmodule LogflareWeb.QueryLiveTest do
     TestUtils.setup_single_tenant(backend_type: :postgres)
 
     test "run a query against postgres", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/query")
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
 
       render_hook(view, "parse-query", %{
         value: "select 42 as answer, 'and some other expected string'"
       })
 
-      html =
-        view
-        |> element("form")
-        |> render_submit(%{})
+      html = submit_query_form(view, conn)
 
       assert html =~ "Ran query successfully"
       assert html =~ "answer"
@@ -211,6 +268,17 @@ defmodule LogflareWeb.QueryLiveTest do
       assert html =~ "and some other expected string"
 
       refute html =~ "bytes processed"
+    end
+  end
+
+  defp submit_query_form(view, conn) do
+    case view |> element("form") |> render_submit(%{}) do
+      {:error, {:live_redirect, _}} = result ->
+        {:ok, _view, html} = result |> follow_redirect(conn)
+        html
+
+      html when is_binary(html) ->
+        html
     end
   end
 end

@@ -2,6 +2,7 @@ defmodule Logflare.Teams.TeamContextTest do
   use Logflare.DataCase
 
   alias Logflare.Teams.TeamContext
+  alias LogflareWeb.Source.SearchLV
 
   setup do
     user = insert(:user)
@@ -158,6 +159,75 @@ defmodule Logflare.Teams.TeamContextTest do
     test "resolve with forbidden team_id returns error", %{user: user} do
       forbidden_team = insert(:team)
       assert {:error, :not_authorized} = TeamContext.resolve(forbidden_team.id, user.email)
+    end
+  end
+
+  describe "resource_team_id_query/3" do
+    test "returns a source team id query for SearchLV and an accessible source" do
+      user = insert(:user)
+      team = insert(:team, user: user)
+      source = insert(:source, user: user)
+
+      query = TeamContext.resource_team_id_query(SearchLV, %{"source_id" => source.id}, user)
+
+      assert Repo.one(query) == team.id
+    end
+
+    test "returns accessible QueryLive source team id candidates by source name" do
+      user = insert(:user)
+      team = insert(:team, user: user)
+      insert(:source, user: user, name: "query_source")
+
+      query =
+        TeamContext.resource_team_id_query(
+          LogflareWeb.QueryLive,
+          %{"q" => "SELECT id FROM `query_source`"},
+          user
+        )
+
+      assert Repo.all(query) == [team.id]
+    end
+
+    test "returns duplicate QueryLive source team id candidates for ambiguous source names" do
+      user = insert(:user)
+      home_team = insert(:team, user: user)
+      insert(:source, user: user, name: "shared_source")
+
+      other_user = insert(:user)
+      other_team = insert(:team, user: other_user)
+      insert(:team_user, email: user.email, team: other_team)
+      insert(:source, user: other_user, name: "shared_source")
+
+      query =
+        TeamContext.resource_team_id_query(
+          LogflareWeb.QueryLive,
+          %{"q" => "SELECT id FROM `shared_source`"},
+          user
+        )
+
+      assert query |> Repo.all() |> Enum.sort() == Enum.sort([home_team.id, other_team.id])
+    end
+
+    test "returns nil for QueryLive with an invalid source query" do
+      user = insert(:user)
+
+      assert TeamContext.resource_team_id_query(
+               LogflareWeb.QueryLive,
+               %{"q" => "select current_datetime() order-by invalid"},
+               user
+             ) == nil
+    end
+
+    test "returns nil for SearchLV without source params" do
+      user = insert(:user)
+
+      assert TeamContext.resource_team_id_query(SearchLV, %{}, user) == nil
+    end
+
+    test "returns nil for unsupported views" do
+      user = insert(:user)
+
+      assert TeamContext.resource_team_id_query(LogflareWeb.DashboardLive, %{}, user) == nil
     end
   end
 end

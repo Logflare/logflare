@@ -94,12 +94,19 @@ defmodule Logflare.Telemetry do
 
     database_metrics = [
       distribution("logflare.repo.query.total_time", unit: {:native, :millisecond}),
-      # TODO: decode_time is `nil` in some of the ecto queries
-      # In most telemetry adapters this is fine, but it causes issues in OtelMetricExporter
-      # distribution("logflare.repo.query.decode_time", unit: {:native, :millisecond}),
+      # decode_time and queue_time/idle_time can be nil for certain query types
+      # (e.g. Oban internal queries that bypass the pool). OtelMetricExporter crashes on
+      # round(nil) when converting native time units, detaching the whole event handler.
+      # Default nil to 0: semantically correct (nil queue_time = no pool wait).
       distribution("logflare.repo.query.query_time", unit: {:native, :millisecond}),
-      distribution("logflare.repo.query.queue_time", unit: {:native, :millisecond}),
-      distribution("logflare.repo.query.idle_time", unit: {:native, :millisecond})
+      distribution("logflare.repo.query.queue_time",
+        measurement: fn m -> m[:queue_time] || 0 end,
+        unit: {:native, :millisecond}
+      ),
+      distribution("logflare.repo.query.idle_time",
+        measurement: fn m -> m[:idle_time] || 0 end,
+        unit: {:native, :millisecond}
+      )
     ]
 
     vm_metrics = [
@@ -174,17 +181,34 @@ defmodule Logflare.Telemetry do
         description: "Sum of batch sizes for broadway pipeline by backend type"
       ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
-      counter("logflare.logs.ingest_logs.drop",
-        description: "Ingest drops"
+      sum("logflare.logs.ingest_logs.drop_lql",
+        event_name: [:logflare, :logs, :ingest_logs, :drop_lql],
+        measurement: :count,
+        description: "Sum of events dropped (LQL rule match)"
       ),
-      counter("logflare.logs.ingest_logs.rejected",
-        description: "Ingest rejects"
+      sum("logflare.logs.ingest_logs.drop_stale",
+        event_name: [:logflare, :logs, :ingest_logs, :drop_stale],
+        measurement: :count,
+        description: "Sum of events dropped (timestamp older than 72h)"
       ),
-      counter("logflare.logs.ingest_logs.buffer_full",
-        description: "Ingest buffer fulls"
+      sum("logflare.logs.ingest_logs.drop_future",
+        event_name: [:logflare, :logs, :ingest_logs, :drop_future],
+        measurement: :count,
+        description: "Sum of events dropped (timestamp more than 1h in the future)"
+      ),
+      sum("logflare.logs.ingest_logs.rejected",
+        event_name: [:logflare, :logs, :ingest_logs, :rejected],
+        measurement: :count,
+        description: "Sum of events rejected (validation/pipeline error)"
       ),
       counter("logflare.rate_limiter.rejected",
         description: "Rate limited API hits"
+      ),
+      counter("logflare.ingest.requests.buffer_full",
+        event_name: [:logflare, :ingest, :requests, :buffer_full],
+        measurement: :count,
+        description:
+          "Ingest requests rejected (429) — pending buffer full (per request, not per event)"
       ),
       last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
       distribution("logflare.backends.dynamic_pipeline.pipeline_count"),

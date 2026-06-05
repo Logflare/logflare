@@ -1,9 +1,10 @@
 defmodule LogflareWeb.BackendsLive do
   @moduledoc false
+
   use LogflareWeb, :live_view
 
   import LogflareWeb.Backends.Components
-  import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
+  import LogflareWeb.Utils, only: [stringify_changeset_errors: 1, with_team_param: 2]
 
   alias Logflare.Backends
   alias Logflare.Rules
@@ -79,7 +80,7 @@ defmodule LogflareWeb.BackendsLive do
           |> refresh_backend(backend.id)
           |> refresh_backends()
           |> put_flash(:info, "Successfully updated backend")
-          |> push_patch(to: ~p"/backends/#{backend.id}")
+          |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
 
         {:error, changeset} ->
           message = stringify_changeset_errors(changeset)
@@ -103,7 +104,7 @@ defmodule LogflareWeb.BackendsLive do
           |> assign(:show_rule_form?, false)
           |> assign(:backends, [backend | socket.assigns.backends])
           |> put_flash(:info, "Successfully created backend")
-          |> push_patch(to: ~p"/backends/#{backend.id}")
+          |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
 
         {:error, changeset} ->
           message = stringify_changeset_errors(changeset)
@@ -140,28 +141,28 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, assign(socket, form_type: type)}
   end
 
-  def handle_event("test_connection", _params, socket) do
-    status = socket.assigns.connection_status
-
-    socket =
-      if status && status.loading do
-        socket
-      else
-        backend = socket.assigns.backend
-
-        assign_async(
-          socket,
-          :connection_status,
-          fn ->
-            with :ok <- Backends.test_connection(backend) do
-              {:ok, %{connection_status: :ok}}
-            end
-          end,
-          reset: true
-        )
-      end
-
+  def handle_event(
+        "test_connection",
+        _params,
+        %{assigns: %{connection_status: %{loading: true}}} = socket
+      ) do
     {:noreply, socket}
+  end
+
+  def handle_event("test_connection", _params, socket) do
+    backend = socket.assigns.backend
+
+    {:noreply,
+     assign_async(
+       socket,
+       :connection_status,
+       fn ->
+         with :ok <- Backends.test_connection(backend) do
+           {:ok, %{connection_status: :ok}}
+         end
+       end,
+       reset: true
+     )}
   end
 
   def handle_event("toggle_default_ingest_form", _params, socket) do
@@ -528,7 +529,7 @@ defmodule LogflareWeb.BackendsLive do
         socket
         |> put_flash(:info, "Successfully deleted backend of type #{backend.type}")
         |> refresh_backends()
-        |> push_patch(to: ~p"/backends")
+        |> push_patch(to: with_team_param(~p"/backends", socket.assigns.team))
 
       {:noreply, socket}
     else

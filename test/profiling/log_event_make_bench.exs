@@ -2,15 +2,18 @@
 #
 # Usage: MIX_ENV=test mix run test/profiling/log_event_make_bench.exs
 #
-# Env (snapshot tooling):
-#   SAVE_SNAPSHOT=1 — append this run's results to log_event_make_bench.history.exs
-#   LABEL="..."     — optional label for the new entry (e.g., "post X rewrite")
-#   MACHINE="..."   — optional machine identifier so cross-machine entries can be filtered
+# Env:
+#   SAVE_SNAPSHOT=1     — append this run's results to log_event_make_bench.history.exs
+#   LABEL="..."         — optional label for the new entry (e.g., "post X rewrite")
+#   MACHINE="..."       — optional machine identifier so cross-machine entries can be filtered
+#   PROFILE=1           — run :tprof against each scenario after the benchmark (Benchee profile_after)
+#   TPROF_TYPE=time     — :tprof type when PROFILE=1 (time | calls | memory; default time)
 #
 # Every run prints a delta table vs the most-recent entry in the history file
 # (if one exists). The history file is the source of truth for trend tracking.
 
 alias Logflare.LogEvent
+alias Logflare.Profiling
 alias Logflare.Sources.Cache
 
 import Logflare.Factory
@@ -72,7 +75,12 @@ otel_trace_params = %{
   "trace_id" => "f9918d38f5d1cb74ec5656b9a315e5f6"
 }
 
-# Edge log payload (~80 leaf values, 4-5 levels deep)
+# Edge log payload (~80 leaf values, 4-5 levels deep).
+#
+# NOTE: the `cf` subtree (botManagement + ja4Signals + tlsClientAuth) overstates
+# the current production shape — those subtrees have been trimmed upstream. We
+# keep the original shape here so existing history entries remain comparable.
+# When refreshing baselines, trim cf to match prod and reseed the history file.
 edge_log_params = %{
   "event_message" =>
     "POST | 200 | 3.254.227.51 | 9ca90d4f3f7cc99e | https://example.supabase.co/rest/v1/calls",
@@ -243,6 +251,14 @@ edge_with_all =
     transform_drop_fields: edge_drop_config
   )
 
+profile_after =
+  if System.get_env("PROFILE") == "1" do
+    type = String.to_existing_atom(System.get_env("TPROF_TYPE") || "time")
+    {:tprof, type: type, warmup: 0, sort: :per_call}
+  else
+    false
+  end
+
 suite =
   Benchee.run(
     %{
@@ -286,120 +302,9 @@ suite =
     time: 5,
     warmup: 2,
     memory_time: 3,
-    reduction_time: 3
+    reduction_time: 3,
+    profile_after: profile_after
   )
-
-# --- Snapshot capture ---
-
-results =
-  for s <- suite.scenarios, into: %{} do
-    stats = s.run_time_data.statistics
-    mem = s.memory_usage_data.statistics
-    reds = s.reductions_data.statistics
-
-    {s.name,
-     %{
-       ips: round(stats.ips),
-       wall_avg_us: Float.round(stats.average / 1_000, 2),
-       wall_median_us: Float.round(stats.median / 1_000, 2),
-       wall_p99_us: Float.round((stats.percentiles[99] || 0) / 1_000, 2),
-       memory_avg_bytes: round(mem.average),
-       reductions_avg: round(reds.average)
-     }}
-  end
-
-git_sha =
-  case System.cmd("git", ["rev-parse", "--short=9", "HEAD"], stderr_to_stdout: true) do
-    {sha, 0} -> String.trim(sha)
-    _ -> "unknown"
-  end
-
-new_entry = %{
-  meta: %{
-    captured_at: DateTime.utc_now() |> DateTime.to_iso8601(),
-    git_sha: git_sha,
-    label: System.get_env("LABEL"),
-    machine: System.get_env("MACHINE")
-  },
-  results: results
-}
 
 history_path = Path.expand("log_event_make_bench.history.exs", __DIR__)
-
-history =
-  if File.exists?(history_path) do
-    {history, _} = Code.eval_file(history_path)
-    history
-  else
-    []
-  end
-
-# --- Delta print ---
-
-fmt_pct = fn old, new ->
-  cond do
-    old == 0 and new == 0 ->
-      "0.0%"
-
-    old == 0 ->
-      "+inf%"
-
-    true ->
-      pct = Float.round((new - old) / old * 100, 1)
-      if pct >= 0, do: "+#{pct}%", else: "#{pct}%"
-  end
-end
-
-fmt_bytes = fn b ->
-  if b >= 1_048_576,
-    do: "#{Float.round(b / 1_048_576, 2)} MB",
-    else: "#{Float.round(b / 1024, 1)} KB"
-end
-
-fmt_count = fn n ->
-  if n >= 1000, do: "#{Float.round(n / 1000, 1)}K", else: "#{n}"
-end
-
-case history do
-  [latest | _] ->
-    label = latest.meta[:label] || latest.meta.captured_at
-    IO.puts("\nDelta vs #{latest.meta.git_sha} (#{label}):")
-
-    for {fixture, new_stats} <- Enum.sort(results) do
-      case latest.results[fixture] do
-        nil ->
-          IO.puts("  #{fixture}: no baseline in latest snapshot")
-
-        old ->
-          IO.puts("  #{fixture}")
-
-          IO.puts(
-            "    wall: #{old.wall_median_us} → #{new_stats.wall_median_us} µs  (#{fmt_pct.(old.wall_median_us, new_stats.wall_median_us)})"
-          )
-
-          IO.puts(
-            "    mem:  #{fmt_bytes.(old.memory_avg_bytes)} → #{fmt_bytes.(new_stats.memory_avg_bytes)}  (#{fmt_pct.(old.memory_avg_bytes, new_stats.memory_avg_bytes)})"
-          )
-
-          IO.puts(
-            "    reds: #{fmt_count.(old.reductions_avg)} → #{fmt_count.(new_stats.reductions_avg)}  (#{fmt_pct.(old.reductions_avg, new_stats.reductions_avg)})"
-          )
-      end
-    end
-
-  [] ->
-    IO.puts("\nNo history yet — run with SAVE_SNAPSHOT=1 to seed.")
-end
-
-# --- Save if requested ---
-
-if System.get_env("SAVE_SNAPSHOT") == "1" do
-  new_history = [new_entry | history]
-
-  File.write!(
-    history_path,
-    inspect(new_history, pretty: true, limit: :infinity, sort_maps: true) <> "\n"
-  )
-
-  IO.puts("\nSaved snapshot (#{git_sha}) to #{history_path}")
-end
+Profiling.track(suite, history_path)
