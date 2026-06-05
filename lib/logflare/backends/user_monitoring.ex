@@ -38,10 +38,10 @@ defmodule Logflare.Backends.UserMonitoring do
   def get_otel_exporter do
     env = Application.get_env(:logflare, :env)
 
-    pull_interval =
+    {pull_interval, export_period} =
       case env do
-        :test -> 100
-        _ -> 1_000
+        :test -> {100, 100}
+        _ -> {10_000, :timer.minutes(8) + :rand.uniform(60_000 * 2)}
       end
 
     exporter_spec =
@@ -50,6 +50,7 @@ defmodule Logflare.Backends.UserMonitoring do
          name: @store_name,
          metrics: metrics(),
          pull_mode: true,
+         export_period: export_period,
          extract_tags: &__MODULE__.extract_tags/2,
          hibernate_after: 5_000,
          spawn_opt: [fullsweep_after: 10_000]
