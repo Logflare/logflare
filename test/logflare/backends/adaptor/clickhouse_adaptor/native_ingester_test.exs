@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool
 
   setup :set_mimic_global
@@ -299,6 +300,57 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       assert_received :attempt
       assert_received :attempt
       refute_received :attempt
+    end
+  end
+
+  describe "opts passthrough" do
+    test "passes the provided opts through to the connection query", %{
+      source: source,
+      backend: backend
+    } do
+      test_pid = self()
+
+      Mimic.stub(Connection, :send_query, fn _conn, _sql, opts ->
+        send(test_pid, {:captured_opts, opts})
+        {:error, :stop}
+      end)
+
+      Mimic.expect(Pool, :checkout, fn _backend, fun ->
+        fun.(%{database: backend.config.database})
+        {:error, :stop}
+      end)
+
+      events = [build(:log_event, source: source)]
+
+      opts = [
+        async_insert: 1,
+        wait_for_async_insert: 1,
+        async_insert_busy_timeout_max_ms: 3_000
+      ]
+
+      NativeIngester.insert(backend, "some_table", events, :log, opts)
+
+      assert_received {:captured_opts, ^opts}
+    end
+
+    test "passes empty opts by default", %{source: source, backend: backend} do
+      test_pid = self()
+
+      Mimic.stub(Connection, :send_query, fn _conn, _sql, opts ->
+        send(test_pid, {:captured_opts, opts})
+        {:error, :stop}
+      end)
+
+      Mimic.expect(Pool, :checkout, fn _backend, fun ->
+        fun.(%{database: backend.config.database})
+        {:error, :stop}
+      end)
+
+      events = [build(:log_event, source: source)]
+
+      NativeIngester.insert(backend, "some_table", events, :log)
+
+      assert_received {:captured_opts, []}
     end
   end
 end

@@ -1,6 +1,64 @@
 [
   %{
     meta: %{
+      captured_at: "2026-06-02T13:02:23.013962Z",
+      git_sha: "14d2094d0",
+      label: nil,
+      machine: "Apple M2"
+    },
+    results: %{
+      "noop / edge log" => %{
+        ips: 34_180,
+        memory_avg_bytes: 36_576,
+        reductions_avg: 2921,
+        wall_avg_us: 29.26,
+        wall_median_us: 26.58,
+        wall_p99_us: 41.92
+      },
+      "noop / lists" => %{
+        ips: 120_619,
+        memory_avg_bytes: 13_672,
+        reductions_avg: 1331,
+        wall_avg_us: 8.29,
+        wall_median_us: 7.42,
+        wall_p99_us: 22.13
+      },
+      "noop / scalars" => %{
+        ips: 83_208,
+        memory_avg_bytes: 17_640,
+        reductions_avg: 1539,
+        wall_avg_us: 12.02,
+        wall_median_us: 10.54,
+        wall_p99_us: 24.04
+      },
+      "update / edge log" => %{
+        ips: 29_910,
+        memory_avg_bytes: 41_648,
+        reductions_avg: 3204,
+        wall_avg_us: 33.43,
+        wall_median_us: 32.08,
+        wall_p99_us: 46.04
+      },
+      "update / lists" => %{
+        ips: 109_082,
+        memory_avg_bytes: 14_872,
+        reductions_avg: 1427,
+        wall_avg_us: 9.17,
+        wall_median_us: 8.17,
+        wall_p99_us: 21.33
+      },
+      "update / scalars" => %{
+        ips: 75_031,
+        memory_avg_bytes: 18_896,
+        reductions_avg: 1583,
+        wall_avg_us: 13.33,
+        wall_median_us: 11.83,
+        wall_p99_us: 27.42
+      }
+    }
+  },
+  %{
+    meta: %{
       captured_at: "2026-05-29T02:32:23.449726Z",
       git_sha: "7b2d6c250",
       label: "main-plan-update",

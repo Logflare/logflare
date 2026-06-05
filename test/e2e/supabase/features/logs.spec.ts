@@ -253,11 +253,15 @@ test.beforeAll(async ({ request, browserName }) => {
   await supabase.functions.invoke(`function_${uniqueId}`)
   await supabase.functions.invoke('hello')
 
-  // Realtime
+  // Realtime: the "Billing metrics" log we assert on is emitted by realtime's
+  // PromEx tenant poller (every ~5s) but ONLY while a tenant has a live
+  // connection. A short-lived 2s subscription almost never overlaps a poll
+  // tick, so it produced zero emissions and the realtime_logs wait below timed
+  // out. Keep the channel subscribed through the ingestion polling instead, so
+  // emissions occur continuously; it's torn down after Promise.all resolves.
   const channel = supabase.channel(`test_${uniqueId}`)
   channel.subscribe()
   await new Promise(r => setTimeout(r, 2000))
-  await supabase.removeChannel(channel)
 
   // PostgRest
   await request.post('/api/platform/pg-meta/default/query?key=table-create-with-columns', { data: {
@@ -282,10 +286,11 @@ test.beforeAll(async ({ request, browserName }) => {
   //
   // - edge_logs / auth_logs / storage_logs poll for uniqueId-tagged events from
   //   the setup above.
-  // - realtime_logs / postgrest_logs poll for periodic infra emissions
-  //   ("Billing" and "Config reloaded"). The corresponding test bodies assert
-  //   on those strings with a 15s expect timeout, but the emissions are
-  //   sparse, so without this wait the tests race the gap between emissions.
+  // - realtime_logs polls for "Billing" emissions, produced every ~5s while the
+  //   channel opened above stays subscribed.
+  // - postgrest_logs polls for the periodic "Config reloaded" infra emission.
+  //   The corresponding test bodies assert on these strings with a 15s expect
+  //   timeout, so without this wait the tests race the gap between emissions.
   //
   // edge functions /home/deno/functions/hello and the cron job reliably hit
   // historical entries via the test bodies' date-windowed searches, so we
@@ -297,6 +302,8 @@ test.beforeAll(async ({ request, browserName }) => {
     waitForLogs(request, 'realtime_logs', 'Billing'),
     waitForLogs(request, 'postgrest_logs', 'Config reloaded'),
   ]);
+
+  await supabase.removeChannel(channel)
 });
 
 test.afterAll(async ({ request }) => {

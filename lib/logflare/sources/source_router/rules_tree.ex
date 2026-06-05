@@ -10,11 +10,15 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   @behaviour Logflare.Sources.SourceRouter
 
   @type t() :: [entry()]
-  @type entry() :: {key(), [entry()]} | {operator(), [route()]}
+  @type entry() ::
+          {key(), [entry()]}
+          | {operator(), route()}
+          | {:eq_index, eq_index()}
   @type route() :: {:route, target() | [target()]}
-  @type target() :: {Rule.id(), filter_set()}
+  @type target() :: Rule.id() | {Rule.id(), filter_set()}
   @type key() :: binary()
   @type operator() :: {atom(), any()}
+  @type eq_index() :: %{term() => target() | [target()]}
 
   @type filter_set() :: non_neg_integer()
 
@@ -73,6 +77,15 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
     end
   end
 
+  # Hash-indexed positive equality: replaces a linear scan of sibling `:=` leaves
+  # at this path with a single lookup. Negated equality stays as a regular leaf.
+  defp find_matches(le_value, :eq_index, index_map, acc) when is_map(index_map) do
+    case Map.get(index_map, le_value) do
+      nil -> acc
+      rule_ids -> accumulate(rule_ids, acc)
+    end
+  end
+
   # Handle operators. Only route should be left in ops.
   defp find_matches(le_value, {:not, {operator, expected}}, {:route, rule_ids}, acc) do
     check_op(operator, le_value, expected)
@@ -123,6 +136,10 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   defp accumulate([], acc), do: acc
   defp accumulate([h | tail], acc), do: accumulate(tail, accumulate(h, acc))
 
+  # Accumulate: single-filter rule without bitmask, use bare Rule.id()
+  defp accumulate(rule_id, acc) when is_integer(rule_id),
+    do: Map.put(acc, rule_id, 0)
+
   # Accumulate: handle rule id already present in accumulator
   defp accumulate({rule_id, bitmask}, acc) when is_map_key(acc, rule_id),
     do: %{acc | rule_id => apply_filter_bitmask(acc[rule_id], bitmask)}
@@ -139,6 +156,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   - a binary key - a traversal of log event structure by getting that key from a map
   - `{operator, compared_value}` - an operator testing log event value, as in #{inspect(FilterRule)}, always followed by route(s)
   - `{:not, {operator, compared_value}` - negated operator (prevents the need to store modifiers from #{inspect(FilterRule)})
+  - `{:eq_index, %{value => target | [target]}}` - hash-indexed fold of sibling positive `:=` leaves at a path node; one `Map.get/2` replaces a linear scan over equal-shape rules
   - `{:route, target}` - always under an operator, indicates where the rule_id that should be used for routing if the operator succeeds
 
   Such structure allows to access each key inside the log event structure at most once.
@@ -154,8 +172,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   |
   |- "metadata"
      |- "field1"
-        |- {:=, 8}
-           |- {route, rule(0)}
+        |- {:eq_index, %{8 => rule(0)}}
      |- "field2"
         |- {:~, "sth}
            |- {route, rule(1)}
@@ -169,11 +186,14 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   [
     {"metadata",
       [
-        {"field1", [{{:=, 8}, {:route, {0, 0b0}}}]},
-        {"field2", [{{:~, "sth"}, {:route, {1, 0b0}}}]}
+        {"field1", [{:eq_index, %{8 => 0}}]},
+        {"field2", [{{:~, "sth"}, {:route, 1}}]}
       ]}
   ]
   ```
+  Single-filter rule targets are stored as bare `Rule.id()` integers (instead of
+  `{Rule.id(), filter_set()}` tuples).
+  Multi-filter rules keep the tuple form so the bitmask accumulates across paths.
 
   You can find more examples by looking at `rules_tree_test.exs`
   """
@@ -182,7 +202,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
     for rule <- rules,
         filters_num = length(rule.lql_filters),
         {filter, index} <- Enum.with_index(rule.lql_filters) do
-      target = {rule.id, build_filter_bitmask(filters_num, index)}
+      target = build_target(rule.id, filters_num, index)
 
       reverse_path = String.split(filter.path, ".") |> Enum.reverse()
 
@@ -194,6 +214,13 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
     end
     |> deep_group_keys()
   end
+
+  # Single-filter rule: emit bare rule_id. The accumulate clause for integers
+  # puts straight to 0 (matched), bypassing apply_filter_bitmask entirely.
+  defp build_target(rule_id, 1, 0), do: rule_id
+
+  defp build_target(rule_id, filters_num, index),
+    do: {rule_id, build_filter_bitmask(filters_num, index)}
 
   defp to_operator(%FilterRule{modifiers: %{negate: true}} = rule) do
     {:not, to_operator(%{rule | modifiers: %{rule.modifiers | negate: false}})}
@@ -229,8 +256,23 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   end
 
   defp deep_to_list(kv) when is_map(kv) do
-    for {k, v} <- kv do
-      {k, deep_to_list(v)}
+    {eq_entries, rest_entries} =
+      Enum.split_with(kv, fn
+        {{:=, _value}, {:route, _targets}} -> true
+        _ -> false
+      end)
+
+    rest = for {k, v} <- rest_entries, do: {k, deep_to_list(v)}
+
+    case eq_entries do
+      [] ->
+        rest
+
+      _ ->
+        index =
+          Map.new(eq_entries, fn {{:=, value}, {:route, targets}} -> {value, targets} end)
+
+        [{:eq_index, index} | rest]
     end
   end
 
