@@ -327,45 +327,38 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         {:ok, %Ch.Result{} = result} ->
           {:ok, decode_ch_result(result)}
 
-        {:error, %Ch.Error{message: error_msg} = error} when is_non_empty_binary(error_msg) ->
-          Logger.warning(
-            "ClickHouse query failed: #{inspect(error_msg)}",
-            backend_id: backend.id
-          )
-
-          {:error, to_query_error(error)}
-
         {:error, error} ->
-          {:error, to_query_error(error)}
+          {:error,
+           error
+           |> to_query_error()
+           |> QueryError.log(
+             user_id: backend.user_id,
+             backend_id: backend.id,
+             backend_token: backend.token
+           )}
       end
     end
   end
 
   @spec to_query_error(term()) :: QueryError.t()
-  defp to_query_error(%Ch.Error{message: message} = error) when is_non_empty_binary(message) do
-    %QueryError{
-      message: message,
-      code: :invalid_query,
-      raw_error: error,
-      backend: Logflare.Backends.Adaptor.ClickHouseAdaptor
-    }
+  defp to_query_error(%Ch.Error{} = error) do
+    query_error(:invalid_query, error)
   end
 
-  defp to_query_error(%DBConnection.ConnectionError{message: message} = error) do
-    %QueryError{
-      message: message,
-      code: :connection_error,
-      raw_error: error,
-      backend: Logflare.Backends.Adaptor.ClickHouseAdaptor
-    }
+  defp to_query_error(%DBConnection.ConnectionError{} = error) do
+    query_error(:connection_error, error)
   end
 
   defp to_query_error(error) do
+    query_error(:backend_error, error)
+  end
+
+  @spec query_error(QueryError.code(), term()) :: QueryError.t()
+  defp query_error(code, raw_error) do
     %QueryError{
-      message: inspect(error),
-      code: :backend_error,
-      raw_error: error,
-      backend: Logflare.Backends.Adaptor.ClickHouseAdaptor
+      code: code,
+      raw_error: raw_error,
+      backend: __MODULE__
     }
   end
 

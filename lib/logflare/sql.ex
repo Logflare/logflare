@@ -158,6 +158,10 @@ defmodule Logflare.Sql do
           queries :: [AlertQuery.t() | Endpoints.Query.t()]
         ) ::
           {:ok, String.t()} | {:error, String.t()}
+  def expand_subqueries(language, "", queries)
+      when language in @valid_query_languages and is_list(queries),
+      do: {:error, "Query cannot be empty"}
+
   def expand_subqueries(_language, input, []), do: {:ok, input}
 
   def expand_subqueries(language, input, queries)

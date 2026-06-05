@@ -4,11 +4,12 @@ defmodule LogflareWeb.QueryErrorHelpers do
   alias Logflare.Backends.QueryError
   alias LogflareWeb.Utils
 
+  @generic_query_error_message "Backend error! Retry your query. Please contact support if this continues."
+
   @doc """
   Returns a user-facing query error message from a backend %QueryError{}.
 
       iex> error = %Logflare.Backends.QueryError{
-      ...>   message: "Unrecognized name: notthere at [1:8]",
       ...>   code: :invalid_query,
       ...>   raw_error: %{"message" => "Unrecognized name: notthere at [1:8]"},
       ...>   backend: Logflare.Backends.Adaptor.BigQueryAdaptor
@@ -17,7 +18,6 @@ defmodule LogflareWeb.QueryErrorHelpers do
       ~s(Field "notthere" does not exist.)
 
       iex> error = %Logflare.Backends.QueryError{
-      ...>   message: "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)",
       ...>   code: :invalid_query,
       ...>   raw_error: %Ch.Error{message: "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"},
       ...>   backend: Logflare.Backends.Adaptor.ClickHouseAdaptor
@@ -26,7 +26,6 @@ defmodule LogflareWeb.QueryErrorHelpers do
       ~s(Field "notthere" does not exist.)
 
       iex> error = %Logflare.Backends.QueryError{
-      ...>   message: ~s|ERROR 42703 (undefined_column) column "notthere" does not exist\\n\\n    query: select notthere|,
       ...>   code: :invalid_query,
       ...>   raw_error: %Postgrex.Error{message: ~s|column "notthere" does not exist|},
       ...>   backend: Logflare.Backends.Adaptor.PostgresAdaptor
@@ -34,12 +33,26 @@ defmodule LogflareWeb.QueryErrorHelpers do
       iex> LogflareWeb.QueryErrorHelpers.query_error_message(error)
       ~s(Field "notthere" does not exist.)
   """
-  @spec query_error_message(QueryError.t()) :: String.t() | nil
-  def query_error_message(%QueryError{
-        backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
-        raw_error: %{"reason" => "billingTierLimitExceeded"},
-        message: message
-      }) do
+  @spec query_error_message(QueryError.t()) :: String.t()
+  def query_error_message(%QueryError{} = error) do
+    classified_query_error_message(error) || generic_query_error_message()
+  end
+
+  @spec query_halted_message(QueryError.t()) :: String.t()
+  def query_halted_message(%QueryError{} = error) do
+    case classified_query_error_message(error) do
+      nil -> generic_query_error_message()
+      message -> "Query halted: " <> message
+    end
+  end
+
+  @spec generic_query_error_message() :: String.t()
+  def generic_query_error_message, do: @generic_query_error_message
+
+  defp classified_query_error_message(%QueryError{
+         backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+         raw_error: %{"reason" => "billingTierLimitExceeded", "message" => message}
+       }) do
     with [_match, limit] <-
            Regex.run(~r/Query exceeded limit for bytes billed:\s*(\d+)\./, message) do
       {size, units} = limit |> String.to_integer() |> Utils.humanize_bytes()
@@ -48,8 +61,12 @@ defmodule LogflareWeb.QueryErrorHelpers do
     end
   end
 
-  def query_error_message(%QueryError{backend: backend, message: message}),
-    do: missing_field_message(backend, message)
+  defp classified_query_error_message(%QueryError{backend: backend, raw_error: raw_error}) do
+    case raw_error_message(raw_error) do
+      message when is_binary(message) -> missing_field_message(backend, message)
+      nil -> nil
+    end
+  end
 
   defp missing_field_message(backend, message) do
     case extract_missing_field(backend, message) do
@@ -102,6 +119,14 @@ defmodule LogflareWeb.QueryErrorHelpers do
       nil -> nil
     end
   end
+
+  defp raw_error_message(%{"message" => message}) when is_binary(message), do: message
+
+  defp raw_error_message(%Postgrex.Error{postgres: %{message: message}}) when is_binary(message),
+    do: message
+
+  defp raw_error_message(%{message: message}) when is_binary(message), do: message
+  defp raw_error_message(_raw_error), do: nil
 
   defp normalize_field(nil), do: nil
 

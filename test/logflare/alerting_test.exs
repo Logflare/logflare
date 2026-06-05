@@ -2,6 +2,8 @@ defmodule Logflare.AlertingTest do
   use Logflare.DataCase, async: false
   use Oban.Testing, repo: Logflare.Repo
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
@@ -271,30 +273,48 @@ defmodule Logflare.AlertingTest do
       assert reservation == user.bigquery_reservation_alerts
     end
 
-    test "execute_alert_query returns normalized query error message", %{user: user} do
+    test "execute_alert_query returns query error with alert metadata", %{
+      user: user
+    } do
       alert_query = insert(:alert, user: user) |> Logflare.Repo.preload([:user])
 
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
-        body =
-          %{
-            error: %{
-              message: "Unrecognized name: notthere at [1:8]",
-              reason: "invalidQuery"
-            }
-          }
-          |> Jason.encode!()
-
-        {:error, %Tesla.Env{status: 400, body: body}}
+        {:error,
+         TestUtils.gen_bq_error("Unrecognized name: notthere at [1:8]", reason: "invalidQuery")}
       end)
 
-      assert {:error,
-              %QueryError{
-                code: :invalid_query,
-                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
-                message: "Unrecognized name: notthere at [1:8]",
-                description: nil
-              }} =
-               Alerting.execute_alert_query(alert_query)
+      previous_metadata = Logger.metadata()
+
+      log =
+        capture_log(
+          [level: :error, metadata: [:user_id, :alert_query_id, :alert_name, :error_code]],
+          fn ->
+            assert {:error,
+                    %QueryError{
+                      code: :invalid_query,
+                      backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                      description: nil
+                    }} =
+                     Alerting.execute_alert_query(alert_query)
+          end
+        )
+
+      assert Logger.metadata() == previous_metadata
+      assert log =~ "Backend query error"
+      assert log =~ "user_id=#{alert_query.user_id}"
+      assert log =~ "alert_query_id=#{alert_query.id}"
+      assert log =~ "alert_name="
+      assert log =~ "error_code=invalid_query"
+    end
+
+    test "execute_alert_query returns an error for empty queries", %{user: user} do
+      insert(:endpoint, user: user)
+
+      alert_query =
+        insert(:alert, user: user, query: "")
+        |> Logflare.Repo.preload([:user])
+
+      assert {:error, "Query cannot be empty"} = Alerting.execute_alert_query(alert_query)
     end
 
     test "execute_alert_query with query composition" do

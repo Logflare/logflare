@@ -904,6 +904,13 @@ defmodule Logflare.SqlTest do
     assert {:error, _} = Sql.expand_subqueries(:bq_sql, "select from", [alert])
   end
 
+  test "expand_subqueries/3 returns an error for empty input" do
+    alert = build(:alert, name: "my.alert", query: "select 'id' as id", language: :bq_sql)
+
+    assert {:error, "Query cannot be empty"} = Sql.expand_subqueries(:bq_sql, "", [alert])
+    assert {:error, "Query cannot be empty"} = Sql.expand_subqueries(:bq_sql, "", [])
+  end
+
   describe "transform/3 for :postgres backends" do
     setup do
       user = insert(:user)

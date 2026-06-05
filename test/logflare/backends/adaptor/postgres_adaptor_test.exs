@@ -114,12 +114,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                 %QueryError{
                   code: :invalid_query,
                   backend: Logflare.Backends.Adaptor.PostgresAdaptor,
-                  message: message,
                   raw_error: %Postgrex.Error{},
                   description: nil
-                }} = PostgresAdaptor.execute_query(backend, query, [])
+                } = error} = PostgresAdaptor.execute_query(backend, query, [])
 
-        assert message =~ "notthere"
+        assert Exception.message(error.raw_error) =~ "notthere"
       end)
     end
 
@@ -133,18 +132,29 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
       query = "select notthere from #{PostgresAdaptor.table_name(source)}"
 
-      TestUtils.retry_assert(fn ->
-        assert {:error,
-                %QueryError{
-                  code: :invalid_query,
-                  backend: Logflare.Backends.Adaptor.PostgresAdaptor,
-                  message: message,
-                  raw_error: %Postgrex.Error{},
-                  description: nil
-                }} = PostgresAdaptor.execute_query(backend, query, [])
+      log =
+        capture_log(
+          [level: :error, metadata: [:user_id, :backend_id, :error_code, :error_string]],
+          fn ->
+            TestUtils.retry_assert(fn ->
+              assert {:error,
+                      %QueryError{
+                        code: :invalid_query,
+                        backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                        raw_error: %Postgrex.Error{},
+                        description: nil
+                      } = error} = PostgresAdaptor.execute_query(backend, query, [])
 
-        assert message =~ "notthere"
-      end)
+              assert Exception.message(error.raw_error) =~ "notthere"
+            end)
+          end
+        )
+
+      assert log =~ "Backend query error"
+      assert log =~ "backend_id=#{backend.id}"
+      assert log =~ "error_code=invalid_query"
+      assert log =~ "notthere"
+      refute log =~ "user_id="
     end
 
     test "execute_query/3 normalizes raw SQL syntax errors", %{backend: backend} do
@@ -153,11 +163,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                 %QueryError{
                   code: :invalid_query,
                   backend: Logflare.Backends.Adaptor.PostgresAdaptor,
-                  message: message,
                   raw_error: %Postgrex.Error{},
                   description: nil
-                }} = PostgresAdaptor.execute_query(backend, "select from", [])
+                } = error} = PostgresAdaptor.execute_query(backend, "select from", [])
 
+        message = Exception.message(error.raw_error)
         assert message =~ "syntax_error"
         assert message =~ "syntax error"
       end)
@@ -233,7 +243,38 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
         {:error, :cannot_connect}
       end)
 
-      assert {:error, :cannot_connect} = PostgresAdaptor.test_connection(backend)
+      log =
+        capture_log(
+          [level: :error, metadata: [:backend_id, :error_code, :error_string]],
+          fn ->
+            assert {:error,
+                    %QueryError{
+                      code: :connection_error,
+                      backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                      raw_error: :cannot_connect,
+                      description: nil
+                    }} = PostgresAdaptor.test_connection(backend)
+          end
+        )
+
+      assert log =~ "Backend query error"
+      assert log =~ "backend_id=#{backend.id}"
+      assert log =~ "error_code=connection_error"
+      assert log =~ "cannot_connect"
+    end
+
+    test "returns backend error for unclassified errors", %{backend: backend} do
+      Mimic.expect(SharedRepo, :with_repo, fn _backend, _func ->
+        {:error, :unexpected}
+      end)
+
+      assert {:error,
+              %QueryError{
+                code: :backend_error,
+                backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                raw_error: :unexpected,
+                description: nil
+              }} = PostgresAdaptor.test_connection(backend)
     end
   end
 

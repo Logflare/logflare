@@ -62,7 +62,6 @@ defmodule Logflare.Endpoints.CacheTest do
               %QueryError{
                 code: :connection_error,
                 backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
-                message: "timeout",
                 raw_error: :timeout
               }} = Endpoints.run_cached_query(endpoint)
 
@@ -108,7 +107,6 @@ defmodule Logflare.Endpoints.CacheTest do
               %QueryError{
                 code: :invalid_query,
                 backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
-                message: "BQ Error",
                 raw_error: %{"message" => "BQ Error"}
               }} = Endpoints.run_cached_query(endpoint)
 

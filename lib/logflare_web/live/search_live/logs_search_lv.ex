@@ -677,7 +677,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:search_error, search_op}, %{assigns: %{source: source}} = socket) do
+  def handle_info({:search_error, search_op}, socket) do
     socket =
       case search_op.error do
         :halted ->
@@ -689,11 +689,6 @@ defmodule LogflareWeb.Source.SearchLV do
           |> put_halt_flash_message(search_op)
 
         err ->
-          Logger.error("Backend search error for source: #{source.token}",
-            error_string: backend_search_error_string(err),
-            source_id: source.token
-          )
-
           send(self(), :soft_pause)
 
           socket
@@ -728,9 +723,6 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info({:put_flash, type, message}, socket) do
     {:noreply, put_flash(socket, type, message)}
   end
-
-  defp backend_search_error_string(%QueryError{raw_error: raw_error}), do: inspect(raw_error)
-  defp backend_search_error_string(error), do: inspect(error)
 
   defp assign_new_search_with_qs(socket, params, schema_flatmap) do
     %{querystring: qs, tailing?: tailing?} = params
@@ -1103,18 +1095,13 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp put_flash_query_error(socket, response) do
-    with %QueryError{} = error <- response,
-         message when is_binary(message) and message != "" <-
-           QueryErrorHelpers.query_error_message(error) do
-      put_flash(socket, :error, "Query halted: " <> message)
-    else
-      _ ->
-        put_flash(
-          socket,
-          :error,
-          "Backend error! Retry your query. Please contact support if this continues."
-        )
-    end
+    message =
+      case response do
+        %QueryError{} = error -> QueryErrorHelpers.query_halted_message(error)
+        _ -> QueryErrorHelpers.generic_query_error_message()
+      end
+
+    put_flash(socket, :error, message)
   end
 
   defp put_halt_flash_message(socket, search_op) do

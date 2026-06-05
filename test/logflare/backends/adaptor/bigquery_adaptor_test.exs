@@ -228,22 +228,54 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
          )}
       end)
 
-      assert {:error,
-              %QueryError{
-                code: :invalid_query,
-                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
-                message: "Unrecognized name: notthere at [1:8]",
-                description: nil,
-                raw_error: %{
-                  "message" => "Unrecognized name: notthere at [1:8]",
-                  "reason" => "invalidQuery"
-                }
-              }} =
-               BigQueryAdaptor.execute_query(
-                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
-                 {"select notthere", []},
-                 []
-               )
+      project_id = user.bigquery_project_id || "test-project"
+      previous_metadata = Logger.metadata()
+
+      Logger.metadata(source_id: "source-token", source_token: "source-token")
+
+      log =
+        try do
+          capture_log(
+            [
+              level: :error,
+              metadata: [
+                :user_id,
+                :bigquery_project_id,
+                :source_id,
+                :source_token,
+                :error_code,
+                :error_string
+              ]
+            ],
+            fn ->
+              assert {:error,
+                      %QueryError{
+                        code: :invalid_query,
+                        backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                        description: nil,
+                        raw_error: %{
+                          "message" => "Unrecognized name: notthere at [1:8]",
+                          "reason" => "invalidQuery"
+                        }
+                      }} =
+                       BigQueryAdaptor.execute_query(
+                         {project_id, user.bigquery_dataset_id, user.id},
+                         {"select notthere", []},
+                         []
+                       )
+            end
+          )
+        after
+          Logger.reset_metadata(previous_metadata)
+        end
+
+      assert log =~ "Backend query error"
+      assert log =~ "user_id=#{user.id}"
+      assert log =~ "bigquery_project_id=#{project_id}"
+      assert log =~ "source_id=source-token"
+      assert log =~ "source_token=source-token"
+      assert log =~ "error_code=invalid_query"
+      assert log =~ "notthere"
     end
 
     test "execute_query normalizes bytes billed limit errors", %{user: user} do
@@ -259,8 +291,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
               %QueryError{
                 code: :invalid_query,
                 backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
-                message:
-                  "Query exceeded limit for bytes billed: 2000000000. 20004857600 or higher required.",
                 description: nil,
                 raw_error: %{
                   "message" =>
@@ -284,9 +314,27 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
               %QueryError{
                 code: :connection_error,
                 backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
-                message: "timeout",
                 description: nil,
                 raw_error: :timeout
+              }} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select count(*) from logs", []},
+                 []
+               )
+    end
+
+    test "execute_query normalizes unclassified errors as backend errors", %{user: user} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error, :unexpected}
+      end)
+
+      assert {:error,
+              %QueryError{
+                code: :backend_error,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                description: nil,
+                raw_error: :unexpected
               }} =
                BigQueryAdaptor.execute_query(
                  {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},

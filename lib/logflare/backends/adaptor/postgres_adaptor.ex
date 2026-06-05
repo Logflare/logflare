@@ -101,7 +101,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       {:ok, QueryResult.new(result, pg_meta(result))}
     rescue
       error in [Postgrex.Error, DBConnection.ConnectionError, Ecto.QueryError] ->
-        {:error, to_query_error(error)}
+        {:error, error |> to_query_error() |> log_query_error(backend)}
     end
   end
 
@@ -126,11 +126,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
       {:ok, QueryResult.new(rows, pg_meta(rows))}
     else
-      {:error, :cannot_connect} = error ->
-        error
-
       {:error, error} ->
-        {:error, to_query_error(error)}
+        {:error, error |> to_query_error() |> log_query_error(backend)}
     end
   end
 
@@ -225,31 +222,42 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @spec to_query_error(term()) :: QueryError.t()
+  defp to_query_error(:cannot_connect) do
+    query_error(:connection_error, :cannot_connect)
+  end
+
   defp to_query_error(%Postgrex.Error{} = error) do
+    query_error(:invalid_query, error)
+  end
+
+  defp to_query_error(%DBConnection.ConnectionError{} = error) do
+    query_error(:connection_error, error)
+  end
+
+  defp to_query_error(%Ecto.QueryError{} = error) do
+    query_error(:invalid_query, error)
+  end
+
+  defp to_query_error(error) do
+    query_error(:backend_error, error)
+  end
+
+  @spec query_error(QueryError.code(), term()) :: QueryError.t()
+  defp query_error(code, raw_error) do
     %QueryError{
-      message: Exception.message(error),
-      code: :invalid_query,
-      raw_error: error,
-      backend: Logflare.Backends.Adaptor.PostgresAdaptor
+      code: code,
+      raw_error: raw_error,
+      backend: __MODULE__
     }
   end
 
-  defp to_query_error(%DBConnection.ConnectionError{message: message} = error) do
-    %QueryError{
-      message: message,
-      code: :connection_error,
-      raw_error: error,
-      backend: Logflare.Backends.Adaptor.PostgresAdaptor
-    }
-  end
-
-  defp to_query_error(%Ecto.QueryError{message: message} = error) do
-    %QueryError{
-      message: message,
-      code: :invalid_query,
-      raw_error: error,
-      backend: Logflare.Backends.Adaptor.PostgresAdaptor
-    }
+  @spec log_query_error(QueryError.t(), Backend.t()) :: QueryError.t()
+  defp log_query_error(%QueryError{} = error, %Backend{} = backend) do
+    QueryError.log(error,
+      user_id: backend.user_id,
+      backend_id: backend.id,
+      backend_token: backend.token
+    )
   end
 
   # expose PgRepo functions
