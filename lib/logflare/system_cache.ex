@@ -15,7 +15,14 @@ defmodule Logflare.SystemCache do
       if env == :test do
         []
       else
-        [warmer(required: true, module: __MODULE__.Warmer, name: __MODULE__.Warmer, interval: :timer.seconds(3))]
+        [
+          warmer(
+            required: true,
+            module: __MODULE__.Warmer,
+            name: __MODULE__.Warmer,
+            interval: :timer.seconds(3)
+          )
+        ]
       end
 
     %{
