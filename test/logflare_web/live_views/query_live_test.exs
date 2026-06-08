@@ -216,8 +216,7 @@ defmodule LogflareWeb.QueryLiveTest do
 
     test "updates team param from uniquely matched source in query URL", %{
       conn: conn,
-      user: user,
-      team: team
+      user: user
     } do
       team_owner = insert(:user)
       other_team = insert(:team, user: team_owner)
@@ -233,6 +232,36 @@ defmodule LogflareWeb.QueryLiveTest do
 
       assert params["t"] == to_string(other_team.id)
       assert params["q"] == query
+    end
+
+    test "updates team param from source in query URL when t is already set", %{
+      conn: conn,
+      user: user,
+      team: team
+    } do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{}])}
+      end)
+
+      team_owner = insert(:user)
+      other_team = insert(:team, user: team_owner)
+      insert(:team_user, email: user.email, team: other_team)
+      insert(:source, user: team_owner, name: "canonical_source")
+
+      query = "SELECT id, timestamp FROM `canonical_source`"
+
+      {:ok, view, _html} = live(conn, ~p"/query?#{%{q: query, t: team.id}}")
+
+      view
+      |> render_hook("parse-query", %{
+        value: query
+      })
+
+      html = submit_query_form(view, conn)
+
+      assert html =~ "Ran query successfully"
+      assert_patch(view) =~ ~s(t=#{other_team.id})
     end
 
     test "shows error when running query with non-existent source", %{conn: conn} do

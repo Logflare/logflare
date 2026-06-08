@@ -57,13 +57,14 @@
   color: $brand-gray;
 
   &:hover {
-    background-color: $brand-light-black;
+    background-color: rgba($brand-green, 0.08);
     color: $whitecolor;
   }
 
   &.lf-cmdk-active {
-    background-color: $brand-light-black;
-    color: $brand-green;
+    background-color: rgba($brand-green, 0.16);
+    color: $whitecolor;
+    box-shadow: inset 3px 0 0 0 $brand-green;
   }
 }
 
@@ -82,6 +83,81 @@
 
 .lf-cmdk-favorite {
   color: $brand-yellow;
+}
+
+.lf-cmdk-command-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.lf-cmdk-hint {
+  font-size: 0.75rem;
+  color: $brand-gray;
+}
+
+.lf-cmdk-group-header {
+  padding: 0.4rem 1rem 0.2rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: $brand-gray;
+  opacity: 0.7;
+  border-top: 1px solid $brand-light-black;
+  margin-top: 0.25rem;
+}
+
+.lf-cmdk-tz-main {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.lf-cmdk-tz-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lf-cmdk-secondary {
+  font-size: 0.8rem;
+  color: $brand-gray;
+  white-space: nowrap;
+}
+
+.lf-cmdk-offset {
+  margin-left: auto;
+  padding-left: 0.75rem;
+  font-size: 0.8rem;
+  color: $brand-gray;
+  font-variant-numeric: tabular-nums;
+}
+
+.lf-cmdk-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid $brand-light-black;
+  font-size: 0.75rem;
+}
+
+.lf-cmdk-back {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: $brand-green;
+  cursor: pointer;
+  font-size: 0.75rem;
+
+  &:hover {
+    color: $whitecolor;
+  }
+}
+
+.lf-cmdk-breadcrumb-label {
+  color: $brand-gray;
 }
 
 .lf-cmdk-empty {
