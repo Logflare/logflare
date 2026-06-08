@@ -14,6 +14,31 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     {:ok, conn: conn, source: source, table_key: table_key}
   end
 
+  test "returns 429 when memory utilization is at or over 85%", %{conn: conn, source: source} do
+    Logflare.SystemCache
+    |> stub(:memory_utilization, fn -> 0.85 end)
+
+    conn =
+      conn
+      |> assign(:source, source)
+      |> BufferLimiter.call(%{})
+
+    assert conn.halted
+    assert json_response(conn, 429) == %{"error" => "Buffer Full: Too Many Requests"}
+  end
+
+  test "allows request when memory utilization is below 85%", %{conn: conn, source: source} do
+    Logflare.SystemCache
+    |> stub(:memory_utilization, fn -> 0.84 end)
+
+    conn =
+      conn
+      |> assign(:source, source)
+      |> BufferLimiter.call(%{})
+
+    refute conn.halted
+  end
+
   test "if buffer is full of pending, return 429", %{
     conn: conn,
     source: source,
