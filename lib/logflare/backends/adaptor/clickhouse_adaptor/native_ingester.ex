@@ -30,6 +30,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
   @retry_delay 500
   @retryable_exception_codes [32, 159, 164, 202, 241, 252]
 
+  @type retry_strategy :: :immediate | {:delay, pos_integer()} | :no_retry
+
   @doc """
   Inserts log events into ClickHouse via the native TCP protocol.
 
@@ -50,6 +52,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
     column_names = QueryTemplates.columns_for_type(event_type)
     do_insert_with_retry(backend, table, events, column_names, opts, @max_retries)
   end
+
+  @doc """
+  Determines a retry strategy based on the class of insert error encountered.
+
+  ## Examples
+
+      iex> retry_strategy(:closed)
+      :immediate
+
+      iex> retry_strategy({:exception, 252, "Too many parts"})
+      {:delay, 500}
+
+      iex> retry_strategy({:exception, 60, "Unknown table"})
+      :no_retry
+
+  """
+  @spec retry_strategy(term()) :: retry_strategy()
+  def retry_strategy(:closed), do: :immediate
+  def retry_strategy(:timeout), do: :immediate
+  def retry_strategy(:econnrefused), do: :immediate
+  def retry_strategy(:econnreset), do: :immediate
+  def retry_strategy(:checkout_timeout), do: :immediate
+
+  def retry_strategy({:exception, code, _}) when code in @retryable_exception_codes,
+    do: {:delay, @retry_delay}
+
+  def retry_strategy(_), do: :no_retry
 
   @spec build_insert_sql(String.t(), String.t(), [String.t()]) :: String.t()
   defp build_insert_sql(database, table, column_names) do
@@ -72,18 +101,45 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
         :ok
 
       {:error, reason} = error ->
-        if retries_left > 0 and retryable?(reason) do
-          Logger.warning(
-            "ClickHouse NativeIngester: retryable error #{inspect(reason)}, " <>
-              "retrying in #{@retry_delay}ms (#{retries_left} retries left)"
-          )
-
-          Process.sleep(@retry_delay)
+        retry_or_fail(retry_strategy(reason), retries_left, error, fn ->
           do_insert_with_retry(backend, table, events, column_names, opts, retries_left - 1)
-        else
-          error
-        end
+        end)
     end
+  end
+
+  @spec retry_or_fail(
+          retry_strategy(),
+          non_neg_integer(),
+          {:error, term()},
+          (-> :ok | {:error, term()})
+        ) :: :ok | {:error, term()}
+  defp retry_or_fail(_strategy, 0, error, _retry_fun), do: error
+  defp retry_or_fail(:no_retry, _retries_left, error, _retry_fun), do: error
+
+  defp retry_or_fail(:immediate, retries_left, {:error, reason}, retry_fun) do
+    log_retry(reason, 0, retries_left)
+    retry_fun.()
+  end
+
+  defp retry_or_fail({:delay, delay}, retries_left, {:error, reason}, retry_fun) do
+    log_retry(reason, delay, retries_left)
+    Process.sleep(delay)
+    retry_fun.()
+  end
+
+  @spec log_retry(term(), non_neg_integer(), pos_integer()) :: :ok
+  defp log_retry(reason, 0, retries_left) do
+    Logger.warning(
+      "ClickHouse NativeIngester: retryable error #{inspect(reason)}, " <>
+        "retrying with a fresh connection (#{retries_left} retries left)"
+    )
+  end
+
+  defp log_retry(reason, delay, retries_left) do
+    Logger.warning(
+      "ClickHouse NativeIngester: retryable error #{inspect(reason)}, " <>
+        "retrying in #{delay}ms (#{retries_left} retries left)"
+    )
   end
 
   @spec do_pooled_insert(Backend.t(), String.t(), [LogEvent.t()], [String.t()], keyword()) ::
@@ -190,15 +246,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
       end
     end
   end
-
-  @spec retryable?(term()) :: boolean()
-  defp retryable?(:closed), do: true
-  defp retryable?(:timeout), do: true
-  defp retryable?(:econnrefused), do: true
-  defp retryable?(:econnreset), do: true
-  defp retryable?(:checkout_timeout), do: true
-  defp retryable?({:exception, code, _}) when code in @retryable_exception_codes, do: true
-  defp retryable?(_), do: false
 
   @spec build_columns_from_schema([LogEvent.t()], Connection.column_info()) ::
           [BlockEncoder.column()]

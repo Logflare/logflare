@@ -17,6 +17,7 @@ defmodule Logflare.Backends.BufferProducer do
 
   @type state :: %{
           consolidated: boolean(),
+          id_passing: boolean(),
           demand: non_neg_integer(),
           source_id: pos_integer() | nil,
           source_token: atom() | nil,
@@ -28,7 +29,7 @@ defmodule Logflare.Backends.BufferProducer do
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
   @default_interval 1_000
-  @max_avg_before_pop 100
+  @max_avg_before_pop 9_999_999
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
@@ -58,6 +59,7 @@ defmodule Logflare.Backends.BufferProducer do
 
     state = %{
       consolidated: false,
+      id_passing: Keyword.get(opts, :id_passing, false),
       demand: 0,
       source_id: opts[:source_id],
       source_token: source.token,
@@ -231,27 +233,48 @@ defmodule Logflare.Backends.BufferProducer do
     {events, %{state | demand: new_demand}}
   end
 
-  @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [LogEvent.t()]
+  @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [LogEvent.t() | {term(), :ets.tid()}]
   defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
     key = {:consolidated, bid, self()}
 
     do_pop_key(key, n)
   end
 
-  defp do_fetch(%{source_id: sid, backend_id: bid, source_token: source_token} = _state, n) do
+  defp do_fetch(
+         %{source_id: sid, backend_id: bid, source_token: source_token, id_passing: id_passing} =
+           _state,
+         n
+       ) do
     key = {sid, bid, self()}
 
     Sources.get_source_metrics_for_ingest(source_token)
     |> case do
       %{avg: avg} when avg > @max_avg_before_pop -> do_pop_key(key, n)
-      _ -> do_take_key(key, n)
+      _ -> do_take_key(key, n, id_passing)
     end
   end
 
-  @spec do_take_key(key :: table_key(), count :: non_neg_integer()) :: [
-          LogEvent.t()
-        ]
-  defp do_take_key({sid, bid, _pid} = key, n) do
+  @spec do_take_key(key :: table_key(), count :: non_neg_integer(), id_passing :: boolean()) ::
+          [LogEvent.t()] | [{term(), :ets.tid()}]
+  defp do_take_key({sid, bid, _pid} = key, n, true) do
+    case IngestEventQueue.take_pending_ids(key, n) do
+      {:error, :not_initialized} ->
+        Logger.warning(
+          "IngestEventQueue not initialized, could not fetch events. source_id: #{sid}",
+          backend_id: bid
+        )
+
+        []
+
+      {:ok, [], _tid} ->
+        []
+
+      {:ok, ids, tid} ->
+        Enum.map(ids, fn id -> {id, tid} end)
+    end
+  end
+
+  defp do_take_key({sid, bid, _pid} = key, n, false) do
     case IngestEventQueue.take_pending(key, n) do
       {:error, :not_initialized} ->
         Logger.warning(

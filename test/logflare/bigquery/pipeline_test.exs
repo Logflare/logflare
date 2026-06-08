@@ -28,13 +28,19 @@ defmodule Logflare.BigQuery.PipelineTest do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event)
+      # Add event to ETS and mark as ingested (simulating it was taken by the producer)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      IngestEventQueue.mark_ingested(sid_bid_pid, [le])
+
       ref = {sid_bid_pid, %{max_retries: 1}}
-      message = Pipeline.transform(le, ref: ref)
+      message = Pipeline.transform({le.id, tid}, ref: ref)
       {mod, ref, _data} = message.acknowledger
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
 
       mod.ack(ref, [], [message])
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+      # Event is deleted then re-added as pending with incremented retries
+      assert IngestEventQueue.total_pending(sid_bid_pid) == 1
 
       {:ok, [m]} = IngestEventQueue.pop_pending(sid_bid_pid, 1)
 
@@ -45,14 +51,20 @@ defmodule Logflare.BigQuery.PipelineTest do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event) |> Map.put(:retries, 1)
+      # Add event to ETS and mark as ingested (simulating it was taken by the producer)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      IngestEventQueue.mark_ingested(sid_bid_pid, [le])
+
       ref = {sid_bid_pid, %{max_retries: 1}}
-      message = Pipeline.transform(le, ref: ref)
+      message = Pipeline.transform({le.id, tid}, ref: ref)
       {mod, ref, _data} = message.acknowledger
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
 
       mod.ack(ref, [], [message])
 
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+      # Event is NOT requeued (retries == max_retries); remains as :ingested in ETS
+      assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{

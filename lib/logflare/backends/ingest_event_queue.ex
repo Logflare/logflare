@@ -471,6 +471,38 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Takes pending item IDs from a given table, marking them as `:ingested` in-place.
+
+  Returns `{:ok, ids, tid}` where `ids` is a list of event IDs and `tid` is the ETS
+  table reference. Intended for use with the BigQuery pipeline to reduce data copying
+  through Broadway stages — only pointers travel the pipeline; full events are fetched
+  from ETS at batch-insert time.
+  """
+  @spec take_pending_ids(source_backend_pid(), integer()) ::
+          {:ok, [term()], :ets.tid() | nil} | {:error, :not_initialized}
+  def take_pending_ids(_, 0), do: {:ok, [], nil}
+
+  def take_pending_ids(sid_bid_pid, n) when is_integer(n) do
+    ms =
+      Ex2ms.fun do
+        {event_id, :pending, _event} -> event_id
+      end
+
+    with tid when tid != nil <- get_tid(sid_bid_pid),
+         size when is_integer(size) <- :ets.info(tid, :size),
+         {taken_ids, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
+      for id <- taken_ids do
+        :ets.update_element(tid, id, {2, :processing})
+      end
+
+      {:ok, taken_ids, tid}
+    else
+      nil -> {:error, :not_initialized}
+      :"$end_of_table" -> {:ok, [], nil}
+    end
+  end
+
+  @doc """
   Pops pending events from a given table, removing them atomically.
 
   Unlike `take_pending/2`, this function removes the events from the queue
