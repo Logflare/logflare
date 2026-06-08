@@ -38,7 +38,14 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     timeseries =
       log_events
       |> Enum.filter(&metric_event?/1)
-      |> Enum.flat_map(&to_timeseries/1)
+      |> Enum.flat_map(&to_labeled_samples/1)
+      |> Enum.group_by(fn {labels, _sample} -> labels end, fn {_labels, sample} -> sample end)
+      |> Enum.map(fn {labels, samples} ->
+        %Prometheus.TimeSeries{
+          labels: to_label_list(labels),
+          samples: Enum.sort_by(samples, & &1.timestamp)
+        }
+      end)
 
     encode_write_request(%Prometheus.WriteRequest{timeseries: timeseries})
   end
@@ -100,52 +107,28 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   end
 
   @doc """
-  Executes a PromQL query against the backend's VictoriaMetrics instance.
-
-  Accepts either an instant query string (PromQL) or `{query, params}` where
-  params is a keyword list of extra query-string params (e.g. `time:`, `step:`).
+  Executes a PromQL instant query against the backend's VictoriaMetrics instance.
 
   Each result row is normalized to a map with `__name__`, label key/value pairs,
   `value` (float) and `timestamp` (integer seconds — VM returns float seconds,
   we coerce to integer).
   """
   @impl Logflare.Backends.Adaptor
-  @spec execute_query(Backend.t() | pid() | tuple(), String.t() | {String.t(), keyword()}, keyword()) ::
+  @spec execute_query(Backend.t(), String.t(), keyword()) ::
           {:ok, QueryResult.t()} | {:error, term()}
-  def execute_query(backend_or_id, query, opts \\ [])
+  def execute_query(%Backend{config: config}, query, _opts \\ []) when is_binary(query) do
+    url = query_url(config) <> "?" <> URI.encode_query(%{"query" => query})
 
-  def execute_query(%Backend{config: config}, query, opts) do
-    {promql, extra_params} =
-      case query do
-        {q, params} when is_binary(q) and is_list(params) -> {q, params}
-        q when is_binary(q) -> {q, []}
-      end
-
-    url = query_url(config) <> "?" <> URI.encode_query([{"query", promql} | extra_params])
-    headers = auth_headers(config)
-
-    case HTTPoison.get(url, headers, recv_timeout: Keyword.get(opts, :timeout, 5_000)) do
-      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
-        case Jason.decode(body) do
-          {:ok, %{"status" => "success", "data" => %{"result" => result}}} ->
-            rows = Enum.map(result, &normalize_query_result/1)
-            {:ok, QueryResult.new(rows, %{query_string: promql})}
-
-          {:ok, %{"status" => "error", "error" => err}} ->
-            {:error, "VictoriaMetrics error: #{err}"}
-
-          {:ok, other} ->
-            {:error, "Unexpected response shape: #{inspect(other)}"}
-
-          {:error, decode_err} ->
-            {:error, "JSON decode failed: #{inspect(decode_err)}"}
-        end
-
-      {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
+    with {:ok, %{status_code: 200, body: body}} <- HTTPoison.get(url, auth_headers(config)),
+         {:ok, %{"data" => %{"result" => result}}} <- Jason.decode(body) do
+      rows = Enum.map(result, &normalize_query_result/1)
+      {:ok, QueryResult.new(rows, %{query_string: query})}
+    else
+      {:ok, %{status_code: status, body: body}} ->
         {:error, "VictoriaMetrics returned #{status}: #{body}"}
 
-      {:error, %HTTPoison.Error{reason: reason}} ->
-        {:error, "Request error: #{inspect(reason)}"}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -191,72 +174,64 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   defp metric_event?(%{body: %{"metadata" => %{"type" => "metric"}}}), do: true
   defp metric_event?(_), do: false
 
-  defp to_timeseries(%{body: body, source_id: source_id}) do
+  defp to_labeled_samples(%{body: body, source_id: source_id}) do
     metric_name = sanitize_metric_name(body["event_message"])
-    timestamp_ms = nano_to_ms(body["timestamp"])
-
-    source_label =
-      case Sources.Cache.get_by_id(source_id) do
-        %{name: name} -> name
-        _ -> "unknown"
-      end
-
-    base_labels = %{"source" => source_label} |> Map.merge(flat_attributes(body["attributes"]))
+    ts_ms = nano_to_ms(body["timestamp"])
+    base_labels = base_labels(source_id, body)
 
     case body["metric_type"] do
       type when type in ["gauge", "sum"] ->
-        value = to_float(body["value"])
-        labels = Map.put(base_labels, "__name__", metric_name) |> to_label_list()
-
         [
-          %Prometheus.TimeSeries{
-            labels: labels,
-            samples: [%Prometheus.Sample{value: value, timestamp: timestamp_ms}]
-          }
+          {Map.put(base_labels, "__name__", metric_name),
+           %Prometheus.Sample{value: to_float(body["value"]), timestamp: ts_ms}}
         ]
 
       "histogram" ->
-        histogram_series(metric_name, base_labels, body, timestamp_ms)
+        histogram_labeled_samples(metric_name, base_labels, body, ts_ms)
 
       _ ->
         []
     end
   end
 
-  defp histogram_series(name, base_labels, body, ts_ms) do
+  defp histogram_labeled_samples(name, base_labels, body, ts_ms) do
     count = to_float(body["count"] || 0)
     sum = to_float(body["sum"] || 0.0)
     bucket_counts = body["bucket_counts"] || []
     explicit_bounds = body["explicit_bounds"] || []
 
-    count_ts = %Prometheus.TimeSeries{
-      labels: Map.put(base_labels, "__name__", name <> "_count") |> to_label_list(),
-      samples: [%Prometheus.Sample{value: count, timestamp: ts_ms}]
-    }
-
-    sum_ts = %Prometheus.TimeSeries{
-      labels: Map.put(base_labels, "__name__", name <> "_sum") |> to_label_list(),
-      samples: [%Prometheus.Sample{value: sum, timestamp: ts_ms}]
-    }
-
-    {bucket_series, _cumulative} =
+    {bucket_samples, _cumulative} =
       bucket_counts
       |> Enum.with_index()
-      |> Enum.map_reduce(0, fn {count, idx}, cumulative ->
-        cumulative = cumulative + count
-        le = if idx < length(explicit_bounds), do: to_string(Enum.at(explicit_bounds, idx)), else: "+Inf"
+      |> Enum.map_reduce(0, fn {bucket_count, idx}, cumulative ->
+        cumulative = cumulative + bucket_count
 
-        ts = %Prometheus.TimeSeries{
-          labels:
-            Map.merge(base_labels, %{"__name__" => name <> "_bucket", "le" => le})
-            |> to_label_list(),
-          samples: [%Prometheus.Sample{value: to_float(cumulative), timestamp: ts_ms}]
-        }
+        le =
+          if idx < length(explicit_bounds),
+            do: to_string(Enum.at(explicit_bounds, idx)),
+            else: "+Inf"
 
-        {ts, cumulative}
+        labels = Map.merge(base_labels, %{"__name__" => name <> "_bucket", "le" => le})
+        {{labels, %Prometheus.Sample{value: to_float(cumulative), timestamp: ts_ms}}, cumulative}
       end)
 
-    [count_ts, sum_ts | bucket_series]
+    [
+      {Map.put(base_labels, "__name__", name <> "_count"),
+       %Prometheus.Sample{value: count, timestamp: ts_ms}},
+      {Map.put(base_labels, "__name__", name <> "_sum"),
+       %Prometheus.Sample{value: sum, timestamp: ts_ms}}
+      | bucket_samples
+    ]
+  end
+
+  defp base_labels(source_id, body) do
+    source_label =
+      case Sources.Cache.get_by_id(source_id) do
+        %{name: name} -> name
+        _ -> "unknown"
+      end
+
+    Map.merge(%{"source" => source_label}, flat_attributes(body["attributes"]))
   end
 
   defp flat_attributes(nil), do: %{}
