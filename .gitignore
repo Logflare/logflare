@@ -59,6 +59,7 @@ gcloud_prod.json
 
 .google.secret.json
 .*.env
+.prometheus_token
 
 !.template.env
 !.single_tenant_bq.env

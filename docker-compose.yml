@@ -143,6 +143,19 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+  platform-prom:
+    image: prom/prometheus:v3.1.0
+    ports:
+      - "9093:9090"
+    volumes:
+      - ./priv/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${PWD}/.prometheus_token:/etc/prometheus/token:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle
+
   telegraf:
     image: telegraf:1.36
     volumes:
