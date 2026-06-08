@@ -255,6 +255,7 @@ defmodule LogflareWeb.Router do
       scope "/endpoints" do
         live "/", EndpointsLive, :index
         live "/new", EndpointsLive, :new
+        live "/:id/versions", EndpointsVersionsLive, :index
         live "/:id", EndpointsLive, :show
         live "/:id/edit", EndpointsLive, :edit
       end
