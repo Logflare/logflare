@@ -208,7 +208,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       source = Sources.Cache.get_by_id(context.source_id)
 
       # Fetch full LogEvents from ETS — events are still present (marked :processing)
-      log_events = fetch_events_from_messages(messages)
+      log_events = fetch_events_from_messages(messages, context)
 
       if source && source.bq_storage_write_api do
         batch_attrs = compute_batch_attrs(log_events, :bq_storage_write)
@@ -245,17 +245,13 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     Enum.map(log_events, &le_to_bq_row/1)
   end
 
-  @spec fetch_events_from_messages([Broadway.Message.t()]) :: [LE.t()]
-  defp fetch_events_from_messages(messages) do
+  defp fetch_events_from_messages(messages, context) do
     Enum.flat_map(messages, fn
       %{data: {id, tid}} ->
         case :ets.lookup(tid, id) do
-          [{^id, _status, log_event}] -> [log_event]
+          [{^id, _status, log_event}] -> [process_data(log_event, context)]
           [] -> []
         end
-
-      %{data: %LE{} = log_event} ->
-        [log_event]
     end)
   end
 
