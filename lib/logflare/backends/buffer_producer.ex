@@ -82,6 +82,7 @@ defmodule Logflare.Backends.BufferProducer do
     state = %{
       consolidated: true,
       demand: 0,
+      id_passing: false,
       source_id: nil,
       source_token: nil,
       backend_id: backend_id,
@@ -233,7 +234,9 @@ defmodule Logflare.Backends.BufferProducer do
     {events, %{state | demand: new_demand}}
   end
 
-  @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [LogEvent.t() | {term(), :ets.tid()}]
+  @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [
+          LogEvent.t() | {term(), :ets.tid()}
+        ]
   defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
     key = {:consolidated, bid, self()}
 

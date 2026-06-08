@@ -312,7 +312,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :telemetry.span(
       [:logflare, :ingest, :pipeline, :stream_batch],
       %{source_token: source_token},
-       fn -> execute_bigquery_stream_batch(context, log_events) end
+      fn -> execute_bigquery_stream_batch(context, log_events) end
     )
   end
 
@@ -483,13 +483,14 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       Enum.reduce(failed, [], fn %{data: {id, tid}}, acc ->
         case :ets.lookup(tid, id) do
           [{^id, _status, %LE{retries: retries} = le}] when retries < max_retries ->
-            [%LE{le | retries: (retries || 0) + 1} | acc] 
+            [%LE{le | retries: (retries || 0) + 1} | acc]
 
           [{^id, _status, _le}] ->
             :ets.delete(tid, id)
             acc
 
-          [] -> acc
+          [] ->
+            acc
         end
       end)
 
