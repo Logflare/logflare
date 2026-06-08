@@ -207,9 +207,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     } do
       source = Sources.Cache.get_by_id(context.source_id)
 
-      # Fetch full LogEvents from ETS — events are still present (marked :ingested)
+      # Fetch full LogEvents from ETS — events are still present (marked :processing)
       log_events = fetch_events_from_messages(messages)
-      #log_events = []
 
       if source && source.bq_storage_write_api do
         batch_attrs = compute_batch_attrs(log_events, :bq_storage_write)
