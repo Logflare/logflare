@@ -29,7 +29,7 @@ defmodule Logflare.Backends.BufferProducer do
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
   @default_interval 1_000
-  @max_avg_before_pop 9_999_999
+  @max_avg_before_pop 100
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
@@ -249,7 +249,7 @@ defmodule Logflare.Backends.BufferProducer do
 
     Sources.get_source_metrics_for_ingest(source_token)
     |> case do
-      %{avg: avg} when avg > @max_avg_before_pop -> do_pop_key(key, n)
+      %{avg: avg} when avg > @max_avg_before_pop and not id_passing -> do_pop_key(key, n)
       _ -> do_take_key(key, n, id_passing)
     end
   end
