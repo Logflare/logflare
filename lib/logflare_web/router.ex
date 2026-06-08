@@ -236,10 +236,6 @@ defmodule LogflareWeb.Router do
 
     live_session :dashboard, on_mount: @common_on_mount_hooks ++ @team_param_live_hooks do
       live("/dashboard", DashboardLive, :index)
-      live("/backends", BackendsLive, :index)
-      live("/backends/new", BackendsLive, :new)
-      live("/backends/:id", BackendsLive, :show)
-      live("/backends/:id/edit", BackendsLive, :edit)
       live("/key-values", KeyValuesLive, :index)
 
       scope "/alerts" do
@@ -247,6 +243,13 @@ defmodule LogflareWeb.Router do
         live "/new", AlertsLive, :new
         live "/:id", AlertsLive, :show
         live "/:id/edit", AlertsLive, :edit
+      end
+
+      scope "/backends" do
+        live "/", BackendsLive, :index
+        live "/new", BackendsLive, :new
+        live "/:id", BackendsLive, :show
+        live "/:id/edit", BackendsLive, :edit
       end
 
       scope "/endpoints" do

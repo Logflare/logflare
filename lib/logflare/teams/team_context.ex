@@ -122,25 +122,22 @@ defmodule Logflare.Teams.TeamContext do
   end
 
   @spec resource_team_id_query(module(), map(), User.t() | TeamUser.t()) :: Ecto.Query.t() | nil
-  def resource_team_id_query(LogflareWeb.AlertsLive, %{"id" => id}, user) do
+  def resource_team_id_query(LogflareWeb.AlertsLive, %{"id" => alert_id}, user_or_team_user) do
     AlertQuery
-    |> Teams.filter_by_user_access(user)
-    |> where([alert], alert.id == ^id)
-    |> select([resource_team: team], team.id)
+    |> where(id: ^alert_id)
+    |> resource_team_id_query(user_or_team_user)
   end
 
-  def resource_team_id_query(LogflareWeb.BackendsLive, %{"id" => backend_id}, user) do
+  def resource_team_id_query(LogflareWeb.BackendsLive, %{"id" => backend_id}, user_or_team_user) do
     Backend
-    |> Teams.filter_by_user_access(user)
-    |> where([backend], backend.id == ^backend_id)
-    |> select([resource_team: team], team.id)
+    |> where(id: ^backend_id)
+    |> resource_team_id_query(user_or_team_user)
   end
 
-  def resource_team_id_query(LogflareWeb.EndpointsLive, %{"id" => endpoint_id}, user) do
+  def resource_team_id_query(LogflareWeb.EndpointsLive, %{"id" => endpoint_id}, user_or_team_user) do
     Endpoints.Query
-    |> Teams.filter_by_user_access(user)
-    |> where([endpoint], endpoint.id == ^endpoint_id)
-    |> select([resource_team: team], team.id)
+    |> where(id: ^endpoint_id)
+    |> resource_team_id_query(user_or_team_user)
   end
 
   def resource_team_id_query(LogflareWeb.QueryLive, %{"q" => query}, user_or_team_user)
@@ -157,14 +154,23 @@ defmodule Logflare.Teams.TeamContext do
     end
   end
 
-  def resource_team_id_query(LogflareWeb.Source.SearchLV, %{"source_id" => source_id}, user) do
+  def resource_team_id_query(
+        LogflareWeb.Source.SearchLV,
+        %{"source_id" => source_id},
+        user_or_team_user
+      ) do
     Sources.Source
-    |> Teams.filter_by_user_access(user)
-    |> where([source], source.id == ^source_id)
-    |> select([resource_team: team], team.id)
+    |> where(id: ^source_id)
+    |> resource_team_id_query(user_or_team_user)
   end
 
-  def resource_team_id_query(_view, _params, _user), do: nil
+  def resource_team_id_query(_view, _params, _user_or_team_user), do: nil
+
+  defp resource_team_id_query(queryable, user_or_team_user) do
+    queryable
+    |> Teams.filter_by_user_access(user_or_team_user)
+    |> select([resource_team: team], team.id)
+  end
 
   def home_team?(team, %__MODULE__{team_user: team_user}) when is_struct(team_user),
     do: team_owner?(team, team_user.email)
