@@ -220,17 +220,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       end
 
       # Derive all downstream values from the triples in a single pass each.
-      log_events = Enum.map(triples, &elem(&1, 1))
-      event_size_pairs = Enum.map(triples, fn {_msg, le, size} -> {le, size} end)
-
-      messages_with_sizes =
-        Enum.map(triples, fn {%{data: {id, tid}} = msg, _le, size} ->
-          Message.update_data(msg, fn _ -> {id, tid, size} end)
-        end)
+      batch_count = Enum.count(triples)
+      batch_size = Enum.sum_by(triples, &elem(&1, 2))
 
       if source && source.bq_storage_write_api do
-        sizes = Enum.map(triples, &elem(&1, 2))
-        batch_attrs = compute_batch_attrs(log_events, sizes, :bq_storage_write)
+        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
+        log_events = Enum.map(triples, &elem(&1, 1))
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
           BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
@@ -242,13 +237,18 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           )
         end
       else
-        sizes = Enum.map(triples, &elem(&1, 2))
-        batch_attrs = compute_batch_attrs(log_events, sizes, :bq_streaming_insert)
+        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_streaming_insert)
+        event_size_pairs = Enum.map(triples, fn {_msg, le, size} -> {le, size} end)
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
           stream_batch(context, event_size_pairs)
         end
       end
+
+      messages_with_sizes =
+        Enum.map(triples, fn {%{data: {id, tid}} = msg, _le, size} ->
+          Message.update_data(msg, fn _ -> {id, tid, size} end)
+        end)
 
       messages_with_sizes
     end
@@ -466,12 +466,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     String.to_atom("#{source_id}" <> "-pipeline")
   end
 
-  @spec compute_batch_attrs([LE.t()], [non_neg_integer()], atom()) :: map()
-  defp compute_batch_attrs(log_events, sizes, bq_api_tag) do
+  @spec compute_batch_attrs(non_neg_integer(), non_neg_integer(), atom()) :: map()
+  defp compute_batch_attrs(batch_count, batch_size, bq_api_tag) do
     %{
       insert_method: bq_api_tag,
-      batch_event_count: length(log_events),
-      batch_bytes: Enum.sum(sizes)
+      batch_event_count: batch_count,
+      batch_bytes: batch_size
     }
   end
 
