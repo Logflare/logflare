@@ -3,6 +3,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.LogEvent
   alias Logflare.PubSubRates.Cache, as: PubSubRatesCache
 
   import ExUnit.CaptureLog
@@ -25,9 +26,11 @@ defmodule Logflare.Backends.BufferProducerTest do
     :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
-    GenStage.stream([{buffer_producer_pid, max_demand: 1}])
-    |> Enum.take(1)
+    [%LogEvent{id: id}] =
+      GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+      |> Enum.take(1)
 
+    assert id == le.id
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     # marked as :ingested
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
@@ -102,9 +105,13 @@ defmodule Logflare.Backends.BufferProducerTest do
     :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
-    GenStage.stream([{buffer_producer_pid, max_demand: 1}])
-    |> Enum.take(1)
+    tid = IngestEventQueue.get_tid(sid_bid_pid)
 
+    [{id, ^tid}] =
+      GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+      |> Enum.take(1)
+
+    assert id == le.id
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     # event still in ETS, marked as :processing
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
