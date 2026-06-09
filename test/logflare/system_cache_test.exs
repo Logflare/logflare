@@ -5,8 +5,10 @@ defmodule Logflare.SystemCacheTest do
 
   setup :verify_on_exit!
 
+  alias Logflare.SystemCache
+
   setup do
-    Cachex.clear(Logflare.SystemCache)
+    Cachex.clear(SystemCache)
     :ok
   end
 
@@ -15,8 +17,8 @@ defmodule Logflare.SystemCacheTest do
       Logflare.System
       |> expect(:memory_utilization, 1, fn -> 0.42 end)
 
-      assert Logflare.SystemCache.memory_utilization() == 0.42
-      assert Logflare.SystemCache.memory_utilization() == 0.42
+      assert SystemCache.memory_utilization() == 0.42
+      assert SystemCache.memory_utilization() == 0.42
     end
   end
 end

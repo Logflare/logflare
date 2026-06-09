@@ -3,6 +3,8 @@ defmodule Logflare.SystemCache do
 
   import Cachex.Spec
 
+  require Logger
+
   alias Logflare.Utils
 
   @cache __MODULE__
@@ -52,7 +54,9 @@ defmodule Logflare.SystemCache do
          end) do
       {:ok, value} -> value
       {:commit, value} -> value
-      {:error, _} -> Logflare.System.memory_utilization()
+      {:error, err} ->
+        Logger.warning("SystemCache.memory_utilization cache error: #{inspect(err)}")
+        Logflare.System.memory_utilization()
     end
   end
 end
