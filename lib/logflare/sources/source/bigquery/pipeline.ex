@@ -393,7 +393,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
           {:error, response} ->
             OpenTelemetry.Tracer.set_status(:error, inspect(response))
-            Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
+
+            Logger.warning("Stream batch unknown error!",
+              tesla_response: inspect(response, limit: 20)
+            )
         end
       end
     end)

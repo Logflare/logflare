@@ -66,13 +66,16 @@ spawn(fn ->
 
     source = Logflare.Sources.get_by(name: source_name)
 
-    {pending, ingested_size} =
+    {pending, processing, ingested, ingested_size} =
       if source do
-        pending = Logflare.Backends.IngestEventQueue.total_pending({source.id, nil})
+        sid_bid = {source.id, nil}
+        pending    = Logflare.Backends.IngestEventQueue.total_by_status(sid_bid, :pending)
+        processing = Logflare.Backends.IngestEventQueue.total_by_status(sid_bid, :processing)
+        ingested   = Logflare.Backends.IngestEventQueue.total_by_status(sid_bid, :ingested)
         ingested_size = Logflare.Backends.IngestEventQueue.get_table_size({source.id, nil, nil})
-        {pending, ingested_size}
+        {pending, processing, ingested, ingested_size}
       else
-        {:"source_not_found", :"source_not_found"}
+        {:source_not_found, :source_not_found, :source_not_found, :source_not_found}
       end
 
     stale_table = :atomics.get(stale_table_count, 1)
@@ -92,7 +95,7 @@ spawn(fn ->
         "proc=#{Float.round(proc / 1_048_576, 1)}MB " <>
         "total=#{Float.round(total / 1_048_576, 1)}MB " <>
         "proc_delta=#{Float.round(proc_delta / 1_048_576, 1)}MB | " <>
-        "queue_size=#{ingested_size} pending=#{pending}" <>
+        "queue_size=#{ingested_size} pending=#{pending} processing=#{processing} ingested=#{ingested}" <>
         errors_str
     )
 

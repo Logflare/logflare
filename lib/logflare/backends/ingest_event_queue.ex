@@ -426,6 +426,27 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec total_pending(source_backend()) :: integer()
   @spec total_pending(source_backend_pid()) :: integer() | {:error, :not_initialized}
+  @doc """
+  Returns the total count of events with a given status across all queues for a source-backend.
+  """
+  @spec total_by_status(queues_key(), :pending | :processing | :ingested) :: non_neg_integer()
+  def total_by_status({_, _} = sid_bid, status) do
+    ms =
+      Ex2ms.fun do
+        {_event_id, event_status, _event} when event_status == ^status -> true
+      end
+
+    traverse_queues(
+      sid_bid,
+      fn objs, acc ->
+        Enum.reduce(objs, acc, fn {_sid_bid_pid, tid}, c ->
+          c + :ets.select_count(tid, ms)
+        end)
+      end,
+      0
+    )
+  end
+
   def total_pending({_, _} = sid_bid) do
     # iterate over each matching source-backend queue and sum the totals
     for {_sid_bid_pid, count} <- list_pending_counts(sid_bid), reduce: 0 do
