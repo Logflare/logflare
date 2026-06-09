@@ -192,9 +192,11 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     so = SO.new(params)
 
     Tasks.async(fn ->
-      so
-      |> Search.search()
-      |> case do
+      start_time = System.monotonic_time()
+      result = Search.search(so)
+      emit_search_query_telemetry(result, so, :events, start_time)
+
+      case result do
         {:ok, result} ->
           {:search_result, lv_pid, result}
 
@@ -208,9 +210,11 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     so = SO.new(params)
 
     Tasks.async(fn ->
-      so
-      |> Search.aggs()
-      |> case do
+      start_time = System.monotonic_time()
+      result = Search.aggs(so)
+      emit_search_query_telemetry(result, so, :aggregates, start_time)
+
+      case result do
         {:ok, result} ->
           {:search_result, lv_pid, result}
 
@@ -219,4 +223,24 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       end
     end)
   end
+
+  defp emit_search_query_telemetry(result, %SO{} = so, type, start_time) do
+    :telemetry.execute(
+      [:logflare, :logs, :search, :query],
+      %{
+        count: 1,
+        duration: System.monotonic_time() - start_time
+      },
+      %{
+        backend_type: so.backend_type,
+        status: search_query_status(result),
+        tailing: so.tailing?,
+        tailing_initial: so.tailing_initial?,
+        type: type
+      }
+    )
+  end
+
+  defp search_query_status({:ok, _result}), do: :ok
+  defp search_query_status({:error, _result}), do: :error
 end

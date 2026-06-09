@@ -68,9 +68,12 @@ defmodule Logflare.BqRepo do
       |> DeepMerge.deep_merge(override)
       |> then(fn map -> struct(QueryRequest, map) end)
 
+    start_time = System.monotonic_time()
+
     result =
       GenUtils.get_conn({:query, user})
       |> execute_query_request(project_id, query_request, opts)
+      |> tap(&emit_query_telemetry(&1, opts, start_time))
       |> warn_if_cost_above_limit(query_request.labels, user)
 
     with {:ok, response} <- result do
@@ -80,7 +83,7 @@ defmodule Logflare.BqRepo do
 
   defp execute_query_request(conn, project_id, query_request, opts) do
     if batch_query?(opts) do
-      execute_batch_query(conn, project_id, query_request)
+      execute_batch_query(conn, project_id, query_request, opts)
     else
       conn
       |> Api.Jobs.bigquery_jobs_query(project_id, body: query_request)
@@ -88,25 +91,30 @@ defmodule Logflare.BqRepo do
     end
   end
 
-  defp execute_batch_query(conn, project_id, %QueryRequest{} = query_request) do
+  defp execute_batch_query(conn, project_id, %QueryRequest{} = query_request, opts) do
     job = build_batch_query_job(query_request)
+    start_time = System.monotonic_time()
 
-    with {:ok, %Job{jobReference: job_reference}} <-
-           Api.Jobs.bigquery_jobs_insert(conn, project_id, body: job) do
-      poll_batch_query_results(
-        conn,
-        project_id,
-        job_reference,
-        query_request,
-        batch_poll_deadline()
-      )
-    else
-      {:ok, %Job{} = job} ->
-        {:error, job}
+    {result, poll_count} =
+      case Api.Jobs.bigquery_jobs_insert(conn, project_id, body: job) do
+        {:ok, %Job{jobReference: job_reference}} ->
+          poll_batch_query_results(
+            conn,
+            project_id,
+            job_reference,
+            query_request,
+            batch_poll_deadline()
+          )
 
-      result ->
-        GenUtils.maybe_parse_google_api_result(result)
-    end
+        {:ok, %Job{} = job} ->
+          {{:error, job}, 0}
+
+        result ->
+          {GenUtils.maybe_parse_google_api_result(result), 0}
+      end
+
+    emit_batch_query_telemetry(result, opts, poll_count, start_time)
+    result
   end
 
   defp build_batch_query_job(%QueryRequest{} = query_request) do
@@ -129,15 +137,14 @@ defmodule Logflare.BqRepo do
   end
 
   defp poll_batch_query_results(_conn, _project_id, nil, _query_request, _deadline) do
-    {:error, :missing_job_reference}
+    {{:error, :missing_job_reference}, 0}
   end
 
   defp poll_batch_query_results(_conn, _project_id, %{jobId: nil}, _query_request, _deadline) do
-    {:error, :missing_job_id}
+    {{:error, :missing_job_id}, 0}
   end
 
   defp poll_batch_query_results(conn, project_id, job_reference, query_request, deadline) do
-    job_id = job_reference.jobId
     location = job_reference.location || query_request.location
 
     opts =
@@ -148,23 +155,46 @@ defmodule Logflare.BqRepo do
       ]
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
 
+    poll_batch_query_results(conn, project_id, job_reference, query_request, deadline, opts, 0)
+  end
+
+  defp poll_batch_query_results(
+         conn,
+         project_id,
+         job_reference,
+         query_request,
+         deadline,
+         opts,
+         count
+       ) do
+    job_id = job_reference.jobId
+
     case Api.Jobs.bigquery_jobs_get_query_results(conn, project_id, job_id, opts) do
       {:ok, %{jobComplete: true, errors: [_ | _] = errors}} ->
-        {:error, errors}
+        {{:error, errors}, count + 1}
 
       {:ok, %{jobComplete: true} = response} ->
-        {:ok, response}
+        {{:ok, response}, count + 1}
 
       {:ok, %{jobComplete: false}} ->
         if System.monotonic_time(:millisecond) >= deadline do
-          {:error, :timeout}
+          {{:error, :timeout}, count + 1}
         else
           Process.sleep(@batch_poll_interval)
-          poll_batch_query_results(conn, project_id, job_reference, query_request, deadline)
+
+          poll_batch_query_results(
+            conn,
+            project_id,
+            job_reference,
+            query_request,
+            deadline,
+            opts,
+            count + 1
+          )
         end
 
       result ->
-        GenUtils.maybe_parse_google_api_result(result)
+        {GenUtils.maybe_parse_google_api_result(result), count + 1}
     end
   end
 
@@ -175,6 +205,51 @@ defmodule Logflare.BqRepo do
   defp batch_query?(opts) do
     Keyword.get(opts, :job_priority) in [:batch, "BATCH"]
   end
+
+  defp emit_query_telemetry(result, opts, start_time) do
+    metadata = query_telemetry_metadata(result, opts)
+
+    measurements = %{
+      count: 1,
+      duration: System.monotonic_time() - start_time,
+      total_bytes_processed: total_bytes_processed(result)
+    }
+
+    :telemetry.execute([:logflare, :bigquery, :query], measurements, metadata)
+  end
+
+  defp emit_batch_query_telemetry(result, opts, poll_count, start_time) do
+    metadata = query_telemetry_metadata(result, opts)
+
+    measurements = %{
+      count: 1,
+      duration: System.monotonic_time() - start_time,
+      poll_count: poll_count
+    }
+
+    :telemetry.execute([:logflare, :bigquery, :batch_query], measurements, metadata)
+  end
+
+  defp query_telemetry_metadata(result, opts) do
+    %{
+      job_priority: query_job_priority(opts),
+      query_type: Keyword.get(opts, :query_type),
+      status: query_status(result)
+    }
+  end
+
+  defp query_job_priority(opts) do
+    if batch_query?(opts), do: :batch, else: :interactive
+  end
+
+  defp query_status({:ok, _response}), do: :ok
+  defp query_status({:error, :timeout}), do: :timeout
+  defp query_status({:error, _reason}), do: :error
+
+  defp total_bytes_processed({:ok, %{totalBytesProcessed: value}}),
+    do: maybe_string_to_integer_or_zero(value)
+
+  defp total_bytes_processed(_result), do: 0
 
   defp transform_response(response) do
     response
