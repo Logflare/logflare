@@ -103,7 +103,7 @@ defmodule Logflare.BqRepo do
             project_id,
             job_reference,
             query_request,
-            batch_poll_deadline()
+            batch_poll_deadline(query_request)
           )
 
         {:ok, %Job{} = job} ->
@@ -151,7 +151,7 @@ defmodule Logflare.BqRepo do
       [
         location: location,
         maxResults: query_request.maxResults,
-        timeoutMs: @query_request_timeout
+        timeoutMs: query_request.timeoutMs || @query_request_timeout
       ]
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
 
@@ -178,6 +178,7 @@ defmodule Logflare.BqRepo do
 
       {:ok, %{jobComplete: false}} ->
         if System.monotonic_time(:millisecond) >= deadline do
+          cancel_batch_query(conn, project_id, job_id, opts)
           {{:error, :timeout}, count + 1}
         else
           Process.sleep(@batch_poll_interval)
@@ -198,8 +199,17 @@ defmodule Logflare.BqRepo do
     end
   end
 
-  defp batch_poll_deadline do
-    System.monotonic_time(:millisecond) + @query_request_timeout
+  defp cancel_batch_query(conn, project_id, job_id, opts) do
+    cancel_opts = Keyword.take(opts, [:location])
+
+    case Api.Jobs.bigquery_jobs_cancel(conn, project_id, job_id, cancel_opts) do
+      {:ok, _response} -> :ok
+      {:error, _reason} -> :ok
+    end
+  end
+
+  defp batch_poll_deadline(%QueryRequest{timeoutMs: timeout_ms}) do
+    System.monotonic_time(:millisecond) + (timeout_ms || @query_request_timeout)
   end
 
   defp batch_query?(opts) do

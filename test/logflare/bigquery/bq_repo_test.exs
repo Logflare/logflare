@@ -106,6 +106,41 @@ defmodule Logflare.BigQuery.BqRepoTest do
       assert_received {:poll_opts, [location: "US", timeoutMs: 25_000]}
     end
 
+    test "query_with_sql_and_params cancels batch jobs on poll timeout", %{user: user} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_insert, 1, fn _conn, "project-id", _opts ->
+        {:ok,
+         %GoogleApi.BigQuery.V2.Model.Job{
+           jobReference: %GoogleApi.BigQuery.V2.Model.JobReference{
+             jobId: "batch_job_id",
+             location: "US",
+             projectId: "project-id"
+           }
+         }}
+      end)
+      |> expect(:bigquery_jobs_get_query_results, 1, fn _conn,
+                                                        "project-id",
+                                                        "batch_job_id",
+                                                        opts ->
+        assert opts == [location: "US", timeoutMs: 0]
+        {:ok, %GoogleApi.BigQuery.V2.Model.GetQueryResultsResponse{jobComplete: false}}
+      end)
+      |> expect(:bigquery_jobs_cancel, 1, fn _conn, "project-id", "batch_job_id", opts ->
+        assert opts == [location: "US"]
+        {:ok, %GoogleApi.BigQuery.V2.Model.JobCancelResponse{}}
+      end)
+
+      assert {:error, :timeout} =
+               BqRepo.query_with_sql_and_params(
+                 user,
+                 "project-id",
+                 "select timestamp from `my_table`",
+                 [],
+                 job_priority: :batch,
+                 timeoutMs: 0
+               )
+    end
+
     test "query_with_sql_and_params respects use_query_cache option", %{user: user} do
       pid = self()
 
