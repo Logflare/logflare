@@ -436,7 +436,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         paths: ["$.span_name", "$.name", "$.operationName", "$.event_message"]
       ),
       Field.string("span_kind",
-        paths: ["$.span_kind", "$.kind", "$.spanKind"]
+        paths: ["$.span_kind", "$.kind", "$.spanKind"],
+        default: "Unspecified",
+        value_map: %{
+          "Unspecified" => "Unspecified",
+          "Internal" => "Internal",
+          "Server" => "Server",
+          "Client" => "Client",
+          "Producer" => "Producer",
+          "Consumer" => "Consumer",
+          "SPAN_KIND_UNSPECIFIED" => "Unspecified",
+          "SPAN_KIND_INTERNAL" => "Internal",
+          "SPAN_KIND_SERVER" => "Server",
+          "SPAN_KIND_CLIENT" => "Client",
+          "SPAN_KIND_PRODUCER" => "Producer",
+          "SPAN_KIND_CONSUMER" => "Consumer"
+        }
       ),
       Field.string("service_name",
         paths: [

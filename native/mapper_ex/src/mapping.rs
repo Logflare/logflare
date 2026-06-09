@@ -23,6 +23,7 @@ pub struct CompiledField {
     pub transform: Option<FieldTransform>,
     pub allowed_values: HashSet<Vec<u8>>,
     pub value_map: HashMap<String, i64>,
+    pub value_map_str: HashMap<String, String>,
     pub exclude_keys: Vec<Vec<u8>>,
     pub elevate_keys: Vec<Vec<u8>>,
     pub pick: Vec<PickEntry>,
@@ -200,7 +201,13 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     let path_source = decode_path_source(env, field)?;
     let transform = decode_transform(env, field)?;
     let allowed_values = decode_allowed_values(env, field);
-    let value_map = decode_value_map(env, field)?;
+    // For string fields, value_map is a string->string remap; for all other
+    // (numeric) fields it is a string->integer lookup.
+    let (value_map, value_map_str) = if matches!(field_type, FieldType::String) {
+        (HashMap::new(), decode_value_map_str(env, field)?)
+    } else {
+        (decode_value_map(env, field)?, HashMap::new())
+    };
     let exclude_keys = decode_string_list_bytes(env, field, "exclude_keys");
     let elevate_keys = decode_string_list_bytes(env, field, "elevate_keys");
     let pick = decode_pick(env, field)?;
@@ -223,6 +230,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         transform,
         allowed_values,
         value_map,
+        value_map_str,
         exclude_keys,
         elevate_keys,
         pick,
@@ -405,6 +413,31 @@ fn decode_value_map<'a>(env: Env<'a>, field: Term<'a>) -> Result<HashMap<String,
     };
 
     decode_string_int_map(env, term)
+}
+
+fn decode_value_map_str<'a>(
+    env: Env<'a>,
+    field: Term<'a>,
+) -> Result<HashMap<String, String>, String> {
+    let term = match get_term_key(env, field, "value_map") {
+        Some(t) if t.is_map() => t,
+        _ => return Ok(HashMap::new()),
+    };
+
+    let iter = MapIterator::new(term).ok_or_else(|| "value_map must be a map".to_string())?;
+
+    let mut result = HashMap::new();
+    for (k, v) in iter {
+        let key = k
+            .decode::<String>()
+            .map_err(|_| "value_map keys must be strings".to_string())?;
+        let val = v
+            .decode::<String>()
+            .map_err(|_| "value_map values must be strings".to_string())?;
+        // Pre-normalize keys to lowercase for case-insensitive lookups at map time
+        result.insert(key.to_lowercase(), val);
+    }
+    Ok(result)
 }
 
 fn decode_pick<'a>(env: Env<'a>, field: Term<'a>) -> Result<Vec<PickEntry>, String> {

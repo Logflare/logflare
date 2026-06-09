@@ -90,8 +90,18 @@ pub fn map_single<'a>(
             value
         };
 
-        // Apply value_map if configured (e.g., severity_text -> severity_number)
-        let value = if !field.value_map.is_empty() {
+        // Apply value_map if configured.
+        // String fields use a string->string remap; numeric fields use a
+        // string->integer lookup (e.g. severity_text -> severity_number).
+        // Either way, values absent from the map fall back to the default.
+        let value = if !field.value_map_str.is_empty() {
+            let mapped = coerce::apply_value_map_str(env, value, &field.value_map_str, nil);
+            if mapped != nil {
+                mapped
+            } else {
+                coerce::encode_default(env, &field.default, nil)
+            }
+        } else if !field.value_map.is_empty() {
             let mapped = coerce::apply_value_map(env, value, &field.value_map, nil);
             if mapped != nil {
                 mapped

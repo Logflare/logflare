@@ -1113,6 +1113,87 @@ defmodule Logflare.MapperTest do
     end
   end
 
+  # ── String value_map ────────────────────────────────────────────────
+
+  describe "string value_map" do
+    test "remaps a matched value to its string replacement" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client", "SPAN_KIND_SERVER" => "Server"}
+            )
+          ],
+          %{"kind" => "SPAN_KIND_CLIENT"}
+        )
+
+      assert result["span_kind"] == "Client"
+    end
+
+    test "lookup is case-insensitive" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{"SPAN_KIND_SERVER" => "Server"}
+            )
+          ],
+          %{"kind" => "span_kind_server"}
+        )
+
+      assert result["span_kind"] == "Server"
+    end
+
+    test "unmapped values fall back to the default" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              default: "Unspecified",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client"}
+            )
+          ],
+          %{"kind" => "something_else"}
+        )
+
+      assert result["span_kind"] == "Unspecified"
+    end
+
+    test "unmapped values with no explicit default fall back to empty string" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client"}
+            )
+          ],
+          %{"kind" => "something_else"}
+        )
+
+      assert result["span_kind"] == ""
+    end
+
+    test "missing path falls back to default, not remapped" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              default: "Unspecified",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client"}
+            )
+          ],
+          %{}
+        )
+
+      assert result["span_kind"] == "Unspecified"
+    end
+  end
+
   # ── Allowed values ──────────────────────────────────────────────────
 
   describe "allowed_values" do

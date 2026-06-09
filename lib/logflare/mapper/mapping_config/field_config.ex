@@ -15,8 +15,11 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       input document (e.g. `from_output: "severity_text"`). Fields are resolved in order, so
       the source field must be defined earlier in the config.
     * `:default` — fallback value when no path resolves
-    * `:value_map` — `%{String.t() => integer()}` lookup applied to the resolved value.
-      Useful for derived fields (e.g. mapping `"ERROR"` to `17` for severity numbers).
+    * `:value_map` — case-insensitive lookup applied to the resolved value. For string
+      fields it is `%{String.t() => String.t()}` and remaps the value (e.g. mapping
+      `"SPAN_KIND_CLIENT"` to `"Client"`); for all other (numeric) fields it is
+      `%{String.t() => integer()}` (e.g. mapping `"ERROR"` to `17` for severity numbers).
+      In both cases, values absent from the map fall back to the field's `:default`.
 
   ## Type-Specific Options
 

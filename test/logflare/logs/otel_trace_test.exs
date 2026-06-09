@@ -41,6 +41,7 @@ defmodule Logflare.Logs.OtelTraceTest do
       assert le_span["span_id"] == Base.encode16(span.span_id, case: :lower)
       assert le_span["parent_span_id"] == Base.encode16(span.parent_span_id, case: :lower)
       assert le_span["event_message"] == span.name
+      assert le_span["kind"] in ~w(Unspecified Internal Server Client Producer Consumer)
 
       assert le_span["timestamp"] == span.start_time_unix_nano
       assert le_span["start_time"] == span.start_time_unix_nano
@@ -311,6 +312,14 @@ defmodule Logflare.Logs.OtelTraceTest do
 
       converted =
         OtelTrace.handle_batch(request.resource_spans, source)
+
+      span_kinds =
+        converted
+        |> Enum.filter(fn p -> p["metadata"]["type"] == "span" end)
+        |> Enum.map(& &1["kind"])
+
+      assert "Client" in span_kinds
+      assert "Server" in span_kinds
 
       assert converted
              |> Iteraptor.each(
