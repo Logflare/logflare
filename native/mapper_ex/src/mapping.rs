@@ -201,8 +201,10 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     let path_source = decode_path_source(env, field)?;
     let transform = decode_transform(env, field)?;
     let allowed_values = decode_allowed_values(env, field);
-    // For string fields, value_map is a string->string remap; for all other
-    // (numeric) fields it is a string->integer lookup.
+    // Resolve which value_map variant this field uses once, here at compile
+    // time: string fields get a string->string remap, all non-string fields get
+    // a string->integer lookup. The unused variant stays empty so the per-event
+    // path in `map_single` only has to check which map is populated.
     let (value_map, value_map_str) = if matches!(field_type, FieldType::String) {
         (HashMap::new(), decode_value_map_str(env, field)?)
     } else {

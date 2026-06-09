@@ -15,11 +15,19 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       input document (e.g. `from_output: "severity_text"`). Fields are resolved in order, so
       the source field must be defined earlier in the config.
     * `:default` — fallback value when no path resolves
-    * `:value_map` — case-insensitive lookup applied to the resolved value. For string
-      fields it is `%{String.t() => String.t()}` and remaps the value (e.g. mapping
-      `"SPAN_KIND_CLIENT"` to `"Client"`); for all other (numeric) fields it is
-      `%{String.t() => integer()}` (e.g. mapping `"ERROR"` to `17` for severity numbers).
-      In both cases, values absent from the map fall back to the field's `:default`.
+    * `:value_map` — case-insensitive lookup applied to the resolved value. The map's
+      value type is dictated by the field's output type and is resolved once at compile
+      time (in the NIF), not per document — so there is no per-event type inference cost:
+
+      * For `string/2` fields it is a `%{String.t() => String.t()}` remap that rewrites
+        one string to another (e.g. mapping `"SPAN_KIND_CLIENT"` to `"Client"`).
+      * For all non-string fields it is a `%{String.t() => integer()}` lookup that
+        derives an integer from a string (e.g. mapping `"ERROR"` to `17` for severity
+        numbers).
+
+      Mixing the two — string values on a non-string field, or integer values on a
+      string field — is rejected at compile time rather than silently mishandled. In
+      both cases, values absent from the map fall back to the field's `:default`.
 
   ## Type-Specific Options
 

@@ -130,8 +130,8 @@ pub fn apply_value_map<'a>(
 
 /// Look up a string value in a string value_map, returning the mapped string.
 ///
-/// Returns `nil` when the value is absent from the map so callers can decide
-/// whether to pass the original value through unchanged.
+/// Returns `nil` when the value is absent from the map; the caller substitutes
+/// the field's default in that case.
 pub fn apply_value_map_str<'a>(
     env: Env<'a>,
     value: Term<'a>,
