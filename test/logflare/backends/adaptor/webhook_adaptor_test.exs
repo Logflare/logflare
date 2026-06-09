@@ -442,6 +442,20 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
              }
     end
 
+    test "restores the stored secret when stored casing differs from the submitted key" do
+      params = %{
+        url: "https://example.com",
+        headers: %{"authorization" => "REDACTED", "x-custom" => "v"}
+      }
+
+      changeset = @subject.cast_config(params, @existing)
+
+      assert Ecto.Changeset.get_field(changeset, :headers) == %{
+               "authorization" => "Bearer secret-token-123",
+               "x-custom" => "v"
+             }
+    end
+
     test "applies a new Authorization value when the user changes it" do
       params = %{
         url: "https://example.com",

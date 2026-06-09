@@ -80,11 +80,17 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     with headers when not is_nil(headers) <- Ecto.Changeset.get_change(changeset, :headers),
          existing_headers <-
            Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{} do
+      # Look up existing values by normalized key: header names are case-insensitive,
+      # and stored config predating normalize_keys/1 may use casing that differs from
+      # the (possibly already normalized) submitted key. An exact match would drop the
+      # stored secret in that case.
+      normalized_existing = Headers.normalize_keys(existing_headers)
+
       restored =
         headers
         |> Enum.reduce(%{}, fn
           {key, @redacted_value}, acc ->
-            replace_header_with_existing(acc, existing_headers, key)
+            replace_header_with_existing(acc, normalized_existing, key)
 
           {key, value}, acc ->
             Map.put(acc, key, value)
@@ -96,8 +102,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     end
   end
 
-  defp replace_header_with_existing(headers, existing_headers, key) do
-    case Map.get(existing_headers, key) do
+  defp replace_header_with_existing(headers, normalized_existing, key) do
+    case Map.get(normalized_existing, String.downcase(to_string(key))) do
       nil -> headers
       value -> Map.put(headers, key, value)
     end
