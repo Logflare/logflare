@@ -184,6 +184,46 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
     end
   end
 
+  describe "reserved headers" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: %{@valid_config | headers: %{"Content-Type" => "application/json"}}
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}})
+      :timer.sleep(250)
+      [source: source]
+    end
+
+    test "drops a user-supplied content-type so the formatter's is the only one", %{
+      source: source
+    } do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, env.headers})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      log_event = build(:log_event, source: source, timestamp: System.system_time(:microsecond))
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+      assert_receive {^ref, headers}, 5000
+
+      content_types =
+        for {key, value} <- headers, String.downcase(key) == "content-type", do: value
+
+      assert content_types == ["application/x-protobuf"]
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts sensitive headers" do
       config = %{

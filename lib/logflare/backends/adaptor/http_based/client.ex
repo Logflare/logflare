@@ -73,15 +73,32 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
 
   # Header names the middleware will set, so they must be dropped from
   # user-supplied headers to avoid duplicates (see `Headers.drop_reserved/2`).
-  # `content-type` is intentionally excluded: the request body is not available at
-  # client-build time, so we cannot tell whether `Tesla.Middleware.JSON` will
-  # encode it and own the header — current adaptors never pass a user content-type.
+  #
+  # `content-type` cannot be inferred from `Tesla.Middleware.JSON` here: the request
+  # body is not available at client-build time, so we cannot tell whether the JSON
+  # middleware will encode it and own the header. Instead, a formatter that sets
+  # `content-type` itself (e.g. the protobuf/envelope formatters) declares ownership
+  # via an optional `reserved_headers/0`, and we drop those names regardless of body.
   @spec reserved_header_names(opts()) :: [String.t()]
   defp reserved_header_names(opts) do
     encoding = if opts[:gzip], do: ["content-encoding"], else: []
     auth = if opts[:token] || opts[:basic_auth], do: ["authorization"], else: []
-    encoding ++ auth
+    formatter = formatter_reserved_headers(Keyword.get(opts, :formatter, LogEventTransformer))
+    encoding ++ auth ++ formatter
   end
+
+  @spec formatter_reserved_headers(Tesla.Client.middleware()) :: [String.t()]
+  defp formatter_reserved_headers({module, _opts}), do: formatter_reserved_headers(module)
+
+  defp formatter_reserved_headers(module) when is_atom(module) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :reserved_headers, 0) do
+      module.reserved_headers()
+    else
+      []
+    end
+  end
+
+  defp formatter_reserved_headers(_), do: []
 
   def headers_middleware(nil), do: nil
   def headers_middleware([]), do: nil
