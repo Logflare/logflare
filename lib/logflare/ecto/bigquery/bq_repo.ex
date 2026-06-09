@@ -109,9 +109,6 @@ defmodule Logflare.BqRepo do
             batch_poll_deadline(query_request)
           )
 
-        {:ok, %Job{} = job} ->
-          {{:error, job}, 0}
-
         result ->
           {GenUtils.maybe_parse_google_api_result(result), 0}
       end
