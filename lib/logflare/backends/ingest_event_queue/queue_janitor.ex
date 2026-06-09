@@ -132,14 +132,15 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   # :processing on the previous run are stuck (batcher crash, kill signal, etc.).
   # Stuck events have their retries incremented; those exceeding @max_stale_retries
   # are dropped, the rest are reset to :pending.
-  defp do_cleanup_stale_processing(
-         %{consolidated?: true, consolidated_key: consolidated_key} = state
-       ) do
+  # expose for testing
+  def do_cleanup_stale_processing(
+        %{consolidated?: true, consolidated_key: consolidated_key} = state
+      ) do
     queues = IngestEventQueue.list_queues(consolidated_key)
     do_cleanup_queues(state, queues)
   end
 
-  defp do_cleanup_stale_processing(state) do
+  def do_cleanup_stale_processing(state) do
     sid_bid = {state.source_id, state.backend_id}
     queues = IngestEventQueue.list_queues(sid_bid)
     do_cleanup_queues(state, queues)
@@ -147,62 +148,65 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
   defp do_cleanup_queues(state, queues) do
     new_snapshot =
-      Enum.reduce(queues, %{}, fn table_key, acc ->
+      Enum.reduce(queues, %{}, fn table_key, snapshot ->
         current_ids = MapSet.new(IngestEventQueue.list_processing_ids(table_key))
         prev_ids = Map.get(state.processing_snapshot, table_key, MapSet.new())
         stale_ids = MapSet.intersection(current_ids, prev_ids) |> MapSet.to_list()
 
-        {to_reset, to_drop} =
-          Enum.reduce(stale_ids, {[], []}, fn id, {reset_acc, drop_acc} ->
-            case IngestEventQueue.get_tid(table_key) do
-              nil ->
-                {reset_acc, drop_acc}
+        {n_reset, n_drop} = process_stale_events(table_key, stale_ids)
+        if n_reset + n_drop > 0, do: emit_stale_telemetry(state, n_reset, n_drop)
 
-              tid ->
-                case :ets.lookup(tid, id) do
-                  [{^id, :processing, %{retries: retries}}]
-                  when retries >= @max_stale_retries - 1 ->
-                    {reset_acc, [id | drop_acc]}
-
-                  [{^id, :processing, %{retries: retries} = le}] ->
-                    updated = %{le | retries: (retries || 0) + 1}
-                    :ets.insert(tid, {id, :pending, updated})
-                    {[id | reset_acc], drop_acc}
-
-                  _ ->
-                    {reset_acc, drop_acc}
-                end
-            end
-          end)
-
-        for id <- to_drop do
-          case IngestEventQueue.get_tid(table_key) do
-            nil -> :ok
-            tid -> :ets.delete(tid, id)
-          end
-        end
-
-        n_reset = length(to_reset)
-        n_drop = length(to_drop)
-
-        if n_reset + n_drop > 0 do
-          :telemetry.execute(
-            [:logflare, :ingest_event_queue, :stale_processing],
-            %{reset: n_reset, dropped: n_drop},
-            %{source_id: state.source_id}
-          )
-
-          Logger.warning(
-            "QueueJanitor: reset #{n_reset} and dropped #{n_drop} stale :processing events",
-            source_id: state.source_id,
-            backend_id: state.backend_id
-          )
-        end
-
-        Map.put(acc, table_key, current_ids)
+        Map.put(snapshot, table_key, current_ids)
       end)
 
     %{state | processing_snapshot: new_snapshot}
+  end
+
+  defp process_stale_events(_table_key, []), do: {0, 0}
+
+  defp process_stale_events(table_key, stale_ids) do
+    case IngestEventQueue.get_tid(table_key) do
+      nil ->
+        {0, 0}
+
+      tid ->
+        Enum.reduce(stale_ids, {0, 0}, fn id, {resets, drops} ->
+          case act_on_stale_event(tid, id) do
+            :reset -> {resets + 1, drops}
+            :drop -> {resets, drops + 1}
+            :skip -> {resets, drops}
+          end
+        end)
+    end
+  end
+
+  defp act_on_stale_event(tid, id) do
+    case :ets.lookup(tid, id) do
+      [{^id, :processing, %{retries: retries}}] when retries >= @max_stale_retries - 1 ->
+        :ets.delete(tid, id)
+        :drop
+
+      [{^id, :processing, %{retries: retries} = le}] ->
+        :ets.insert(tid, {id, :pending, %{le | retries: (retries || 0) + 1}})
+        :reset
+
+      _ ->
+        :skip
+    end
+  end
+
+  defp emit_stale_telemetry(state, n_reset, n_drop) do
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :stale_processing],
+      %{reset: n_reset, dropped: n_drop},
+      %{source_id: state.source_id}
+    )
+
+    Logger.warning(
+      "QueueJanitor: reset #{n_reset} and dropped #{n_drop} stale :processing events",
+      source_id: state.source_id,
+      backend_id: state.backend_id
+    )
   end
 
   # schedule work based on rps
