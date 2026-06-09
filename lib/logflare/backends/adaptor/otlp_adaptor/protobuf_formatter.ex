@@ -37,6 +37,14 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
     end
   end
 
+  @doc """
+  Header names this formatter sets, so `HttpBased.Client` can drop any
+  user-supplied copies and keep itself the single source (see
+  `Logflare.Backends.Adaptor.HttpBased.Headers.drop_reserved/2`).
+  """
+  @spec reserved_headers() :: [String.t()]
+  def reserved_headers, do: ["content-type"]
+
   defp transform_batch(events, source) do
     %ExportLogsServiceRequest{
       resource_logs: [
