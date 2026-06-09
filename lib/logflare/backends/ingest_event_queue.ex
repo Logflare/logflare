@@ -640,6 +640,71 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Safely deletes a single event by id from a tid, ignoring stale (deleted) tables.
+  Emits telemetry if the table no longer exists.
+  """
+  @spec delete_id(:ets.tid(), term()) :: :ok
+  def delete_id(tid, id) do
+    try do
+      :ets.delete(tid, id)
+      :ok
+    rescue
+      ArgumentError ->
+        :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+        :ok
+    end
+  end
+
+  @doc """
+  Safely updates the status of a single event in a tid, ignoring stale (deleted) tables.
+  Emits telemetry if the table no longer exists.
+  """
+  @spec update_status(:ets.tid(), term(), :pending | :processing | :ingested) :: :ok
+  def update_status(tid, id, status) do
+    try do
+      :ets.update_element(tid, id, {2, status})
+      :ok
+    rescue
+      ArgumentError ->
+        :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+        :ok
+    end
+  end
+
+  @doc """
+  Returns the list of event IDs currently marked as `:processing` in a queue.
+  Used by QueueJanitor to detect stale in-flight events.
+  """
+  @spec list_processing_ids(table_key() | consolidated_table_key()) :: [term()]
+  def list_processing_ids(key) do
+    ms =
+      Ex2ms.fun do
+        {id, :processing, _event} -> id
+      end
+
+    with tid when tid != nil <- get_tid(key),
+         {ids, _cont} <- :ets.select(tid, ms, 10_000) do
+      ids
+    else
+      _ -> []
+    end
+  end
+
+  @doc """
+  Resets a given list of event IDs from `:processing` back to `:pending` in a queue.
+  Used by QueueJanitor to recover stale in-flight events.
+  """
+  @spec reset_processing(table_key() | consolidated_table_key(), [term()]) :: :ok
+  def reset_processing(key, ids) do
+    with tid when tid != nil <- get_tid(key) do
+      for id <- ids, do: :ets.update_element(tid, id, {2, :pending})
+      :ok
+    else
+      _ -> :ok
+    end
+  end
+
+  @doc """
   Deletes a specific event from the table.
   If already deleted, it is a :noop.
   """

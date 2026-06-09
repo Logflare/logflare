@@ -267,6 +267,25 @@ defmodule Logflare.Telemetry do
         tags: [:cache, :action],
         unit: {:native, :millisecond},
         description: "Latency of processing an incoming cache gossip cast"
+      ),
+      counter("logflare.ingest_event_queue.stale_table.count",
+        event_name: [:logflare, :ingest_event_queue, :stale_table],
+        description: "Count of ack operations on a stale (already deleted) ETS table"
+      ),
+      sum("logflare.ingest_event_queue.missing_ids.count",
+        event_name: [:logflare, :ingest_event_queue, :missing_ids],
+        tags: [:source_id],
+        description: "Count of event IDs not found in ETS during handle_batch fetch"
+      ),
+      sum("logflare.ingest_event_queue.stale_processing.reset",
+        event_name: [:logflare, :ingest_event_queue, :stale_processing],
+        tags: [:source_id],
+        description: "Count of stale :processing events reset to :pending by QueueJanitor"
+      ),
+      sum("logflare.ingest_event_queue.stale_processing.dropped",
+        event_name: [:logflare, :ingest_event_queue, :stale_processing],
+        tags: [:source_id],
+        description: "Count of stale :processing events dropped by QueueJanitor after max retries"
       )
     ]
 

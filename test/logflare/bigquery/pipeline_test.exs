@@ -28,13 +28,13 @@ defmodule Logflare.BigQuery.PipelineTest do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event)
-      # Add event to ETS and mark as ingested (simulating it was taken by the producer)
+      # Add event to ETS and mark as :processing (simulating it was taken by the producer)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
       tid = IngestEventQueue.get_tid(sid_bid_pid)
       IngestEventQueue.mark_ingested(sid_bid_pid, [le])
 
       ref = {sid_bid_pid, %{max_retries: 1}}
-      message = Pipeline.transform({le.id, tid}, ref: ref)
+      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
       {mod, ref, _data} = message.acknowledger
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
 
@@ -51,20 +51,61 @@ defmodule Logflare.BigQuery.PipelineTest do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event) |> Map.put(:retries, 1)
-      # Add event to ETS and mark as ingested (simulating it was taken by the producer)
+      # Add event to ETS and mark as :processing (simulating it was taken by the producer)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
       tid = IngestEventQueue.get_tid(sid_bid_pid)
       IngestEventQueue.mark_ingested(sid_bid_pid, [le])
 
       ref = {sid_bid_pid, %{max_retries: 1}}
-      message = Pipeline.transform({le.id, tid}, ref: ref)
+      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
       {mod, ref, _data} = message.acknowledger
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
 
       mod.ack(ref, [], [message])
 
-      # Event is NOT requeued (retries == max_retries); remains as :ingested in ETS
+      # Event is NOT requeued (retries == max_retries); deleted from ETS
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+    end
+
+    test "ack deletes events directly when avg > 100", %{source: source} do
+      stub(Logflare.Sources, :get_source_metrics_for_ingest, fn _ -> %{avg: 200} end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      mod.ack(ref, [message], [])
+
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+    end
+
+    test "ack marks events as :ingested when avg <= 100", %{source: source} do
+      stub(Logflare.Sources, :get_source_metrics_for_ingest, fn _ -> %{avg: 50} end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      mod.ack(ref, [message], [])
+
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+      assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+      assert [{_id, :ingested, _}] = :ets.lookup(tid, le.id)
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
@@ -204,7 +245,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       log =
         capture_log([level: :warning], fn ->
-          Pipeline.stream_batch(context, [])
+          Pipeline.stream_batch(context, [{build(:log_event, source: source), 0}])
         end)
 
       assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
@@ -242,7 +283,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       log =
         capture_log([level: :warning], fn ->
-          Pipeline.stream_batch(context, [])
+          Pipeline.stream_batch(context, [{build(:log_event, source: source), 0}])
         end)
 
       assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
@@ -280,21 +321,6 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert updated_user.bigquery_project_id == "my-byob-project"
       assert updated_user.bigquery_dataset_id == "my_dataset"
       assert updated_user.bigquery_dataset_location == "US"
-    end
-  end
-
-  describe "bq_batch_size_splitter/2" do
-    property "fallback inspect_payload/1 usage always overstates json encoded length" do
-      check all payload <-
-                  map_of(
-                    string(:alphanumeric, min_length: 1),
-                    string(:ascii, max_length: 1_000_000),
-                    min_length: 20,
-                    max_length: 500
-                  ) do
-        assert IO.iodata_length(Jason.encode!(payload)) <
-                 Pipeline.message_size(payload)
-      end
     end
   end
 
@@ -386,6 +412,31 @@ defmodule Logflare.BigQuery.PipelineTest do
 
         run_pipeline_benchmark(name, batch)
       end
+    end
+  end
+
+  describe "chunk_by_size/2" do
+    test "returns a single chunk when total size is under the limit" do
+      pairs = [{build(:log_event), 100}, {build(:log_event), 200}]
+      assert [^pairs] = Pipeline.chunk_by_size(pairs, 1_000)
+    end
+
+    test "splits into multiple chunks when byte limit is exceeded" do
+      le = build(:log_event)
+      pairs = [{le, 400}, {le, 400}, {le, 400}]
+      chunks = Pipeline.chunk_by_size(pairs, 500)
+      assert length(chunks) == 3
+      assert Enum.all?(chunks, &(length(&1) == 1))
+    end
+
+    test "a single oversized event forms its own chunk without being dropped" do
+      le = build(:log_event)
+      pairs = [{le, 10_000_000}]
+      assert [[{^le, 10_000_000}]] = Pipeline.chunk_by_size(pairs, 100)
+    end
+
+    test "empty input returns empty list" do
+      assert [] = Pipeline.chunk_by_size([], 1_000)
     end
   end
 
