@@ -5,11 +5,13 @@ defmodule Logflare.BigQuery.PipelineTest do
 
   import ExUnit.CaptureLog
 
+  alias Broadway.Message
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
   alias Logflare.Backends
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
@@ -412,6 +414,152 @@ defmodule Logflare.BigQuery.PipelineTest do
 
         run_pipeline_benchmark(name, batch)
       end
+    end
+  end
+
+  describe "handle_batch/4" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+
+      context = %{
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: nil,
+        bigquery_project_id: nil,
+        bigquery_dataset_id: nil,
+        user_id: user.id,
+        system_source: false
+      }
+
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
+
+      {:ok, source: source, context: context, batch_info: batch_info}
+    end
+
+    defp setup_queue(source, events) do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      IngestEventQueue.add_to_table(sid_bid_pid, events)
+      {:ok, ids, tid} = IngestEventQueue.take_pending_ids(sid_bid_pid, length(events))
+
+      messages =
+        Enum.map(ids, &%Message{data: {&1, tid}, acknowledger: {Pipeline, :ack_id, :ack_data}})
+
+      {messages, tid}
+    end
+
+    test "resolves {id, tid} to {id, tid, size} in returned messages", %{
+      source: source,
+      context: context,
+      batch_info: batch_info
+    } do
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source)
+      {[message], tid} = setup_queue(source, [le])
+
+      [result] = Pipeline.handle_batch(:bq, [message], batch_info, context)
+
+      assert {id, ^tid, size} = result.data
+      assert id == le.id
+      assert is_integer(size) and size > 0
+    end
+
+    test "excludes missing IDs and emits telemetry", %{
+      source: source,
+      context: context,
+      batch_info: batch_info
+    } do
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source)
+      {[message], tid} = setup_queue(source, [le])
+
+      # Delete event from ETS so ID cannot be resolved
+      :ets.delete(tid, le.id)
+
+      ref = make_ref()
+
+      :telemetry.attach(
+        "test-missing-#{inspect(ref)}",
+        [:logflare, :ingest_event_queue, :missing_ids],
+        fn _event, %{count: n}, _meta, pid -> send(pid, {:missing, n}) end,
+        self()
+      )
+
+      result = Pipeline.handle_batch(:bq, [message], batch_info, context)
+
+      assert result == []
+      assert_receive {:missing, 1}
+
+      :telemetry.detach("test-missing-#{inspect(ref)}")
+    end
+
+    test "sends all events in a single stream_batch! call when under size limit", %{
+      source: source,
+      context: context,
+      batch_info: batch_info
+    } do
+      les = for _ <- 1..3, do: build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, les)
+
+      expect(Logflare.Google.BigQuery, :stream_batch!, 1, fn _ctx, rows ->
+        assert length(rows) == 3
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+    end
+
+    test "calls stream_batch! with resolved log events", %{
+      source: source,
+      context: context,
+      batch_info: batch_info
+    } do
+      le = build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, [le])
+
+      expect(Logflare.Google.BigQuery, :stream_batch!, 1, fn _ctx, rows ->
+        ids = Enum.map(rows, & &1.insertId)
+        assert le.id in ids
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+    end
+
+    test "calls insert_log_events_via_storage_write_api on storage write path", %{
+      source: source,
+      batch_info: batch_info
+    } do
+      source = insert(:source, user_id: source.user_id, bq_storage_write_api: true)
+
+      context = %{
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: nil,
+        bigquery_project_id: nil,
+        bigquery_dataset_id: nil,
+        user_id: source.user_id,
+        system_source: false
+      }
+
+      le = build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, [le])
+
+      expect(BigQueryAdaptor, :insert_log_events_via_storage_write_api, 1, fn log_events, _opts ->
+        ids = Enum.map(log_events, & &1.id)
+        assert le.id in ids
+        :ok
+      end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
     end
   end
 
