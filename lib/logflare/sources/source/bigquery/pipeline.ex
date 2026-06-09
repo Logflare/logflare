@@ -219,31 +219,35 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         )
       end
 
-      # Derive all downstream values from the triples in a single pass each.
-      batch_count = Enum.count(triples)
-      batch_size = Enum.sum_by(triples, &elem(&1, 2))
+      event_size_pairs = Enum.map(triples, fn {_msg, le, size} -> {le, size} end)
 
-      if source && source.bq_storage_write_api do
-        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
-        log_events = Enum.map(triples, &elem(&1, 1))
+      event_size_pairs
+      |> chunk_by_size(@max_batch_length)
+      |> Enum.each(fn chunk ->
+        log_events = Enum.map(chunk, &elem(&1, 0))
+        chunk_count = length(chunk)
+        chunk_size = Enum.sum_by(chunk, &elem(&1, 1))
 
-        OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
-          BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
-            project_id: context.bigquery_project_id,
-            dataset_id: context.bigquery_dataset_id,
-            source_id: context.source_id,
-            source_token: context.source_token,
-            backend_id: context.backend_id
-          )
+        if source && source.bq_storage_write_api do
+          batch_attrs = compute_batch_attrs(chunk_count, chunk_size, :bq_storage_write)
+
+          OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
+            BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
+              project_id: context.bigquery_project_id,
+              dataset_id: context.bigquery_dataset_id,
+              source_id: context.source_id,
+              source_token: context.source_token,
+              backend_id: context.backend_id
+            )
+          end
+        else
+          batch_attrs = compute_batch_attrs(chunk_count, chunk_size, :bq_streaming_insert)
+
+          OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
+            stream_batch(context, chunk)
+          end
         end
-      else
-        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_streaming_insert)
-        event_size_pairs = Enum.map(triples, fn {_msg, le, size} -> {le, size} end)
-
-        OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
-          stream_batch(context, event_size_pairs)
-        end
-      end
+      end)
 
       messages_with_sizes =
         Enum.map(triples, fn {%{data: {id, tid}} = msg, _le, size} ->
@@ -341,65 +345,61 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   defp execute_bigquery_stream_batch(%{source_token: source_token} = context, event_size_pairs) do
-    event_size_pairs
-    |> chunk_by_size(@max_batch_length)
-    |> Enum.each(fn chunk ->
-      log_events = Enum.map(chunk, &elem(&1, 0))
+    log_events = Enum.map(event_size_pairs, &elem(&1, 0))
 
-      rows =
-        OpenTelemetry.Tracer.with_span "ingest.bq_serialize", %{
-          attributes: %{insert_method: :bq_streaming_insert}
-        } do
-          result = le_list_to_bq_rows(log_events)
-          OpenTelemetry.Tracer.set_attribute(:serialized_bytes, :erlang.external_size(result))
-          result
-        end
-
-      # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
-      # All others send to the rejected list with the message from BigQuery.
-      # See todo in `process_data` also.
-      OpenTelemetry.Tracer.with_span "ingest.bq_api_call", %{
+    rows =
+      OpenTelemetry.Tracer.with_span "ingest.bq_serialize", %{
         attributes: %{insert_method: :bq_streaming_insert}
       } do
-        case BigQuery.stream_batch!(context, rows) do
-          {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
-            OpenTelemetry.Tracer.set_attribute(:insert_error_count, 0)
-            :ok
-
-          {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
-            OpenTelemetry.Tracer.set_attribute(:insert_error_count, length(errors))
-            error_string = inspect(errors)
-            OpenTelemetry.Tracer.set_status(:error, error_string)
-            Logger.warning("BigQuery insert errors.", error_string: error_string)
-
-          {:error, %Tesla.Env{} = response} ->
-            message = GenUtils.get_tesla_error_message(response)
-            OpenTelemetry.Tracer.set_status(:error, message)
-
-            case message do
-              "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
-                  message ->
-                disconnect_backend_and_email(source_token, message)
-
-              "The project" <> _tail = message ->
-                # "The project web-wtc-1537199112807 has not enabled BigQuery."
-                disconnect_backend_and_email(source_token, message)
-
-              _message ->
-                Logger.warning("Stream batch response error!",
-                  tesla_response: GenUtils.get_tesla_error_message(response)
-                )
-            end
-
-          {:error, response} ->
-            OpenTelemetry.Tracer.set_status(:error, inspect(response))
-
-            Logger.warning("Stream batch unknown error!",
-              tesla_response: inspect(response, limit: 20)
-            )
-        end
+        result = le_list_to_bq_rows(log_events)
+        OpenTelemetry.Tracer.set_attribute(:serialized_bytes, :erlang.external_size(result))
+        result
       end
-    end)
+
+    # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
+    # All others send to the rejected list with the message from BigQuery.
+    # See todo in `process_data` also.
+    OpenTelemetry.Tracer.with_span "ingest.bq_api_call", %{
+      attributes: %{insert_method: :bq_streaming_insert}
+    } do
+      case BigQuery.stream_batch!(context, rows) do
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
+          OpenTelemetry.Tracer.set_attribute(:insert_error_count, 0)
+          :ok
+
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
+          OpenTelemetry.Tracer.set_attribute(:insert_error_count, length(errors))
+          error_string = inspect(errors)
+          OpenTelemetry.Tracer.set_status(:error, error_string)
+          Logger.warning("BigQuery insert errors.", error_string: error_string)
+
+        {:error, %Tesla.Env{} = response} ->
+          message = GenUtils.get_tesla_error_message(response)
+          OpenTelemetry.Tracer.set_status(:error, message)
+
+          case message do
+            "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
+                message ->
+              disconnect_backend_and_email(source_token, message)
+
+            "The project" <> _tail = message ->
+              # "The project web-wtc-1537199112807 has not enabled BigQuery."
+              disconnect_backend_and_email(source_token, message)
+
+            _message ->
+              Logger.warning("Stream batch response error!",
+                tesla_response: GenUtils.get_tesla_error_message(response)
+              )
+          end
+
+        {:error, response} ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(response))
+
+          Logger.warning("Stream batch unknown error!",
+            tesla_response: inspect(response, limit: 20)
+          )
+      end
+    end
 
     {event_size_pairs, %{}}
   end
