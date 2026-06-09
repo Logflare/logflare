@@ -430,7 +430,8 @@ defmodule Logflare.BigQuery.PipelineTest do
         bigquery_project_id: nil,
         bigquery_dataset_id: nil,
         user_id: user.id,
-        system_source: false
+        system_source: false,
+        max_batch_length: 6_000_000
       }
 
       batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
@@ -534,6 +535,23 @@ defmodule Logflare.BigQuery.PipelineTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
     end
 
+    test "calls stream_batch! once per chunk when batch exceeds max_batch_length", %{
+      source: source,
+      context: context,
+      batch_info: batch_info
+    } do
+      les = for _ <- 1..3, do: build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, les)
+
+      # max_batch_length: 1 forces each event into its own chunk
+      expect(Logflare.Google.BigQuery, :stream_batch!, 3, fn _ctx, rows ->
+        assert length(rows) == 1
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, Map.put(context, :max_batch_length, 1))
+    end
+
     test "calls insert_log_events_via_storage_write_api on storage write path", %{
       source: source,
       batch_info: batch_info
@@ -547,7 +565,8 @@ defmodule Logflare.BigQuery.PipelineTest do
         bigquery_project_id: nil,
         bigquery_dataset_id: nil,
         user_id: source.user_id,
-        system_source: false
+        system_source: false,
+        max_batch_length: 6_000_000
       }
 
       le = build(:log_event, source: source)

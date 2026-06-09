@@ -85,7 +85,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             source_id: source.id,
             backend_id: Map.get(backend || %{}, :id),
             user_id: source.user_id,
-            system_source: source.system_source
+            system_source: source.system_source,
+            max_batch_length: @max_batch_length
           }
         ],
         opts
@@ -222,7 +223,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       event_size_pairs = Enum.map(triples, fn {_msg, le, size} -> {le, size} end)
 
       event_size_pairs
-      |> chunk_by_size(@max_batch_length)
+      |> chunk_by_size(context.max_batch_length)
       |> Enum.each(fn chunk ->
         log_events = Enum.map(chunk, &elem(&1, 0))
         chunk_count = length(chunk)

@@ -45,7 +45,8 @@ defmodule Logflare.OpenTelemetryTest do
         bigquery_project_id: nil,
         bigquery_dataset_id: nil,
         user_id: source.user_id,
-        system_source: source.system_source
+        system_source: source.system_source,
+        max_batch_length: 6_000_000
       }
 
       Pipeline.handle_batch(:bq, messages, batch_info, context)
@@ -83,7 +84,8 @@ defmodule Logflare.OpenTelemetryTest do
         bigquery_project_id: nil,
         bigquery_dataset_id: nil,
         user_id: source.user_id,
-        system_source: source.system_source
+        system_source: source.system_source,
+        max_batch_length: 6_000_000
       }
 
       Pipeline.handle_batch(:bq, messages, batch_info, context)
