@@ -1192,6 +1192,21 @@ defmodule Logflare.MapperTest do
 
       assert result["span_kind"] == "Unspecified"
     end
+
+    test "empty value_map passes the resolved value through unchanged" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{}
+            )
+          ],
+          %{"kind" => "anything"}
+        )
+
+      assert result["span_kind"] == "anything"
+    end
   end
 
   # ── Allowed values ──────────────────────────────────────────────────
