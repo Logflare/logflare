@@ -64,4 +64,35 @@ defmodule Logflare.RepoTest do
       assert Repo.get_dynamic_repo() == Repo
     end
   end
+
+  describe "apply_with_replica/3" do
+    test "uses default repo when replicas list is empty" do
+      start_read_replicas(_no_replicas = [])
+
+      assert Repo.get_dynamic_repo() == Repo
+      assert Repo.apply_with_replica(Repo, :get_dynamic_repo, []) == Repo
+    end
+
+    test "always uses a replica when replicas are configured" do
+      start_read_replicas(["127.0.0.1", "::1"])
+
+      repos = for _ <- 1..30, do: Repo.apply_with_replica(Repo, :get_dynamic_repo, [])
+
+      refute Enum.any?(repos, fn repo -> repo == Repo end),
+             "expected every call to use a replica, never the primary"
+
+      # verify that after the call, we're back to the default repo
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "reverts repo if function raises" do
+      start_read_replicas(["127.0.0.1"])
+
+      assert_raise ArithmeticError, fn ->
+        Repo.apply_with_replica(Kernel, :/, [1, 0])
+      end
+
+      assert Repo.get_dynamic_repo() == Repo
+    end
+  end
 end
