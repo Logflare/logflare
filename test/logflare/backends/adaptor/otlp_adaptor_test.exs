@@ -74,6 +74,19 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert %{gzip: false, headers: %{"x-test" => "true"}} =
                Ecto.Changeset.apply_changes(changeset)
     end
+
+    test "downcases submitted header names" do
+      changeset =
+        Adaptor.cast_and_validate_config(@subject, %{
+          @valid_config_input
+          | "headers" => %{"Content-Type" => "application/json", "X-Custom" => "v"}
+        })
+
+      assert changeset.valid?
+
+      assert %{headers: %{"content-type" => "application/json", "x-custom" => "v"}} =
+               Ecto.Changeset.apply_changes(changeset)
+    end
   end
 
   describe "test_connection/1" do
