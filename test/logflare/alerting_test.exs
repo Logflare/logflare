@@ -410,6 +410,7 @@ defmodule Logflare.AlertingTest do
 
     GoogleApi.BigQuery.V2.Api.Jobs
     |> expect(:bigquery_jobs_insert, 1, fn _conn, _proj_id, opts ->
+      assert opts[:body].configuration.jobTimeoutMs == 120_000
       assert opts[:body].configuration.query.priority == "BATCH"
       assert_fun.(opts)
 

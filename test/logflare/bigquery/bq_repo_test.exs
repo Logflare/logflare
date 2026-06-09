@@ -60,6 +60,43 @@ defmodule Logflare.BigQuery.BqRepoTest do
       }
     end
 
+    test "query_with_sql_and_params applies query-type timeout defaults and overrides", %{
+      user: user
+    } do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 4, fn _conn, _project_id, opts ->
+        send(pid, {:timeouts, opts[:body].jobTimeoutMs, opts[:body].timeoutMs})
+        {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      assert {:ok, _response} =
+               BqRepo.query_with_sql_and_params(user, "project-id", "select 1", [])
+
+      assert {:ok, _response} =
+               BqRepo.query_with_sql_and_params(user, "project-id", "select 1", [],
+                 query_type: :alerts
+               )
+
+      assert {:ok, _response} =
+               BqRepo.query_with_sql_and_params(user, "project-id", "select 1", [],
+                 query_type: :endpoint_refresh
+               )
+
+      assert {:ok, _response} =
+               BqRepo.query_with_sql_and_params(user, "project-id", "select 1", [],
+                 query_type: :alerts,
+                 timeoutMs: 10_000,
+                 jobTimeoutMs: 11_000
+               )
+
+      assert_received {:timeouts, 25_000, 25_000}
+      assert_received {:timeouts, 120_000, 120_000}
+      assert_received {:timeouts, 120_000, 120_000}
+      assert_received {:timeouts, 11_000, 10_000}
+    end
+
     test "query_with_sql_and_params executes batch jobs when requested", %{user: user} do
       pid = self()
 

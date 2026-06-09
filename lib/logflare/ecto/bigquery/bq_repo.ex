@@ -14,6 +14,7 @@ defmodule Logflare.BqRepo do
   require Logger
 
   @query_request_timeout 25_000
+  @background_query_timeout 120_000
   @batch_poll_interval 500
   @use_query_cache true
   @type results :: %{
@@ -51,6 +52,8 @@ defmodule Logflare.BqRepo do
 
     override = Map.put(override, :labels, cleaned_labels)
     use_query_cache = Keyword.get(opts, :use_query_cache, @use_query_cache)
+    timeout_ms = query_timeout_ms(opts)
+    job_timeout_ms = query_job_timeout_ms(opts, timeout_ms)
 
     query_request =
       %{
@@ -61,8 +64,8 @@ defmodule Logflare.BqRepo do
         queryParameters: params,
         jobCreationMode: "JOB_CREATION_OPTIONAL",
         dryRun: false,
-        jobTimeoutMs: @query_request_timeout,
-        timeoutMs: @query_request_timeout,
+        jobTimeoutMs: job_timeout_ms,
+        timeoutMs: timeout_ms,
         labels: cleaned_labels
       }
       |> DeepMerge.deep_merge(override)
@@ -215,6 +218,22 @@ defmodule Logflare.BqRepo do
   defp batch_query?(opts) do
     Keyword.get(opts, :job_priority) in [:batch, "BATCH"]
   end
+
+  defp query_timeout_ms(opts) do
+    Keyword.get(opts, :timeoutMs) ||
+      Keyword.get(opts, :timeout_ms) ||
+      query_type_timeout_ms(Keyword.get(opts, :query_type))
+  end
+
+  defp query_job_timeout_ms(opts, timeout_ms) do
+    Keyword.get(opts, :jobTimeoutMs) || Keyword.get(opts, :job_timeout_ms) || timeout_ms
+  end
+
+  defp query_type_timeout_ms(query_type) when query_type in [:alerts, :endpoint_refresh] do
+    @background_query_timeout
+  end
+
+  defp query_type_timeout_ms(_query_type), do: @query_request_timeout
 
   defp emit_query_telemetry(result, opts, start_time) do
     metadata = query_telemetry_metadata(result, opts)
