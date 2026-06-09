@@ -60,6 +60,52 @@ defmodule Logflare.BigQuery.BqRepoTest do
       }
     end
 
+    test "query_with_sql_and_params executes batch jobs when requested", %{user: user} do
+      pid = self()
+
+      response =
+        TestUtils.gen_bq_response([])
+        |> Map.from_struct()
+        |> then(&struct(GoogleApi.BigQuery.V2.Model.GetQueryResultsResponse, &1))
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_insert, 1, fn _conn, "project-id", opts ->
+        send(pid, {:priority, opts[:body].configuration.query.priority})
+        send(pid, {:labels, opts[:body].configuration.labels})
+
+        {:ok,
+         %GoogleApi.BigQuery.V2.Model.Job{
+           jobReference: %GoogleApi.BigQuery.V2.Model.JobReference{
+             jobId: "batch_job_id",
+             location: "US",
+             projectId: "project-id"
+           }
+         }}
+      end)
+      |> expect(:bigquery_jobs_get_query_results, 1, fn _conn,
+                                                        "project-id",
+                                                        "batch_job_id",
+                                                        opts ->
+        send(pid, {:poll_opts, opts})
+        {:ok, response}
+      end)
+
+      assert {:ok, response} =
+               BqRepo.query_with_sql_and_params(
+                 user,
+                 "project-id",
+                 "select timestamp from `my_table`",
+                 [],
+                 job_priority: :batch,
+                 labels: %{"custom_tag" => "custom_value"}
+               )
+
+      assert response.rows == []
+      assert_received {:priority, "BATCH"}
+      assert_received {:labels, %{"managed_by" => "logflare", "custom_tag" => "custom_value"}}
+      assert_received {:poll_opts, [location: "US", timeoutMs: 25_000]}
+    end
+
     test "query_with_sql_and_params respects use_query_cache option", %{user: user} do
       pid = self()
 

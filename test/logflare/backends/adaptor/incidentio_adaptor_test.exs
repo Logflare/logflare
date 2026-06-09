@@ -189,9 +189,22 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
           name: "test name"
         )
 
+      response =
+        TestUtils.gen_bq_response([%{"testing" => "123"}])
+        |> Map.from_struct()
+        |> then(&struct(GoogleApi.BigQuery.V2.Model.GetQueryResultsResponse, &1))
+
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
-        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      |> expect(:bigquery_jobs_insert, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].configuration.query.priority == "BATCH"
+
+        {:ok,
+         %GoogleApi.BigQuery.V2.Model.Job{
+           jobReference: %GoogleApi.BigQuery.V2.Model.JobReference{jobId: "batch_job_id"}
+         }}
+      end)
+      |> expect(:bigquery_jobs_get_query_results, 1, fn _conn, _proj_id, "batch_job_id", _opts ->
+        {:ok, response}
       end)
 
       @client

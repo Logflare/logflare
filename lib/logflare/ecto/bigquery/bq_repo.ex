@@ -1,6 +1,9 @@
 defmodule Logflare.BqRepo do
   @moduledoc false
   alias GoogleApi.BigQuery.V2.Api
+  alias GoogleApi.BigQuery.V2.Model.Job
+  alias GoogleApi.BigQuery.V2.Model.JobConfiguration
+  alias GoogleApi.BigQuery.V2.Model.JobConfigurationQuery
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
@@ -11,6 +14,7 @@ defmodule Logflare.BqRepo do
   require Logger
 
   @query_request_timeout 25_000
+  @batch_poll_interval 500
   @use_query_cache true
   @type results :: %{
           :rows => nil | [term()],
@@ -18,7 +22,7 @@ defmodule Logflare.BqRepo do
           optional(atom()) => any()
         }
   @type query_result ::
-          {:ok, results()} | {:error, Tesla.Env.t()}
+          {:ok, results()} | {:error, any()}
 
   @spec query_with_sql_and_params(
           Logflare.User.t(),
@@ -66,13 +70,110 @@ defmodule Logflare.BqRepo do
 
     result =
       GenUtils.get_conn({:query, user})
-      |> Api.Jobs.bigquery_jobs_query(project_id, body: query_request)
-      |> GenUtils.maybe_parse_google_api_result()
+      |> execute_query_request(project_id, query_request, opts)
       |> warn_if_cost_above_limit(query_request.labels, user)
 
     with {:ok, response} <- result do
       {:ok, transform_response(response)}
     end
+  end
+
+  defp execute_query_request(conn, project_id, query_request, opts) do
+    if batch_query?(opts) do
+      execute_batch_query(conn, project_id, query_request)
+    else
+      conn
+      |> Api.Jobs.bigquery_jobs_query(project_id, body: query_request)
+      |> GenUtils.maybe_parse_google_api_result()
+    end
+  end
+
+  defp execute_batch_query(conn, project_id, %QueryRequest{} = query_request) do
+    job = build_batch_query_job(query_request)
+
+    with {:ok, %Job{jobReference: job_reference}} <-
+           Api.Jobs.bigquery_jobs_insert(conn, project_id, body: job) do
+      poll_batch_query_results(
+        conn,
+        project_id,
+        job_reference,
+        query_request,
+        batch_poll_deadline()
+      )
+    else
+      {:ok, %Job{} = job} ->
+        {:error, job}
+
+      result ->
+        GenUtils.maybe_parse_google_api_result(result)
+    end
+  end
+
+  defp build_batch_query_job(%QueryRequest{} = query_request) do
+    query_config =
+      query_request
+      |> Map.from_struct()
+      |> Map.put(:priority, "BATCH")
+      |> then(&struct(JobConfigurationQuery, &1))
+
+    configuration =
+      %JobConfiguration{
+        dryRun: query_request.dryRun,
+        jobTimeoutMs: query_request.jobTimeoutMs,
+        labels: query_request.labels,
+        query: query_config,
+        reservation: query_request.reservation
+      }
+
+    %Job{configuration: configuration}
+  end
+
+  defp poll_batch_query_results(_conn, _project_id, nil, _query_request, _deadline) do
+    {:error, :missing_job_reference}
+  end
+
+  defp poll_batch_query_results(_conn, _project_id, %{jobId: nil}, _query_request, _deadline) do
+    {:error, :missing_job_id}
+  end
+
+  defp poll_batch_query_results(conn, project_id, job_reference, query_request, deadline) do
+    job_id = job_reference.jobId
+    location = job_reference.location || query_request.location
+
+    opts =
+      [
+        location: location,
+        maxResults: query_request.maxResults,
+        timeoutMs: @query_request_timeout
+      ]
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+
+    case Api.Jobs.bigquery_jobs_get_query_results(conn, project_id, job_id, opts) do
+      {:ok, %{jobComplete: true, errors: [_ | _] = errors}} ->
+        {:error, errors}
+
+      {:ok, %{jobComplete: true} = response} ->
+        {:ok, response}
+
+      {:ok, %{jobComplete: false}} ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          {:error, :timeout}
+        else
+          Process.sleep(@batch_poll_interval)
+          poll_batch_query_results(conn, project_id, job_reference, query_request, deadline)
+        end
+
+      result ->
+        GenUtils.maybe_parse_google_api_result(result)
+    end
+  end
+
+  defp batch_poll_deadline do
+    System.monotonic_time(:millisecond) + @query_request_timeout
+  end
+
+  defp batch_query?(opts) do
+    Keyword.get(opts, :job_priority) in [:batch, "BATCH"]
   end
 
   defp transform_response(response) do

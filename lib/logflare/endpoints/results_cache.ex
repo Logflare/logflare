@@ -139,7 +139,8 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   def handle_info(:refresh, state) do
-    task = Tasks.async(__MODULE__, :do_query, [state])
+    refresh_state = %{state | opts: Keyword.put(state.opts, :job_priority, :batch)}
+    task = Tasks.async(__MODULE__, :do_query, [refresh_state])
     tasks = [task | state.query_tasks]
 
     running = Enum.count(tasks)

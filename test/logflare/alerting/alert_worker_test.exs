@@ -15,10 +15,7 @@ defmodule Logflare.Alerting.AlertWorkerTest do
   test "perform/1 executes alert and sends notifications on results", %{user: user} do
     alert = insert(:alert, user: user)
 
-    GoogleApi.BigQuery.V2.Api.Jobs
-    |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
-      {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
-    end)
+    expect_batch_query([%{"testing" => "123"}])
 
     Logflare.Backends.Adaptor.WebhookAdaptor.Client
     |> expect(:send, fn opts ->
@@ -38,15 +35,32 @@ defmodule Logflare.Alerting.AlertWorkerTest do
   test "perform/1 returns :ok when no query results", %{user: user} do
     alert = insert(:alert, user: user)
 
-    GoogleApi.BigQuery.V2.Api.Jobs
-    |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
-      {:ok, TestUtils.gen_bq_response([])}
-    end)
+    expect_batch_query([])
 
     assert :ok = perform_job(AlertWorker, %{alert_query_id: alert.id})
   end
 
   test "perform/1 returns :error when alert not found (deleted)" do
     assert {:error, :not_found} = perform_job(AlertWorker, %{alert_query_id: -1})
+  end
+
+  defp expect_batch_query(results) do
+    response =
+      TestUtils.gen_bq_response(results)
+      |> Map.from_struct()
+      |> then(&struct(GoogleApi.BigQuery.V2.Model.GetQueryResultsResponse, &1))
+
+    GoogleApi.BigQuery.V2.Api.Jobs
+    |> expect(:bigquery_jobs_insert, 1, fn _conn, _proj_id, opts ->
+      assert opts[:body].configuration.query.priority == "BATCH"
+
+      {:ok,
+       %GoogleApi.BigQuery.V2.Model.Job{
+         jobReference: %GoogleApi.BigQuery.V2.Model.JobReference{jobId: "batch_job_id"}
+       }}
+    end)
+    |> expect(:bigquery_jobs_get_query_results, 1, fn _conn, _proj_id, "batch_job_id", _opts ->
+      {:ok, response}
+    end)
   end
 end

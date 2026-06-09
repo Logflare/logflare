@@ -463,6 +463,7 @@ defmodule Logflare.Alerting do
              labels: %{
                "alert_id" => alert_query.id
              },
+             job_priority: :batch,
              query_type: :alerts
            ) do
       {:ok, result}
