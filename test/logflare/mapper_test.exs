@@ -1377,6 +1377,26 @@ defmodule Logflare.MapperTest do
       assert {:error, reason} = Mapper.compile(config)
       assert reason =~ "duplicate field name: 'name'"
     end
+
+    test "returns {:error, reason} on a string field whose value_map has non-string values" do
+      config =
+        MappingConfig.new([
+          Field.string("span_kind", path: "$.kind", value_map: %{"SPAN_KIND_CLIENT" => 3})
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "value_map values must be strings"
+    end
+
+    test "returns {:error, reason} on a string field whose value_map has non-string keys" do
+      config =
+        MappingConfig.new([
+          Field.string("span_kind", path: "$.kind", value_map: %{1 => "Client"})
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "value_map keys must be strings"
+    end
   end
 
   describe "error handling" do
