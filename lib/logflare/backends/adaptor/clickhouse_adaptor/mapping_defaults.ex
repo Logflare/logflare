@@ -15,7 +15,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
 
   @log_config_id "00000000-0000-0000-0001-000000000003"
   @metric_config_id "00000000-0000-0000-0002-000000000003"
-  @trace_config_id "00000000-0000-0000-0003-000000000003"
+  @trace_config_id "00000000-0000-0000-0003-000000000004"
 
   @spec config_id(TypeDetection.event_type()) :: String.t()
   def config_id(:log), do: @log_config_id
