@@ -5,7 +5,7 @@ defmodule Logflare.EndpointsTest do
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias PaperTrail.Version
 
   @endpoint_query_attrs %{
@@ -28,9 +28,9 @@ defmodule Logflare.EndpointsTest do
     user = insert(:user)
     team_user = insert(:team_user, email: user.email)
 
-    %Query{id: endpoint_id} = insert(:endpoint, user: user)
-    %Query{id: other_endpoint_id} = insert(:endpoint, user: team_user.team.user)
-    %Query{id: forbidden_endpoint_id} = insert(:endpoint, user: build(:user))
+    %EndpointQuery{id: endpoint_id} = insert(:endpoint, user: user)
+    %EndpointQuery{id: other_endpoint_id} = insert(:endpoint, user: team_user.team.user)
+    %EndpointQuery{id: forbidden_endpoint_id} = insert(:endpoint, user: build(:user))
 
     endpoint_ids =
       Endpoints.list_endpoints_by_user_access(user)
@@ -44,17 +44,17 @@ defmodule Logflare.EndpointsTest do
   test "get_endpoint_query_by_user_access/2" do
     owner = insert(:user)
     team_user = insert(:team_user, email: owner.email)
-    %Query{id: endpoint_id} = insert(:endpoint, user: owner)
-    %Query{id: other_endpoint_id} = insert(:endpoint, user: team_user.team.user)
-    %Query{id: forbidden_endpoint_id} = insert(:endpoint, user: build(:user))
+    %EndpointQuery{id: endpoint_id} = insert(:endpoint, user: owner)
+    %EndpointQuery{id: other_endpoint_id} = insert(:endpoint, user: team_user.team.user)
+    %EndpointQuery{id: forbidden_endpoint_id} = insert(:endpoint, user: build(:user))
 
-    assert %Query{id: ^endpoint_id} =
+    assert %EndpointQuery{id: ^endpoint_id} =
              Endpoints.get_endpoint_query_by_user_access(owner, endpoint_id)
 
-    assert %Query{id: ^endpoint_id} =
+    assert %EndpointQuery{id: ^endpoint_id} =
              Endpoints.get_endpoint_query_by_user_access(team_user, endpoint_id)
 
-    assert %Query{id: ^other_endpoint_id} =
+    assert %EndpointQuery{id: ^other_endpoint_id} =
              Endpoints.get_endpoint_query_by_user_access(team_user, other_endpoint_id)
 
     assert nil == Endpoints.get_endpoint_query_by_user_access(owner, forbidden_endpoint_id)
@@ -63,7 +63,7 @@ defmodule Logflare.EndpointsTest do
 
   test "get_endpoint_query/1 retrieves endpoint" do
     %{id: id} = insert(:endpoint)
-    assert %Query{id: ^id} = Endpoints.get_endpoint_query(id)
+    assert %EndpointQuery{id: ^id} = Endpoints.get_endpoint_query(id)
   end
 
   test "get_by/1" do
@@ -87,7 +87,9 @@ defmodule Logflare.EndpointsTest do
     |> Ecto.Changeset.change(name: "new")
     |> Logflare.Repo.update()
 
-    assert %Query{query: mapped_query} = Endpoints.get_mapped_query_by_token(endpoint.token)
+    assert %EndpointQuery{query: mapped_query} =
+             Endpoints.get_mapped_query_by_token(endpoint.token)
+
     assert String.downcase(mapped_query) == "select a from new"
   end
 
@@ -824,7 +826,7 @@ defmodule Logflare.EndpointsTest do
     assert endpoint.metrics == nil
 
     assert %_{
-             metrics: %Query.Metrics{
+             metrics: %EndpointQuery.Metrics{
                cache_count: 0
              }
            } = Endpoints.calculate_endpoint_metrics(endpoint)
@@ -832,7 +834,7 @@ defmodule Logflare.EndpointsTest do
     _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
 
     assert %_{
-             metrics: %Query.Metrics{
+             metrics: %EndpointQuery.Metrics{
                cache_count: 1
              }
            } = Endpoints.calculate_endpoint_metrics(endpoint)
@@ -840,7 +842,7 @@ defmodule Logflare.EndpointsTest do
     # accepts lists
     assert [
              %_{
-               metrics: %Query.Metrics{
+               metrics: %EndpointQuery.Metrics{
                  cache_count: 1
                }
              }
@@ -909,7 +911,7 @@ defmodule Logflare.EndpointsTest do
       user = insert(:user)
 
       changeset =
-        Endpoints.change_query(%Query{user: user}, %{
+        Endpoints.change_query(%EndpointQuery{user: user}, %{
           "name" => "test-endpoint",
           "query" => "select 1",
           "enable_dynamic_reservation" => true
@@ -958,13 +960,13 @@ defmodule Logflare.EndpointsTest do
     Logflare.Billing.Cache.get_plan_by_user(user)
   end
 
-  defp versions_for_endpoint(%Query{} = endpoint) do
+  defp versions_for_endpoint(%EndpointQuery{} = endpoint) do
     endpoint
     |> PaperTrail.get_versions()
     |> Enum.sort_by(& &1.id)
   end
 
-  defp expected_endpoint_snapshot(%Query{} = endpoint, overrides \\ %{}) do
+  defp expected_endpoint_snapshot(%EndpointQuery{} = endpoint, overrides \\ %{}) do
     %{
       "backend_id" => endpoint.backend_id,
       "cache_duration_seconds" => endpoint.cache_duration_seconds,

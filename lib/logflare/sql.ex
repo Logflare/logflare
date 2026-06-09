@@ -155,7 +155,7 @@ defmodule Logflare.Sql do
   @spec expand_subqueries(
           query_language(),
           input :: String.t(),
-          queries :: [AlertQuery.t() | Endpoints.Query.t()]
+          queries :: [AlertQuery.t() | Endpoints.EndpointQuery.t()]
         ) ::
           {:ok, String.t()} | {:error, String.t()}
   def expand_subqueries(_language, input, []), do: {:ok, input}

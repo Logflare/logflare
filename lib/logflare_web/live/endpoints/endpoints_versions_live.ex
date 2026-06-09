@@ -7,7 +7,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   import LogflareWeb.Utils, only: [time_ago: 1]
 
   alias Logflare.Endpoints
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Repo
   alias LogflareWeb.Endpoints.Components
   alias LogflareWeb.Endpoints.SnapshotModalComponent
@@ -242,7 +242,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   @spec fetch_versions(integer(), integer() | nil) :: [Version.t()]
   defp fetch_versions(endpoint_id, after_version_id) do
     Version
-    |> where([version], version.item_type == "Query" and version.item_id == ^endpoint_id)
+    |> where([version], version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id)
     |> maybe_filter_after_version(after_version_id)
     |> order_by([version], desc: version.id)
     |> limit(^(@page_size + 1))
@@ -311,12 +311,12 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   defp version_number(%Version{meta: %{"version_number" => version_number}}), do: version_number
   defp version_number(_version), do: nil
 
-  @spec snapshot_to_endpoint(Version.t()) :: Query.t()
+  @spec snapshot_to_endpoint(Version.t()) :: EndpointQuery.t()
   defp snapshot_to_endpoint(version) do
     snapshot = Map.get(version.meta, "endpoint_snapshot", %{})
 
-    %Query{}
-    |> Ecto.Changeset.cast(snapshot, Endpoints.Query.version_snapshot_fields())
+    %EndpointQuery{}
+    |> Ecto.Changeset.cast(snapshot, EndpointQuery.version_snapshot_fields())
     |> Ecto.Changeset.apply_changes()
   end
 
