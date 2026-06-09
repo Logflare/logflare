@@ -169,15 +169,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       system_source: context.system_source
     )
 
-    # Data is {id, tid} — look up the full event for schema-update side effect only.
-    # The pointer stays in the message so the full LogEvent is not copied between stages.
-    {id, tid} = message.data
-
-    case :ets.lookup(tid, id) do
-      [{^id, _status, log_event}] -> process_data(log_event, context)
-      [] -> :ok
-    end
-
     Message.put_batcher(message, :bq)
   end
 
@@ -208,7 +199,15 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       source = Sources.Cache.get_by_id(context.source_id)
 
       # Fetch full LogEvents from ETS — events are still present (marked :processing)
-      log_events = fetch_events_from_messages(messages, context)
+      log_events =
+        case fetch_events_from_messages(messages, context) do
+          {log_events, []} ->
+            log_events
+
+          {log_events, missing} ->
+            Logger.warning("Could not fetch #{Enum.count(missing)} ids from ets")
+            log_events
+        end
 
       if source && source.bq_storage_write_api do
         batch_attrs = compute_batch_attrs(log_events, :bq_storage_write)
@@ -246,11 +245,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   defp fetch_events_from_messages(messages, context) do
-    Enum.flat_map(messages, fn
-      %{data: {id, tid}} ->
+    Enum.reduce(messages, {[], []}, fn
+      %{data: {id, tid}}, {out, missing} ->
         case :ets.lookup(tid, id) do
-          [{^id, _status, log_event}] -> [process_data(log_event, context)]
-          [] -> []
+          [{^id, _status, log_event}] -> {[process_data(log_event, context) | out], missing}
+          [] -> {out, [id | missing]}
         end
     end)
   end

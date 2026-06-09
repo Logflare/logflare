@@ -471,7 +471,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Takes pending item IDs from a given table, marking them as `:ingested` in-place.
+  Takes pending item IDs from a given table, marking them as `:processing` in-place.
 
   Returns `{:ok, ids, tid}` where `ids` is a list of event IDs and `tid` is the ETS
   table reference. Intended for use with the BigQuery pipeline to reduce data copying
