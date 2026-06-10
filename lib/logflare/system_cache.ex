@@ -52,8 +52,12 @@ defmodule Logflare.SystemCache do
     case Cachex.fetch(@cache, :memory_utilization, fn _ ->
            {:commit, Logflare.System.memory_utilization()}
          end) do
-      {:ok, value} -> value
-      {:commit, value} -> value
+      {:ok, value} ->
+        value
+
+      {:commit, value} ->
+        value
+
       {:error, err} ->
         Logger.warning("SystemCache.memory_utilization cache error: #{inspect(err)}")
         Logflare.System.memory_utilization()
