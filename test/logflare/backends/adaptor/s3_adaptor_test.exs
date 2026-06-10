@@ -1,9 +1,8 @@
 defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
-  use Logflare.DataCase, async: true
+  use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.S3Adaptor
-  alias Logflare.SingleTenant
 
   doctest S3Adaptor
 
@@ -15,10 +14,10 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
     batch_timeout: 1_000
   }
 
-  describe "validate_config/1 endpoint allowlist (multi-tenant)" do
+  describe "validate_config/1 endpoint allowlist (check enabled, default)" do
     setup do
-      stub(SingleTenant, :single_tenant?, fn -> false end)
-      :ok
+      Application.delete_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check)
+      on_exit(fn -> Application.delete_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check) end)
     end
 
     test "allows nil endpoint (default AWS S3)" do
@@ -99,10 +98,10 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
     end
   end
 
-  describe "validate_config/1 endpoint allowlist (single-tenant)" do
+  describe "validate_config/1 endpoint allowlist (check disabled via flag)" do
     setup do
-      stub(SingleTenant, :single_tenant?, fn -> true end)
-      :ok
+      Application.put_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check, true)
+      on_exit(fn -> Application.delete_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check) end)
     end
 
     test "allows nil endpoint (default AWS S3)" do
@@ -140,7 +139,6 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
   describe "test_connection/1" do
     setup do
-      stub(SingleTenant, :single_tenant?, fn -> false end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)

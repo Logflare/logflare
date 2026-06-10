@@ -14,7 +14,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
-  alias Logflare.SingleTenant
   alias Logflare.Sources
   alias Logflare.Sources.Source
 
@@ -84,7 +83,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     host = URI.parse(endpoint).host
 
     cond do
-      SingleTenant.single_tenant?() ->
+      ssrf_check_disabled?() ->
         []
 
       trusted_endpoint_host?(host) ->
@@ -97,6 +96,10 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
             validation: :endpoint_not_allowed}}
         ]
     end
+  end
+
+  defp ssrf_check_disabled? do
+    !!Application.get_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check)
   end
 
   defp trusted_endpoint_host?(nil), do: false
