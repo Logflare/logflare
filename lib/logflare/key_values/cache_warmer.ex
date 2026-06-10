@@ -15,10 +15,10 @@ defmodule Logflare.KeyValues.CacheWarmer do
   @impl true
   def execute(_state) do
     if initialized?() do
-      warm_recent()
+      Repo.apply_with_replica(__MODULE__, :warm_recent, [])
     else
       try do
-        __MODULE__.warm_full()
+        Repo.apply_with_replica(__MODULE__, :warm_full, [])
         :persistent_term.put(@pt_key, true)
       rescue
         e ->
