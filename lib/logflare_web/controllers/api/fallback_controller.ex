@@ -20,6 +20,7 @@ defmodule LogflareWeb.Api.FallbackController do
   def call(conn, {:error, :buffer_full}) do
     conn
     |> put_status(429)
+    |> put_resp_header("retry-after", "3")
     |> json(%{error: "Buffer Full: Too Many Requests"})
     |> halt()
   end
