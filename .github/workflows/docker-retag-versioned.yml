@@ -44,6 +44,11 @@ jobs:
         with:
           role-to-assume: ${{ secrets.PROD_AWS_ROLE }}
           aws-region: us-east-1
+      - name: Login to DockerHub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Login to ECR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
@@ -54,10 +59,15 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
       - name: Mirror image
-        uses: akhilerm/tag-push-action@f35ff2cb99d407368b5c727adbcc14a2ed81d509 # v2.2.0
-        with:
-          src: docker.io/${{ needs.retag.outputs.docker_tag }}
-          dst: |
-            public.ecr.aws/${{ needs.retag.outputs.docker_tag }}
-            ghcr.io/${{ needs.retag.outputs.docker_tag }}
+        env:
+          SOURCE_IMAGE: docker.io/${{ needs.retag.outputs.docker_tag }}
+          ECR_IMAGE: public.ecr.aws/${{ needs.retag.outputs.docker_tag }}
+          GHCR_IMAGE: ghcr.io/${{ needs.retag.outputs.docker_tag }}
+        run: |
+          docker buildx imagetools create \
+            -t "$ECR_IMAGE" \
+            -t "$GHCR_IMAGE" \
+            "$SOURCE_IMAGE"
