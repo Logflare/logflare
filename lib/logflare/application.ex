@@ -22,6 +22,7 @@ defmodule Logflare.Application do
     prev = Inspect.Opts.default_inspect_fun()
     Inspect.Opts.default_inspect_fun(&Utils.inspect_fun(prev, &1, &2))
 
+    set_global_logger_metadata()
     start_user_log_interceptor()
     add_logger_backends()
     warn_if_stripe_webhook_secret_unset()
@@ -134,6 +135,24 @@ defmodule Logflare.Application do
         "STRIPE_WEBHOOK_SECRET is not set — all Stripe webhook requests will be rejected"
       )
     end
+  end
+
+  @doc """
+  Global metadata attached to every log event (and the single source for it).
+
+  Combines the Logflare version with the configured `:logflare, :metadata`
+  (e.g. `cluster`). The same `:logflare, :metadata` env feeds OTel resource
+  attributes (see `Logflare.Telemetry`).
+  """
+  @spec global_logger_metadata() :: map()
+  def global_logger_metadata do
+    [logflare_version: Application.spec(:logflare, :vsn) |> to_string()]
+    |> Keyword.merge(Application.get_env(:logflare, :metadata, []))
+    |> Map.new()
+  end
+
+  defp set_global_logger_metadata do
+    :logger.update_primary_config(%{metadata: global_logger_metadata()})
   end
 
   defp start_user_log_interceptor do

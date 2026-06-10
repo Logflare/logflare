@@ -3,7 +3,7 @@ name: E2E Tests (with Playwright)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * SUN'
+    - cron: "0 0 * * SUN"
   pull_request:
     branches: ["**"]
     paths:
@@ -25,9 +25,9 @@ jobs:
     name: Get versions
     runs-on: ubuntu-latest
     outputs:
-      elixir:  ${{ steps.v.outputs.elixir }}
-      erlang:  ${{ steps.v.outputs.erlang }}
-      rust:    ${{ steps.v.outputs.rust }}
+      elixir: ${{ steps.v.outputs.elixir }}
+      erlang: ${{ steps.v.outputs.erlang }}
+      rust: ${{ steps.v.outputs.rust }}
     steps:
       - uses: actions/checkout@v6
       - name: Read versions from .tool-versions
@@ -126,10 +126,10 @@ jobs:
           path: |
             deps
             _build
-          key: mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock') }}
+          key: mix-v2-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock', '**/Cargo.lock', 'native/**') }}
           restore-keys: |
-            mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
-            mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+            mix-v2-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
+            mix-v2-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
 
       - name: Install dependencies
         run: mix do deps.get + deps.compile
