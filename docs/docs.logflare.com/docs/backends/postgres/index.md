@@ -46,7 +46,7 @@ Either `url` or username/password credentials must be provided.
 Configure `pool_size` if you wish to increase the throughput of ingestion and reduce chance of the connection pool being empty during ingest.
 
 ### API Querying
-It is possible to query the PostgreSQL backend using PostreSQL dialect, using the management API querying endpoint:
+It is possible to query the PostgreSQL backend using PostgreSQL dialect, using the management API querying endpoint:
 
 ```
 GET https://api.logflare.app/api/
