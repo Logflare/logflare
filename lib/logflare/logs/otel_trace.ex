@@ -40,6 +40,7 @@ defmodule Logflare.Logs.OtelTrace do
         "span_id" => Base.encode16(span.span_id, case: :lower),
         "parent_span_id" => Base.encode16(span.parent_span_id, case: :lower),
         "trace_id" => Base.encode16(span.trace_id, case: :lower),
+        "kind" => span_kind(span.kind),
         "start_time" => span.start_time_unix_nano,
         "end_time" => span.end_time_unix_nano,
         "attributes" => Otel.handle_attributes(span.attributes),
@@ -64,4 +65,12 @@ defmodule Logflare.Logs.OtelTrace do
       "project" => Otel.resource_project(resource)
     }
   end
+
+  @spec span_kind(Opentelemetry.Proto.Trace.V1.Span.SpanKind.t()) :: String.t()
+  defp span_kind(:SPAN_KIND_INTERNAL), do: "Internal"
+  defp span_kind(:SPAN_KIND_SERVER), do: "Server"
+  defp span_kind(:SPAN_KIND_CLIENT), do: "Client"
+  defp span_kind(:SPAN_KIND_PRODUCER), do: "Producer"
+  defp span_kind(:SPAN_KIND_CONSUMER), do: "Consumer"
+  defp span_kind(_kind), do: "Unspecified"
 end
