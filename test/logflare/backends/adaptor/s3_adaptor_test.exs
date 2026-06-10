@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.S3Adaptor
+  alias Logflare.SingleTenant
 
   doctest S3Adaptor
 
@@ -14,60 +15,119 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
     batch_timeout: 1_000
   }
 
-  describe "validate_config/1 SSRF protection" do
-    test "rejects endpoints targeting private/reserved IP addresses" do
-      blocked = [
-        # loopback
-        "http://127.0.0.1/",
-        # RFC1918
-        "http://10.0.0.1/",
-        "http://172.16.0.1/",
-        "http://192.168.1.1/",
-        # link-local / cloud metadata
-        "http://169.254.169.254/latest/meta-data/",
-        # all-zeros, CGNAT
-        "http://0.0.0.0/",
-        "http://100.64.0.1/",
-        # private IPv6
-        "http://[::1]/",
-        "http://[fc00::1]/",
-        "http://[fd00::1]/"
-      ]
-
-      for endpoint <- blocked do
-        cs =
-          Adaptor.cast_and_validate_config(S3Adaptor, Map.put(@valid_config, :endpoint, endpoint))
-
-        assert {_message, [validation: :ssrf]} = cs.errors[:endpoint],
-               "expected SSRF block for #{endpoint}"
-      end
+  describe "validate_config/1 endpoint allowlist (multi-tenant)" do
+    setup do
+      stub(SingleTenant, :single_tenant?, fn -> false end)
+      :ok
     end
 
-    test "allows public endpoint addresses (172.16.0.0/12 boundary)" do
-      for endpoint <- ["http://172.15.0.1/", "http://172.32.0.1/"] do
-        assert %Ecto.Changeset{valid?: true} =
-                 Adaptor.cast_and_validate_config(
-                   S3Adaptor,
-                   Map.put(@valid_config, :endpoint, endpoint)
-                 ),
-               "expected valid for #{endpoint}"
-      end
+    test "allows nil endpoint (default AWS S3)" do
+      assert %Ecto.Changeset{valid?: true} =
+               Adaptor.cast_and_validate_config(S3Adaptor, @valid_config)
     end
 
-    test "rejects endpoint hostname resolving to loopback" do
+    test "allows allowlisted AWS endpoint" do
       cs =
         Adaptor.cast_and_validate_config(
           S3Adaptor,
-          Map.put(@valid_config, :endpoint, "http://localhost/")
+          Map.put(@valid_config, :endpoint, "https://bucket.s3.amazonaws.com")
+        )
+
+      assert %Ecto.Changeset{valid?: true} = cs
+    end
+
+    test "allows allowlisted Google Cloud Storage endpoint" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(@valid_config, :endpoint, "https://storage.googleapis.com")
+        )
+
+      assert %Ecto.Changeset{valid?: true} = cs
+    end
+
+    test "allows allowlisted Cloudflare R2 endpoint" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(@valid_config, :endpoint, "https://account-id.r2.cloudflarestorage.com")
+        )
+
+      assert %Ecto.Changeset{valid?: true} = cs
+    end
+
+    test "allows allowlisted Backblaze B2 endpoint" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(@valid_config, :endpoint, "https://s3.us-west-000.backblazeb2.com")
+        )
+
+      assert %Ecto.Changeset{valid?: true} = cs
+    end
+
+    test "allows allowlisted DigitalOcean Spaces endpoint" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(@valid_config, :endpoint, "https://nyc3.digitaloceanspaces.com")
+        )
+
+      assert %Ecto.Changeset{valid?: true} = cs
+    end
+
+    test "rejects non-allowlisted public endpoint" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(@valid_config, :endpoint, "https://evil.example.com")
         )
 
       assert %Ecto.Changeset{valid?: false} = cs
-      assert {_message, [validation: :ssrf]} = cs.errors[:endpoint]
+      assert {_message, [validation: :endpoint_not_allowed]} = cs.errors[:endpoint]
     end
 
-    test "allows a config with no endpoint (default AWS S3)" do
+    test "rejects private/rebind-style endpoint not on allowlist" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(@valid_config, :endpoint, "https://my-minio.internal")
+        )
+
+      assert %Ecto.Changeset{valid?: false} = cs
+      assert {_message, [validation: :endpoint_not_allowed]} = cs.errors[:endpoint]
+    end
+  end
+
+  describe "validate_config/1 endpoint allowlist (single-tenant)" do
+    setup do
+      stub(SingleTenant, :single_tenant?, fn -> true end)
+      :ok
+    end
+
+    test "allows nil endpoint (default AWS S3)" do
       assert %Ecto.Changeset{valid?: true} =
                Adaptor.cast_and_validate_config(S3Adaptor, @valid_config)
+    end
+
+    test "allows arbitrary internal endpoint" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(@valid_config, :endpoint, "https://my-minio.internal")
+        )
+
+      assert %Ecto.Changeset{valid?: true} = cs
+    end
+
+    test "allows any public non-allowlisted endpoint" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(@valid_config, :endpoint, "https://custom-s3-provider.example.com")
+        )
+
+      assert %Ecto.Changeset{valid?: true} = cs
     end
   end
 
@@ -80,6 +140,7 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
   describe "test_connection/1" do
     setup do
+      stub(SingleTenant, :single_tenant?, fn -> false end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)

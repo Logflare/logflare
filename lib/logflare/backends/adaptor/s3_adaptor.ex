@@ -14,11 +14,19 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
-  alias Logflare.Sources.Source
+  alias Logflare.SingleTenant
   alias Logflare.Sources
-  alias Logflare.Utils.SSRF
+  alias Logflare.Sources.Source
 
   @behaviour Adaptor
+
+  @trusted_endpoint_suffixes [
+    ".amazonaws.com",
+    "storage.googleapis.com",
+    ".r2.cloudflarestorage.com",
+    ".backblazeb2.com",
+    ".digitaloceanspaces.com"
+  ]
 
   @type source_backend_tuple :: {Source.t(), Backend.t()}
   @type source_id_backend_id_tuple :: {source_id :: pos_integer(), backend_id :: pos_integer()}
@@ -69,16 +77,34 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
       greater_than_or_equal_to: @min_batch_timeout,
       less_than_or_equal_to: @max_batch_timeout
     )
-    |> Changeset.validate_change(:endpoint, &no_ssrf_validator/2)
+    |> Changeset.validate_change(:endpoint, &endpoint_validator/2)
   end
 
-  defp no_ssrf_validator(field, endpoint) do
+  defp endpoint_validator(field, endpoint) do
     host = URI.parse(endpoint).host
 
-    case SSRF.safe_resolve(host) do
-      {:ok, _} -> []
-      {:error, reason} -> [{field, {reason, validation: :ssrf}}]
+    cond do
+      SingleTenant.single_tenant?() ->
+        []
+
+      trusted_endpoint_host?(host) ->
+        []
+
+      true ->
+        [
+          {field,
+           {"Endpoint host is not on the list of trusted S3-compatible providers",
+            validation: :endpoint_not_allowed}}
+        ]
     end
+  end
+
+  defp trusted_endpoint_host?(nil), do: false
+
+  defp trusted_endpoint_host?(host) do
+    Enum.any?(@trusted_endpoint_suffixes, fn suffix ->
+      host == suffix or String.ends_with?(host, suffix)
+    end)
   end
 
   @impl Adaptor
