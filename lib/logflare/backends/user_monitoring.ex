@@ -41,7 +41,7 @@ defmodule Logflare.Backends.UserMonitoring do
     {pull_interval, export_period} =
       case env do
         :test -> {100, 100}
-        _ -> {10_000, :timer.minutes(8) + :rand.uniform(60_000 * 2)}
+        _ -> {5_000, :timer.seconds(30) + :rand.uniform(15_000)}
       end
 
     exporter_spec =
@@ -61,6 +61,7 @@ defmodule Logflare.Backends.UserMonitoring do
        [
          metric_store_name: @store_name,
          pull_interval: pull_interval,
+         max_demand: 250,
          batch_size: 1_000
        ]}
 

@@ -14,10 +14,13 @@ defmodule Logflare.Backends.UserMonitoring.IngestPipeline do
     pull_interval = Keyword.get(opts, :pull_interval, 1_000)
     batch_timeout = Keyword.get(opts, :batch_timeout, 500)
     store_name = Keyword.fetch!(opts, :metric_store_name)
-    batch_size = Keyword.get(opts, :batch_size, 10_000)
+    batch_size = Keyword.get(opts, :batch_size, 1_000)
+    max_demand = Keyword.get(opts, :max_demand, 250)
 
     Broadway.start_link(__MODULE__,
       name: __MODULE__,
+      hibernate_after: 5_000,
+      spawn_opt: [fullsweep_after: 100],
       producer: [
         module: {PullProducer, metric_store_name: store_name, pull_interval: pull_interval},
         transformer: {__MODULE__, :transform, []},
@@ -26,7 +29,7 @@ defmodule Logflare.Backends.UserMonitoring.IngestPipeline do
       processors: [
         default: [
           concurrency: System.schedulers_online(),
-          max_demand: Keyword.fetch!(opts, :batch_size)
+          max_demand: max_demand
         ]
       ],
       batchers: [
