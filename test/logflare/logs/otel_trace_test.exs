@@ -41,6 +41,7 @@ defmodule Logflare.Logs.OtelTraceTest do
       assert le_span["span_id"] == Base.encode16(span.span_id, case: :lower)
       assert le_span["parent_span_id"] == Base.encode16(span.parent_span_id, case: :lower)
       assert le_span["event_message"] == span.name
+      assert le_span["kind"] == "Server"
 
       assert le_span["timestamp"] == span.start_time_unix_nano
       assert le_span["start_time"] == span.start_time_unix_nano
@@ -53,6 +54,27 @@ defmodule Logflare.Logs.OtelTraceTest do
       assert le_event["parent_span_id"] == Base.encode16(span.span_id)
 
       assert le_event["timestamp"] == event.time_unix_nano
+    end
+
+    test "maps each OTEL span kind to its canonical low-cardinality value", %{source: source} do
+      kinds = [
+        {:SPAN_KIND_UNSPECIFIED, "Unspecified"},
+        {:SPAN_KIND_INTERNAL, "Internal"},
+        {:SPAN_KIND_SERVER, "Server"},
+        {:SPAN_KIND_CLIENT, "Client"},
+        {:SPAN_KIND_PRODUCER, "Producer"},
+        {:SPAN_KIND_CONSUMER, "Consumer"}
+      ]
+
+      for {kind, expected} <- kinds do
+        le_span =
+          kind
+          |> TestUtilsGrpc.resource_span_with_kind()
+          |> OtelTrace.handle_batch(source)
+          |> Enum.find(fn params -> params["metadata"]["type"] == "span" end)
+
+        assert le_span["kind"] == expected
+      end
     end
 
     test "json parsable log event body", %{
@@ -311,6 +333,14 @@ defmodule Logflare.Logs.OtelTraceTest do
 
       converted =
         OtelTrace.handle_batch(request.resource_spans, source)
+
+      span_kinds =
+        converted
+        |> Enum.filter(fn p -> p["metadata"]["type"] == "span" end)
+        |> Enum.map(& &1["kind"])
+
+      assert "Client" in span_kinds
+      assert "Server" in span_kinds
 
       assert converted
              |> Iteraptor.each(

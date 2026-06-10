@@ -93,7 +93,7 @@ To ingest by batch, send your request with the following JSON body:
 }
 ```
 
-Note that if you have mutliple sources with the same name, it will result in an error on ingestion and the log event will be discarded.
+Note that if you have multiple sources with the same name, it will result in an error on ingestion and the log event will be discarded.
 
 ## Pipeline Transformations
 
@@ -154,7 +154,7 @@ _top_level:my_copied_field
 ```
 
 :::note
-Destination field names must match the BigQuery colummn name specification, or the event risks being rejected.
+Destination field names must match the BigQuery column name specification, or the event risks being rejected.
 :::
 
 ### Key-Value Enrichment
@@ -460,7 +460,7 @@ To ingest logs from Cloudflare, use the following configuration for the [HTTP De
 https://api.logflare.app/api/logs/cloudflare?source=f6cccd3a-c42e-40f7-9b01-95d3699d3113&header_X_API_KEY=xxxxxxx
 ```
 
-Replace the source UUID and the api key value with your own source UUID and [access token](/concepts/access-tokens/). We recommend using a source-scoped ingest access token for better security.
+Replace the source UUID and the API key value with your own source UUID and [access token](/concepts/access-tokens/). We recommend using a source-scoped ingest access token for better security.
 
 The configuration is identical for both Logpush and Edge Log Delivery.
 

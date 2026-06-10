@@ -27,7 +27,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `LOGFLARE_API_KEY`                             | string, defaults to `nil`                                               | **Deprecated**. Use `LOGFLARE_PUBLIC_ACCESS_TOKEN` instead. Alias for `LOGFLARE_PUBLIC_ACCESS_TOKEN`.                                                                                                                                                                |
 | `LOGFLARE_PUBLIC_ACCESS_TOKEN`                 | string, defaults to `nil`                                               | If set, creates a public access token for the provisioned user, for ingestion or querying usage. Single-tenant mode only.                                                                                                                                            |
 | `LOGFLARE_PRIVATE_ACCESS_TOKEN`                | string, defaults to `nil`                                               | If set, creates a private access token for the provisioned user, for management API usage. Single-tenant mode only.                                                                                                                                                  |
-| `LOGFLARE_SUPABASE_MODE`                       | Boolean, defaults to `false`                                            | A special mode for Logflare, where Supabase-specific resources will be seeded. Intended for Suapbase self-hosted usage.                                                                                                                                              |
+| `LOGFLARE_SUPABASE_MODE`                       | Boolean, defaults to `false`                                            | A special mode for Logflare, where Supabase-specific resources will be seeded. Intended for Supabase self-hosted usage.                                                                                                                                              |
 | `PHX_HTTP_IP`                                  | String, defaults to `nil`                                               | Allows configuration of the HTTP server IP to bind to. Specifying an IPv6 like `::` will enable IPv6.                                                                                                                                                                |
 | `PHX_HTTP_PORT`                                | Integer, defaults to `4000`                                             | Allows configuration of the HTTP server port.                                                                                                                                                                                                                        |
 | `DB_DATABASE`                                  | String, defaults to `nil`                                               | Database name for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                |
@@ -103,7 +103,7 @@ The `LOGFLARE_METADATA_CLUSTER` environment variable is also set in the Erlang n
 | `GOOGLE_DATASET_ID_APPEND`          | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery.                                                                                                                                                   |
 | `GOOGLE_DATASET_LOCATION`           | string, defaults to `US`    | Allows customization of region, where dataset is created in BigQuery. Defaults to the "US" multi-region. See [BigQuery docs](https://docs.cloud.google.com/bigquery/docs/locations) for a full list of options. |
 | `GOOGLE_PROJECT_VIEWER`             | string, optional            | Email of a Google user account to grant Viewer role on the GCP project.                                                                                                                                         |
-| `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run throguh the main service account.             |
+| `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run through the main service account.             |
 
 #### Managed Service Accounts
 
@@ -123,7 +123,7 @@ Without these two additional permissions, the managed service accounts feature w
 
 | Env Var                   | Type                                   | Description                                                                                                              |
 | ------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `POSTGRES_BACKEND_URL`    | string, required                       | PostgreSQL connection string, for connecting to the database. User must have sufficient permssions to manage the schema. |
+| `POSTGRES_BACKEND_URL`    | string, required                       | PostgreSQL connection string, for connecting to the database. User must have sufficient permissions to manage the schema. |
 | `POSTGRES_BACKEND_SCHEMA` | string, optional, defaults to `public` | Specifies the database schema to scope all operations.                                                                   |
 
 ## Database SSL Configuration
@@ -159,7 +159,7 @@ Encryption keys must be Base64 encoded.
 
 Cipher used is AES with a 256-bit key in GCM mode.
 
-If `LOGFLARE_DB_ENCRYPTION_KEY` environement variable is not provided, a default hardcoded encryption key will be used.
+If `LOGFLARE_DB_ENCRYPTION_KEY` environment variable is not provided, a default hardcoded encryption key will be used.
 
 ### Rolling Encryption Keys
 
@@ -209,7 +209,7 @@ Thereafter, click on "Add Key" to create a new key. The key will be in a JSON fo
 
 ![Add Key Button](add-key.png)
 
-You can also obtain the key via the `gcloud` cli by following the [official documentation](https://cloud.google.com/iam/docs/keys-create-delete).
+You can also obtain the key via the `gcloud` CLI by following the [official documentation](https://cloud.google.com/iam/docs/keys-create-delete).
 
 ## Deployment with Docker Compose
 
@@ -293,7 +293,7 @@ The directory structure should be as follows:
 
 ### Using an `.env` file
 
-You can optionally use a `.env` file to manage your environemnts. You can base the file contents on this [reference file](https://github.com/Logflare/logflare/blob/master/.docker.env)
+You can optionally use a `.env` file to manage your environments. You can base the file contents on this [reference file](https://github.com/Logflare/logflare/blob/master/.docker.env)
 
 :::note
 You cannot have comments in the env file as we load it at startup via `xargs`.
@@ -349,7 +349,7 @@ To deploy OpenTelemetry to Cloudflare + GCP successfully, the following need to 
    upstream connect error or disconnect/reset before headers. reset reason: remote connection failure, transport failure reason: TLS_error:|268435703:SSL routines:OPENSSL_internal:WRONG_VERSION_NUMBER:TLS_error_end
    ```
 
-   It is due fauly or non-existent self-signed certificate on the instance. Regenerate the self-signed certificate.
+   It is due to a faulty or non-existent self-signed certificate on the instance. Regenerate the self-signed certificate.
 
 2. I'm getting gRPC status 14 with a timeout error. Initial request works but streaming errors out.
 

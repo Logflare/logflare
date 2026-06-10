@@ -15,7 +15,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
 
   @log_config_id "00000000-0000-0000-0001-000000000003"
   @metric_config_id "00000000-0000-0000-0002-000000000003"
-  @trace_config_id "00000000-0000-0000-0003-000000000003"
+  @trace_config_id "00000000-0000-0000-0003-000000000004"
 
   @spec config_id(TypeDetection.event_type()) :: String.t()
   def config_id(:log), do: @log_config_id
@@ -436,7 +436,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         paths: ["$.span_name", "$.name", "$.operationName", "$.event_message"]
       ),
       Field.string("span_kind",
-        paths: ["$.span_kind", "$.kind", "$.spanKind"]
+        paths: ["$.span_kind", "$.kind", "$.spanKind"],
+        default: "Unspecified",
+        value_map: %{
+          "Unspecified" => "Unspecified",
+          "Internal" => "Internal",
+          "Server" => "Server",
+          "Client" => "Client",
+          "Producer" => "Producer",
+          "Consumer" => "Consumer",
+          "SPAN_KIND_UNSPECIFIED" => "Unspecified",
+          "SPAN_KIND_INTERNAL" => "Internal",
+          "SPAN_KIND_SERVER" => "Server",
+          "SPAN_KIND_CLIENT" => "Client",
+          "SPAN_KIND_PRODUCER" => "Producer",
+          "SPAN_KIND_CONSUMER" => "Consumer"
+        }
       ),
       Field.string("service_name",
         paths: [
