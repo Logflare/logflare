@@ -63,12 +63,35 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
     end
   end
 
+  # Passthrough when no query-param source was resolved but the request
+  # declared sources per-event via __LF_SOURCE; VerifyDeclaredSources already
+  # ran and verified ownership on those.
+  def call(
+        %{assigns: %{resource_type: :source, source: nil, declared_sources: declared}} = conn,
+        _
+      )
+      when map_size(declared) > 0 do
+    conn
+  end
+
   def call(%{assigns: assigns} = conn, _) when is_map_key(assigns, :resource_type) do
     FallbackController.call(conn, {:error, :unauthorized})
   end
 
   # no resource is set, passthrough
   def call(conn, _), do: conn
+
+  @doc """
+  Checks that a user owns a source and (if an access token is present) that
+  the token's scopes cover ingestion for that source.
+  """
+  @spec verify_source_access(Source.t(), User.t(), String.t() | nil) :: boolean()
+  def verify_source_access(%Source{user_id: source_user_id} = source, %User{id: user_id}, token)
+      when source_user_id == user_id do
+    check_resource(source, token)
+  end
+
+  def verify_source_access(%Source{}, %User{}, _token), do: false
 
   def check_resource(%Source{}, nil), do: true
 

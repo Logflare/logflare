@@ -20,6 +20,11 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   Checks buffer capacity and applies rate limiting based on source configuration.
   """
   @spec call(Plug.Conn.t(), opts()) :: Plug.Conn.t()
+  def call(%{assigns: %{declared_sources: declared}} = conn, _opts)
+      when map_size(declared) > 0 do
+    conn
+  end
+
   def call(%{assigns: %{source: %Source{} = source}} = conn, _opts) do
     if Backends.cached_local_pending_buffer_full?(source) do
       :telemetry.execute(

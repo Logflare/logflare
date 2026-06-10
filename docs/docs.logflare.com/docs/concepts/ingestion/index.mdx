@@ -93,7 +93,36 @@ To ingest by batch, send your request with the following JSON body:
 }
 ```
 
-Note that if you have mutliple sources with the same name, it will result in an error on ingestion and the log event will be discarded.
+Note that if you have multiple sources with the same name, it will result in an error on ingestion and the log event will be discarded.
+
+### Multi-source batching (`__LF_SOURCE`)
+
+A single ingestion request can write different events from the same payload into **different sources** by setting the reserved field `__LF_SOURCE` on each event you want to route explicitly.
+
+- **Value**: The **source UUID** (the same identifier you use for the `source` query parameter or in the dashboard). It must be a valid UUID string.
+
+Example — two sources in one `batch`:
+
+```json
+{
+  "batch": [
+    {
+      "__LF_SOURCE": "9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3",
+      "message": "to source A",
+    },
+    {
+      "__LF_SOURCE": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "message": "to source B",
+    }
+  ]
+}
+```
+
+The same routing applies when POSTing a **bare JSON array** (array root with `application/json`), which maps to `_json`-style ingestion.
+
+:::note
+In multi-source batches, events that omit `__LF_SOURCE` fall back to the source from the **`source`** or **`source_name`** query string. Omitting both per-event routing and a query-parameter default returns **406** with ingestion errors.
+:::
 
 ## Pipeline Transformations
 
