@@ -1,0 +1,31 @@
+# Switches the analytics (Logflare) service from the default Postgres backend
+# to BigQuery. Layered by bin/compose as the last -f file when
+# LOGFLARE_BACKEND=bigquery.
+#
+# Logflare selects the Postgres backend whenever POSTGRES_BACKEND_URL is
+# present in the environment — even set to an empty string — so the two
+# Postgres vars must be genuinely removed from the merged config. The `!reset`
+# tag does exactly that (docker compose >= 2.24.4; ubuntu-latest runners ship
+# far newer). Caveat: `!reset` on environment keys is silently ignored when
+# more than one earlier -f file contributes environment to the same service
+# (docker/compose#11816). That is not the case today (only
+# docker-compose.logs.yml defines analytics environment), and
+# setup-supabase-services.sh asserts the rendered config to catch regressions.
+services:
+  analytics:
+    environment:
+      POSTGRES_BACKEND_URL: !reset null
+      POSTGRES_BACKEND_SCHEMA: !reset null
+      GOOGLE_PROJECT_ID: ${GOOGLE_PROJECT_ID}
+      GOOGLE_PROJECT_NUMBER: ${GOOGLE_PROJECT_NUMBER}
+      # BigQuery datasets are named "<user_id><append>" (user id is 1 on the
+      # freshly migrated database). CI sets a unique value per job so
+      # concurrent runs against the shared GCP project write to distinct
+      # datasets, and teardown can delete the whole dataset safely.
+      GOOGLE_DATASET_ID_APPEND: ${GOOGLE_DATASET_ID_APPEND:-_default}
+    volumes:
+      # Logflare reads credentials from a gcloud.json file relative to the
+      # release working directory (/opt/app/rel/logflare/bin), not from
+      # GOOGLE_APPLICATION_CREDENTIALS. setup-supabase-services.sh writes this
+      # file into the compose project dir (supabase/docker/) before `up`.
+      - ./gcloud.json:/opt/app/rel/logflare/bin/gcloud.json:ro,z

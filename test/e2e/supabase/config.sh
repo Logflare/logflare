@@ -15,3 +15,9 @@ BRANCH="master"
 SPARSE_PATH="docker"
 SUPABASE_DIR="supabase"
 GITHUB_ACTIONS="${GITHUB_ACTIONS:-false}"
+
+# Logflare backend for the analytics service: "postgres" (default) or
+# "bigquery". BigQuery mode layers docker-compose.e2e.bigquery.yml and
+# requires GOOGLE_PROJECT_ID, GOOGLE_PROJECT_NUMBER and
+# GOOGLE_CREDENTIALS_JSON (service account key contents) at setup time.
+LOGFLARE_BACKEND="${LOGFLARE_BACKEND:-postgres}"

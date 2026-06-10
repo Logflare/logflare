@@ -31,11 +31,14 @@ defaults:
 
 jobs:
   test:
-    name: Playwright Tests
+    name: Playwright Tests (${{ matrix.backend }}, ${{ matrix.browsers.name }})
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
+        backend:
+          - postgres
         browsers:
           - name: Chrome
             project: chromium
@@ -43,8 +46,20 @@ jobs:
             project: firefox
           - name: Safari
             project: webkit
+        # One BigQuery job (the backend choice is invisible to the browser, so
+        # a single browser is enough coverage). Added conditionally because it
+        # needs repository secrets (GCP service account), which are
+        # unavailable to pull requests from forks.
+        include: ${{ github.event.pull_request.head.repo.fork != true && fromJSON('[{"backend":"bigquery","browsers":{"name":"Chrome","project":"chromium"}}]') || fromJSON('[]') }}
 
     timeout-minutes: 60
+
+    env:
+      LOGFLARE_BACKEND: ${{ matrix.backend }}
+      # Unique per job: BigQuery datasets are named "<user_id><append>", so
+      # this isolates concurrent CI runs sharing the GCP project and lets the
+      # cleanup step delete the dataset without touching other runs.
+      GOOGLE_DATASET_ID_APPEND: _ci_${{ github.run_id }}_${{ github.run_attempt }}_${{ matrix.browsers.project }}
 
     steps:
     - uses: actions/checkout@v4
@@ -88,6 +103,10 @@ jobs:
 
     - name: Setup Supabase services
       run: bash ./setup-supabase-services.sh
+      env:
+        GOOGLE_PROJECT_ID: ${{ secrets.E2E_BIGQUERY_PROJECT_ID }}
+        GOOGLE_PROJECT_NUMBER: ${{ secrets.E2E_BIGQUERY_PROJECT_NUMBER }}
+        GOOGLE_CREDENTIALS_JSON: ${{ secrets.E2E_BIGQUERY_SERVICE_ACCOUNT_KEY }}
 
     - name: Install dependencies
       run: npm ci
@@ -122,16 +141,29 @@ jobs:
       if: failure()
       run: bash ./ci-failure-summary.sh >> "$GITHUB_STEP_SUMMARY"
 
+    - name: Delete BigQuery CI dataset
+      if: always() && matrix.backend == 'bigquery'
+      continue-on-error: true
+      env:
+        GOOGLE_PROJECT_ID: ${{ secrets.E2E_BIGQUERY_PROJECT_ID }}
+        GOOGLE_CREDENTIALS_JSON: ${{ secrets.E2E_BIGQUERY_SERVICE_ACCOUNT_KEY }}
+      run: |
+        printf '%s' "$GOOGLE_CREDENTIALS_JSON" > "$RUNNER_TEMP/gcloud.json"
+        gcloud auth activate-service-account --key-file="$RUNNER_TEMP/gcloud.json" --quiet
+        # Single-tenant mode seeds one user into the freshly migrated
+        # database, so the dataset is always "1<append>".
+        bq --project_id="$GOOGLE_PROJECT_ID" rm -r -f -d "1${GOOGLE_DATASET_ID_APPEND}"
+
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
-        name: playwright-report-${{ matrix.browsers.project }}
+        name: playwright-report-${{ matrix.backend }}-${{ matrix.browsers.project }}
         path: test/e2e/supabase/playwright-report/
         retention-days: 30
 
     - uses: actions/upload-artifact@v4
       if: failure()
       with:
-        name: container-logs-${{ matrix.browsers.project }}
+        name: container-logs-${{ matrix.backend }}-${{ matrix.browsers.project }}
         path: test/e2e/supabase/container-logs/
         retention-days: 30

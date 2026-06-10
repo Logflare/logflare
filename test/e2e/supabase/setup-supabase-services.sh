@@ -20,6 +20,42 @@ log() {
 warn() { echo -e "${GREY}[$(date +"%Y-%m-%d %H:%M:%S")]${RESET} ${YELLOW}[!]${RESET} $1"; }
 error() { echo -e "${GREY}[$(date +"%Y-%m-%d %H:%M:%S")]${RESET} ${RED}[✗]${RESET} $1"; }
 
+# Replaces (or appends) KEY=VALUE in the compose .env file. Avoids sed
+# replacement-string escaping issues with arbitrary values.
+set_env_var() {
+  local key="$1" value="$2"
+  grep -vE "^${key}=" .env > .env.tmp || true
+  mv .env.tmp .env
+  printf '%s=%s\n' "$key" "$value" >> .env
+}
+
+case "$LOGFLARE_BACKEND" in
+  postgres) ;;
+  bigquery)
+    # Run with e.g.:
+    #   LOGFLARE_BACKEND=bigquery \
+    #   GOOGLE_PROJECT_ID=my-project \
+    #   GOOGLE_PROJECT_NUMBER=123456789 \
+    #   GOOGLE_CREDENTIALS_JSON="$(cat /path/to/gcloud.json)" \
+    #   ./setup-supabase-services.sh
+    missing=()
+    [ -z "${GOOGLE_PROJECT_ID:-}" ] && missing+=("GOOGLE_PROJECT_ID")
+    [ -z "${GOOGLE_PROJECT_NUMBER:-}" ] && missing+=("GOOGLE_PROJECT_NUMBER")
+    [ -z "${GOOGLE_CREDENTIALS_JSON:-}" ] && missing+=("GOOGLE_CREDENTIALS_JSON")
+    if [ "${#missing[@]}" -gt 0 ]; then
+      error "LOGFLARE_BACKEND=bigquery requires: ${missing[*]}"
+      exit 1
+    fi
+    ;;
+  *)
+    error "Invalid LOGFLARE_BACKEND '$LOGFLARE_BACKEND' (expected 'postgres' or 'bigquery')"
+    exit 1
+    ;;
+esac
+
+log "Using Logflare backend: $LOGFLARE_BACKEND"
+endgroup
+
 log "Cloning Supabase repository..."
 if [ -d "$SUPABASE_DIR" ]; then
   warn "Directory '$SUPABASE_DIR' exists. Removing..."
@@ -50,7 +86,45 @@ fi
 cp .env.example .env
 endgroup
 
+if [ "$LOGFLARE_BACKEND" = "bigquery" ]; then
+  log "Configuring BigQuery backend..."
+  # .env.example ships these as literal placeholders (GOOGLE_PROJECT_ID=GOOGLE_PROJECT_ID).
+  set_env_var "GOOGLE_PROJECT_ID" "$GOOGLE_PROJECT_ID"
+  set_env_var "GOOGLE_PROJECT_NUMBER" "$GOOGLE_PROJECT_NUMBER"
+  set_env_var "GOOGLE_DATASET_ID_APPEND" "${GOOGLE_DATASET_ID_APPEND:-_default}"
+
+  # Bind-mounted into the analytics container by docker-compose.e2e.bigquery.yml.
+  # Must exist before `compose up`, otherwise docker creates a directory at the
+  # mount target and Logflare boots without BigQuery credentials.
+  printf '%s' "$GOOGLE_CREDENTIALS_JSON" > gcloud.json
+  endgroup
+fi
+
 cd ../..
+
+if [ "$LOGFLARE_BACKEND" = "bigquery" ]; then
+  log "Verifying BigQuery compose overlay..."
+  # Logflare picks the Postgres backend whenever POSTGRES_BACKEND_URL is
+  # present (even empty), so the overlay's `!reset` must have removed it from
+  # the merged config. `!reset` is silently ignored when multiple earlier -f
+  # files contribute environment to the analytics service
+  # (docker/compose#11816) — assert the rendered result instead of trusting it.
+  rendered=$(compose config analytics)
+  if grep -q "POSTGRES_BACKEND_URL" <<<"$rendered"; then
+    error "POSTGRES_BACKEND_URL survived the BigQuery overlay; Logflare would boot in Postgres mode."
+    error "Check docker-compose.e2e.bigquery.yml ordering and docker/compose#11816."
+    exit 1
+  fi
+  if ! grep -q "GOOGLE_PROJECT_ID" <<<"$rendered"; then
+    error "GOOGLE_PROJECT_ID missing from rendered analytics config."
+    exit 1
+  fi
+  if ! grep -q "gcloud.json" <<<"$rendered"; then
+    error "gcloud.json mount missing from rendered analytics config."
+    exit 1
+  fi
+  endgroup
+fi
 
 [ ! "$GITHUB_ACTIONS" = "true" ] && log "Build logflare image..." && compose build analytics
 
