@@ -458,7 +458,8 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
         {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
         {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
       ]
-      |> filter_nil_kv_pairs.()
+      |> filter_nil_kv_pairs.(),
+    max_batch_size: 250
 end
 
 syn_endpoints_partitions =
