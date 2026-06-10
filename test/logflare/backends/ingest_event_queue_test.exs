@@ -907,27 +907,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-  describe "reset_processing/2" do
-    test "resets given :processing IDs back to :pending" do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, user: user)
-      sbp = {source.id, backend.id, self()}
-      IngestEventQueue.upsert_tid(sbp)
-      le = build(:log_event, source: source)
-      IngestEventQueue.add_to_table(sbp, [le])
-      tid = IngestEventQueue.get_tid(sbp)
-      :ets.update_element(tid, le.id, {2, :processing})
-
-      assert :ok = IngestEventQueue.reset_processing(sbp, [le.id])
-      assert [{_, :pending, _}] = :ets.lookup(tid, le.id)
-    end
-
-    test "returns :ok when queue does not exist" do
-      assert :ok = IngestEventQueue.reset_processing({0, 0, self()}, ["any"])
-    end
-  end
-
   describe "total_by_status/2" do
     test "counts events by status correctly" do
       user = insert(:user)
@@ -1084,6 +1063,30 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       refute_receive {:telemetry, _}
 
       :telemetry.detach("test-no-stale-#{inspect(ref)}")
+    end
+
+    test "CAS no-op: event acked between snapshot and replace is not resurrected" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      state = make_janitor_state(source, backend)
+      # First cycle builds snapshot
+      state = QueueJanitor.do_cleanup_stale_processing(state)
+
+      # Simulate ack deleting the event between snapshot and replace
+      :ets.delete(tid, le.id)
+
+      # Second cycle — select_replace finds no match, returns :skip, does not resurrect
+      QueueJanitor.do_cleanup_stale_processing(state)
+
+      assert [] = :ets.lookup(tid, le.id)
     end
   end
 

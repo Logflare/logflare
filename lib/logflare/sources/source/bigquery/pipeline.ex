@@ -255,14 +255,18 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           Message.update_data(msg, fn _ -> {id, tid, size} end)
         end)
 
-      messages_with_sizes
-    end
-  end
+      failed_missing =
+        Enum.map(missing, fn %{data: {id, tid}} = msg ->
+          msg
+          |> Message.update_data(fn _ -> {id, tid, 0} end)
+          |> Message.failed("missing from ETS")
+        end)
 
-  def le_messages_to_bq_rows(messages) do
-    Enum.map(messages, fn message ->
-      le_to_bq_row(message.data)
-    end)
+      case failed_missing do
+        [] -> messages_with_sizes
+        _ -> messages_with_sizes ++ failed_missing
+      end
+    end
   end
 
   @spec le_list_to_bq_rows([LE.t()]) :: [Model.TableDataInsertAllRequestRows.t()]
@@ -279,7 +283,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             {[{message, process_data(log_event, context), size} | out], missing}
 
           [] ->
-            {out, [id | missing]}
+            {out, [message | missing]}
         end
     end)
   end
@@ -527,7 +531,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   defp maybe_requeue_failed(_, [], _), do: :ok
 
   defp maybe_requeue_failed(_, failed, %{max_retries: 0}) do
-    for %{data: {id, tid, _size}} <- failed, do: :ets.delete(tid, id)
+    for %{data: {id, tid, _size}} <- failed, do: IngestEventQueue.delete_id(tid, id)
     :ok
   end
 
@@ -539,7 +543,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             [%LE{le | retries: (retries || 0) + 1} | acc]
 
           [{^id, _status, _le} | _] ->
-            :ets.delete(tid, id)
+            IngestEventQueue.delete_id(tid, id)
             acc
 
           [] ->
@@ -578,6 +582,4 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
   end
-
-  # https://hexdocs.pm/broadway/Broadway.html#start_link/2
 end

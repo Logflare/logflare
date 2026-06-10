@@ -494,9 +494,11 @@ defmodule Logflare.BigQuery.PipelineTest do
         self()
       )
 
-      result = Pipeline.handle_batch(:bq, [message], batch_info, context)
+      [result_msg] = Pipeline.handle_batch(:bq, [message], batch_info, context)
 
-      assert result == []
+      # Missing message is returned as failed (not dropped) so Broadway can ack it
+      assert {:failed, "missing from ETS"} = result_msg.status
+      assert {_id, _tid, 0} = result_msg.data
       assert_receive {:missing, 1}
 
       :telemetry.detach("test-missing-#{inspect(ref)}")

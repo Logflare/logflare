@@ -426,27 +426,6 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec total_pending(source_backend()) :: integer()
   @spec total_pending(source_backend_pid()) :: integer() | {:error, :not_initialized}
-  @doc """
-  Returns the total count of events with a given status across all queues for a source-backend.
-  """
-  @spec total_by_status(queues_key(), :pending | :processing | :ingested) :: non_neg_integer()
-  def total_by_status({_, _} = sid_bid, status) do
-    ms =
-      Ex2ms.fun do
-        {_event_id, event_status, _event} when event_status == ^status -> true
-      end
-
-    traverse_queues(
-      sid_bid,
-      fn objs, acc ->
-        Enum.reduce(objs, acc, fn {_sid_bid_pid, tid}, c ->
-          c + :ets.select_count(tid, ms)
-        end)
-      end,
-      0
-    )
-  end
-
   def total_pending({_, _} = sid_bid) do
     # iterate over each matching source-backend queue and sum the totals
     for {_sid_bid_pid, count} <- list_pending_counts(sid_bid), reduce: 0 do
@@ -466,6 +445,27 @@ defmodule Logflare.Backends.IngestEventQueue do
     else
       nil -> {:error, :not_initialized}
     end
+  end
+
+  @doc """
+  Returns the total count of events with a given status across all queues for a source-backend.
+  """
+  @spec total_by_status(queues_key(), :pending | :processing | :ingested) :: non_neg_integer()
+  def total_by_status({_, _} = sid_bid, status) do
+    ms =
+      Ex2ms.fun do
+        {_event_id, event_status, _event} when event_status == ^status -> true
+      end
+
+    traverse_queues(
+      sid_bid,
+      fn objs, acc ->
+        Enum.reduce(objs, acc, fn {_sid_bid_pid, tid}, c ->
+          c + :ets.select_count(tid, ms)
+        end)
+      end,
+      0
+    )
   end
 
   @doc """
@@ -651,29 +651,18 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  defp select_to_insert(_tid, _ms, _size, 0), do: []
-
-  defp select_to_insert(tid, ms, size, n) do
-    case :ets.select(tid, ms, min(n, max(size, 1))) do
-      {taken, _} -> taken
-      :"$end_of_table" -> []
-    end
-  end
-
   @doc """
   Safely deletes a single event by id from a tid, ignoring stale (deleted) tables.
   Emits telemetry if the table no longer exists.
   """
   @spec delete_id(:ets.tid(), term()) :: :ok
   def delete_id(tid, id) do
-    try do
-      :ets.delete(tid, id)
+    :ets.delete(tid, id)
+    :ok
+  rescue
+    ArgumentError ->
+      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
       :ok
-    rescue
-      ArgumentError ->
-        :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
-        :ok
-    end
   end
 
   @doc """
@@ -682,14 +671,12 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec update_status(:ets.tid(), term(), :pending | :processing | :ingested) :: :ok
   def update_status(tid, id, status) do
-    try do
-      :ets.update_element(tid, id, {2, status})
+    :ets.update_element(tid, id, {2, status})
+    :ok
+  rescue
+    ArgumentError ->
+      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
       :ok
-    rescue
-      ArgumentError ->
-        :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
-        :ok
-    end
   end
 
   @doc """
@@ -711,17 +698,12 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  @doc """
-  Resets a given list of event IDs from `:processing` back to `:pending` in a queue.
-  Used by QueueJanitor to recover stale in-flight events.
-  """
-  @spec reset_processing(table_key() | consolidated_table_key(), [term()]) :: :ok
-  def reset_processing(key, ids) do
-    with tid when tid != nil <- get_tid(key) do
-      for id <- ids, do: :ets.update_element(tid, id, {2, :pending})
-      :ok
-    else
-      _ -> :ok
+  defp select_to_insert(_tid, _ms, _size, 0), do: []
+
+  defp select_to_insert(tid, ms, size, n) do
+    case :ets.select(tid, ms, min(n, max(size, 1))) do
+      {taken, _} -> taken
+      :"$end_of_table" -> []
     end
   end
 

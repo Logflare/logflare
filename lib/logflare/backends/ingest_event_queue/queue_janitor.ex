@@ -130,8 +130,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   # Snapshot-based stale :processing cleanup.
   # On each run, get current :processing IDs per queue. Any IDs that were also
   # :processing on the previous run are stuck (batcher crash, kill signal, etc.).
-  # Stuck events have their retries incremented; those exceeding @max_stale_retries
-  # are dropped, the rest are reset to :pending.
+  # Stuck events are reset to :pending and retried.
+  # Dropped once they've been stale @max_stale_retries times.
   # expose for testing
   def do_cleanup_stale_processing(
         %{consolidated?: true, consolidated_key: consolidated_key} = state
@@ -165,30 +165,34 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   defp process_stale_events(_table_key, []), do: {0, 0}
 
   defp process_stale_events(table_key, stale_ids) do
-    case IngestEventQueue.get_tid(table_key) do
-      nil ->
-        {0, 0}
-
-      tid ->
-        Enum.reduce(stale_ids, {0, 0}, fn id, {resets, drops} ->
-          case act_on_stale_event(tid, id) do
-            :reset -> {resets + 1, drops}
-            :drop -> {resets, drops + 1}
-            :skip -> {resets, drops}
-          end
-        end)
+    with tid when tid != nil <- IngestEventQueue.get_tid(table_key) do
+      Enum.reduce(stale_ids, {0, 0}, fn id, {resets, drops} ->
+        case act_on_stale_event(tid, id) do
+          :reset -> {resets + 1, drops}
+          :drop -> {resets, drops + 1}
+          :skip -> {resets, drops}
+        end
+      end)
+    else
+      _ -> {0, 0}
     end
   end
 
   defp act_on_stale_event(tid, id) do
     case :ets.lookup(tid, id) do
       [{^id, :processing, %{retries: retries}}] when retries >= @max_stale_retries - 1 ->
-        :ets.delete(tid, id)
+        :ets.select_delete(tid, [{{id, :processing, :_}, [], [true]}])
         :drop
 
       [{^id, :processing, %{retries: retries} = le}] ->
-        :ets.insert(tid, {id, :pending, %{le | retries: (retries || 0) + 1}})
-        :reset
+        new_le = %{le | retries: (retries || 0) + 1}
+
+        case :ets.select_replace(tid, [
+               {{id, :processing, le}, [], [{:const, {id, :pending, new_le}}]}
+             ]) do
+          1 -> :reset
+          0 -> :skip
+        end
 
       _ ->
         :skip
