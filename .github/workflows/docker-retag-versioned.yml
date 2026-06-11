@@ -79,6 +79,7 @@ jobs:
           GHCR_IMAGE: ghcr.io/${{ needs.retag.outputs.docker_tag }}
         run: |
           docker buildx imagetools create \
+            --prefer-index=false \
             -t "$ECR_IMAGE" \
             -t "$GHCR_IMAGE" \
             "$SOURCE_IMAGE"
