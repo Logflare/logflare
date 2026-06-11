@@ -36,7 +36,17 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, endpoint: insert(:endpoint, user: user)}
     end
 
-    test "list endpoints", %{conn: conn, endpoint: endpoint, team: team} do
+    test "list endpoints", %{conn: conn, endpoint: endpoint, team: team, user: user} do
+      backend = insert(:postgres_backend, user: user, name: "Test Postgres")
+
+      postgres_endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :pg_sql,
+          name: "postgres endpoint"
+        )
+
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints")
 
       # intro message and link to docs
@@ -49,6 +59,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
       # description
       assert has_element?(view, "ul li p", endpoint.description)
       assert has_element?(view, "ul li *[title='Auth enabled']")
+      assert has_element?(view, "ul li span", "BigQuery SQL")
+
+      postgres_endpoint_html = view |> element("ul li", postgres_endpoint.name) |> render()
+      assert postgres_endpoint_html =~ "Postgres SQL"
+      assert postgres_endpoint_html =~ backend.name
 
       # link to show
       view

@@ -418,6 +418,7 @@ defmodule LogflareWeb.EndpointsLive do
   defp refresh_endpoints(%{assigns: assigns} = socket) do
     endpoints =
       Endpoints.list_endpoints_by(user_id: assigns.user_id)
+      |> Logflare.Repo.preload(:backend)
       |> Endpoints.calculate_endpoint_metrics()
 
     assign(socket, :endpoints, endpoints)
