@@ -1,64 +1,6 @@
 [
   %{
     meta: %{
-      captured_at: "2026-06-11T14:33:49.221045Z",
-      git_sha: "ec1771108",
-      label: "schema-builder-change-flag",
-      machine: "m2-local"
-    },
-    results: %{
-      "noop / edge log" => %{
-        ips: 81_699,
-        memory_avg_bytes: 11_784,
-        reductions_avg: 1118,
-        wall_avg_us: 12.24,
-        wall_median_us: 11.63,
-        wall_p99_us: 23.17
-      },
-      "noop / lists" => %{
-        ips: 288_116,
-        memory_avg_bytes: 4720,
-        reductions_avg: 464,
-        wall_avg_us: 3.47,
-        wall_median_us: 3.29,
-        wall_p99_us: 4.83
-      },
-      "noop / scalars" => %{
-        ips: 205_131,
-        memory_avg_bytes: 5576,
-        reductions_avg: 532,
-        wall_avg_us: 4.87,
-        wall_median_us: 4.5,
-        wall_p99_us: 9.33
-      },
-      "update / edge log" => %{
-        ips: 106_774,
-        memory_avg_bytes: 17_416,
-        reductions_avg: 1846,
-        wall_avg_us: 9.37,
-        wall_median_us: 8.92,
-        wall_p99_us: 19.0
-      },
-      "update / lists" => %{
-        ips: 261_334,
-        memory_avg_bytes: 7208,
-        reductions_avg: 824,
-        wall_avg_us: 3.83,
-        wall_median_us: 3.54,
-        wall_p99_us: 7.5
-      },
-      "update / scalars" => %{
-        ips: 210_486,
-        memory_avg_bytes: 8424,
-        reductions_avg: 939,
-        wall_avg_us: 4.75,
-        wall_median_us: 4.46,
-        wall_p99_us: 9.04
-      }
-    }
-  },
-  %{
-    meta: %{
       captured_at: "2026-06-02T13:02:23.013962Z",
       git_sha: "14d2094d0",
       label: nil,
