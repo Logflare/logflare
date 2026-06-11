@@ -423,7 +423,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     {event_size_pairs, %{}}
   end
 
-
   def process_data(%LE{source_id: source_id} = log_event, context) do
     source = Sources.Cache.get_by_id(source_id)
 
