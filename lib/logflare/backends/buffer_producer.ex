@@ -273,7 +273,15 @@ defmodule Logflare.Backends.BufferProducer do
         []
 
       {:ok, ids, tid} ->
-        Enum.map(ids, fn id -> {id, tid} end)
+        Enum.map(ids, fn id ->
+          size =
+            case :ets.lookup(tid, id) do
+              [{^id, _status, le}] -> :erlang.external_size(le.body)
+              [] -> 0
+            end
+
+          {id, tid, size}
+        end)
     end
   end
 

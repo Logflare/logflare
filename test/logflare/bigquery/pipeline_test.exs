@@ -430,8 +430,7 @@ defmodule Logflare.BigQuery.PipelineTest do
         bigquery_project_id: nil,
         bigquery_dataset_id: nil,
         user_id: user.id,
-        system_source: false,
-        max_batch_length: 6_000_000
+        system_source: false
       }
 
       batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
@@ -445,13 +444,22 @@ defmodule Logflare.BigQuery.PipelineTest do
       IngestEventQueue.add_to_table(sid_bid_pid, events)
       {:ok, ids, tid} = IngestEventQueue.take_pending_ids(sid_bid_pid, length(events))
 
+      # Simulate what BufferProducer does: compute size per event via ETS lookup
       messages =
-        Enum.map(ids, &%Message{data: {&1, tid}, acknowledger: {Pipeline, :ack_id, :ack_data}})
+        Enum.map(ids, fn id ->
+          size =
+            case :ets.lookup(tid, id) do
+              [{^id, _status, le}] -> :erlang.external_size(le.body)
+              [] -> 0
+            end
+
+          %Message{data: {id, tid, size}, acknowledger: {Pipeline, :ack_id, :ack_data}}
+        end)
 
       {messages, tid}
     end
 
-    test "resolves {id, tid} to {id, tid, size} in returned messages", %{
+    test "passes {id, tid, size} messages through with correct size", %{
       source: source,
       context: context,
       batch_info: batch_info
@@ -537,23 +545,6 @@ defmodule Logflare.BigQuery.PipelineTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
     end
 
-    test "calls stream_batch! once per chunk when batch exceeds max_batch_length", %{
-      source: source,
-      context: context,
-      batch_info: batch_info
-    } do
-      les = for _ <- 1..3, do: build(:log_event, source: source)
-      {messages, _tid} = setup_queue(source, les)
-
-      # max_batch_length: 1 forces each event into its own chunk
-      expect(Logflare.Google.BigQuery, :stream_batch!, 3, fn _ctx, rows ->
-        assert length(rows) == 1
-        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
-      end)
-
-      Pipeline.handle_batch(:bq, messages, batch_info, Map.put(context, :max_batch_length, 1))
-    end
-
     test "calls insert_log_events_via_storage_write_api on storage write path", %{
       source: source,
       batch_info: batch_info
@@ -567,8 +558,7 @@ defmodule Logflare.BigQuery.PipelineTest do
         bigquery_project_id: nil,
         bigquery_dataset_id: nil,
         user_id: source.user_id,
-        system_source: false,
-        max_batch_length: 6_000_000
+        system_source: false
       }
 
       le = build(:log_event, source: source)
@@ -581,31 +571,6 @@ defmodule Logflare.BigQuery.PipelineTest do
       end)
 
       Pipeline.handle_batch(:bq, messages, batch_info, context)
-    end
-  end
-
-  describe "chunk_by_size/2" do
-    test "returns a single chunk when total size is under the limit" do
-      pairs = [{build(:log_event), 100}, {build(:log_event), 200}]
-      assert [^pairs] = Pipeline.chunk_by_size(pairs, 1_000)
-    end
-
-    test "splits into multiple chunks when byte limit is exceeded" do
-      le = build(:log_event)
-      pairs = [{le, 400}, {le, 400}, {le, 400}]
-      chunks = Pipeline.chunk_by_size(pairs, 500)
-      assert length(chunks) == 3
-      assert Enum.all?(chunks, &(length(&1) == 1))
-    end
-
-    test "a single oversized event forms its own chunk without being dropped" do
-      le = build(:log_event)
-      pairs = [{le, 10_000_000}]
-      assert [[{^le, 10_000_000}]] = Pipeline.chunk_by_size(pairs, 100)
-    end
-
-    test "empty input returns empty list" do
-      assert [] = Pipeline.chunk_by_size([], 1_000)
     end
   end
 

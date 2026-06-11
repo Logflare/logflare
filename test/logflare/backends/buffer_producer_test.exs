@@ -107,11 +107,12 @@ defmodule Logflare.Backends.BufferProducerTest do
 
     tid = IngestEventQueue.get_tid(sid_bid_pid)
 
-    [{id, ^tid}] =
+    [{id, ^tid, size}] =
       GenStage.stream([{buffer_producer_pid, max_demand: 1}])
       |> Enum.take(1)
 
     assert id == le.id
+    assert is_integer(size) and size > 0
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     # event still in ETS, marked as :processing
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 1

@@ -73,8 +73,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           batchers: [
             bq: [
               concurrency: 16,
-              batch_size: @max_batch_size,
-              batch_timeout: 1_500
+              batch_size: bq_batch_size_splitter(),
+              batch_timeout: 1_500,
+              # required when using a custom batch_size splitter
+              max_demand: @max_batch_size
             ]
           ],
           context: %{
@@ -85,8 +87,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             source_id: source.id,
             backend_id: Map.get(backend || %{}, :id),
             user_id: source.user_id,
-            system_source: source.system_source,
-            max_batch_length: @max_batch_length
+            system_source: source.system_source
           }
         ],
         opts
@@ -180,6 +181,27 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     Message.put_batcher(message, :bq)
   end
 
+  @spec bq_batch_size_splitter() ::
+          {{non_neg_integer(), non_neg_integer()},
+           (Message.t(), {non_neg_integer(), non_neg_integer()} ->
+              {:emit | :cont, {non_neg_integer(), non_neg_integer()}})}
+  defp bq_batch_size_splitter do
+    {
+      {@max_batch_size, @max_batch_length},
+      fn
+        _message, {1, _len} ->
+          {:emit, {@max_batch_size, @max_batch_length}}
+
+        %{data: {_id, _tid, size}}, {count, len} ->
+          if len - size <= 0 do
+            {:emit, {@max_batch_size, @max_batch_length}}
+          else
+            {:cont, {count - 1, len - size}}
+          end
+      end
+    }
+  end
+
   @impl Broadway
   def handle_batch(:bq, messages, batch_info, context) do
     :telemetry.execute(
@@ -206,8 +228,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     } do
       source = Sources.Cache.get_by_id(context.source_id)
 
-      # Fetch full LogEvents from ETS with precomputed body sizes, keeping each
-      # message coupled to its event. Events remain in ETS (marked :processing) until ack.
+      # Fetch full LogEvents from ETS. Sizes were computed in the producer and are
+      # carried on each message — no recomputation needed here. The batch is already
+      # byte-bounded by bq_batch_size_splitter/0 in the batcher config.
       {triples, missing} = fetch_events_from_messages(messages, context)
 
       if missing != [] do
@@ -220,51 +243,43 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         )
       end
 
-      event_size_pairs = Enum.map(triples, fn {_msg, le, size} -> {le, size} end)
+      log_events = Enum.map(triples, fn {_msg, le, _size} -> le end)
+      batch_count = length(log_events)
+      batch_size = Enum.sum_by(triples, fn {_msg, _le, size} -> size end)
 
-      event_size_pairs
-      |> chunk_by_size(context.max_batch_length)
-      |> Enum.each(fn chunk ->
-        log_events = Enum.map(chunk, &elem(&1, 0))
-        chunk_count = length(chunk)
-        chunk_size = Enum.sum_by(chunk, &elem(&1, 1))
+      if source && source.bq_storage_write_api do
+        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
 
-        if source && source.bq_storage_write_api do
-          batch_attrs = compute_batch_attrs(chunk_count, chunk_size, :bq_storage_write)
-
-          OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
-            BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
-              project_id: context.bigquery_project_id,
-              dataset_id: context.bigquery_dataset_id,
-              source_id: context.source_id,
-              source_token: context.source_token,
-              backend_id: context.backend_id
-            )
-          end
-        else
-          batch_attrs = compute_batch_attrs(chunk_count, chunk_size, :bq_streaming_insert)
-
-          OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
-            stream_batch(context, chunk)
-          end
+        OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
+          BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
+            project_id: context.bigquery_project_id,
+            dataset_id: context.bigquery_dataset_id,
+            source_id: context.source_id,
+            source_token: context.source_token,
+            backend_id: context.backend_id
+          )
         end
-      end)
+      else
+        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_streaming_insert)
+        event_size_pairs = Enum.map(triples, fn {_msg, le, size} -> {le, size} end)
 
-      messages_with_sizes =
-        Enum.map(triples, fn {%{data: {id, tid}} = msg, _le, size} ->
-          Message.update_data(msg, fn _ -> {id, tid, size} end)
-        end)
+        OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
+          stream_batch(context, event_size_pairs)
+        end
+      end
+
+      succeeded = Enum.map(triples, fn {msg, _le, _size} -> msg end)
 
       failed_missing =
-        Enum.map(missing, fn %{data: {id, tid}} = msg ->
+        Enum.map(missing, fn %{data: {id, tid, _size}} = msg ->
           msg
           |> Message.update_data(fn _ -> {id, tid, 0} end)
           |> Message.failed("missing from ETS")
         end)
 
       case failed_missing do
-        [] -> messages_with_sizes
-        _ -> messages_with_sizes ++ failed_missing
+        [] -> succeeded
+        _ -> succeeded ++ failed_missing
       end
     end
   end
@@ -276,10 +291,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   defp fetch_events_from_messages(messages, context) do
     Enum.reduce(messages, {[], []}, fn
-      %{data: {id, tid}} = message, {out, missing} ->
+      %{data: {id, tid, size}} = message, {out, missing} ->
         case :ets.lookup(tid, id) do
           [{^id, _status, log_event}] ->
-            size = :erlang.external_size(log_event.body)
             {[{message, process_data(log_event, context), size} | out], missing}
 
           [] ->
@@ -409,30 +423,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     {event_size_pairs, %{}}
   end
 
-  # Chunks a list of {LogEvent, size} pairs into sub-lists where the accumulated
-  # body size stays under max_bytes. Each chunk is guaranteed to be non-empty —
-  # a single oversized event forms its own chunk rather than being dropped.
-  @spec chunk_by_size([{LE.t(), non_neg_integer()}], non_neg_integer()) ::
-          [[{LE.t(), non_neg_integer()}]]
-  def chunk_by_size(pairs, max_bytes) do
-    Enum.chunk_while(
-      pairs,
-      {[], 0},
-      fn {_le, size} = pair, {chunk, acc} ->
-        new_acc = acc + size
-
-        if new_acc > max_bytes and chunk != [] do
-          {:cont, Enum.reverse(chunk), {[pair], size}}
-        else
-          {:cont, {[pair | chunk], new_acc}}
-        end
-      end,
-      fn
-        {[], _} -> {:cont, []}
-        {chunk, _} -> {:cont, Enum.reverse(chunk), []}
-      end
-    )
-  end
 
   def process_data(%LE{source_id: source_id} = log_event, context) do
     source = Sources.Cache.get_by_id(source_id)

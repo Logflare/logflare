@@ -35,7 +35,8 @@ defmodule Logflare.OpenTelemetryTest do
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
       {:ok, [id], tid} = IngestEventQueue.take_pending_ids(sid_bid_pid, 1)
 
-      messages = [%Message{data: {id, tid}, acknowledger: {Pipeline, :ack_id, :ack_data}}]
+      size = :erlang.external_size(le.body)
+      messages = [%Message{data: {id, tid, size}, acknowledger: {Pipeline, :ack_id, :ack_data}}]
       batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
 
       context = %{
@@ -45,8 +46,7 @@ defmodule Logflare.OpenTelemetryTest do
         bigquery_project_id: nil,
         bigquery_dataset_id: nil,
         user_id: source.user_id,
-        system_source: source.system_source,
-        max_batch_length: 6_000_000
+        system_source: source.system_source
       }
 
       Pipeline.handle_batch(:bq, messages, batch_info, context)
@@ -74,7 +74,8 @@ defmodule Logflare.OpenTelemetryTest do
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
       {:ok, [id], tid} = IngestEventQueue.take_pending_ids(sid_bid_pid, 1)
 
-      messages = [%Message{data: {id, tid}, acknowledger: {Pipeline, :ack_id, :ack_data}}]
+      size = :erlang.external_size(le.body)
+      messages = [%Message{data: {id, tid, size}, acknowledger: {Pipeline, :ack_id, :ack_data}}]
       batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
 
       context = %{
@@ -84,8 +85,7 @@ defmodule Logflare.OpenTelemetryTest do
         bigquery_project_id: nil,
         bigquery_dataset_id: nil,
         user_id: source.user_id,
-        system_source: source.system_source,
-        max_batch_length: 6_000_000
+        system_source: source.system_source
       }
 
       Pipeline.handle_batch(:bq, messages, batch_info, context)
