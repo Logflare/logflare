@@ -8,6 +8,33 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
   alias Model.TableFieldSchema, as: TFS
   alias Model.TableSchema, as: TS
 
+  @initial_table_schema %Model.TableSchema{
+    fields: [
+      %TFS{
+        description: nil,
+        fields: nil,
+        mode: "REQUIRED",
+        name: "timestamp",
+        type: "TIMESTAMP"
+      },
+      %TFS{
+        description: nil,
+        fields: nil,
+        mode: "NULLABLE",
+        name: "id",
+        type: "STRING"
+      },
+      %TFS{
+        description: nil,
+        fields: nil,
+        mode: "NULLABLE",
+        name: "event_message",
+        type: "STRING"
+      }
+    ]
+  }
+  @initial_fields_by_name Map.new(@initial_table_schema.fields, &{&1.name, &1})
+
   @doc """
   Builds table schema from event metadata and prev schema.
 
@@ -138,62 +165,96 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
 
   """
   @spec build_table_schema([map()] | map(), TS.t()) :: TS.t()
+  def build_table_schema(params, old_schema) do
+    {schema, _changed?} = build_table_schema_with_change(params, old_schema)
 
-  def build_table_schema(params, %{fields: old_fields}) do
-    protected_keys = Enum.map(initial_table_schema().fields, & &1.name)
+    schema
+  end
+
+  @spec build_table_schema_with_change([map()] | map(), TS.t()) :: {TS.t(), boolean()}
+  def build_table_schema_with_change(params, %{fields: old_fields} = old_schema) do
+    initial_schema = initial_table_schema()
+
+    old_fields_by_name =
+      Enum.reduce(old_fields, %{}, fn field, fields_by_name ->
+        Map.put_new(fields_by_name, field.name, field)
+      end)
+
     is_otel = otel_data?(params)
 
-    new_fields =
-      for param_key <- Map.keys(params),
-          param_key not in protected_keys do
-        prev_field_schema = Enum.find(old_fields, &(&1.name == param_key)) || %{}
-        param_value = Map.get(params, param_key)
+    {new_fields, changed?} =
+      Enum.reduce(
+        params,
+        {[], false},
+        &merge_param(&1, &2, old_fields_by_name, is_otel)
+      )
 
-        case build_fields_schemas({param_key, param_value}, is_otel) do
-          nil -> nil
-          new_field_schema -> DeepMerge.deep_merge(prev_field_schema, new_field_schema)
-        end
-      end
-      |> Enum.reject(&is_nil/1)
+    missing_initial_field? =
+      Enum.any?(initial_schema.fields, &(not Map.has_key?(old_fields_by_name, &1.name)))
 
+    changed? =
+      changed? or missing_initial_field? or map_size(old_fields_by_name) != length(old_fields) or
+        not fields_deeply_sorted_by_name?(old_fields) or
+        old_schema != %{initial_schema | fields: old_fields}
+
+    if changed? do
+      new_fields = Enum.reverse(new_fields)
+      updated_fields = updated_fields(old_fields, params, new_fields, initial_schema)
+      schema = Map.put(initial_schema, :fields, updated_fields)
+      schema = deep_sort_by_fields_name(schema)
+
+      {schema, true}
+    else
+      {old_schema, false}
+    end
+  end
+
+  defp updated_fields(old_fields, params, new_fields, initial_schema) do
     # reject old fields that are now included in the params
-    unrejected_fields = old_fields |> Enum.reject(&(&1.name in Map.keys(params)))
+    unrejected_fields = Enum.reject(old_fields, &Map.has_key?(params, &1.name))
+    field_names = MapSet.new(unrejected_fields ++ new_fields, & &1.name)
 
-    updated_fields =
-      (unrejected_fields ++ new_fields ++ initial_table_schema().fields)
-      |> Enum.uniq_by(fn f -> f.name end)
+    missing_initial_fields =
+      Enum.reject(initial_schema.fields, &MapSet.member?(field_names, &1.name))
 
-    initial_table_schema()
-    |> Map.put(:fields, updated_fields)
-    |> deep_sort_by_fields_name()
+    Enum.uniq_by(unrejected_fields ++ new_fields ++ missing_initial_fields, & &1.name)
   end
 
   def initial_table_schema do
-    %Model.TableSchema{
-      fields: [
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "REQUIRED",
-          name: "timestamp",
-          type: "TIMESTAMP"
-        },
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "NULLABLE",
-          name: "id",
-          type: "STRING"
-        },
-        %TFS{
-          description: nil,
-          fields: nil,
-          mode: "NULLABLE",
-          name: "event_message",
-          type: "STRING"
-        }
-      ]
-    }
+    @initial_table_schema
+  end
+
+  defp merge_param(
+         {param_key, _param_value},
+         {new_fields, changed?},
+         old_fields_by_name,
+         _is_otel
+       )
+       when param_key in ["event_message", "id", "timestamp"] do
+    initial_field = Map.fetch!(@initial_fields_by_name, param_key)
+    old_field = Map.get(old_fields_by_name, param_key)
+
+    {new_fields, changed? or is_nil(old_field) or old_field != initial_field}
+  end
+
+  defp merge_param(
+         {param_key, param_value},
+         {new_fields, changed?},
+         old_fields_by_name,
+         is_otel
+       ) do
+    prev_field_schema = Map.get(old_fields_by_name, param_key)
+
+    case build_fields_schemas({param_key, param_value}, is_otel) do
+      nil ->
+        {new_fields, changed? or not is_nil(prev_field_schema)}
+
+      new_field_schema ->
+        {merged_field_schema, field_changed?} =
+          merge_field_schema(prev_field_schema, new_field_schema)
+
+        {[merged_field_schema | new_fields], changed? or field_changed?}
+    end
   end
 
   defp build_fields_schemas({params_key, params_val}, _is_otel) when is_map(params_val) do
@@ -268,51 +329,73 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
     Map.has_key?(params, "resource") and Map.has_key?(params, "scope")
   end
 
-  defimpl DeepMerge.Resolver, for: Model.TableFieldSchema do
-    @doc """
-    Implements merge for schema key conflicts.
-    Overwrites fields schemas that are present BOTH in old and new TFS structs and keeps fields schemas present ONLY in old.
-    """
+  defp merge_field_schema(nil, %TFS{} = new), do: {new, true}
 
-    @spec resolve(TFS.t(), TFS.t(), fun) :: TFS.t()
-    def resolve(old, new, _standard_resolver) do
-      resolve(old, new)
+  defp merge_field_schema(%TFS{fields: old_fields} = old, %TFS{fields: new_fields} = new)
+       when is_list(old_fields) and is_list(new_fields) do
+    {merged_fields, children_changed?} = merge_fields(old_fields, new_fields)
+    parent_changed? = %{new | fields: old_fields} != old
+    changed? = parent_changed? or children_changed?
+
+    if changed? do
+      {%{new | fields: merged_fields}, true}
+    else
+      {old, false}
     end
+  end
 
-    @spec resolve(TFS.t(), TFS.t()) :: TFS.t()
-    def resolve(
-          %TFS{fields: old_fields},
-          %TFS{fields: new_fields} = new_tfs
-        )
-        when is_list(old_fields)
-        when is_list(new_fields) do
-      # collect all names for new fields schemas
-      new_fields_names = Enum.map(new_fields || [], & &1.name)
+  defp merge_field_schema(%TFS{fields: old_fields} = old, %TFS{fields: new_fields})
+       when is_list(old_fields) or is_list(new_fields) do
+    raise Protocol.UndefinedError, protocol: DeepMerge.Resolver, value: old
+  end
 
-      # filter field schemas that are present only in old table field schema
-      uniq_old_fs = for fs <- old_fields, fs.name not in new_fields_names, do: fs
+  defp merge_field_schema(old, %TFS{} = new) do
+    if old == new, do: {old, false}, else: {new, true}
+  end
 
-      %{new_tfs | fields: resolve_list(old_fields, new_fields) ++ uniq_old_fs}
-    end
+  defp merge_fields(old_fields, new_fields) do
+    new_fields_by_name = Map.new(new_fields, &{&1.name, &1})
 
-    def resolve(_old, %TFS{} = new) do
-      new
-    end
+    {merged_old_fields, {remaining_new_fields, changed?}} =
+      Enum.map_reduce(old_fields, {new_fields_by_name, false}, fn old_field,
+                                                                  {remaining, changed?} ->
+        case Map.pop(remaining, old_field.name) do
+          {nil, remaining} ->
+            {old_field, {remaining, changed?}}
 
-    @spec resolve_list(list(TFS.t()), list(TFS.t())) :: list(TFS.t())
-    def resolve_list(old_fields, new_fields)
-        when is_list(old_fields)
-        when is_list(new_fields) do
-      for %TFS{} = new_field <- new_fields do
-        old_fields
-        |> maybe_find_with_name(new_field)
-        |> resolve(new_field)
-      end
-    end
+          {new_field, remaining} ->
+            {merged_field, field_changed?} = merge_field_schema(old_field, new_field)
+            {merged_field, {remaining, changed? or field_changed?}}
+        end
+      end)
 
-    @spec maybe_find_with_name(list(TFS.t()), TFS.t()) :: TFS.t() | nil
-    def maybe_find_with_name(enumerable, %TFS{name: name}) do
-      Enum.find(enumerable, &(&1.name === name))
-    end
+    added_fields =
+      Enum.filter(new_fields, &Map.has_key?(remaining_new_fields, &1.name))
+
+    {merged_old_fields ++ added_fields, changed? or added_fields != []}
+  end
+
+  defp fields_sorted_by_name?([]), do: true
+
+  defp fields_sorted_by_name?([first_field | fields]),
+    do: fields_sorted_by_name?(fields, first_field.name)
+
+  defp fields_sorted_by_name?([], _previous_name), do: true
+
+  defp fields_sorted_by_name?([field | fields], previous_name)
+       when previous_name <= field.name,
+       do: fields_sorted_by_name?(fields, field.name)
+
+  defp fields_sorted_by_name?(_fields, _previous_name), do: false
+
+  defp fields_deeply_sorted_by_name?(fields) do
+    fields_sorted_by_name?(fields) and
+      Enum.all?(fields, fn
+        %TFS{fields: nested_fields} when is_list(nested_fields) ->
+          fields_deeply_sorted_by_name?(nested_fields)
+
+        %TFS{} ->
+          true
+      end)
   end
 end

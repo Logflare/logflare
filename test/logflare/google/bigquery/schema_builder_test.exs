@@ -19,6 +19,76 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
       assert prev_schema == curr_schema
     end
 
+    test "reports whether schema changed" do
+      {prev_schema, true} =
+        SchemaBuilder.build_table_schema_with_change(%{"a" => %{"b" => 1.0}}, @default_schema)
+
+      {same_schema, false} =
+        SchemaBuilder.build_table_schema_with_change(%{"a" => %{"b" => 1.0}}, prev_schema)
+
+      {changed_schema, true} =
+        SchemaBuilder.build_table_schema_with_change(%{"a" => %{"c" => 1.0}}, same_schema)
+
+      assert same_schema == prev_schema
+
+      assert %TFS{name: "c", type: "FLOAT", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(changed_schema, "a.c")
+    end
+
+    test "does not report a change when a nested payload omits existing fields" do
+      old_schema =
+        SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1, "c" => 2}}, @default_schema)
+
+      {same_schema, false} =
+        SchemaBuilder.build_table_schema_with_change(%{"a" => %{"c" => 2}}, old_schema)
+
+      assert same_schema === old_schema
+    end
+
+    test "normalizes untouched nested field ordering" do
+      old_schema =
+        SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1, "c" => 2}}, @default_schema)
+
+      a_field = TestUtils.get_bq_field_schema(old_schema, "a")
+
+      old_schema = %{
+        old_schema
+        | fields:
+            List.replace_at(old_schema.fields, 0, %{
+              a_field
+              | fields: Enum.reverse(a_field.fields)
+            })
+      }
+
+      {schema, true} =
+        SchemaBuilder.build_table_schema_with_change(
+          %{"event_message" => "same shape"},
+          old_schema
+        )
+
+      assert Enum.map(TestUtils.get_bq_field_schema(schema, "a").fields, & &1.name) == ["b", "c"]
+    end
+
+    test "restores missing initial fields" do
+      old_schema = %TS{fields: []}
+
+      {schema, true} = SchemaBuilder.build_table_schema_with_change(%{}, old_schema)
+
+      assert Enum.map(schema.fields, & &1.name) == ["event_message", "id", "timestamp"]
+      assert SchemaBuilder.build_table_schema(%{}, old_schema) == schema
+    end
+
+    test "preserves first-value precedence when merging arrays of maps" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{"a" => [%{"value" => 1}, %{"value" => "later"}]},
+          @default_schema
+        )
+
+      assert %TFS{name: "value", type: "INTEGER", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(schema, "a.value")
+    end
+
     test "adding new field schemas" do
       prev_schema = SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0}}, @default_schema)
       curr_schema = SchemaBuilder.build_table_schema(%{"a" => [%{"c" => 1.0}]}, prev_schema)

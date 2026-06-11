@@ -2,8 +2,9 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
   @moduledoc false
   use Logflare.DataCase
 
-  alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   setup do
     insert(:plan)
@@ -16,6 +17,19 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     seconds = (next_update - System.system_time(:millisecond)) / 1000
     assert seconds <= 10
     assert seconds > 9
+  end
+
+  test "plans updates only when the payload changes the schema" do
+    body = %{"metadata" => %{"existing" => 1}}
+    schema = SchemaBuilder.build_table_schema(body, SchemaBuilder.initial_table_schema())
+
+    assert :noop = Schema.plan_update(body, schema, %{next_update: 0})
+
+    assert {:update, updated_schema} =
+             Schema.plan_update(%{"metadata" => %{"added" => true}}, schema, %{next_update: 0})
+
+    assert %_{name: "added", type: "BOOL"} =
+             TestUtils.get_bq_field_schema(updated_schema, "metadata.added")
   end
 
   test "updates correctly" do
