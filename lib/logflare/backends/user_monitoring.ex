@@ -4,34 +4,13 @@ defmodule Logflare.Backends.UserMonitoring do
   """
 
   import Telemetry.Metrics
+  alias Logflare.Backends.UserMonitoring.IngestPipeline
   alias Logflare.Logs
-  alias Logflare.Logs.OtelMetric
   alias Logflare.Logs.Processor
   alias Logflare.Sources
   alias Logflare.Users
 
-  def get_otel_exporter do
-    export_period =
-      case Application.get_env(:logflare, :env) do
-        :test -> 100
-        _ -> :timer.minutes(8) + :rand.uniform(60_000 * 2)
-      end
-
-    otel_exporter_opts =
-      [
-        metrics: metrics(),
-        resource: %{},
-        export_callback: &exporter_callback/2,
-        extract_tags: &extract_tags/2,
-        name: :user_metrics_exporter,
-        otlp_endpoint: "",
-        export_period: export_period,
-        spawn_opt: [fullsweep_after: 10_000],
-        hibernate_after: 5_000
-      ]
-
-    [{OtelMetricExporter, otel_exporter_opts}]
-  end
+  @store_name :user_metrics_store
 
   def metrics do
     [
@@ -56,6 +35,38 @@ defmodule Logflare.Backends.UserMonitoring do
     ]
   end
 
+  def get_otel_exporter do
+    env = Application.get_env(:logflare, :env)
+
+    {pull_interval, export_period} =
+      case env do
+        :test -> {100, 100}
+        _ -> {10_000, :timer.minutes(8) + :rand.uniform(60_000 * 2)}
+      end
+
+    exporter_spec =
+      {OtelMetricExporter,
+       [
+         name: @store_name,
+         metrics: metrics(),
+         pull_mode: true,
+         export_period: export_period,
+         extract_tags: &__MODULE__.extract_tags/2,
+         hibernate_after: 5_000,
+         spawn_opt: [fullsweep_after: 10_000]
+       ]}
+
+    pipeline_spec =
+      {IngestPipeline,
+       [
+         metric_store_name: @store_name,
+         pull_interval: pull_interval,
+         batch_size: 1_000
+       ]}
+
+    [exporter_spec, pipeline_spec]
+  end
+
   def keep_metric_function(%{"system_source" => true}), do: false
 
   def keep_metric_function(metadata) do
@@ -65,7 +76,6 @@ defmodule Logflare.Backends.UserMonitoring do
     end
   end
 
-  @doc false
   # take all metadata string keys and non-nested values
   def extract_tags(_metric, metadata) when is_map(metadata) do
     for {key, value}
@@ -73,37 +83,6 @@ defmodule Logflare.Backends.UserMonitoring do
           metadata,
         into: %{} do
       {key, value}
-    end
-  end
-
-  @doc false
-  def exporter_callback({:metrics, metrics}, config) do
-    metrics
-    |> Enum.reduce(%{}, &metric_reducer(&1, &2, config.resource))
-    |> ingest_grouped_metrics()
-
-    :ok
-  end
-
-  defp metric_reducer(metric, acc, resource) do
-    for event <- OtelMetric.handle_metric(metric, resource, %{}), reduce: acc do
-      acc ->
-        user_id = Users.get_related_user_id(Map.get(event, "attributes"))
-        Map.update(acc, user_id, [event], &[event | &1])
-    end
-  end
-
-  defp ingest_grouped_metrics(grouped_events)
-       when is_list(grouped_events) or is_map(grouped_events) do
-    Enum.each(grouped_events, fn {user_id, user_events} ->
-      ingest_grouped_metrics({user_id, user_events})
-    end)
-  end
-
-  defp ingest_grouped_metrics({user_id, user_events}) do
-    with %Sources.Source{} = source <-
-           Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics) do
-      Processor.ingest(user_events, Logs.Raw, source)
     end
   end
 
