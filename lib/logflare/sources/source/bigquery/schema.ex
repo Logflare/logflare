@@ -41,9 +41,9 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   # planning work without measuring mailbox scheduling or BigQuery side effects.
   @doc false
   def plan_update(body, db_schema, state) do
-    schema = try_schema_update(body, db_schema)
+    {schema, schema_changed?} = try_schema_update(body, db_schema)
 
-    if schema_needs_update?(db_schema, schema, state) do
+    if schema_needs_update?(schema_changed?, state) do
       {:update, schema}
     else
       :noop
@@ -124,8 +124,8 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     end
   end
 
-  defp schema_needs_update?(db_schema, schema, state) do
-    not same_schemas?(db_schema, schema) and
+  defp schema_needs_update?(schema_changed?, state) do
+    schema_changed? and
       state.next_update <= System.system_time(:millisecond) and
       not SingleTenant.postgres_backend?()
   end
@@ -158,7 +158,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   defp handle_schema_mismatch(body, state) do
     with {:ok, table} <- BigQuery.get_table(state.source_token),
-         schema <- try_schema_update(body, table.schema),
+         {schema, _schema_changed?} <- try_schema_update(body, table.schema),
          {:ok, _table_info} <- patch_bigquery_table(state, schema) do
       field_count = count_fields(schema)
       persist(state.source_id, schema)
@@ -208,22 +208,13 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     next_update_ts(updates_per_minute)
   end
 
-  defp same_schemas?(old_schema, new_schema) do
-    old_flatmap = SchemaUtils.bq_schema_to_flat_typemap(old_schema)
-    new_flatmap = SchemaUtils.bq_schema_to_flat_typemap(new_schema)
-
-    diff_keys = Map.keys(new_flatmap) -- Map.keys(old_flatmap)
-
-    old_schema == new_schema and Enum.empty?(diff_keys)
-  end
-
   defp try_schema_update(body, schema) do
-    SchemaBuilder.build_table_schema(body, schema)
+    SchemaBuilder.build_table_schema_with_change(body, schema)
   rescue
     e ->
       Logger.warning("Field schema type change error!", error_string: inspect(e))
 
-      schema
+      {schema, false}
   end
 
   # public function for testing
