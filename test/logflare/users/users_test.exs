@@ -2,7 +2,6 @@ defmodule Logflare.UsersTest do
   use Logflare.DataCase, async: true
   use ExUnitProperties
 
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Mailer
   alias Logflare.Sources
   alias Logflare.User
@@ -323,8 +322,6 @@ defmodule Logflare.UsersTest do
 
   defp expect_post_insert_user_side_effects do
     expect(Mailer, :deliver, fn _email -> {:ok, %{}} end)
-    expect(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
-    expect(BigQueryAdaptor, :patch_dataset_access, fn _user -> {:ok, :patch_attempted} end)
 
     :ok
   end

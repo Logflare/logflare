@@ -19,6 +19,10 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
   end
 
   test "updates correctly" do
+    prev_config = Application.get_env(:logflare, Schema)
+    Application.put_env(:logflare, Schema, updates_per_minute: 1)
+    on_exit(fn -> Application.put_env(:logflare, Schema, prev_config) end)
+
     user = insert(:user)
     source = insert(:source, user: user)
     schema = TestUtils.default_bq_schema()
