@@ -3,6 +3,7 @@ defmodule Logflare.KeyValues.Cache do
 
   alias Logflare.ContextCache
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.UsageTracker
   alias Logflare.Utils
 
   import Cachex.Spec
@@ -71,6 +72,10 @@ defmodule Logflare.KeyValues.Cache do
       {:commit, {:cached, v}} -> v
       {:ok, {:cached, v}} -> v
     end
+    |> tap(fn
+      nil -> :ok
+      _v -> UsageTracker.touch(user_id, key)
+    end)
   end
 
   @impl ContextCache

@@ -161,6 +161,8 @@ config :logflare, Logflare.ContextCache.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"]
 
+config :logflare, Logflare.KeyValues.CacheWarmer, warm_limit: 500_000
+
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
