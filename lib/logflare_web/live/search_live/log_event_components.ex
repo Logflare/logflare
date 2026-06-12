@@ -39,8 +39,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)} source_schema_flat_map={@source_schema_flat_map}>
           {log.body["event_message"]}
           <:actions phx-no-format>
-          <div class={if(Enum.any?(@select_fields), do: "tw-ml-[13rem] tw-pb-1.5", else: "tw-inline")}>
-          <.modal_link
+          <div class="group-has-[.log-event-selected-field]:tw-ml-[13rem] group-has-[.log-event-selected-field]:tw-pb-1.5 tw-inline-block">
+            <.modal_link
                    component={LogEventViewerComponent}
                    class="tw-text-[0.65rem]"
                    modal_id={:log_event_viewer}
@@ -217,9 +217,9 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   def selected_fields(assigns) do
     ~H"""
-    <div id={["log-", @log_event.id, "-selected-fields"]}>
+    <div id={["log-", @log_event.id, "-selected-fields"]} class="has-[.log-event-selected-field]:tw-block tw-hidden">
       <%= for field <- @select_fields do %>
-        <div class="tw-text-neutral-200 tw-flex tw-leading-6">
+        <div :if={not is_nil(@log_event.body[field.key])} class="tw-text-neutral-200 tw-flex tw-leading-6 log-event-selected-field">
           <div class="tw-w-[13rem] tw-text-right ">
             <span class="tw-whitespace-nowrap tw-w-fit tw-px-1 tw-py-0.5 tw-bg-neutral-600 tw-text-white tw-mr-2">{truncate_display(field.display)}</span>
           </div>

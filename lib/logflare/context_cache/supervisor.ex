@@ -3,25 +3,25 @@ defmodule Logflare.ContextCache.Supervisor do
 
   use Supervisor
 
+  alias Logflare.Auth
   alias Logflare.Backends
+  alias Logflare.Billing
+  alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.ContextCache.Tombstones
-  alias Logflare.Billing
-  alias Logflare.ContextCache
-  alias Logflare.Backends
+  alias Logflare.Endpoints
+  alias Logflare.GenSingleton
+  alias Logflare.KeyValues
+  alias Logflare.Partners
+  alias Logflare.Repo
+  alias Logflare.Rules
   alias Logflare.SavedSearches
   alias Logflare.Sources
   alias Logflare.SourceSchemas
-  alias Logflare.Users
+  alias Logflare.SystemCache
   alias Logflare.TeamUsers
-  alias Logflare.Rules
-  alias Logflare.KeyValues
-  alias Logflare.Partners
-  alias Logflare.Auth
-  alias Logflare.Endpoints
-  alias Logflare.Repo
-  alias Logflare.GenSingleton
+  alias Logflare.Users
 
   def start_link(_) do
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
@@ -70,7 +70,8 @@ defmodule Logflare.ContextCache.Supervisor do
       {Rules.Cache, :rules},
       {KeyValues.Cache, :key_values},
       {SavedSearches.Cache, :saved_searches},
-      {Tombstones.Cache, :context_cache_tombstones}
+      {Tombstones.Cache, :context_cache_tombstones},
+      {SystemCache, :system}
     ]
   end
 

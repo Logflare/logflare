@@ -1,9 +1,10 @@
 defmodule LogflareWeb.Plugs.BufferLimiterTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  alias LogflareWeb.Plugs.BufferLimiter
-  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.SystemCache
+  alias LogflareWeb.Plugs.BufferLimiter
 
   setup do
     insert(:plan)
@@ -12,6 +13,32 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     table_key = {source.id, nil, self()}
     IngestEventQueue.upsert_tid(table_key)
     {:ok, conn: conn, source: source, table_key: table_key}
+  end
+
+  test "returns 429 when memory utilization is at or over 85%", %{conn: conn, source: source} do
+    SystemCache
+    |> stub(:memory_utilization, fn -> 0.85 end)
+
+    conn =
+      conn
+      |> assign(:source, source)
+      |> BufferLimiter.call(%{})
+
+    assert conn.halted
+    assert json_response(conn, 429) == %{"error" => "Buffer Full: Too Many Requests"}
+    assert get_resp_header(conn, "retry-after") == ["3"]
+  end
+
+  test "allows request when memory utilization is below 85%", %{conn: conn, source: source} do
+    SystemCache
+    |> stub(:memory_utilization, fn -> 0.84 end)
+
+    conn =
+      conn
+      |> assign(:source, source)
+      |> BufferLimiter.call(%{})
+
+    refute conn.halted
   end
 
   test "if buffer is full of pending, return 429", %{
@@ -34,6 +61,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     assert conn.halted
     assert json_response(conn, 429) == %{"error" => "Buffer Full: Too Many Requests"}
+    assert get_resp_header(conn, "retry-after") == ["3"]
   end
 
   test "bug: buffer limiting is based on all queues", %{

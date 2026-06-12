@@ -1113,6 +1113,102 @@ defmodule Logflare.MapperTest do
     end
   end
 
+  # ── String value_map ────────────────────────────────────────────────
+
+  describe "string value_map" do
+    test "remaps a matched value to its string replacement" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client", "SPAN_KIND_SERVER" => "Server"}
+            )
+          ],
+          %{"kind" => "SPAN_KIND_CLIENT"}
+        )
+
+      assert result["span_kind"] == "Client"
+    end
+
+    test "lookup is case-insensitive" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{"SPAN_KIND_SERVER" => "Server"}
+            )
+          ],
+          %{"kind" => "span_kind_server"}
+        )
+
+      assert result["span_kind"] == "Server"
+    end
+
+    test "unmapped values fall back to the default" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              default: "Unspecified",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client"}
+            )
+          ],
+          %{"kind" => "something_else"}
+        )
+
+      assert result["span_kind"] == "Unspecified"
+    end
+
+    test "unmapped values with no explicit default fall back to empty string" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client"}
+            )
+          ],
+          %{"kind" => "something_else"}
+        )
+
+      assert result["span_kind"] == ""
+    end
+
+    test "missing path falls back to default, not remapped" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              default: "Unspecified",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client"}
+            )
+          ],
+          %{}
+        )
+
+      assert result["span_kind"] == "Unspecified"
+    end
+
+    test "empty value_map passes the resolved value through unchanged" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{}
+            )
+          ],
+          %{"kind" => "anything"}
+        )
+
+      assert result["span_kind"] == "anything"
+    end
+  end
+
   # ── Allowed values ──────────────────────────────────────────────────
 
   describe "allowed_values" do
@@ -1280,6 +1376,26 @@ defmodule Logflare.MapperTest do
 
       assert {:error, reason} = Mapper.compile(config)
       assert reason =~ "duplicate field name: 'name'"
+    end
+
+    test "returns {:error, reason} on a string field whose value_map has non-string values" do
+      config =
+        MappingConfig.new([
+          Field.string("span_kind", path: "$.kind", value_map: %{"SPAN_KIND_CLIENT" => 3})
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "value_map values must be strings"
+    end
+
+    test "returns {:error, reason} on a string field whose value_map has non-string keys" do
+      config =
+        MappingConfig.new([
+          Field.string("span_kind", path: "$.kind", value_map: %{1 => "Client"})
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "value_map keys must be strings"
     end
   end
 

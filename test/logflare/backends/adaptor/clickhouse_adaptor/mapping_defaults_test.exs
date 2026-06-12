@@ -260,7 +260,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
         "span_id" => "span-def",
         "parent_span_id" => "span-parent",
         "span_name" => "GET /api/users",
-        "span_kind" => "server",
+        "span_kind" => "Server",
         "duration" => 1500,
         "status" => %{"code" => "OK", "message" => "success"},
         "project" => "abcdefghijklmnopqrst",
@@ -273,10 +273,53 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert result["span_id"] == "span-def"
       assert result["parent_span_id"] == "span-parent"
       assert result["span_name"] == "GET /api/users"
-      assert result["span_kind"] == "server"
+      assert result["span_kind"] == "Server"
       assert result["duration"] == 1500
       assert result["status_code"] == "OK"
       assert result["status_message"] == "success"
+    end
+
+    test "normalizes span_kind to canonical low-cardinality values", %{trace: compiled} do
+      mappings = [
+        # Title-case form emitted by OtelTrace passes through unchanged
+        {"Unspecified", "Unspecified"},
+        {"Internal", "Internal"},
+        {"Server", "Server"},
+        {"Client", "Client"},
+        {"Producer", "Producer"},
+        {"Consumer", "Consumer"},
+        # raw-JSON SPAN_KIND_* aliases normalize to the Title-case form
+        {"SPAN_KIND_SERVER", "Server"},
+        {"SPAN_KIND_CLIENT", "Client"},
+        # case-insensitive
+        {"client", "Client"}
+      ]
+
+      for {raw, expected} <- mappings do
+        payload = %{
+          "event_message" => "fetch POST api.logflare.app",
+          "kind" => raw,
+          "trace_id" => "trace-abc"
+        }
+
+        result = Mapper.map(payload, compiled)
+
+        assert result["span_kind"] == expected
+        assert result["span_name"] == "fetch POST api.logflare.app"
+      end
+    end
+
+    test "falls back to Unspecified for blank or unmapped span_kind values", %{trace: compiled} do
+      # unmapped value
+      assert Mapper.map(%{"kind" => "bogus_kind", "trace_id" => "t1"}, compiled)["span_kind"] ==
+               "Unspecified"
+
+      # blank value
+      assert Mapper.map(%{"kind" => "", "trace_id" => "t1"}, compiled)["span_kind"] ==
+               "Unspecified"
+
+      # missing value
+      assert Mapper.map(%{"trace_id" => "t1"}, compiled)["span_kind"] == "Unspecified"
     end
 
     test "coalesces camelCase trace field names", %{trace: compiled} do
@@ -302,7 +345,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert result["span_id"] == ""
       assert result["parent_span_id"] == ""
       assert result["span_name"] == ""
-      assert result["span_kind"] == ""
       assert result["status_code"] == ""
       assert result["status_message"] == ""
       assert result["service_name"] == ""

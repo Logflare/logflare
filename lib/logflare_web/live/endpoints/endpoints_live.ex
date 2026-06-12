@@ -50,7 +50,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:query_result_rows, nil)
       |> assign(:total_bytes_processed, nil)
       |> assign(:show_endpoint, nil)
-      |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
+      |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.EndpointQuery{}))
       |> assign(:selected_backend_id, nil)
       |> assign(:allow_access, allow_access)
       |> assign(:base_url, LogflareWeb.Endpoint.url())
@@ -142,7 +142,7 @@ defmodule LogflareWeb.EndpointsLive do
             end)
 
           changeset =
-            %Endpoints.Query{}
+            %Endpoints.EndpointQuery{}
             |> Endpoints.change_query(params)
 
           socket
@@ -153,7 +153,7 @@ defmodule LogflareWeb.EndpointsLive do
           # reset the changeset
           |> assign(
             :endpoint_changeset,
-            Endpoints.change_query(%Endpoints.Query{query: placeholder_sql()})
+            Endpoints.change_query(%Endpoints.EndpointQuery{query: placeholder_sql()})
           )
           |> assign(:selected_backend_id, nil)
           # reset test results
@@ -170,8 +170,9 @@ defmodule LogflareWeb.EndpointsLive do
         %{assigns: %{user: user, show_endpoint: show_endpoint, team: team}} = socket
       ) do
     Logger.debug("Saving endpoint", params: params)
+    origin = socket.assigns.team_user || user
 
-    case upsert_query(show_endpoint, user, params) do
+    case upsert_query(show_endpoint, user, origin, params) do
       {:ok, endpoint} ->
         verb = if show_endpoint, do: "updated", else: "created"
 
@@ -209,7 +210,7 @@ defmodule LogflareWeb.EndpointsLive do
         {:noreply, put_flash(socket, :error, "You do not have access to that endpoint.")}
 
       endpoint ->
-        {:ok, _} = Endpoints.delete_query(endpoint)
+        {:ok, _} = Endpoints.delete_query(endpoint, user)
 
         {:noreply,
          socket
@@ -472,10 +473,10 @@ defmodule LogflareWeb.EndpointsLive do
     end
   end
 
-  defp upsert_query(show_endpoint, user, params) do
+  defp upsert_query(show_endpoint, user, origin, params) do
     case show_endpoint do
-      nil -> Endpoints.create_query(user, params)
-      %_{} -> Endpoints.update_query(show_endpoint, params)
+      nil -> Endpoints.create_query(user, params, origin)
+      %_{} -> Endpoints.update_query(show_endpoint, params, origin)
     end
   end
 

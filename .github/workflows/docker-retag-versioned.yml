@@ -11,14 +11,14 @@ jobs:
     outputs:
       docker_tag: ${{ steps.docker-image.outputs.tag }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: docker/login-action@v2
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+      - uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc # v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Versioned - Merge multi-arch manifests and push (release only)
         run: |
-          make tag-versioned 
+          make tag-versioned
       - id: docker-image
         run: |
           tag="supabase/logflare:$(cat ./VERSION)"
@@ -34,20 +34,52 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - retag
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     steps:
-      - name: Generate token
-        id: app-token
-        uses: actions/create-github-app-token@v2
+      - name: configure aws credentials
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          owner: supabase
-          repositories: cli
-          skip-token-revoke: true
-      - name: Dispatch event to CLI repository
-        uses: peter-evans/repository-dispatch@v2
+          role-to-assume: ${{ secrets.PROD_AWS_ROLE }}
+          aws-region: us-east-1
+
+      - id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          token: ${{ steps.app-token.outputs.token }}
-          repository: supabase/cli
-          event-type: mirror-image
-          client-payload: '{"image":"${{ needs.retag.outputs.docker_tag }}"}'
+          client-id: ${{ vars.IMAGE_PUSH_GH_CLIENT_ID }}
+          private-key: ${{ secrets.IMAGE_PUSH_GH_PRIVATE_KEY }}
+          owner: 'supabase'
+          repositories: |
+            cli
+          permission-packages: write
+
+      - name: Login to DockerHub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Login to ECR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: public.ecr.aws
+      - name: Login to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ steps.app-token.outputs.token }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+      - name: Mirror image
+        env:
+          SOURCE_IMAGE: docker.io/${{ needs.retag.outputs.docker_tag }}
+          ECR_IMAGE: public.ecr.aws/${{ needs.retag.outputs.docker_tag }}
+          GHCR_IMAGE: ghcr.io/${{ needs.retag.outputs.docker_tag }}
+        run: |
+          docker buildx imagetools create \
+            --prefer-index=false \
+            -t "$ECR_IMAGE" \
+            -t "$GHCR_IMAGE" \
+            "$SOURCE_IMAGE"

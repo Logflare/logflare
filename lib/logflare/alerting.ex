@@ -468,8 +468,10 @@ defmodule Logflare.Alerting do
       {:ok, result}
     else
       {:error, %Tesla.Env{body: body}} ->
+        decoded = Jason.decode!(body)["error"]
+
         error =
-          Jason.decode!(body)["error"]
+          decoded
           |> GenUtils.process_bq_errors(alert_query.user_id)
           |> case do
             %{"message" => msg} -> msg
@@ -480,6 +482,7 @@ defmodule Logflare.Alerting do
           user_id: alert_query.user_id,
           alert_query_id: alert_query.id,
           alert_name: alert_query.name,
+          possible_reservation_error: BigQueryAdaptor.reservation_error?(decoded),
           error_string: inspect(error)
         )
 

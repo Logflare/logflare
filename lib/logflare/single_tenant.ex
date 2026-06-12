@@ -5,7 +5,7 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Users
   alias Logflare.Billing
   alias Logflare.Billing.Plan
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Endpoints
@@ -273,7 +273,7 @@ defmodule Logflare.SingleTenant do
   Inserts supabase endpoints via SQL files under priv/supabase.any()
   These SQL scripts are directly exported from logflare prod.
   """
-  @spec create_supabase_endpoints() :: {:ok, [Query.t()]}
+  @spec create_supabase_endpoints() :: {:ok, [EndpointQuery.t()]}
   def create_supabase_endpoints do
     user = get_default_user()
     count = Endpoints.count_endpoints_by_user(user)
@@ -281,7 +281,7 @@ defmodule Logflare.SingleTenant do
     if count == 0 do
       endpoints =
         for params <- endpoint_params() do
-          {:ok, endpoint} = Endpoints.create_query(user, params)
+          {:ok, endpoint} = Endpoints.create_query(user, params, user)
           endpoint
         end
 

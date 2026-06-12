@@ -173,6 +173,51 @@ defmodule Logflare.Teams.TeamContextTest do
       assert Repo.one(query) == team.id
     end
 
+    test "returns accessible QueryLive source team id candidates by source name" do
+      user = insert(:user)
+      team = insert(:team, user: user)
+      insert(:source, user: user, name: "query_source")
+
+      query =
+        TeamContext.resource_team_id_query(
+          LogflareWeb.QueryLive,
+          %{"q" => "SELECT id FROM `query_source`"},
+          user
+        )
+
+      assert Repo.all(query) == [team.id]
+    end
+
+    test "returns duplicate QueryLive source team id candidates for ambiguous source names" do
+      user = insert(:user)
+      home_team = insert(:team, user: user)
+      insert(:source, user: user, name: "shared_source")
+
+      other_user = insert(:user)
+      other_team = insert(:team, user: other_user)
+      insert(:team_user, email: user.email, team: other_team)
+      insert(:source, user: other_user, name: "shared_source")
+
+      query =
+        TeamContext.resource_team_id_query(
+          LogflareWeb.QueryLive,
+          %{"q" => "SELECT id FROM `shared_source`"},
+          user
+        )
+
+      assert query |> Repo.all() |> Enum.sort() == Enum.sort([home_team.id, other_team.id])
+    end
+
+    test "returns nil for QueryLive with an invalid source query" do
+      user = insert(:user)
+
+      assert TeamContext.resource_team_id_query(
+               LogflareWeb.QueryLive,
+               %{"q" => "select current_datetime() order-by invalid"},
+               user
+             ) == nil
+    end
+
     test "returns nil for SearchLV without source params" do
       user = insert(:user)
 
