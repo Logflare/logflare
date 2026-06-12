@@ -4,10 +4,12 @@ defmodule LogflareWeb.Api.TeamController do
 
   alias Logflare.Teams
 
+  alias LogflareWeb.OpenApi
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApi.Unauthorized
   alias LogflareWeb.OpenApi.UnprocessableEntity
 
   alias LogflareWeb.OpenApiSchemas.Team
@@ -42,14 +44,18 @@ defmodule LogflareWeb.Api.TeamController do
     end
   end
 
-  operation(:create,
-    summary: "Create Team",
-    request_body: Team.params(),
-    responses: %{
-      201 => Created.response(Team),
-      404 => NotFound.response(),
-      422 => UnprocessableEntity.response()
-    }
+  operation(
+    :create,
+    OpenApi.private_admin_scope(
+      summary: "Create Team",
+      request_body: Team.params(),
+      responses: %{
+        201 => Created.response(Team),
+        401 => Unauthorized.response(),
+        404 => NotFound.response(),
+        422 => UnprocessableEntity.response()
+      }
+    )
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
@@ -61,16 +67,20 @@ defmodule LogflareWeb.Api.TeamController do
     end
   end
 
-  operation(:update,
-    summary: "Update team",
-    parameters: [token: [in: :path, description: "Team Token", type: :string]],
-    request_body: Team.params(),
-    responses: %{
-      201 => Created.response(Team),
-      204 => Accepted.response(),
-      404 => NotFound.response(),
-      422 => UnprocessableEntity.response()
-    }
+  operation(
+    :update,
+    OpenApi.private_admin_scope(
+      summary: "Update team",
+      parameters: [token: [in: :path, description: "Team Token", type: :string]],
+      request_body: Team.params(),
+      responses: %{
+        201 => Created.response(Team),
+        204 => Accepted.response(),
+        401 => Unauthorized.response(),
+        404 => NotFound.response(),
+        422 => UnprocessableEntity.response()
+      }
+    )
   )
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
@@ -90,13 +100,17 @@ defmodule LogflareWeb.Api.TeamController do
     end
   end
 
-  operation(:delete,
-    summary: "Delete Team",
-    parameters: [token: [in: :path, description: "Team Token", type: :string]],
-    responses: %{
-      204 => Accepted.response(),
-      404 => NotFound.response()
-    }
+  operation(
+    :delete,
+    OpenApi.private_admin_scope(
+      summary: "Delete Team",
+      parameters: [token: [in: :path, description: "Team Token", type: :string]],
+      responses: %{
+        204 => Accepted.response(),
+        401 => Unauthorized.response(),
+        404 => NotFound.response()
+      }
+    )
   )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do

@@ -37,12 +37,15 @@ defmodule LogflareWeb.Api.AccessTokenController do
     }
   )
 
-  def create(%{assigns: %{user: user}} = conn, params) do
-    with {:ok, access_token} <-
-           Auth.create_access_token(user, Map.take(params, ["description", "scopes"])) do
+  def create(%{assigns: %{user: user, access_token: current_token}} = conn, params) do
+    attrs = Map.take(params, ["description", "scopes"])
+
+    with {:ok, access_token} <- Auth.create_access_token(current_token, user, attrs) do
       conn
       |> put_status(201)
       |> json(access_token)
+    else
+      {:error, _} = err -> err
     end
   end
 

@@ -85,7 +85,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   end
 
   def identify_requestor(extracted_token, scopes) when is_tuple(extracted_token) do
-    is_private_route? = "private" in scopes
+    is_private_route? = Enum.any?(scopes, &(&1 in ["private", "private:admin"]))
 
     with {:ok, access_token_or_api_key} <- extracted_token,
          {:ok, token, %User{id: user_id}} <-

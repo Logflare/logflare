@@ -33,6 +33,13 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert result["id"] == backend.id
     end
+
+    test "admin scope is required", %{conn: conn, user: user} do
+      assert conn
+             |> add_access_token(user, "private")
+             |> get(~p"/api/backends")
+             |> response(200)
+    end
   end
 
   describe "show/2" do
@@ -57,6 +64,15 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       |> get("/api/backends/#{backend.token}")
       |> response(404)
     end
+
+    test "private scope is sufficient", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user)
+
+      assert conn
+             |> add_access_token(user, "private")
+             |> get("/api/backends/#{backend.token}")
+             |> response(200)
+    end
   end
 
   describe "create/2" do
@@ -65,7 +81,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends", %{
           name: name,
           type: "webhook",
@@ -84,7 +100,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       conn =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends", %{
           name: name,
           type: "postgres",
@@ -117,7 +133,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       conn =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends", %{
           name: name,
           type: "clickhouse",
@@ -159,7 +175,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       conn =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends", %{
           name: name,
           type: "datadog",
@@ -188,7 +204,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       conn =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends", %{
           name: name,
           type: "elastic",
@@ -218,7 +234,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       conn =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends", %{
           name: name,
           type: "loki",
@@ -246,7 +262,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
       resp =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends")
         |> json_response(422)
 
@@ -256,7 +272,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
     test "returns 422 on bad arguments", %{conn: conn, user: user} do
       resp =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends", %{name: 123})
         |> json_response(422)
 
@@ -268,7 +284,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends", %{
           name: name,
           type: "clickhouse",
@@ -289,7 +305,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends", %{
           name: name,
           type: "clickhouse",
@@ -299,6 +315,13 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert response["name"] == name
       assert response["default_ingest?"] == false
+    end
+
+    test "admin scope is required", %{conn: conn, user: user} do
+      assert conn
+             |> add_access_token(user, "private")
+             |> post("/api/backends", %{name: TestUtils.random_string(), type: "webhook"})
+             |> response(401) == ~s|{"error":"Unauthorized"}|
     end
   end
 
@@ -312,7 +335,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> patch("/api/backends/#{backend.token}", %{name: name})
         |> response(204)
 
@@ -324,7 +347,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       backend = insert(:backend, user: user)
 
       conn
-      |> add_access_token(invalid_user, "private")
+      |> add_access_token(invalid_user, "private:admin")
       |> patch("/api/backends/#{backend.token}", %{name: TestUtils.random_string()})
       |> response(404)
     end
@@ -334,7 +357,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       victim = insert(:user)
 
       conn
-      |> add_access_token(user, "private")
+      |> add_access_token(user, "private:admin")
       |> patch("/api/backends/#{backend.token}", %{user_id: victim.id})
       |> response(204)
 
@@ -346,7 +369,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       resp =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> patch("/api/backends/#{backend.token}", %{name: 123})
         |> json_response(422)
 
@@ -358,13 +381,13 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       source = insert(:source, user: user, default_ingest_backend_enabled?: true)
 
       conn
-      |> add_access_token(user, "private")
+      |> add_access_token(user, "private:admin")
       |> patch("/api/backends/#{backend.token}", %{default_ingest?: true, source_id: source.id})
       |> response(204)
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> get("/api/backends/#{backend.token}")
         |> json_response(200)
 
@@ -382,7 +405,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> patch("/api/backends/#{backend.token}", %{default_ingest?: true})
         |> json_response(422)
 
@@ -402,19 +425,28 @@ defmodule LogflareWeb.Api.BackendControllerTest do
         )
 
       conn
-      |> add_access_token(user, "private")
+      |> add_access_token(user, "private:admin")
       |> patch("/api/backends/#{backend.token}", %{config: %{gzip: false, http: "http1"}})
       |> response(204)
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> get("/api/backends/#{backend.token}")
         |> json_response(200)
 
       assert response["config"]["url"] == "http://example.com"
       assert response["config"]["gzip"] == false
       assert response["config"]["http"] == "http1"
+    end
+
+    test "admin scope is required", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user)
+
+      assert conn
+             |> add_access_token(user, "private")
+             |> patch("/api/backends/#{backend.token}", %{name: TestUtils.random_string()})
+             |> response(401) == ~s|{"error":"Unauthorized"}|
     end
   end
 
@@ -427,12 +459,12 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       backend = insert(:backend, user: user)
 
       assert conn
-             |> add_access_token(user, "private")
+             |> add_access_token(user, "private:admin")
              |> delete("/api/backends/#{backend.token}", %{name: name})
              |> response(204)
 
       assert conn
-             |> add_access_token(user, "private")
+             |> add_access_token(user, "private:admin")
              |> get("/api/backends/#{backend.token}")
              |> response(404)
     end
@@ -445,9 +477,18 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       backend = insert(:backend, user: user)
 
       assert conn
-             |> add_access_token(invalid_user, "private")
+             |> add_access_token(invalid_user, "private:admin")
              |> delete("/api/backends/#{backend.token}")
              |> response(404)
+    end
+
+    test "admin scope is required", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user)
+
+      assert conn
+             |> add_access_token(user, "private")
+             |> delete("/api/backends/#{backend.token}")
+             |> response(401) == ~s|{"error":"Unauthorized"}|
     end
   end
 
@@ -463,7 +504,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends/#{backend.token}/test")
         |> json_response(200)
 
@@ -478,7 +519,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends/#{backend.token}/test")
         |> json_response(200)
 
@@ -492,7 +533,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       backend = insert(:backend)
 
       conn
-      |> add_access_token(user, "private")
+      |> add_access_token(user, "private:admin")
       |> post("/api/backends/#{backend.token}/test")
       |> response(404)
     end

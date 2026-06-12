@@ -170,4 +170,12 @@ defmodule Logflare.TeamUsers do
   def change_team_user(%TeamUser{} = team_user) do
     TeamUser.changeset(team_user, %{})
   end
+
+  @spec update_team_role(TeamUser.t(), map()) ::
+          {:ok, TeamUser.t()} | {:error, Ecto.Changeset.t()}
+  def update_team_role(%TeamUser{} = team_user, attrs) do
+    team_user
+    |> TeamUser.role_changeset(attrs)
+    |> Repo.update()
+  end
 end
