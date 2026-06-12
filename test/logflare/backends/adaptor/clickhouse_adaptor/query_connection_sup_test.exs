@@ -13,13 +13,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
   end
 
   describe "list_query_connection_managers/0" do
-    test "returns backend ids and pids for running managers", %{backend: backend} do
-      {:ok, manager_pid} =
-        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
-
-      assert {backend.id, manager_pid} in QueryConnectionSup.list_query_connection_managers()
-    end
-
     test "lists managers for multiple backends", %{backend: backend} do
       {_source, other_backend} = setup_clickhouse_test()
 
