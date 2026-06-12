@@ -232,6 +232,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   end
 
   describe "default bigquery backend - storage write api" do
+    setup do
+      TestUtils.reset_feature_flag_overrides()
+      TestUtils.put_feature_flag_overrides("BigqueryStorageWriteApi", true)
+      :ok
+    end
+
     test "can ingest into source without creating a BQ backend" do
       user = insert(:user)
       source = insert(:source, user: user, bq_storage_write_api: true)
