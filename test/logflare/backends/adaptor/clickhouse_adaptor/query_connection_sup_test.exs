@@ -93,11 +93,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
   end
 
   describe "refresh_backend_local/1" do
-    test "returns ok when no manager is running", %{backend: backend} do
+    test "returns ok with no manager, then stops the backend's active pool", %{backend: backend} do
       assert :ok == QueryConnectionSup.refresh_backend_local(backend.id)
-    end
 
-    test "stops the backend's active pool", %{backend: backend} do
       {:ok, _manager_pid} =
         QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
 
