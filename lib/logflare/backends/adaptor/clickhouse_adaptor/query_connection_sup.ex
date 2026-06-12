@@ -245,7 +245,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
         :ok
     end
   catch
-    :exit, _reason -> :ok
+    :exit, reason ->
+      Logger.warning(
+        "Exited while terminating ClickHouse read connection manager: #{inspect(reason)}"
+      )
+
+      :ok
   end
 
   @doc """
