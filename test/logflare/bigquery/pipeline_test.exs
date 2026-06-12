@@ -5,11 +5,13 @@ defmodule Logflare.BigQuery.PipelineTest do
 
   import ExUnit.CaptureLog
 
+  alias Broadway.Message
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
   alias Logflare.Backends
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
@@ -28,13 +30,19 @@ defmodule Logflare.BigQuery.PipelineTest do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event)
+      # Add event to ETS and mark as :processing (simulating it was taken by the producer)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      IngestEventQueue.mark_ingested(sid_bid_pid, [le])
+
       ref = {sid_bid_pid, %{max_retries: 1}}
-      message = Pipeline.transform(le, ref: ref)
+      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
       {mod, ref, _data} = message.acknowledger
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
 
       mod.ack(ref, [], [message])
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+      # Event is deleted then re-added as pending with incremented retries
+      assert IngestEventQueue.total_pending(sid_bid_pid) == 1
 
       {:ok, [m]} = IngestEventQueue.pop_pending(sid_bid_pid, 1)
 
@@ -45,14 +53,61 @@ defmodule Logflare.BigQuery.PipelineTest do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event) |> Map.put(:retries, 1)
+      # Add event to ETS and mark as :processing (simulating it was taken by the producer)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      IngestEventQueue.mark_ingested(sid_bid_pid, [le])
+
       ref = {sid_bid_pid, %{max_retries: 1}}
-      message = Pipeline.transform(le, ref: ref)
+      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
       {mod, ref, _data} = message.acknowledger
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
 
       mod.ack(ref, [], [message])
 
+      # Event is NOT requeued (retries == max_retries); deleted from ETS
+      assert IngestEventQueue.total_pending(sid_bid_pid) == 0
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+    end
+
+    test "ack deletes events directly when avg > 100", %{source: source} do
+      stub(Logflare.Sources, :get_source_metrics_for_ingest, fn _ -> %{avg: 200} end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      mod.ack(ref, [message], [])
+
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+    end
+
+    test "ack marks events as :ingested when avg <= 100", %{source: source} do
+      stub(Logflare.Sources, :get_source_metrics_for_ingest, fn _ -> %{avg: 50} end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      mod.ack(ref, [message], [])
+
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+      assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+      assert [{_id, :ingested, _}] = :ets.lookup(tid, le.id)
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
@@ -192,7 +247,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       log =
         capture_log([level: :warning], fn ->
-          Pipeline.stream_batch(context, [])
+          Pipeline.stream_batch(context, [{build(:log_event, source: source), 0}])
         end)
 
       assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
@@ -230,7 +285,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       log =
         capture_log([level: :warning], fn ->
-          Pipeline.stream_batch(context, [])
+          Pipeline.stream_batch(context, [{build(:log_event, source: source), 0}])
         end)
 
       assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
@@ -268,21 +323,6 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert updated_user.bigquery_project_id == "my-byob-project"
       assert updated_user.bigquery_dataset_id == "my_dataset"
       assert updated_user.bigquery_dataset_location == "US"
-    end
-  end
-
-  describe "bq_batch_size_splitter/2" do
-    property "fallback inspect_payload/1 usage always overstates json encoded length" do
-      check all payload <-
-                  map_of(
-                    string(:alphanumeric, min_length: 1),
-                    string(:ascii, max_length: 1_000_000),
-                    min_length: 20,
-                    max_length: 500
-                  ) do
-        assert IO.iodata_length(Jason.encode!(payload)) <
-                 Pipeline.message_size(payload)
-      end
     end
   end
 
@@ -374,6 +414,163 @@ defmodule Logflare.BigQuery.PipelineTest do
 
         run_pipeline_benchmark(name, batch)
       end
+    end
+  end
+
+  describe "handle_batch/4" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+
+      context = %{
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: nil,
+        bigquery_project_id: nil,
+        bigquery_dataset_id: nil,
+        user_id: user.id,
+        system_source: false
+      }
+
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
+
+      {:ok, source: source, context: context, batch_info: batch_info}
+    end
+
+    defp setup_queue(source, events) do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      IngestEventQueue.add_to_table(sid_bid_pid, events)
+      {:ok, ids, tid} = IngestEventQueue.take_pending_ids(sid_bid_pid, length(events))
+
+      # Simulate what BufferProducer does: compute size per event via ETS lookup
+      messages =
+        Enum.map(ids, fn id ->
+          size =
+            case :ets.lookup(tid, id) do
+              [{^id, _status, le}] -> :erlang.external_size(le.body)
+              [] -> 0
+            end
+
+          %Message{data: {id, tid, size}, acknowledger: {Pipeline, :ack_id, :ack_data}}
+        end)
+
+      {messages, tid}
+    end
+
+    test "passes {id, tid, size} messages through with correct size", %{
+      source: source,
+      context: context,
+      batch_info: batch_info
+    } do
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source)
+      {[message], tid} = setup_queue(source, [le])
+
+      [result] = Pipeline.handle_batch(:bq, [message], batch_info, context)
+
+      assert {id, ^tid, size} = result.data
+      assert id == le.id
+      assert is_integer(size) and size > 0
+    end
+
+    test "excludes missing IDs and emits telemetry", %{
+      source: source,
+      context: context,
+      batch_info: batch_info
+    } do
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source)
+      {[message], tid} = setup_queue(source, [le])
+
+      # Delete event from ETS so ID cannot be resolved
+      :ets.delete(tid, le.id)
+
+      ref = make_ref()
+
+      :telemetry.attach(
+        "test-missing-#{inspect(ref)}",
+        [:logflare, :ingest_event_queue, :missing_ids],
+        fn _event, %{count: n}, _meta, pid -> send(pid, {:missing, n}) end,
+        self()
+      )
+
+      [result_msg] = Pipeline.handle_batch(:bq, [message], batch_info, context)
+
+      # Missing message is returned as failed (not dropped) so Broadway can ack it
+      assert {:failed, "missing from ETS"} = result_msg.status
+      assert {_id, _tid, 0} = result_msg.data
+      assert_receive {:missing, 1}
+
+      :telemetry.detach("test-missing-#{inspect(ref)}")
+    end
+
+    test "sends all events in a single stream_batch! call when under size limit", %{
+      source: source,
+      context: context,
+      batch_info: batch_info
+    } do
+      les = for _ <- 1..3, do: build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, les)
+
+      expect(Logflare.Google.BigQuery, :stream_batch!, 1, fn _ctx, rows ->
+        assert length(rows) == 3
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+    end
+
+    test "calls stream_batch! with resolved log events", %{
+      source: source,
+      context: context,
+      batch_info: batch_info
+    } do
+      le = build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, [le])
+
+      expect(Logflare.Google.BigQuery, :stream_batch!, 1, fn _ctx, rows ->
+        ids = Enum.map(rows, & &1.insertId)
+        assert le.id in ids
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+    end
+
+    test "calls insert_log_events_via_storage_write_api on storage write path", %{
+      source: source,
+      batch_info: batch_info
+    } do
+      source = insert(:source, user_id: source.user_id, bq_storage_write_api: true)
+
+      context = %{
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: nil,
+        bigquery_project_id: nil,
+        bigquery_dataset_id: nil,
+        user_id: source.user_id,
+        system_source: false
+      }
+
+      le = build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, [le])
+
+      expect(BigQueryAdaptor, :insert_log_events_via_storage_write_api, 1, fn log_events, _opts ->
+        ids = Enum.map(log_events, & &1.id)
+        assert le.id in ids
+        :ok
+      end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
     end
   end
 

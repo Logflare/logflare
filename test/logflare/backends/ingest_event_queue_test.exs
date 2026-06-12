@@ -830,6 +830,266 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "delete_id/2" do
+    test "deletes an existing event from ETS" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+
+      assert IngestEventQueue.get_table_size(sbp) == 1
+      assert :ok = IngestEventQueue.delete_id(tid, le.id)
+      assert IngestEventQueue.get_table_size(sbp) == 0
+    end
+
+    test "returns :ok silently when ETS table is stale/deleted" do
+      assert :ok = IngestEventQueue.delete_id(:stale_tid, "any-id")
+    end
+  end
+
+  describe "update_status/3" do
+    test "updates the status of an existing event" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+
+      assert :ok = IngestEventQueue.update_status(tid, le.id, :processing)
+      assert [{_id, :processing, _}] = :ets.lookup(tid, le.id)
+    end
+
+    test "returns :ok silently when ETS table is stale/deleted" do
+      assert :ok = IngestEventQueue.update_status(:stale_tid, "any-id", :processing)
+    end
+  end
+
+  describe "list_processing_ids/1" do
+    test "returns IDs of :processing events only" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le1 = build(:log_event, source: source)
+      le2 = build(:log_event, source: source)
+      le3 = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le1, le2, le3])
+      tid = IngestEventQueue.get_tid(sbp)
+      :ets.update_element(tid, le1.id, {2, :processing})
+      :ets.update_element(tid, le2.id, {2, :ingested})
+      # le3 stays :pending
+
+      ids = IngestEventQueue.list_processing_ids(sbp)
+      assert le1.id in ids
+      refute le2.id in ids
+      refute le3.id in ids
+    end
+
+    test "returns empty list when no processing events" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      assert [] = IngestEventQueue.list_processing_ids(sbp)
+    end
+
+    test "returns empty list when queue does not exist" do
+      assert [] = IngestEventQueue.list_processing_ids({0, 0, self()})
+    end
+  end
+
+  describe "total_by_status/2" do
+    test "counts events by status correctly" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      [le1, le2, le3] = for _ <- 1..3, do: build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le1, le2, le3])
+      tid = IngestEventQueue.get_tid(sbp)
+      :ets.update_element(tid, le1.id, {2, :processing})
+      :ets.update_element(tid, le2.id, {2, :ingested})
+
+      sid_bid = {source.id, backend.id}
+      assert IngestEventQueue.total_by_status(sid_bid, :pending) == 1
+      assert IngestEventQueue.total_by_status(sid_bid, :processing) == 1
+      assert IngestEventQueue.total_by_status(sid_bid, :ingested) == 1
+    end
+
+    test "returns 0 when no events match status" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      sid_bid = {source.id, backend.id}
+      assert IngestEventQueue.total_by_status(sid_bid, :processing) == 0
+    end
+  end
+
+  describe "QueueJanitor stale :processing cleanup" do
+    defp make_janitor_state(source, backend) do
+      %{
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: backend.id,
+        interval: 1_000,
+        remainder: 100,
+        max: 10_000,
+        purge_ratio: 0.05,
+        consolidated?: false,
+        consolidated_key: nil,
+        processing_snapshot: %{}
+      }
+    end
+
+    test "single cycle: :processing events not yet stale (not in snapshot)", %{} do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      state = make_janitor_state(source, backend)
+      new_state = QueueJanitor.do_cleanup_stale_processing(state)
+
+      # Still :processing — first cycle only builds snapshot
+      assert [{_, :processing, _}] = :ets.lookup(tid, le.id)
+      # Snapshot now populated
+      assert map_size(new_state.processing_snapshot) == 1
+    end
+
+    test "two cycles: stale event is reset to :pending with incremented retries" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      state = make_janitor_state(source, backend)
+      state = QueueJanitor.do_cleanup_stale_processing(state)
+      # Second cycle — event still :processing → stale
+      _state = QueueJanitor.do_cleanup_stale_processing(state)
+
+      assert [{_, :pending, %{retries: 1}}] = :ets.lookup(tid, le.id)
+    end
+
+    test "max retries exceeded: stale event is deleted" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      # retries already at max_stale_retries - 1
+      le = build(:log_event, source: source) |> Map.put(:retries, 2)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      state = make_janitor_state(source, backend)
+      state = QueueJanitor.do_cleanup_stale_processing(state)
+      _state = QueueJanitor.do_cleanup_stale_processing(state)
+
+      assert [] = :ets.lookup(tid, le.id)
+    end
+
+    test "telemetry emitted when stale events are acted on" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      ref = make_ref()
+
+      :telemetry.attach(
+        "test-stale-#{inspect(ref)}",
+        [:logflare, :ingest_event_queue, :stale_processing],
+        fn _event, measurements, _meta, pid -> send(pid, {:telemetry, measurements}) end,
+        self()
+      )
+
+      state = make_janitor_state(source, backend)
+      state = QueueJanitor.do_cleanup_stale_processing(state)
+      QueueJanitor.do_cleanup_stale_processing(state)
+
+      assert_receive {:telemetry, %{reset: 1, dropped: 0}}
+
+      :telemetry.detach("test-stale-#{inspect(ref)}")
+    end
+
+    test "no telemetry when no stale events" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+
+      ref = make_ref()
+
+      :telemetry.attach(
+        "test-no-stale-#{inspect(ref)}",
+        [:logflare, :ingest_event_queue, :stale_processing],
+        fn _event, measurements, _meta, pid -> send(pid, {:telemetry, measurements}) end,
+        self()
+      )
+
+      state = make_janitor_state(source, backend)
+      state = QueueJanitor.do_cleanup_stale_processing(state)
+      QueueJanitor.do_cleanup_stale_processing(state)
+
+      refute_receive {:telemetry, _}
+
+      :telemetry.detach("test-no-stale-#{inspect(ref)}")
+    end
+
+    test "CAS no-op: event acked between snapshot and replace is not resurrected" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      state = make_janitor_state(source, backend)
+      # First cycle builds snapshot
+      state = QueueJanitor.do_cleanup_stale_processing(state)
+
+      # Simulate ack deleting the event between snapshot and replace
+      :ets.delete(tid, le.id)
+
+      # Second cycle — select_replace finds no match, returns :skip, does not resurrect
+      QueueJanitor.do_cleanup_stale_processing(state)
+
+      assert [] = :ets.lookup(tid, le.id)
+    end
+  end
+
   test "MapperJanitor cleans up stale tids" do
     user = insert(:user)
     source = insert(:source, user: user)
