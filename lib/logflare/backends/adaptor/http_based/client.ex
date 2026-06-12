@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
 
   alias Logflare.LogEvent
   alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
+  alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.HttpBased.LogEventTransformer
   alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
@@ -50,6 +51,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
   """
   @spec new(opts()) :: t()
   def new(opts \\ []) do
+    headers = Headers.drop_reserved(opts[:headers] || %{}, reserved_header_names(opts))
+
     Tesla.client(
       [
         Tesla.Middleware.Telemetry,
@@ -57,7 +60,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
         opts[:query] && {Tesla.Middleware.Query, opts[:query]},
         opts[:token] && {Tesla.Middleware.BearerAuth, token: opts[:token]},
         opts[:basic_auth] && {Tesla.Middleware.BasicAuth, opts[:basic_auth]},
-        headers_middleware(opts[:headers]),
+        headers_middleware(headers),
         Keyword.get(opts, :formatter, LogEventTransformer),
         Keyword.get(opts, :json, true) && Tesla.Middleware.JSON,
         opts[:gzip] && {Tesla.Middleware.CompressRequest, format: "gzip"},
@@ -67,6 +70,35 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
       adapter_config(Keyword.get(opts, :http2, true), opts[:pool_name])
     )
   end
+
+  # Header names the middleware will set, so they must be dropped from
+  # user-supplied headers to avoid duplicates (see `Headers.drop_reserved/2`).
+  #
+  # `content-type` cannot be inferred from `Tesla.Middleware.JSON` here: the request
+  # body is not available at client-build time, so we cannot tell whether the JSON
+  # middleware will encode it and own the header. Instead, a formatter that sets
+  # `content-type` itself (e.g. the protobuf/envelope formatters) declares ownership
+  # via an optional `reserved_headers/0`, and we drop those names regardless of body.
+  @spec reserved_header_names(opts()) :: [String.t()]
+  defp reserved_header_names(opts) do
+    encoding = if opts[:gzip], do: ["content-encoding"], else: []
+    auth = if opts[:token] || opts[:basic_auth], do: ["authorization"], else: []
+    formatter = formatter_reserved_headers(Keyword.get(opts, :formatter, LogEventTransformer))
+    encoding ++ auth ++ formatter
+  end
+
+  @spec formatter_reserved_headers(Tesla.Client.middleware()) :: [String.t()]
+  defp formatter_reserved_headers({module, _opts}), do: formatter_reserved_headers(module)
+
+  defp formatter_reserved_headers(module) when is_atom(module) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :reserved_headers, 0) do
+      module.reserved_headers()
+    else
+      []
+    end
+  end
+
+  defp formatter_reserved_headers(_), do: []
 
   def headers_middleware(nil), do: nil
   def headers_middleware([]), do: nil

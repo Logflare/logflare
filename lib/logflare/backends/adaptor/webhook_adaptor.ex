@@ -21,6 +21,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   alias Logflare.Backends
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Utils
   alias Logflare.Utils.SSRF
 
@@ -51,8 +52,20 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     {existing_config, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
     |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip])
     |> unredact_headers(existing_config)
+    |> normalize_header_keys()
     |> Logflare.Utils.default_field_value(:http, "http2")
     |> Logflare.Utils.default_field_value(:gzip, true)
+  end
+
+  # Canonicalizes submitted header names to lower case so the stored config cannot
+  # hold case-variant duplicates of the same header (e.g. "Content-Type" and
+  # "content-type"). Runs after unredact_headers/2 so the REDACTED-sentinel restore
+  # still matches the keys the client echoed back.
+  defp normalize_header_keys(changeset) do
+    case Ecto.Changeset.get_change(changeset, :headers) do
+      nil -> changeset
+      headers -> Ecto.Changeset.put_change(changeset, :headers, Headers.normalize_keys(headers))
+    end
   end
 
   # Restores secret header values submitted back as the "REDACTED" sentinel.
@@ -67,11 +80,17 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     with headers when not is_nil(headers) <- Ecto.Changeset.get_change(changeset, :headers),
          existing_headers <-
            Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{} do
+      # Look up existing values by normalized key: header names are case-insensitive,
+      # and stored config predating normalize_keys/1 may use casing that differs from
+      # the (possibly already normalized) submitted key. An exact match would drop the
+      # stored secret in that case.
+      normalized_existing = Headers.normalize_keys(existing_headers)
+
       restored =
         headers
         |> Enum.reduce(%{}, fn
           {key, @redacted_value}, acc ->
-            replace_header_with_existing(acc, existing_headers, key)
+            replace_header_with_existing(acc, normalized_existing, key)
 
           {key, value}, acc ->
             Map.put(acc, key, value)
@@ -83,8 +102,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     end
   end
 
-  defp replace_header_with_existing(headers, existing_headers, key) do
-    case Map.get(existing_headers, key) do
+  defp replace_header_with_existing(headers, normalized_existing, key) do
+    case Map.get(normalized_existing, String.downcase(to_string(key))) do
       nil -> headers
       value -> Map.put(headers, key, value)
     end
@@ -172,6 +191,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   defmodule Client do
     @moduledoc false
     alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
+    alias Logflare.Backends.Adaptor.HttpBased.Headers
     alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
     use Tesla, docs: false
 
@@ -194,10 +214,12 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
             {Tesla.Adapter.Finch, name: Logflare.FinchDefaultHttp1, receive_timeout: 5_000}
         end
 
+      reserved = reserved_header_names(opts)
+
       opts =
         opts
         |> Keyword.put_new(:method, :post)
-        |> Keyword.update(:headers, [], &Map.to_list/1)
+        |> Keyword.update(:headers, [], &Headers.drop_reserved(&1, reserved))
 
       Tesla.client(
         [
@@ -212,6 +234,27 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       )
       |> request(opts)
     end
+
+    # Header names the client's own middleware will set for this request, so they
+    # must be dropped from user-supplied headers to avoid duplicates (see
+    # `Headers.drop_reserved/2`). `content-type` is only owned when the JSON
+    # middleware will actually encode the body — for binary payloads (e.g. NDJSON)
+    # it is skipped, and a custom content-type must survive. `content-encoding` is
+    # owned whenever gzip compression is enabled.
+    @spec reserved_header_names(keyword()) :: [String.t()]
+    defp reserved_header_names(opts) do
+      content_type = if json_encodable?(opts[:body]), do: ["content-type"], else: []
+      content_encoding = if opts[:gzip], do: ["content-encoding"], else: []
+      content_type ++ content_encoding
+    end
+
+    # Mirrors Tesla.Middleware.JSON's encodability check: only non-binary,
+    # non-multipart bodies get JSON-encoded (and thus a content-type header) set.
+    @spec json_encodable?(term()) :: boolean()
+    defp json_encodable?(nil), do: false
+    defp json_encodable?(body) when is_binary(body), do: false
+    defp json_encodable?(%Tesla.Multipart{}), do: false
+    defp json_encodable?(_), do: true
   end
 
   # Broadway Pipeline
