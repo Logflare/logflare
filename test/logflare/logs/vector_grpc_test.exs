@@ -71,7 +71,10 @@ defmodule Logflare.Logs.VectorGrpcTest do
   end
 
   describe "handle_batch/2 for metric events" do
-    test "converts a counter metric" do
+    test "converts a counter metric with unix-nanosecond timestamp" do
+      seconds = 1_700_000_000
+      nanos = 123
+
       metric = %Event.EventWrapper{
         event:
           {:metric,
@@ -79,7 +82,7 @@ defmodule Logflare.Logs.VectorGrpcTest do
              name: "requests",
              namespace: "logflare",
              kind: :Incremental,
-             timestamp: %Google.Protobuf.Timestamp{seconds: 1, nanos: 500},
+             timestamp: %Google.Protobuf.Timestamp{seconds: seconds, nanos: nanos},
              tags_v1: %{"env" => "test"},
              value: {:counter, %Event.Counter{value: 7.0}}
            }}
@@ -91,7 +94,8 @@ defmodule Logflare.Logs.VectorGrpcTest do
       assert event["kind"] == "incremental"
       assert event["tags"] == %{"env" => "test"}
       assert event["value"] == %{"counter" => 7.0}
-      assert event["timestamp"] == 1_000_000_500
+      # Matches the OTEL log ingestion format (nanoseconds since unix epoch).
+      assert event["timestamp"] == seconds * 1_000_000_000 + nanos
     end
 
     test "converts a gauge metric without namespace" do
