@@ -87,7 +87,7 @@ defmodule Logflare.ContextCache.Supervisor do
     # {:global, Logflare.PgPublisher}
   end
 
-  defp cainophile_spec() do
+  defp cainophile_spec do
     if Application.get_env(:logflare, :enable_cainophile, true) do
       [{GenSingleton, child_spec: cainophile_child_spec()}]
     else
