@@ -8,6 +8,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Users
   alias Logflare.Sources
   alias Logflare.Backends
+  alias Logflare.Backends.QueryError
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring
   alias Logflare.SystemMetrics.AllLogsLogged
@@ -67,6 +68,34 @@ defmodule Logflare.Backends.UserMonitoringTest do
       end)
     end
 
+    test "query error logs are routed to user's system source when monitoring is on", %{
+      user: user,
+      source: source
+    } do
+      {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
+      system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
+
+      error = %QueryError{
+        code: :invalid_query,
+        raw_error: %{"message" => "raw query detail"},
+        backend: Logflare.Backends.Adaptor.BigQueryAdaptor
+      }
+
+      TestUtils.retry_assert(fn ->
+        assert capture_log(fn ->
+                 QueryError.log(error,
+                   user_id: user.id,
+                   source_token: source.token
+                 )
+               end) =~ "Backend query error"
+
+        assert Enum.any?(
+                 Backends.list_recent_logs(system_source),
+                 &query_error_log_event?/1
+               )
+      end)
+    end
+
     test "are not routed to user's system source when not monitoring", %{
       user: user,
       source: source
@@ -85,6 +114,17 @@ defmodule Logflare.Backends.UserMonitoringTest do
              )
     end
   end
+
+  defp query_error_log_event?(%{
+         body: %{
+           "event_message" => "Backend query error",
+           "metadata" => %{"error_code" => "invalid_query", "error_string" => error_string}
+         }
+       }) do
+    error_string =~ "raw query detail"
+  end
+
+  defp query_error_log_event?(_event), do: false
 
   describe "system monitoring labels" do
     setup :start_otel_exporter

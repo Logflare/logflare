@@ -1,4 +1,5 @@
 defmodule LogflareWeb.EndpointsController do
+  alias LogflareWeb.QueryErrorHelpers
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
@@ -89,7 +90,7 @@ defmodule LogflareWeb.EndpointsController do
         render(conn, "query.json", result: result.rows)
 
       {:error, errors} ->
-        render(conn, "query.json", error: errors)
+        render(conn, "query.json", error: QueryErrorHelpers.generic_query_error_message())
     end
   end
 

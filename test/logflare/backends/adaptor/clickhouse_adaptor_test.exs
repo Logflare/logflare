@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   use Logflare.DataCase, async: false
 
   import Ecto.Query
+  import ExUnit.CaptureLog
   import Logflare.ClickHouseMappedEvents
   import Logflare.Utils.Guards
 
@@ -16,6 +17,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
   alias Logflare.Lql.Rules.FilterRule
 
@@ -87,7 +89,63 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       result =
         ClickHouseAdaptor.execute_ch_query(backend, "INVALID SQL QUERY")
 
-      assert {:error, _} = result
+      assert {:error, %QueryError{} = error} = result
+      assert error.backend == ClickHouseAdaptor
+      assert error.code in [:invalid_query, :connection_error]
+
+      if error.code == :invalid_query do
+        assert %Ch.Error{} = error.raw_error
+        assert error.description == nil
+      end
+    end
+
+    test "normalizes missing field query errors", %{backend: backend} do
+      expect(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error,
+         %Ch.Error{
+           code: 47,
+           message:
+             "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
+         }}
+      end)
+
+      log =
+        capture_log(
+          [level: :error, metadata: [:user_id, :backend_id, :error_code, :error_string]],
+          fn ->
+            assert {:error,
+                    %QueryError{
+                      code: :invalid_query,
+                      backend: Logflare.Backends.Adaptor.ClickHouseAdaptor,
+                      raw_error: %Ch.Error{
+                        code: 47,
+                        message:
+                          "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
+                      },
+                      description: nil
+                    }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT notthere")
+          end
+        )
+
+      assert log =~ "Backend query error"
+      assert log =~ "backend_id=#{backend.id}"
+      assert log =~ "user_id=#{backend.user_id}"
+      assert log =~ "error_code=invalid_query"
+      assert log =~ "notthere"
+    end
+
+    test "normalizes ClickHouse server errors as query errors", %{backend: backend} do
+      expect(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error, %Ch.Error{code: 999, message: "Backend server error"}}
+      end)
+
+      assert {:error,
+              %QueryError{
+                code: :invalid_query,
+                backend: Logflare.Backends.Adaptor.ClickHouseAdaptor,
+                raw_error: %Ch.Error{code: 999, message: "Backend server error"},
+                description: nil
+              }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1")
     end
 
     test "preserves 16-byte strings while converting UUID columns", %{backend: backend} do

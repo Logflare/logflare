@@ -29,6 +29,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
 
@@ -311,7 +312,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           statement :: iodata(),
           params :: map | [term] | [row :: [term]] | iodata | Enumerable.t(),
           [Ch.query_option()]
-        ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()}
+        ) :: {:ok, Ch.Result.t()} | {:error, QueryError.t()}
   def execute_ch_query(backend, statement, params \\ [], opts \\ [])
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
@@ -326,26 +327,39 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         {:ok, %Ch.Result{} = result} ->
           {:ok, decode_ch_result(result)}
 
-        {:error, %Ch.Error{message: error_msg}} when is_non_empty_binary(error_msg) ->
-          Logger.warning(
-            "ClickHouse query failed: #{inspect(error_msg)}",
-            backend_id: backend.id
-          )
-
-          {:error, "Error executing ClickHouse query"}
-
-        {:error, %{message: message}} when is_non_empty_binary(message) ->
-          Logger.warning(
-            "ClickHouse query failed: #{inspect(message)}",
-            backend_id: backend.id
-          )
-
-          {:error, "Error executing ClickHouse query"}
-
-        {:error, _} ->
-          {:error, "Error executing ClickHouse query"}
+        {:error, error} ->
+          {:error,
+           error
+           |> to_query_error()
+           |> QueryError.log(
+             user_id: backend.user_id,
+             backend_id: backend.id,
+             backend_token: backend.token
+           )}
       end
     end
+  end
+
+  @spec to_query_error(term()) :: QueryError.t()
+  defp to_query_error(%Ch.Error{} = error) do
+    query_error(:invalid_query, error)
+  end
+
+  defp to_query_error(%DBConnection.ConnectionError{} = error) do
+    query_error(:connection_error, error)
+  end
+
+  defp to_query_error(error) do
+    query_error(:backend_error, error)
+  end
+
+  @spec query_error(QueryError.code(), term()) :: QueryError.t()
+  defp query_error(code, raw_error) do
+    %QueryError{
+      code: code,
+      raw_error: raw_error,
+      backend: __MODULE__
+    }
   end
 
   @spec execute_direct_query(url :: String.t(), config :: map(), statement :: String.t()) ::
@@ -373,15 +387,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
             {:ok, %Ch.Result{} = result} ->
               {:ok, decode_ch_result(result)}
 
-            {:error, _} ->
-              {:error, "Error executing ClickHouse query"}
+            {:error, error} ->
+              {:error, to_query_error(error)}
           end
         after
           GenServer.stop(pid)
         end
 
-      {:error, _} ->
-        {:error, "Error executing ClickHouse query"}
+      {:error, error} ->
+        {:error, to_query_error(error)}
     end
   end
 

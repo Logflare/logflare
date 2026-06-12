@@ -21,6 +21,9 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @default_dataset_location "US"
   @table_ttl 604_800_000
 
+  @type transport_error :: :emfile | :timeout | :closed
+  @type google_api_result :: {:ok, any()} | {:error, Tesla.Env.t() | transport_error()}
+
   @doc """
   Returns the default TTL used (in days) for initializing the table.
   """
@@ -152,15 +155,14 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     "#{account_id}"
   end
 
-  @spec maybe_parse_google_api_result({:ok, any()} | {:error, Tesla.Env.t()}) ::
-          {:ok, any()} | {:error, Tesla.Env.t()}
+  @spec maybe_parse_google_api_result(google_api_result()) :: google_api_result()
   def maybe_parse_google_api_result({:error, %Tesla.Env{} = teslaenv}) do
     {:error, teslaenv}
   end
 
   def maybe_parse_google_api_result(x), do: x
 
-  @spec get_tesla_error_message(:emfile | :timeout | :closed | Tesla.Env.t()) :: String.t()
+  @spec get_tesla_error_message(transport_error() | Tesla.Env.t()) :: String.t()
   def get_tesla_error_message(%Tesla.Env{} = message) do
     case JSON.decode(message.body) do
       {:ok, body} ->

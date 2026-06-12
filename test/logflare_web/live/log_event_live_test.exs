@@ -96,7 +96,7 @@ defmodule LogflareWeb.LogEventLiveTest do
     le = build(:log_event, message: "some err message")
 
     expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
-      {:error, "some error"}
+      {:error, TestUtils.gen_bq_error("Unrecognized name: notthere at [1:8]")}
     end)
 
     logs =
@@ -115,6 +115,6 @@ defmodule LogflareWeb.LogEventLiveTest do
       end)
 
     assert logs =~ "Error loading log event"
-    assert logs =~ "some error"
+    assert logs =~ "Unrecognized name: notthere"
   end
 end
