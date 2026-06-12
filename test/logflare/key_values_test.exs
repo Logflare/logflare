@@ -92,6 +92,58 @@ defmodule Logflare.KeyValuesTest do
     assert upserted.inserted_at == inserted_at
   end
 
+  describe "bump_usages/2" do
+    alias Logflare.KeyValues.KeyValueUsage
+
+    test "same user keys", %{user: user} do
+      kv1 = insert(:key_value, user: user, key: "k1")
+      kv2 = insert(:key_value, user: user, key: "k2")
+      now = DateTime.utc_now()
+
+      assert :ok = KeyValues.bump_usages([{user.id, "k1"}, {user.id, "k2"}], now)
+
+      usages = Repo.all(KeyValueUsage)
+      assert MapSet.new(usages, & &1.key_value_id) == MapSet.new([kv1.id, kv2.id])
+    end
+
+    test "multiple users keys", %{user: user} do
+      other = insert(:user)
+      kv1 = insert(:key_value, user: user, key: "shared")
+      kv2 = insert(:key_value, user: other, key: "shared")
+
+      assert :ok =
+               KeyValues.bump_usages(
+                 [{user.id, "shared"}, {other.id, "shared"}],
+                 DateTime.utc_now()
+               )
+
+      values = for %{key_value_id: id} <- Repo.all(KeyValueUsage), into: MapSet.new(), do: id
+
+      assert values == MapSet.new([kv1.id, kv2.id])
+    end
+
+    test "ignores no matching key_value", %{user: user} do
+      assert :ok = KeyValues.bump_usages([{user.id, "missing"}], DateTime.utc_now())
+      assert [] = Repo.all(KeyValueUsage)
+    end
+
+    test "upserts last_used_at on repeat", %{user: user} do
+      kv = insert(:key_value, user: user, key: "k1")
+      first = DateTime.utc_now()
+
+      assert :ok = KeyValues.bump_usages([{user.id, "k1"}], first)
+
+      later = DateTime.add(first, 1, :minute)
+      assert :ok = KeyValues.bump_usages([{user.id, "k1"}], later)
+
+      assert [%KeyValueUsage{key_value_id: kv_id, last_used_at: last_used_at}] =
+               Repo.all(KeyValueUsage)
+
+      assert kv_id == kv.id
+      assert DateTime.compare(last_used_at, first) == :gt
+    end
+  end
+
   test "count_key_values/1", %{user: user} do
     assert 0 = KeyValues.count_key_values(user.id)
     insert(:key_value, user: user, key: "k1")

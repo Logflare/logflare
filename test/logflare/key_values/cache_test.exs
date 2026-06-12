@@ -3,10 +3,31 @@ defmodule Logflare.KeyValues.CacheTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.UsageTracker
 
   setup do
     user = insert(:user)
     [user: user]
+  end
+
+  test "lookup/2 usage tracking", %{user: user} do
+    value = %{"v" => "1"}
+    insert(:key_value, user: user, key: "k1", value: value)
+
+    user_id = user.id
+    parent = self()
+    stub(UsageTracker, :touch, fn uid, key -> send(parent, {:touched, uid, key}) end)
+
+    assert ^value = KeyValues.Cache.lookup(user_id, "k1")
+    assert_received {:touched, ^user_id, "k1"}
+
+    # second call is a cache hit but should still touch
+    assert ^value = KeyValues.Cache.lookup(user_id, "k1")
+    assert_received {:touched, ^user_id, "k1"}
+
+    missing_key = "missing"
+    assert nil == KeyValues.Cache.lookup(user_id, missing_key)
+    refute_received {:touched, ^user_id, ^missing_key}
   end
 
   test "lookup/2 caches results", %{user: user} do
