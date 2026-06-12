@@ -7,6 +7,8 @@ defmodule Logflare.BackendsTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Backend
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.Backends.DynamicPipeline
@@ -66,6 +68,16 @@ defmodule Logflare.BackendsTest do
     test "returns false for s3 backend" do
       backend = %Backend{type: :s3}
       refute Adaptor.consolidated_ingest?(backend)
+    end
+  end
+
+  describe "Adaptor lifecycle notifications" do
+    test "backend_config_changed/1 is a no-op for adaptors without the callback" do
+      assert :ok == Adaptor.backend_config_changed(%Backend{type: :webhook})
+    end
+
+    test "backend_deleted/1 is a no-op for adaptors without the callback" do
+      assert :ok == Adaptor.backend_deleted(%Backend{type: :webhook})
     end
   end
 
@@ -148,6 +160,76 @@ defmodule Logflare.BackendsTest do
       assert Backends.ConsolidatedSup.pipeline_running?(updated)
 
       Backends.ConsolidatedSup.stop_pipeline(updated)
+    end
+  end
+
+  describe "clickhouse read pool hooks" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          user: user,
+          config: %{
+            url: "http://localhost:8123",
+            port: 8123,
+            database: "logflare_test",
+            username: "logflare",
+            password: "logflare"
+          }
+        )
+
+      {:ok, manager_pid} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      assert ConnectionManager.pool_active?(backend)
+
+      [user: user, backend: backend, manager_pid: manager_pid]
+    end
+
+    test "update_backend/2 refreshes read pools when config changes", %{backend: backend} do
+      assert {:ok, updated} =
+               Backends.update_backend(backend, %{
+                 config: %{
+                   url: "http://localhost:8123",
+                   port: 8123,
+                   database: "logflare_test",
+                   username: "logflare",
+                   password: "logflare",
+                   pool_size: 5
+                 }
+               })
+
+      TestUtils.retry_assert(fn ->
+        refute ConnectionManager.pool_active?(backend)
+      end)
+
+      Backends.ConsolidatedSup.stop_pipeline(updated)
+    end
+
+    test "update_backend/2 leaves read pools running when config is unchanged", %{
+      backend: backend
+    } do
+      assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
+
+      Process.sleep(200)
+      assert ConnectionManager.pool_active?(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(updated)
+    end
+
+    test "delete_backend/1 terminates read connection managers", %{
+      backend: backend,
+      manager_pid: manager_pid
+    } do
+      assert {:ok, _deleted} = Backends.delete_backend(backend)
+
+      TestUtils.retry_assert(fn ->
+        refute Process.alive?(manager_pid)
+      end)
     end
   end
 
