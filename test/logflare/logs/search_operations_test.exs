@@ -871,6 +871,26 @@ defmodule Logflare.Logs.SearchOperationsTest do
       [base_so: base_so]
     end
 
+    test "do_query/1 batches BigQuery tailing polling queries", %{base_so: base_so} do
+      Mimic.stub(BigQueryAdaptor, :execute_query, fn _identifier, _query, opts ->
+        Process.put(:captured_opts, opts)
+
+        {:ok,
+         QueryResult.new([%{"test" => "data"}], %{
+           total_rows: 1,
+           query_string: "",
+           bq_params: []
+         })}
+      end)
+
+      base_so
+      |> Map.put(:tailing?, true)
+      |> Map.put(:tailing_initial?, false)
+      |> SearchOperations.do_query()
+
+      assert Process.get(:captured_opts) == [query_type: :search, job_priority: :batch]
+    end
+
     test "do_query/1 uses BigQuery backend adaptor", %{base_so: base_so} do
       Mimic.stub(BigQueryAdaptor, :execute_query, fn identifier, query, opts ->
         Process.put(:captured_identifier, identifier)

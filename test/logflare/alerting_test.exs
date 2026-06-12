@@ -231,9 +231,8 @@ defmodule Logflare.AlertingTest do
 
       pid = self()
 
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
-        send(pid, {:reservation, opts[:body].reservation})
-        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      expect_batch_query(fn opts ->
+        send(pid, {:reservation, opts[:body].configuration.reservation})
       end)
 
       assert {:ok,
@@ -254,9 +253,8 @@ defmodule Logflare.AlertingTest do
       alert_query = insert(:alert, user: user) |> Logflare.Repo.preload([:user])
       pid = self()
 
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
-        send(pid, {:reservation, opts[:body].reservation})
-        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      expect_batch_query(fn opts ->
+        send(pid, {:reservation, opts[:body].configuration.reservation})
       end)
 
       assert {:ok,
@@ -271,9 +269,8 @@ defmodule Logflare.AlertingTest do
     end
 
     test "execute_alert_query with query composition" do
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
-        assert opts[:body].query =~ "current_datetime"
-        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      expect_batch_query(fn opts ->
+        assert opts[:body].configuration.query.query =~ "current_datetime"
       end)
 
       user = insert(:user)
@@ -295,10 +292,7 @@ defmodule Logflare.AlertingTest do
     test "run_alert_query/1 runs the entire alert", %{user: user} do
       alert_query = insert(:alert, user: user)
 
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
-        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
-      end)
+      expect_batch_query()
 
       Logflare.Backends.Adaptor.WebhookAdaptor.Client
       |> expect(:send, fn opts ->
@@ -324,10 +318,7 @@ defmodule Logflare.AlertingTest do
     test "run_alert_query/1 does not send notifications if no results", %{user: user} do
       alert_query = insert(:alert, user: user)
 
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
-        {:ok, TestUtils.gen_bq_response([])}
-      end)
+      expect_batch_query(fn _opts -> :ok end, [])
 
       Logflare.Backends.Adaptor.WebhookAdaptor.Client
       |> reject(:send, 1)
@@ -363,9 +354,8 @@ defmodule Logflare.AlertingTest do
       {:ok, _updated_alert} =
         Alerting.update_alert_query(alert, %{query: "select 'unique_fresh_data_check'"})
 
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
-        assert opts[:body].query =~ "unique_fresh_data_check"
-        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      expect_batch_query(fn opts ->
+        assert opts[:body].configuration.query.query =~ "unique_fresh_data_check"
       end)
 
       assert {:ok,
@@ -390,7 +380,7 @@ defmodule Logflare.AlertingTest do
 
       # expect NO BQ execution
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> reject(:bigquery_jobs_query, 3)
+      |> reject(:bigquery_jobs_insert, 3)
 
       # verify job is NOT run by stale run_alert
       assert {:error, :not_found} = Alerting.run_alert(alert.id, :scheduled)
@@ -410,6 +400,32 @@ defmodule Logflare.AlertingTest do
       alert = insert(:alert, user: user)
       assert [] = Alerting.list_execution_history(alert.id)
     end
+  end
+
+  defp expect_batch_query(assert_fun \\ fn _opts -> :ok end, results \\ [%{"testing" => "123"}]) do
+    response =
+      TestUtils.gen_bq_response(results)
+      |> Map.from_struct()
+      |> then(&struct(GoogleApi.BigQuery.V2.Model.GetQueryResultsResponse, &1))
+
+    GoogleApi.BigQuery.V2.Api.Jobs
+    |> expect(:bigquery_jobs_insert, 1, fn _conn, _proj_id, opts ->
+      assert opts[:body].configuration.jobTimeoutMs == 120_000
+      assert opts[:body].configuration.query.priority == "BATCH"
+      assert_fun.(opts)
+
+      {:ok,
+       %GoogleApi.BigQuery.V2.Model.Job{
+         jobReference: %GoogleApi.BigQuery.V2.Model.JobReference{
+           jobId: "batch_job_id",
+           location: "US",
+           projectId: "project-id"
+         }
+       }}
+    end)
+    |> expect(:bigquery_jobs_get_query_results, 1, fn _conn, _proj_id, "batch_job_id", _opts ->
+      {:ok, response}
+    end)
   end
 
   defp insert_oban_job(alert_query, attrs) do

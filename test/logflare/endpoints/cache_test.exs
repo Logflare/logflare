@@ -11,6 +11,8 @@ defmodule Logflare.Endpoints.CacheTest do
         insert(:endpoint,
           user: user,
           query: "select current_datetime() as testing",
+          source_mapping: %{},
+          parsed_labels: %{},
           proactive_requerying_seconds: 1,
           cache_duration_seconds: 3
         )
@@ -19,6 +21,8 @@ defmodule Logflare.Endpoints.CacheTest do
         insert(:endpoint,
           user: user,
           query: "select current_datetime() as testing",
+          source_mapping: %{},
+          parsed_labels: %{},
           proactive_requerying_seconds: 3,
           cache_duration_seconds: 1
         )
@@ -78,7 +82,9 @@ defmodule Logflare.Endpoints.CacheTest do
 
       # Mock error response for refresh task
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      |> expect(:bigquery_jobs_insert, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].configuration.jobTimeoutMs == 120_000
+        assert opts[:body].configuration.query.priority == "BATCH"
         {:error, :timeout}
       end)
 
@@ -105,13 +111,12 @@ defmodule Logflare.Endpoints.CacheTest do
     test "cache dies after cache_duration_seconds", %{endpoint: endpoint} do
       test_response = [%{"testing" => "123"}]
 
-      expected_calls =
-        (endpoint.cache_duration_seconds / endpoint.proactive_requerying_seconds) |> floor()
-
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, expected_calls, fn _conn, _proj_id, _opts ->
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response(test_response)}
       end)
+
+      stub_batch_query(test_response)
 
       {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
       assert Process.alive?(cache_pid)
@@ -132,9 +137,11 @@ defmodule Logflare.Endpoints.CacheTest do
       test_response = [%{"testing" => "123"}]
 
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 2, fn _conn, _proj_id, _opts ->
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response(test_response)}
       end)
+
+      stub_batch_query(test_response)
 
       {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
       assert Process.alive?(cache_pid)
@@ -173,10 +180,7 @@ defmodule Logflare.Endpoints.CacheTest do
 
       test_response = [%{"testing" => "456"}]
 
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-        {:ok, TestUtils.gen_bq_response(test_response)}
-      end)
+      stub_batch_query(test_response)
 
       # After proactive_requerying_seconds, should return updated response
       Process.sleep(endpoint.proactive_requerying_seconds * 1000 + 100)
@@ -192,15 +196,19 @@ defmodule Logflare.Endpoints.CacheTest do
         insert(:endpoint,
           user: user,
           query: "select current_datetime() as testing",
+          source_mapping: %{},
+          parsed_labels: %{},
           proactive_requerying_seconds: 1,
           cache_duration_seconds: 3
         )
 
-      # perform at most 2 queries before dying
+      # perform initial interactive query, then proactive refreshes as batch jobs
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 3, fn _conn, _proj_id, _opts ->
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response()}
       end)
+
+      stub_batch_query([%{}])
 
       {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
       assert Process.alive?(cache_pid)
@@ -229,11 +237,33 @@ defmodule Logflare.Endpoints.CacheTest do
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
 
       reject(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 4)
+      reject(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_insert, 3)
 
       # should be larger than :proactive_requerying_seconds
       Process.sleep(endpoint.proactive_requerying_seconds * 1000 + 100)
 
       refute Process.alive?(cache_pid)
     end
+  end
+
+  defp stub_batch_query(results) do
+    response =
+      TestUtils.gen_bq_response(results)
+      |> Map.from_struct()
+      |> then(&struct(GoogleApi.BigQuery.V2.Model.GetQueryResultsResponse, &1))
+
+    GoogleApi.BigQuery.V2.Api.Jobs
+    |> stub(:bigquery_jobs_insert, fn _conn, _proj_id, opts ->
+      assert opts[:body].configuration.jobTimeoutMs == 120_000
+      assert opts[:body].configuration.query.priority == "BATCH"
+
+      {:ok,
+       %GoogleApi.BigQuery.V2.Model.Job{
+         jobReference: %GoogleApi.BigQuery.V2.Model.JobReference{jobId: "batch_job_id"}
+       }}
+    end)
+    |> stub(:bigquery_jobs_get_query_results, fn _conn, _proj_id, "batch_job_id", _opts ->
+      {:ok, response}
+    end)
   end
 end

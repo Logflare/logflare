@@ -82,8 +82,17 @@ defmodule Logflare.Logs.SearchOperations do
     BigQueryAdaptor.execute_query(
       {bq_project_id, dataset_id, so.source.user.id},
       so.query,
-      query_type: :search
+      bigquery_query_opts(so)
     )
+  end
+
+  @spec bigquery_query_opts(SO.t()) :: Keyword.t()
+  defp bigquery_query_opts(%SO{tailing?: true, tailing_initial?: false}) do
+    [query_type: :search, job_priority: :batch]
+  end
+
+  defp bigquery_query_opts(%SO{}) do
+    [query_type: :search]
   end
 
   @spec put_sql_string(SO.t(), QueryResult.t()) :: SO.t()
