@@ -1,4 +1,4 @@
-defmodule Logflare.Endpoints.Query do
+defmodule Logflare.Endpoints.EndpointQuery do
   @moduledoc false
 
   use TypedEctoSchema

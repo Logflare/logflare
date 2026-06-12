@@ -152,7 +152,9 @@ defmodule LogflareWeb.MonacoEditorComponent do
     {:noreply, socket}
   end
 
-  @spec parse_query(String.t(), [%Logflare.Endpoints.Query{}], [%Logflare.Alerting.AlertQuery{}]) ::
+  @spec parse_query(String.t(), [%Logflare.Endpoints.EndpointQuery{}], [
+          %Logflare.Alerting.AlertQuery{}
+        ]) ::
           :ok | {:error, String.t()}
   def parse_query("", _endpoints, _alerts), do: :ok
 
