@@ -251,7 +251,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
              ]
     end
 
-    test "handles null values" do
+    test "does not render null values" do
       log_event = build(:log_event, metadata_user_id: nil)
 
       select_fields = [
@@ -268,8 +268,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         <LogEventComponents.selected_fields log_event={@log_event} select_fields={@select_fields} />
         """)
 
-      assert html =~ "metadata.user_id"
-      assert html =~ "null"
+      refute html =~ "metadata.user_id"
+      refute html =~ "null"
     end
   end
 
@@ -308,13 +308,15 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
           metadata_user_id: "user_123",
           city: "San Francisco",
           timestamp: 1_234_567_890_000,
-          long_field: String.duplicate("a", 80)
+          long_field: String.duplicate("a", 80),
+          plan_id: nil
         )
 
       lql_rules = [
         %SelectRule{path: "metadata.user_id", alias: nil},
         %SelectRule{path: "metadata.store.city", alias: "city"},
-        %SelectRule{path: "long_field", alias: nil}
+        %SelectRule{path: "long_field", alias: nil},
+        %SelectRule{path: "metadata.plan_id", alias: nil}
       ]
 
       search_op = %{
@@ -331,6 +333,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
 
              long_field:
              aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+             plan_id: null
 
              """
     end
