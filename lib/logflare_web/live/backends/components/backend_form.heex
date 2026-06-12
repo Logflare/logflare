@@ -472,6 +472,21 @@
               Optional client key for mutual TLS authentication. Must be in PEM format.
             </small>
           </div>
+        <% "dynatrace" -> %>
+          <div class="form-group">
+            {label(f_config, :url, "Environment URL")}
+            {text_input(f_config, :url, class: "form-control")}
+            <small class="form-text text-muted">
+              Your Dynatrace environment URL, e.g. <code>https://&lt;env-id&gt;.live.dynatrace.com</code> for SaaS or <code>https://&lt;server&gt;/e/&lt;env-id&gt;</code> for Managed/ActiveGate. The <code>/api/v2/logs/ingest</code> path is appended automatically.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :api_token, "API Token")}
+            {text_input(f_config, :api_token, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              An access token with the <code>logs.ingest</code> (<em>Ingest logs v2</em>) scope.
+            </small>
+          </div>
         <% _ -> %>
           <div>Select a Backend Type</div>
       <% end %>
