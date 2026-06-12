@@ -24,7 +24,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Billing
   alias Logflare.BqRepo
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Google
   alias Logflare.Google.BigQuery.EventUtils
   alias Logflare.Google.BigQuery.GCPConfig
@@ -597,7 +597,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           query_string :: String.t(),
           declared_params :: [String.t()],
           input_params :: map(),
-          nil | Query.t(),
+          nil | EndpointQuery.t(),
           opts :: Keyword.t()
         ) :: {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_context(user_id, query_string, declared_params, input_params, nil, opts) do
@@ -613,7 +613,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           query_string :: String.t(),
           declared_params :: [String.t()],
           input_params :: map(),
-          endpoint_query :: Query.t(),
+          endpoint_query :: EndpointQuery.t(),
           opts :: Keyword.t()
         ) :: {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_context(
@@ -621,7 +621,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          query_string,
          declared_params,
          input_params,
-         %Query{} = endpoint_query,
+         %EndpointQuery{} = endpoint_query,
          opts
        ) do
     user = Users.Cache.get(user_id)

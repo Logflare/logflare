@@ -135,7 +135,7 @@ defmodule Logflare.Teams.TeamContext do
   end
 
   def resource_team_id_query(LogflareWeb.EndpointsLive, %{"id" => endpoint_id}, user_or_team_user) do
-    Endpoints.Query
+    Endpoints.EndpointQuery
     |> where(id: ^endpoint_id)
     |> resource_team_id_query(user_or_team_user)
   end

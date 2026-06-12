@@ -50,7 +50,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:query_result_rows, nil)
       |> assign(:total_bytes_processed, nil)
       |> assign(:show_endpoint, nil)
-      |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
+      |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.EndpointQuery{}))
       |> assign(:selected_backend_id, nil)
       |> assign(:allow_access, allow_access)
       |> assign(:base_url, LogflareWeb.Endpoint.url())
@@ -142,7 +142,7 @@ defmodule LogflareWeb.EndpointsLive do
             end)
 
           changeset =
-            %Endpoints.Query{}
+            %Endpoints.EndpointQuery{}
             |> Endpoints.change_query(params)
 
           socket
@@ -153,7 +153,7 @@ defmodule LogflareWeb.EndpointsLive do
           # reset the changeset
           |> assign(
             :endpoint_changeset,
-            Endpoints.change_query(%Endpoints.Query{query: placeholder_sql()})
+            Endpoints.change_query(%Endpoints.EndpointQuery{query: placeholder_sql()})
           )
           |> assign(:selected_backend_id, nil)
           # reset test results

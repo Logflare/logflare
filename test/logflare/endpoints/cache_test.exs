@@ -143,7 +143,7 @@ defmodule Logflare.Endpoints.CacheTest do
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
       assert Process.alive?(cache_pid)
 
-      assert Logflare.Repo.update_all(Endpoints.Query, set: [cache_duration_seconds: 0]) ==
+      assert Logflare.Repo.update_all(Endpoints.EndpointQuery, set: [cache_duration_seconds: 0]) ==
                {2, nil}
 
       assert Logflare.ContextCache.bust_keys([{Logflare.Endpoints, endpoint.id}]) == {:ok, 1}

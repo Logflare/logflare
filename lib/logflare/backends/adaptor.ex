@@ -10,12 +10,12 @@ defmodule Logflare.Backends.Adaptor do
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.QueryResult
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
 
   @type t :: module()
-  @type query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
+  @type query :: EndpointQuery.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
   @type source_backend :: {Source.t(), Backend.t()}
   @type start_link_arg :: source_backend() | Backend.t()
   @type query_identifier :: identifier() | Backend.t() | tuple()

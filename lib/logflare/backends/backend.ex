@@ -8,7 +8,7 @@ defmodule Logflare.Backends.Backend do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Rules.Rule
   alias Logflare.Sources.Source
   alias Logflare.User
@@ -46,7 +46,7 @@ defmodule Logflare.Backends.Backend do
     belongs_to :user, User
 
     has_many :rules, Rule
-    has_many :endpoint_queries, Query
+    has_many :endpoint_queries, EndpointQuery
 
     many_to_many :sources, Source, join_through: "sources_backends"
 
