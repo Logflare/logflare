@@ -311,7 +311,7 @@ defmodule Logflare.Backends do
 
         maybe_restart_consolidated_pipeline(updated)
 
-        if config_modified?, do: Adaptor.backend_config_changed(updated)
+        if config_modified?, do: Adaptor.on_backend_config_changed(updated)
 
         {:ok, typecast_config_string_map_to_atom_map(updated)}
 
@@ -523,7 +523,7 @@ defmodule Logflare.Backends do
 
     with {:ok, deleted} <- result do
       maybe_stop_consolidated_pipeline(deleted)
-      Adaptor.backend_deleted(deleted)
+      Adaptor.on_backend_deleted(deleted)
       {:ok, deleted}
     end
   end

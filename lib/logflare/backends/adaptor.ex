@@ -104,12 +104,12 @@ defmodule Logflare.Backends.Adaptor do
 
   No-op for adaptors that do not implement the optional callback.
   """
-  @spec backend_config_changed(Backend.t()) :: :ok
-  def backend_config_changed(%Backend{} = backend) do
+  @spec on_backend_config_changed(Backend.t()) :: :ok
+  def on_backend_config_changed(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :backend_config_changed, 1) do
-      adaptor.backend_config_changed(backend)
+    if function_exported?(adaptor, :on_backend_config_changed, 1) do
+      adaptor.on_backend_config_changed(backend)
     end
 
     :ok
@@ -120,12 +120,12 @@ defmodule Logflare.Backends.Adaptor do
 
   No-op for adaptors that do not implement the optional callback.
   """
-  @spec backend_deleted(Backend.t()) :: :ok
-  def backend_deleted(%Backend{} = backend) do
+  @spec on_backend_deleted(Backend.t()) :: :ok
+  def on_backend_deleted(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :backend_deleted, 1) do
-      adaptor.backend_deleted(backend)
+    if function_exported?(adaptor, :on_backend_deleted, 1) do
+      adaptor.on_backend_deleted(backend)
     end
 
     :ok
@@ -269,14 +269,14 @@ defmodule Logflare.Backends.Adaptor do
   Allows an adaptor to react to the new configuration, e.g. restarting
   connection pools that captured the previous config when they started.
   """
-  @callback backend_config_changed(Backend.t()) :: :ok
+  @callback on_backend_config_changed(Backend.t()) :: :ok
 
   @doc """
   Optional callback invoked after a backend has been deleted.
 
   Allows an adaptor to clean up any backend-related processes it manages.
   """
-  @callback backend_deleted(Backend.t()) :: :ok
+  @callback on_backend_deleted(Backend.t()) :: :ok
 
   @doc """
   Validates a given adaptor's configuration, using Ecto.Changeset functions. Accepts a chaangeset
@@ -302,6 +302,6 @@ defmodule Logflare.Backends.Adaptor do
                       supports_default_ingest?: 0,
                       consolidated_ingest?: 0,
                       redact_config: 1,
-                      backend_config_changed: 1,
-                      backend_deleted: 1
+                      on_backend_config_changed: 1,
+                      on_backend_deleted: 1
 end

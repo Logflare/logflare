@@ -52,12 +52,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def consolidated_ingest?, do: true
 
   @impl Logflare.Backends.Adaptor
-  def backend_config_changed(%Backend{id: backend_id}) do
+  def on_backend_config_changed(%Backend{id: backend_id}) do
     QueryConnectionSup.refresh_backend(backend_id)
   end
 
   @impl Logflare.Backends.Adaptor
-  def backend_deleted(%Backend{id: backend_id}) do
+  def on_backend_deleted(%Backend{id: backend_id}) do
     QueryConnectionSup.terminate_backend(backend_id)
   end
 

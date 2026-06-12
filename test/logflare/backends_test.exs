@@ -72,12 +72,12 @@ defmodule Logflare.BackendsTest do
   end
 
   describe "Adaptor lifecycle notifications" do
-    test "backend_config_changed/1 is a no-op for adaptors without the callback" do
-      assert :ok == Adaptor.backend_config_changed(%Backend{type: :webhook})
+    test "on_backend_config_changed/1 is a no-op for adaptors without the callback" do
+      assert :ok == Adaptor.on_backend_config_changed(%Backend{type: :webhook})
     end
 
-    test "backend_deleted/1 is a no-op for adaptors without the callback" do
-      assert :ok == Adaptor.backend_deleted(%Backend{type: :webhook})
+    test "on_backend_deleted/1 is a no-op for adaptors without the callback" do
+      assert :ok == Adaptor.on_backend_deleted(%Backend{type: :webhook})
     end
   end
 
