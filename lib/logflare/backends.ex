@@ -274,6 +274,8 @@ defmodule Logflare.Backends do
     default_ingest_modified? =
       Map.has_key?(attrs, "default_ingest?") or Map.has_key?(attrs, :default_ingest?)
 
+    config_modified? = Map.has_key?(attrs, "config") or Map.has_key?(attrs, :config)
+
     source_id = Map.get(attrs, "source_id") || Map.get(attrs, :source_id)
 
     changeset =
@@ -308,6 +310,8 @@ defmodule Logflare.Backends do
         Enum.each(updated.sources, &restart_source_sup(&1))
 
         maybe_restart_consolidated_pipeline(updated)
+
+        if config_modified?, do: Adaptor.on_backend_config_changed(updated)
 
         {:ok, typecast_config_string_map_to_atom_map(updated)}
 
@@ -519,6 +523,7 @@ defmodule Logflare.Backends do
 
     with {:ok, deleted} <- result do
       maybe_stop_consolidated_pipeline(deleted)
+      Adaptor.on_backend_deleted(deleted)
       {:ok, deleted}
     end
   end
