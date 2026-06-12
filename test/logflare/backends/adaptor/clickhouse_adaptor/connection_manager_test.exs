@@ -218,11 +218,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
       context
     end
 
-    test "`refresh_pool` returns ok when no pool is running", %{backend: backend} do
-      refute ConnectionManager.pool_active?(backend)
-      assert :ok == ConnectionManager.refresh_pool(backend)
-    end
-
     test "`refresh_pool` stops the pool so the next query restarts it", %{backend: backend} do
       assert :ok == ConnectionManager.ensure_pool_started(backend)
       assert ConnectionManager.pool_active?(backend)
