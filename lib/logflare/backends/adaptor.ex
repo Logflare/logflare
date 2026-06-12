@@ -20,11 +20,13 @@ defmodule Logflare.Backends.Adaptor do
   @type start_link_arg :: source_backend() | Backend.t()
   @type query_identifier :: identifier() | Backend.t() | tuple()
 
-  def child_spec(%Source{} = source, %Backend{} = backend) do
+  def child_spec(source, backend) do
     adaptor_module = get_adaptor(backend)
+    source_id = Map.get(source || %{}, :id, nil)
+    backend_id = Map.get(backend || %{}, :id, nil)
 
     %{
-      id: {adaptor_module, source.id, backend.id},
+      id: {adaptor_module, source_id, backend_id},
       start: {AdaptorSupervisor, :start_link, [{source, backend}]}
     }
   end

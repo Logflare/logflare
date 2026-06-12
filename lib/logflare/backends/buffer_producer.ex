@@ -12,6 +12,7 @@ defmodule Logflare.Backends.BufferProducer do
   require Logger
 
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue.QueueJanitor
   alias Logflare.LogEvent
   alias Logflare.Sources
 
@@ -20,15 +21,18 @@ defmodule Logflare.Backends.BufferProducer do
           demand: non_neg_integer(),
           source_id: pos_integer() | nil,
           source_token: atom() | nil,
-          backend_id: pos_integer(),
+          backend_id: pos_integer() | nil,
           last_discard_log_dt: DateTime.t() | nil,
-          interval: pos_integer()
+          interval: pos_integer(),
+          last_janitor_signal_at: non_neg_integer(),
+          overflow_threshold: pos_integer()
         }
 
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
   @default_interval 1_000
   @max_avg_before_pop 100
+  @janitor_signal_debounce_ms 2_500
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
@@ -42,18 +46,25 @@ defmodule Logflare.Backends.BufferProducer do
     backend_id = opts[:backend_id]
     interval = Keyword.get(opts, :interval, @default_interval)
 
+    threshold = IngestEventQueue.max_queue_size()
+
+    default_overflow_threshold =
+      if consolidated?, do: threshold * System.schedulers_online(), else: threshold
+
+    overflow_threshold = Keyword.get(opts, :overflow_threshold, default_overflow_threshold)
+
     state =
       if consolidated? do
-        init_consolidated_state(backend_id, interval, opts)
+        init_consolidated_state(backend_id, interval, overflow_threshold, opts)
       else
-        init_standard_state(opts, interval)
+        init_standard_state(opts, interval, overflow_threshold)
       end
 
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
   end
 
-  @spec init_standard_state(keyword(), pos_integer()) :: state()
-  defp init_standard_state(opts, interval) do
+  @spec init_standard_state(keyword(), pos_integer(), pos_integer()) :: state()
+  defp init_standard_state(opts, interval, overflow_threshold) do
     source = Sources.Cache.get_by_id(opts[:source_id])
 
     state = %{
@@ -63,7 +74,9 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: source.token,
       backend_id: opts[:backend_id],
       last_discard_log_dt: nil,
-      interval: interval
+      interval: interval,
+      overflow_threshold: overflow_threshold,
+      last_janitor_signal_at: System.monotonic_time(:millisecond) - @janitor_signal_debounce_ms
     }
 
     table_key = {state.source_id, state.backend_id, self()}
@@ -75,8 +88,8 @@ defmodule Logflare.Backends.BufferProducer do
     state
   end
 
-  @spec init_consolidated_state(pos_integer(), pos_integer(), keyword()) :: state()
-  defp init_consolidated_state(backend_id, interval, opts) do
+  @spec init_consolidated_state(pos_integer(), pos_integer(), pos_integer(), keyword()) :: state()
+  defp init_consolidated_state(backend_id, interval, overflow_threshold, opts) do
     state = %{
       consolidated: true,
       demand: 0,
@@ -84,7 +97,9 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: nil,
       backend_id: backend_id,
       last_discard_log_dt: nil,
-      interval: interval
+      interval: interval,
+      overflow_threshold: overflow_threshold,
+      last_janitor_signal_at: System.monotonic_time(:millisecond) - @janitor_signal_debounce_ms
     }
 
     table_key = {:consolidated, backend_id, self()}
@@ -228,8 +243,33 @@ defmodule Logflare.Backends.BufferProducer do
         total_demand - event_count
       end
 
+    state = maybe_signal_janitor(state)
+
     {events, %{state | demand: new_demand}}
   end
+
+  defp maybe_signal_janitor(%{backend_id: bid} = state) when is_integer(bid) do
+    now = System.monotonic_time(:millisecond)
+
+    table_key =
+      if state.consolidated,
+        do: {:consolidated, bid, self()},
+        else: {state.source_id, bid, self()}
+
+    with true <- now - state.last_janitor_signal_at >= @janitor_signal_debounce_ms,
+         size when is_integer(size) <- IngestEventQueue.get_table_size(table_key),
+         true <- size > state.overflow_threshold do
+      if state.consolidated,
+        do: QueueJanitor.notify_overflow(bid),
+        else: QueueJanitor.notify_overflow(state.source_id, bid)
+
+      %{state | last_janitor_signal_at: now}
+    else
+      _ -> state
+    end
+  end
+
+  defp maybe_signal_janitor(state), do: state
 
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [LogEvent.t()]
   defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
