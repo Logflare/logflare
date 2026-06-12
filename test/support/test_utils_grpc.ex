@@ -461,4 +461,69 @@ defmodule Logflare.TestUtilsGrpc do
       "FATAL"
     ])
   end
+
+  @doc """
+  Builds a `Vector.PushEventsRequest` containing a Log, a Metric and a Trace
+  event, mirroring what the Vector `vector` sink would send.
+  """
+  def random_vector_push_events_request do
+    %Vector.PushEventsRequest{
+      events: [
+        random_vector_log_event(),
+        random_vector_metric_event(),
+        random_vector_trace_event()
+      ]
+    }
+  end
+
+  def random_vector_log_event(message \\ nil) do
+    msg = message || "vector log #{TestUtils.random_string()}"
+
+    %Event.EventWrapper{
+      event:
+        {:log,
+         %Event.Log{
+           value: vector_string(msg),
+           fields: %{
+             "host" => vector_string("localhost"),
+             "level" => vector_string("info")
+           }
+         }}
+    }
+  end
+
+  def random_vector_metric_event do
+    %Event.EventWrapper{
+      event:
+        {:metric,
+         %Event.Metric{
+           name: "request_count_#{TestUtils.random_string()}",
+           namespace: "logflare",
+           kind: :Incremental,
+           timestamp: %Google.Protobuf.Timestamp{
+             seconds: System.os_time(:second),
+             nanos: 0
+           },
+           tags_v1: %{"env" => "test"},
+           value: {:counter, %Event.Counter{value: :rand.uniform() * 100}}
+         }}
+    }
+  end
+
+  def random_vector_trace_event do
+    %Event.EventWrapper{
+      event:
+        {:trace,
+         %Event.Trace{
+           fields: %{
+             "name" => vector_string("trace_#{TestUtils.random_string()}"),
+             "message" => vector_string("trace_message")
+           }
+         }}
+    }
+  end
+
+  defp vector_string(str) when is_binary(str) do
+    %Event.Value{kind: {:raw_bytes, str}}
+  end
 end
