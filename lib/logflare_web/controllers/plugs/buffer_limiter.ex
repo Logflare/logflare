@@ -8,7 +8,10 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   """
   alias Logflare.Backends
   alias Logflare.Sources.Source
+  alias Logflare.SystemCache
   alias LogflareWeb.Api.FallbackController
+
+  @memory_limit 0.85
 
   @type opts :: any()
 
@@ -21,7 +24,8 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   """
   @spec call(Plug.Conn.t(), opts()) :: Plug.Conn.t()
   def call(%{assigns: %{source: %Source{} = source}} = conn, _opts) do
-    if Backends.cached_local_pending_buffer_full?(source) do
+    if SystemCache.memory_utilization() >= @memory_limit or
+         Backends.cached_local_pending_buffer_full?(source) do
       :telemetry.execute(
         [:logflare, :ingest, :requests, :buffer_full],
         %{count: 1},

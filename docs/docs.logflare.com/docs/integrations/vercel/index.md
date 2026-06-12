@@ -6,7 +6,7 @@ title: Vercel
 
 Vercel's log drains provide a robust and scalable way to send application logs from your Vercel app to any consolidated logging system. We've developed the Logflare Vercel integration on top of log drains to make it easy for you to get logs from Vercel into your Logflare account. Once setup it's super easy to stream, search, alert on and dashboard your structured logs from Vercel.
 
-Not only that, but you can log a structured event from your Vercel app as a stringified JSON object and we'll automatically parse that into a JSON object on our end which enables all the powerful streaming, searching, alerting and dashboaring features for each individual field of that object.
+Not only that, but you can log a structured event from your Vercel app as a stringified JSON object and we'll automatically parse that into a JSON object on our end which enables all the powerful streaming, searching, alerting and dashboarding features for each individual field of that object.
 
 ## Install the Integration
 
@@ -16,7 +16,7 @@ Visit the Logflare integration page and click `add`. This will walk you through 
 
 ## Setup a Log Drain
 
-After installing the integation, navigate to the installed integration configuration page in your Vercel account. Now you need to add a log drain. This is what tells Vercel to send all your logs to Logflare.
+After installing the integration, navigate to the installed integration configuration page in your Vercel account. Now you need to add a log drain. This is what tells Vercel to send all your logs to Logflare.
 
 ![Create a vercel log drain](./create-vercel-log-drain.png)
 

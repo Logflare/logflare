@@ -193,9 +193,6 @@ config :logflare,
        ]
        |> Enum.filter(&(&1 != nil))
 
-config :logger,
-  metadata: logflare_metadata
-
 log_level =
   case String.downcase(System.get_env("LOGFLARE_LOG_LEVEL") || "") do
     # TODO: remove at v2
