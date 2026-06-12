@@ -47,16 +47,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
       assert {:error, :no_manager} == QueryConnectionSup.recycle_backend_local(backend.id)
     end
 
-    test "returns an error when the manager has no active pool", %{backend: backend} do
+    test "errors without an active pool, then recycles once one is started", %{backend: backend} do
       {:ok, _manager_pid} =
         QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
 
       assert {:error, :no_pool} == QueryConnectionSup.recycle_backend_local(backend.id)
-    end
-
-    test "recycles the backend's active pool", %{backend: backend} do
-      {:ok, _manager_pid} =
-        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
 
       assert :ok == ConnectionManager.ensure_pool_started(backend)
       assert :ok == QueryConnectionSup.recycle_backend_local(backend.id)
