@@ -166,9 +166,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
 
       on_exit(fn -> Application.put_env(:logflare, ConnectionManager, config) end)
 
-      {:ok, manager_pid} = ConnectionManager.start_link(context.backend)
+      {:ok, _manager_pid} = ConnectionManager.start_link(context.backend)
 
-      Map.put(context, :manager_pid, manager_pid)
+      context
     end
 
     test "`recycle_pool` returns an error when no pool is running", %{backend: backend} do
@@ -176,14 +176,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
       assert {:error, :no_pool} == ConnectionManager.recycle_pool(backend)
     end
 
-    test "`recycle_pool` recycles connections without restarting the pool", %{
-      backend: backend,
-      manager_pid: manager_pid
-    } do
+    test "`recycle_pool` recycles connections without restarting the pool", %{backend: backend} do
       assert :ok == ConnectionManager.ensure_pool_started(backend)
 
-      %ConnectionManager{pool_pid: pool_pid, next_recycle_at: scheduled_at} =
-        :sys.get_state(manager_pid)
+      pool_pid = ConnectionManager.get_pool_pid(backend)
+      scheduled_at = ConnectionManager.get_next_recycle_at(backend)
 
       assert is_pid(pool_pid)
       assert is_integer(scheduled_at)
@@ -192,31 +189,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
 
       assert :ok == ConnectionManager.recycle_pool(backend)
 
-      %ConnectionManager{pool_pid: same_pool_pid, next_recycle_at: rescheduled_at} =
-        :sys.get_state(manager_pid)
-
-      assert same_pool_pid == pool_pid
-      assert Process.alive?(same_pool_pid)
-      assert rescheduled_at > scheduled_at
+      assert ConnectionManager.get_pool_pid(backend) == pool_pid
+      assert Process.alive?(pool_pid)
+      assert ConnectionManager.get_next_recycle_at(backend) > scheduled_at
       assert ConnectionManager.pool_active?(backend)
     end
 
     test "the resolve loop recycles the pool once the recycle interval elapses", %{
-      backend: backend,
-      manager_pid: manager_pid
+      backend: backend
     } do
       assert :ok == ConnectionManager.ensure_pool_started(backend)
 
-      %ConnectionManager{pool_pid: pool_pid, next_recycle_at: scheduled_at} =
-        :sys.get_state(manager_pid)
+      pool_pid = ConnectionManager.get_pool_pid(backend)
+      scheduled_at = ConnectionManager.get_next_recycle_at(backend)
 
       Process.sleep(@timeout_interval)
 
-      %ConnectionManager{pool_pid: same_pool_pid, next_recycle_at: rescheduled_at} =
-        :sys.get_state(manager_pid)
-
-      assert same_pool_pid == pool_pid
-      assert rescheduled_at > scheduled_at
+      assert ConnectionManager.get_pool_pid(backend) == pool_pid
+      assert ConnectionManager.get_next_recycle_at(backend) > scheduled_at
       assert ConnectionManager.pool_active?(backend)
     end
   end

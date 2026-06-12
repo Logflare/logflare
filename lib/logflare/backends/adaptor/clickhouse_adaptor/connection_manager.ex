@@ -160,6 +160,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     |> GenServer.cast({:set_last_activity, timestamp})
   end
 
+  @doc """
+  Returns the PID of the active connection pool, or `nil` if no pool is running.
+  """
+  @spec get_pool_pid(Backend.t()) :: pid() | nil
+  def get_pool_pid(%Backend{} = backend) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.call(:get_pool_pid)
+  end
+
+  @doc """
+  Returns the timestamp at which the active pool's connections are next scheduled
+  to be recycled, or `nil` if no pool is running.
+  """
+  @spec get_next_recycle_at(Backend.t()) :: integer() | nil
+  def get_next_recycle_at(%Backend{} = backend) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.call(:get_next_recycle_at)
+  end
+
   @impl true
   def init(backend_id) do
     resolve_timer_ref = resolve_timer_send_after()
@@ -230,6 +251,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @impl true
   def handle_call(:get_last_activity, _from, %__MODULE__{last_activity: last_activity} = state) do
     {:reply, last_activity, state}
+  end
+
+  @impl true
+  def handle_call(:get_pool_pid, _from, %__MODULE__{pool_pid: pool_pid} = state) do
+    {:reply, pool_pid, state}
+  end
+
+  @impl true
+  def handle_call(
+        :get_next_recycle_at,
+        _from,
+        %__MODULE__{next_recycle_at: next_recycle_at} = state
+      ) do
+    {:reply, next_recycle_at, state}
   end
 
   @impl true

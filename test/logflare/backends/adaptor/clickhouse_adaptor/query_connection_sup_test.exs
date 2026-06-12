@@ -90,19 +90,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
       {:ok, _manager_pid} =
         QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
 
-      {:ok, other_manager_pid} =
+      {:ok, _other_manager_pid} =
         QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(other_backend))
 
       assert :ok == ConnectionManager.ensure_pool_started(backend)
       assert :ok == ConnectionManager.ensure_pool_started(other_backend)
 
-      %ConnectionManager{next_recycle_at: other_scheduled_at} =
-        :sys.get_state(other_manager_pid)
+      other_scheduled_at = ConnectionManager.get_next_recycle_at(other_backend)
 
       assert QueryConnectionSup.recycle_backend(backend.id) == %{Node.self() => :ok}
 
-      %ConnectionManager{next_recycle_at: other_after} = :sys.get_state(other_manager_pid)
-      assert other_after == other_scheduled_at
+      assert ConnectionManager.get_next_recycle_at(other_backend) == other_scheduled_at
     end
   end
 
