@@ -42,6 +42,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @managed_service_account_partition_count 5
   @service_account_prefix "logflare-managed"
   @reservation_error_regex ~r/reservation/i
+  @search_reservation_query_timeout_ms 60_000
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
@@ -571,26 +572,41 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @spec build_base_query_opts(user :: User.t(), opts :: Keyword.t()) :: Keyword.t()
   defp build_base_query_opts(%User{} = user, opts) do
     query_type = Keyword.get(opts, :query_type)
+    reservation = resolve_reservation(user, query_type, Keyword.get(opts, :reservation))
 
     [
       location: user.bigquery_dataset_location,
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
       dryRun: Keyword.get(opts, :dry_run, false),
       query_type: query_type,
-      reservation:
-        case Keyword.get(opts, :reservation) do
-          nil ->
-            case query_type do
-              :search -> user.bigquery_reservation_search
-              :alerts -> user.bigquery_reservation_alerts
-              _ -> nil
-            end
+      reservation: reservation
+    ] ++ query_timeout_opts(query_type, reservation)
+  end
 
-          value ->
-            value
-        end
+  @spec resolve_reservation(
+          user :: User.t(),
+          query_type :: atom() | nil,
+          override :: String.t() | nil
+        ) :: String.t() | nil
+  defp resolve_reservation(%User{bigquery_reservation_search: reservation}, :search, nil),
+    do: reservation
+
+  defp resolve_reservation(%User{bigquery_reservation_alerts: reservation}, :alerts, nil),
+    do: reservation
+
+  defp resolve_reservation(%User{}, _query_type, nil), do: nil
+  defp resolve_reservation(%User{}, _query_type, override), do: override
+
+  @spec query_timeout_opts(query_type :: atom() | nil, reservation :: String.t() | nil) ::
+          Keyword.t()
+  defp query_timeout_opts(:search, reservation) when is_non_empty_binary(reservation) do
+    [
+      jobTimeoutMs: @search_reservation_query_timeout_ms,
+      timeoutMs: @search_reservation_query_timeout_ms
     ]
   end
+
+  defp query_timeout_opts(_query_type, _reservation), do: []
 
   @spec execute_query_with_context(
           user_id :: integer(),
