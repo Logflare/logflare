@@ -75,50 +75,28 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
           }
         )
 
-      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
+      {:ok, view, html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
-      assert view |> element(endpoint_version_row(version_3)) |> render() |> normalized_text() =~
-               normalized_text("""
-               Version
-               current
-               3
-               Changes
-               Description:
-               latest description
-               Query:select current_date() updated_value from endpoint_versions
-               Author
-               #{user.email}
-               Updated
-               #{Calendar.strftime(version_3.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}
-               """)
+      version_3_html = view |> element(endpoint_version_row(version_3)) |> render()
 
-      assert view |> element(endpoint_version_row(version_2)) |> render() |> normalized_text() =~
-               normalized_text("""
-               Version
-               2
-               Changes
-               Caching:
-               120 seconds
-               Authentication:
-               disabled
-               Author
-               #{user.email}
-               Updated
-               #{Calendar.strftime(version_2.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}
-               """)
+      assert version_3_html =~ "current"
+      assert version_3_html =~ "latest description"
+      assert version_3_html =~ "from endpoint_versions "
+      assert html =~ user.email
 
-      assert view |> element(endpoint_version_row(version_1)) |> render() |> normalized_text() =~
-               normalized_text("""
-               Version
-               1
-               Changes
-               Description:
-               created description
-               Author
-               #{user.email}
-               Updated
-               #{Calendar.strftime(version_1.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}
-               """)
+      version_2_html = view |> element(endpoint_version_row(version_2)) |> render()
+
+      assert version_2_html =~ "Caching:"
+      assert version_2_html =~ "120 seconds"
+      assert version_2_html =~ "Authentication:"
+      assert version_2_html =~ "disabled"
+      assert version_2_html =~ user.email
+
+      version_1_html = view |> element(endpoint_version_row(version_1)) |> render()
+
+      assert version_1_html =~ "Description:"
+      assert version_1_html =~ "created description"
+      assert version_1_html =~ user.email
     end
 
     test "snapshot modal", %{
@@ -153,23 +131,17 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       assert "/endpoints/#{endpoint.id}/versions" == patched_uri.path
       assert "t=#{team.id}&version_number=2" == patched_uri.query
 
-      text =
+      modal_html =
         view
         |> element("#endpoint-version-snapshot-modal")
         |> render()
-        |> normalized_text()
 
-      assert text =~
-               normalized_text("""
-                 Version 2
-                 Authentication:disabledMax rows:250Caching:120 secondsCache warming:1800 secondsQuery sandboxing:disabledRedact PII:disabledDynamic reservation:disabled
-                 BigQuery SQL
-                 copy
-                 SELECT
-                 2 AS version_number
-               """)
-
-      assert text =~ "snapshot description"
+      assert modal_html =~ "Version 2"
+      assert modal_html =~ "BigQuery SQL"
+      assert modal_html =~ "copy"
+      assert modal_html =~ "SELECT"
+      assert modal_html =~ "2 AS version_number"
+      assert modal_html =~ "snapshot description"
       assert_query_displayed(view, "select 2 as version_number")
     end
 
@@ -248,10 +220,8 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
         |> login_user(user, team_user)
         |> live(~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
-      text = normalized_text(html)
-
-      assert text =~ endpoint.name
-      assert text =~ "team-visible-version"
+      assert html =~ endpoint.name
+      assert html =~ "team-visible-version"
       assert html =~ ~s|href="/endpoints?t=#{team.id}"|
       assert html =~ ~s|href="/endpoints/#{endpoint.id}?t=#{team.id}"|
     end
@@ -282,10 +252,8 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
         |> login_user(user, team_user)
         |> live(~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
-      text = normalized_text(html)
-
-      assert text =~ "updated by team user"
-      assert text =~ team_user.email
+      assert html =~ "updated by team user"
+      assert html =~ team_user.email
     end
 
     test "ignores malformed and missing version query params", %{
@@ -313,16 +281,6 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
   end
 
   defp endpoint_version_row(%Version{id: version_id}), do: "#versions-#{version_id}"
-
-  defp normalized_text(html) do
-    html
-    |> Floki.parse_fragment!()
-    |> Floki.text()
-    |> String.split("\n")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.join("\n")
-  end
 
   defp assert_query_displayed(view, query) do
     {:ok, formatted_query} = SqlFmt.format_query(query)

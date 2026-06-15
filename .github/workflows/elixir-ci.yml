@@ -145,10 +145,10 @@ jobs:
           path: |
             deps
             _build
-          key: mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock') }}
+          key: mix-v2-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock', '**/Cargo.lock', 'native/**') }}
           restore-keys: |
-            mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
-            mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+            mix-v2-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
+            mix-v2-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
 
       - name: Restore Dialyzer PLT cache
         if: matrix.commands.name == 'Typing check'
