@@ -40,7 +40,8 @@ defmodule Logflare.Telemetry do
             name: "Logflare",
             service: %{
               name: "Logflare",
-              version: Application.spec(:logflare, :vsn) |> to_string()
+              version: Application.spec(:logflare, :vsn) |> to_string(),
+              commit: System.get_env("LOGFLARE_COMMIT_SHA")
             },
             node: inspect(Node.self()),
             cluster: Application.get_env(:logflare, :metadata)[:cluster]
