@@ -58,7 +58,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
               {BufferProducer,
                [
                  source_id: source.id,
-                 backend_id: backend.id
+                 backend_id: backend.id,
+                 id_passing: true
                ]},
             transformer:
               {__MODULE__, :transform,
@@ -74,7 +75,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
               concurrency: 16,
               batch_size: bq_batch_size_splitter(),
               batch_timeout: 1_500,
-              # must be set when using custom batch_size splitter
+              # required when using a custom batch_size splitter
               max_demand: @max_batch_size
             ]
           ],
@@ -120,7 +121,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   @impl Broadway.Acknowledger
   def ack({queue, config}, successful, failed) do
-    {sid, bid, _tid} = queue
+    {sid, bid, _pipeline_ref} = queue
 
     maybe_requeue_failed({sid, bid}, failed, config)
 
@@ -135,16 +136,35 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       nil ->
         Logger.warning("Source not found for ack!", source_id: sid)
 
-        for %{data: %{is_popped: false} = le} <- successful do
-          IngestEventQueue.delete(queue, le)
+        for %{data: {id, tid, _size}} <- successful do
+          IngestEventQueue.delete_id(tid, id)
         end
 
       source ->
-        for %{data: le} <- successful do
-          # emit telemetry on event
-          emit_event_telemetry(queue, source, le, backend_metadata)
+        metrics = Sources.get_source_metrics_for_ingest(source.token)
+
+        for %{data: {id, tid, size}} <- successful do
+          case :ets.lookup(tid, id) do
+            [{^id, _status, le, _byte_size}] ->
+              emit_event_telemetry(queue, source, le, size, backend_metadata)
+
+            [] ->
+              :ok
+          end
+
+          if metrics.avg > 100 do
+            IngestEventQueue.delete_id(tid, id)
+          else
+            IngestEventQueue.update_status(tid, id, :ingested)
+          end
         end
     end
+
+    :telemetry.execute(
+      [:logflare, :backends, :pipeline, :ack],
+      %{successful: length(successful), failed: length(failed)},
+      %{}
+    )
 
     :ok
   end
@@ -158,9 +178,28 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       system_source: context.system_source
     )
 
-    message
-    |> Message.update_data(&process_data(&1, context))
-    |> Message.put_batcher(:bq)
+    Message.put_batcher(message, :bq)
+  end
+
+  @spec bq_batch_size_splitter() ::
+          {{non_neg_integer(), non_neg_integer()},
+           (Message.t(), {non_neg_integer(), non_neg_integer()} ->
+              {:emit | :cont, {non_neg_integer(), non_neg_integer()}})}
+  defp bq_batch_size_splitter do
+    {
+      {@max_batch_size, @max_batch_length},
+      fn
+        _message, {1, _len} ->
+          {:emit, {@max_batch_size, @max_batch_length}}
+
+        %{data: {_id, _tid, size}}, {count, len} ->
+          if len - size <= 0 do
+            {:emit, {@max_batch_size, @max_batch_length}}
+          else
+            {:cont, {count - 1, len - size}}
+          end
+      end
+    }
   end
 
   @impl Broadway
@@ -189,9 +228,27 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     } do
       source = Sources.Cache.get_by_id(context.source_id)
 
+      # Fetch full LogEvents from ETS. Sizes were computed in the producer and are
+      # carried on each message — no recomputation needed here. The batch is already
+      # byte-bounded by bq_batch_size_splitter/0 in the batcher config.
+      {triples, missing} = fetch_events_from_messages(messages, context)
+
+      if missing != [] do
+        Logger.warning("Could not fetch #{length(missing)} ids from ets")
+
+        :telemetry.execute(
+          [:logflare, :ingest_event_queue, :missing_ids],
+          %{count: length(missing)},
+          %{source_id: context.source_id}
+        )
+      end
+
+      log_events = Enum.map(triples, fn {_msg, le, _size} -> le end)
+      batch_count = length(log_events)
+      batch_size = Enum.sum_by(triples, fn {_msg, _le, size} -> size end)
+
       if source && source.bq_storage_write_api do
-        log_events = messages |> Enum.map(& &1.data)
-        batch_attrs = compute_batch_attrs(messages, :bq_storage_write)
+        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
           BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
@@ -202,21 +259,46 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             backend_id: context.backend_id
           )
         end
-
-        messages
       else
-        batch_attrs = compute_batch_attrs(messages, :bq_streaming_insert)
+        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_streaming_insert)
+        event_size_pairs = Enum.map(triples, fn {_msg, le, size} -> {le, size} end)
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
-          stream_batch(context, messages)
+          stream_batch(context, event_size_pairs)
         end
+      end
+
+      succeeded = Enum.map(triples, fn {msg, _le, _size} -> msg end)
+
+      failed_missing =
+        Enum.map(missing, fn %{data: {id, tid, _size}} = msg ->
+          msg
+          |> Message.update_data(fn _ -> {id, tid, 0} end)
+          |> Message.failed("missing from ETS")
+        end)
+
+      case failed_missing do
+        [] -> succeeded
+        _ -> succeeded ++ failed_missing
       end
     end
   end
 
-  def le_messages_to_bq_rows(messages) do
-    Enum.map(messages, fn message ->
-      le_to_bq_row(message.data)
+  @spec le_list_to_bq_rows([LE.t()]) :: [Model.TableDataInsertAllRequestRows.t()]
+  def le_list_to_bq_rows(log_events) do
+    Enum.map(log_events, &le_to_bq_row/1)
+  end
+
+  defp fetch_events_from_messages(messages, context) do
+    Enum.reduce(messages, {[], []}, fn
+      %{data: {id, tid, size}} = message, {out, missing} ->
+        case :ets.lookup(tid, id) do
+          [{^id, _status, log_event, _byte_size}] ->
+            {[{message, process_data(log_event, context), size} | out], missing}
+
+          [] ->
+            {out, [message | missing]}
+        end
     end)
   end
 
@@ -265,7 +347,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   def stream_batch(
         %{source_token: source_token, user_id: user_id, system_source: system_source} = context,
-        messages
+        event_size_pairs
       ) do
     Logger.metadata(
       source_id: source_token,
@@ -277,17 +359,18 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :telemetry.span(
       [:logflare, :ingest, :pipeline, :stream_batch],
       %{source_token: source_token},
-      fn -> execute_bigquery_stream_batch(context, messages) end
+      fn -> execute_bigquery_stream_batch(context, event_size_pairs) end
     )
   end
 
-  defp execute_bigquery_stream_batch(%{source_token: source_token} = context, messages) do
+  defp execute_bigquery_stream_batch(%{source_token: source_token} = context, event_size_pairs) do
+    log_events = Enum.map(event_size_pairs, &elem(&1, 0))
+
     rows =
       OpenTelemetry.Tracer.with_span "ingest.bq_serialize", %{
         attributes: %{insert_method: :bq_streaming_insert}
       } do
-        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erlang.external_size(messages))
-        result = le_messages_to_bq_rows(messages)
+        result = le_list_to_bq_rows(log_events)
         OpenTelemetry.Tracer.set_attribute(:serialized_bytes, :erlang.external_size(result))
         result
       end
@@ -322,12 +405,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
               # "The project web-wtc-1537199112807 has not enabled BigQuery."
               disconnect_backend_and_email(source_token, message)
 
-            # Don't disconnect here because sometimes the GCP API doesn't find projects
-            #
-            # "Not found:" <> _tail = message ->
-            #   disconnect_backend_and_email(source_id, message)
-            #   messages
-
             _message ->
               Logger.warning("Stream batch response error!",
                 tesla_response: GenUtils.get_tesla_error_message(response)
@@ -336,11 +413,14 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
         {:error, response} ->
           OpenTelemetry.Tracer.set_status(:error, inspect(response))
-          Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
+
+          Logger.warning("Stream batch unknown error!",
+            tesla_response: inspect(response, limit: 20)
+          )
       end
     end
 
-    {messages, %{}}
+    {event_size_pairs, %{}}
   end
 
   def process_data(%LE{source_id: source_id} = log_event, context) do
@@ -380,11 +460,13 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     String.to_atom("#{source_id}" <> "-pipeline")
   end
 
-  defp compute_batch_attrs(messages, bq_api_tag) do
-    event_count = length(messages)
-    bytes = messages |> Enum.map(&:erlang.external_size(&1.data.body)) |> Enum.sum()
-
-    %{insert_method: bq_api_tag, batch_event_count: event_count, batch_bytes: bytes}
+  @spec compute_batch_attrs(non_neg_integer(), non_neg_integer(), atom()) :: map()
+  defp compute_batch_attrs(batch_count, batch_size, bq_api_tag) do
+    %{
+      insert_method: bq_api_tag,
+      batch_event_count: batch_count,
+      batch_bytes: batch_size
+    }
   end
 
   defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
@@ -436,16 +518,30 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   # Requeue failed events if the number of previous retries is less than @max_retries
   defp maybe_requeue_failed(_, [], _), do: :ok
-  defp maybe_requeue_failed(_, _, %{max_retries: 0}), do: :ok
+
+  defp maybe_requeue_failed(_, failed, %{max_retries: 0}) do
+    for %{data: {id, tid, _size}} <- failed, do: IngestEventQueue.delete_id(tid, id)
+    :ok
+  end
 
   defp maybe_requeue_failed({_sid, _bid} = sid_bid, failed, %{max_retries: max_retries}) do
-    events =
-      Enum.filter(failed, fn %{data: %LE{retries: retries}} -> retries < max_retries end)
-      |> Enum.map(fn %{data: %LE{} = event} ->
-        %LE{event | retries: (event.retries || 0) + 1}
+    to_requeue =
+      Enum.reduce(failed, [], fn %{data: {id, tid, _size}}, acc ->
+        case :ets.lookup(tid, id) do
+          [{^id, _status, %LE{retries: retries} = le, _byte_size} | _]
+          when retries < max_retries ->
+            [%LE{le | retries: (retries || 0) + 1} | acc]
+
+          [{^id, _status, _le, _byte_size} | _] ->
+            IngestEventQueue.delete_id(tid, id)
+            acc
+
+          [] ->
+            acc
+        end
       end)
 
-    requeue(sid_bid, events)
+    requeue(sid_bid, to_requeue)
   end
 
   defp requeue(_, []), do: :ok
@@ -457,11 +553,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     IngestEventQueue.add_to_table(sid_bid, events)
   end
 
-  defp emit_event_telemetry({sid, bid, _}, source, le, backend_metadata) do
+  defp emit_event_telemetry({sid, bid, _}, source, le, size, backend_metadata) do
     # emit telemetry on event
     event_labels = Sources.get_labels_from_event(source, le)
 
-    metrics = %{ingested_bytes: :erlang.external_size(le.body)}
+    metrics = %{ingested_bytes: size}
 
     metadata =
       %{
@@ -475,35 +571,5 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       |> Map.merge(backend_metadata)
 
     :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
-  end
-
-  # https://hexdocs.pm/broadway/Broadway.html#start_link/2
-  # split batch sizes based on json size
-  # ensure that we are well below the 10MB limit
-  def bq_batch_size_splitter do
-    {
-      {@max_batch_size, @max_batch_length},
-      fn
-        # reach max count, emit
-        _message, {1, _len} ->
-          {:emit, {@max_batch_size, @max_batch_length}}
-
-        # check content length
-        message, {count, len} ->
-          length = message_size(message.data.body)
-
-          if len - length <= 0 do
-            # below max batch count, but reach max batch length
-            {:emit, {@max_batch_size, @max_batch_length}}
-          else
-            # below max batch count, below max batch length
-            {:cont, {count - 1, len - length}}
-          end
-      end
-    }
-  end
-
-  def message_size(data) do
-    :erlang.external_size(data)
   end
 end
