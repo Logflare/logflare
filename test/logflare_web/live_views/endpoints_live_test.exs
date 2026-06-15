@@ -29,6 +29,32 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert Logflare.Endpoints.get_endpoint_query(endpoint.id)
     end
+
+    test "attacker cannot attach another user's backend to an endpoint", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user, endpoints_beta: true)
+      backend = insert(:postgres_backend, user: victim, name: "Victim Postgres")
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live_with_redirect(~p"/endpoints/new")
+
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{
+        endpoint: %{
+          backend_id: backend.id,
+          name: "forged endpoint",
+          query: "select 1"
+        }
+      })
+
+      assert render(view) =~ "Backend not found"
+
+      endpoints = Logflare.Endpoints.list_endpoints_by(user_id: attacker.id)
+      refute Enum.any?(endpoints, &(&1.backend_id == backend.id))
+    end
   end
 
   describe "with existing endpoint" do
@@ -36,7 +62,17 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, endpoint: insert(:endpoint, user: user)}
     end
 
-    test "list endpoints", %{conn: conn, endpoint: endpoint, team: team} do
+    test "list endpoints", %{conn: conn, endpoint: endpoint, team: team, user: user} do
+      backend = insert(:postgres_backend, user: user, name: "Test Postgres")
+
+      postgres_endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :pg_sql,
+          name: "postgres endpoint"
+        )
+
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints")
 
       # intro message and link to docs
@@ -49,6 +85,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
       # description
       assert has_element?(view, "ul li p", endpoint.description)
       assert has_element?(view, "ul li *[title='Auth enabled']")
+      assert has_element?(view, "ul li span", "BigQuery SQL")
+
+      postgres_endpoint_html = view |> element("ul li", postgres_endpoint.name) |> render()
+      assert postgres_endpoint_html =~ "Postgres SQL"
+      assert postgres_endpoint_html =~ backend.name
 
       # link to show
       view
@@ -1274,10 +1315,15 @@ defmodule LogflareWeb.EndpointsLiveTest do
       team_user: team_user,
       endpoint: endpoint
     } do
-      {:ok, _view, html} =
+      backend = insert(:postgres_backend, user: user)
+      insert(:endpoint, user: user, backend: backend)
+
+      {:ok, view, _html} =
         conn |> login_user(user, team_user) |> live_with_redirect(~p"/endpoints")
 
-      for path <- ["endpoints/new", "endpoints/#{endpoint.id}"] do
+      html = render(view)
+
+      for path <- ["endpoints/new", "endpoints/#{endpoint.id}", "backends/#{backend.id}"] do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
     end
