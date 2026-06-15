@@ -863,7 +863,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       tid = IngestEventQueue.get_tid(sbp)
 
       assert :ok = IngestEventQueue.update_status(tid, le.id, :processing)
-      assert [{_id, :processing, _}] = :ets.lookup(tid, le.id)
+      assert [{_id, :processing, _, _}] = :ets.lookup(tid, le.id)
     end
 
     test "returns :ok silently when ETS table is stale/deleted" do
@@ -968,7 +968,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       new_state = QueueJanitor.do_cleanup_stale_processing(state)
 
       # Still :processing — first cycle only builds snapshot
-      assert [{_, :processing, _}] = :ets.lookup(tid, le.id)
+      assert [{_, :processing, _, _}] = :ets.lookup(tid, le.id)
       # Snapshot now populated
       assert map_size(new_state.processing_snapshot) == 1
     end
@@ -989,7 +989,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # Second cycle — event still :processing → stale
       _state = QueueJanitor.do_cleanup_stale_processing(state)
 
-      assert [{_, :pending, %{retries: 1}}] = :ets.lookup(tid, le.id)
+      assert [{_, :pending, %{retries: 1}, _}] = :ets.lookup(tid, le.id)
     end
 
     test "max retries exceeded: stale event is deleted" do

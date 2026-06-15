@@ -107,7 +107,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-      assert [{_id, :ingested, _}] = :ets.lookup(tid, le.id)
+      assert [{_id, :ingested, _, _}] = :ets.lookup(tid, le.id)
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
@@ -442,17 +442,10 @@ defmodule Logflare.BigQuery.PipelineTest do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       IngestEventQueue.add_to_table(sid_bid_pid, events)
-      {:ok, ids, tid} = IngestEventQueue.take_pending_ids(sid_bid_pid, length(events))
+      {:ok, id_size_pairs, tid} = IngestEventQueue.take_pending_ids(sid_bid_pid, length(events))
 
-      # Simulate what BufferProducer does: compute size per event via ETS lookup
       messages =
-        Enum.map(ids, fn id ->
-          size =
-            case :ets.lookup(tid, id) do
-              [{^id, _status, le}] -> :erlang.external_size(le.body)
-              [] -> 0
-            end
-
+        Enum.map(id_size_pairs, fn {id, size} ->
           %Message{data: {id, tid, size}, acknowledger: {Pipeline, :ack_id, :ack_data}}
         end)
 

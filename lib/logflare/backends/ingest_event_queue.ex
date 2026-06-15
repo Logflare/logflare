@@ -296,7 +296,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def add_to_table({sid_bid_pid, tid}, batch, _opts) when is_tuple(sid_bid_pid) do
     objects =
       for %{id: id} = event <- batch do
-        {id, :pending, event}
+        {id, :pending, event, :erlang.external_size(event.body)}
       end
 
     :ets.insert(tid, objects)
@@ -436,7 +436,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def total_pending({_sid, _bid, _pid} = sid_bid_pid) do
     ms =
       Ex2ms.fun do
-        {_event_id, :pending, _event} -> true
+        {_event_id, :pending, _event, _size} -> true
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -454,7 +454,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def total_by_status({_, _} = sid_bid, status) do
     ms =
       Ex2ms.fun do
-        {_event_id, event_status, _event} when event_status == ^status -> true
+        {_event_id, event_status, _event, _size} when event_status == ^status -> true
       end
 
     traverse_queues(
@@ -478,7 +478,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def take_pending(sid_bid_pid, n) when is_integer(n) do
     ms =
       Ex2ms.fun do
-        {_event_id, :pending, event} -> event
+        {_event_id, :pending, event, _size} -> event
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -500,23 +500,23 @@ defmodule Logflare.Backends.IngestEventQueue do
   from ETS at batch-insert time.
   """
   @spec take_pending_ids(source_backend_pid(), integer()) ::
-          {:ok, [term()], :ets.tid() | nil} | {:error, :not_initialized}
+          {:ok, [{term(), non_neg_integer()}], :ets.tid() | nil} | {:error, :not_initialized}
   def take_pending_ids(_, 0), do: {:ok, [], nil}
 
   def take_pending_ids(sid_bid_pid, n) when is_integer(n) do
     ms =
       Ex2ms.fun do
-        {event_id, :pending, _event} -> event_id
+        {event_id, :pending, _event, size} -> {event_id, size}
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          size when is_integer(size) <- :ets.info(tid, :size),
-         {taken_ids, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      for id <- taken_ids do
+         {taken_pairs, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
+      for {id, _size} <- taken_pairs do
         :ets.update_element(tid, id, {2, :processing})
       end
 
-      {:ok, taken_ids, tid}
+      {:ok, taken_pairs, tid}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, [], nil}
@@ -537,7 +537,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending(sid_bid_pid, n) when is_integer(n) do
     select_ms =
       Ex2ms.fun do
-        {event_id, :pending, event} -> {event_id, event}
+        {event_id, :pending, event, _size} -> {event_id, event}
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -561,7 +561,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def fetch_events({_, _, _} = sid_bid_pid, n) do
     ms =
       Ex2ms.fun do
-        {_event_id, _, event} -> event
+        {_event_id, _, event, _size} -> event
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -630,14 +630,14 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp do_truncate_table(key, status, n) do
     ms =
       Ex2ms.fun do
-        {_event_id, _event_status, event} = obj when ^status == :all -> obj
-        {_event_id, event_status, event} = obj when event_status == ^status -> obj
+        {_event_id, _event_status, event, _size} = obj when ^status == :all -> obj
+        {_event_id, event_status, event, _size} = obj when event_status == ^status -> obj
       end
 
     del_ms =
       Ex2ms.fun do
-        {_event_id, _event_status, event} = obj when ^status == :all -> true
-        {_event_id, event_status, event} = obj when event_status == ^status -> true
+        {_event_id, _event_status, _event, _size} = _obj when ^status == :all -> true
+        {_event_id, event_status, _event, _size} = _obj when event_status == ^status -> true
       end
 
     with tid when tid != nil <- get_tid(key),
@@ -687,7 +687,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_processing_ids(key) do
     ms =
       Ex2ms.fun do
-        {id, :processing, _event} -> id
+        {id, :processing, _event, _size} -> id
       end
 
     with tid when tid != nil <- get_tid(key),
@@ -792,8 +792,8 @@ defmodule Logflare.Backends.IngestEventQueue do
     # chunk over table and drop
     ms =
       Ex2ms.fun do
-        {event_id, _status, _event} = obj when ^filter == :all -> event_id
-        {event_id, status, _event} = obj when status == ^filter -> event_id
+        {event_id, _status, _event, _size} = _obj when ^filter == :all -> event_id
+        {event_id, status, _event, _size} = _obj when status == ^filter -> event_id
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),

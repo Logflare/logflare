@@ -180,15 +180,15 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
   defp act_on_stale_event(tid, id) do
     case :ets.lookup(tid, id) do
-      [{^id, :processing, %{retries: retries}}] when retries >= @max_stale_retries - 1 ->
-        :ets.select_delete(tid, [{{id, :processing, :_}, [], [true]}])
+      [{^id, :processing, %{retries: retries}, _size}] when retries >= @max_stale_retries - 1 ->
+        :ets.select_delete(tid, [{{id, :processing, :_, :_}, [], [true]}])
         :drop
 
-      [{^id, :processing, %{retries: retries} = le}] ->
+      [{^id, :processing, %{retries: retries} = le, size}] ->
         new_le = %{le | retries: (retries || 0) + 1}
 
         case :ets.select_replace(tid, [
-               {{id, :processing, le}, [], [{:const, {id, :pending, new_le}}]}
+               {{id, :processing, le, size}, [], [{:const, {id, :pending, new_le, size}}]}
              ]) do
           1 -> :reset
           0 -> :skip
