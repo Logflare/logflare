@@ -319,10 +319,12 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     ).adapter
   end
 
+  # receive_timeout must exceed the longest BigQuery jobs.query `timeoutMs` long-poll (60s
+  # for searches with a custom reservation), otherwise the transport cuts off the response.
   defp build_tesla_adapter_call({:query, _}) do
     Tesla.client(
       [],
-      {Tesla.Adapter.Finch, name: Logflare.FinchQuery, receive_timeout: 60_000}
+      {Tesla.Adapter.Finch, name: Logflare.FinchQuery, receive_timeout: 75_000}
     ).adapter
   end
 
