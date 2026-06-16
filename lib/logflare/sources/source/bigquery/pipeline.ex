@@ -234,7 +234,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       {triples, missing} = fetch_events_from_messages(messages, context)
 
       if missing != [] do
-        
         :telemetry.execute(
           [:logflare, :ingest_event_queue, :missing_ids],
           %{count: length(missing)},
@@ -296,7 +295,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             {[{message, process_data(log_event, context), size} | out], missing}
 
           [] ->
-            Logger.warning("ETS miss: id=#{inspect(id)} tid=#{inspect(tid)} tid_alive=#{:ets.info(tid, :name) != :undefined} tid_size=#{inspect(:ets.info(tid, :size))}",
+            Logger.warning(
+              "ETS miss: id=#{inspect(id)} tid=#{inspect(tid)} tid_alive=#{:ets.info(tid, :name) != :undefined} tid_size=#{inspect(:ets.info(tid, :size))}",
               source_id: context.source_id
             )
 
