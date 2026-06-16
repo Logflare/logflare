@@ -512,11 +512,14 @@ defmodule Logflare.Backends.IngestEventQueue do
     with tid when tid != nil <- get_tid(sid_bid_pid),
          size when is_integer(size) <- :ets.info(tid, :size),
          {taken_pairs, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      for {id, _size} <- taken_pairs do
-        :ets.update_element(tid, id, {2, :processing})
-      end
+      # Filter out events concurrently deleted between select and update_element.
+      # update_element returns false when the key no longer exists (e.g. janitor drop race).
+      confirmed =
+        Enum.filter(taken_pairs, fn {id, _size} ->
+          :ets.update_element(tid, id, {2, :processing})
+        end)
 
-      {:ok, taken_pairs, tid}
+      {:ok, confirmed, tid}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, [], nil}
