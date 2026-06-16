@@ -295,7 +295,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             {[{message, process_data(log_event, context), size} | out], missing}
 
           [] ->
-
             {out, [message | missing]}
         end
     end)
