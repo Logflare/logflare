@@ -37,6 +37,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @resolve_interval 10_000
   @scaling_threshold 15_000
   @async_insert_busy_timeout_max_ms 3_000
+  @max_read_pool_size 4096
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -169,7 +170,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_inclusion(:insert_protocol, ["http", "native"])
     |> validate_number(:pool_size,
       greater_than_or_equal_to: 1,
-      less_than_or_equal_to: max_pool
+      less_than_or_equal_to: @max_read_pool_size
     )
     |> validate_number(:native_pool_size,
       greater_than_or_equal_to: min_pool,
