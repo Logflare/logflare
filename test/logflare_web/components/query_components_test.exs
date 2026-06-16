@@ -137,10 +137,7 @@ defmodule LogflareWeb.QueryComponentsTest do
           lql_schema: schema
         })
 
-      [href] =
-        html
-        |> Floki.parse_document!()
-        |> Floki.attribute("a", "href")
+      href = quick_filter_href(html, "Append to query")
 
       %URI{query: query} = URI.parse(href)
 
@@ -167,10 +164,7 @@ defmodule LogflareWeb.QueryComponentsTest do
           lql_schema: schema
         })
 
-      [href] =
-        html
-        |> Floki.parse_document!()
-        |> Floki.attribute("a", "href")
+      href = quick_filter_href(html, "Append to query")
 
       %URI{query: query} = URI.parse(href)
 
@@ -197,10 +191,33 @@ defmodule LogflareWeb.QueryComponentsTest do
           lql_schema: schema
         })
 
-      expected_href = ~p"/sources/#{source}/search?#{%{querystring: lql, tailing?: false}}"
+      inlcude_href = ~p"/sources/#{source}/search?#{%{querystring: lql, tailing?: false}}"
+      exclude_href = ~p"/sources/#{source}/search?#{%{querystring: "-" <> lql, tailing?: false}}"
 
-      doc = Floki.parse_document!(html)
-      assert Floki.attribute(doc, "a", "href") == [expected_href]
+      assert quick_filter_href(html, "Append to query") == inlcude_href
+      assert quick_filter_href(html, "Exclude from query") == exclude_href
+    end
+
+    test "renders a metadata exclude quick filter link", %{
+      source: source,
+      schema: schema,
+      source_schema_flat_map: flat_map
+    } do
+      html =
+        render_component(&QueryComponents.quick_filter/1, %{
+          lql: "",
+          node: %{key: "status", path: ["metadata", "status"], value: "error"},
+          source: source,
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
+        })
+
+      href = quick_filter_href(html, "Exclude from query")
+
+      %URI{query: query} = URI.parse(href)
+
+      assert %{"querystring" => ~s|-m.status:"error"|, "tailing?" => "false"} =
+               URI.decode_query(query)
     end
 
     test "renders a metadata array quick filter link", %{
@@ -217,10 +234,7 @@ defmodule LogflareWeb.QueryComponentsTest do
           lql_schema: schema
         })
 
-      [href] =
-        html
-        |> Floki.parse_document!()
-        |> Floki.attribute("a", "href")
+      href = quick_filter_href(html, "Append to query")
 
       %URI{query: query} = URI.parse(href)
 
@@ -231,6 +245,36 @@ defmodule LogflareWeb.QueryComponentsTest do
                  path: "metadata.tags",
                  operator: :list_includes,
                  value: "popular, tropical, organic"
+               }
+             ] = Lql.decode!(querystring, schema)
+    end
+
+    test "renders a metadata array exclude quick filter link", %{
+      source: source,
+      schema: schema,
+      source_schema_flat_map: flat_map
+    } do
+      html =
+        render_component(&QueryComponents.quick_filter/1, %{
+          lql: "",
+          node: %{key: "", path: ["metadata", "tags"], value: "popular, tropical, organic"},
+          source: source,
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
+        })
+
+      href = quick_filter_href(html, "Exclude from query")
+
+      %URI{query: query} = URI.parse(href)
+
+      assert %{"querystring" => querystring, "tailing?" => "false"} = URI.decode_query(query)
+
+      assert [
+               %FilterRule{
+                 path: "metadata.tags",
+                 operator: :list_includes,
+                 value: "popular, tropical, organic",
+                 modifiers: %{negate: true}
                }
              ] = Lql.decode!(querystring, schema)
     end
@@ -250,10 +294,7 @@ defmodule LogflareWeb.QueryComponentsTest do
           search_params: %{"tz" => "Australia/Brisbane"}
         })
 
-      [href] =
-        html
-        |> Floki.parse_document!()
-        |> Floki.attribute("a", "href")
+      href = quick_filter_href(html, "Append to query")
 
       %URI{query: query} = URI.parse(href)
 
@@ -269,29 +310,30 @@ defmodule LogflareWeb.QueryComponentsTest do
       schema: schema,
       source_schema_flat_map: flat_map
     } do
-      [
-        {%{key: "timestamp", path: ["timestamp"], value: NaiveDateTime.utc_now()}, []},
-        {%{key: "event_message", path: ["event_message"], value: "error"}, []},
-        {%{key: "status", path: ["metadata", "status"], value: "error"},
-         ["tw-hidden group-hover:tw-inline"]}
-      ]
-      |> Enum.each(fn {node, class} ->
-        html =
-          render_component(&QueryComponents.quick_filter/1, %{
-            lql: "",
-            node: node,
-            source: source,
-            source_schema_flat_map: flat_map,
-            lql_schema: schema
-          })
+      render = fn node ->
+        render_component(&QueryComponents.quick_filter/1, %{
+          lql: "",
+          node: node,
+          source: source,
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
+        })
+      end
 
-        doc = Floki.parse_document!(html)
+      assert %{key: "timestamp", path: ["timestamp"], value: NaiveDateTime.utc_now()}
+             |> render.()
+             |> String.contains?("tw-visible")
 
-        assert Floki.attribute(doc, "a", "class") == class
-      end)
+      assert %{key: "event_message", path: ["event_message"], value: "error"}
+             |> render.()
+             |> String.contains?("tw-visible")
+
+      assert %{key: "status", path: ["metadata", "status"], value: "error"}
+             |> render.()
+             |> String.contains?("tw-invisible")
     end
 
-    test "omits the quick filter link when value is too long", %{
+    test "omits quick filter links when value is too long", %{
       source: source,
       schema: schema,
       source_schema_flat_map: flat_map
@@ -330,5 +372,14 @@ defmodule LogflareWeb.QueryComponentsTest do
       doc = Floki.parse_document!(html)
       assert Floki.find(doc, "a") == []
     end
+  end
+
+  defp quick_filter_href(html, title) do
+    [href] =
+      html
+      |> Floki.parse_document!()
+      |> Floki.attribute("a[title='#{title}']", "href")
+
+    href
   end
 end
