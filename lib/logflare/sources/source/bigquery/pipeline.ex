@@ -234,8 +234,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       {triples, missing} = fetch_events_from_messages(messages, context)
 
       if missing != [] do
-        Logger.warning("Could not fetch #{length(missing)} ids from ets")
-
         :telemetry.execute(
           [:logflare, :ingest_event_queue, :missing_ids],
           %{count: length(missing)},
