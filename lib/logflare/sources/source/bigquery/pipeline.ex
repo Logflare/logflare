@@ -297,6 +297,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             {[{message, process_data(log_event, context), size} | out], missing}
 
           [] ->
+            Logger.warning("ETS miss: id=#{inspect(id)} tid=#{inspect(tid)} tid_alive=#{:ets.info(tid, :name) != :undefined} tid_size=#{inspect(:ets.info(tid, :size))}",
+              source_id: context.source_id
+            )
+
             {out, [message | missing]}
         end
     end)
