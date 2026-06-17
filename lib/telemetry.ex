@@ -33,16 +33,19 @@ defmodule Logflare.Telemetry do
 
     otel_exporter =
       if Application.get_env(:logflare, :opentelemetry_enabled?) do
+        service =
+          %{
+            name: "Logflare",
+            version: Application.spec(:logflare, :vsn) |> to_string()
+          }
+          |> maybe_put_commit(System.get_env("LOGFLARE_COMMIT_SHA"))
+
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
           |> Keyword.put(:metrics, metrics())
           |> Keyword.put(:resource, %{
             name: "Logflare",
-            service: %{
-              name: "Logflare",
-              version: Application.spec(:logflare, :vsn) |> to_string(),
-              commit: System.get_env("LOGFLARE_COMMIT_SHA")
-            },
+            service: service,
             node: inspect(Node.self()),
             cluster: Application.get_env(:logflare, :metadata)[:cluster]
           })
@@ -64,6 +67,10 @@ defmodule Logflare.Telemetry do
 
     Supervisor.init(children, strategy: :one_for_one)
   end
+
+  @spec maybe_put_commit(map(), String.t() | nil) :: map()
+  defp maybe_put_commit(service, nil), do: service
+  defp maybe_put_commit(service, commit), do: Map.put(service, :commit, commit)
 
   defp metrics do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
