@@ -3,6 +3,7 @@ defmodule Logflare.Telemetry do
 
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -33,12 +34,7 @@ defmodule Logflare.Telemetry do
 
     otel_exporter =
       if Application.get_env(:logflare, :opentelemetry_enabled?) do
-        service =
-          %{
-            name: "Logflare",
-            version: Application.spec(:logflare, :vsn) |> to_string()
-          }
-          |> maybe_put_commit(System.get_env("LOGFLARE_COMMIT_SHA"))
+        service = service_attributes(System.get_env("LOGFLARE_COMMIT_SHA"))
 
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
@@ -68,9 +64,24 @@ defmodule Logflare.Telemetry do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  @spec service_attributes(String.t() | nil) :: map()
+  def service_attributes(commit_sha) do
+    %{
+      name: "Logflare",
+      version: Application.spec(:logflare, :vsn) |> to_string()
+    }
+    |> maybe_put_commit(commit_sha)
+  end
+
   @spec maybe_put_commit(map(), String.t() | nil) :: map()
-  defp maybe_put_commit(service, nil), do: service
-  defp maybe_put_commit(service, commit), do: Map.put(service, :commit, commit)
+  defp maybe_put_commit(service, commit_sha) when is_non_empty_binary(commit_sha) do
+    case String.trim(commit_sha) do
+      "" -> service
+      commit -> Map.put(service, :commit, commit)
+    end
+  end
+
+  defp maybe_put_commit(service, _commit_sha), do: service
 
   defp metrics do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
