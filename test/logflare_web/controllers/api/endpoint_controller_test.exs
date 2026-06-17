@@ -79,7 +79,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       assert response.name == name
       assert response.query == query
 
-      assert [version] = PaperTrail.get_versions(Endpoints.Query, response.id)
+      assert [version] = PaperTrail.get_versions(Endpoints.EndpointQuery, response.id)
       assert version.origin =~ "API: id"
     end
 
@@ -137,7 +137,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       name = TestUtils.random_string()
       token = endpoint.token
 
-      initial_versions = PaperTrail.get_versions(Endpoint.Query, endpoint.id)
+      initial_versions = PaperTrail.get_versions(Endpoints.EndpointQuery, endpoint.id)
 
       response =
         conn
@@ -160,7 +160,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       assert %{name: ^another_name, token: ^token} = response
 
       assert_in_delta length(initial_versions),
-                      length(PaperTrail.get_versions(Endpoint.Query, endpoint.id)),
+                      length(PaperTrail.get_versions(Endpoints.EndpointQuery, endpoint.id)),
                       2
     end
 
@@ -234,7 +234,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       |> assert_schema("NotFoundResponse")
 
       assert [%_{meta: meta, event: "delete"}] =
-               PaperTrail.get_versions(Endpoint.Query, endpoint.id)
+               PaperTrail.get_versions(Endpoints.EndpointQuery, endpoint.id)
 
       assert meta["endpoint_snapshot"]["query"] == endpoint.query
     end

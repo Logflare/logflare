@@ -275,6 +275,75 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
     end
   end
 
+  describe "search query timeouts" do
+    setup do
+      insert(:plan, name: "Free", type: "standard")
+      pid = self()
+
+      stub(BqJobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:timeouts, opts[:body].jobTimeoutMs, opts[:body].timeoutMs})
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      :ok
+    end
+
+    test "uses a 60s timeout for :search queries with a custom reservation" do
+      user =
+        insert(:user,
+          bigquery_dataset_id: "test_dataset",
+          bigquery_reservation_search: "projects/p/locations/l/reservations/search"
+        )
+
+      BigQueryAdaptor.execute_query(
+        {"test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :search
+      )
+
+      assert_received {:timeouts, 60_000, 60_000}
+    end
+
+    test "keeps the default timeout for searches without a reservation and for non-search queries" do
+      user = insert(:user, bigquery_dataset_id: "test_dataset")
+
+      BigQueryAdaptor.execute_query(
+        {"test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :search
+      )
+
+      assert_received {:timeouts, 25_000, 25_000}
+
+      user_with_reservation =
+        insert(:user,
+          bigquery_dataset_id: "test_dataset",
+          bigquery_reservation_alerts: "projects/p/locations/l/reservations/alerts"
+        )
+
+      BigQueryAdaptor.execute_query(
+        {"test-project", user_with_reservation.bigquery_dataset_id, user_with_reservation.id},
+        {"select 1", []},
+        query_type: :alerts
+      )
+
+      assert_received {:timeouts, 25_000, 25_000}
+    end
+
+    test "uses a 60s timeout for :search queries with an explicit reservation override" do
+      user = insert(:user, bigquery_dataset_id: "test_dataset")
+
+      BigQueryAdaptor.execute_query(
+        {"test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :search,
+        reservation: "projects/p/locations/l/reservations/override"
+      )
+
+      assert_received {:timeouts, 60_000, 60_000}
+    end
+  end
+
   describe "reservation error logging" do
     setup do
       insert(:plan, name: "Free", type: "standard")

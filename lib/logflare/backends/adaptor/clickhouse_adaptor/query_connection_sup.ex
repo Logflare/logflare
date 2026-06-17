@@ -1,7 +1,9 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   @moduledoc """
-  This supervisor only manages read/query `ConnectionManager` instances. It does not handle
-  write/ingest `ConnectionManager` instances, which are supervised per-source under `Logflare.Backends.SourceSup`.
+  This supervisor only manages read/query `ConnectionManager` instances. Write/ingest
+  traffic does not flow through these pools — HTTP inserts use the
+  `Logflare.FinchClickHouseIngest` Finch pool and native protocol inserts use the
+  `NativeIngester` connection pools.
 
   ## Supervision Hierarchy
 
@@ -21,16 +23,41 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
 
   ## Monitoring
 
-  Use `count_connection_managers/0` to monitor how many backends currently have
+  Use `count_query_connection_managers/0` to monitor how many backends currently have
   active read connection pools.
 
-  `list_connection_managers/0` can be used to retrieve a list of all active read connection manager PIDs
-  along with their respective backend IDs.
+  `list_query_connection_managers/0` can be used to retrieve a list of all active read
+  connection manager PIDs along with their respective backend IDs.
+
+  ## Modifying Pools
+
+  `recycle_backend/1` triggers an immediate connection recycle of a backend's read pool
+  on every node in the cluster. Useful after scaling an upstream ClickHouse service.
+
+  `refresh_backend/1` stops a backend's read pool on every node so the pools restart
+  with freshly loaded backend configuration.
+
+  `terminate_backend/1` terminates a backend's read `ConnectionManager` on every node,
+  e.g. after a backend is deleted.
   """
 
   use Supervisor
 
+  import Logflare.Utils.Guards
+
+  require Logger
+
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.BackendRegistry
+  alias Logflare.Cluster
+  alias Logflare.ContextCache
+
   @dynamic_sup_name __MODULE__.DynamicSupervisor
+  @recycle_rpc_timeout :timer.seconds(15)
+  @recycle_chunk_size 25
+  @recycle_chunk_delay :timer.seconds(1)
 
   def start_link(args) do
     Supervisor.start_link(__MODULE__, args, name: __MODULE__)
@@ -72,21 +99,159 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   """
   @spec list_query_connection_managers() :: [{backend_id :: integer(), pid()}]
   def list_query_connection_managers do
-    @dynamic_sup_name
-    |> DynamicSupervisor.which_children()
-    |> Enum.map(&extract_backend_info/1)
-    |> Enum.reject(&is_nil/1)
+    Registry.select(BackendRegistry, [
+      {{{ConnectionManager, :"$1"}, :"$2", :_}, [], [{{:"$1", :"$2"}}]}
+    ])
   end
 
-  @spec extract_backend_info(DynamicSupervisor.child()) :: {integer(), pid()} | nil
-  defp extract_backend_info({id, pid, :worker, _modules}) when is_tuple(id) do
-    case id do
-      {_module, {backend_id}} -> {backend_id, pid}
-      _ -> nil
+  @doc """
+  Recycles the read connection pool for a backend on every node in the cluster.
+
+  Useful after scaling an upstream ClickHouse service: rather than waiting for each
+  pool's scheduled recycle, the backend's read connections begin re-establishing right
+  away so a least-connections load balancer can redistribute them across replicas.
+
+  The fan-out is staggered in node chunks to avoid reconnecting the entire cluster at once.
+  Returns the result of the recycle on each node, keyed by node.
+
+  Note that this call does block while waiting to dispatch to all nodes.
+  """
+  @spec recycle_backend(Backend.t() | pos_integer()) :: %{node() => :ok | {:error, term()}}
+  def recycle_backend(%Backend{id: backend_id}), do: recycle_backend(backend_id)
+
+  def recycle_backend(backend_id) when is_pos_integer(backend_id) do
+    Logger.info("Recycling ClickHouse read pool connections across the cluster",
+      backend_id: backend_id
+    )
+
+    Cluster.Utils.node_list_all()
+    |> Enum.chunk_every(@recycle_chunk_size)
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {nodes, index} ->
+      if index > 0, do: Process.sleep(@recycle_chunk_delay)
+
+      Cluster.Utils.erpc_multicall(
+        nodes,
+        __MODULE__,
+        :recycle_backend_local,
+        [backend_id],
+        @recycle_rpc_timeout
+      )
+    end)
+    |> Map.new(fn
+      {node, {:ok, result}} -> {node, result}
+      {node, {:error, reason}} -> {node, {:error, reason}}
+      {node, {class, reason}} when class in [:throw, :exit] -> {node, {:error, {class, reason}}}
+    end)
+  end
+
+  @doc """
+  Recycles the read connection pool for a backend on the local node.
+
+  Invoked on each node by `recycle_backend/1`.
+  """
+  @spec recycle_backend_local(pos_integer()) :: :ok | {:error, term()}
+  def recycle_backend_local(backend_id) when is_pos_integer(backend_id) do
+    case Registry.lookup(BackendRegistry, {ConnectionManager, backend_id}) do
+      [{manager_pid, _value}] -> safe_recycle(manager_pid)
+      [] -> {:error, :no_manager}
     end
   end
 
-  defp extract_backend_info(_child), do: nil
+  @spec safe_recycle(pid()) :: :ok | {:error, term()}
+  defp safe_recycle(manager_pid) do
+    ConnectionManager.recycle_pool(manager_pid)
+  catch
+    :exit, _reason -> {:error, :unavailable}
+  end
+
+  @doc """
+  Stops the read connection pool for a backend on every node in the cluster so that
+  each node's next query restarts it with freshly loaded backend configuration.
+
+  Pools restart lazily on demand.
+  """
+  @spec refresh_backend(Backend.t() | pos_integer()) :: :ok
+  def refresh_backend(%Backend{id: backend_id}), do: refresh_backend(backend_id)
+
+  def refresh_backend(backend_id) when is_pos_integer(backend_id) do
+    Logger.info("Refreshing ClickHouse read pools across the cluster",
+      backend_id: backend_id
+    )
+
+    Cluster.Utils.rpc_multicast(__MODULE__, :refresh_backend_local, [backend_id])
+    :ok
+  end
+
+  @doc """
+  Busts the local backend cache and stops the backend's read pool on the local node.
+
+  Invoked on each node by `refresh_backend/1`.
+  """
+  @spec refresh_backend_local(pos_integer()) :: :ok
+  def refresh_backend_local(backend_id) when is_pos_integer(backend_id) do
+    ContextCache.bust_keys([{Backends, backend_id}])
+
+    case Registry.lookup(BackendRegistry, {ConnectionManager, backend_id}) do
+      [{manager_pid, _value}] -> safe_refresh(manager_pid)
+      [] -> :ok
+    end
+  end
+
+  @spec safe_refresh(pid()) :: :ok
+  defp safe_refresh(manager_pid) do
+    ConnectionManager.refresh_pool(manager_pid)
+  catch
+    :exit, _reason -> :ok
+  end
+
+  @doc """
+  Terminates the read `ConnectionManager` and its pool for a backend on every node
+  in the cluster. Used when a backend is deleted. Fire-and-forget.
+  """
+  @spec terminate_backend(Backend.t() | pos_integer()) :: :ok
+  def terminate_backend(%Backend{id: backend_id}), do: terminate_backend(backend_id)
+
+  def terminate_backend(backend_id) when is_pos_integer(backend_id) do
+    Logger.info("Terminating ClickHouse read connection managers across the cluster",
+      backend_id: backend_id
+    )
+
+    Cluster.Utils.rpc_multicast(__MODULE__, :terminate_backend_local, [backend_id])
+    :ok
+  end
+
+  @doc """
+  Terminates the backend's read `ConnectionManager` on the local node.
+
+  Invoked on each node by `terminate_backend/1`.
+  """
+  @spec terminate_backend_local(pos_integer()) :: :ok
+  def terminate_backend_local(backend_id) when is_pos_integer(backend_id) do
+    case Registry.lookup(BackendRegistry, {ConnectionManager, backend_id}) do
+      [{manager_pid, _value}] -> terminate_manager(manager_pid)
+      [] -> :ok
+    end
+  end
+
+  @spec terminate_manager(pid()) :: :ok
+  defp terminate_manager(manager_pid) do
+    case DynamicSupervisor.terminate_child(@dynamic_sup_name, manager_pid) do
+      :ok ->
+        :ok
+
+      {:error, :not_found} ->
+        GenServer.stop(manager_pid, :shutdown)
+        :ok
+    end
+  catch
+    :exit, reason ->
+      Logger.warning(
+        "Exited while terminating ClickHouse read connection manager: #{inspect(reason)}"
+      )
+
+      :ok
+  end
 
   @doc """
   Terminates all query `ConnectionManager` processes.

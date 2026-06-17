@@ -10,7 +10,7 @@ defmodule Logflare.Endpoints.Resolver do
   @doc """
   Lists all caches for an endpoint across all paritions
   """
-  def list_caches(%Logflare.Endpoints.Query{id: id}) do
+  def list_caches(%Logflare.Endpoints.EndpointQuery{id: id}) do
     endpoints_partition = ResultsCache.endpoints_part(id)
 
     :syn.members(endpoints_partition, id)
@@ -21,7 +21,7 @@ defmodule Logflare.Endpoints.Resolver do
   Starts up or performs a lookup for an Endpoint.Cache process.
   Returns the resolved pid.
   """
-  def resolve(%Logflare.Endpoints.Query{id: id} = query, params, opts) do
+  def resolve(%Logflare.Endpoints.EndpointQuery{id: id} = query, params, opts) do
     attributes = %{
       "endpoint.id" => id,
       "endpoint.token" => query.token,

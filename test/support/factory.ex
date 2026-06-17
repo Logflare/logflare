@@ -9,7 +9,7 @@ defmodule Logflare.Factory do
   alias Logflare.Billing.BillingCount
   alias Logflare.Billing.PaymentMethod
   alias Logflare.Billing.Plan
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.Lql
   alias Logflare.OauthAccessTokens.OauthAccessToken
@@ -236,7 +236,7 @@ defmodule Logflare.Factory do
     backend = Map.get(attrs, :backend)
     language = Map.get(attrs, :language, :bq_sql)
 
-    %Query{
+    %EndpointQuery{
       user: user,
       description: "some desc #{TestUtils.random_string()}",
       token: Ecto.UUID.generate(),
@@ -262,7 +262,7 @@ defmodule Logflare.Factory do
 
     %Version{
       event: Map.get(attrs, :event, "update"),
-      item_type: "Query",
+      item_type: "EndpointQuery",
       item_id: endpoint.id || System.unique_integer([:positive]),
       item_changes: Map.get(attrs, :item_changes, %{"description" => endpoint.description}),
       origin: Map.get(attrs, :origin),
@@ -290,7 +290,7 @@ defmodule Logflare.Factory do
   end
 
   def child_endpoint_factory do
-    %Query{
+    %EndpointQuery{
       user: build(:user),
       token: Ecto.UUID.generate(),
       query: "select current_date() as date",

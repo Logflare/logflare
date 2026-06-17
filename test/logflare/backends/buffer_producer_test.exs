@@ -3,6 +3,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.LogEvent
   alias Logflare.PubSubRates.Cache, as: PubSubRatesCache
 
   import ExUnit.CaptureLog
@@ -25,9 +26,11 @@ defmodule Logflare.Backends.BufferProducerTest do
     :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
-    GenStage.stream([{buffer_producer_pid, max_demand: 1}])
-    |> Enum.take(1)
+    [%LogEvent{id: id}] =
+      GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+      |> Enum.take(1)
 
+    assert id == le.id
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     # marked as :ingested
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
@@ -87,6 +90,33 @@ defmodule Logflare.Backends.BufferProducerTest do
 
     assert IngestEventQueue.total_pending(startup_table_key) == 1
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+  end
+
+  test "marks events as :processing (not :ingested) when id_passing is true" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    le = build(:log_event, source: source)
+
+    buffer_producer_pid =
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, id_passing: true})
+
+    sid_bid_pid = {source.id, nil, buffer_producer_pid}
+    :timer.sleep(100)
+    :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+    tid = IngestEventQueue.get_tid(sid_bid_pid)
+
+    [{id, ^tid, size}] =
+      GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+      |> Enum.take(1)
+
+    assert id == le.id
+    assert is_integer(size) and size > 0
+    assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+    # event still in ETS, marked as :processing
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+    assert IngestEventQueue.list_processing_ids(sid_bid_pid) == [le.id]
   end
 
   test "pulls events from startup queue" do

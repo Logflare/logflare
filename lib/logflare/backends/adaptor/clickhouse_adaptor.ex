@@ -20,6 +20,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.NativeIngester.PoolSup, as: NativePoolSup
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
+  alias __MODULE__.QueryConnectionSup
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
@@ -36,6 +37,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @resolve_interval 10_000
   @scaling_threshold 15_000
   @async_insert_busy_timeout_max_ms 3_000
+  @max_read_pool_size 4096
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -49,6 +51,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def consolidated_ingest?, do: true
+
+  @impl Logflare.Backends.Adaptor
+  def on_backend_config_changed(%Backend{id: backend_id}) do
+    QueryConnectionSup.refresh_backend(backend_id)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def on_backend_deleted(%Backend{id: backend_id}) do
+    QueryConnectionSup.terminate_backend(backend_id)
+  end
 
   @doc false
   @impl Logflare.Backends.Adaptor
@@ -158,7 +170,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_inclusion(:insert_protocol, ["http", "native"])
     |> validate_number(:pool_size,
       greater_than_or_equal_to: 1,
-      less_than_or_equal_to: max_pool
+      less_than_or_equal_to: @max_read_pool_size
     )
     |> validate_number(:native_pool_size,
       greater_than_or_equal_to: min_pool,
@@ -720,7 +732,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     backend = Backends.Cache.get_backend(backend_id)
 
     with child_spec <- ConnectionManager.child_spec(backend),
-         {:ok, _pid} <- __MODULE__.QueryConnectionSup.start_connection_manager(child_spec) do
+         {:ok, _pid} <- QueryConnectionSup.start_connection_manager(child_spec) do
       Logger.info(
         "Started query ConnectionManager for ClickHouse backend",
         backend_id: backend.id

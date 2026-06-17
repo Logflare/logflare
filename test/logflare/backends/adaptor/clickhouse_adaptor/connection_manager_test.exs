@@ -155,6 +155,81 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
     end
   end
 
+  describe "connection pool recycling" do
+    setup context do
+      config = Application.get_env(:logflare, ConnectionManager)
+
+      Application.put_env(:logflare, ConnectionManager,
+        resolve_interval: @resolve_interval,
+        recycle_interval: 1
+      )
+
+      on_exit(fn -> Application.put_env(:logflare, ConnectionManager, config) end)
+
+      {:ok, _manager_pid} = ConnectionManager.start_link(context.backend)
+
+      context
+    end
+
+    test "`recycle_pool` returns an error when no pool is running", %{backend: backend} do
+      refute ConnectionManager.pool_active?(backend)
+      assert {:error, :no_pool} == ConnectionManager.recycle_pool(backend)
+    end
+
+    test "`recycle_pool` recycles connections without restarting the pool", %{backend: backend} do
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+
+      pool_pid = ConnectionManager.get_pool_pid(backend)
+      scheduled_at = ConnectionManager.get_next_recycle_at(backend)
+
+      assert is_pid(pool_pid)
+      assert is_integer(scheduled_at)
+
+      Process.sleep(10)
+
+      assert :ok == ConnectionManager.recycle_pool(backend)
+
+      assert ConnectionManager.get_pool_pid(backend) == pool_pid
+      assert Process.alive?(pool_pid)
+      assert ConnectionManager.get_next_recycle_at(backend) > scheduled_at
+      assert ConnectionManager.pool_active?(backend)
+    end
+
+    test "the resolve loop recycles the pool once the recycle interval elapses", %{
+      backend: backend
+    } do
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+
+      pool_pid = ConnectionManager.get_pool_pid(backend)
+      scheduled_at = ConnectionManager.get_next_recycle_at(backend)
+
+      Process.sleep(@timeout_interval)
+
+      assert ConnectionManager.get_pool_pid(backend) == pool_pid
+      assert ConnectionManager.get_next_recycle_at(backend) > scheduled_at
+      assert ConnectionManager.pool_active?(backend)
+    end
+  end
+
+  describe "connection pool refresh" do
+    setup context do
+      {:ok, _manager_pid} = ConnectionManager.start_link(context.backend)
+
+      context
+    end
+
+    test "`refresh_pool` stops the pool so the next query restarts it", %{backend: backend} do
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      assert ConnectionManager.pool_active?(backend)
+
+      assert :ok == ConnectionManager.refresh_pool(backend)
+      refute ConnectionManager.pool_active?(backend)
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      assert ConnectionManager.pool_active?(backend)
+    end
+  end
+
   describe "query pool error handling" do
     setup do
       {_source, invalid_backend} =
