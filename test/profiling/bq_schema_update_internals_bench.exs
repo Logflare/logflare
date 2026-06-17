@@ -171,7 +171,7 @@ inputs =
 profile_after =
   if System.get_env("PROFILE") == "1" do
     type = String.to_existing_atom(System.get_env("TPROF_TYPE") || "time")
-    {:tprof, type: type, warmup: 0, sort: :per_call}
+    {:tprof, type: type}
   else
     false
   end
