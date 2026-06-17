@@ -70,7 +70,6 @@ defmodule Logflare.Logs.IngestTransformerTest do
     @batch [
       %{
         "metadata" => %{
-          # "1level_key" => "value",
           "1level_key" => %{
             "2level_key" => %{
               "3level_key" => "value"
@@ -266,13 +265,31 @@ defmodule Logflare.Logs.IngestTransformerTest do
       assert transform(%{"" => "v"}, :to_bigquery_column_spec) == %{"" => "v"}
     end
 
-    test "strips _TABLE_, _FILE_, _PARTITION_ prefixes by prepending one underscore" do
-      log = %{"_TABLE_x" => 1, "_FILE_x" => 1, "_PARTITION_x" => 1}
+    test "escapes every BigQuery-reserved prefix by prepending one underscore" do
+      log = %{
+        "_TABLE_x" => 1,
+        "_FILE_x" => 1,
+        "_PARTITIONx" => 1,
+        "_PARTITION_x" => 1,
+        "_ROW_TIMESTAMPx" => 1,
+        "__ROOT__x" => 1,
+        "_COLIDENTIFIERx" => 1,
+        "_CHANGE_SEQUENCE_NUMBERx" => 1,
+        "_CHANGE_TYPEx" => 1,
+        "_CHANGE_TIMESTAMPx" => 1
+      }
 
       assert transform(log, :to_bigquery_column_spec) == %{
                "__TABLE_x" => 1,
                "__FILE_x" => 1,
-               "__PARTITION_x" => 1
+               "__PARTITIONx" => 1,
+               "__PARTITION_x" => 1,
+               "__ROW_TIMESTAMPx" => 1,
+               "___ROOT__x" => 1,
+               "__COLIDENTIFIERx" => 1,
+               "__CHANGE_SEQUENCE_NUMBERx" => 1,
+               "__CHANGE_TYPEx" => 1,
+               "__CHANGE_TIMESTAMPx" => 1
              }
     end
 
@@ -304,12 +321,31 @@ defmodule Logflare.Logs.IngestTransformerTest do
       assert transform(log, :to_bigquery_column_spec) == %{"_foo_" => 1, "_a_b" => 1, "_x_y" => 1}
     end
 
-    test "multibyte UTF-8 follows PCRE's byte-mode Latin-1 word classification" do
-      # "é" is <<0xC3, 0xA9>>. PCRE's byte-mode \w considers Latin-1 letter-range
-      # bytes (incl. 0xC3) "word" but treats 0xA9 as non-word. Only 0xA9 is
-      # replaced, and the rule prepends a single underscore for the match.
-      assert transform(%{"é" => 1}, :to_bigquery_column_spec) ==
-               %{<<?_, 0xC3, ?_>> => 1}
+    test "multibyte UTF-8 codepoints each collapse to a single underscore" do
+      # BigQuery standard column names are ASCII [A-Za-z0-9_] and must be valid
+      # UTF-8. "é" is one codepoint outside that set, so it becomes "_"; the
+      # non-alnum match then prepends a single leading underscore.
+      assert transform(%{"é" => 1}, :to_bigquery_column_spec) == %{"__" => 1}
+    end
+
+    test "non-ASCII keys produce valid UTF-8, encodable column names" do
+      for key <- ["é", "日本語", "🚀", "ßðemoji😀", "naïve-café"] do
+        [transformed] = transform(%{key => 1}, :to_bigquery_column_spec) |> Map.keys()
+        assert String.valid?(transformed), "#{inspect(transformed)} is not valid UTF-8"
+        assert {:ok, _} = Jason.encode(%{transformed => 1})
+        assert transformed =~ ~r/\A[A-Za-z0-9_]*\z/
+      end
+    end
+
+    test "invalid-UTF-8 keys do not crash and still produce valid column names" do
+      # Production keys arrive as valid UTF-8 (JSON/protobuf), but the walk must
+      # not crash on a stray byte; the fallback clause replaces it with "_".
+      for key <- [<<0xC3>>, <<0xFF, 0xFE>>, <<"ok", 0xFF, "x">>] do
+        [transformed] = transform(%{key => 1}, :to_bigquery_column_spec) |> Map.keys()
+        assert String.valid?(transformed), "#{inspect(transformed)} is not valid UTF-8"
+        assert {:ok, _} = Jason.encode(%{transformed => 1})
+        assert transformed =~ ~r/\A[A-Za-z0-9_]*\z/
+      end
     end
 
     test "dash prepend suppresses the leading-digit prepend" do
@@ -337,11 +373,14 @@ defmodule Logflare.Logs.IngestTransformerTest do
       assert transform(%{"1-key!" => 1}, :to_bigquery_column_spec) == %{"__1_key_" => 1}
     end
 
-    test "leading digit followed by multibyte produces digit-prepend + selective per-byte replacement" do
-      # Same Latin-1 rule as above: 0xC3 is kept, 0xA9 becomes "_". The "1"
-      # also triggers leading_digit_prepend, so two leading underscores stack.
-      assert transform(%{"1é" => 1}, :to_bigquery_column_spec) ==
-               %{<<?_, ?_, ?1, 0xC3, ?_>> => 1}
+    test "reserved prefix + non-alnum both prepend (two leading underscores)" do
+      assert transform(%{"_TABLE_a!" => 1}, :to_bigquery_column_spec) == %{"___TABLE_a_" => 1}
+    end
+
+    test "leading digit followed by multibyte: digit-prepend + codepoint collapse" do
+      # "é" collapses to "_" (non-alnum prepend), and the leading "1" triggers
+      # the digit prepend, so two leading underscores stack: "1é" -> "__1_".
+      assert transform(%{"1é" => 1}, :to_bigquery_column_spec) == %{"__1_" => 1}
     end
 
     test "keys at the 128-byte limit pass through untouched" do
@@ -361,6 +400,16 @@ defmodule Logflare.Logs.IngestTransformerTest do
       expected = "_" <> "__TABLE_" <> String.duplicate("a", 120)
       assert byte_size(expected) == 129
       assert transform(%{base => 1}, :to_bigquery_column_spec) == %{expected => 1}
+    end
+
+    test "transformation is idempotent (re-transforming a generated name is a no-op)" do
+      # Schema column names must stay stable across re-ingest: a name already
+      # produced by the rule must transform to itself.
+      for key <- ["user-é", "_TABLE_x", "1é", "日本", "a.b!", "9bad", <<0xC3>>] do
+        [once] = transform(%{key => 1}, :to_bigquery_column_spec) |> Map.keys()
+        [twice] = transform(%{once => 1}, :to_bigquery_column_spec) |> Map.keys()
+        assert once == twice, "#{inspect(key)} -> #{inspect(once)} -> #{inspect(twice)}"
+      end
     end
   end
 end

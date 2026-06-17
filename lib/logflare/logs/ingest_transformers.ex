@@ -14,18 +14,15 @@ defmodule Logflare.Logs.IngestTransformers do
     Enum.reduce(rules, log_params, &do_transform(&2, &1))
   end
 
-  # Single binary walk applying every BigQuery column-spec rule. The original
-  # five-stage pipeline (strip_bq_prefix → dashes_to_underscores →
-  # alter_leading_number → alphanumeric_only → enforce_field_length) each
-  # rescanned the binary; fusing them into one pass reclaims the redundant
-  # scan overhead flagged in O11Y-1828.
+  # Rewrites a map key into a valid BigQuery standard column name in a single
+  # pass. Standard names allow only [A-Za-z0-9_], cannot start with a digit,
+  # cannot use a reserved prefix, and must be valid UTF-8. Classification is per
+  # Unicode codepoint (not per byte), so every codepoint outside [A-Za-z0-9_] —
+  # including all multibyte characters — collapses to a single "_" and the
+  # result is always valid UTF-8.
   #
-  # Every rule contributes at most one leading underscore; the digit rule is
-  # suppressed when a prefix or dash has already inserted one (matching the
-  # original step ordering). Byte classification mirrors PCRE's byte-mode \w
-  # table — including the Latin-1 letter ranges (170, 181, 186, 192..214,
-  # 216..246, 248..255) — so non-ASCII keys produce the same column names as
-  # the legacy `~r/\W/` replacement.
+  # Each applicable rule prepends at most one leading underscore; the leading-
+  # digit rule is suppressed when a reserved prefix or dash has already added one.
   @spec to_bigquery_column_spec(term()) :: term()
   defp to_bigquery_column_spec(key) when is_binary(key) do
     {body, dash?, non_alnum?} = walk_bq_key(key, <<>>, false, false)
@@ -49,9 +46,17 @@ defmodule Logflare.Logs.IngestTransformers do
   defp prepend_underscores(body, 0), do: body
   defp prepend_underscores(body, n), do: <<:binary.copy("_", n)::binary, body::binary>>
 
+  # BigQuery reserves these column-name prefixes; a single prepended underscore
+  # breaks the match (e.g. "_TABLE_" → "__TABLE_", "__ROOT__" → "___ROOT__").
   defp bq_reserved_prefix?("_TABLE_" <> _), do: true
   defp bq_reserved_prefix?("_FILE_" <> _), do: true
-  defp bq_reserved_prefix?("_PARTITION_" <> _), do: true
+  defp bq_reserved_prefix?("_PARTITION" <> _), do: true
+  defp bq_reserved_prefix?("_ROW_TIMESTAMP" <> _), do: true
+  defp bq_reserved_prefix?("__ROOT__" <> _), do: true
+  defp bq_reserved_prefix?("_COLIDENTIFIER" <> _), do: true
+  defp bq_reserved_prefix?("_CHANGE_SEQUENCE_NUMBER" <> _), do: true
+  defp bq_reserved_prefix?("_CHANGE_TYPE" <> _), do: true
+  defp bq_reserved_prefix?("_CHANGE_TIMESTAMP" <> _), do: true
   defp bq_reserved_prefix?(_), do: false
 
   defp leading_digit?(<<b, _::binary>>) when b in ?0..?9, do: true
@@ -66,12 +71,8 @@ defmodule Logflare.Logs.IngestTransformers do
        when b in ?0..?9 or b in ?A..?Z or b in ?a..?z or b == ?_,
        do: walk_bq_key(rest, <<acc::binary, b>>, dash?, non_alnum?)
 
-  defp walk_bq_key(<<b, rest::binary>>, acc, dash?, non_alnum?)
-       when b == 170 or b == 181 or b == 186 or
-              (b >= 192 and b <= 214) or
-              (b >= 216 and b <= 246) or
-              b >= 248,
-       do: walk_bq_key(rest, <<acc::binary, b>>, dash?, non_alnum?)
+  defp walk_bq_key(<<_c::utf8, rest::binary>>, acc, dash?, _non_alnum?),
+    do: walk_bq_key(rest, <<acc::binary, ?_>>, dash?, true)
 
   defp walk_bq_key(<<_b, rest::binary>>, acc, dash?, _non_alnum?),
     do: walk_bq_key(rest, <<acc::binary, ?_>>, dash?, true)
