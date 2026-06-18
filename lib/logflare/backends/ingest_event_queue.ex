@@ -518,7 +518,6 @@ defmodule Logflare.Backends.IngestEventQueue do
       # so already-taken events are correctly rejected.
       confirmed =
         taken_pairs
-        |> Enum.uniq_by(fn {id, _size} -> id end)
         |> Enum.filter(fn {id, _size} ->
           replace_ms = [{{id, :pending, :"$1", :"$2"}, [], [{{id, :processing, :"$1", :"$2"}}]}]
           :ets.select_replace(tid, replace_ms) == 1
