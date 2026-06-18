@@ -358,7 +358,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       end)
 
       Mimic.expect(Pool, :checkout, fn _backend, fun ->
-        fun.(%{database: backend.config.database})
+        fun.(%{database: backend.config.database, host: "localhost"})
         {:error, :stop}
       end)
 
@@ -384,7 +384,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       end)
 
       Mimic.expect(Pool, :checkout, fn _backend, fun ->
-        fun.(%{database: backend.config.database})
+        fun.(%{database: backend.config.database, host: "localhost"})
         {:error, :stop}
       end)
 

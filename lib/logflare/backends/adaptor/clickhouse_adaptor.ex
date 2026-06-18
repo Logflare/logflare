@@ -283,6 +283,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def clickhouse_cloud_url?(_url), do: false
 
+  @spec config_host(Backend.t()) :: String.t() | nil
+  defp config_host(%Backend{config: %{url: url}}), do: url_host(url)
+  defp config_host(_backend), do: nil
+
+  @spec read_host(Backend.t()) :: String.t() | nil
+  defp read_host(%Backend{config: %{read_only_url: url}}) when is_non_empty_binary(url),
+    do: url_host(url)
+
+  defp read_host(%Backend{} = backend), do: config_host(backend)
+
+  @spec url_host(term()) :: String.t() | nil
+  defp url_host(url) when is_non_empty_binary(url) do
+    case URI.new(url) do
+      {:ok, %URI{host: host}} when is_binary(host) -> host
+      _ -> nil
+    end
+  end
+
+  defp url_host(_url), do: nil
+
   @doc """
   Produces a type-specific ingest table name for ClickHouse.
 
@@ -341,7 +361,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         {:error, %Ch.Error{message: error_msg}} when is_non_empty_binary(error_msg) ->
           Logger.warning(
             "ClickHouse query failed: #{inspect(error_msg)}",
-            backend_id: backend.id
+            backend_id: backend.id,
+            host: read_host(backend)
           )
 
           {:error, "Error executing ClickHouse query"}
@@ -349,7 +370,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         {:error, %{message: message}} when is_non_empty_binary(message) ->
           Logger.warning(
             "ClickHouse query failed: #{inspect(message)}",
-            backend_id: backend.id
+            backend_id: backend.id,
+            host: read_host(backend)
           )
 
           {:error, "Error executing ClickHouse query"}
@@ -427,6 +449,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     else
       {:error, reason} ->
         Logger.warning("ClickHouse native insert error.",
+          host: config_host(backend),
           error_string: inspect(reason)
         )
 
@@ -446,6 +469,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
       {:error, reason} ->
         Logger.warning("ClickHouse http insert error.",
+          host: config_host(backend),
           error_string: inspect(reason)
         )
 

@@ -294,7 +294,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   def handle_info({:DOWN, _ref, :process, pid, _reason}, %__MODULE__{pool_pid: pid} = state)
       when is_pid(pid) do
     Logger.warning("ClickHouse connection pool died",
-      backend_id: state.backend_id
+      backend_id: state.backend_id,
+      host: connection_host(state.backend_id)
     )
 
     {:noreply, %{state | pool_pid: nil, next_recycle_at: nil}}
@@ -310,8 +311,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @spec start_pool(__MODULE__.t()) :: {:ok, __MODULE__.t()} | {:error, any()}
-  defp start_pool(%__MODULE__{} = state) do
-    with {:ok, ch_opts} <- build_ch_opts(state),
+  defp start_pool(%__MODULE__{backend_id: backend_id} = state) do
+    backend = Backends.Cache.get_backend(backend_id)
+
+    with {:ok, ch_opts} <- build_ch_opts(backend),
          {:ok, pid} <- Ch.start_link(ch_opts) do
       Process.monitor(pid)
 
@@ -329,7 +332,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       {:error, reason} ->
         Logger.error(
           "Failed to start ClickHouse connection pool",
-          backend_id: state.backend_id,
+          backend_id: backend_id,
+          host: host_from_backend(backend),
           reason: reason
         )
 
@@ -421,49 +425,66 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     Application.get_env(:logflare, __MODULE__)[:recycle_spread] || @recycle_spread
   end
 
-  @spec build_ch_opts(__MODULE__.t()) :: {:ok, Keyword.t()} | {:error, term()}
-  defp build_ch_opts(%__MODULE__{backend_id: backend_id}) do
-    # Fetch fresh backend from cache
-    backend = Backends.Cache.get_backend(backend_id)
+  @spec build_ch_opts(Backend.t() | nil) :: {:ok, Keyword.t()} | {:error, term()}
+  defp build_ch_opts(nil), do: {:error, :backend_not_found}
 
-    if is_nil(backend) do
-      {:error, :backend_not_found}
-    else
-      config = backend.config
+  defp build_ch_opts(%Backend{} = backend) do
+    config = backend.config
 
-      default_pool_size =
-        Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
+    default_pool_size =
+      Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
 
-      pool_size =
-        config
-        |> Map.get(:pool_size, default_pool_size)
-        |> div(2)
-        |> max(default_pool_size)
+    pool_size =
+      config
+      |> Map.get(:pool_size, default_pool_size)
+      |> div(2)
+      |> max(default_pool_size)
 
-      read_only_url = Map.get(config, :read_only_url)
-      url = if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
+    url = read_url(config)
 
-      with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
-        pool_via = connection_pool_via(backend)
-        port = get_read_port(config, url_port)
+    with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
+      pool_via = connection_pool_via(backend)
+      port = get_read_port(config, url_port)
 
-        ch_opts = [
-          name: pool_via,
-          scheme: scheme,
-          hostname: hostname,
-          port: port,
-          database: config.database,
-          username: config.username,
-          password: config.password,
-          pool_size: pool_size,
-          settings: [],
-          timeout: @ch_query_conn_timeout
-        ]
+      ch_opts = [
+        name: pool_via,
+        scheme: scheme,
+        hostname: hostname,
+        port: port,
+        database: config.database,
+        username: config.username,
+        password: config.password,
+        pool_size: pool_size,
+        settings: [],
+        timeout: @ch_query_conn_timeout
+      ]
 
-        {:ok, ch_opts}
-      end
+      {:ok, ch_opts}
     end
   end
+
+  @spec read_url(map()) :: String.t() | nil
+  defp read_url(config) do
+    read_only_url = Map.get(config, :read_only_url)
+    if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
+  end
+
+  @spec connection_host(pos_integer()) :: String.t() | nil
+  defp connection_host(backend_id) do
+    backend_id
+    |> Backends.Cache.get_backend()
+    |> host_from_backend()
+  end
+
+  @spec host_from_backend(Backend.t() | nil) :: String.t() | nil
+  defp host_from_backend(%Backend{config: config}) do
+    case extract_url_components(read_url(config)) do
+      {:ok, {_scheme, hostname, _port}} -> hostname
+      _ -> nil
+    end
+  end
+
+  defp host_from_backend(_backend), do: nil
 
   @spec extract_url_components(String.t()) ::
           {:ok, {String.t(), String.t(), non_neg_integer() | nil}} | {:error, String.t()}
