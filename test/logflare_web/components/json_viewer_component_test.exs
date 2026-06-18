@@ -2,6 +2,7 @@ defmodule LogflareWeb.JSONViewerComponentTest do
   use LogflareWeb.ConnCase, async: true
   use ExUnitProperties
 
+  import Phoenix.Component
   import Phoenix.LiveViewTest
   import LogflareWeb.JSONViewerComponent
   import StreamData
@@ -205,12 +206,49 @@ defmodule LogflareWeb.JSONViewerComponentTest do
       assert html =~ ~s(tw-text-json-tree-label)
     end
 
-    test "renders URL as link" do
-      data = %{"website" => "https://example.com"}
-      html = render_component(&json_viewer/1, data: data)
+    test "renders decoded and literal whitespace escapes as whitespace" do
+      data = %{
+        "decoded" => "SELECT\n\t*\rFROM logs",
+        "literal" => ~S(SELECT\n\t*\rFROM logs)
+      }
 
-      assert html =~ ~s(href="https://example.com")
-      assert html =~ ~s(target="_blank")
+      doc = render_component(&json_viewer/1, data: data) |> Floki.parse_document!()
+
+      assert doc
+             |> Floki.find("#decoded")
+             |> Floki.text() =~ "SELECT\n\t*\rFROM logs"
+
+      assert doc
+             |> Floki.find("#literal")
+             |> Floki.text() =~ "SELECT\n\t*\rFROM logs"
+    end
+
+    test "exact https strings are renwered as link" do
+      assert render_component(&json_viewer/1, data: %{"https" => "https://example.com"}) =~ "href"
+
+      refute render_component(&json_viewer/1, data: %{"insecure_http" => "http://example.com"}) =~
+               "href"
+
+      refute render_component(&json_viewer/1,
+               data: %{"trailing white space" => "https://example.com and some text"}
+             ) =~ "href"
+
+      refute render_component(&json_viewer/1,
+               data: %{"escaped white space" => ~S(https://example.com\nnext line)}
+             ) =~ "href"
+    end
+
+    test "action slots receive original string" do
+      assigns = %{data: %{"query" => ~S(SELECT\n1)}}
+
+      assert rendered_to_string(~H"""
+             <.json_viewer data={@data}>
+               <:action :let={node}>
+                 <span class="slot-value">{node.value}</span>
+               </:action>
+             </.json_viewer>
+             """) =~
+               ~S(<span class="slot-value">SELECT\n1</span>)
     end
   end
 

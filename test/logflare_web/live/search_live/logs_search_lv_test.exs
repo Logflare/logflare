@@ -1115,7 +1115,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
             %TFS{name: "deployment_time", type: "TIMESTAMP", mode: "NULLABLE"}
           ]
         }
-        |> then(&SchemaBuilder.build_table_schema(%{"testing" => "string"}, &1))
+        |> then(
+          &SchemaBuilder.build_table_schema(%{"query" => "string", "testing" => "string"}, &1)
+        )
 
       response_schema =
         %TS{
@@ -1123,9 +1125,17 @@ defmodule LogflareWeb.Source.SearchLVTest do
             %TFS{name: "deployment_time", type: "TIMESTAMP"}
           ]
         }
-        |> then(&SchemaBuilder.build_table_schema(%{"testing" => "string"}, &1))
+        |> then(
+          &SchemaBuilder.build_table_schema(%{"query" => "string", "testing" => "string"}, &1)
+        )
 
-      deployment_time = TestUtils.gen_bq_timestamp(~U[2026-04-27 04:22:46.765189Z])
+      respone_body = %{
+        "event_message" => "some modal message",
+        "testing" => "modal123",
+        "query" => "SELECT\\n1",
+        "deployment_time" => TestUtils.gen_bq_timestamp(~U[2026-04-27 04:22:46.765189Z]),
+        "id" => "some-uuid"
+      }
 
       {:ok, _user} =
         Logflare.Users.update_user_with_preferences(user, %{
@@ -1143,16 +1153,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # TODO: use expect, remove UDFs creation query
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-        {:ok,
-         TestUtils.gen_bq_response(
-           %{
-             "event_message" => "some modal message",
-             "testing" => "modal123",
-             "deployment_time" => deployment_time,
-             "id" => "some-uuid"
-           },
-           response_schema
-         )}
+        {:ok, TestUtils.gen_bq_response(respone_body, response_schema)}
       end)
 
       {:ok, view, _html} =
@@ -1174,16 +1175,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         query = opts[:body].query
         send(pid, {:query, query})
 
-        {:ok,
-         TestUtils.gen_bq_response(
-           %{
-             "event_message" => "some modal message",
-             "testing" => "modal123",
-             "deployment_time" => deployment_time,
-             "id" => "some-uuid"
-           },
-           response_schema
-         )}
+        {:ok, TestUtils.gen_bq_response(respone_body, response_schema)}
       end)
 
       TestUtils.retry_assert(fn ->
@@ -1195,9 +1187,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
       TestUtils.retry_assert(fn ->
         html = render(view)
 
+        assert html
+               |> Floki.parse_document!()
+               |> Floki.find("#metadata-raw-json-code")
+               |> Floki.text() =~ "SELECT\\\\n1"
+
         assert html =~ "Raw JSON"
         assert html =~ "modal123"
         assert html =~ "some modal message"
+        assert html =~ "SELECT\n1"
         assert html =~ "deployment_time"
         assert html =~ "1777263766765189"
         assert html =~ "2026-04-27 14:22:46"
