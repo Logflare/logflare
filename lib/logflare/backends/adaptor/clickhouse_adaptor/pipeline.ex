@@ -159,9 +159,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
   def ack(_ack_ref, successful, failed) do
-    successful
-    |> Enum.map(& &1.data)
-    |> IngestEventQueue.emit_dwell_telemetry(:clickhouse)
+    successful_events = Enum.map(successful, & &1.data)
+    IngestEventQueue.emit_dwell_telemetry(successful_events, :clickhouse)
+    IngestEventQueue.emit_pipeline_telemetry(successful_events, :clickhouse)
 
     failed
     |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} -> ack_data end)

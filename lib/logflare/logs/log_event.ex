@@ -25,6 +25,7 @@ defmodule Logflare.LogEvent do
     field :timestamp_inferred, :boolean, default: false
     field :ingested_at, :utc_datetime_usec
     field :ingested_at_ms, :integer
+    field :taken_at_ms, :integer
     field :source_uuid, Ecto.UUID.Atom
     field :source_name, :string
     field :via_rule_id, :id

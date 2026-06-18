@@ -146,9 +146,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         end
     end
 
-    successful
-    |> Enum.map(& &1.data)
-    |> IngestEventQueue.emit_dwell_telemetry(:bigquery)
+    successful_events = Enum.map(successful, & &1.data)
+    IngestEventQueue.emit_dwell_telemetry(successful_events, :bigquery)
+    IngestEventQueue.emit_pipeline_telemetry(successful_events, :bigquery)
 
     :ok
   end

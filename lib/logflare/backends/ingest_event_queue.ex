@@ -476,7 +476,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     with tid when tid != nil <- get_tid(sid_bid_pid),
          size when is_integer(size) <- :ets.info(tid, :size),
          {taken, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      {:ok, taken}
+      {:ok, stamp_taken(taken)}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, []}
@@ -509,30 +509,67 @@ defmodule Logflare.Backends.IngestEventQueue do
           event
         end
 
-      {:ok, events}
+      {:ok, stamp_taken(events)}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, []}
     end
   end
 
+  @spec stamp_taken([LogEvent.t()]) :: [LogEvent.t()]
+  defp stamp_taken(events) do
+    now_ms = System.system_time(:millisecond)
+    for %LogEvent{} = e <- events, do: %{e | taken_at_ms: now_ms}
+  end
+
   @doc """
-  Emits a `[:logflare, :backends, :ingest_event_queue, :dwell]` telemetry
-  event for each given LogEvent, measuring how long it sat in the queue
-  before successful ingestion. Intended to be called from Broadway ack
-  callbacks.
+  Emits one `[:logflare, :backends, :ingest_event_queue, :dwell]` event
+  per LogEvent measuring total dwell time (HTTP request arrival → ack).
 
   Measurements: `%{duration_ms: non_neg_integer()}`.
-  Metadata: `%{backend_type: atom()}`.
+  Metadata: `%{backend_type: atom(), stage: :total}`.
 
-  Events without an `ingested_at_ms` are skipped.
+  Intended to be called from Broadway ack callbacks.
   """
   @spec emit_dwell_telemetry([LogEvent.t()], atom()) :: :ok
   def emit_dwell_telemetry(events, backend_type) when is_atom(backend_type) do
-    now_ms = System.system_time(:millisecond)
-    metadata = %{backend_type: backend_type}
+    emit_stage(events, backend_type, :total, :ingested_at_ms)
+  end
 
-    for %LogEvent{ingested_at_ms: ts} when is_integer(ts) <- events do
+  @doc """
+  Emits one `[..., :dwell]` event per LogEvent measuring the HTTP request
+  arrival → IngestEventQueue handoff sub-stage.
+
+  Metadata: `%{backend_type: atom(), stage: :handoff}`. Intended to be
+  called from `Backends.dispatch_to_backends/3` immediately after
+  `add_to_table/2`.
+  """
+  @spec emit_handoff_telemetry([LogEvent.t()], atom()) :: :ok
+  def emit_handoff_telemetry(events, backend_type) when is_atom(backend_type) do
+    emit_stage(events, backend_type, :handoff, :ingested_at_ms)
+  end
+
+  @doc """
+  Emits one `[..., :dwell]` event per LogEvent measuring the queue exit →
+  ack sub-stage (time spent in the Broadway pipeline).
+
+  Metadata: `%{backend_type: atom(), stage: :pipeline}`. Intended to be
+  called from Broadway ack callbacks. Relies on `:taken_at_ms` being
+  stamped by `take_pending/2` / `pop_pending/2`.
+  """
+  @spec emit_pipeline_telemetry([LogEvent.t()], atom()) :: :ok
+  def emit_pipeline_telemetry(events, backend_type) when is_atom(backend_type) do
+    emit_stage(events, backend_type, :pipeline, :taken_at_ms)
+  end
+
+  @spec emit_stage([LogEvent.t()], atom(), atom(), atom()) :: :ok
+  defp emit_stage(events, backend_type, stage, ts_field) do
+    now_ms = System.system_time(:millisecond)
+    metadata = %{backend_type: backend_type, stage: stage}
+
+    for %LogEvent{} = e <- events,
+        ts = Map.get(e, ts_field),
+        is_integer(ts) do
       d = now_ms - ts
       duration_ms = if d < 0, do: 0, else: d
 
