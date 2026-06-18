@@ -165,7 +165,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
         {:error, {:exception, code, message}} = error ->
           Logger.error(
             "ClickHouse NativeIngester: exception during insert into #{table}, " <>
-              "code=#{code} message=#{inspect(message)}, removing connection"
+              "code=#{code} message=#{inspect(message)}, removing connection",
+            host: conn.host
           )
 
           {error, :remove}
@@ -173,7 +174,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
         {:error, {:column_mismatch, _} = detail} = error ->
           Logger.error(
             "ClickHouse NativeIngester: column mismatch during insert into #{table}, " <>
-              "detail=#{inspect(detail)}, removing connection"
+              "detail=#{inspect(detail)}, removing connection",
+            host: conn.host
           )
 
           {error, :remove}
@@ -181,7 +183,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
         {:error, reason} = error ->
           Logger.error(
             "ClickHouse NativeIngester: error during insert into #{table}, " <>
-              "reason=#{inspect(reason)}, removing connection"
+              "reason=#{inspect(reason)}, removing connection",
+            host: conn.host
           )
 
           {error, :remove}
@@ -189,9 +192,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester do
     end)
   catch
     :exit, {:timeout, _} ->
-      Logger.warning("ClickHouse NativeIngester: pool checkout timeout for insert into #{table}")
+      Logger.warning("ClickHouse NativeIngester: pool checkout timeout for insert into #{table}",
+        host: config_host(backend)
+      )
+
       {:error, :checkout_timeout}
   end
+
+  @spec config_host(Backend.t()) :: String.t() | nil
+  defp config_host(%Backend{config: %{url: url}}) when is_binary(url), do: URI.parse(url).host
+  defp config_host(_backend), do: nil
 
   @spec do_cached_insert(
           Connection.t(),

@@ -294,7 +294,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   def handle_info({:DOWN, _ref, :process, pid, _reason}, %__MODULE__{pool_pid: pid} = state)
       when is_pid(pid) do
     Logger.warning("ClickHouse connection pool died",
-      backend_id: state.backend_id
+      backend_id: state.backend_id,
+      host: connection_host(state.backend_id)
     )
 
     {:noreply, %{state | pool_pid: nil, next_recycle_at: nil}}
@@ -330,6 +331,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         Logger.error(
           "Failed to start ClickHouse connection pool",
           backend_id: state.backend_id,
+          host: connection_host(state.backend_id),
           reason: reason
         )
 
@@ -440,8 +442,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         |> div(2)
         |> max(default_pool_size)
 
-      read_only_url = Map.get(config, :read_only_url)
-      url = if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
+      url = read_url(config)
 
       with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
         pool_via = connection_pool_via(backend)
@@ -462,6 +463,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
         {:ok, ch_opts}
       end
+    end
+  end
+
+  @spec read_url(map()) :: String.t() | nil
+  defp read_url(config) do
+    read_only_url = Map.get(config, :read_only_url)
+    if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
+  end
+
+  @spec connection_host(pos_integer()) :: String.t() | nil
+  defp connection_host(backend_id) do
+    with %Backend{config: config} <- Backends.Cache.get_backend(backend_id),
+         {:ok, {_scheme, hostname, _port}} <- extract_url_components(read_url(config)) do
+      hostname
+    else
+      _ -> nil
     end
   end
 
