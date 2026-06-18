@@ -410,7 +410,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec slow_pool_checkout_ms() :: non_neg_integer()
   defp slow_pool_checkout_ms do
-    Application.get_env(:logflare, __MODULE__)[:slow_pool_checkout_ms] || @ch_slow_pool_checkout_ms
+    Application.get_env(:logflare, __MODULE__)[:slow_pool_checkout_ms] ||
+      @ch_slow_pool_checkout_ms
   end
 
   @spec execute_direct_query(url :: String.t(), config :: map(), statement :: String.t()) ::
