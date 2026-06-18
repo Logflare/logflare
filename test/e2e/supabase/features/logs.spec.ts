@@ -272,7 +272,7 @@ test.beforeAll(async ({ request, browserName }) => {
   // Cron jobs
   await request.post('/api/platform/pg-meta/default/query?key=extension-create', { data: {
     disable_statement_timeout: false,
-    query: "\nCREATE EXTENSION IF NOT EXISTS pg_cron\n  SCHEMA pg_catalog\n  VERSION '1.6'\n  CASCADE;"
+    query: "\nCREATE EXTENSION IF NOT EXISTS pg_cron\n  SCHEMA pg_catalog\n  CASCADE;"
   }});
 
   await request.post('/api/platform/pg-meta/default/query?key=cron-jobs-create', { data: {
