@@ -516,9 +516,6 @@ defmodule Logflare.Backends.IngestEventQueue do
       # element multiple times across calls (stale read). select_replace is a
       # conditional atomic update: only replaces when status is still :pending,
       # so already-taken events are correctly rejected.
-      # Note: result term uses {{:const, id}, :processing, :"$1", :"$2"} (not
-      # {:const, {id, :processing, :"$1", :"$2"}}) so that $1/$2 are substituted
-      # with the captured event and size values, not stored as literal atoms.
       confirmed =
         taken_pairs
         |> Enum.uniq_by(fn {id, _size} -> id end)
