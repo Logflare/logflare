@@ -3,6 +3,7 @@ defmodule Logflare.Telemetry do
 
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -36,15 +37,7 @@ defmodule Logflare.Telemetry do
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
           |> Keyword.put(:metrics, metrics())
-          |> Keyword.put(:resource, %{
-            name: "Logflare",
-            service: %{
-              name: "Logflare",
-              version: Application.spec(:logflare, :vsn) |> to_string()
-            },
-            node: inspect(Node.self()),
-            cluster: Application.get_env(:logflare, :metadata)[:cluster]
-          })
+          |> Keyword.put(:resource, resource())
           |> Keyword.update!(:otlp_headers, &Map.new/1)
           # set finch pool to 100 size
           |> Keyword.put(:otlp_concurrent_requests, max(base * 4, 50))
@@ -63,6 +56,35 @@ defmodule Logflare.Telemetry do
 
     Supervisor.init(children, strategy: :one_for_one)
   end
+
+  @spec resource() :: map()
+  def resource do
+    %{
+      name: "Logflare",
+      service: service_attributes(System.get_env("LOGFLARE_COMMIT_SHA")),
+      node: inspect(Node.self()),
+      cluster: Application.get_env(:logflare, :metadata)[:cluster]
+    }
+  end
+
+  @spec service_attributes(String.t() | nil) :: map()
+  def service_attributes(commit_sha) do
+    %{
+      name: "Logflare",
+      version: Application.spec(:logflare, :vsn) |> to_string()
+    }
+    |> maybe_put_commit(commit_sha)
+  end
+
+  @spec maybe_put_commit(map(), String.t() | nil) :: map()
+  defp maybe_put_commit(service, commit_sha) when is_non_empty_binary(commit_sha) do
+    case String.trim(commit_sha) do
+      "" -> service
+      commit -> Map.put(service, :commit, commit)
+    end
+  end
+
+  defp maybe_put_commit(service, _commit_sha), do: service
 
   defp metrics do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)

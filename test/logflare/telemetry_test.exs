@@ -6,6 +6,17 @@ defmodule Logflare.TelemetryTest do
   alias Logflare.Telemetry
   alias Logflare.TestUtils
 
+  describe "service_attributes/1 commit normalization" do
+    test "trims surrounding whitespace from the commit" do
+      assert %{commit: "abc123"} = Telemetry.service_attributes("  abc123\n")
+    end
+
+    test "omits commit when the SHA is empty or whitespace-only" do
+      refute Map.has_key?(Telemetry.service_attributes(""), :commit)
+      refute Map.has_key?(Telemetry.service_attributes("   "), :commit)
+    end
+  end
+
   describe "process metrics" do
     test "retrieves and emits top 10 by memory" do
       event = [:logflare, :system, :top_processes, :memory]

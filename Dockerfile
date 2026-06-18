@@ -60,6 +60,11 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en
 ENV LC_ALL en_US.UTF-8
 
+# Git commit SHA of the build, surfaced as an OTel resource attribute at runtime
+# (see Logflare.Telemetry). Passed in by CI; empty in local/ad-hoc builds.
+ARG COMMIT_SHA
+ENV LOGFLARE_COMMIT_SHA=${COMMIT_SHA}
+
 # Copy required files from builder step
 COPY --from=builder app/_build/prod /opt/app
 COPY --from=builder app/VERSION /opt/app/VERSION
