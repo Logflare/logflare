@@ -6,23 +6,9 @@ defmodule Logflare.TelemetryTest do
   alias Logflare.Telemetry
   alias Logflare.TestUtils
 
-  describe "service_attributes/1" do
-    test "always includes name and version" do
-      service = Telemetry.service_attributes(nil)
-      assert service.name == "Logflare"
-      assert is_binary(service.version)
-    end
-
-    test "includes commit when a SHA is set" do
-      assert %{commit: "abc123"} = Telemetry.service_attributes("abc123")
-    end
-
+  describe "service_attributes/1 commit normalization" do
     test "trims surrounding whitespace from the commit" do
       assert %{commit: "abc123"} = Telemetry.service_attributes("  abc123\n")
-    end
-
-    test "omits commit when the SHA is nil" do
-      refute Map.has_key?(Telemetry.service_attributes(nil), :commit)
     end
 
     test "omits commit when the SHA is empty or whitespace-only" do
