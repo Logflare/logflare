@@ -40,10 +40,10 @@ config :logflare, :clickhouse_backend_adaptor,
   native_pool_size: 10,
   min_pool_count: 1,
   max_pool_count: 4,
-  pool_scale_interval_ms: 10_000,
-  pool_scale_up_wait_ms: 500,
-  pool_scale_down_wait_ms: 50,
-  pool_scale_cooldown_ms: 30_000
+  pool_scale_interval_ms: 3_000,
+  pool_scale_up_wait_ms: 250,
+  pool_scale_down_wait_ms: 25,
+  pool_scale_cooldown_ms: 10_000
 
 config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
 
