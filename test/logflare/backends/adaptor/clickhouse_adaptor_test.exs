@@ -90,6 +90,49 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert {:error, _} = result
     end
 
+    test "logs a warning when connection checkout is slow", %{backend: backend} do
+      original = Application.get_env(:logflare, ClickHouseAdaptor)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:logflare, ClickHouseAdaptor, original)
+        else
+          Application.delete_env(:logflare, ClickHouseAdaptor)
+        end
+      end)
+
+      Application.put_env(:logflare, ClickHouseAdaptor, slow_pool_checkout_ms: 0)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+        end)
+
+      assert log =~ "ClickHouse slow connection checkout"
+      assert log =~ "for a pool connection"
+    end
+
+    test "does not log when connection checkout is within threshold", %{backend: backend} do
+      original = Application.get_env(:logflare, ClickHouseAdaptor)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:logflare, ClickHouseAdaptor, original)
+        else
+          Application.delete_env(:logflare, ClickHouseAdaptor)
+        end
+      end)
+
+      Application.put_env(:logflare, ClickHouseAdaptor, slow_pool_checkout_ms: 60_000)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+        end)
+
+      refute log =~ "ClickHouse slow connection checkout"
+    end
+
     test "preserves 16-byte strings while converting UUID columns", %{backend: backend} do
       # A 16-byte string that could be mistaken for a UUID binary
       sixteen_byte_str = "exactly16bytesXX"
