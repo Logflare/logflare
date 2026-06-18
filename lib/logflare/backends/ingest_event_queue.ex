@@ -512,15 +512,15 @@ defmodule Logflare.Backends.IngestEventQueue do
     with tid when tid != nil <- get_tid(sid_bid_pid),
          size when is_integer(size) <- :ets.info(tid, :size),
          {taken_pairs, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      # Deduplicate first — ets.select with write_concurrency can return the same
-      # element more than once, which would create duplicate Broadway messages.
-      # Filter out events concurrently deleted between select and update_element.
-      # update_element returns false when the key no longer exists (e.g. janitor drop race).
+      # ets.select with write_concurrency + read_concurrency can return the same
+      # element multiple times across calls (stale read). select_replace is a
+      # conditional atomic update: only replaces when status is still :pending,
+      # so already-taken events are correctly rejected.
       confirmed =
         taken_pairs
-        |> Enum.uniq_by(fn {id, _size} -> id end)
         |> Enum.filter(fn {id, _size} ->
-          :ets.update_element(tid, id, {2, :processing})
+          replace_ms = [{{id, :pending, :"$1", :"$2"}, [], [{{id, :processing, :"$1", :"$2"}}]}]
+          :ets.select_replace(tid, replace_ms) == 1
         end)
 
       {:ok, confirmed, tid}
