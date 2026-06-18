@@ -34,17 +34,10 @@ defmodule Logflare.Telemetry do
 
     otel_exporter =
       if Application.get_env(:logflare, :opentelemetry_enabled?) do
-        service = service_attributes(System.get_env("LOGFLARE_COMMIT_SHA"))
-
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
           |> Keyword.put(:metrics, metrics())
-          |> Keyword.put(:resource, %{
-            name: "Logflare",
-            service: service,
-            node: inspect(Node.self()),
-            cluster: Application.get_env(:logflare, :metadata)[:cluster]
-          })
+          |> Keyword.put(:resource, resource())
           |> Keyword.update!(:otlp_headers, &Map.new/1)
           # set finch pool to 100 size
           |> Keyword.put(:otlp_concurrent_requests, max(base * 4, 50))
@@ -62,6 +55,16 @@ defmodule Logflare.Telemetry do
       ] ++ otel_exporter
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  @spec resource() :: map()
+  def resource do
+    %{
+      name: "Logflare",
+      service: service_attributes(System.get_env("LOGFLARE_COMMIT_SHA")),
+      node: inspect(Node.self()),
+      cluster: Application.get_env(:logflare, :metadata)[:cluster]
+    }
   end
 
   @spec service_attributes(String.t() | nil) :: map()
