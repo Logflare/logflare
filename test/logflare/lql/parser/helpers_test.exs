@@ -12,6 +12,17 @@ defmodule Logflare.Lql.Parser.HelpersTest do
       assert result == {:quoted, "test value"}
     end
 
+    test "unescapes quoted field value escape sequences" do
+      for {encoded, decoded} <- [
+            {~S|hello \"world\"|, ~S|hello "world"|},
+            {~S|path\\to\\file|, ~S|path\to\file|},
+            {~S|slash before quote: \\\"|, ~S|slash before quote: \"|}
+          ] do
+        assert Helpers.to_rule([isolated_string: encoded], :quoted_field_value) ==
+                 {:quoted, decoded}
+      end
+    end
+
     test "handles quoted event message with operator" do
       args = [isolated_string: "test message", operator: :"~"]
       result = Helpers.to_rule(args, :quoted_event_message)
