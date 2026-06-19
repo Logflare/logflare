@@ -1,0 +1,30 @@
+services:
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9002:9002"   # S3 API (9000 is taken by ClickHouse)
+      - "9001:9001"   # Console UI
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --address ":9002" --console-address ":9001"
+    volumes:
+      - ./tmp/minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9002 minioadmin minioadmin;
+      mc mb --ignore-existing local/logflare-spool;
+      echo 'Bucket ready';
+      "
+
