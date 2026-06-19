@@ -223,7 +223,7 @@ defmodule LogflareWeb.JSONViewerComponentTest do
              |> Floki.text() =~ "SELECT\n\t*\rFROM logs"
     end
 
-    test "exact https strings are renwered as link" do
+    test "exact https strings are rendered as link" do
       assert render_component(&json_viewer/1, data: %{"https" => "https://example.com"}) =~ "href"
 
       refute render_component(&json_viewer/1, data: %{"insecure_http" => "http://example.com"}) =~
