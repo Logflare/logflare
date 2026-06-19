@@ -61,7 +61,7 @@ defmodule Logflare.Backends.UserMonitoring do
        [
          metric_store_name: @store_name,
          pull_interval: pull_interval,
-         batch_size: 250
+         batch_size: 500
        ]}
 
     [exporter_spec, pipeline_spec]
