@@ -989,7 +989,14 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # Second cycle — event still :processing → stale
       _state = QueueJanitor.do_cleanup_stale_processing(state)
 
-      assert [{_, :pending, %{retries: 1}, _}] = :ets.lookup(tid, le.id)
+      le_id = le.id
+      assert [{^le_id, :pending, reset_le, size}] = :ets.lookup(tid, le.id)
+      # retries incremented
+      assert reset_le.retries == 1
+      # rest of the LogEvent is intact — not corrupted by select_replace
+      assert reset_le.id == le.id
+      assert reset_le.body == le.body
+      assert is_integer(size)
     end
 
     test "max retries exceeded: stale event is deleted" do
