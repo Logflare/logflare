@@ -26,6 +26,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @inactivity_timeout :timer.minutes(5)
   @resolve_interval :timer.seconds(30)
   @ch_query_conn_timeout :timer.minutes(1)
+  @ch_queue_target :timer.seconds(5)
   @recycle_interval :timer.minutes(10)
   @recycle_spread :timer.seconds(60)
 
@@ -456,7 +457,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         password: config.password,
         pool_size: pool_size,
         settings: [],
-        timeout: @ch_query_conn_timeout
+        timeout: @ch_query_conn_timeout,
+        queue_target: @ch_queue_target
       ]
 
       {:ok, ch_opts}

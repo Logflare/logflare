@@ -38,6 +38,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @scaling_threshold 15_000
   @async_insert_busy_timeout_max_ms 3_000
   @max_read_pool_size 4096
+  @ch_slow_pool_checkout_ms 1_000
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -351,8 +352,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     with :ok <- ensure_query_connection_manager_started(backend) do
       pool_via = connection_pool_via(backend)
 
-      timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 30_000
-      opts = opts |> Keyword.put(:decode, false) |> Keyword.put(:timeout, timeout)
+      timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
+
+      backend_id = backend.id
+      log_fun = fn entry -> log_slow_checkout(entry, backend_id) end
+
+      opts =
+        opts
+        |> Keyword.put(:decode, false)
+        |> Keyword.put(:timeout, timeout)
+        |> Keyword.put(:log, log_fun)
 
       case Ch.query(pool_via, statement, params, opts) do
         {:ok, %Ch.Result{} = result} ->
@@ -380,6 +389,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           {:error, "Error executing ClickHouse query"}
       end
     end
+  end
+
+  @spec log_slow_checkout(DBConnection.LogEntry.t(), pos_integer()) :: :ok
+  defp log_slow_checkout(%DBConnection.LogEntry{pool_time: pool_time}, backend_id)
+       when is_integer(pool_time) do
+    pool_ms = System.convert_time_unit(pool_time, :native, :millisecond)
+
+    if pool_ms >= slow_pool_checkout_ms() do
+      Logger.warning(
+        "ClickHouse slow connection checkout: waited #{pool_ms}ms for a pool connection",
+        backend_id: backend_id
+      )
+    end
+
+    :ok
+  end
+
+  defp log_slow_checkout(_entry, _backend_id), do: :ok
+
+  @spec slow_pool_checkout_ms() :: non_neg_integer()
+  defp slow_pool_checkout_ms do
+    Application.get_env(:logflare, __MODULE__)[:slow_pool_checkout_ms] ||
+      @ch_slow_pool_checkout_ms
   end
 
   @spec execute_direct_query(url :: String.t(), config :: map(), statement :: String.t()) ::
