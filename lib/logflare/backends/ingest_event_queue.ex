@@ -24,6 +24,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   @type queues_key :: {pos_integer(), pos_integer() | nil}
   @type consolidated_queues_key :: {:consolidated, pos_integer()}
   @type consolidated_table_key :: {:consolidated, pos_integer(), pid() | nil}
+  @type s3_producer_queues_key :: {:s3_producer, nil}
+  @type s3_producer_table_key :: {:s3_producer, nil, pid() | nil}
 
   defguardp is_pid_or_nil(value) when is_pid(value) or is_nil(value)
 
@@ -64,6 +66,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   def get_tid({:consolidated, bid, pid}) when is_integer(bid),
     do: do_get_tid({:consolidated, bid}, pid)
 
+  def get_tid({:s3_producer, nil, pid}),
+    do: do_get_tid({:s3_producer, nil}, pid)
+
   def get_tid({sid, bid, pid}) when is_integer(sid),
     do: do_get_tid({sid, bid}, pid)
 
@@ -96,6 +101,26 @@ defmodule Logflare.Backends.IngestEventQueue do
           ])
 
         :ets.insert(@ets_table_mapper, {{:consolidated, bid}, pid, tid})
+        {:ok, tid}
+
+      tid ->
+        {:error, :already_exists, tid}
+    end
+  end
+
+  def upsert_tid({:s3_producer, nil, pid} = key) when is_pid_or_nil(pid) do
+    case get_tid(key) do
+      nil ->
+        tid =
+          :ets.new(@ets_table, [
+            :public,
+            :set,
+            {:decentralized_counters, false},
+            {:write_concurrency, :auto},
+            {:read_concurrency, true}
+          ])
+
+        :ets.insert(@ets_table_mapper, {{:s3_producer, nil}, pid, tid})
         {:ok, tid}
 
       tid ->
@@ -174,6 +199,31 @@ defmodule Logflare.Backends.IngestEventQueue do
           Keyword.t()
         ) :: :ok | {:error, :not_initialized}
   def add_to_table(sid_bid_or_sid_bid_pid, batch, opts \\ [])
+
+  def add_to_table({:s3_producer, nil} = key, batch, opts) do
+    chunk_size = Keyword.get(opts, :chunk_size, 100)
+    startup_queue = {:s3_producer, nil, nil}
+
+    reducer = fn
+      {{:s3_producer, nil, nil}, _}, acc -> acc
+      {obj, _count}, acc -> [obj | acc]
+    end
+
+    with all = [_ | _] <- list_counts_with_tids(key),
+         available_queues = [_ | _] <- Enum.reduce(all, [], reducer) do
+      Logflare.Utils.chunked_round_robin(
+        batch,
+        available_queues,
+        chunk_size,
+        &add_to_target_table/2
+      )
+    else
+      _ ->
+        add_to_table(startup_queue, batch)
+    end
+
+    :ok
+  end
 
   def add_to_table({:consolidated, bid} = key, batch, opts) when is_integer(bid) do
     chunk_size = Keyword.get(opts, :chunk_size, 100)

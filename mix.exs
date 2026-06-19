@@ -184,6 +184,11 @@ defmodule Logflare.Mixfile do
       # DataFrames
       {:explorer, "~> 0.11.1"},
 
+      # S3
+      {:ex_aws, "~> 2.5"},
+      {:ex_aws_s3, "~> 2.5"},
+      {:sweet_xml, "~> 0.7"},
+
       # Telemetry & logging
       {:telemetry, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},

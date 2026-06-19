@@ -179,6 +179,10 @@ monitor: ERL_NAME ?= st_
 monitor:
 	MONITOR_SOURCE=${MONITOR_SOURCE} iex --sname monitor --cookie ${ERL_COOKIE} --remsh ${ERL_NAME}-${ERL_COOKIE} --dot-iex scripts/monitor.iex.exs
 
+monitor-s3: ERL_NAME ?= st_
+monitor-s3:
+	MONITOR_PIPELINE=s3 iex --sname monitor --cookie ${ERL_COOKIE} --remsh ${ERL_NAME}-${ERL_COOKIE} --dot-iex scripts/monitor.iex.exs
+
 __start__:
 	@if [ ! -f ${ENV_FILE} ]; then \
 		touch ${ENV_FILE}; \

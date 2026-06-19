@@ -81,3 +81,20 @@ config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
 
 config :stripity_stripe,
   api_key: "sk_test_thisisaboguskey"
+
+config :logflare, :s3_spool,
+  mode: :producer,
+  bucket: "logflare-spool",
+  partitions: 4,
+  batch_timeout: 5_000,
+  compress: false
+
+config :ex_aws,
+  access_key_id: "minioadmin",
+  secret_access_key: "minioadmin",
+  region: "us-east-1",
+  s3: [
+    scheme: "http://",
+    host: "localhost",
+    port: 9002
+  ]

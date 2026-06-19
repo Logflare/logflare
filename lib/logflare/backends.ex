@@ -594,8 +594,14 @@ defmodule Logflare.Backends do
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
-    maybe_broadcast_and_route(source, log_events)
-    dispatch_to_backends(source, backend, log_events)
+
+    if s3_producer_mode?() do
+      dispatch_to_s3_producer(log_events)
+    else
+      maybe_broadcast_and_route(source, log_events)
+      dispatch_to_backends(source, backend, log_events)
+    end
+
     if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
   end
 
@@ -679,6 +685,14 @@ defmodule Logflare.Backends do
     Sources.Counters.increment(source.token, count)
     SystemMetrics.AllLogsLogged.increment(:total_logs_logged, count)
     :ok
+  end
+
+  defp s3_producer_mode? do
+    :logflare |> Application.get_env(:s3_spool, []) |> Keyword.get(:mode) == :producer
+  end
+
+  defp dispatch_to_s3_producer(log_events) do
+    IngestEventQueue.add_to_table({:s3_producer, nil}, log_events)
   end
 
   defp maybe_broadcast_and_route(source, log_events) do
