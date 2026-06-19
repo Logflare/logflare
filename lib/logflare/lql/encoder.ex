@@ -104,7 +104,7 @@ defmodule Logflare.Lql.Encoder do
          operator: op
        })
        when op in [:string_contains, :=],
-       do: ~s|"#{v}"|
+       do: quote_string(v)
 
   defp to_fragment(%FilterRule{path: "event_message", value: v, operator: op})
        when op in [:string_contains, :=],
@@ -116,7 +116,7 @@ defmodule Logflare.Lql.Encoder do
          modifiers: %{quoted_string: true},
          operator: :"~"
        }),
-       do: ~s|~"#{v}"|
+       do: "~" <> quote_string(v)
 
   defp to_fragment(%FilterRule{path: "event_message", value: v, operator: :"~"}), do: "~#{v}"
 
@@ -132,7 +132,7 @@ defmodule Logflare.Lql.Encoder do
          value: v,
          modifiers: %{quoted_string: true}
        }) do
-    ~s|#{path}:"#{v}"|
+    "#{path}:#{quote_string(v)}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -151,7 +151,7 @@ defmodule Logflare.Lql.Encoder do
          value: v,
          modifiers: %{quoted_string: true}
        }) do
-    ~s|#{path}:@>"#{v}"|
+    "#{path}:@>#{quote_string(v)}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -170,7 +170,7 @@ defmodule Logflare.Lql.Encoder do
          value: v,
          modifiers: %{quoted_string: true}
        }) do
-    ~s|#{path}:@>~"#{v}"|
+    "#{path}:@>~#{quote_string(v)}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -189,7 +189,7 @@ defmodule Logflare.Lql.Encoder do
          value: v,
          modifiers: %{quoted_string: true}
        }) do
-    ~s|#{path}:#{op}"#{v}"|
+    "#{path}:#{op}#{quote_string(v)}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -224,10 +224,21 @@ defmodule Logflare.Lql.Encoder do
 
   @spec maybe_quote(term()) :: String.t()
   defp maybe_quote(v) when is_non_empty_binary(v) do
-    if Regex.match?(~r/^[a-zA-Z_0-9]+$/, v), do: v, else: ~s|"#{v}"|
+    if Regex.match?(~r/^[a-zA-Z_0-9]+$/, v), do: v, else: quote_string(v)
   end
 
   defp maybe_quote(v), do: to_string(v)
+
+  @spec quote_string(term()) :: String.t()
+  defp quote_string(value), do: ~s|"#{escape_quoted_string(value)}"|
+
+  @spec escape_quoted_string(term()) :: String.t()
+  defp escape_quoted_string(value) do
+    value
+    |> to_string()
+    |> String.replace("\\", "\\\\")
+    |> String.replace("\"", "\\\"")
+  end
 
   defp format_generic_filter_value(value) when is_valid_date_or_datetime(value),
     do: format_filter_value(value)
