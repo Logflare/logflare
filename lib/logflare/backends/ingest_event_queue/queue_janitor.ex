@@ -51,7 +51,10 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     }
 
     handle_info(:work, state)
-    Process.send_after(self(), :cleanup_stale_processing, @stale_processing_interval)
+
+    unless consolidated?,
+      do: Process.send_after(self(), :cleanup_stale_processing, @stale_processing_interval)
+
     {:ok, state}
   end
 
@@ -133,11 +136,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   # Stuck events are reset to :pending and retried.
   # Dropped once they've been stale @max_stale_retries times.
   # expose for testing
-  def do_cleanup_stale_processing(
-        %{consolidated?: true, consolidated_key: consolidated_key} = state
-      ) do
-    queues = IngestEventQueue.list_queues(consolidated_key)
-    do_cleanup_queues(state, queues)
+  def do_cleanup_stale_processing(%{consolidated?: true} = state) do
+    state
   end
 
   def do_cleanup_stale_processing(state) do
