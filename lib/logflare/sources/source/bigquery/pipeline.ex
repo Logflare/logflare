@@ -145,7 +145,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
         for %{data: {id, tid, size}} <- successful do
           case :ets.lookup(tid, id) do
-            [{^id, _status, le, _byte_size}] ->
+            [{^id, _status, le, _byte_size, _claim}] ->
               emit_event_telemetry(queue, source, le, size, backend_metadata)
 
             [] ->
@@ -291,7 +291,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     Enum.reduce(messages, {[], []}, fn
       %{data: {id, tid, size}} = message, {out, missing} ->
         case :ets.lookup(tid, id) do
-          [{^id, _status, log_event, _byte_size}] ->
+          [{^id, _status, log_event, _byte_size, _claim}] ->
             {[{message, process_data(log_event, context), size} | out], missing}
 
           [] ->
@@ -526,11 +526,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     to_requeue =
       Enum.reduce(failed, [], fn %{data: {id, tid, _size}}, acc ->
         case :ets.lookup(tid, id) do
-          [{^id, _status, %LE{retries: retries} = le, _byte_size} | _]
+          [{^id, _status, %LE{retries: retries} = le, _byte_size, _claim} | _]
           when retries < max_retries ->
             [%LE{le | retries: (retries || 0) + 1} | acc]
 
-          [{^id, _status, _le, _byte_size} | _] ->
+          [{^id, _status, _le, _byte_size, _claim} | _] ->
             IngestEventQueue.delete_id(tid, id)
             acc
 
