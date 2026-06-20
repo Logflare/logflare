@@ -142,15 +142,21 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
       source ->
         metrics = Sources.get_source_metrics_for_ingest(source.token)
+        # Resolve the label mapping once per ack rather than re-parsing source.labels
+        # per event. When empty, the event body is never read, so we skip the ETS
+        # lookup entirely (the full LogEvent does not need to be copied out).
+        label_mapping = Sources.get_labels_mapping(source)
 
         for %{data: {id, tid, size}} <- successful do
-          case :ets.lookup(tid, id) do
-            [{^id, _status, le, _byte_size, _claim, _claimed_at}] ->
-              emit_event_telemetry(queue, source, le, size, backend_metadata)
-
-            [] ->
-              :ok
-          end
+          maybe_emit_event_telemetry(
+            queue,
+            source,
+            tid,
+            id,
+            size,
+            label_mapping,
+            backend_metadata
+          )
 
           if metrics.avg > 100 do
             IngestEventQueue.delete_id(tid, id)
@@ -561,10 +567,25 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     IngestEventQueue.add_to_table(sid_bid, events)
   end
 
-  defp emit_event_telemetry({sid, bid, _}, source, le, size, backend_metadata) do
-    # emit telemetry on event
-    event_labels = Sources.get_labels_from_event(source, le)
+  # No labels configured: emit without reading the event from ETS.
+  defp maybe_emit_event_telemetry(queue, source, _tid, _id, size, mapping, backend_metadata)
+       when map_size(mapping) == 0 do
+    emit_event_telemetry(queue, source, %{}, size, backend_metadata)
+  end
 
+  # Labels configured: the event body is required to resolve label values.
+  defp maybe_emit_event_telemetry(queue, source, tid, id, size, mapping, backend_metadata) do
+    case :ets.lookup(tid, id) do
+      [{^id, _status, le, _byte_size, _claim, _claimed_at}] ->
+        event_labels = Sources.extract_labels(mapping, le)
+        emit_event_telemetry(queue, source, event_labels, size, backend_metadata)
+
+      [] ->
+        :ok
+    end
+  end
+
+  defp emit_event_telemetry({sid, bid, _}, source, event_labels, size, backend_metadata) do
     metrics = %{ingested_bytes: size}
 
     metadata =

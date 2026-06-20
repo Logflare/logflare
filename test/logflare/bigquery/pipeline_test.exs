@@ -111,6 +111,75 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert [{_id, :ingested, _, _, _, _}] = :ets.lookup(tid, le.id)
     end
 
+    test "ack emits ingest telemetry with resolved labels when source has labels", %{
+      source: source
+    } do
+      source = insert(:source, user_id: source.user_id, labels: "lvl=m.level")
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source, metadata: %{"level" => "error"})
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform({le.id, tid, 123}, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      test_pid = self()
+      handler = "test-ingest-labels-#{inspect(make_ref())}"
+
+      :telemetry.attach(
+        handler,
+        [:logflare, :backends, :ingest],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:ingest, measurements, metadata})
+        end,
+        nil
+      )
+
+      mod.ack(ref, [message], [])
+
+      assert_receive {:ingest, %{ingested_bytes: 123}, metadata}
+      assert metadata["lvl"] == "error"
+
+      :telemetry.detach(handler)
+    end
+
+    test "ack emits ingest telemetry without reading the event when source has no labels", %{
+      source: source
+    } do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      # Delete from ETS so a per-event lookup would find nothing — telemetry must
+      # still be emitted, proving the lookup is skipped when there are no labels.
+      :ets.delete(tid, le.id)
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform({le.id, tid, 123}, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      test_pid = self()
+      handler = "test-ingest-nolabels-#{inspect(make_ref())}"
+
+      :telemetry.attach(
+        handler,
+        [:logflare, :backends, :ingest],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:ingest, measurements, metadata})
+        end,
+        nil
+      )
+
+      mod.ack(ref, [message], [])
+
+      assert_receive {:ingest, %{ingested_bytes: 123}, _metadata}
+
+      :telemetry.detach(handler)
+    end
+
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
       source: source
     } do
