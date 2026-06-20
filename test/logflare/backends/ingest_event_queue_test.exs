@@ -370,6 +370,24 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert MapSet.size(second_ids) == 6
     end
 
+    test "re-claims an event after it is re-added to the queue (claim counter resets)", %{
+      sbp: sbp
+    } do
+      [event] = events = [build(:log_event)]
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+      event_id = event.id
+
+      # first claim takes it and marks it :processing (claim counter -> 1)
+      assert {:ok, [{^event_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
+      # nothing left pending to claim
+      assert {:ok, [], _} = IngestEventQueue.take_pending_ids(sbp, 1)
+
+      # re-adding (as the BigQuery requeue path does) overwrites with a fresh
+      # :pending row whose claim counter is reset to 0, so it is claimable again
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+      assert {:ok, [{^event_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
+    end
+
     # Regression artifact for #3609: the per-id select_replace CAS guards against two
     # consumers claiming the same queue concurrently. Reverting to an unconditional
     # update_element should make this fail (the same id claimed by two tasks). It is
@@ -1076,6 +1094,29 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert is_integer(size)
       # claim counter reset to 0 so the requeued event can be claimed again
       assert claim == 0
+    end
+
+    test "stale event reset by the janitor can be re-claimed by take_pending_ids" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+
+      # claim via the real path: marks :processing and sets the claim counter to 1
+      le_id = le.id
+      assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
+      assert {:ok, [], _} = IngestEventQueue.take_pending_ids(sbp, 1)
+
+      # two cycles: the stuck :processing event is detected and reset to :pending
+      state = make_janitor_state(source, backend)
+      state = QueueJanitor.do_cleanup_stale_processing(state)
+      _state = QueueJanitor.do_cleanup_stale_processing(state)
+
+      # the reset event is claimable again — only true if the claim counter was reset
+      assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
     end
 
     test "max retries exceeded: stale event is deleted" do
