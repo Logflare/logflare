@@ -594,8 +594,18 @@ defmodule Logflare.Sources do
   """
   @spec get_labels_from_event(Source.t(), LogEvent.t()) :: map()
   def get_labels_from_event(source, log_event) do
-    mapping = get_labels_mapping(source)
+    source
+    |> get_labels_mapping()
+    |> extract_labels(log_event)
+  end
 
+  @doc """
+  Extracts label values from a log event using a precomputed label mapping
+  (see `get_labels_mapping/1`). Useful when the mapping is resolved once and
+  reused across many events, avoiding re-parsing the source's label config.
+  """
+  @spec extract_labels(map(), LogEvent.t()) :: map()
+  def extract_labels(mapping, log_event) do
     for {label, path} <- mapping, into: %{} do
       {label, get_in(log_event.body, path)}
     end
