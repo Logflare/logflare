@@ -231,7 +231,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       # Fetch full LogEvents from ETS. Sizes were computed in the producer and are
       # carried on each message — no recomputation needed here. The batch is already
       # byte-bounded by bq_batch_size_splitter/0 in the batcher config.
-      {triples, missing} = fetch_events_from_messages(messages, context)
+      {triples, missing} = fetch_events_from_messages(messages, context, source)
 
       if missing != [] do
         :telemetry.execute(
@@ -286,12 +286,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     Enum.map(log_events, &le_to_bq_row/1)
   end
 
-  defp fetch_events_from_messages(messages, context) do
+  defp fetch_events_from_messages(messages, context, source) do
     Enum.reduce(messages, {[], []}, fn
       %{data: {id, tid, size}} = message, {out, missing} ->
         case :ets.lookup(tid, id) do
           [{^id, _status, log_event, _byte_size, _claim}] ->
-            {[{message, process_data(log_event, context), size} | out], missing}
+            {[{message, process_data(log_event, context, source), size} | out], missing}
 
           [] ->
             {out, [message | missing]}
@@ -418,8 +418,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     {log_events, %{}}
   end
 
-  def process_data(%LE{source_id: source_id} = log_event, context) do
-    source = Sources.Cache.get_by_id(source_id)
+  def process_data(%LE{} = log_event, context, source) do
+    # `source` is resolved once per batch in handle_batch/4 and threaded in, rather
+    # than re-fetched from the cache per event (a Source struct copy per event).
 
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that
