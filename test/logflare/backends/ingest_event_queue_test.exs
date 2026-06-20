@@ -322,6 +322,83 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "take_pending_ids/2" do
+    setup do
+      user = insert(:user)
+      sbp = {insert(:source, user: user).id, insert(:backend, user: user).id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      [sbp: sbp]
+    end
+
+    test "claims pending events, marking them :processing and returning {id, size} pairs", %{
+      sbp: sbp
+    } do
+      events = for _ <- 1..5, do: build(:log_event)
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      assert {:ok, pairs, tid} = IngestEventQueue.take_pending_ids(sbp, 5)
+      assert tid != nil
+      assert length(pairs) == 5
+
+      taken_ids = for {id, _size} <- pairs, do: id
+      assert Enum.sort(taken_ids) == Enum.sort(for e <- events, do: e.id)
+      # claimed events are no longer pending
+      assert IngestEventQueue.total_pending(sbp) == 0
+    end
+
+    test "respects the requested count and leaves the remainder pending", %{sbp: sbp} do
+      events = for _ <- 1..10, do: build(:log_event)
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      assert {:ok, pairs, _tid} = IngestEventQueue.take_pending_ids(sbp, 4)
+      assert length(pairs) == 4
+      assert IngestEventQueue.total_pending(sbp) == 6
+    end
+
+    test "does not re-claim events already taken across sequential calls", %{sbp: sbp} do
+      events = for _ <- 1..10, do: build(:log_event)
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      assert {:ok, first, _} = IngestEventQueue.take_pending_ids(sbp, 4)
+      assert {:ok, second, _} = IngestEventQueue.take_pending_ids(sbp, 10)
+
+      first_ids = MapSet.new(first, fn {id, _} -> id end)
+      second_ids = MapSet.new(second, fn {id, _} -> id end)
+
+      assert MapSet.disjoint?(first_ids, second_ids)
+      assert MapSet.size(first_ids) == 4
+      assert MapSet.size(second_ids) == 6
+    end
+
+    # Regression artifact for #3609: the per-id select_replace CAS guards against two
+    # consumers claiming the same queue concurrently. Reverting to an unconditional
+    # update_element should make this fail (the same id claimed by two tasks). It is
+    # probabilistic — the race window must actually be hit — so it uses a large batch
+    # and several concurrent claimers to make a double-claim likely if the guard is lost.
+    @tag :race
+    test "concurrent claims on the same queue never claim an event twice", %{sbp: sbp} do
+      count = 1_000
+      events = for _ <- 1..count, do: build(:log_event)
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      claimed =
+        for _ <- 1..8 do
+          Task.async(fn ->
+            {:ok, pairs, _tid} = IngestEventQueue.take_pending_ids(sbp, count)
+            for {id, _size} <- pairs, do: id
+          end)
+        end
+        |> Task.await_many(10_000)
+        |> List.flatten()
+
+      # No event claimed by more than one consumer.
+      assert length(claimed) == length(Enum.uniq(claimed))
+      # Every event was claimed exactly once.
+      assert length(claimed) == count
+      assert IngestEventQueue.total_pending(sbp) == 0
+    end
+  end
+
   describe "`add_to_table/3` distribution with queues_key" do
     setup do
       user = insert(:user)
@@ -863,7 +940,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       tid = IngestEventQueue.get_tid(sbp)
 
       assert :ok = IngestEventQueue.update_status(tid, le.id, :processing)
-      assert [{_id, :processing, _, _}] = :ets.lookup(tid, le.id)
+      assert [{_id, :processing, _, _, _}] = :ets.lookup(tid, le.id)
     end
 
     test "returns :ok silently when ETS table is stale/deleted" do
@@ -968,7 +1045,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       new_state = QueueJanitor.do_cleanup_stale_processing(state)
 
       # Still :processing — first cycle only builds snapshot
-      assert [{_, :processing, _, _}] = :ets.lookup(tid, le.id)
+      assert [{_, :processing, _, _, _}] = :ets.lookup(tid, le.id)
       # Snapshot now populated
       assert map_size(new_state.processing_snapshot) == 1
     end
@@ -990,13 +1067,15 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       _state = QueueJanitor.do_cleanup_stale_processing(state)
 
       le_id = le.id
-      assert [{^le_id, :pending, reset_le, size}] = :ets.lookup(tid, le.id)
+      assert [{^le_id, :pending, reset_le, size, claim}] = :ets.lookup(tid, le.id)
       # retries incremented
       assert reset_le.retries == 1
       # rest of the LogEvent is intact — not corrupted by select_replace
       assert reset_le.id == le.id
       assert reset_le.body == le.body
       assert is_integer(size)
+      # claim counter reset to 0 so the requeued event can be claimed again
+      assert claim == 0
     end
 
     test "max retries exceeded: stale event is deleted" do
