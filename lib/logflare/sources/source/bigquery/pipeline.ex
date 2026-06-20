@@ -241,9 +241,13 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         )
       end
 
-      log_events = Enum.map(triples, fn {_msg, le, _size} -> le end)
-      batch_count = length(log_events)
-      batch_size = Enum.sum_by(triples, fn {_msg, _le, size} -> size end)
+      # Single pass over triples to collect the log events and batch metrics, rather
+      # than a separate map, length, and sum_by. Row order within a batch insert does
+      # not matter (each BQ row carries its own insertId).
+      {log_events, batch_count, batch_size} =
+        Enum.reduce(triples, {[], 0, 0}, fn {_msg, le, size}, {les, count, bytes} ->
+          {[le | les], count + 1, bytes + size}
+        end)
 
       if source && source.bq_storage_write_api do
         batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
