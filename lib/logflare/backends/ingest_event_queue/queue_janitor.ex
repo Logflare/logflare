@@ -180,15 +180,17 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
   defp act_on_stale_event(tid, id) do
     case :ets.lookup(tid, id) do
-      [{^id, :processing, %{retries: retries}, _size}] when retries >= @max_stale_retries - 1 ->
-        :ets.select_delete(tid, [{{id, :processing, :_, :_}, [], [true]}])
+      [{^id, :processing, %{retries: retries}, _size, _claim}]
+      when retries >= @max_stale_retries - 1 ->
+        :ets.select_delete(tid, [{{id, :processing, :_, :_, :_}, [], [true]}])
         :drop
 
-      [{^id, :processing, %{retries: retries} = le, size}] ->
+      [{^id, :processing, %{retries: retries} = le, size, _claim}] ->
         new_le = %{le | retries: (retries || 0) + 1}
 
+        # Reset the claim counter (field 5) to 0 so the requeued event can be claimed again.
         case :ets.select_replace(tid, [
-               {{id, :processing, le, size}, [], [{:const, {id, :pending, new_le, size}}]}
+               {{id, :processing, le, size, :_}, [], [{:const, {id, :pending, new_le, size, 0}}]}
              ]) do
           1 -> :reset
           0 -> :skip

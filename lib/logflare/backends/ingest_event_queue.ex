@@ -296,7 +296,10 @@ defmodule Logflare.Backends.IngestEventQueue do
   def add_to_table({sid_bid_pid, tid}, batch, _opts) when is_tuple(sid_bid_pid) do
     objects =
       for %{id: id} = event <- batch do
-        {id, :pending, event, :erlang.external_size(event.body)}
+        # 5th field is the claim counter: 0 = unclaimed. take_pending_ids/2 claims via an
+        # atomic update_counter (0 -> 1 winner), so re-inserting here resets it to 0 and
+        # makes a requeued event claimable again.
+        {id, :pending, event, :erlang.external_size(event.body), 0}
       end
 
     :ets.insert(tid, objects)
@@ -436,7 +439,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def total_pending({_sid, _bid, _pid} = sid_bid_pid) do
     ms =
       Ex2ms.fun do
-        {_event_id, :pending, _event, _size} -> true
+        {_event_id, :pending, _event, _size, _claim} -> true
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -454,7 +457,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def total_by_status({_, _} = sid_bid, status) do
     ms =
       Ex2ms.fun do
-        {_event_id, event_status, _event, _size} when event_status == ^status -> true
+        {_event_id, event_status, _event, _size, _claim} when event_status == ^status -> true
       end
 
     traverse_queues(
@@ -478,7 +481,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def take_pending(sid_bid_pid, n) when is_integer(n) do
     ms =
       Ex2ms.fun do
-        {_event_id, :pending, event, _size} -> event
+        {_event_id, :pending, event, _size, _claim} -> event
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -506,28 +509,41 @@ defmodule Logflare.Backends.IngestEventQueue do
   def take_pending_ids(sid_bid_pid, n) when is_integer(n) do
     ms =
       Ex2ms.fun do
-        {event_id, :pending, _event, size} -> {event_id, size}
+        {event_id, :pending, _event, size, _claim} -> {event_id, size}
       end
 
+    # `n` is passed directly as the select limit: `get_tid/1` already confirms the
+    # table is live, the `take_pending_ids(_, 0)` head guarantees `n >= 1`, and
+    # `:ets.select/3` returns fewer rows than the limit when the table is smaller.
+    # This avoids a redundant `:ets.info(tid, :size)` read on the claim hot path.
     with tid when tid != nil <- get_tid(sid_bid_pid),
-         size when is_integer(size) <- :ets.info(tid, :size),
-         {taken_pairs, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      # ets.select with write_concurrency + read_concurrency can return the same
-      # element multiple times across calls (stale read). select_replace is a
-      # conditional atomic update: only replaces when status is still :pending,
-      # so already-taken events are correctly rejected.
-      confirmed =
-        taken_pairs
-        |> Enum.filter(fn {id, _size} ->
-          replace_ms = [{{id, :pending, :"$1", :"$2"}, [], [{{id, :processing, :"$1", :"$2"}}]}]
-          :ets.select_replace(tid, replace_ms) == 1
-        end)
+         {taken_pairs, _cont} <- :ets.select(tid, ms, n) do
+      # Claim each candidate with an atomic CAS on the claim counter (field 5). The
+      # 0 -> 1 winner takes the event; a 2+ result means another consumer — or a
+      # write_concurrency resize duplicate within this select — already claimed it, so
+      # it is rejected. This is multi-consumer safe (matching select_replace) without
+      # compiling a per-id match spec, and needs no dedup pass.
+      confirmed = Enum.filter(taken_pairs, fn {id, _size} -> claim_pending(tid, id) end)
 
       {:ok, confirmed, tid}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, [], nil}
     end
+  end
+
+  @spec claim_pending(:ets.tid(), term()) :: boolean()
+  defp claim_pending(tid, id) do
+    if :ets.update_counter(tid, id, {5, 1}) == 1 do
+      :ets.update_element(tid, id, {2, :processing})
+      true
+    else
+      false
+    end
+  rescue
+    # The row was deleted (e.g. janitor drop) between the select and the claim;
+    # mirrors `update_element` returning false for a missing key.
+    ArgumentError -> false
   end
 
   @doc """
@@ -544,7 +560,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending(sid_bid_pid, n) when is_integer(n) do
     select_ms =
       Ex2ms.fun do
-        {event_id, :pending, event, _size} -> {event_id, event}
+        {event_id, :pending, event, _size, _claim} -> {event_id, event}
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -568,7 +584,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def fetch_events({_, _, _} = sid_bid_pid, n) do
     ms =
       Ex2ms.fun do
-        {_event_id, _, event, _size} -> event
+        {_event_id, _, event, _size, _claim} -> event
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -637,14 +653,17 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp do_truncate_table(key, status, n) do
     ms =
       Ex2ms.fun do
-        {_event_id, _event_status, event, _size} = obj when ^status == :all -> obj
-        {_event_id, event_status, event, _size} = obj when event_status == ^status -> obj
+        {_event_id, _event_status, event, _size, _claim} = obj when ^status == :all -> obj
+        {_event_id, event_status, event, _size, _claim} = obj when event_status == ^status -> obj
       end
 
     del_ms =
       Ex2ms.fun do
-        {_event_id, _event_status, _event, _size} = _obj when ^status == :all -> true
-        {_event_id, event_status, _event, _size} = _obj when event_status == ^status -> true
+        {_event_id, _event_status, _event, _size, _claim} = _obj when ^status == :all ->
+          true
+
+        {_event_id, event_status, _event, _size, _claim} = _obj when event_status == ^status ->
+          true
       end
 
     with tid when tid != nil <- get_tid(key),
@@ -694,7 +713,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_processing_ids(key) do
     ms =
       Ex2ms.fun do
-        {id, :processing, _event, _size} -> id
+        {id, :processing, _event, _size, _claim} -> id
       end
 
     with tid when tid != nil <- get_tid(key),
@@ -799,8 +818,8 @@ defmodule Logflare.Backends.IngestEventQueue do
     # chunk over table and drop
     ms =
       Ex2ms.fun do
-        {event_id, _status, _event, _size} = _obj when ^filter == :all -> event_id
-        {event_id, status, _event, _size} = _obj when status == ^filter -> event_id
+        {event_id, _status, _event, _size, _claim} = _obj when ^filter == :all -> event_id
+        {event_id, status, _event, _size, _claim} = _obj when status == ^filter -> event_id
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
