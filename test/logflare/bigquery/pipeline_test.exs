@@ -247,7 +247,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       log =
         capture_log([level: :warning], fn ->
-          Pipeline.stream_batch(context, [{build(:log_event, source: source), 0}])
+          Pipeline.stream_batch(context, [build(:log_event, source: source)])
         end)
 
       assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
@@ -285,7 +285,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       log =
         capture_log([level: :warning], fn ->
-          Pipeline.stream_batch(context, [{build(:log_event, source: source), 0}])
+          Pipeline.stream_batch(context, [build(:log_event, source: source)])
         end)
 
       assert log =~ "user audit: BigQuery backend auto-disconnect triggered"

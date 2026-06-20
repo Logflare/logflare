@@ -259,10 +259,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         end
       else
         batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_streaming_insert)
-        event_size_pairs = Enum.map(triples, fn {_msg, le, size} -> {le, size} end)
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
-          stream_batch(context, event_size_pairs)
+          stream_batch(context, log_events)
         end
       end
 
@@ -345,7 +344,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   def stream_batch(
         %{source_token: source_token, user_id: user_id, system_source: system_source} = context,
-        event_size_pairs
+        log_events
       ) do
     Logger.metadata(
       source_id: source_token,
@@ -357,13 +356,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :telemetry.span(
       [:logflare, :ingest, :pipeline, :stream_batch],
       %{source_token: source_token},
-      fn -> execute_bigquery_stream_batch(context, event_size_pairs) end
+      fn -> execute_bigquery_stream_batch(context, log_events) end
     )
   end
 
-  defp execute_bigquery_stream_batch(%{source_token: source_token} = context, event_size_pairs) do
-    log_events = Enum.map(event_size_pairs, &elem(&1, 0))
-
+  defp execute_bigquery_stream_batch(%{source_token: source_token} = context, log_events) do
     rows =
       OpenTelemetry.Tracer.with_span "ingest.bq_serialize", %{
         attributes: %{insert_method: :bq_streaming_insert}
@@ -418,7 +415,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       end
     end
 
-    {event_size_pairs, %{}}
+    {log_events, %{}}
   end
 
   def process_data(%LE{source_id: source_id} = log_event, context) do
