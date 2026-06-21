@@ -532,6 +532,21 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
+  # Claim invariant: every `:pending` row has `claim == 0`, and `claim` only goes
+  # `0 -> 1` here (atomically flipping the winner to `:processing`). This holds because:
+  #
+  #   1. The only writers that produce a `:pending` row — `add_to_table/3` (re-insert)
+  #      and the `QueueJanitor` stale reset — set `claim` to 0 atomically with the status.
+  #   2. The off-CAS status writers (`mark_ingested/2`, and `update_status/3` which the
+  #      pipeline only ever calls with `:ingested`) never reset a row to `:pending`, and
+  #      never run on a queue that also claims via `take_pending_ids/2`: a queue is keyed
+  #      by its owning producer pid (`{sid, bid, self()}`, see `BufferProducer.do_fetch/2`)
+  #      and a producer's `id_passing` flag is fixed for life, so the claim (id_passing)
+  #      path and the `mark_ingested`/pop (non-id_passing) path never share a queue.
+  #
+  # Breaking either point — e.g. calling `mark_ingested/2` on an id_passing queue, making
+  # `id_passing` dynamic, or adding a path that sets `:pending` without resetting `claim` —
+  # would invalidate the CAS, so keep those changes in sync with this claim path.
   @spec claim_pending(:ets.tid(), term()) :: boolean()
   defp claim_pending(tid, id) do
     # The 0 -> 1 winner owns the claim, but the row can still be deleted between the
