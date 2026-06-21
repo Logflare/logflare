@@ -388,11 +388,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert {:ok, [{^event_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
     end
 
-    # Regression artifact for #3609: the per-id select_replace CAS guards against two
-    # consumers claiming the same queue concurrently. Reverting to an unconditional
-    # update_element should make this fail (the same id claimed by two tasks). It is
-    # probabilistic — the race window must actually be hit — so it uses a large batch
-    # and several concurrent claimers to make a double-claim likely if the guard is lost.
+    # Regression guard for the concurrent-claim CAS. For correct code this passes
+    # deterministically — the update_counter 0 -> 1 winner is the sole claimer, so no
+    # event is ever taken twice regardless of scheduling. The large batch and several
+    # concurrent claimers exist to make a *regression* (e.g. reverting to an
+    # unconditional update_element) actually hit the race window and fail, rather than
+    # slip through. Tagged :race so it can be isolated, but it is safe to run by default.
     @tag :race
     test "concurrent claims on the same queue never claim an event twice", %{sbp: sbp} do
       count = 1_000

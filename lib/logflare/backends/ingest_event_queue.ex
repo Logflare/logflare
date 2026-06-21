@@ -534,15 +534,17 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @spec claim_pending(:ets.tid(), term()) :: boolean()
   defp claim_pending(tid, id) do
+    # The 0 -> 1 winner owns the claim, but the row can still be deleted between the
+    # counter bump and the status write. `update_element` returns false for a missing
+    # key, so returning its result rejects a row that vanished mid-claim — matching the
+    # old select_replace, which returned 0 (not claimed) for a row deleted in its window.
     if :ets.update_counter(tid, id, {5, 1}) == 1 do
       :ets.update_element(tid, id, {2, :processing})
-      true
     else
       false
     end
   rescue
-    # The row was deleted (e.g. janitor drop) between the select and the claim;
-    # mirrors `update_element` returning false for a missing key.
+    # The row was deleted before the counter bump; update_counter raises on a missing key.
     ArgumentError -> false
   end
 
