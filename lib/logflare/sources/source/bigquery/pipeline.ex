@@ -238,10 +238,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         )
       end
 
-      {log_events, batch_count, batch_size} =
-        Enum.reduce(triples, {[], 0, 0}, fn {_msg, le, size}, {les, count, bytes} ->
-          {[le | les], count + 1, bytes + size}
-        end)
+      {log_events, batch_count, batch_size} = collect_batch_events(triples)
 
       if source && source.bq_storage_write_api do
         batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
@@ -295,6 +292,20 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             {out, [message | missing]}
         end
     end)
+  end
+
+  # Single pass collecting log events + batch metrics. Separate accumulator args (rather
+  # than a tuple-accumulator Enum.reduce) avoid allocating a fresh tuple per event — only
+  # the cons list is built. Row order within a batch insert does not matter (each BQ row
+  # carries its own insertId).
+  @spec collect_batch_events([{Message.t(), LE.t(), non_neg_integer()}]) ::
+          {[LE.t()], non_neg_integer(), non_neg_integer()}
+  defp collect_batch_events(triples), do: collect_batch_events(triples, [], 0, 0)
+
+  defp collect_batch_events([], log_events, count, bytes), do: {log_events, count, bytes}
+
+  defp collect_batch_events([{_msg, le, size} | rest], log_events, count, bytes) do
+    collect_batch_events(rest, [le | log_events], count + 1, bytes + size)
   end
 
   def le_to_bq_row(%LE{body: body, id: id}) do
