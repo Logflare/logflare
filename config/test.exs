@@ -9,8 +9,16 @@ config :logflare,
 
 config :logflare, LogflareWeb.Endpoint,
   url: [host: "localhost", scheme: "http", port: 4001],
-  http: [port: 4001],
-  server: false
+  http: [
+    port: 4001,
+    thousand_island_options: [
+      transport_options: [
+        reuseport: false,
+        reuseport_lb: false
+      ]
+    ]
+  ],
+  server: System.get_env("JSDOM") in ["true", "1"]
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
@@ -74,6 +82,13 @@ config :tesla, Logflare.Backends.Adaptor.WebhookAdaptor.Client, adapter: Tesla.M
 config :logflare, Oban, testing: :manual
 
 config :phoenix_test, otp_app: :logflare, endpoint: LogflareWeb.Endpoint
+
+config :phoenix_test_jsdom,
+  setup_files: [
+    Path.expand("../deps/phoenix_test_jsdom/examples/hello/assets/js/jsdom_setup.js", __DIR__),
+    Path.expand("../test/support/jsdom_setup.js", __DIR__)
+  ],
+  cwd: Path.expand("../assets", __DIR__)
 
 config :opentelemetry,
   sdk_disabled: false,
