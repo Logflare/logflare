@@ -111,19 +111,19 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert [{_id, :ingested, _, _, _, _}] = :ets.lookup(tid, le.id)
     end
 
-    test "ack emits ingest telemetry with resolved labels when source has labels", %{
+    test "handle_batch emits ingest telemetry with resolved labels when source has labels", %{
       source: source
     } do
       source = insert(:source, user_id: source.user_id, labels: "lvl=m.level")
-      sid_bid_pid = {source.id, nil, self()}
-      IngestEventQueue.upsert_tid(sid_bid_pid)
-      le = build(:log_event, source: source, metadata: %{"level" => "error"})
-      IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      context = bq_context(source)
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
 
-      ref = {sid_bid_pid, %{max_retries: 0}}
-      message = Pipeline.transform({le.id, tid, 123}, ref: ref)
-      {mod, ref, _} = message.acknowledger
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source, metadata: %{"level" => "error"})
+      {messages, _tid} = setup_queue(source, [le])
 
       test_pid = self()
       handler = "test-ingest-labels-#{inspect(make_ref())}"
@@ -137,29 +137,28 @@ defmodule Logflare.BigQuery.PipelineTest do
         nil
       )
 
-      mod.ack(ref, [message], [])
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
 
-      assert_receive {:ingest, %{ingested_bytes: 123}, metadata}
+      assert_receive {:ingest, %{ingested_bytes: bytes}, metadata}
+      assert bytes > 0
+      # labels resolved from the event body, no per-event ETS lookup in ack
       assert metadata["lvl"] == "error"
 
       :telemetry.detach(handler)
     end
 
-    test "ack emits ingest telemetry without reading the event when source has no labels", %{
+    test "handle_batch emits ingest telemetry with no labels when source has none", %{
       source: source
     } do
-      sid_bid_pid = {source.id, nil, self()}
-      IngestEventQueue.upsert_tid(sid_bid_pid)
-      le = build(:log_event, source: source)
-      IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      tid = IngestEventQueue.get_tid(sid_bid_pid)
-      # Delete from ETS so a per-event lookup would find nothing — telemetry must
-      # still be emitted, proving the lookup is skipped when there are no labels.
-      :ets.delete(tid, le.id)
+      context = bq_context(source)
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
 
-      ref = {sid_bid_pid, %{max_retries: 0}}
-      message = Pipeline.transform({le.id, tid, 123}, ref: ref)
-      {mod, ref, _} = message.acknowledger
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, [le])
 
       test_pid = self()
       handler = "test-ingest-nolabels-#{inspect(make_ref())}"
@@ -173,9 +172,11 @@ defmodule Logflare.BigQuery.PipelineTest do
         nil
       )
 
-      mod.ack(ref, [message], [])
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
 
-      assert_receive {:ingest, %{ingested_bytes: 123}, _metadata}
+      source_id = source.id
+      assert_receive {:ingest, %{ingested_bytes: bytes}, %{"source_id" => ^source_id}}
+      assert bytes > 0
 
       :telemetry.detach(handler)
     end
@@ -520,6 +521,18 @@ defmodule Logflare.BigQuery.PipelineTest do
         end)
 
       {messages, tid}
+    end
+
+    defp bq_context(source) do
+      %{
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: nil,
+        bigquery_project_id: nil,
+        bigquery_dataset_id: nil,
+        user_id: source.user_id,
+        system_source: false
+      }
     end
 
     test "passes {id, tid, size} messages through with correct size", %{

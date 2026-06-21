@@ -125,13 +125,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     maybe_requeue_failed({sid, bid}, failed, config)
 
-    backend_metadata =
-      if bid do
-        Backends.Cache.get_backend(bid).metadata || %{}
-      else
-        %{}
-      end
-
+    # Per-event ingest telemetry is emitted in handle_batch/4, where the full
+    # LogEvent is already in hand — ack only needs each event's id to finalize
+    # queue state, so it never re-fetches the event from ETS.
     case Sources.Cache.get_by_id(sid) do
       nil ->
         Logger.warning("Source not found for ack!", source_id: sid)
@@ -142,22 +138,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
       source ->
         metrics = Sources.get_source_metrics_for_ingest(source.token)
-        # Resolve the label mapping once per ack rather than re-parsing source.labels
-        # per event. When empty, the event body is never read, so we skip the ETS
-        # lookup entirely (the full LogEvent does not need to be copied out).
-        label_mapping = Sources.get_labels_mapping(source)
 
-        for %{data: {id, tid, size}} <- successful do
-          maybe_emit_event_telemetry(
-            queue,
-            source,
-            tid,
-            id,
-            size,
-            label_mapping,
-            backend_metadata
-          )
-
+        for %{data: {id, tid, _size}} <- successful do
           if metrics.avg > 100 do
             IngestEventQueue.delete_id(tid, id)
           else
@@ -268,6 +250,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           stream_batch(context, log_events)
         end
       end
+
+      emit_ingest_telemetry(context, source, triples)
 
       succeeded = Enum.map(triples, fn {msg, _le, _size} -> msg end)
 
@@ -567,23 +551,24 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     IngestEventQueue.add_to_table(sid_bid, events)
   end
 
-  # No labels configured: emit without reading the event from ETS.
-  defp maybe_emit_event_telemetry(queue, source, _tid, _id, size, mapping, backend_metadata)
-       when map_size(mapping) == 0 do
-    emit_event_telemetry(queue, source, %{}, size, backend_metadata)
-  end
+  # Emit per-event ingest telemetry from handle_batch, where the full LogEvent is
+  # already in hand (no extra ETS lookup in ack). The label mapping and backend
+  # metadata are resolved once per batch rather than per event.
+  defp emit_ingest_telemetry(_context, nil, _triples), do: :ok
 
-  # Labels configured: the event body is required to resolve label values.
-  defp maybe_emit_event_telemetry(queue, source, tid, id, size, mapping, backend_metadata) do
-    case :ets.lookup(tid, id) do
-      [{^id, _status, le, _byte_size, _claim, _claimed_at}] ->
-        event_labels = Sources.extract_labels(mapping, le)
-        emit_event_telemetry(queue, source, event_labels, size, backend_metadata)
+  defp emit_ingest_telemetry(context, source, triples) do
+    label_mapping = Sources.get_labels_mapping(source)
+    backend_metadata = backend_metadata(context.backend_id)
+    queue = {context.source_id, context.backend_id, nil}
 
-      [] ->
-        :ok
+    for {_msg, le, size} <- triples do
+      event_labels = Sources.extract_labels(label_mapping, le)
+      emit_event_telemetry(queue, source, event_labels, size, backend_metadata)
     end
   end
+
+  defp backend_metadata(nil), do: %{}
+  defp backend_metadata(bid), do: Backends.Cache.get_backend(bid).metadata || %{}
 
   defp emit_event_telemetry({sid, bid, _}, source, event_labels, size, backend_metadata) do
     metrics = %{ingested_bytes: size}
