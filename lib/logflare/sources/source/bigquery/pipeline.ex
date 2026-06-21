@@ -228,9 +228,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     } do
       source = Sources.Cache.get_by_id(context.source_id)
 
-      # Fetch full LogEvents from ETS. Sizes were computed in the producer and are
-      # carried on each message — no recomputation needed here. The batch is already
-      # byte-bounded by bq_batch_size_splitter/0 in the batcher config.
       {triples, missing} = fetch_events_from_messages(messages, context, source)
 
       if missing != [] do
@@ -241,9 +238,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         )
       end
 
-      # Single pass over triples to collect the log events and batch metrics, rather
-      # than a separate map, length, and sum_by. Row order within a batch insert does
-      # not matter (each BQ row carries its own insertId).
       {log_events, batch_count, batch_size} =
         Enum.reduce(triples, {[], 0, 0}, fn {_msg, le, size}, {les, count, bytes} ->
           {[le | les], count + 1, bytes + size}
@@ -422,9 +416,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     {log_events, %{}}
   end
 
+  @spec process_data(LE.t(), map(), Sources.Source.t() | nil) :: LE.t()
   def process_data(%LE{} = log_event, context, source) do
     # `source` is resolved once per batch in handle_batch/4 and threaded in, rather
-    # than re-fetched from the cache per event (a Source struct copy per event).
+    # than re-fetched from the cache per event.
 
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that
