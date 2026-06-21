@@ -55,6 +55,7 @@ stream_inputs =
     {k, {triples, Enum.map(triples, fn {_msg, le, _size} -> le end)}}
   end)
 
+# credo:disable-for-next-line
 IO.puts("\n=== #3: collect log_events + batch_count + batch_size ===\n")
 
 Benchee.run(
@@ -81,6 +82,7 @@ Benchee.run(
   reduction_time: 3
 )
 
+# credo:disable-for-next-line
 IO.puts("\n=== #1: events handed to stream_batch/2 on the streaming path ===\n")
 
 Benchee.run(
