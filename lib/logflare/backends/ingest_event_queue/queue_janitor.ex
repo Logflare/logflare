@@ -188,7 +188,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       [{^id, :processing, %{retries: retries} = le, size, _claim}] ->
         new_le = %{le | retries: (retries || 0) + 1}
 
-        # Reset the claim counter (field 5) to 0 so the requeued event can be claimed again.
+        # Reset to :pending with claim 0 so the requeued event is claimable (see claim_pending/2).
         case :ets.select_replace(tid, [
                {{id, :processing, le, size, :_}, [], [{:const, {id, :pending, new_le, size, 0}}]}
              ]) do

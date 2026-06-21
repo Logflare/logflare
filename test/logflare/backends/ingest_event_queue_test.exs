@@ -342,7 +342,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       taken_ids = for {id, _size} <- pairs, do: id
       assert Enum.sort(taken_ids) == Enum.sort(for e <- events, do: e.id)
-      # claimed events are no longer pending
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
@@ -377,13 +376,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
       event_id = event.id
 
-      # first claim takes it and marks it :processing (claim counter -> 1)
       assert {:ok, [{^event_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
-      # nothing left pending to claim
       assert {:ok, [], _} = IngestEventQueue.take_pending_ids(sbp, 1)
 
-      # re-adding (as the BigQuery requeue path does) overwrites with a fresh
-      # :pending row whose claim counter is reset to 0, so it is claimable again
+      # re-adding (the BigQuery requeue path) resets the claim counter, making it claimable
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
       assert {:ok, [{^event_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
     end
@@ -410,9 +406,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         |> Task.await_many(10_000)
         |> List.flatten()
 
-      # No event claimed by more than one consumer.
       assert length(claimed) == length(Enum.uniq(claimed))
-      # Every event was claimed exactly once.
       assert length(claimed) == count
       assert IngestEventQueue.total_pending(sbp) == 0
     end
@@ -972,7 +966,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.add_to_table(sbp, [le])
       tid = IngestEventQueue.get_tid(sbp)
 
-      # claim it (claim counter -> 1, status :processing)
       le_id = le.id
       assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
       assert [{^le_id, :processing, _, _, 1}] = :ets.lookup(tid, le.id)
@@ -1114,7 +1107,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert reset_le.id == le.id
       assert reset_le.body == le.body
       assert is_integer(size)
-      # claim counter reset to 0 so the requeued event can be claimed again
       assert claim == 0
     end
 
@@ -1127,7 +1119,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sbp, [le])
 
-      # claim via the real path: marks :processing and sets the claim counter to 1
       le_id = le.id
       assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
       assert {:ok, [], _} = IngestEventQueue.take_pending_ids(sbp, 1)

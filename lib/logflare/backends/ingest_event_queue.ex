@@ -296,9 +296,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def add_to_table({sid_bid_pid, tid}, batch, _opts) when is_tuple(sid_bid_pid) do
     objects =
       for %{id: id} = event <- batch do
-        # 5th field is the claim counter: 0 = unclaimed. take_pending_ids/2 claims via an
-        # atomic update_counter (0 -> 1 winner), so re-inserting here resets it to 0 and
-        # makes a requeued event claimable again.
+        # New/requeued rows start unclaimed (claim counter 0); see claim_pending/2.
         {id, :pending, event, :erlang.external_size(event.body), 0}
       end
 
@@ -512,17 +510,10 @@ defmodule Logflare.Backends.IngestEventQueue do
         {event_id, :pending, _event, size, _claim} -> {event_id, size}
       end
 
-    # `n` is passed directly as the select limit: `get_tid/1` already confirms the
-    # table is live, the `take_pending_ids(_, 0)` head guarantees `n >= 1`, and
-    # `:ets.select/3` returns fewer rows than the limit when the table is smaller.
-    # This avoids a redundant `:ets.info(tid, :size)` read on the claim hot path.
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {taken_pairs, _cont} <- :ets.select(tid, ms, n) do
-      # Claim each candidate with an atomic CAS on the claim counter (field 5). The
-      # 0 -> 1 winner takes the event; a 2+ result means another consumer — or a
-      # write_concurrency resize duplicate within this select — already claimed it, so
-      # it is rejected. This is multi-consumer safe (matching select_replace) without
-      # compiling a per-id match spec, and needs no dedup pass.
+      # The claim counter's 0 -> 1 winner takes the event; a 2+ result (another consumer,
+      # or a write_concurrency duplicate row within this select) loses, so no dedup needed.
       confirmed = Enum.filter(taken_pairs, fn {id, _size} -> claim_pending(tid, id) end)
 
       {:ok, confirmed, tid}
@@ -532,30 +523,17 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  # Claim invariant: every `:pending` row has `claim == 0`, and `claim` only goes
-  # `0 -> 1` in claim_pending/2. The counter bump is the atomic election (a single
-  # winner); the follow-up `:processing` status write is a separate, non-atomic step
-  # (the row can still vanish between the two — handled below). The invariant holds
-  # because:
-  #
-  #   1. Every writer that produces a `:pending` row resets `claim` to 0 in the same
-  #      step: `add_to_table/3` (re-insert), the `QueueJanitor` stale reset, and
-  #      `update_status/3` when it sets `:pending`.
-  #   2. No other status writer strands a claimable row: `mark_ingested/2` only sets the
-  #      terminal `:ingested`. And the claim path never shares a queue with the
-  #      `mark_ingested`/pop path — a queue is keyed by its owning producer pid
-  #      (`{sid, bid, self()}`, see `BufferProducer.do_fetch/2`) and a producer's
-  #      `id_passing` flag is fixed for life, so an id_passing producer claims only via
-  #      `take_pending_ids/2` while a non-id_passing one only marks/pops.
-  #
-  # Keep new transitions in sync: any path that returns a row to `:pending` must also
-  # reset `claim` to 0, or the row becomes unclaimable.
+  # Claim invariant:
+  #   * every `:pending` row has `claim == 0`
+  #   * `update_counter` is the atomic election; the `:processing` write is a separate step
+  #   * any transition back to `:pending` must reset `claim` (add_to_table/3, the
+  #     QueueJanitor reset, and update_status/3 all do)
+  #   * id_passing and non-id_passing producers never share a pid-keyed queue, so the
+  #     claim path and the mark_ingested/pop path never touch the same rows
   @spec claim_pending(:ets.tid(), term()) :: boolean()
   defp claim_pending(tid, id) do
-    # The 0 -> 1 winner owns the claim, but the row can still be deleted between the
-    # counter bump and the status write. `update_element` returns false for a missing
-    # key, so returning its result rejects a row that vanished mid-claim — matching the
-    # old select_replace, which returned 0 (not claimed) for a row deleted in its window.
+    # Return update_element/3's result: it is false for a missing key, so a row deleted
+    # between the counter bump and the status write is rejected rather than claimed.
     if :ets.update_counter(tid, id, {5, 1}) == 1 do
       :ets.update_element(tid, id, {2, :processing})
     else
@@ -717,9 +695,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec update_status(:ets.tid(), term(), :pending | :processing | :ingested) :: :ok
   def update_status(tid, id, status) do
-    # Returning a row to :pending must also reset the claim counter (field 5) to 0, or it
-    # stays unclaimable — the same invariant add_to_table/3 and the QueueJanitor reset
-    # uphold (see claim_pending/2). update_element applies both changes in one atomic op.
+    # When returning to :pending, reset claim in the same ETS update so the row stays claimable.
     update = if status == :pending, do: [{2, :pending}, {5, 0}], else: {2, status}
     :ets.update_element(tid, id, update)
     :ok
