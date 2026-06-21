@@ -354,6 +354,10 @@ defmodule LogflareWeb.QueryLive do
     {:noreply, assign_form(socket, params)}
   end
 
+  def handle_event("set_backend", _params, socket) do
+    {:noreply, socket}
+  end
+
   def handle_async(:run_query, {:ok, {:ok, %{rows: rows} = result}}, socket) do
     total_bytes_processed = Map.get(result, :total_bytes_processed)
 
