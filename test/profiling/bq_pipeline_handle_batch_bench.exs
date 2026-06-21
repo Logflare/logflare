@@ -3,8 +3,9 @@
 # (up to 500 events), so the win is in allocations/reductions rather than wall time.
 #
 # #3 — collect log_events + batch_count + batch_size:
-#   old: Enum.map (extract le) + length + Enum.sum_by  -> 3 traversals, a full le list
-#   new: a single Enum.reduce                          -> 1 traversal, list built via cons
+#   old: Enum.map (extract le) + length + Enum.sum_by  -> 3 traversals
+#   new: single Enum.reduce, tuple accumulator         -> 1 traversal, per-event tuple garbage
+#   alt: tail-recursive, separate accumulators         -> 1 traversal, no tuple (shipped)
 #
 # #1 — streaming insert path handing events to stream_batch/2:
 #   old: built {le, size} pairs from triples, then re-extracted log_events downstream
