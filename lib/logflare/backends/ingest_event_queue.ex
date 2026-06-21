@@ -533,20 +533,23 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   # Claim invariant: every `:pending` row has `claim == 0`, and `claim` only goes
-  # `0 -> 1` here (atomically flipping the winner to `:processing`). This holds because:
+  # `0 -> 1` in claim_pending/2. The counter bump is the atomic election (a single
+  # winner); the follow-up `:processing` status write is a separate, non-atomic step
+  # (the row can still vanish between the two — handled below). The invariant holds
+  # because:
   #
-  #   1. The only writers that produce a `:pending` row — `add_to_table/3` (re-insert)
-  #      and the `QueueJanitor` stale reset — set `claim` to 0 atomically with the status.
-  #   2. The off-CAS status writers (`mark_ingested/2`, and `update_status/3` which the
-  #      pipeline only ever calls with `:ingested`) never reset a row to `:pending`, and
-  #      never run on a queue that also claims via `take_pending_ids/2`: a queue is keyed
-  #      by its owning producer pid (`{sid, bid, self()}`, see `BufferProducer.do_fetch/2`)
-  #      and a producer's `id_passing` flag is fixed for life, so the claim (id_passing)
-  #      path and the `mark_ingested`/pop (non-id_passing) path never share a queue.
+  #   1. Every writer that produces a `:pending` row resets `claim` to 0 in the same
+  #      step: `add_to_table/3` (re-insert), the `QueueJanitor` stale reset, and
+  #      `update_status/3` when it sets `:pending`.
+  #   2. No other status writer strands a claimable row: `mark_ingested/2` only sets the
+  #      terminal `:ingested`. And the claim path never shares a queue with the
+  #      `mark_ingested`/pop path — a queue is keyed by its owning producer pid
+  #      (`{sid, bid, self()}`, see `BufferProducer.do_fetch/2`) and a producer's
+  #      `id_passing` flag is fixed for life, so an id_passing producer claims only via
+  #      `take_pending_ids/2` while a non-id_passing one only marks/pops.
   #
-  # Breaking either point — e.g. calling `mark_ingested/2` on an id_passing queue, making
-  # `id_passing` dynamic, or adding a path that sets `:pending` without resetting `claim` —
-  # would invalidate the CAS, so keep those changes in sync with this claim path.
+  # Keep new transitions in sync: any path that returns a row to `:pending` must also
+  # reset `claim` to 0, or the row becomes unclaimable.
   @spec claim_pending(:ets.tid(), term()) :: boolean()
   defp claim_pending(tid, id) do
     # The 0 -> 1 winner owns the claim, but the row can still be deleted between the
@@ -714,7 +717,11 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec update_status(:ets.tid(), term(), :pending | :processing | :ingested) :: :ok
   def update_status(tid, id, status) do
-    :ets.update_element(tid, id, {2, status})
+    # Returning a row to :pending must also reset the claim counter (field 5) to 0, or it
+    # stays unclaimable — the same invariant add_to_table/3 and the QueueJanitor reset
+    # uphold (see claim_pending/2). update_element applies both changes in one atomic op.
+    update = if status == :pending, do: [{2, :pending}, {5, 0}], else: {2, status}
+    :ets.update_element(tid, id, update)
     :ok
   rescue
     ArgumentError ->

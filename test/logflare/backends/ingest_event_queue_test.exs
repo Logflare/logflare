@@ -962,6 +962,27 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert [{_id, :processing, _, _, _}] = :ets.lookup(tid, le.id)
     end
 
+    test "setting :pending resets the claim counter so the row is claimable again" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+
+      # claim it (claim counter -> 1, status :processing)
+      le_id = le.id
+      assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
+      assert [{^le_id, :processing, _, _, 1}] = :ets.lookup(tid, le.id)
+
+      # returning to :pending must also reset the claim counter, or it stays unclaimable
+      assert :ok = IngestEventQueue.update_status(tid, le.id, :pending)
+      assert [{^le_id, :pending, _, _, 0}] = :ets.lookup(tid, le.id)
+      assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
+    end
+
     test "returns :ok silently when ETS table is stale/deleted" do
       assert :ok = IngestEventQueue.update_status(:stale_tid, "any-id", :processing)
     end
