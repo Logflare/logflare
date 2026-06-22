@@ -231,7 +231,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       # Fetch full LogEvents from ETS. Sizes were computed in the producer and are
       # carried on each message — no recomputation needed here. The batch is already
       # byte-bounded by bq_batch_size_splitter/0 in the batcher config.
-      {triples, missing} = fetch_events_from_messages(messages, context)
+      {triples, missing} = fetch_events_from_messages(messages, context, source)
 
       if missing != [] do
         :telemetry.execute(
@@ -241,9 +241,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         )
       end
 
-      log_events = Enum.map(triples, fn {_msg, le, _size} -> le end)
-      batch_count = length(log_events)
-      batch_size = Enum.sum_by(triples, fn {_msg, _le, size} -> size end)
+      {log_events, batch_count, batch_size} = collect_batch_events(triples)
 
       if source && source.bq_storage_write_api do
         batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
@@ -259,10 +257,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         end
       else
         batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_streaming_insert)
-        event_size_pairs = Enum.map(triples, fn {_msg, le, size} -> {le, size} end)
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
-          stream_batch(context, event_size_pairs)
+          stream_batch(context, log_events)
         end
       end
 
@@ -287,17 +284,31 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     Enum.map(log_events, &le_to_bq_row/1)
   end
 
-  defp fetch_events_from_messages(messages, context) do
+  defp fetch_events_from_messages(messages, context, source) do
     Enum.reduce(messages, {[], []}, fn
       %{data: {id, tid, size}} = message, {out, missing} ->
         case :ets.lookup(tid, id) do
           [{^id, _status, log_event, _byte_size, _claim}] ->
-            {[{message, process_data(log_event, context), size} | out], missing}
+            {[{message, process_data(log_event, context, source), size} | out], missing}
 
           [] ->
             {out, [message | missing]}
         end
     end)
+  end
+
+  # Single pass collecting log events + batch metrics. Separate accumulator args (rather
+  # than a tuple-accumulator Enum.reduce) avoid allocating a fresh tuple per event. The
+  # cons-built list is reversed relative to `triples`; output order is insignificant since
+  # each BQ row carries its own insertId.
+  @spec collect_batch_events([{Message.t(), LE.t(), non_neg_integer()}]) ::
+          {[LE.t()], non_neg_integer(), non_neg_integer()}
+  defp collect_batch_events(triples), do: collect_batch_events(triples, [], 0, 0)
+
+  defp collect_batch_events([], log_events, count, bytes), do: {log_events, count, bytes}
+
+  defp collect_batch_events([{_msg, le, size} | rest], log_events, count, bytes) do
+    collect_batch_events(rest, [le | log_events], count + 1, bytes + size)
   end
 
   def le_to_bq_row(%LE{body: body, id: id}) do
@@ -345,7 +356,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   def stream_batch(
         %{source_token: source_token, user_id: user_id, system_source: system_source} = context,
-        event_size_pairs
+        log_events
       ) do
     Logger.metadata(
       source_id: source_token,
@@ -357,13 +368,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :telemetry.span(
       [:logflare, :ingest, :pipeline, :stream_batch],
       %{source_token: source_token},
-      fn -> execute_bigquery_stream_batch(context, event_size_pairs) end
+      fn -> execute_bigquery_stream_batch(context, log_events) end
     )
   end
 
-  defp execute_bigquery_stream_batch(%{source_token: source_token} = context, event_size_pairs) do
-    log_events = Enum.map(event_size_pairs, &elem(&1, 0))
-
+  defp execute_bigquery_stream_batch(%{source_token: source_token} = context, log_events) do
     rows =
       OpenTelemetry.Tracer.with_span "ingest.bq_serialize", %{
         attributes: %{insert_method: :bq_streaming_insert}
@@ -418,11 +427,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       end
     end
 
-    {event_size_pairs, %{}}
+    {log_events, %{}}
   end
 
-  def process_data(%LE{source_id: source_id} = log_event, context) do
-    source = Sources.Cache.get_by_id(source_id)
+  @spec process_data(LE.t(), map(), Sources.Source.t() | nil) :: LE.t()
+  def process_data(%LE{} = log_event, context, source) do
+    # Source is resolved once per batch in handle_batch/4 and reused, not re-fetched per event.
 
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that

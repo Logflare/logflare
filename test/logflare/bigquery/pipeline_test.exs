@@ -15,6 +15,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.User
 
   @pipeline_name :test_pipeline
@@ -247,7 +248,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       log =
         capture_log([level: :warning], fn ->
-          Pipeline.stream_batch(context, [{build(:log_event, source: source), 0}])
+          Pipeline.stream_batch(context, [build(:log_event, source: source)])
         end)
 
       assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
@@ -285,7 +286,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       log =
         capture_log([level: :warning], fn ->
-          Pipeline.stream_batch(context, [{build(:log_event, source: source), 0}])
+          Pipeline.stream_batch(context, [build(:log_event, source: source)])
         end)
 
       assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
@@ -564,6 +565,51 @@ defmodule Logflare.BigQuery.PipelineTest do
       end)
 
       Pipeline.handle_batch(:bq, messages, batch_info, context)
+    end
+  end
+
+  describe "process_data/3" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      [user: user, context: %{backend_id: nil}]
+    end
+
+    test "skips schema update when the passed source has lock_schema set", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: true)
+      le = build(:log_event, source: source)
+
+      # the lock decision must come from the threaded source, not a per-event re-fetch
+      reject(&Schema.update/3)
+
+      assert ^le = Pipeline.process_data(le, context, source)
+    end
+
+    test "runs schema update using the passed source when not locked", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      le = build(:log_event, source: source)
+      test_pid = self()
+
+      expect(Schema, :update, fn _via, ^le, ^source ->
+        send(test_pid, :schema_updated)
+        :ok
+      end)
+
+      assert ^le = Pipeline.process_data(le, context, source)
+      assert_received :schema_updated
+    end
+
+    test "does not crash when the passed source is nil", %{context: context} do
+      le = build(:log_event)
+      reject(&Schema.update/3)
+
+      assert ^le = Pipeline.process_data(le, context, nil)
     end
   end
 
