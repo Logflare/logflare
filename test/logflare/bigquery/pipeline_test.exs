@@ -111,6 +111,28 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert [{_id, :ingested, _, _, _}] = :ets.lookup(tid, le.id)
     end
 
+    test "ack deletes events directly for non-default backend even when avg <= 100", %{
+      source: source
+    } do
+      stub(Logflare.Sources, :get_source_metrics_for_ingest, fn _ -> %{avg: 50} end)
+
+      backend = insert(:backend, type: :bigquery, sources: [source])
+      sid_bid_pid = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      tid = IngestEventQueue.get_tid(sid_bid_pid)
+      :ets.update_element(tid, le.id, {2, :processing})
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      mod.ack(ref, [message], [])
+
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+    end
+
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
       source: source
     } do

@@ -152,7 +152,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
               :ok
           end
 
-          if metrics.avg > 100 do
+          # Non-default queues ({sid, bid} with bid != nil) never serve recent logs
+          # (list_recent_logs_local always reads {sid, nil}) and the janitor truncates
+          # all their :ingested rows every cycle anyway, so delete at ack instead of
+          # leaving the intermediate :ingested state for the janitor to reap. The default
+          # queue keeps the :ingested remainder that backs recent local logs.
+          if bid != nil or metrics.avg > 100 do
             IngestEventQueue.delete_id(tid, id)
           else
             IngestEventQueue.update_status(tid, id, :ingested)
