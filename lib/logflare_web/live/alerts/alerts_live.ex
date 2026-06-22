@@ -11,9 +11,11 @@ defmodule LogflareWeb.AlertsLive do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
   alias Logflare.Repo
   alias LogflareWeb.QueryComponents
+  alias LogflareWeb.QueryErrorHelpers
   alias LogflareWeb.Utils
 
   require Logger
@@ -233,7 +235,7 @@ defmodule LogflareWeb.AlertsLive do
          put_flash(
            socket,
            :error,
-           "Error when running query: #{inspect(err)}"
+           "Error when running query: #{format_query_error(err)}"
          )}
     end
   end
@@ -264,7 +266,7 @@ defmodule LogflareWeb.AlertsLive do
          put_flash(
            socket,
            :error,
-           "Error when running query: #{inspect(err)}"
+           "Error when running query: #{format_query_error(err)}"
          )}
     end
   end
@@ -400,6 +402,14 @@ defmodule LogflareWeb.AlertsLive do
      |> assign(:modal_job_id, nil)
      |> assign(:modal_node, nil)}
   end
+
+  defp format_query_error(%QueryError{} = error) do
+    QueryErrorHelpers.query_error_message(error)
+  end
+
+  defp format_query_error(error) when is_binary(error), do: error
+
+  defp format_query_error(_error), do: QueryErrorHelpers.generic_query_error_message()
 
   def handle_info({:query_string_updated, query_string}, socket) do
     {:noreply, assign(socket, :query_string, query_string)}

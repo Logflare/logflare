@@ -485,6 +485,32 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
+  describe "run query errors" do
+    test "backend errors display a generic message", %{conn: conn, user: user} do
+      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as ts")
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("raw backend detail", reason: "backendError")}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+
+      html =
+        view
+        |> element("form", "Test query")
+        |> render_submit(%{
+          run: %{
+            query: endpoint.query,
+            params: %{}
+          }
+        })
+
+      assert html =~ LogflareWeb.QueryErrorHelpers.generic_query_error_message()
+      refute html =~ "raw backend detail"
+    end
+  end
+
   defp change_editor_query(view, query) do
     result =
       view

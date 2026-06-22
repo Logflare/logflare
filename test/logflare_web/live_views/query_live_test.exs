@@ -89,6 +89,25 @@ defmodule LogflareWeb.QueryLiveTest do
       assert render(view) =~ "some-data"
     end
 
+    test "backend errors display a generic message", %{conn: conn} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("raw backend detail", reason: "backendError")}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
+
+      view
+      |> render_hook("parse-query", %{
+        value: "select current_timestamp() as ts"
+      })
+
+      html = submit_query_form(view, conn)
+
+      assert html =~ LogflareWeb.QueryErrorHelpers.generic_query_error_message()
+      refute html =~ "raw backend detail"
+    end
+
     test "parser error", %{conn: conn} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
 

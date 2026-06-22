@@ -16,23 +16,23 @@ defmodule LogflareWeb.Backends.ComponentsTest do
       refute html =~ "fa-check"
     end
 
-    test "renders an error icon and reason when the async result failed" do
+    test "renders a generic query error message when the async result failed" do
       result = AsyncResult.failed(AsyncResult.loading(), {:error, "boom"})
       html = render_component(&Components.status_indicator/1, %{status: result})
 
       assert html =~ "fa-times"
       assert html =~ "tw-text-red-500"
-      assert html =~ "boom"
+      assert html =~ "Backend error! Retry your query."
       refute html =~ "fa-spinner"
       refute html =~ "fa-check"
     end
 
-    test "renders a generic 'Internal error' message on non-error failure" do
+    test "renders a generic query error message on non-error failure" do
       result = AsyncResult.failed(AsyncResult.loading(), {:exit, :boom})
       html = render_component(&Components.status_indicator/1, %{status: result})
 
       assert html =~ "fa-times"
-      assert html =~ "Internal error"
+      assert html =~ "Backend error! Retry your query."
       refute html =~ "fa-spinner"
       refute html =~ "fa-check"
     end

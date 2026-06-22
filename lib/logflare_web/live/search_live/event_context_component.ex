@@ -9,8 +9,6 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   import LogflareWeb.SearchLive.LogEventComponents, only: [log_event: 1]
 
-  require Logger
-
   @impl true
   def update(assigns, socket) do
     %{
@@ -94,12 +92,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
      |> stream(:log_events, events, reset: true)}
   end
 
-  def handle_async(:logs, {:ok, %{error: error, source: source}}, socket) do
-    Logger.error("Backend context search error for source: #{source.token}",
-      error_string: inspect(error),
-      source_id: source.token
-    )
-
+  def handle_async(:logs, {:ok, %{error: _error, source: _source}}, socket) do
     {:noreply,
      socket
      |> assign(:logs, AsyncResult.failed(socket.assigns.logs, "An error occurred."))

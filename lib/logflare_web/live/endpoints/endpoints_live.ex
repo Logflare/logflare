@@ -14,6 +14,7 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Endpoints
   alias Logflare.Endpoints.PiiRedactor
   alias LogflareWeb.QueryComponents
+  alias LogflareWeb.QueryErrorHelpers
   alias Logflare.Utils
 
   embed_templates("actions/*", suffix: "_action")
@@ -276,9 +277,11 @@ defmodule LogflareWeb.EndpointsLive do
          |> assign(:total_bytes_processed, nil)}
 
       {:error, err} ->
+        message = if is_binary(err), do: err, else: QueryErrorHelpers.query_error_message(err)
+
         {:noreply,
          socket
-         |> put_flash(:error, "Error occured when running query: #{inspect(err)}")}
+         |> put_flash(:error, "Error occured running query: #{message}")}
     end
   end
 

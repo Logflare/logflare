@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner
+  alias Logflare.Backends.QueryError
 
   import Logflare.ClickHouseMappedEvents
 
@@ -87,7 +88,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       TestUtils.retry_assert(fn ->
         assert_receive {:DOWN, ^ref, :process, ^pid,
-                        {:shutdown, {:error, "Error executing ClickHouse query"}}},
+                        {:shutdown,
+                         {:error,
+                          %QueryError{
+                            kind: :connection_error,
+                            backend: Logflare.Backends.Adaptor.ClickHouseAdaptor
+                          }}}},
                        5_000
       end)
     end

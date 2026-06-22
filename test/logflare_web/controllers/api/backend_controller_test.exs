@@ -482,7 +482,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
         |> post("/api/backends/#{backend.token}/test")
         |> json_response(200)
 
-      assert response == %{"connected?" => false, "reason" => "some_reason"}
+      assert response == %{"connected?" => false}
     end
 
     test "returns 404 if backend doesn't exist or doesn't belong to user", %{

@@ -74,7 +74,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       assert %{"result" => [%{"my_time" => "123"}]} = response
     end
 
-    test "BQ errors are propagated", %{
+    test "BQ errors return a generic response", %{
       conn: conn,
       user: user
     } do
@@ -89,7 +89,12 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         |> get(~p"/api/query?#{[bq_sql: ~s|select current_datetime() as 'my_time'|]}")
         |> json_response(400)
 
-      assert %{"error" => %{"message" => "some error"}} = response
+      assert %{
+               "error" =>
+                 "Backend error! Retry your query. Please contact support if this continues."
+             } = response
+
+      refute inspect(response) =~ "some error"
     end
   end
 

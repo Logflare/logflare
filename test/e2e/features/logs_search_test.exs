@@ -56,6 +56,16 @@ defmodule E2e.Features.LogsSearchTest do
       |> refute_has("#logs-list-container", text: non_matching_message)
     end
 
+    test "shows a missing field error from the search page", %{conn: conn, source: source} do
+      conn
+      |> visit(~p"/auth/login/single_tenant")
+      |> assert_path(~p"/dashboard")
+      |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "s:nonexistent"}}")
+      |> wait_for_selector(".message .alert", state: "attached")
+      |> assert_has(".message .alert p", text: "nonexistent")
+      |> assert_has(".message .alert p", text: "does not exist")
+    end
+
     test "cancelling the datepicker resumes tailing", %{
       conn: conn,
       source: source
