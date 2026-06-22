@@ -25,12 +25,18 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   @consolidated_max_multiplier 10
 
   # Stale :processing cleanup is crash recovery, not normal queue maintenance: in the healthy
-  # path a row is only :processing between claim and ack. Sustained resets/drops point to a
-  # correctness issue (lost acks, pipeline crashes, backend latency) and should be investigated,
-  # not treated as throughput. The cadence is deliberately slow and each pass is bounded.
+  # path a row is only :processing between claim and ack (bounded to ~10s by the batch timeout
+  # and the BigQuery insert HTTP timeouts). A row still :processing after the staleness age has
+  # been orphaned by a crashed/hung pipeline, so it is recovered. Sustained resets/drops point
+  # to a correctness issue (lost acks, pipeline crashes, backend latency) and should be
+  # investigated, not treated as throughput.
+  #
+  # The age sits well above the ~10s live ceiling to avoid resetting a slow-but-live batch, and
+  # the per-pass limit is sized to clear a crashed pipeline's in-flight cohort (processors +
+  # batchers) in a single pass so orphaned rows do not squat on the queue's size budget.
   @stale_processing_interval :timer.seconds(60)
-  @stale_processing_age_ms :timer.seconds(120)
-  @stale_processing_limit 1_000
+  @stale_processing_age_ms :timer.seconds(30)
+  @stale_processing_limit 10_000
   @max_stale_retries 3
 
   def start_link(opts) do
