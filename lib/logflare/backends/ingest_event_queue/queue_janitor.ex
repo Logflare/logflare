@@ -23,12 +23,25 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   @default_purge_ratio 0.05
   @default_max round(Logflare.Backends.max_buffer_queue_len() * 1.2)
   @consolidated_max_multiplier 10
-  @stale_processing_interval 10_000
+
+  # Stale :processing cleanup is crash recovery, not normal queue maintenance: in the healthy
+  # path a row is only :processing between claim and ack. Sustained resets/drops point to a
+  # correctness issue (lost acks, pipeline crashes, backend latency) and should be investigated,
+  # not treated as throughput. The cadence is deliberately slow and each pass is bounded.
+  @stale_processing_interval :timer.seconds(60)
+  @stale_processing_age_ms :timer.seconds(120)
+  @stale_processing_limit 1_000
   @max_stale_retries 3
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
   end
+
+  @doc """
+  Age in milliseconds after which a `:processing` row is considered stale. Exposed for tests.
+  """
+  @spec stale_processing_age_ms() :: pos_integer()
+  def stale_processing_age_ms, do: @stale_processing_age_ms
 
   def init(opts) do
     bid = if backend = Keyword.get(opts, :backend), do: backend.id
@@ -46,8 +59,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       max: if(consolidated?, do: base_max * @consolidated_max_multiplier, else: base_max),
       purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio),
       consolidated?: consolidated?,
-      consolidated_key: consolidated_key,
-      processing_snapshot: %{}
+      consolidated_key: consolidated_key
     }
 
     handle_info(:work, state)
@@ -130,36 +142,44 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     end
   end
 
-  # Snapshot-based stale :processing cleanup.
-  # On each run, get current :processing IDs per queue. Any IDs that were also
-  # :processing on the previous run are stuck (batcher crash, kill signal, etc.).
-  # Stuck events are reset to :pending and retried.
-  # Dropped once they've been stale @max_stale_retries times.
+  # Timestamp-based stale :processing cleanup.
+  # Each :processing row carries the monotonic claim time (claimed_at). A row claimed longer
+  # ago than @stale_processing_age_ms is stuck (batcher crash, kill signal, lost ack, etc.),
+  # so it is reset to :pending and retried, or dropped once it has been stale
+  # @max_stale_retries times. Each pass is bounded to @stale_processing_limit rows per queue;
+  # any overflow is recovered on the next pass.
   # expose for testing
-  def do_cleanup_stale_processing(%{consolidated?: true} = state) do
+  def do_cleanup_stale_processing(state, now \\ System.monotonic_time(:millisecond))
+
+  def do_cleanup_stale_processing(%{consolidated?: true} = state, _now) do
     state
   end
 
-  def do_cleanup_stale_processing(state) do
+  def do_cleanup_stale_processing(state, now) do
+    cutoff = now - @stale_processing_age_ms
     sid_bid = {state.source_id, state.backend_id}
-    queues = IngestEventQueue.list_queues(sid_bid)
-    do_cleanup_queues(state, queues)
+
+    for table_key <- IngestEventQueue.list_queues(sid_bid) do
+      {n_reset, n_drop} = cleanup_queue(state, table_key, cutoff)
+      if n_reset + n_drop > 0, do: emit_stale_telemetry(state, n_reset, n_drop)
+    end
+
+    state
   end
 
-  defp do_cleanup_queues(state, queues) do
-    new_snapshot =
-      Enum.reduce(queues, %{}, fn table_key, snapshot ->
-        current_ids = MapSet.new(IngestEventQueue.list_processing_ids(table_key))
-        prev_ids = Map.get(state.processing_snapshot, table_key, MapSet.new())
-        stale_ids = MapSet.intersection(current_ids, prev_ids) |> MapSet.to_list()
+  defp cleanup_queue(state, table_key, cutoff) do
+    stale_ids =
+      IngestEventQueue.list_stale_processing_ids(table_key, cutoff, @stale_processing_limit)
 
-        {n_reset, n_drop} = process_stale_events(table_key, stale_ids)
-        if n_reset + n_drop > 0, do: emit_stale_telemetry(state, n_reset, n_drop)
+    if length(stale_ids) >= @stale_processing_limit do
+      Logger.warning(
+        "QueueJanitor: stale :processing cleanup hit per-pass limit of #{@stale_processing_limit}; remaining stale rows will be handled next pass",
+        source_id: state.source_id,
+        backend_id: state.backend_id
+      )
+    end
 
-        Map.put(snapshot, table_key, current_ids)
-      end)
-
-    %{state | processing_snapshot: new_snapshot}
+    process_stale_events(table_key, stale_ids)
   end
 
   defp process_stale_events(_table_key, []), do: {0, 0}
@@ -180,17 +200,21 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
   defp act_on_stale_event(tid, id) do
     case :ets.lookup(tid, id) do
-      [{^id, :processing, %{retries: retries}, _size, _claim}]
+      [{^id, :processing, %{retries: retries}, _size, _claim, _claimed_at}]
       when retries >= @max_stale_retries - 1 ->
-        :ets.select_delete(tid, [{{id, :processing, :_, :_, :_}, [], [true]}])
+        :ets.select_delete(tid, [{{id, :processing, :_, :_, :_, :_}, [], [true]}])
         :drop
 
-      [{^id, :processing, %{retries: retries} = le, size, _claim}] ->
+      [{^id, :processing, %{retries: retries} = le, size, _claim, _claimed_at}] ->
         new_le = %{le | retries: (retries || 0) + 1}
 
-        # Reset to :pending with claim 0 so the requeued event is claimable (see claim_pending/2).
+        # Reset to :pending with claim 0 and claimed_at 0 so the requeued event is claimable
+        # and no longer looks stale (see claim_pending/3). The select_replace match still pins
+        # the current :processing row, so an event acked between selection and replace is not
+        # resurrected.
         case :ets.select_replace(tid, [
-               {{id, :processing, le, size, :_}, [], [{:const, {id, :pending, new_le, size, 0}}]}
+               {{id, :processing, le, size, :_, :_}, [],
+                [{:const, {id, :pending, new_le, size, 0, 0}}]}
              ]) do
           1 -> :reset
           0 -> :skip
