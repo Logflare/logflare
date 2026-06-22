@@ -578,6 +578,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       location: user.bigquery_dataset_location,
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
       dryRun: Keyword.get(opts, :dry_run, false),
+      job_priority: Keyword.get(opts, :job_priority),
       query_type: query_type,
       reservation: reservation
     ] ++ query_timeout_opts(query_type, reservation)

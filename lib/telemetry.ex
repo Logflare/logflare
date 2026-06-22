@@ -241,6 +241,52 @@ defmodule Logflare.Telemetry do
         unit: {:native, :millisecond},
         description: "Endpoint query execution duration"
       ),
+      counter("logflare.bigquery.query.count",
+        event_name: [:logflare, :bigquery, :query],
+        measurement: :count,
+        tags: [:job_priority, :query_type, :status],
+        description: "BigQuery query count by priority, query type, and status"
+      ),
+      distribution("logflare.bigquery.query.duration",
+        event_name: [:logflare, :bigquery, :query],
+        tags: [:job_priority, :query_type, :status],
+        unit: {:native, :millisecond},
+        description: "BigQuery query duration by priority, query type, and status"
+      ),
+      sum("logflare.bigquery.query.total_bytes_processed",
+        event_name: [:logflare, :bigquery, :query],
+        tags: [:job_priority, :query_type, :status],
+        description: "BigQuery bytes processed by priority, query type, and status"
+      ),
+      counter("logflare.bigquery.batch_query.count",
+        event_name: [:logflare, :bigquery, :batch_query],
+        measurement: :count,
+        tags: [:query_type, :status],
+        description: "BigQuery batch query count by query type and status"
+      ),
+      distribution("logflare.bigquery.batch_query.duration",
+        event_name: [:logflare, :bigquery, :batch_query],
+        tags: [:query_type, :status],
+        unit: {:native, :millisecond},
+        description: "BigQuery batch query submit-to-completion duration"
+      ),
+      distribution("logflare.bigquery.batch_query.poll_count",
+        event_name: [:logflare, :bigquery, :batch_query],
+        tags: [:query_type, :status],
+        description: "Number of getQueryResults polls needed per BigQuery batch query"
+      ),
+      counter("logflare.logs.search.query.count",
+        event_name: [:logflare, :logs, :search, :query],
+        measurement: :count,
+        tags: [:backend_type, :status, :tailing, :tailing_initial, :type],
+        description: "Search query count by backend and tailing state"
+      ),
+      distribution("logflare.logs.search.query.duration",
+        event_name: [:logflare, :logs, :search, :query],
+        tags: [:backend_type, :status, :tailing, :tailing_initial, :type],
+        unit: {:native, :millisecond},
+        description: "Search query duration by backend and tailing state"
+      ),
       last_value("logflare.system.top_processes.message_queue.length",
         tags: [:name],
         description: "Top processes by message queue length"
