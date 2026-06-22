@@ -420,6 +420,23 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       assert Billing.get_payment_method_by(stripe_id: "pm_stale") == nil
       assert Billing.get_payment_method_by(stripe_id: "pm_fresh")
     end
+
+    test "shows the stripe error message when sync fails", %{conn: conn} do
+      Stripe.PaymentMethod
+      |> expect(:list, fn _ ->
+        {:error, %Stripe.Error{message: "stripe is down", source: :stripe, code: :api_error}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/billing/edit")
+
+      html =
+        view
+        |> element("button[phx-click='sync']")
+        |> render_click()
+
+      assert html =~ "stripe is down"
+      refute html =~ "Payment methods successfully synced!"
+    end
   end
 
   describe "make-default button" do
@@ -514,6 +531,44 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       assert html =~ "Default payment method set for 2 subscription(s)!"
       assert_received {:stripe_sub_update, "sub_1", %{default_payment_method: "pm_target"}}
       assert_received {:stripe_sub_update, "sub_2", %{default_payment_method: "pm_target"}}
+    end
+
+    test "shows the stripe error message when Stripe.update_customer fails", %{
+      conn: conn,
+      user: user
+    } do
+      insert(:payment_method,
+        customer_id: user.billing_account.stripe_customer,
+        stripe_id: "pm_target",
+        brand: "visa",
+        last_four: "4242",
+        exp_month: 12,
+        exp_year: 2099
+      )
+
+      insert(:payment_method,
+        customer_id: user.billing_account.stripe_customer,
+        stripe_id: "pm_other",
+        brand: "visa",
+        last_four: "1111",
+        exp_month: 1,
+        exp_year: 2030
+      )
+
+      Stripe.Customer
+      |> expect(:update, fn _, _ ->
+        {:error, %Stripe.Error{message: "card declined", source: :stripe, code: :api_error}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/billing/edit")
+
+      html =
+        view
+        |> element("button[phx-click='make-default'][phx-value-stripe-id='pm_target']")
+        |> render_click()
+
+      assert html =~ "card declined"
+      refute html =~ "Default payment method set"
     end
   end
 
