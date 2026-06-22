@@ -757,6 +757,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   is pinned to `:processing` in the match head, so `:pending`/`:ingested` rows (which
   carry `claimed_at == 0`) are never returned regardless of the monotonic clock's sign.
 
+  `limit` bounds the IDs returned, not necessarily the rows scanned: the table is not
+  indexed by `claimed_at`, so ETS may walk further to find matching stale rows.
+
   Used by QueueJanitor to detect stale in-flight events.
   """
   @spec list_stale_processing_ids(

@@ -146,8 +146,9 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   # Each :processing row carries the monotonic claim time (claimed_at). A row claimed longer
   # ago than @stale_processing_age_ms is stuck (batcher crash, kill signal, lost ack, etc.),
   # so it is reset to :pending and retried, or dropped once it has been stale
-  # @max_stale_retries times. Each pass is bounded to @stale_processing_limit rows per queue;
-  # any overflow is recovered on the next pass.
+  # @max_stale_retries times. Each pass acts on at most @stale_processing_limit stale rows per
+  # queue; ETS may still scan beyond that limit to find matching stale rows. Any overflow is
+  # recovered on later passes.
   # expose for testing
   def do_cleanup_stale_processing(state, now \\ System.monotonic_time(:millisecond))
 
