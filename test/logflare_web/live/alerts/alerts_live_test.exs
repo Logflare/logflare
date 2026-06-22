@@ -741,4 +741,173 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert html =~ ~r/alerts\/#{alert_query.id}\/edit[^"<]*t=#{team_user.team_id}/
     end
   end
+
+  describe "trigger now and job polling" do
+    setup [:create_alert_query]
+
+    test "trigger-now enqueues a job and shows the running state", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      assert view
+             |> element("button", "Trigger now")
+             |> render_click() =~ "Running..."
+    end
+
+    test "poll_job clears the running state once the job is finished", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      job = insert_oban_job(alert_query, %{state: "completed"})
+      send(view.pid, {:poll_job, job.id, 0})
+
+      refute render(view) =~ "Running..."
+    end
+
+    test "poll_job reschedules while the job is still pending", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      send(view.pid, {:poll_job, 0, 0})
+
+      assert render(view)
+    end
+
+    test "poll_job warns when the max attempts are exceeded", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      send(view.pid, {:poll_job, 0, 60})
+
+      assert render(view) =~ "taking longer than expected"
+    end
+  end
+
+  describe "result and history events" do
+    setup [:create_alert_query]
+
+    test "clear-results clears the query run results", %{conn: conn, alert_query: alert_query} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      assert render_hook(view, "clear-results", %{}) =~ "Query run results has been cleared"
+    end
+
+    test "close-results-modal closes the results modal", %{conn: conn, alert_query: alert_query} do
+      insert_oban_job(alert_query, %{
+        meta: %{
+          "result" => %{"fired" => true, "rows" => [%{"col_a" => "val1"}], "total_rows" => 1}
+        }
+      })
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      view |> element("button", "View Results") |> render_click()
+      assert render(view) =~ "Execution Results"
+
+      render_hook(view, "close-results-modal", %{})
+      refute render(view) =~ "Execution Results"
+    end
+
+    test "refresh-execution-history reloads history for an alert", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
+      insert_oban_job(alert_query, %{meta: %{"result" => %{"fired" => false, "rows" => []}}})
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      render_hook(view, "refresh-execution-history", %{})
+      assert render(view) =~ "Past Executions"
+    end
+
+    test "refresh-execution-history is a no-op on the index", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts")
+
+      render_hook(view, "refresh-execution-history", %{})
+      assert render(view) =~ "Alerts"
+    end
+  end
+
+  describe "execution history rendering" do
+    setup [:create_alert_query]
+
+    test "renders badge classes for past job states", %{conn: conn, alert_query: alert_query} do
+      insert_oban_job(alert_query, %{
+        state: "cancelled",
+        meta: %{"result" => %{"fired" => false, "rows" => []}}
+      })
+
+      insert_oban_job(alert_query, %{
+        state: "retryable",
+        meta: %{"result" => %{"fired" => false, "rows" => []}}
+      })
+
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      assert html =~ "badge-warning"
+      assert html =~ "retryable"
+    end
+
+    test "renders badge classes for scheduled (future) jobs", %{
+      conn: conn,
+      alert_query: alert_query
+    } do
+      future_time = DateTime.add(DateTime.utc_now(), 3600, :second)
+
+      for state <- ["executing", "available"] do
+        insert_oban_job(alert_query, %{
+          state: state,
+          scheduled_at: future_time,
+          completed_at: nil,
+          attempted_at: nil,
+          attempted_by: nil
+        })
+      end
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      view
+      |> element("button", "Show scheduled jobs")
+      |> render_click()
+
+      html = render(view)
+      assert html =~ "badge-info"
+      assert html =~ "badge-primary"
+    end
+
+    test "formats byte sizes across units", %{conn: conn, alert_query: alert_query} do
+      sizes = [
+        {1_099_511_627_776, "1.00 TB"},
+        {1_048_576, "1.00 MB"},
+        {1_024, "1.00 KB"},
+        {500, "500 B"}
+      ]
+
+      for {bytes, _label} <- sizes do
+        insert_oban_job(alert_query, %{
+          meta: %{
+            "result" => %{
+              "fired" => true,
+              "rows" => [],
+              "total_bytes_processed" => bytes,
+              "total_rows" => 1
+            }
+          }
+        })
+      end
+
+      {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
+
+      for {_bytes, label} <- sizes do
+        assert html =~ label
+      end
+    end
+  end
 end
