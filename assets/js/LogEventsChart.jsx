@@ -175,10 +175,8 @@ const chartSettings = (type) => {
   }
 };
 
-const minPointSizeForValue = (value) => {
-  if (Number(value) <= 0) return 0;
-  return minBarHeight;
-};
+const minPointSizeForDataKey = (chartData, dataKey) => (_value, index) =>
+  Number(chartData[index]?.[dataKey]) > 0 ? minBarHeight : 0;
 
 const barTotal = (entry, keys) =>
   keys.reduce((sum, key) => sum + Math.max(Number(entry?.[key]) || 0, 0), 0);
@@ -238,7 +236,6 @@ const LogEventsChart = ({
   const TooltipContent = tooltipFactory(chartDataShapeId);
   const settings = chartSettings(chartDataShapeId);
   const topStackKey = settings.keys[settings.keys.length - 1];
-  const useMinPointSize = settings.keys.length === 1;
   const chartData = React.useMemo(
     () =>
       data.map((entry) => {
@@ -341,7 +338,7 @@ const LogEventsChart = ({
                 stackId="stack"
                 fill={settings.colors[key]}
                 isAnimationActive={false}
-                minPointSize={useMinPointSize ? minPointSizeForValue : undefined}
+                minPointSize={minPointSizeForDataKey(chartData, key)}
                 shape={key === topStackKey ? renderBarWithHighlight : undefined}
                 onClick={handleBarClick}
               />
