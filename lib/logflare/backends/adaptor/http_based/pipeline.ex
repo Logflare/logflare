@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
+  alias Logflare.LogEvent
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Utils
@@ -82,9 +83,41 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
       }
 
     HttpBased.Client.send_events(context.client, events, backend, source, metadata)
+    emit_ingest_telemetry(messages, backend, context)
 
     messages
   end
+
+  defp emit_ingest_telemetry(messages, %Backend{} = backend, context) do
+    backend_meta =
+      for {k, v} <- backend.metadata || %{}, into: %{} do
+        {"backend.#{k}", v}
+      end
+
+    base_metadata =
+      %{
+        "source_id" => context[:source_id],
+        "source_uuid" => context[:source_token] && Utils.stringify(context[:source_token]),
+        "backend_id" => context[:backend_id],
+        "backend_uuid" => context[:backend_token] && Utils.stringify(context[:backend_token]),
+        "system_source" => context[:system_source]
+      }
+      |> Map.merge(backend_meta)
+
+    for %{data: %LogEvent{body: body}} <- messages do
+      size = byte_size(:erlang.term_to_binary(body))
+
+      :telemetry.execute(
+        [:logflare, :backends, :ingest],
+        %{ingested_bytes: size},
+        base_metadata
+      )
+    end
+
+    :ok
+  end
+
+  defp emit_ingest_telemetry(_messages, _backend, _context), do: :ok
 
   # Broadway transformer for custom producer
   def transform(event, _opts) do

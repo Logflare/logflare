@@ -307,6 +307,63 @@ defmodule Logflare.Backends.UserMonitoringTest do
       assert attributes["_backend_environment"] == "test"
       assert attributes["_backend_region"] == "us-west"
     end
+
+    test "backends.ingest.ingested_count includes backend metadata" do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _, _, _, _, opts ->
+        send(pid, {:insert_all, opts[:body].rows})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      user = insert(:user, system_monitoring: true)
+      metrics_source = insert(:source, user: user, system_source_type: :metrics)
+
+      webhook_backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://127.0.0.1:9999/webhook"},
+          metadata: %{"type" => "log-drain", "environment" => "test"}
+        )
+
+      source = insert(:source, user: user)
+
+      start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      {:ok, _} = Backends.update_source_backends(source, [webhook_backend])
+      Backends.Cache.get_backend(webhook_backend.id)
+
+      :timer.sleep(1000)
+
+      assert {:ok, _} =
+               Backends.ingest_logs([%{"message" => "test webhook ingest"}], source)
+
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 15_000
+
+      rows = for row <- rows, do: row.json
+
+      ingest_count_row =
+        Enum.find(
+          rows,
+          &match?(%{"event_message" => "logflare.backends.ingest.ingested_count"}, &1)
+        )
+
+      assert ingest_count_row, "Expected ingested_count metric to be present"
+
+      drain_attrs =
+        Enum.find(ingest_count_row["attributes"], fn attrs ->
+          attrs["backend_id"] == webhook_backend.id
+        end)
+
+      assert drain_attrs, "Expected ingested_count metric tagged with webhook backend"
+      assert drain_attrs["source_id"] == source.id
+      assert drain_attrs["source_uuid"] == Atom.to_string(source.token)
+      assert drain_attrs["_backend_type"] == "log-drain"
+      assert drain_attrs["_backend_environment"] == "test"
+    end
   end
 
   describe "endpoints" do

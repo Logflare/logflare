@@ -221,6 +221,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     alias Broadway.Message
     alias Logflare.Backends.BufferProducer
     alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
+    alias Logflare.LogEvent
 
     def start_link(args) do
       Broadway.start_link(__MODULE__,
@@ -289,7 +290,37 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         end
 
       process_data(payload, config, backend_metadata, context)
+      emit_ingest_telemetry(messages, backend_metadata, context)
       messages
+    end
+
+    defp emit_ingest_telemetry(messages, backend_metadata, context) do
+      backend_meta =
+        for {k, v} <- backend_metadata || %{}, into: %{} do
+          {"backend.#{k}", v}
+        end
+
+      base_metadata =
+        %{
+          "source_id" => context.source_id,
+          "source_uuid" => context.source_token && Utils.stringify(context.source_token),
+          "backend_id" => context.backend_id,
+          "backend_uuid" => context.backend_token && Utils.stringify(context.backend_token),
+          "user_id" => context.user_id
+        }
+        |> Map.merge(backend_meta)
+
+      for %{data: %LogEvent{body: body}} <- messages do
+        size = byte_size(:erlang.term_to_binary(body))
+
+        :telemetry.execute(
+          [:logflare, :backends, :ingest],
+          %{ingested_bytes: size},
+          base_metadata
+        )
+      end
+
+      :ok
     end
 
     defp process_data(payload, config, backend_metadata, context) do
