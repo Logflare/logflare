@@ -953,7 +953,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       tid = IngestEventQueue.get_tid(sbp)
 
       assert :ok = IngestEventQueue.update_status(tid, le.id, :processing)
-      assert [{_id, :processing, _, _, _}] = :ets.lookup(tid, le.id)
+      assert [{_id, :processing, _, _, _, _}] = :ets.lookup(tid, le.id)
     end
 
     test "setting :pending resets the claim counter so the row is claimable again" do
@@ -968,11 +968,14 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       le_id = le.id
       assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
-      assert [{^le_id, :processing, _, _, 1}] = :ets.lookup(tid, le.id)
+      assert [{^le_id, :processing, _, _, 1, claimed_at}] = :ets.lookup(tid, le.id)
+      # claiming stamps a monotonic claimed_at so stale recovery can age the row out
+      assert is_integer(claimed_at)
 
-      # returning to :pending must also reset the claim counter, or it stays unclaimable
+      # returning to :pending must reset both the claim counter and claimed_at, or it stays
+      # unclaimable / looks perpetually stale
       assert :ok = IngestEventQueue.update_status(tid, le.id, :pending)
-      assert [{^le_id, :pending, _, _, 0}] = :ets.lookup(tid, le.id)
+      assert [{^le_id, :pending, _, _, 0, 0}] = :ets.lookup(tid, le.id)
       assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
     end
 
@@ -1014,6 +1017,105 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     test "returns empty list when queue does not exist" do
       assert [] = IngestEventQueue.list_processing_ids({0, 0, self()})
+    end
+  end
+
+  describe "list_stale_processing_ids/3" do
+    test "returns only :processing rows claimed at or before the cutoff" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      [stale, fresh, pending, ingested] = for _ <- 1..4, do: build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [stale, fresh, pending, ingested])
+      tid = IngestEventQueue.get_tid(sbp)
+
+      now = System.monotonic_time(:millisecond)
+      cutoff = now - 5_000
+
+      # :processing, claimed before the cutoff -> stale
+      :ets.update_element(tid, stale.id, [{2, :processing}, {6, now - 10_000}])
+      # :processing, claimed after the cutoff -> not yet stale
+      :ets.update_element(tid, fresh.id, [{2, :processing}, {6, now}])
+      # :pending with an old claimed_at -> excluded by the :processing status pin, not the cutoff
+      :ets.update_element(tid, pending.id, [{2, :pending}, {6, now - 10_000}])
+      # :ingested with an old claimed_at -> excluded
+      :ets.update_element(tid, ingested.id, [{2, :ingested}, {6, now - 10_000}])
+
+      assert [stale_id] = IngestEventQueue.list_stale_processing_ids(sbp, cutoff, 10)
+      assert stale_id == stale.id
+    end
+
+    test "bounds the number of returned IDs to the limit" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      les = for _ <- 1..3, do: build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, les)
+      tid = IngestEventQueue.get_tid(sbp)
+      now = System.monotonic_time(:millisecond)
+      for le <- les, do: :ets.update_element(tid, le.id, [{2, :processing}, {6, now - 10_000}])
+
+      assert length(IngestEventQueue.list_stale_processing_ids(sbp, now, 2)) == 2
+    end
+
+    test "returns empty list when queue does not exist" do
+      assert [] = IngestEventQueue.list_stale_processing_ids({0, 0, self()}, 0, 10)
+    end
+  end
+
+  describe "reset_stale_event/3 and drop_stale_event/2" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+      :ets.update_element(tid, le.id, [{2, :processing}, {6, 123}])
+      %{tid: tid, le: le}
+    end
+
+    test "reset_stale_event/3 resets the exact row to :pending with claim/claimed_at cleared",
+         %{tid: tid, le: le} do
+      [row] = :ets.lookup(tid, le.id)
+      assert :reset = IngestEventQueue.reset_stale_event(tid, row, %{le | retries: 1})
+
+      le_id = le.id
+      assert [{^le_id, :pending, reset_le, _size, 0, 0}] = :ets.lookup(tid, le.id)
+      assert reset_le.retries == 1
+    end
+
+    test "reset_stale_event/3 skips when the stored row no longer matches", %{tid: tid, le: le} do
+      [row] = :ets.lookup(tid, le.id)
+      # simulate the row being re-claimed (new claimed_at) after it was observed
+      :ets.update_element(tid, le.id, {6, 999})
+
+      assert :skip = IngestEventQueue.reset_stale_event(tid, row, %{le | retries: 1})
+
+      le_id = le.id
+      assert [{^le_id, :processing, _le, _size, _claim, 999}] = :ets.lookup(tid, le.id)
+    end
+
+    test "drop_stale_event/2 deletes the exact row", %{tid: tid, le: le} do
+      [row] = :ets.lookup(tid, le.id)
+      assert :drop = IngestEventQueue.drop_stale_event(tid, row)
+      assert [] = :ets.lookup(tid, le.id)
+    end
+
+    test "drop_stale_event/2 skips when the stored row no longer matches", %{tid: tid, le: le} do
+      [row] = :ets.lookup(tid, le.id)
+      :ets.update_element(tid, le.id, {6, 999})
+
+      assert :skip = IngestEventQueue.drop_stale_event(tid, row)
+
+      le_id = le.id
+      assert [{^le_id, :processing, _le, _size, _claim, 999}] = :ets.lookup(tid, le.id)
     end
   end
 
@@ -1059,31 +1161,20 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         purge_ratio: 0.05,
         consolidated?: false,
         consolidated_key: nil,
-        processing_snapshot: %{}
+        stale_processing_limit: 10_000
       }
     end
 
-    test "single cycle: :processing events not yet stale (not in snapshot)", %{} do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, user: user)
-      sbp = {source.id, backend.id, self()}
-      IngestEventQueue.upsert_tid(sbp)
-      le = build(:log_event, source: source)
-      IngestEventQueue.add_to_table(sbp, [le])
-      tid = IngestEventQueue.get_tid(sbp)
-      :ets.update_element(tid, le.id, {2, :processing})
+    # Force a row into :processing with a claimed_at stamp older than the staleness threshold,
+    # relative to the real monotonic clock, so a single cleanup pass treats it as stuck.
+    defp mark_stale(tid, id) do
+      stale_at =
+        System.monotonic_time(:millisecond) - QueueJanitor.stale_processing_age_ms() - 1_000
 
-      state = make_janitor_state(source, backend)
-      new_state = QueueJanitor.do_cleanup_stale_processing(state)
-
-      # Still :processing — first cycle only builds snapshot
-      assert [{_, :processing, _, _, _}] = :ets.lookup(tid, le.id)
-      # Snapshot now populated
-      assert map_size(new_state.processing_snapshot) == 1
+      :ets.update_element(tid, id, [{2, :processing}, {6, stale_at}])
     end
 
-    test "two cycles: stale event is reset to :pending with incremented retries" do
+    test "fresh :processing event is not reset" do
       user = insert(:user)
       source = insert(:source, user: user)
       backend = insert(:backend, user: user)
@@ -1092,22 +1183,42 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sbp, [le])
       tid = IngestEventQueue.get_tid(sbp)
-      :ets.update_element(tid, le.id, {2, :processing})
+
+      # claiming stamps claimed_at with the current monotonic time, so the row is not yet stale
+      le_id = le.id
+      assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
 
       state = make_janitor_state(source, backend)
-      state = QueueJanitor.do_cleanup_stale_processing(state)
-      # Second cycle — event still :processing → stale
-      _state = QueueJanitor.do_cleanup_stale_processing(state)
+      QueueJanitor.do_cleanup_stale_processing(state)
+
+      assert [{_, :processing, _, _, _, _}] = :ets.lookup(tid, le.id)
+    end
+
+    test "stale event is reset to :pending with incremented retries" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+      mark_stale(tid, le.id)
+
+      state = make_janitor_state(source, backend)
+      QueueJanitor.do_cleanup_stale_processing(state)
 
       le_id = le.id
-      assert [{^le_id, :pending, reset_le, size, claim}] = :ets.lookup(tid, le.id)
+      assert [{^le_id, :pending, reset_le, size, claim, claimed_at}] = :ets.lookup(tid, le.id)
       # retries incremented
       assert reset_le.retries == 1
       # rest of the LogEvent is intact — not corrupted by select_replace
       assert reset_le.id == le.id
       assert reset_le.body == le.body
       assert is_integer(size)
+      # claim counter and claimed_at reset so the row is claimable and no longer looks stale
       assert claim == 0
+      assert claimed_at == 0
     end
 
     test "stale event reset by the janitor can be re-claimed by take_pending_ids" do
@@ -1118,15 +1229,16 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(sbp)
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
 
       le_id = le.id
       assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
       assert {:ok, [], _} = IngestEventQueue.take_pending_ids(sbp, 1)
 
-      # two cycles: the stuck :processing event is detected and reset to :pending
+      # age the claim so the stuck :processing event is detected and reset to :pending
+      mark_stale(tid, le.id)
       state = make_janitor_state(source, backend)
-      state = QueueJanitor.do_cleanup_stale_processing(state)
-      _state = QueueJanitor.do_cleanup_stale_processing(state)
+      QueueJanitor.do_cleanup_stale_processing(state)
 
       # the reset event is claimable again — only true if the claim counter was reset
       assert {:ok, [{^le_id, _size}], _tid} = IngestEventQueue.take_pending_ids(sbp, 1)
@@ -1142,11 +1254,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       le = build(:log_event, source: source) |> Map.put(:retries, 2)
       IngestEventQueue.add_to_table(sbp, [le])
       tid = IngestEventQueue.get_tid(sbp)
-      :ets.update_element(tid, le.id, {2, :processing})
+      mark_stale(tid, le.id)
 
       state = make_janitor_state(source, backend)
-      state = QueueJanitor.do_cleanup_stale_processing(state)
-      _state = QueueJanitor.do_cleanup_stale_processing(state)
+      QueueJanitor.do_cleanup_stale_processing(state)
 
       assert [] = :ets.lookup(tid, le.id)
     end
@@ -1160,7 +1271,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sbp, [le])
       tid = IngestEventQueue.get_tid(sbp)
-      :ets.update_element(tid, le.id, {2, :processing})
+      mark_stale(tid, le.id)
 
       ref = make_ref()
 
@@ -1172,7 +1283,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       )
 
       state = make_janitor_state(source, backend)
-      state = QueueJanitor.do_cleanup_stale_processing(state)
       QueueJanitor.do_cleanup_stale_processing(state)
 
       assert_receive {:telemetry, %{reset: 1, dropped: 0}}
@@ -1197,7 +1307,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       )
 
       state = make_janitor_state(source, backend)
-      state = QueueJanitor.do_cleanup_stale_processing(state)
       QueueJanitor.do_cleanup_stale_processing(state)
 
       refute_receive {:telemetry, _}
@@ -1205,7 +1314,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       :telemetry.detach("test-no-stale-#{inspect(ref)}")
     end
 
-    test "CAS no-op: event acked between snapshot and replace is not resurrected" do
+    test "event acked before cleanup is not resurrected to :pending" do
       user = insert(:user)
       source = insert(:source, user: user)
       backend = insert(:backend, user: user)
@@ -1214,19 +1323,70 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sbp, [le])
       tid = IngestEventQueue.get_tid(sbp)
-      :ets.update_element(tid, le.id, {2, :processing})
+      mark_stale(tid, le.id)
+
+      # ack lands before cleanup runs: the row leaves :processing, so it is neither selected
+      # as stale nor resurrected to :pending
+      IngestEventQueue.update_status(tid, le.id, :ingested)
 
       state = make_janitor_state(source, backend)
-      # First cycle builds snapshot
-      state = QueueJanitor.do_cleanup_stale_processing(state)
-
-      # Simulate ack deleting the event between snapshot and replace
-      :ets.delete(tid, le.id)
-
-      # Second cycle — select_replace finds no match, returns :skip, does not resurrect
       QueueJanitor.do_cleanup_stale_processing(state)
 
-      assert [] = :ets.lookup(tid, le.id)
+      le_id = le.id
+      assert [{^le_id, :ingested, _, _, _, _}] = :ets.lookup(tid, le.id)
+    end
+
+    test "telemetry reports a drop when a stale event past max retries is deleted" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      le = build(:log_event, source: source) |> Map.put(:retries, 2)
+      IngestEventQueue.add_to_table(sbp, [le])
+      tid = IngestEventQueue.get_tid(sbp)
+      mark_stale(tid, le.id)
+
+      ref = make_ref()
+
+      :telemetry.attach(
+        "test-drop-#{inspect(ref)}",
+        [:logflare, :ingest_event_queue, :stale_processing],
+        fn _event, measurements, _meta, pid -> send(pid, {:telemetry, measurements}) end,
+        self()
+      )
+
+      state = make_janitor_state(source, backend)
+      QueueJanitor.do_cleanup_stale_processing(state)
+
+      assert_receive {:telemetry, %{reset: 0, dropped: 1}}
+
+      :telemetry.detach("test-drop-#{inspect(ref)}")
+    end
+
+    test "per-pass limit caps how many rows are reset, remainder recovered on a later pass" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      les = for _ <- 1..3, do: build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sbp, les)
+      tid = IngestEventQueue.get_tid(sbp)
+      for le <- les, do: mark_stale(tid, le.id)
+
+      state = make_janitor_state(source, backend) |> Map.put(:stale_processing_limit, 2)
+      sid_bid = {source.id, backend.id}
+
+      # first pass acts on at most the limit; the third stale row is left :processing
+      QueueJanitor.do_cleanup_stale_processing(state)
+      assert IngestEventQueue.total_by_status(sid_bid, :pending) == 2
+      assert IngestEventQueue.total_by_status(sid_bid, :processing) == 1
+
+      # the remaining stale row is recovered on the next pass
+      QueueJanitor.do_cleanup_stale_processing(state)
+      assert IngestEventQueue.total_by_status(sid_bid, :pending) == 3
+      assert IngestEventQueue.total_by_status(sid_bid, :processing) == 0
     end
   end
 

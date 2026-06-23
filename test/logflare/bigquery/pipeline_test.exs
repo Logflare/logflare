@@ -108,7 +108,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-      assert [{_id, :ingested, _, _, _}] = :ets.lookup(tid, le.id)
+      assert [{_id, :ingested, _, _, _, _}] = :ets.lookup(tid, le.id)
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
