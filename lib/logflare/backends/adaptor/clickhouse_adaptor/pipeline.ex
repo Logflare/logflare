@@ -145,7 +145,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       }
     )
 
-    result =
+    {result, messages} =
       OpenTelemetry.Tracer.with_span :clickhouse_pipeline, %{
         attributes: %{
           backend_id: backend_id,
@@ -157,25 +157,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         }
       } do
         backend = Backends.Cache.get_backend(backend_id)
+        {:ok, compiled, config_id} = MappingConfigStore.get_compiled(event_type)
 
-        with {:ok, compiled, config_id} <-
-               MappingConfigStore.get_compiled(event_type) do
-          events =
-            Enum.map(messages, fn %{data: %LogEvent{} = event} ->
-              mapped_body =
-                event.body
-                |> Mapper.map(compiled)
-                |> Map.put("mapping_config_id", config_id)
-                |> maybe_compute_duration(event_type)
-                |> resolve_severity_number(event_type)
+        messages = map_message_bodies(messages, compiled, config_id, event_type)
+        events = Enum.map(messages, fn %{data: %LogEvent{} = event} -> event end)
 
-              %{event | body: mapped_body}
-            end)
-
+        result =
           ClickHouseAdaptor.insert_log_events(backend, events, event_type,
             async: batcher_async?(batcher)
           )
-        end
+
+        {result, messages}
       end
 
     case result do
@@ -185,6 +177,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       {:error, reason} ->
         Enum.map(messages, &Message.failed(&1, reason))
     end
+  end
+
+  @spec map_message_bodies(
+          [Message.t()],
+          reference(),
+          String.t(),
+          TypeDetection.event_type()
+        ) :: [Message.t()]
+  defp map_message_bodies(messages, compiled, config_id, event_type) do
+    Enum.map(messages, fn %{data: %LogEvent{} = event} = message ->
+      mapped_body =
+        event.body
+        |> Mapper.map(compiled)
+        |> Map.put("mapping_config_id", config_id)
+        |> maybe_compute_duration(event_type)
+        |> resolve_severity_number(event_type)
+
+      %{message | data: %{event | body: mapped_body}}
+    end)
   end
 
   @spec transform(event :: LogEvent.t(), opts :: keyword()) :: Message.t()
