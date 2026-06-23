@@ -65,7 +65,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       max: if(consolidated?, do: base_max * @consolidated_max_multiplier, else: base_max),
       purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio),
       consolidated?: consolidated?,
-      consolidated_key: consolidated_key
+      consolidated_key: consolidated_key,
+      stale_processing_limit: Keyword.get(opts, :stale_processing_limit, @stale_processing_limit)
     }
 
     handle_info(:work, state)
@@ -175,12 +176,12 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   end
 
   defp cleanup_queue(state, table_key, cutoff) do
-    stale_ids =
-      IngestEventQueue.list_stale_processing_ids(table_key, cutoff, @stale_processing_limit)
+    limit = state.stale_processing_limit
+    stale_ids = IngestEventQueue.list_stale_processing_ids(table_key, cutoff, limit)
 
-    if length(stale_ids) >= @stale_processing_limit do
+    if length(stale_ids) >= limit do
       Logger.warning(
-        "QueueJanitor: stale :processing cleanup hit per-pass limit of #{@stale_processing_limit}; remaining stale rows will be handled next pass",
+        "QueueJanitor: stale :processing cleanup hit per-pass limit of #{limit}; remaining stale rows will be handled next pass",
         source_id: state.source_id,
         backend_id: state.backend_id
       )
@@ -205,30 +206,18 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     end
   end
 
+  # Pass the exact row observed by the lookup to IngestEventQueue's CAS helpers, so an event
+  # acked, deleted, or re-claimed between lookup and write is neither dropped nor reset (a
+  # re-claimed row carries a newer claimed_at and will not match). The :reset/:drop/:skip
+  # verdict is gated on the operation count so telemetry only reports rows actually changed.
   defp act_on_stale_event(tid, id) do
-    # Both branches pin the exact row observed by the lookup as the CAS match, so an event
-    # acked, deleted, or re-claimed between lookup and write is neither dropped nor reset
-    # (the freshly re-claimed row carries a newer claimed_at and will not match). The verdict
-    # is gated on the operation count so telemetry only reports rows we actually changed.
     case :ets.lookup(tid, id) do
       [{^id, :processing, %{retries: retries}, _size, _claim, _claimed_at} = row]
       when retries >= @max_stale_retries - 1 ->
-        case :ets.select_delete(tid, [{row, [], [true]}]) do
-          1 -> :drop
-          0 -> :skip
-        end
+        IngestEventQueue.drop_stale_event(tid, row)
 
-      [{^id, :processing, %{retries: retries} = le, size, _claim, _claimed_at} = row] ->
-        new_le = %{le | retries: (retries || 0) + 1}
-
-        # Reset to :pending with claim 0 and claimed_at 0 so the requeued event is claimable
-        # and no longer looks stale (see claim_pending/3).
-        case :ets.select_replace(tid, [
-               {row, [], [{:const, {id, :pending, new_le, size, 0, 0}}]}
-             ]) do
-          1 -> :reset
-          0 -> :skip
-        end
+      [{^id, :processing, %{retries: retries} = le, _size, _claim, _claimed_at} = row] ->
+        IngestEventQueue.reset_stale_event(tid, row, %{le | retries: (retries || 0) + 1})
 
       _ ->
         :skip

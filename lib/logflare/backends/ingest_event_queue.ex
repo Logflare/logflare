@@ -782,6 +782,44 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
+  @doc """
+  Resets an exact stale `:processing` row back to `:pending` with `new_event`, clearing the
+  claim counter and `claimed_at`.
+
+  `expected` is the full row a caller previously observed via `:ets.lookup/2`. The match pins
+  every field, so a row that was acked, deleted, or re-claimed (carrying a newer `claimed_at`)
+  between observation and this call does not match and is left untouched. Returns `:reset` when
+  the row was replaced, `:skip` otherwise.
+  """
+  @spec reset_stale_event(:ets.tid(), tuple(), LogEvent.t()) :: :reset | :skip
+  def reset_stale_event(
+        tid,
+        {id, :processing, _event, size, _claim, _claimed_at} = expected,
+        new_event
+      ) do
+    case :ets.select_replace(tid, [
+           {expected, [], [{:const, {id, :pending, new_event, size, 0, 0}}]}
+         ]) do
+      1 -> :reset
+      0 -> :skip
+    end
+  end
+
+  @doc """
+  Deletes an exact stale `:processing` row.
+
+  `expected` is the full row a caller previously observed; the match pins every field (see
+  `reset_stale_event/3`), so a row changed between observation and this call is left untouched.
+  Returns `:drop` when the row was deleted, `:skip` otherwise.
+  """
+  @spec drop_stale_event(:ets.tid(), tuple()) :: :drop | :skip
+  def drop_stale_event(tid, {_id, :processing, _event, _size, _claim, _claimed_at} = expected) do
+    case :ets.select_delete(tid, [{expected, [], [true]}]) do
+      1 -> :drop
+      0 -> :skip
+    end
+  end
+
   defp select_to_insert(_tid, _ms, _size, 0), do: []
 
   defp select_to_insert(tid, ms, size, n) do
