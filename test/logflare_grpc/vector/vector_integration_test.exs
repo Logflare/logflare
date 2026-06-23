@@ -20,9 +20,13 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
   #     mix test --only integration test/logflare_grpc/vector/vector_integration_test.exs
   use Logflare.DataCase, async: false
 
+  import Phoenix.ConnTest
+  import Plug.Conn
+
   @moduletag :integration
   # First run pulls images; CH boot + Vector connect + pipeline flush take time.
   @moduletag timeout: 360_000
+  @endpoint LogflareWeb.Endpoint
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
@@ -30,6 +34,7 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.TestUtils
+  alias LogflareWeb.Router.Helpers, as: Routes
 
   @vector_image "timberio/vector:0.49.0-alpine"
   @nginx_image "nginx:1.27-alpine"
@@ -102,7 +107,9 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
       logs_table = ClickHouseAdaptor.clickhouse_ingest_table_name(ctx.backend, :log)
       metrics_table = ClickHouseAdaptor.clickhouse_ingest_table_name(ctx.backend, :metric)
 
-      # Logs: the flattened `level` field maps onto severity_text (upcased).
+      # Logs: the preserved nested `metadata.parsed.error_severity` (Supabase
+      # shape) maps onto severity_text (upcased), proving the metadata object
+      # survives flattening rather than being clobbered by the type marker.
       TestUtils.retry_assert([duration: 150_000, sleep: 3_000], fn ->
         assert {:ok, rows} =
                  ClickHouseAdaptor.execute_ch_query(
@@ -110,7 +117,7 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
                    "SELECT event_message, severity_text FROM #{logs_table} WHERE event_message = '#{marker}'"
                  )
 
-        assert Enum.any?(rows, &(&1["severity_text"] == "INFO"))
+        assert Enum.any?(rows, &(&1["severity_text"] == "WARNING"))
       end)
 
       # Metrics: a real counter (e.g. vector_*_total) maps to metric_type `sum`
@@ -125,6 +132,102 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
         assert Enum.any?(rows, &(&1["metric_type"] == "sum"))
       end)
     end
+  end
+
+  describe "HTTP-JSON vs gRPC parity" do
+    setup %{user: user, source: source_a} do
+      repo = Application.get_env(:logflare, Logflare.Repo)
+
+      url =
+        "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
+
+      backend_a =
+        insert(:backend, type: :postgres, sources: [source_a], config: %{url: url, schema: nil})
+
+      start_supervised!(
+        Supervisor.child_spec({AdaptorSupervisor, {source_a, backend_a}}, id: :adaptor_sup_a)
+      )
+
+      on_exit(fn -> PostgresAdaptor.destroy_instance({source_a, backend_a}) end)
+
+      source_b = insert(:source, user: user)
+
+      backend_b =
+        insert(:backend, type: :postgres, sources: [source_b], config: %{url: url, schema: nil})
+
+      start_supervised!(
+        Supervisor.child_spec({AdaptorSupervisor, {source_b, backend_b}}, id: :adaptor_sup_b)
+      )
+
+      on_exit(fn -> PostgresAdaptor.destroy_instance({source_b, backend_b}) end)
+
+      {:ok, %{backend_a: backend_a, source_b: source_b, backend_b: backend_b}}
+    end
+
+    test "the same Supabase-shaped event stores equivalently via the vector sink and /api/logs",
+         %{source: source_a} = ctx do
+      # gRPC path: real Vector (Supabase-shaped event) -> nginx -> source A.
+      grpc_marker = drive_vector(ctx, metrics?: false)
+
+      # HTTP path: the same logical event posted to the real /api/logs controller
+      # in-process (full router/auth/ingest), as Vector's http+json codec would.
+      http_marker = "http-it-#{TestUtils.random_string(12)}"
+
+      event = %{
+        "event_message" => http_marker,
+        "marker" => http_marker,
+        "metadata" => %{"host" => "db-default", "parsed" => %{"error_severity" => "warning"}}
+      }
+
+      conn =
+        build_conn()
+        |> put_req_header("x-api-key", ctx.user.api_key)
+        |> post(Routes.log_path(build_conn(), :create, source: ctx.source_b.token), event)
+
+      assert conn.status in 200..299
+
+      body_a = await_body(ctx.backend_a, source_a, grpc_marker)
+      body_b = await_body(ctx.backend_b, ctx.source_b, http_marker)
+
+      # The Postgres adaptor stores nested maps as single-element records, so
+      # unwrap before comparing. Both paths preserve the nested metadata
+      # identically; the gRPC path only adds the routing `type` marker.
+      meta_a = first_record(body_a["metadata"])
+      meta_b = first_record(body_b["metadata"])
+
+      assert body_a["event_message"] == grpc_marker
+      assert body_b["event_message"] == http_marker
+
+      assert meta_a["host"] == "db-default"
+      assert meta_b["host"] == "db-default"
+
+      assert first_record(meta_a["parsed"])["error_severity"] == "warning"
+      assert first_record(meta_b["parsed"])["error_severity"] == "warning"
+
+      assert meta_a["type"] == "vector_log"
+      refute Map.has_key?(meta_b, "type")
+    end
+  end
+
+  defp first_record(value), do: value |> List.wrap() |> List.first() || %{}
+
+  defp await_body(backend, source, marker) do
+    table = PostgresAdaptor.table_name(source)
+    query = "select body from #{table}"
+
+    TestUtils.retry_assert([duration: 120_000, sleep: 2_000], fn ->
+      assert {:ok, %QueryResult{rows: rows}} = PostgresAdaptor.execute_query(backend, query, [])
+      assert find_body(rows, marker)
+    end)
+
+    {:ok, %QueryResult{rows: rows}} = PostgresAdaptor.execute_query(backend, query, [])
+    find_body(rows, marker)
+  end
+
+  defp find_body(rows, marker) do
+    Enum.find_value(rows, fn %{"body" => [body | _]} ->
+      if body["marker"] == marker, do: body
+    end)
   end
 
   # Sets up network + nginx (header injection) + vector containers and returns
@@ -297,7 +400,9 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
     source = '''
     .event_message = .message
     .marker = "#{marker}"
-    .level = "info"
+    # Mirrors Supabase's metadata-centric shape (e.g. db_logs sets
+    # .metadata.parsed.error_severity).
+    .metadata = {"host": "db-default", "parsed": {"error_severity": "warning"}}
     '''
 
     [sinks.logflare]
