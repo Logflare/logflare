@@ -111,6 +111,76 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert [{_id, :ingested, _, _, _, _}] = :ets.lookup(tid, le.id)
     end
 
+    test "handle_batch emits ingest telemetry with resolved labels when source has labels", %{
+      source: source
+    } do
+      source = insert(:source, user_id: source.user_id, labels: "lvl=m.level")
+      context = bq_context(source)
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source, metadata: %{"level" => "error"})
+      {messages, _tid} = setup_queue(source, [le])
+
+      test_pid = self()
+      handler = "test-ingest-labels-#{inspect(make_ref())}"
+
+      :telemetry.attach(
+        handler,
+        [:logflare, :backends, :ingest],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:ingest, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+
+      assert_receive {:ingest, %{ingested_bytes: bytes}, metadata}
+      assert bytes > 0
+      # labels resolved from the event body, no per-event ETS lookup in ack
+      assert metadata["lvl"] == "error"
+    end
+
+    test "handle_batch emits ingest telemetry with no labels when source has none", %{
+      source: source
+    } do
+      context = bq_context(source)
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, [le])
+
+      test_pid = self()
+      handler = "test-ingest-nolabels-#{inspect(make_ref())}"
+
+      :telemetry.attach(
+        handler,
+        [:logflare, :backends, :ingest],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:ingest, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+
+      source_id = source.id
+      assert_receive {:ingest, %{ingested_bytes: bytes}, %{"source_id" => ^source_id}}
+      assert bytes > 0
+    end
+
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
       source: source
     } do
@@ -451,6 +521,18 @@ defmodule Logflare.BigQuery.PipelineTest do
         end)
 
       {messages, tid}
+    end
+
+    defp bq_context(source) do
+      %{
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: nil,
+        bigquery_project_id: nil,
+        bigquery_dataset_id: nil,
+        user_id: source.user_id,
+        system_source: false
+      }
     end
 
     test "passes {id, tid, size} messages through with correct size", %{
