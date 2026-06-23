@@ -56,6 +56,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
   # =============================================================================
 
   @spec uuid(Ecto.UUID.t() | String.t()) :: binary()
+  def uuid(
+        <<a::binary-size(8), ?-, b::binary-size(4), ?-, c::binary-size(4), ?-, d::binary-size(4),
+          ?-, e::binary-size(12)>> = uuid_string
+      ) do
+    case Base.decode16(<<a::binary, b::binary, c::binary, d::binary, e::binary>>, case: :mixed) do
+      {:ok, <<u1::64, u2::64>>} ->
+        <<u1::64-little, u2::64-little>>
+
+      _other ->
+        raise ArgumentError, "invalid UUID: #{inspect(uuid_string)}"
+    end
+  end
+
   def uuid(uuid_string) when is_non_empty_binary(uuid_string) do
     uuid_raw =
       uuid_string
@@ -358,19 +371,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
 
   def map(items, key_encoder, value_encoder)
       when is_map(items) and is_function(key_encoder, 1) and is_function(value_encoder, 1) do
-    pairs = Map.to_list(items)
-    encode_map_pairs(pairs, key_encoder, value_encoder)
+    :maps.fold(
+      fn k, v, acc -> [acc, key_encoder.(k), value_encoder.(v)] end,
+      [varint(map_size(items))],
+      items
+    )
   end
 
   def map(items, key_encoder, value_encoder)
       when is_list(items) and is_function(key_encoder, 1) and is_function(value_encoder, 1) do
-    encode_map_pairs(items, key_encoder, value_encoder)
-  end
-
-  defp encode_map_pairs(pairs, key_encoder, value_encoder) do
     [
-      varint(length(pairs))
-      | Enum.flat_map(pairs, fn {k, v} -> [key_encoder.(k), value_encoder.(v)] end)
+      varint(length(items))
+      | Enum.map(items, fn {k, v} -> [key_encoder.(k), value_encoder.(v)] end)
     ]
   end
 
