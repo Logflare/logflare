@@ -88,7 +88,7 @@ source = '''
 type = "vector"
 inputs = ["parse_logs"]
 address = "${LOGFLARE_GRPC_ENDPOINT:-http://localhost:50051}"
-compression = "gzip"
+compression = true
 
 [sinks.logflare_logs.request.headers]
 "x-api-key" = "${LOGFLARE_API_KEY}"
@@ -98,7 +98,7 @@ compression = "gzip"
 type = "vector"
 inputs = ["host_metrics"]
 address = "${LOGFLARE_GRPC_ENDPOINT:-http://localhost:50051}"
-compression = "gzip"
+compression = true
 
 [sinks.logflare_metrics.request.headers]
 "x-api-key" = "${LOGFLARE_API_KEY}"
