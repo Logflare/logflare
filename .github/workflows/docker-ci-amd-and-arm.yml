@@ -53,6 +53,10 @@ jobs:
           push: true
           tags: supabase/logflare:dev-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
           platforms: linux/${{ matrix.arch }}
+          # Baked into the image as LOGFLARE_COMMIT_SHA and emitted as an OTel
+          # resource attribute at runtime (see Dockerfile / Logflare.Telemetry).
+          build-args: |
+            COMMIT_SHA=${{ needs.settings.outputs.short_sha }}
           # caching
           cache-from: type=gha
           cache-to: type=gha,mode=max

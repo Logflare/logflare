@@ -9,15 +9,17 @@ defmodule Logflare.Endpoints do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
-  alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.PiiRedactor
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.Resolver
   alias Logflare.Endpoints.ResultsCache
   alias Logflare.Lql
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.FromRule
+  alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sql
@@ -26,13 +28,15 @@ defmodule Logflare.Endpoints do
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Utils
+  alias PaperTrail.Version
 
   @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
 
   @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
+  @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
-           | {:error, String.t()}
+           | {:error, String.t() | QueryError.t()}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
@@ -41,13 +45,13 @@ defmodule Logflare.Endpoints do
 
   @spec count_endpoints_by_user(user_id :: integer()) :: integer()
   def count_endpoints_by_user(user_id) when is_integer(user_id) do
-    q = from(s in Query, where: s.user_id == ^user_id)
+    q = from(s in EndpointQuery, where: s.user_id == ^user_id)
     Repo.aggregate(q, :count)
   end
 
-  @spec list_endpoints_by(Keyword.t()) :: [Query.t()] | []
+  @spec list_endpoints_by(Keyword.t()) :: [EndpointQuery.t()] | []
   def list_endpoints_by(kw) when is_list(kw) do
-    q = from(e in Query)
+    q = from(e in EndpointQuery)
 
     Enum.reduce(kw, q, fn {k, v}, q ->
       case k do
@@ -62,9 +66,9 @@ defmodule Logflare.Endpoints do
   @doc """
   Lists all endpoints a user has access to, including where the user is a team member.
   """
-  @spec list_endpoints_by_user_access(User.t()) :: [Query.t()]
+  @spec list_endpoints_by_user_access(User.t()) :: [EndpointQuery.t()]
   def list_endpoints_by_user_access(%User{} = user) do
-    Query
+    EndpointQuery
     |> Teams.filter_by_user_access(user)
     |> Repo.all()
   end
@@ -74,58 +78,89 @@ defmodule Logflare.Endpoints do
   Returns the endpoint query if the user owns it or is a team member, otherwise returns nil.
   """
   @spec get_endpoint_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
-          Query.t() | nil
+          EndpointQuery.t() | nil
   def get_endpoint_query_by_user_access(user_or_team_user, id)
       when is_integer(id) or is_binary(id) do
-    Query
+    EndpointQuery
     |> Teams.filter_by_user_access(user_or_team_user)
     |> where([query], query.id == ^id)
     |> Repo.one()
   end
 
   @doc """
-  Retrieves an endpoint `Query`
+  Retrieves an endpoint `EndpointQuery`
   """
-  @spec get_endpoint_query(query_id :: integer() | String.t()) :: Query.t() | nil
+  @spec get_endpoint_query(query_id :: integer() | String.t()) :: EndpointQuery.t() | nil
   def get_endpoint_query(query_id) when is_integer_or_string(query_id),
-    do: Repo.get(Query, query_id)
+    do: Repo.get(EndpointQuery, query_id)
 
   @doc """
-  Retrieves a mapped endpoint `Query` by token
+  Retrieves a mapped endpoint `EndpointQuery` by token
   """
-  @spec get_mapped_query_by_token(token :: String.t()) :: Query.t() | nil
+  @spec get_mapped_query_by_token(token :: String.t()) :: EndpointQuery.t() | nil
   def get_mapped_query_by_token(token) when is_non_empty_binary(token) do
     get_by(token: token)
-    |> Query.map_query_sources()
+    |> EndpointQuery.map_query_sources()
     |> Repo.preload(:user)
   end
 
   @doc """
-  Puts the `:query` key of the `Query` with the latest source mappings.
+  Puts the `:query` key of the `EndpointQuery` with the latest source mappings.
   This ensure that the query will have the latest source names (assuming a name change)
   """
-  @spec map_query_sources(Query.t() | nil) :: Query.t() | nil
+  @spec map_query_sources(EndpointQuery.t() | nil) :: EndpointQuery.t() | nil
   def map_query_sources(nil), do: nil
-  def map_query_sources(%Query{} = query), do: Query.map_query_sources(query)
+  def map_query_sources(%EndpointQuery{} = query), do: EndpointQuery.map_query_sources(query)
 
-  @spec get_by(Keyword.t()) :: Query.t() | nil
-  def get_by(kw), do: Repo.get_by(Query, kw)
+  @spec get_by(Keyword.t()) :: EndpointQuery.t() | nil
+  def get_by(kw), do: Repo.get_by(EndpointQuery, kw)
 
-  @spec create_query(User.t(), map()) :: {:ok, Query.t()} | {:error, any()}
-  def create_query(%User{} = user, params) when is_map(params) do
-    user
-    |> Ecto.build_assoc(:endpoint_queries)
-    |> Repo.preload(:user)
-    |> Query.update_by_user_changeset(params)
-    |> Repo.insert()
+  @spec create_query(User.t(), map(), origin()) :: {:ok, EndpointQuery.t()} | {:error, any()}
+  def create_query(%User{} = user, params, origin) when is_map(params) do
+    changeset =
+      user
+      |> Ecto.build_assoc(:endpoint_queries)
+      |> Repo.preload(:user)
+      |> EndpointQuery.update_by_user_changeset(params)
+
+    opts = paper_trail_opts(changeset, origin, 1)
+
+    changeset
+    |> PaperTrail.insert(opts)
+    |> case do
+      {:ok, %{model: endpoint}} -> {:ok, endpoint}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc "returns an ecto changeset for changing an endpoint."
-  @spec change_query(Query.t(), map()) :: Ecto.Changeset.t()
-  def change_query(%Query{} = query, attrs \\ %{}) do
+  @spec change_query(EndpointQuery.t(), map()) :: Ecto.Changeset.t()
+  def change_query(%EndpointQuery{} = query, attrs \\ %{}) do
     query
     |> Repo.preload(:user)
-    |> Query.update_by_user_changeset(attrs)
+    |> EndpointQuery.update_by_user_changeset(attrs)
+  end
+
+  @spec update_query(EndpointQuery.t(), map(), origin()) ::
+          {:ok, EndpointQuery.t()} | {:error, Ecto.Changeset.t()}
+  def update_query(%EndpointQuery{} = query, params, origin) when is_map(params) do
+    Repo.transact(fn ->
+      query = lock_endpoint_query(query)
+      version_number = next_endpoint_version_number(query.id)
+      changeset = EndpointQuery.update_by_user_changeset(query, params)
+      opts = paper_trail_opts(changeset, origin, version_number)
+
+      PaperTrail.update(changeset, opts)
+    end)
+    |> case do
+      {:ok, %{model: updated_query}} ->
+        changeset = query |> Repo.preload(:user) |> EndpointQuery.update_by_user_changeset(params)
+        maybe_kill_endpoint_caches(updated_query, changeset.changes)
+        {:ok, updated_query}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
   end
 
   @doc """
@@ -144,7 +179,7 @@ defmodule Logflare.Endpoints do
   def derive_language_from_backend_id(backend_id) when is_integer(backend_id) do
     case Backends.get_backend(backend_id) do
       %Backend{} = backend ->
-        Query.map_backend_to_language(backend, SingleTenant.supabase_mode?())
+        EndpointQuery.map_backend_to_language(backend, SingleTenant.supabase_mode?())
 
       nil ->
         :bq_sql
@@ -153,48 +188,140 @@ defmodule Logflare.Endpoints do
 
   def derive_language_from_backend_id(_), do: :bq_sql
 
-  @spec update_query(Query.t(), map()) :: {:ok, Query.t()} | {:error, any()}
-  def update_query(%Query{} = query, params) when is_map(params) do
-    with endpoint <- Repo.preload(query, :user),
-         changeset <- Query.update_by_user_changeset(endpoint, params),
-         {:ok, endpoint} <- Repo.update(changeset) do
-      changed_keys = Map.keys(changeset.changes)
+  @spec paper_trail_opts(Ecto.Changeset.t(), origin(), integer() | nil) :: keyword()
+  defp paper_trail_opts(changeset, origin, version_number) do
+    [origin: version_origin(origin), meta: version_meta(changeset, version_number)]
+  end
 
-      should_kill_caches? =
-        Enum.any?(changed_keys, fn key ->
-          key in [
-            :query,
-            :sandboxable,
-            :cache_duration_seconds,
-            :proactive_requerying_seconds,
-            :max_limit,
-            :enable_auth,
-            :labels
-          ]
-        end)
+  @spec version_meta(Ecto.Changeset.t(), integer() | nil) :: map()
+  defp version_meta(changeset, version_number) do
+    %{
+      version_number: version_number,
+      endpoint_snapshot: EndpointQuery.version_snapshot(changeset)
+    }
+    |> maybe_put_query_diff(changeset)
+  end
 
-      if should_kill_caches? do
-        kill_endpoint_caches(endpoint)
-      end
-
-      {:ok, endpoint}
+  @spec maybe_put_query_diff(map(), Ecto.Changeset.t()) :: map()
+  defp maybe_put_query_diff(meta, changeset) do
+    case endpoint_version_query_diff(changeset) do
+      [] -> meta
+      query_diff -> Map.put(meta, :query_diff, query_diff)
     end
   end
 
-  @spec kill_endpoint_caches(endpoint :: Query.t()) :: :ok
-  defp kill_endpoint_caches(endpoint) do
-    for pid <- Resolver.list_caches(endpoint) do
-      Utils.Tasks.async(fn ->
-        ResultsCache.invalidate(pid)
+  @spec endpoint_version_query_diff(Ecto.Changeset.t()) ::
+          [%{required(:type) => String.t(), required(:value) => String.t()}]
+  defp endpoint_version_query_diff(changeset) do
+    previous_query = changeset.data.query
+    current_query = Ecto.Changeset.get_field(changeset, :query)
+
+    if previous_query != current_query do
+      previous_query
+      |> to_query_words()
+      |> List.myers_difference(to_query_words(current_query))
+      |> Enum.map(fn {type, words} ->
+        value = Enum.join(words, " ")
+
+        %{
+          type: Atom.to_string(type),
+          value: if(value == "", do: "", else: value <> " ")
+        }
       end)
+      |> Enum.reject(&(&1.value == ""))
+    else
+      []
     end
-    |> Task.await_many(30_000)
+  end
+
+  @spec to_query_words(String.t() | nil) :: [String.t()]
+  defp to_query_words(query) when is_binary(query), do: String.split(query)
+  defp to_query_words(nil), do: []
+
+  @spec version_origin(origin()) :: String.t() | nil
+  defp version_origin(%User{email: email}), do: email
+  defp version_origin(%TeamUser{email: email}), do: email
+
+  defp version_origin(%OauthAccessToken{description: description})
+       when is_non_empty_binary(description), do: "API: #{description}"
+
+  defp version_origin(%OauthAccessToken{id: id}), do: "API: id #{id}"
+
+  @spec lock_endpoint_query(EndpointQuery.t()) :: EndpointQuery.t()
+  defp lock_endpoint_query(%EndpointQuery{id: query_id}) do
+    from(query in EndpointQuery,
+      where: query.id == ^query_id,
+      lock: "FOR UPDATE"
+    )
+    |> Repo.one!()
+    |> Repo.preload(:user)
+  end
+
+  @spec next_endpoint_version_number(integer()) :: integer()
+  defp next_endpoint_version_number(endpoint_id) do
+    from(version in Version,
+      where: version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id,
+      select: fragment("COALESCE(MAX((?->>'version_number')::integer), 0)", version.meta)
+    )
+    |> Repo.one()
+    |> Kernel.+(1)
+  end
+
+  @spec should_kill_caches?(map()) :: boolean()
+  defp should_kill_caches?(changes) when is_map(changes) do
+    Enum.any?(
+      [
+        :query,
+        :sandboxable,
+        :cache_duration_seconds,
+        :proactive_requerying_seconds,
+        :max_limit,
+        :enable_auth,
+        :labels
+      ],
+      &is_map_key(changes, &1)
+    )
+  end
+
+  @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) :: :ok
+  defp maybe_kill_endpoint_caches(endpoint, changes) do
+    if should_kill_caches?(changes) do
+      for pid <- Resolver.list_caches(endpoint) do
+        Utils.Tasks.async(fn ->
+          ResultsCache.invalidate(pid)
+        end)
+      end
+      |> Task.await_many(30_000)
+    end
 
     :ok
   end
 
-  @spec delete_query(Query.t()) :: {:ok, Query.t()} | {:error, any()}
-  def delete_query(query), do: Repo.delete(query)
+  @spec get_endpoint_query_version(integer(), integer()) :: Version.t() | nil
+  def get_endpoint_query_version(endpoint_id, version_number)
+      when is_integer(endpoint_id) and is_integer(version_number) do
+    from(version in Version,
+      where:
+        version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id and
+          fragment("(?->>'version_number')::integer = ?", version.meta, ^version_number)
+    )
+    |> Repo.one()
+  end
+
+  @spec delete_query(EndpointQuery.t(), origin()) :: {:ok, EndpointQuery.t()} | {:error, any()}
+  def delete_query(%EndpointQuery{} = query, origin) do
+    Repo.transact(fn ->
+      endpoint = lock_endpoint_query(query)
+      version_number = next_endpoint_version_number(endpoint.id)
+      changeset = Ecto.Changeset.change(endpoint)
+      opts = paper_trail_opts(changeset, origin, version_number)
+
+      case PaperTrail.delete(endpoint, opts) do
+        {:ok, %{model: deleted_endpoint}} -> {:ok, deleted_endpoint}
+        {:error, reason} -> {:error, reason}
+      end
+    end)
+  end
 
   @doc """
   Parses a query string without running it.
@@ -202,7 +329,7 @@ defmodule Logflare.Endpoints do
   @spec parse_query_string(
           language :: :bq_sql | :ch_sql | :pg_sql,
           query_string :: String.t(),
-          endpoint_queries :: [Query.t()],
+          endpoint_queries :: [EndpointQuery.t()],
           alerts :: [AlertQuery.t()]
         ) ::
           {:ok, %{parameters: [String.t()], expanded_query: String.t()}} | {:error, any()}
@@ -300,10 +427,16 @@ defmodule Logflare.Endpoints do
   @doc """
   Runs a an endpoint query
   """
-  @spec run_query(Query.t(), params :: map(), opts :: Keyword.t()) :: run_query_return()
-  def run_query(%Query{language: query_language} = endpoint_query, params \\ %{}, opts \\ [])
+  @spec run_query(EndpointQuery.t(), params :: map(), opts :: Keyword.t()) :: run_query_return()
+  def run_query(
+        %EndpointQuery{language: query_language} = endpoint_query,
+        params \\ %{},
+        opts \\ []
+      )
       when is_map(params) and is_list(opts) do
-    %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query
+    %EndpointQuery{query: query_string, user_id: user_id, sandboxable: sandboxable} =
+      endpoint_query
+
     sql_param = Map.get(params, "sql")
     lql_param = Map.get(params, "lql")
 
@@ -352,7 +485,7 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  @spec emit_query_telemetry(result :: run_query_return(), endpoint_query :: Query.t()) ::
+  @spec emit_query_telemetry(result :: run_query_return(), endpoint_query :: EndpointQuery.t()) ::
           {run_query_return(), map()}
   defp emit_query_telemetry({:ok, data} = result, endpoint_query) do
     measurements = %{
@@ -393,7 +526,7 @@ defmodule Logflare.Endpoints do
       |> then(fn %{sources: sources} -> sources end)
       |> Enum.map(&{&1.name, &1.token})
 
-    query = %Query{
+    query = %EndpointQuery{
       query: query_string,
       language: language,
       sandboxable: Keyword.get(opts, :sandboxable, false),
@@ -411,8 +544,8 @@ defmodule Logflare.Endpoints do
   @doc """
   Runs a cached query.
   """
-  @spec run_cached_query(query :: Query.t(), params :: map()) :: run_query_return()
-  def run_cached_query(%Query{} = query, params \\ %{}, opts \\ [])
+  @spec run_cached_query(query :: EndpointQuery.t(), params :: map()) :: run_query_return()
+  def run_cached_query(%EndpointQuery{} = query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
     if query.cache_duration_seconds > 0 do
       query
@@ -425,19 +558,20 @@ defmodule Logflare.Endpoints do
   end
 
   @doc """
-  Calculates and sets the `:metrics` key with `Query.Metrics`, which contains info and stats relating to the endpoint
+  Calculates and sets the `:metrics` key with `EndpointQuery.Metrics`, which contains info and stats relating to the endpoint
   """
-  @spec calculate_endpoint_metrics(Query.t() | [Query.t()]) :: Query.t() | [Query.t()]
+  @spec calculate_endpoint_metrics(EndpointQuery.t() | [EndpointQuery.t()]) ::
+          EndpointQuery.t() | [EndpointQuery.t()]
   def calculate_endpoint_metrics(endpoint_queries) when is_list(endpoint_queries) do
     for endpoint_query <- endpoint_queries, do: calculate_endpoint_metrics(endpoint_query)
   end
 
-  def calculate_endpoint_metrics(%Query{} = endpoint_query) do
+  def calculate_endpoint_metrics(%EndpointQuery{} = endpoint_query) do
     cache_count = endpoint_query |> Resolver.list_caches() |> length()
 
     %{
       endpoint_query
-      | metrics: %Query.Metrics{
+      | metrics: %EndpointQuery.Metrics{
           cache_count: cache_count
         }
     }
@@ -448,10 +582,11 @@ defmodule Logflare.Endpoints do
 
   Useful for debugging and UI display of merged sandbox queries.
   """
-  @spec get_transformed_query(Query.t(), params :: map()) ::
+  @spec get_transformed_query(EndpointQuery.t(), params :: map()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def get_transformed_query(%Query{} = endpoint_query, params \\ %{}) when is_map(params) do
-    %Query{
+  def get_transformed_query(%EndpointQuery{} = endpoint_query, params \\ %{})
+      when is_map(params) do
+    %EndpointQuery{
       query: query_string,
       user_id: user_id,
       sandboxable: sandboxable,
@@ -553,14 +688,14 @@ defmodule Logflare.Endpoints do
   end
 
   @spec exec_query_on_backend(
-          endpoint_query :: Query.t(),
+          endpoint_query :: EndpointQuery.t(),
           transformed_query :: String.t(),
           declared_params :: [String.t()],
           input_params :: map(),
           opts :: Keyword.t()
         ) :: run_query_return()
   defp exec_query_on_backend(
-         %Query{language: sql_language} = endpoint_query,
+         %EndpointQuery{language: sql_language} = endpoint_query,
          transformed_query,
          declared_params,
          input_params,
@@ -630,15 +765,16 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  @spec get_backend_for_query(Query.t()) :: {:ok, Backend.t()} | {:error, String.t()}
-  defp get_backend_for_query(%Query{backend_id: backend_id}) when is_integer(backend_id) do
+  @spec get_backend_for_query(EndpointQuery.t()) :: {:ok, Backend.t()} | {:error, String.t()}
+  defp get_backend_for_query(%EndpointQuery{backend_id: backend_id})
+       when is_integer(backend_id) do
     case Backends.get_backend(backend_id) do
       %Backend{} = backend -> {:ok, backend}
       nil -> {:error, "Backend not found"}
     end
   end
 
-  defp get_backend_for_query(%Query{user_id: user_id, language: language}) do
+  defp get_backend_for_query(%EndpointQuery{user_id: user_id, language: language}) do
     backend_type = language_to_backend_type(language)
     find_backend_by_type_or_default(user_id, backend_type)
   end

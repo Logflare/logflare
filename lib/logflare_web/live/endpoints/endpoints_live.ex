@@ -4,13 +4,17 @@ defmodule LogflareWeb.EndpointsLive do
   use LogflareWeb, :live_view
   use Phoenix.Component
 
+  import Ecto.Query, only: [from: 2]
+
   require Logger
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Backend
   alias Logflare.Endpoints
   alias Logflare.Endpoints.PiiRedactor
   alias LogflareWeb.QueryComponents
+  alias LogflareWeb.QueryErrorHelpers
   alias Logflare.Utils
 
   embed_templates("actions/*", suffix: "_action")
@@ -49,8 +53,9 @@ defmodule LogflareWeb.EndpointsLive do
       |> refresh_endpoints()
       |> assign(:query_result_rows, nil)
       |> assign(:total_bytes_processed, nil)
+      |> assign(:query_error_message, nil)
       |> assign(:show_endpoint, nil)
-      |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
+      |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.EndpointQuery{}))
       |> assign(:selected_backend_id, nil)
       |> assign(:allow_access, allow_access)
       |> assign(:base_url, LogflareWeb.Endpoint.url())
@@ -123,6 +128,7 @@ defmodule LogflareWeb.EndpointsLive do
             socket
             |> assign(:query_result_rows, nil)
             |> assign(:total_bytes_processed, nil)
+            |> assign(:query_error_message, nil)
           else
             socket
           end
@@ -133,6 +139,7 @@ defmodule LogflareWeb.EndpointsLive do
           |> refresh_endpoints()
           |> assign(:endpoint_changeset, nil)
           |> assign(:query_result_rows, nil)
+          |> assign(:query_error_message, nil)
 
         %{assigns: %{live_action: :new}} = socket ->
           params =
@@ -142,7 +149,7 @@ defmodule LogflareWeb.EndpointsLive do
             end)
 
           changeset =
-            %Endpoints.Query{}
+            %Endpoints.EndpointQuery{}
             |> Endpoints.change_query(params)
 
           socket
@@ -153,12 +160,13 @@ defmodule LogflareWeb.EndpointsLive do
           # reset the changeset
           |> assign(
             :endpoint_changeset,
-            Endpoints.change_query(%Endpoints.Query{query: placeholder_sql()})
+            Endpoints.change_query(%Endpoints.EndpointQuery{query: placeholder_sql()})
           )
           |> assign(:selected_backend_id, nil)
           # reset test results
           |> assign(:query_result_rows, nil)
           |> assign(:redact_pii, false)
+          |> assign(:query_error_message, nil)
       end)
 
     {:noreply, socket}
@@ -170,19 +178,20 @@ defmodule LogflareWeb.EndpointsLive do
         %{assigns: %{user: user, show_endpoint: show_endpoint, team: team}} = socket
       ) do
     Logger.debug("Saving endpoint", params: params)
+    origin = socket.assigns.team_user || user
 
-    case upsert_query(show_endpoint, user, params) do
-      {:ok, endpoint} ->
-        verb = if show_endpoint, do: "updated", else: "created"
+    with :ok <- authorize_backend_id(origin, params),
+         {:ok, endpoint} <- upsert_query(show_endpoint, user, origin, params) do
+      verb = if show_endpoint, do: "updated", else: "created"
 
-        {:noreply,
-         socket
-         |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
-         |> push_patch(to: LogflareWeb.Utils.with_team_param(~p"/endpoints/#{endpoint.id}", team))
-         |> assign(:show_endpoint, endpoint)
-         |> assign(:query_result_rows, nil)
-         |> assign(:total_bytes_processed, nil)}
-
+      {:noreply,
+       socket
+       |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
+       |> push_patch(to: LogflareWeb.Utils.with_team_param(~p"/endpoints/#{endpoint.id}", team))
+       |> assign(:show_endpoint, endpoint)
+       |> assign(:query_result_rows, nil)
+       |> assign(:total_bytes_processed, nil)}
+    else
       {:error, %Ecto.Changeset{} = changeset} ->
         verb = if(show_endpoint, do: "update", else: "create")
         message = "Could not #{verb} endpoint. Please fix the errors before trying again."
@@ -194,6 +203,9 @@ defmodule LogflareWeb.EndpointsLive do
           |> assign(:selected_backend_id, changeset.data.backend_id)
 
         {:noreply, socket}
+
+      {:error, :backend_not_found} ->
+        {:noreply, put_flash(socket, :error, "Backend not found")}
     end
   end
 
@@ -209,7 +221,7 @@ defmodule LogflareWeb.EndpointsLive do
         {:noreply, put_flash(socket, :error, "You do not have access to that endpoint.")}
 
       endpoint ->
-        {:ok, _} = Endpoints.delete_query(endpoint)
+        {:ok, _} = Endpoints.delete_query(endpoint, user)
 
         {:noreply,
          socket
@@ -237,9 +249,10 @@ defmodule LogflareWeb.EndpointsLive do
         "endpoint_id" => socket.assigns.endpoint_changeset.data.id
       })
 
-    endpoint_language = get_current_endpoint_language(socket)
     redact_pii = socket.assigns.redact_pii
     backend_id = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :backend_id)
+
+    endpoint_language = get_current_endpoint_language(socket)
 
     case Endpoints.run_query_string(user, {endpoint_language, query_string},
            params: query_params,
@@ -249,29 +262,22 @@ defmodule LogflareWeb.EndpointsLive do
            backend_id: backend_id,
            reservation: reservation
          ) do
-      {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Ran query successfully")
-         |> assign(:prev_params, query_params)
-         |> assign(:prev_reservation, reservation)
-         |> assign(:query_result_rows, rows)
-         |> assign(:total_bytes_processed, total_bytes_processed)}
+      {:ok, %{rows: rows} = result} ->
+        total_bytes_or_nil = Map.get(result, :total_bytes_processed)
 
-      {:ok, %{rows: rows}} ->
-        # non-BQ results
         {:noreply,
          socket
          |> put_flash(:info, "Ran query successfully")
          |> assign(:prev_params, query_params)
          |> assign(:prev_reservation, reservation)
          |> assign(:query_result_rows, rows)
-         |> assign(:total_bytes_processed, nil)}
+         |> assign(:total_bytes_processed, total_bytes_or_nil)
+         |> assign(:query_error_message, nil)}
 
       {:error, err} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Error occured when running query: #{inspect(err)}")}
+        message = if is_binary(err), do: err, else: QueryErrorHelpers.query_error_message(err)
+
+        {:noreply, socket |> assign(:query_error_message, message)}
     end
   end
 
@@ -357,22 +363,28 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
-    selected_backend_id = Map.get(endpoint_params, "backend_id")
-    redact_pii = Map.get(endpoint_params, "redact_pii") == "true"
+    origin = socket.assigns[:team_user] || socket.assigns.user
 
-    changeset =
-      socket.assigns.endpoint_changeset.data
-      |> Endpoints.change_query(endpoint_params)
-      |> Map.put(:action, :validate)
+    with :ok <- authorize_backend_id(origin, endpoint_params) do
+      selected_backend_id = Map.get(endpoint_params, "backend_id")
 
-    socket =
-      socket
-      |> assign(:endpoint_changeset, changeset)
-      |> assign(:selected_backend_id, selected_backend_id)
-      |> assign(:redact_pii, redact_pii)
-      |> assign_determined_language()
+      changeset =
+        socket.assigns.endpoint_changeset.data
+        |> Endpoints.change_query(endpoint_params)
+        |> Map.put(:action, :validate)
 
-    {:noreply, socket}
+      redact_pii = Map.get(endpoint_params, "redact_pii") == "true"
+
+      {:noreply,
+       socket
+       |> assign(:endpoint_changeset, changeset)
+       |> assign(:selected_backend_id, selected_backend_id)
+       |> assign(:redact_pii, redact_pii)
+       |> assign_determined_language()}
+    else
+      {:error, :backend_not_found} ->
+        {:noreply, put_flash(socket, :error, "Backend not found")}
+    end
   end
 
   def handle_event("validate", _params, socket) do
@@ -417,9 +429,22 @@ defmodule LogflareWeb.EndpointsLive do
   defp refresh_endpoints(%{assigns: assigns} = socket) do
     endpoints =
       Endpoints.list_endpoints_by(user_id: assigns.user_id)
+      |> Logflare.Repo.preload(backend: from(b in Backend, select: struct(b, [:id, :name])))
       |> Endpoints.calculate_endpoint_metrics()
 
     assign(socket, :endpoints, endpoints)
+  end
+
+  defp authorize_backend_id(user, params) do
+    case params["backend_id"] do
+      v when v in [nil, ""] ->
+        :ok
+
+      backend_id ->
+        if Backends.get_backend_by_user_access(user, backend_id),
+          do: :ok,
+          else: {:error, :backend_not_found}
+    end
   end
 
   defp assign_sources(socket) do
@@ -472,10 +497,10 @@ defmodule LogflareWeb.EndpointsLive do
     end
   end
 
-  defp upsert_query(show_endpoint, user, params) do
+  defp upsert_query(show_endpoint, user, origin, params) do
     case show_endpoint do
-      nil -> Endpoints.create_query(user, params)
-      %_{} -> Endpoints.update_query(show_endpoint, params)
+      nil -> Endpoints.create_query(user, params, origin)
+      %_{} -> Endpoints.update_query(show_endpoint, params, origin)
     end
   end
 

@@ -9,7 +9,7 @@ defmodule Logflare.Factory do
   alias Logflare.Billing.BillingCount
   alias Logflare.Billing.PaymentMethod
   alias Logflare.Billing.Plan
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.Lql
   alias Logflare.OauthAccessTokens.OauthAccessToken
@@ -25,6 +25,7 @@ defmodule Logflare.Factory do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.KeyValues.KeyValue
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias PaperTrail.Version
 
   def user_factory do
     email = "#{TestUtils.random_string(8)}@#{TestUtils.random_string()}.com"
@@ -235,7 +236,7 @@ defmodule Logflare.Factory do
     backend = Map.get(attrs, :backend)
     language = Map.get(attrs, :language, :bq_sql)
 
-    %Query{
+    %EndpointQuery{
       user: user,
       description: "some desc #{TestUtils.random_string()}",
       token: Ecto.UUID.generate(),
@@ -247,8 +248,49 @@ defmodule Logflare.Factory do
     |> merge_attributes(Map.drop(attrs, [:backend, :language, :user]))
   end
 
+  def endpoint_version_factory(attrs \\ %{}) do
+    endpoint = Map.get(attrs, :endpoint, build(:endpoint))
+    version_number = Map.get(attrs, :version_number, 1)
+    snapshot_overrides = Map.get(attrs, :snapshot_overrides, %{})
+
+    meta =
+      %{
+        "version_number" => version_number,
+        "endpoint_snapshot" => endpoint_version_snapshot(endpoint, snapshot_overrides)
+      }
+      |> Map.merge(Map.get(attrs, :meta, %{}))
+
+    %Version{
+      event: Map.get(attrs, :event, "update"),
+      item_type: "EndpointQuery",
+      item_id: endpoint.id || System.unique_integer([:positive]),
+      item_changes: Map.get(attrs, :item_changes, %{"description" => endpoint.description}),
+      origin: Map.get(attrs, :origin),
+      meta: meta
+    }
+    |> merge_attributes(Map.drop(attrs, [:endpoint, :version_number, :snapshot_overrides, :meta]))
+  end
+
+  defp endpoint_version_snapshot(endpoint, overrides) do
+    %{
+      "token" => endpoint.token,
+      "description" => endpoint.description,
+      "enable_auth" => endpoint.enable_auth,
+      "language" => to_string(endpoint.language),
+      "query" => endpoint.query,
+      "max_limit" => endpoint.max_limit,
+      "cache_duration_seconds" => endpoint.cache_duration_seconds,
+      "proactive_requerying_seconds" => endpoint.proactive_requerying_seconds,
+      "sandboxable" => endpoint.sandboxable,
+      "redact_pii" => endpoint.redact_pii,
+      "enable_dynamic_reservation" => endpoint.enable_dynamic_reservation,
+      "labels" => endpoint.labels
+    }
+    |> Map.merge(overrides)
+  end
+
   def child_endpoint_factory do
-    %Query{
+    %EndpointQuery{
       user: build(:user),
       token: Ecto.UUID.generate(),
       query: "select current_date() as date",

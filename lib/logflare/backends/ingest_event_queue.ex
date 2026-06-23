@@ -296,7 +296,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   def add_to_table({sid_bid_pid, tid}, batch, _opts) when is_tuple(sid_bid_pid) do
     objects =
       for %{id: id} = event <- batch do
-        {id, :pending, event}
+        # New/requeued rows start unclaimed (claim counter 0, claimed_at 0); see claim_pending/3.
+        {id, :pending, event, :erlang.external_size(event.body), 0, 0}
       end
 
     :ets.insert(tid, objects)
@@ -349,7 +350,8 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     if tid != nil do
       for event <- events do
-        :ets.update_element(tid, event.id, {2, :ingested})
+        # Clear claimed_at on exit from :processing so it only carries a real stamp while in flight.
+        :ets.update_element(tid, event.id, [{2, :ingested}, {6, 0}])
       end
 
       {:ok, Enum.count(events)}
@@ -436,7 +438,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def total_pending({_sid, _bid, _pid} = sid_bid_pid) do
     ms =
       Ex2ms.fun do
-        {_event_id, :pending, _event} -> true
+        {_event_id, :pending, _event, _size, _claim, _claimed_at} -> true
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -445,6 +447,29 @@ defmodule Logflare.Backends.IngestEventQueue do
     else
       nil -> {:error, :not_initialized}
     end
+  end
+
+  @doc """
+  Returns the total count of events with a given status across all queues for a source-backend.
+  """
+  @spec total_by_status(queues_key(), :pending | :processing | :ingested) :: non_neg_integer()
+  def total_by_status({_, _} = sid_bid, status) do
+    ms =
+      Ex2ms.fun do
+        {_event_id, event_status, _event, _size, _claim, _claimed_at}
+        when event_status == ^status ->
+          true
+      end
+
+    traverse_queues(
+      sid_bid,
+      fn objs, acc ->
+        Enum.reduce(objs, acc, fn {_sid_bid_pid, tid}, c ->
+          c + :ets.select_count(tid, ms)
+        end)
+      end,
+      0
+    )
   end
 
   @doc """
@@ -457,7 +482,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def take_pending(sid_bid_pid, n) when is_integer(n) do
     ms =
       Ex2ms.fun do
-        {_event_id, :pending, event} -> event
+        {_event_id, :pending, event, _size, _claim, _claimed_at} -> event
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -468,6 +493,65 @@ defmodule Logflare.Backends.IngestEventQueue do
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, []}
     end
+  end
+
+  @doc """
+  Takes pending item IDs from a given table, marking them as `:processing` in-place.
+
+  Returns `{:ok, ids, tid}` where `ids` is a list of event IDs and `tid` is the ETS
+  table reference. Intended for use with the BigQuery pipeline to reduce data copying
+  through Broadway stages — only pointers travel the pipeline; full events are fetched
+  from ETS at batch-insert time.
+  """
+  @spec take_pending_ids(source_backend_pid(), integer()) ::
+          {:ok, [{term(), non_neg_integer()}], :ets.tid() | nil} | {:error, :not_initialized}
+  def take_pending_ids(_, 0), do: {:ok, [], nil}
+
+  def take_pending_ids(sid_bid_pid, n) when is_integer(n) do
+    ms =
+      Ex2ms.fun do
+        {event_id, :pending, _event, size, _claim, _claimed_at} -> {event_id, size}
+      end
+
+    with tid when tid != nil <- get_tid(sid_bid_pid),
+         {taken_pairs, _cont} <- :ets.select(tid, ms, n) do
+      # One monotonic read per batch (not per event); every row claimed in this batch shares
+      # the same claimed_at stamp, which is all the stale-recovery janitor needs.
+      claimed_at = System.monotonic_time(:millisecond)
+
+      # The claim counter's 0 -> 1 winner takes the event; a 2+ result (another consumer,
+      # or a write_concurrency duplicate row within this select) loses, so no dedup needed.
+      confirmed =
+        Enum.filter(taken_pairs, fn {id, _size} -> claim_pending(tid, id, claimed_at) end)
+
+      {:ok, confirmed, tid}
+    else
+      nil -> {:error, :not_initialized}
+      :"$end_of_table" -> {:ok, [], nil}
+    end
+  end
+
+  # Claim invariant:
+  #   * every `:pending` row has `claim == 0` and `claimed_at == 0`
+  #   * `update_counter` is the atomic election; the `:processing` write is a separate step
+  #   * the winning claim stamps `claimed_at` with the batch's monotonic time so the
+  #     QueueJanitor can recover rows stuck in `:processing` past a staleness threshold
+  #   * any transition back to `:pending` must reset `claim` and `claimed_at` (add_to_table/3,
+  #     the QueueJanitor reset, and update_status/3 all do)
+  #   * id_passing and non-id_passing producers never share a pid-keyed queue, so the
+  #     claim path and the mark_ingested/pop path never touch the same rows
+  @spec claim_pending(:ets.tid(), term(), integer()) :: boolean()
+  defp claim_pending(tid, id, claimed_at) do
+    # Return update_element/3's result: it is false for a missing key, so a row deleted
+    # between the counter bump and the status write is rejected rather than claimed.
+    if :ets.update_counter(tid, id, {5, 1}) == 1 do
+      :ets.update_element(tid, id, [{2, :processing}, {6, claimed_at}])
+    else
+      false
+    end
+  rescue
+    # The row was deleted before the counter bump; update_counter raises on a missing key.
+    ArgumentError -> false
   end
 
   @doc """
@@ -484,7 +568,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending(sid_bid_pid, n) when is_integer(n) do
     select_ms =
       Ex2ms.fun do
-        {event_id, :pending, event} -> {event_id, event}
+        {event_id, :pending, event, _size, _claim, _claimed_at} -> {event_id, event}
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -508,7 +592,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def fetch_events({_, _, _} = sid_bid_pid, n) do
     ms =
       Ex2ms.fun do
-        {_event_id, _, event} -> event
+        {_event_id, _, event, _size, _claim, _claimed_at} -> event
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -577,14 +661,24 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp do_truncate_table(key, status, n) do
     ms =
       Ex2ms.fun do
-        {_event_id, _event_status, event} = obj when ^status == :all -> obj
-        {_event_id, event_status, event} = obj when event_status == ^status -> obj
+        {_event_id, _event_status, event, _size, _claim, _claimed_at} = obj
+        when ^status == :all ->
+          obj
+
+        {_event_id, event_status, event, _size, _claim, _claimed_at} = obj
+        when event_status == ^status ->
+          obj
       end
 
     del_ms =
       Ex2ms.fun do
-        {_event_id, _event_status, event} = obj when ^status == :all -> true
-        {_event_id, event_status, event} = obj when event_status == ^status -> true
+        {_event_id, _event_status, _event, _size, _claim, _claimed_at} = _obj
+        when ^status == :all ->
+          true
+
+        {_event_id, event_status, _event, _size, _claim, _claimed_at} = _obj
+        when event_status == ^status ->
+          true
       end
 
     with tid when tid != nil <- get_tid(key),
@@ -595,6 +689,134 @@ defmodule Logflare.Backends.IngestEventQueue do
       :ok
     else
       nil -> {:error, :not_initialized}
+    end
+  end
+
+  @doc """
+  Safely deletes a single event by id from a tid, ignoring stale (deleted) tables.
+  Emits telemetry if the table no longer exists.
+  """
+  @spec delete_id(:ets.tid(), term()) :: :ok
+  def delete_id(tid, id) do
+    :ets.delete(tid, id)
+    :ok
+  rescue
+    ArgumentError ->
+      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+      :ok
+  end
+
+  @doc """
+  Safely updates the status of a single event in a tid, ignoring stale (deleted) tables.
+  Emits telemetry if the table no longer exists.
+  """
+  @spec update_status(:ets.tid(), term(), :pending | :processing | :ingested) :: :ok
+  def update_status(tid, id, status) do
+    # Keep claim/claimed_at consistent with the target status in the same atomic update:
+    #   * :pending — reset claim and claimed_at so the row is claimable and not seen as stale
+    #   * :processing — stamp claimed_at so stale recovery can age the row out
+    #   * :ingested — clear claimed_at; it only carries a real stamp while in flight
+    update =
+      case status do
+        :pending -> [{2, :pending}, {5, 0}, {6, 0}]
+        :processing -> [{2, :processing}, {6, System.monotonic_time(:millisecond)}]
+        :ingested -> [{2, :ingested}, {6, 0}]
+      end
+
+    :ets.update_element(tid, id, update)
+    :ok
+  rescue
+    ArgumentError ->
+      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+      :ok
+  end
+
+  @doc """
+  Returns the list of event IDs currently marked as `:processing` in a queue.
+  """
+  @spec list_processing_ids(table_key() | consolidated_table_key()) :: [term()]
+  def list_processing_ids(key) do
+    ms =
+      Ex2ms.fun do
+        {id, :processing, _event, _size, _claim, _claimed_at} -> id
+      end
+
+    with tid when tid != nil <- get_tid(key),
+         {ids, _cont} <- :ets.select(tid, ms, 10_000) do
+      ids
+    else
+      _ -> []
+    end
+  end
+
+  @doc """
+  Returns up to `limit` IDs of `:processing` events claimed at or before `cutoff`.
+
+  `cutoff` is a `System.monotonic_time(:millisecond)` value; rows whose `claimed_at`
+  stamp is `<= cutoff` have been in flight longer than the staleness threshold. Status
+  is pinned to `:processing` in the match head, so `:pending`/`:ingested` rows (which
+  carry `claimed_at == 0`) are never returned regardless of the monotonic clock's sign.
+
+  `limit` bounds the IDs returned, not necessarily the rows scanned: the table is not
+  indexed by `claimed_at`, so ETS may walk further to find matching stale rows.
+
+  Used by QueueJanitor to detect stale in-flight events.
+  """
+  @spec list_stale_processing_ids(
+          table_key() | consolidated_table_key(),
+          integer(),
+          pos_integer()
+        ) ::
+          [term()]
+  def list_stale_processing_ids(key, cutoff, limit) do
+    ms =
+      Ex2ms.fun do
+        {id, :processing, _event, _size, _claim, claimed_at} when claimed_at <= ^cutoff -> id
+      end
+
+    with tid when tid != nil <- get_tid(key),
+         {ids, _cont} <- :ets.select(tid, ms, limit) do
+      ids
+    else
+      _ -> []
+    end
+  end
+
+  @doc """
+  Resets an exact stale `:processing` row back to `:pending` with `new_event`, clearing the
+  claim counter and `claimed_at`.
+
+  `expected` is the full row a caller previously observed via `:ets.lookup/2`. The match pins
+  every field, so a row that was acked, deleted, or re-claimed (carrying a newer `claimed_at`)
+  between observation and this call does not match and is left untouched. Returns `:reset` when
+  the row was replaced, `:skip` otherwise.
+  """
+  @spec reset_stale_event(:ets.tid(), tuple(), LogEvent.t()) :: :reset | :skip
+  def reset_stale_event(
+        tid,
+        {id, :processing, _event, size, _claim, _claimed_at} = expected,
+        new_event
+      ) do
+    case :ets.select_replace(tid, [
+           {expected, [], [{:const, {id, :pending, new_event, size, 0, 0}}]}
+         ]) do
+      1 -> :reset
+      0 -> :skip
+    end
+  end
+
+  @doc """
+  Deletes an exact stale `:processing` row.
+
+  `expected` is the full row a caller previously observed; the match pins every field (see
+  `reset_stale_event/3`), so a row changed between observation and this call is left untouched.
+  Returns `:drop` when the row was deleted, `:skip` otherwise.
+  """
+  @spec drop_stale_event(:ets.tid(), tuple()) :: :drop | :skip
+  def drop_stale_event(tid, {_id, :processing, _event, _size, _claim, _claimed_at} = expected) do
+    case :ets.select_delete(tid, [{expected, [], [true]}]) do
+      1 -> :drop
+      0 -> :skip
     end
   end
 
@@ -692,8 +914,11 @@ defmodule Logflare.Backends.IngestEventQueue do
     # chunk over table and drop
     ms =
       Ex2ms.fun do
-        {event_id, _status, _event} = obj when ^filter == :all -> event_id
-        {event_id, status, _event} = obj when status == ^filter -> event_id
+        {event_id, _status, _event, _size, _claim, _claimed_at} = _obj when ^filter == :all ->
+          event_id
+
+        {event_id, status, _event, _size, _claim, _claimed_at} = _obj when status == ^filter ->
+          event_id
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),

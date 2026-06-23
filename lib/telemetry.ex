@@ -3,6 +3,7 @@ defmodule Logflare.Telemetry do
 
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -36,15 +37,7 @@ defmodule Logflare.Telemetry do
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
           |> Keyword.put(:metrics, metrics())
-          |> Keyword.put(:resource, %{
-            name: "Logflare",
-            service: %{
-              name: "Logflare",
-              version: Application.spec(:logflare, :vsn) |> to_string()
-            },
-            node: inspect(Node.self()),
-            cluster: Application.get_env(:logflare, :metadata)[:cluster]
-          })
+          |> Keyword.put(:resource, resource())
           |> Keyword.update!(:otlp_headers, &Map.new/1)
           # set finch pool to 100 size
           |> Keyword.put(:otlp_concurrent_requests, max(base * 4, 50))
@@ -63,6 +56,35 @@ defmodule Logflare.Telemetry do
 
     Supervisor.init(children, strategy: :one_for_one)
   end
+
+  @spec resource() :: map()
+  def resource do
+    %{
+      name: "Logflare",
+      service: service_attributes(System.get_env("LOGFLARE_COMMIT_SHA")),
+      node: inspect(Node.self()),
+      cluster: Application.get_env(:logflare, :metadata)[:cluster]
+    }
+  end
+
+  @spec service_attributes(String.t() | nil) :: map()
+  def service_attributes(commit_sha) do
+    %{
+      name: "Logflare",
+      version: Application.spec(:logflare, :vsn) |> to_string()
+    }
+    |> maybe_put_commit(commit_sha)
+  end
+
+  @spec maybe_put_commit(map(), String.t() | nil) :: map()
+  defp maybe_put_commit(service, commit_sha) when is_non_empty_binary(commit_sha) do
+    case String.trim(commit_sha) do
+      "" -> service
+      commit -> Map.put(service, :commit, commit)
+    end
+  end
+
+  defp maybe_put_commit(service, _commit_sha), do: service
 
   defp metrics do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
@@ -94,12 +116,19 @@ defmodule Logflare.Telemetry do
 
     database_metrics = [
       distribution("logflare.repo.query.total_time", unit: {:native, :millisecond}),
-      # TODO: decode_time is `nil` in some of the ecto queries
-      # In most telemetry adapters this is fine, but it causes issues in OtelMetricExporter
-      # distribution("logflare.repo.query.decode_time", unit: {:native, :millisecond}),
+      # decode_time and queue_time/idle_time can be nil for certain query types
+      # (e.g. Oban internal queries that bypass the pool). OtelMetricExporter crashes on
+      # round(nil) when converting native time units, detaching the whole event handler.
+      # Default nil to 0: semantically correct (nil queue_time = no pool wait).
       distribution("logflare.repo.query.query_time", unit: {:native, :millisecond}),
-      distribution("logflare.repo.query.queue_time", unit: {:native, :millisecond}),
-      distribution("logflare.repo.query.idle_time", unit: {:native, :millisecond})
+      distribution("logflare.repo.query.queue_time",
+        measurement: fn m -> m[:queue_time] || 0 end,
+        unit: {:native, :millisecond}
+      ),
+      distribution("logflare.repo.query.idle_time",
+        measurement: fn m -> m[:idle_time] || 0 end,
+        unit: {:native, :millisecond}
+      )
     ]
 
     vm_metrics = [
@@ -260,6 +289,22 @@ defmodule Logflare.Telemetry do
         tags: [:cache, :action],
         unit: {:native, :millisecond},
         description: "Latency of processing an incoming cache gossip cast"
+      ),
+      counter("logflare.ingest_event_queue.stale_table.count",
+        event_name: [:logflare, :ingest_event_queue, :stale_table],
+        description: "Count of ack operations on a stale (already deleted) ETS table"
+      ),
+      sum("logflare.ingest_event_queue.missing_ids.count",
+        event_name: [:logflare, :ingest_event_queue, :missing_ids],
+        description: "Count of event IDs not found in ETS during handle_batch fetch"
+      ),
+      sum("logflare.ingest_event_queue.stale_processing.reset",
+        event_name: [:logflare, :ingest_event_queue, :stale_processing],
+        description: "Count of stale :processing events reset to :pending by QueueJanitor"
+      ),
+      sum("logflare.ingest_event_queue.stale_processing.dropped",
+        event_name: [:logflare, :ingest_event_queue, :stale_processing],
+        description: "Count of stale :processing events dropped by QueueJanitor after max retries"
       )
     ]
 

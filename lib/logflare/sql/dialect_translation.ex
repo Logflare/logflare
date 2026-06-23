@@ -574,7 +574,6 @@ defmodule Logflare.Sql.DialectTranslation do
     cte_table_names = extract_cte_aliases([ast])
     cte_tables_tree = get_in(ast, ["Query", "with", "cte_tables"])
 
-    # TOOD: refactor
     cte_aliases =
       for table <- cte_table_names, into: %{} do
         tree =
@@ -582,21 +581,9 @@ defmodule Logflare.Sql.DialectTranslation do
             get_in(tree, ["alias", "name", "value"]) == table
           end)
 
-        fields =
-          if tree != nil do
-            for field <- get_in(tree, ["query", "body", "Select", "projection"]) || [],
-                {expr, identifier} <- field,
-                expr in ["UnnamedExpr", "ExprWithAlias"] do
-              get_identifier_alias(identifier)
-            end
-          else
-            []
-          end
-
-        {table, fields}
+        {table, cte_projection_aliases(tree)}
       end
 
-    # TOOD: refactor
     cte_from_aliases =
       for table <- cte_table_names, into: %{} do
         tree =
@@ -604,18 +591,7 @@ defmodule Logflare.Sql.DialectTranslation do
             get_in(tree, ["alias", "name", "value"]) == table
           end)
 
-        aliases =
-          if tree != nil do
-            for from_tree <- get_in(tree, ["query", "body", "Select", "from"]),
-                table_name = get_in(from_tree, ["relation", "Table", "alias", "name", "value"]),
-                table_name != nil do
-              table_name
-            end
-          else
-            []
-          end
-
-        {table, aliases}
+        {table, cte_from_table_aliases(tree)}
       end
 
     ast
@@ -639,6 +615,26 @@ defmodule Logflare.Sql.DialectTranslation do
       ast ->
         ast
     end)
+  end
+
+  defp cte_projection_aliases(nil), do: []
+
+  defp cte_projection_aliases(tree) do
+    for field <- get_in(tree, ["query", "body", "Select", "projection"]) || [],
+        {expr, identifier} <- field,
+        expr in ["UnnamedExpr", "ExprWithAlias"] do
+      get_identifier_alias(identifier)
+    end
+  end
+
+  defp cte_from_table_aliases(nil), do: []
+
+  defp cte_from_table_aliases(tree) do
+    for from_tree <- get_in(tree, ["query", "body", "Select", "from"]),
+        table_name = get_in(from_tree, ["relation", "Table", "alias", "name", "value"]),
+        table_name != nil do
+      table_name
+    end
   end
 
   defp extract_cte_aliases(ast) do

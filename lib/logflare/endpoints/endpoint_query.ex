@@ -1,4 +1,4 @@
-defmodule Logflare.Endpoints.Query do
+defmodule Logflare.Endpoints.EndpointQuery do
   @moduledoc false
 
   use TypedEctoSchema
@@ -16,6 +16,24 @@ defmodule Logflare.Endpoints.Query do
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.User
+
+  @version_snapshot_fields [
+    :token,
+    :name,
+    :query,
+    :description,
+    :language,
+    :source_mapping,
+    :sandboxable,
+    :cache_duration_seconds,
+    :proactive_requerying_seconds,
+    :max_limit,
+    :enable_auth,
+    :redact_pii,
+    :enable_dynamic_reservation,
+    :labels,
+    :backend_id
+  ]
 
   @derive {Jason.Encoder,
            only: [
@@ -65,6 +83,16 @@ defmodule Logflare.Endpoints.Query do
     embedded_schema do
       field(:cache_count, :integer)
     end
+  end
+
+  @spec version_snapshot_fields() :: [atom()]
+  def version_snapshot_fields, do: @version_snapshot_fields
+
+  @spec version_snapshot(Changeset.t() | t()) :: map()
+  def version_snapshot(%Changeset{} = changeset) do
+    changeset
+    |> Changeset.apply_changes()
+    |> Map.take(@version_snapshot_fields)
   end
 
   @doc false
@@ -167,7 +195,7 @@ defmodule Logflare.Endpoints.Query do
 
   def update_source_mapping(changeset), do: changeset
 
-  @spec map_backend_to_language(Backend.t(), supabase_mode :: boolean()) ::
+  @spec map_backend_to_language(Backend.t() | nil, supabase_mode :: boolean()) ::
           :bq_sql | :ch_sql | :pg_sql
   def map_backend_to_language(%Backend{type: :clickhouse}, _supabase_mode), do: :ch_sql
   def map_backend_to_language(%Backend{type: :postgres}, false), do: :pg_sql

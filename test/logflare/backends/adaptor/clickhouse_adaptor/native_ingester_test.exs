@@ -4,7 +4,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Connection
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool
+
+  doctest NativeIngester, import: true
 
   setup :set_mimic_global
 
@@ -222,6 +225,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
     end
   end
 
+  describe "retry_strategy/1" do
+    test "classifies connection errors as immediate retries" do
+      for reason <- [:closed, :timeout, :econnrefused, :econnreset, :checkout_timeout] do
+        assert NativeIngester.retry_strategy(reason) == :immediate
+      end
+    end
+
+    test "classifies transient ClickHouse exception codes as delayed retries" do
+      for code <- [32, 159, 164, 202, 241, 252] do
+        assert {:delay, delay} = NativeIngester.retry_strategy({:exception, code, "boom"})
+        assert delay > 0
+      end
+    end
+
+    test "classifies non-transient errors as no retry" do
+      assert NativeIngester.retry_strategy({:exception, 60, "Unknown table"}) == :no_retry
+      assert NativeIngester.retry_strategy({:column_mismatch, expected: [], got: []}) == :no_retry
+      assert NativeIngester.retry_strategy({:unexpected_packet_type, 99}) == :no_retry
+      assert NativeIngester.retry_strategy(:some_other_error) == :no_retry
+    end
+  end
+
+  describe "retry timing" do
+    test "retries connection errors immediately without backoff", %{
+      source: source,
+      backend: backend
+    } do
+      Mimic.expect(Pool, :checkout, fn _backend, _fun -> {:error, :closed} end)
+      Mimic.expect(Pool, :checkout, fn _backend, _fun -> :ok end)
+
+      events = [build(:log_event, source: source)]
+
+      {elapsed_us, result} =
+        :timer.tc(fn -> NativeIngester.insert(backend, "some_table", events, :log) end)
+
+      assert result == :ok
+      assert System.convert_time_unit(elapsed_us, :microsecond, :millisecond) < 200
+    end
+  end
+
   describe "no retry on non-transient errors" do
     test "does not retry on :column_mismatch", %{source: source, backend: backend} do
       test_pid = self()
@@ -299,6 +342,57 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngesterTest do
       assert_received :attempt
       assert_received :attempt
       refute_received :attempt
+    end
+  end
+
+  describe "opts passthrough" do
+    test "passes the provided opts through to the connection query", %{
+      source: source,
+      backend: backend
+    } do
+      test_pid = self()
+
+      Mimic.stub(Connection, :send_query, fn _conn, _sql, opts ->
+        send(test_pid, {:captured_opts, opts})
+        {:error, :stop}
+      end)
+
+      Mimic.expect(Pool, :checkout, fn _backend, fun ->
+        fun.(%{database: backend.config.database, host: "localhost"})
+        {:error, :stop}
+      end)
+
+      events = [build(:log_event, source: source)]
+
+      opts = [
+        async_insert: 1,
+        wait_for_async_insert: 1,
+        async_insert_busy_timeout_max_ms: 3_000
+      ]
+
+      NativeIngester.insert(backend, "some_table", events, :log, opts)
+
+      assert_received {:captured_opts, ^opts}
+    end
+
+    test "passes empty opts by default", %{source: source, backend: backend} do
+      test_pid = self()
+
+      Mimic.stub(Connection, :send_query, fn _conn, _sql, opts ->
+        send(test_pid, {:captured_opts, opts})
+        {:error, :stop}
+      end)
+
+      Mimic.expect(Pool, :checkout, fn _backend, fun ->
+        fun.(%{database: backend.config.database, host: "localhost"})
+        {:error, :stop}
+      end)
+
+      events = [build(:log_event, source: source)]
+
+      NativeIngester.insert(backend, "some_table", events, :log)
+
+      assert_received {:captured_opts, []}
     end
   end
 end

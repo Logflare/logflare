@@ -20,6 +20,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.NativeIngester.PoolSup, as: NativePoolSup
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
+  alias __MODULE__.QueryConnectionSup
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
@@ -29,12 +30,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
 
   @min_pipelines 1
   @resolve_interval 10_000
   @scaling_threshold 15_000
+  @async_insert_busy_timeout_max_ms 3_000
+  @max_read_pool_size 4096
+  @ch_slow_pool_checkout_ms 1_000
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -48,6 +53,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def consolidated_ingest?, do: true
+
+  @impl Logflare.Backends.Adaptor
+  def on_backend_config_changed(%Backend{id: backend_id}) do
+    QueryConnectionSup.refresh_backend(backend_id)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def on_backend_deleted(%Backend{id: backend_id}) do
+    QueryConnectionSup.terminate_backend(backend_id)
+  end
 
   @doc false
   @impl Logflare.Backends.Adaptor
@@ -122,7 +137,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        database: :string,
        port: :integer,
        pool_size: :integer,
-       async_insert: :boolean,
        read_only_url: :string,
        insert_protocol: :string,
        native_port: :integer,
@@ -135,13 +149,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :database,
       :port,
       :pool_size,
-      :async_insert,
       :read_only_url,
       :insert_protocol,
       :native_port,
       :native_pool_size
     ])
-    |> Logflare.Utils.default_field_value(:async_insert, false)
     |> Logflare.Utils.default_field_value(:insert_protocol, "http")
   end
 
@@ -160,7 +172,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_inclusion(:insert_protocol, ["http", "native"])
     |> validate_number(:pool_size,
       greater_than_or_equal_to: 1,
-      less_than_or_equal_to: max_pool
+      less_than_or_equal_to: @max_read_pool_size
     )
     |> validate_number(:native_pool_size,
       greater_than_or_equal_to: min_pool,
@@ -273,6 +285,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def clickhouse_cloud_url?(_url), do: false
 
+  @spec config_host(Backend.t()) :: String.t() | nil
+  defp config_host(%Backend{config: %{url: url}}), do: url_host(url)
+  defp config_host(_backend), do: nil
+
+  @spec read_host(Backend.t()) :: String.t() | nil
+  defp read_host(%Backend{config: %{read_only_url: url}}) when is_non_empty_binary(url),
+    do: url_host(url)
+
+  defp read_host(%Backend{} = backend), do: config_host(backend)
+
+  @spec url_host(term()) :: String.t() | nil
+  defp url_host(url) when is_non_empty_binary(url) do
+    case URI.new(url) do
+      {:ok, %URI{host: host}} when is_binary(host) -> host
+      _ -> nil
+    end
+  end
+
+  defp url_host(_url), do: nil
+
   @doc """
   Produces a type-specific ingest table name for ClickHouse.
 
@@ -313,7 +345,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           statement :: iodata(),
           params :: map | [term] | [row :: [term]] | iodata | Enumerable.t(),
           [Ch.query_option()]
-        ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()}
+        ) :: {:ok, Ch.Result.t()} | {:error, QueryError.t()}
   def execute_ch_query(backend, statement, params \\ [], opts \\ [])
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
@@ -321,33 +353,93 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     with :ok <- ensure_query_connection_manager_started(backend) do
       pool_via = connection_pool_via(backend)
 
-      timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 30_000
-      opts = opts |> Keyword.put(:decode, false) |> Keyword.put(:timeout, timeout)
+      timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
+
+      backend_id = backend.id
+      log_fun = fn entry -> log_slow_checkout(entry, backend_id) end
+
+      opts =
+        opts
+        |> Keyword.put(:decode, false)
+        |> Keyword.put(:timeout, timeout)
+        |> Keyword.put(:log, log_fun)
 
       case Ch.query(pool_via, statement, params, opts) do
         {:ok, %Ch.Result{} = result} ->
           {:ok, decode_ch_result(result)}
 
-        {:error, %Ch.Error{message: error_msg}} when is_non_empty_binary(error_msg) ->
-          Logger.warning(
-            "ClickHouse query failed: #{inspect(error_msg)}",
-            backend_id: backend.id
-          )
-
-          {:error, "Error executing ClickHouse query"}
-
-        {:error, %{message: message}} when is_non_empty_binary(message) ->
-          Logger.warning(
-            "ClickHouse query failed: #{inspect(message)}",
-            backend_id: backend.id
-          )
-
-          {:error, "Error executing ClickHouse query"}
-
-        {:error, _} ->
-          {:error, "Error executing ClickHouse query"}
+        {:error, error} ->
+          {:error,
+           error
+           |> to_query_error()
+           |> QueryError.log(
+             user_id: backend.user_id,
+             backend_id: backend.id,
+             backend_token: backend.token,
+             host: read_host(backend)
+           )}
       end
     end
+  end
+
+  @spec log_slow_checkout(DBConnection.LogEntry.t(), pos_integer()) :: :ok
+  defp log_slow_checkout(%DBConnection.LogEntry{pool_time: pool_time}, backend_id)
+       when is_integer(pool_time) do
+    pool_ms = System.convert_time_unit(pool_time, :native, :millisecond)
+
+    if pool_ms >= slow_pool_checkout_ms() do
+      Logger.warning(
+        "ClickHouse slow connection checkout: waited #{pool_ms}ms for a pool connection",
+        backend_id: backend_id
+      )
+    end
+
+    :ok
+  end
+
+  defp log_slow_checkout(_entry, _backend_id), do: :ok
+
+  @spec slow_pool_checkout_ms() :: non_neg_integer()
+  defp slow_pool_checkout_ms do
+    Application.get_env(:logflare, __MODULE__)[:slow_pool_checkout_ms] ||
+      @ch_slow_pool_checkout_ms
+  end
+
+  @spec to_query_error(term()) :: QueryError.t()
+  defp to_query_error(%Ch.Error{} = error) do
+    error
+    |> ch_query_error_kind()
+    |> query_error(error)
+  end
+
+  defp to_query_error(%DBConnection.ConnectionError{} = error) do
+    query_error(:connection_error, error)
+  end
+
+  defp to_query_error(error) do
+    query_error(:backend_error, error)
+  end
+
+  @spec ch_query_error_kind(term()) :: QueryError.kind()
+  defp ch_query_error_kind(%Ch.Error{code: code}) when code in [47, 62], do: :invalid_query
+
+  defp ch_query_error_kind(%Ch.Error{message: message}) when is_binary(message) do
+    if message =~ "UNKNOWN_IDENTIFIER" or message =~ "SYNTAX_ERROR" do
+      :invalid_query
+    else
+      :backend_error
+    end
+  end
+
+  defp ch_query_error_kind(%Ch.Error{}), do: :backend_error
+
+  @spec query_error(QueryError.kind(), term()) :: QueryError.t()
+  defp query_error(kind, raw_error) do
+    %QueryError{
+      kind: kind,
+      raw_error: raw_error,
+      backend: __MODULE__
+    }
   end
 
   @spec execute_direct_query(url :: String.t(), config :: map(), statement :: String.t()) ::
@@ -375,40 +467,49 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
             {:ok, %Ch.Result{} = result} ->
               {:ok, decode_ch_result(result)}
 
-            {:error, _} ->
-              {:error, "Error executing ClickHouse query"}
+            {:error, error} ->
+              {:error, to_query_error(error)}
           end
         after
           GenServer.stop(pid)
         end
 
-      {:error, _} ->
-        {:error, "Error executing ClickHouse query"}
+      {:error, error} ->
+        {:error, to_query_error(error)}
     end
   end
 
   @doc """
   Inserts a list of `LogEvent` structs into a type-specific ingest table.
+
+  When `opts` includes `async: true`, the insert is routed through ClickHouse
+  async inserts so the server coalesces sparse, late-arriving batches into
+  fewer, fatter parts.
   """
-  @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type()) ::
+  @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type(), keyword()) ::
           :ok | {:error, String.t()}
-  def insert_log_events(%Backend{}, [], _event_type), do: :ok
+  def insert_log_events(backend, events, event_type, opts \\ [])
+
+  def insert_log_events(%Backend{}, [], _event_type, _opts), do: :ok
 
   def insert_log_events(
         %Backend{config: %{insert_protocol: "native"}} = backend,
         [%LogEvent{} | _] = events,
-        event_type
+        event_type,
+        opts
       )
       when is_event_type(event_type) do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
+    insert_opts = build_insert_opts(opts)
 
     with :ok <- NativePoolSup.ensure_started(backend),
-         :ok <- NativeIngester.insert(backend, table_name, events, event_type) do
+         :ok <- NativeIngester.insert(backend, table_name, events, event_type, insert_opts) do
       :ok
     else
       {:error, reason} ->
         Logger.warning("ClickHouse native insert error.",
+          host: config_host(backend),
           error_string: inspect(reason)
         )
 
@@ -416,22 +517,38 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
+  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type, opts)
       when is_event_type(event_type) do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
+    insert_opts = build_insert_opts(opts)
 
-    case Ingester.insert(backend, table_name, events, event_type) do
+    case Ingester.insert(backend, table_name, events, event_type, insert_opts) do
       :ok ->
         :ok
 
       {:error, reason} ->
         Logger.warning("ClickHouse http insert error.",
+          host: config_host(backend),
           error_string: inspect(reason)
         )
 
         {:error, reason}
     end
+  end
+
+  @spec build_insert_opts(keyword()) :: keyword()
+  defp build_insert_opts(opts) do
+    if Keyword.get(opts, :async, false), do: async_insert_opts(), else: []
+  end
+
+  @spec async_insert_opts() :: keyword()
+  defp async_insert_opts do
+    [
+      async_insert: 1,
+      wait_for_async_insert: 1,
+      async_insert_busy_timeout_max_ms: @async_insert_busy_timeout_max_ms
+    ]
   end
 
   @doc """
@@ -439,7 +556,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   Creates one table per log type: `_logs`, `_metrics`, and `_traces`.
   """
-  @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, Exception.t()}
+  @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, QueryError.t()}
   def provision_ingest_tables(%Backend{config: config} = backend) do
     cloud? = clickhouse_cloud?(backend)
 
@@ -699,7 +816,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     backend = Backends.Cache.get_backend(backend_id)
 
     with child_spec <- ConnectionManager.child_spec(backend),
-         {:ok, _pid} <- __MODULE__.QueryConnectionSup.start_connection_manager(child_spec) do
+         {:ok, _pid} <- QueryConnectionSup.start_connection_manager(child_spec) do
       Logger.info(
         "Started query ConnectionManager for ClickHouse backend",
         backend_id: backend.id

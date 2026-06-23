@@ -3,12 +3,14 @@ defmodule LogflareWeb.EndpointsController do
   use OpenApiSpex.ControllerSpecs
 
   require Logger
-  alias Logflare.Endpoints
 
+  alias Logflare.Backends.QueryError
+  alias Logflare.Endpoints
   alias LogflareWeb.JsonParser
   alias LogflareWeb.OpenApi.Unauthorized
   alias LogflareWeb.OpenApi.ServerError
   alias LogflareWeb.OpenApiSchemas.EndpointQuery
+  alias LogflareWeb.QueryErrorHelpers
 
   @plug_parsers_init Plug.Parsers.init(
                        parsers: [JsonParser],
@@ -88,8 +90,11 @@ defmodule LogflareWeb.EndpointsController do
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
         render(conn, "query.json", result: result.rows)
 
-      {:error, errors} ->
-        render(conn, "query.json", error: errors)
+      {:error, error = %QueryError{}} ->
+        render(conn, "query.json", error: QueryErrorHelpers.query_error_message(error))
+
+      {:error, _errors} ->
+        render(conn, "query.json", error: QueryErrorHelpers.generic_query_error_message())
     end
   end
 

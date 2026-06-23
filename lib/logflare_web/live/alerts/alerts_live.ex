@@ -5,15 +5,17 @@ defmodule LogflareWeb.AlertsLive do
   use Phoenix.Component
 
   import Ecto.Query
-  import LogflareWeb.Utils, only: [stringify_changeset_errors: 2]
+  import LogflareWeb.Utils, only: [stringify_changeset_errors: 2, time_ago: 1]
 
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
   alias Logflare.Repo
   alias LogflareWeb.QueryComponents
+  alias LogflareWeb.QueryErrorHelpers
   alias LogflareWeb.Utils
 
   require Logger
@@ -70,13 +72,13 @@ defmodule LogflareWeb.AlertsLive do
 
   def handle_params(params, _uri, %{assigns: %{live_action: :new}} = socket) do
     {:ok, formatted_query} =
-      Map.get(params, "query", "")
+      params
+      |> Map.get("query", "")
       |> SqlFmt.format_query()
 
     params = Map.put(params, "query", formatted_query)
 
-    changeset =
-      Alerting.change_alert_query(%AlertQuery{}, params)
+    changeset = Alerting.change_alert_query(%AlertQuery{}, params)
 
     verify_resource_access(socket)
     {:noreply, assign(socket, :changeset, changeset)}
@@ -141,12 +143,10 @@ defmodule LogflareWeb.AlertsLive do
 
         message = "Could not #{verb} alert. Please fix the errors before trying again."
 
-        socket =
-          socket
-          |> put_flash(:info, message)
-          |> assign(:changeset, changeset)
-
-        {:noreply, socket}
+        {:noreply,
+         socket
+         |> put_flash(:info, message)
+         |> assign(:changeset, changeset)}
     end
   end
 
@@ -232,10 +232,10 @@ defmodule LogflareWeb.AlertsLive do
 
       {:error, err} ->
         {:noreply,
-         socket
-         |> put_flash(
+         put_flash(
+           socket,
            :error,
-           "Error when running query: #{inspect(err)}"
+           "Error when running query: #{format_query_error(err)}"
          )}
     end
   end
@@ -255,18 +255,18 @@ defmodule LogflareWeb.AlertsLive do
     else
       {:error, :no_results} ->
         {:noreply,
-         socket
-         |> put_flash(
+         put_flash(
+           socket,
            :error,
            "Alert has been triggered. No results from query, notifications not sent!"
          )}
 
       {:error, err} ->
         {:noreply,
-         socket
-         |> put_flash(
+         put_flash(
+           socket,
            :error,
-           "Error when running query: #{inspect(err)}"
+           "Error when running query: #{format_query_error(err)}"
          )}
     end
   end
@@ -291,12 +291,10 @@ defmodule LogflareWeb.AlertsLive do
           {:error, %Ecto.Changeset{} = changeset} ->
             error_message = stringify_changeset_errors(changeset, "Failed to add backend")
 
-            socket
-            |> put_flash(:error, error_message)
+            put_flash(socket, :error, error_message)
         end
       else
-        socket
-        |> put_flash(:error, "Backend not found")
+        put_flash(socket, :error, "Backend not found")
       end
 
     {:noreply, socket}
@@ -405,6 +403,14 @@ defmodule LogflareWeb.AlertsLive do
      |> assign(:modal_node, nil)}
   end
 
+  defp format_query_error(%QueryError{} = error) do
+    QueryErrorHelpers.query_error_message(error)
+  end
+
+  defp format_query_error(error) when is_binary(error), do: error
+
+  defp format_query_error(_error), do: QueryErrorHelpers.generic_query_error_message()
+
   def handle_info({:query_string_updated, query_string}, socket) do
     {:noreply, assign(socket, :query_string, query_string)}
   end
@@ -440,12 +446,10 @@ defmodule LogflareWeb.AlertsLive do
       when not is_nil(alert) do
     current_page = current_page_number(socket)
 
-    socket =
-      socket
-      |> assign(:future_jobs, Alerting.list_future_jobs(alert.id))
-      |> assign(:past_jobs_page, paginate_past_jobs(alert.id, current_page))
-
-    {:noreply, socket}
+    {:noreply,
+     socket
+     |> assign(:future_jobs, Alerting.list_future_jobs(alert.id))
+     |> assign(:past_jobs_page, paginate_past_jobs(alert.id, current_page))}
   end
 
   def handle_info(:refresh_execution_history, socket) do
@@ -461,8 +465,7 @@ defmodule LogflareWeb.AlertsLive do
   defp assign_endpoints_and_sources(socket) do
     %{user_id: user_id} = socket.assigns
 
-    socket
-    |> assign(
+    assign(socket,
       sources: Logflare.Sources.list_sources_by_user(user_id),
       endpoints: Endpoints.list_endpoints_by(user_id: user_id)
     )
@@ -477,19 +480,6 @@ defmodule LogflareWeb.AlertsLive do
       "discarded" -> "danger"
       "cancelled" -> "warning"
       _ -> "secondary"
-    end
-  end
-
-  defp time_ago(datetime) do
-    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
-
-    cond do
-      diff < 15 -> "Just now"
-      diff < 60 -> "#{diff}s ago"
-      diff < 3_600 -> "#{div(diff, 60)}m ago"
-      diff < 86_400 -> "#{div(diff, 3600)}h ago"
-      diff < 604_800 -> "#{div(diff, 86400)}d ago"
-      true -> Calendar.strftime(datetime, "%Y-%m-%d")
     end
   end
 

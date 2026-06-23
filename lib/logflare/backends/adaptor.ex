@@ -10,12 +10,12 @@ defmodule Logflare.Backends.Adaptor do
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.QueryResult
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
 
   @type t :: module()
-  @type query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
+  @type query :: EndpointQuery.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
   @type source_backend :: {Source.t(), Backend.t()}
   @type start_link_arg :: source_backend() | Backend.t()
   @type query_identifier :: identifier() | Backend.t() | tuple()
@@ -97,6 +97,38 @@ defmodule Logflare.Backends.Adaptor do
     else
       false
     end
+  end
+
+  @doc """
+  Notifies a backend's adaptor that the backend's configuration has changed.
+
+  No-op for adaptors that do not implement the optional callback.
+  """
+  @spec on_backend_config_changed(Backend.t()) :: :ok
+  def on_backend_config_changed(%Backend{} = backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :on_backend_config_changed, 1) do
+      adaptor.on_backend_config_changed(backend)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Notifies a backend's adaptor that the backend has been deleted.
+
+  No-op for adaptors that do not implement the optional callback.
+  """
+  @spec on_backend_deleted(Backend.t()) :: :ok
+  def on_backend_deleted(%Backend{} = backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :on_backend_deleted, 1) do
+      adaptor.on_backend_deleted(backend)
+    end
+
+    :ok
   end
 
   @doc """
@@ -232,6 +264,21 @@ defmodule Logflare.Backends.Adaptor do
   @callback consolidated_ingest?() :: boolean()
 
   @doc """
+  Optional callback invoked after a backend's configuration has changed.
+
+  Allows an adaptor to react to the new configuration, e.g. restarting
+  connection pools that captured the previous config when they started.
+  """
+  @callback on_backend_config_changed(Backend.t()) :: :ok
+
+  @doc """
+  Optional callback invoked after a backend has been deleted.
+
+  Allows an adaptor to clean up any backend-related processes it manages.
+  """
+  @callback on_backend_deleted(Backend.t()) :: :ok
+
+  @doc """
   Validates a given adaptor's configuration, using Ecto.Changeset functions. Accepts a chaangeset
   """
   @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
@@ -254,5 +301,7 @@ defmodule Logflare.Backends.Adaptor do
                       send_alert: 3,
                       supports_default_ingest?: 0,
                       consolidated_ingest?: 0,
-                      redact_config: 1
+                      redact_config: 1,
+                      on_backend_config_changed: 1,
+                      on_backend_deleted: 1
 end

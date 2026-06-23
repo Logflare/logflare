@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
   alias Logflare.Lql.Rules.FilterRule
 
@@ -87,7 +88,94 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       result =
         ClickHouseAdaptor.execute_ch_query(backend, "INVALID SQL QUERY")
 
-      assert {:error, _} = result
+      assert {:error, %QueryError{} = error} = result
+      assert error.backend == ClickHouseAdaptor
+      assert error.kind in [:invalid_query, :connection_error]
+
+      if error.kind == :invalid_query do
+        assert %Ch.Error{} = error.raw_error
+        assert error.description == nil
+      end
+    end
+
+    test "normalizes missing field query errors", %{backend: backend} do
+      expect(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error,
+         %Ch.Error{
+           code: 47,
+           message:
+             "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
+         }}
+      end)
+
+      assert {:error,
+              %QueryError{
+                kind: :invalid_query,
+                backend: Logflare.Backends.Adaptor.ClickHouseAdaptor,
+                raw_error: %Ch.Error{
+                  code: 47,
+                  message:
+                    "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
+                },
+                description: nil
+              }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT notthere")
+    end
+
+    test "normalizes ClickHouse server errors as backend errors", %{backend: backend} do
+      expect(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error, %Ch.Error{code: 999, message: "Backend server error"}}
+      end)
+
+      assert {:error,
+              %QueryError{
+                kind: :backend_error,
+                backend: Logflare.Backends.Adaptor.ClickHouseAdaptor,
+                raw_error: %Ch.Error{code: 999, message: "Backend server error"},
+                description: nil
+              }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1")
+    end
+
+    test "logs a warning when connection checkout is slow", %{backend: backend} do
+      original = Application.get_env(:logflare, ClickHouseAdaptor)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:logflare, ClickHouseAdaptor, original)
+        else
+          Application.delete_env(:logflare, ClickHouseAdaptor)
+        end
+      end)
+
+      Application.put_env(:logflare, ClickHouseAdaptor, slow_pool_checkout_ms: 0)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+        end)
+
+      assert log =~ "ClickHouse slow connection checkout"
+      assert log =~ "for a pool connection"
+    end
+
+    test "does not log when connection checkout is within threshold", %{backend: backend} do
+      original = Application.get_env(:logflare, ClickHouseAdaptor)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:logflare, ClickHouseAdaptor, original)
+        else
+          Application.delete_env(:logflare, ClickHouseAdaptor)
+        end
+      end)
+
+      Application.put_env(:logflare, ClickHouseAdaptor, slow_pool_checkout_ms: 60_000)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+        end)
+
+      refute log =~ "ClickHouse slow connection checkout"
     end
 
     test "preserves 16-byte strings while converting UUID columns", %{backend: backend} do
@@ -159,27 +247,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   end
 
   describe "cast_and_validate_config" do
-    test "casts async_insert as boolean" do
-      changeset = cast_and_validate_config(async_insert: true)
-
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :async_insert) == true
-    end
-
-    test "defaults async_insert to false when not provided" do
-      changeset = cast_and_validate_config()
-
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :async_insert) == false
-    end
-
-    test "casts string async_insert value" do
-      changeset = cast_and_validate_config(async_insert: "true")
-
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :async_insert) == true
-    end
-
     test "casts read_only_url when provided" do
       changeset =
         cast_and_validate_config(read_only_url: "https://read-only.clickhouse.cloud:8443")
@@ -311,14 +378,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       [source: source, backend: backend]
     end
 
-    test "can insert log events with async_insert enabled", %{source: source, backend: backend} do
-      backend_with_async = %{backend | config: Map.put(backend.config, :async_insert, true)}
-
+    test "can insert log events with async enabled", %{source: source, backend: backend} do
       log_event =
         build_mapped_log_event(source: source, message: "Async test message")
         |> Map.put(:id, "660e8400-e29b-41d4-a716-446655440001")
 
-      result = ClickHouseAdaptor.insert_log_events(backend_with_async, [log_event], :log)
+      result = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log, async: true)
       assert :ok = result
 
       Process.sleep(500)

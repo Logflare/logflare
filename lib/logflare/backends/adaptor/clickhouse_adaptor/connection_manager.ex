@@ -3,6 +3,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   Manages a ClickHouse connection pool lifecycle for query/read operations.
 
   Connection pools are keyed by `Backend`.
+
+  Active pools have their connections periodically recycled, gracefully
+  disconnected and immediately re-established so that upstream
+  "least-connections" load balancers can redistribute them across replicas as
+  the ClickHouse service scales. See `recycle_pool/1`.
+
+  Pools capture backend configuration when they start. `refresh_pool/1` stops an
+  active pool so that the next query restarts it with freshly loaded configuration.
   """
 
   use GenServer
@@ -18,12 +26,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @inactivity_timeout :timer.minutes(5)
   @resolve_interval :timer.seconds(30)
   @ch_query_conn_timeout :timer.minutes(1)
+  @ch_queue_target :timer.seconds(5)
+  @recycle_interval :timer.minutes(10)
+  @recycle_spread :timer.seconds(60)
 
   typedstruct do
     field :backend_id, pos_integer(), enforce: true
     field :pool_pid, pid() | nil, default: nil
     field :last_activity, integer() | nil, default: nil
     field :resolve_timer_ref, reference() | nil, default: nil
+    field :next_recycle_at, integer() | nil, default: nil
   end
 
   @doc """
@@ -90,6 +102,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @doc """
+  Immediately recycles the active connection pool for a backend.
+
+  Pooled connections are disconnected gracefully - busy connections as their
+  current queries finish, idle connections on the next idle sweep - and are
+  immediately re-established by the pool. This gives a "least-connections" load
+  balancer the chance to redistribute connections across replicas.
+  Useful as a manual tool after scaling up a ClickHouse service.
+  """
+  @spec recycle_pool(Backend.t() | pid()) :: :ok | {:error, :no_pool}
+  def recycle_pool(%Backend{} = backend) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.call(:recycle_pool)
+  end
+
+  def recycle_pool(manager_pid) when is_pid(manager_pid) do
+    GenServer.call(manager_pid, :recycle_pool)
+  end
+
+  @doc """
+  Stops the active connection pool for a backend so the next query restarts it
+  with freshly loaded backend configuration.
+
+  Unlike `recycle_pool/1`, this is a hard restart: in-flight queries on the pool
+  will fail. Intended for backend configuration changes (e.g. rotated credentials
+  or a changed URL), since pooled connections capture their connection options
+  when the pool starts.
+  """
+  @spec refresh_pool(Backend.t() | pid()) :: :ok
+  def refresh_pool(%Backend{} = backend) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.call(:refresh_pool)
+  end
+
+  def refresh_pool(manager_pid) when is_pid(manager_pid) do
+    GenServer.call(manager_pid, :refresh_pool)
+  end
+
+  @doc """
   Gets the last activity timestamp for the connection manager.
   """
   @spec get_last_activity(Backend.t()) :: integer() | nil
@@ -107,6 +159,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     backend
     |> connection_manager_via()
     |> GenServer.cast({:set_last_activity, timestamp})
+  end
+
+  @doc """
+  Returns the PID of the active connection pool, or `nil` if no pool is running.
+  """
+  @spec get_pool_pid(Backend.t()) :: pid() | nil
+  def get_pool_pid(%Backend{} = backend) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.call(:get_pool_pid)
+  end
+
+  @doc """
+  Returns the timestamp at which the active pool's connections are next scheduled
+  to be recycled, or `nil` if no pool is running.
+  """
+  @spec get_next_recycle_at(Backend.t()) :: integer() | nil
+  def get_next_recycle_at(%Backend{} = backend) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.call(:get_next_recycle_at)
   end
 
   @impl true
@@ -148,8 +221,51 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   def handle_call(:pool_active, _from, %__MODULE__{} = state), do: {:reply, false, state}
 
   @impl true
+  def handle_call(:recycle_pool, _from, %__MODULE__{pool_pid: pool_pid} = state)
+      when is_pid(pool_pid) do
+    if Process.alive?(pool_pid) do
+      new_state = recycle_pool_connections(state, System.system_time(:millisecond))
+      {:reply, :ok, new_state}
+    else
+      {:reply, {:error, :no_pool}, %__MODULE__{state | pool_pid: nil, next_recycle_at: nil}}
+    end
+  end
+
+  def handle_call(:recycle_pool, _from, %__MODULE__{} = state) do
+    {:reply, {:error, :no_pool}, state}
+  end
+
+  @impl true
+  def handle_call(:refresh_pool, _from, %__MODULE__{pool_pid: pool_pid} = state)
+      when is_pid(pool_pid) do
+    if Process.alive?(pool_pid) do
+      GenServer.stop(pool_pid)
+    end
+
+    {:reply, :ok, %__MODULE__{state | pool_pid: nil, next_recycle_at: nil}}
+  end
+
+  def handle_call(:refresh_pool, _from, %__MODULE__{} = state) do
+    {:reply, :ok, %__MODULE__{state | pool_pid: nil, next_recycle_at: nil}}
+  end
+
+  @impl true
   def handle_call(:get_last_activity, _from, %__MODULE__{last_activity: last_activity} = state) do
     {:reply, last_activity, state}
+  end
+
+  @impl true
+  def handle_call(:get_pool_pid, _from, %__MODULE__{pool_pid: pool_pid} = state) do
+    {:reply, pool_pid, state}
+  end
+
+  @impl true
+  def handle_call(
+        :get_next_recycle_at,
+        _from,
+        %__MODULE__{next_recycle_at: next_recycle_at} = state
+      ) do
+    {:reply, next_recycle_at, state}
   end
 
   @impl true
@@ -179,10 +295,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   def handle_info({:DOWN, _ref, :process, pid, _reason}, %__MODULE__{pool_pid: pid} = state)
       when is_pid(pid) do
     Logger.warning("ClickHouse connection pool died",
-      backend_id: state.backend_id
+      backend_id: state.backend_id,
+      host: connection_host(state.backend_id)
     )
 
-    {:noreply, %{state | pool_pid: nil}}
+    {:noreply, %{state | pool_pid: nil, next_recycle_at: nil}}
   end
 
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, %__MODULE__{} = state) do
@@ -195,8 +312,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @spec start_pool(__MODULE__.t()) :: {:ok, __MODULE__.t()} | {:error, any()}
-  defp start_pool(%__MODULE__{} = state) do
-    with {:ok, ch_opts} <- build_ch_opts(state),
+  defp start_pool(%__MODULE__{backend_id: backend_id} = state) do
+    backend = Backends.Cache.get_backend(backend_id)
+
+    with {:ok, ch_opts} <- build_ch_opts(backend),
          {:ok, pid} <- Ch.start_link(ch_opts) do
       Process.monitor(pid)
 
@@ -207,13 +326,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       new_state =
         %__MODULE__{state | pool_pid: pid}
         |> record_activity()
+        |> schedule_next_recycle(System.system_time(:millisecond))
 
       {:ok, new_state}
     else
       {:error, reason} ->
         Logger.error(
           "Failed to start ClickHouse connection pool",
-          backend_id: state.backend_id,
+          backend_id: backend_id,
+          host: host_from_backend(backend),
           reason: reason
         )
 
@@ -234,15 +355,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
       # Pool exists but not alive, clean up
       not Process.alive?(pool_pid) ->
-        %__MODULE__{state | pool_pid: nil}
+        %__MODULE__{state | pool_pid: nil, next_recycle_at: nil}
 
       # No activity recorded yet, set activity to now
       is_nil(last_activity) ->
         record_activity(state)
 
-      # Activity within timeout, keep connection
+      # Activity within timeout, keep pool and recycle connections when due
       now - last_activity < @inactivity_timeout ->
-        state
+        maybe_recycle_pool(state, now)
 
       # Inactive for too long, stop connection pool
       true ->
@@ -260,52 +381,112 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       )
     end
 
-    %__MODULE__{state | pool_pid: nil}
+    %__MODULE__{state | pool_pid: nil, next_recycle_at: nil}
   end
 
-  @spec build_ch_opts(__MODULE__.t()) :: {:ok, Keyword.t()} | {:error, term()}
-  defp build_ch_opts(%__MODULE__{backend_id: backend_id}) do
-    # Fetch fresh backend from cache
-    backend = Backends.Cache.get_backend(backend_id)
+  @spec maybe_recycle_pool(__MODULE__.t(), integer()) :: __MODULE__.t()
+  defp maybe_recycle_pool(%__MODULE__{next_recycle_at: nil} = state, now),
+    do: schedule_next_recycle(state, now)
 
-    if is_nil(backend) do
-      {:error, :backend_not_found}
-    else
-      config = backend.config
+  defp maybe_recycle_pool(%__MODULE__{next_recycle_at: next_recycle_at} = state, now)
+       when now >= next_recycle_at do
+    Logger.info("Recycling ClickHouse read pool connections",
+      backend_id: state.backend_id
+    )
 
-      default_pool_size =
-        Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
+    recycle_pool_connections(state, now)
+  end
 
-      pool_size =
-        config
-        |> Map.get(:pool_size, default_pool_size)
-        |> div(2)
-        |> max(default_pool_size)
+  defp maybe_recycle_pool(%__MODULE__{} = state, _now), do: state
 
-      read_only_url = Map.get(config, :read_only_url)
-      url = if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
+  @spec recycle_pool_connections(__MODULE__.t(), integer()) :: __MODULE__.t()
+  defp recycle_pool_connections(%__MODULE__{pool_pid: pool_pid} = state, now)
+       when is_pid(pool_pid) do
+    DBConnection.disconnect_all(pool_pid, recycle_spread())
 
-      with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
-        pool_via = connection_pool_via(backend)
-        port = get_read_port(config, url_port)
+    schedule_next_recycle(state, now)
+  end
 
-        ch_opts = [
-          name: pool_via,
-          scheme: scheme,
-          hostname: hostname,
-          port: port,
-          database: config.database,
-          username: config.username,
-          password: config.password,
-          pool_size: pool_size,
-          settings: [],
-          timeout: @ch_query_conn_timeout
-        ]
+  @spec schedule_next_recycle(__MODULE__.t(), integer()) :: __MODULE__.t()
+  defp schedule_next_recycle(%__MODULE__{} = state, now) do
+    interval = recycle_interval()
+    jitter = div(interval, 5)
+    offset = :rand.uniform(2 * jitter + 1) - jitter - 1
 
-        {:ok, ch_opts}
-      end
+    %__MODULE__{state | next_recycle_at: now + interval + offset}
+  end
+
+  @spec recycle_interval() :: pos_integer()
+  defp recycle_interval do
+    Application.get_env(:logflare, __MODULE__)[:recycle_interval] || @recycle_interval
+  end
+
+  @spec recycle_spread() :: pos_integer()
+  defp recycle_spread do
+    Application.get_env(:logflare, __MODULE__)[:recycle_spread] || @recycle_spread
+  end
+
+  @spec build_ch_opts(Backend.t() | nil) :: {:ok, Keyword.t()} | {:error, term()}
+  defp build_ch_opts(nil), do: {:error, :backend_not_found}
+
+  defp build_ch_opts(%Backend{} = backend) do
+    config = backend.config
+
+    default_pool_size =
+      Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
+
+    pool_size =
+      config
+      |> Map.get(:pool_size, default_pool_size)
+      |> div(2)
+      |> max(default_pool_size)
+
+    url = read_url(config)
+
+    with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
+      pool_via = connection_pool_via(backend)
+      port = get_read_port(config, url_port)
+
+      ch_opts = [
+        name: pool_via,
+        scheme: scheme,
+        hostname: hostname,
+        port: port,
+        database: config.database,
+        username: config.username,
+        password: config.password,
+        pool_size: pool_size,
+        settings: [],
+        timeout: @ch_query_conn_timeout,
+        queue_target: @ch_queue_target
+      ]
+
+      {:ok, ch_opts}
     end
   end
+
+  @spec read_url(map()) :: String.t() | nil
+  defp read_url(config) do
+    read_only_url = Map.get(config, :read_only_url)
+    if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
+  end
+
+  @spec connection_host(pos_integer()) :: String.t() | nil
+  defp connection_host(backend_id) do
+    backend_id
+    |> Backends.Cache.get_backend()
+    |> host_from_backend()
+  end
+
+  @spec host_from_backend(Backend.t() | nil) :: String.t() | nil
+  defp host_from_backend(%Backend{config: config}) do
+    case extract_url_components(read_url(config)) do
+      {:ok, {_scheme, hostname, _port}} -> hostname
+      _ -> nil
+    end
+  end
+
+  defp host_from_backend(_backend), do: nil
 
   @spec extract_url_components(String.t()) ::
           {:ok, {String.t(), String.t(), non_neg_integer() | nil}} | {:error, String.t()}

@@ -128,6 +128,28 @@ pub fn apply_value_map<'a>(
     nil
 }
 
+/// Look up a string value in a string value_map, returning the mapped string.
+///
+/// Returns `nil` when the value is absent from the map; the caller substitutes
+/// the field's default in that case.
+pub fn apply_value_map_str<'a>(
+    env: Env<'a>,
+    value: Term<'a>,
+    map: &HashMap<String, String>,
+    nil: Term<'a>,
+) -> Term<'a> {
+    if value == nil || map.is_empty() {
+        return nil;
+    }
+
+    // Keys are pre-lowercased at compile time
+    if let Some(val) = case_insensitive_get(map, value) {
+        return val.encode(env);
+    }
+
+    nil
+}
+
 /// Coerce a BEAM term to an array of the target element type.
 ///
 /// If the value is not a list, returns an empty list.

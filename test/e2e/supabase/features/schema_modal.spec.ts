@@ -39,6 +39,16 @@ test('verifies clipboard functionality for log detail fields (id, status, timest
 
   const expandButton = page.getByRole('button', { name: 'Expand' });
 
+  // Studio renders a dismissible promo notice (e.g. "We've updated our Terms of
+  // Service") pinned to the bottom-right corner that overlaps the Expand button
+  // and intercepts the click. It shows in CI's fresh environment but not always
+  // locally, so close it if present before clicking.
+  const closeBanner = page.getByRole('button', { name: 'Close banner' });
+  if (await closeBanner.isVisible().catch(() => false)) {
+    await closeBanner.click();
+    await expect(closeBanner).toBeHidden();
+  }
+
   await expandButton.click();
 
   const metadata = page.getByText('[ { "request": [ { "headers').first();

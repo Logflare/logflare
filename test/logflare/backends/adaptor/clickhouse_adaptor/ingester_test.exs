@@ -351,7 +351,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert :ok = Ingester.insert(backend, table_name, [log_event], :log)
     end
 
-    test "uses synchronous inserts (no async parameters in URL)", %{
+    test "uses synchronous inserts when no settings are passed (no async parameters in URL)", %{
       backend: backend,
       table_name: table_name,
       source: source
@@ -377,13 +377,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert :ok = Ingester.insert(backend, table_name, [log_event], :log)
     end
 
-    test "uses async inserts with wait flag when async_insert config is true", %{
+    test "appends async insert settings to the URL when passed", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
-      backend_with_async = %{backend | config: Map.put(backend.config, :async_insert, true)}
       log_event = build_mapped_log_event(source: source, message: "Test async")
+
+      opts = [
+        async_insert: 1,
+        wait_for_async_insert: 1,
+        async_insert_busy_timeout_max_ms: 3_000
+      ]
 
       Finch
       |> expect(:request, fn request, _pool, _opts ->
@@ -401,10 +406,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
         assert url =~ "wait_for_async_insert=1",
                "Expected URL to contain wait_for_async_insert=1 parameter, got: #{url}"
 
+        assert url =~ "async_insert_busy_timeout_max_ms=3000",
+               "Expected URL to contain async_insert_busy_timeout_max_ms=3000 parameter, got: #{url}"
+
         {:ok, %Finch.Response{status: 200, body: ""}}
       end)
 
-      assert :ok = Ingester.insert(backend_with_async, table_name, [log_event], :log)
+      assert :ok = Ingester.insert(backend, table_name, [log_event], :log, opts)
     end
   end
 end

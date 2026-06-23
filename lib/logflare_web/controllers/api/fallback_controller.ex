@@ -1,6 +1,9 @@
 defmodule LogflareWeb.Api.FallbackController do
   use Phoenix.Controller
+
   alias Ecto.Changeset
+  alias Logflare.Backends.QueryError
+  alias LogflareWeb.QueryErrorHelpers
 
   def call(conn, {:error, %Changeset{} = changeset}) do
     errors = Changeset.traverse_errors(changeset, fn _, _, {message, _} -> message end)
@@ -20,6 +23,7 @@ defmodule LogflareWeb.Api.FallbackController do
   def call(conn, {:error, :buffer_full}) do
     conn
     |> put_status(429)
+    |> put_resp_header("retry-after", "3")
     |> json(%{error: "Buffer Full: Too Many Requests"})
     |> halt()
   end
@@ -42,6 +46,12 @@ defmodule LogflareWeb.Api.FallbackController do
     conn
     |> put_status(:not_found)
     |> json(%{error: "Not Found"})
+  end
+
+  def call(conn, {:error, %QueryError{}}) do
+    conn
+    |> put_status(400)
+    |> json(%{error: QueryErrorHelpers.generic_query_error_message()})
   end
 
   def call(conn, {:error, %{} = err_map}) do

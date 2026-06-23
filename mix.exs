@@ -127,6 +127,7 @@ defmodule Logflare.Mixfile do
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
       {:cloak_ecto, github: "logflare/cloak_ecto"},
+      {:paper_trail, "~> 1.1.0"},
 
       # Parsing
       {:bertex, ">= 0.0.0"},
@@ -228,7 +229,6 @@ defmodule Logflare.Mixfile do
       # required for yaml open api generation
       {:ymlr, "~> 2.0"},
       {:grpc, "~> 0.11.0"},
-      # otel_metric_exporter requires an update https://github.com/electric-sql/elixir-otel-metric-exporter/pull/13
       {:protobuf, "~> 0.15.0", override: true},
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
@@ -255,7 +255,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
       {:otel_metric_exporter,
-       git: "https://github.com/supabase/elixir-otel-metric-exporter", branch: "release/20260519"},
+       git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "2a6de91"},
       {:live_monaco_editor, "~> 0.2"}
     ]
   end

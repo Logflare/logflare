@@ -29,6 +29,65 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert Logflare.Endpoints.get_endpoint_query(endpoint.id)
     end
+
+    test "attacker cannot attach another user's backend to an endpoint", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user, endpoints_beta: true)
+      backend = insert(:postgres_backend, user: victim, name: "Victim Postgres")
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live_with_redirect(~p"/endpoints/new")
+
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{
+        endpoint: %{
+          backend_id: backend.id,
+          name: "forged endpoint",
+          query: "select 1"
+        }
+      })
+
+      assert render(view) =~ "Backend not found"
+
+      endpoints = Logflare.Endpoints.list_endpoints_by(user_id: attacker.id)
+      refute Enum.any?(endpoints, &(&1.backend_id == backend.id))
+    end
+
+    test "attacker cannot preview query another user's backend", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user, endpoints_beta: true)
+      backend = insert(:postgres_backend, user: victim, config: postgres_backend_config())
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live_with_redirect(~p"/endpoints/new")
+
+      view
+      |> element("form#endpoint")
+      |> render_change(%{
+        endpoint: %{
+          backend_id: backend.id,
+          name: "forged endpoint",
+          query: "SELECT 1 as testing"
+        }
+      })
+
+      html =
+        view
+        |> element("form", "Test query")
+        |> render_submit(%{
+          run: %{
+            query: "SELECT 1 as testing",
+            params: %{}
+          }
+        })
+
+      assert html =~ "Backend not found"
+    end
   end
 
   describe "with existing endpoint" do
@@ -36,7 +95,17 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, endpoint: insert(:endpoint, user: user)}
     end
 
-    test "list endpoints", %{conn: conn, endpoint: endpoint, team: team} do
+    test "list endpoints", %{conn: conn, endpoint: endpoint, team: team, user: user} do
+      backend = insert(:postgres_backend, user: user, name: "Test Postgres")
+
+      postgres_endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :pg_sql,
+          name: "postgres endpoint"
+        )
+
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints")
 
       # intro message and link to docs
@@ -49,6 +118,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
       # description
       assert has_element?(view, "ul li p", endpoint.description)
       assert has_element?(view, "ul li *[title='Auth enabled']")
+      assert has_element?(view, "ul li span", "BigQuery SQL")
+
+      postgres_endpoint_html = view |> element("ul li", postgres_endpoint.name) |> render()
+      assert postgres_endpoint_html =~ "Postgres SQL"
+      assert postgres_endpoint_html =~ backend.name
 
       # link to show
       view
@@ -56,13 +130,13 @@ defmodule LogflareWeb.EndpointsLiveTest do
       |> render_click()
 
       assert_patched(view, "/endpoints/#{endpoint.id}?t=#{team.id}")
-      assert has_element?(view, "code", endpoint.query)
+      assert_query_displayed(view, endpoint.query)
     end
 
     test "show endpoint", %{conn: conn, endpoint: endpoint, team: team} do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
-      assert has_element?(view, "code", endpoint.query)
+      assert_query_displayed(view, endpoint.query)
       assert has_element?(view, "p", endpoint.description)
 
       # link to edit
@@ -86,7 +160,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       })
 
       # show the endpoint
-      assert has_element?(view, "code", new_query)
+      assert_query_displayed(view, new_query)
     end
 
     test "edit endpoint with redact_pii checkbox", %{conn: conn, endpoint: endpoint} do
@@ -104,7 +178,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
         }
       })
 
-      assert render(view) =~ ~r/redact PII:.*enabled/
+      assert render(view) =~ ~r/Redact PII:.*enabled/
     end
 
     test "delete endpoint from edit", %{conn: conn, endpoint: endpoint, team: team} do
@@ -119,6 +193,27 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "*", "Endpoint Not Found")
+    end
+  end
+
+  describe "endpoint versions" do
+    setup %{user: user} do
+      [endpoint: insert(:endpoint, user: user)]
+    end
+
+    test "show page versions link navigates with team param", %{
+      conn: conn,
+      endpoint: endpoint,
+      team: team
+    } do
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}?t=#{team}")
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               view
+               |> element(".subhead a", "versions")
+               |> render_click()
+
+      assert to == "/endpoints/#{endpoint.id}/versions?t=#{team.id}"
     end
   end
 
@@ -159,7 +254,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     }) =~ "created successfully"
 
     assert has_element?(view, "h1,h2,h3,h4,h5", "some query")
-    assert has_element?(view, "code", new_query)
+    assert_query_displayed(view, new_query)
     path = assert_patch(view)
     assert path =~ ~r/\/endpoints\/\S+\?t=#{team.id}/
     assert render(view) =~ "some description"
@@ -183,7 +278,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       }
     }) =~ "created successfully"
 
-    assert render(view) =~ ~r/redact PII:.*enabled/
+    assert render(view) =~ ~r/Redact PII:.*enabled/
   end
 
   describe "parse queries on change" do
@@ -246,7 +341,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
                }
              })
 
-      assert has_element?(view, "code", "select @my_param as valid")
+      assert_query_displayed(view, "select @my_param as valid")
 
       assert_patched(view, "/endpoints/#{endpoint.id}?t=#{team.id}")
       # no longer has the initail query string
@@ -287,7 +382,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
                }
              })
 
-      assert render(view) =~ "select @test as changed_again"
+      assert_query_displayed(view, "select @test as changed_again")
       assert render(view) =~ "changed"
     end
   end
@@ -402,9 +497,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
       # assert html =~ "test_param"
       assert html =~ endpoint.token
       assert html =~ inspect(endpoint.max_limit)
-      assert html =~ ~r/caching\:.+#{endpoint.cache_duration_seconds} seconds/
-      assert html =~ ~r/cache warming\:.+ #{endpoint.proactive_requerying_seconds} seconds/
-      assert html =~ ~r/query sandboxing\:.+ disabled/
+      assert html =~ ~r/Caching\:.+#{endpoint.cache_duration_seconds} seconds/
+      assert html =~ ~r/Cache warming\:.+#{endpoint.proactive_requerying_seconds} seconds/
+      assert html =~ ~r/Query sandboxing\:.+disabled/
 
       # test the query
       assert view
@@ -420,6 +515,32 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert_received {:opts, %{labels: labels}}
       assert labels["endpoint_id"] == endpoint.id |> to_string()
+    end
+  end
+
+  describe "run query errors" do
+    test "backend errors display a generic message", %{conn: conn, user: user} do
+      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as ts")
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("raw backend detail", reason: "backendError")}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+
+      html =
+        view
+        |> element("form", "Test query")
+        |> render_submit(%{
+          run: %{
+            query: endpoint.query,
+            params: %{}
+          }
+        })
+
+      assert html =~ LogflareWeb.QueryErrorHelpers.generic_query_error_message()
+      refute html =~ "raw backend detail"
     end
   end
 
@@ -525,8 +646,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
-      assert render(view) =~ ~r/redact PII:.*enabled/
-      visible_code = view |> element("div.tw-w-full.tw-bg-zinc-800 code") |> render()
+      assert render(view) =~ ~r/Redact PII:.*enabled/
+      visible_code = view |> element("pre code") |> render()
       assert visible_code =~ "192.168.1.1"
       assert visible_code =~ "10.0.0.1"
 
@@ -1253,10 +1374,15 @@ defmodule LogflareWeb.EndpointsLiveTest do
       team_user: team_user,
       endpoint: endpoint
     } do
-      {:ok, _view, html} =
+      backend = insert(:postgres_backend, user: user)
+      insert(:endpoint, user: user, backend: backend)
+
+      {:ok, view, _html} =
         conn |> login_user(user, team_user) |> live_with_redirect(~p"/endpoints")
 
-      for path <- ["endpoints/new", "endpoints/#{endpoint.id}"] do
+      html = render(view)
+
+      for path <- ["endpoints/new", "endpoints/#{endpoint.id}", "backends/#{backend.id}"] do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
     end
@@ -1294,6 +1420,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
+  defp assert_query_displayed(view, query) do
+    {:ok, formatted_query} = SqlFmt.format_query(query)
+
+    assert has_element?(view, "code", formatted_query)
+  end
+
   @spec submit_sandbox_lql(Plug.Conn.t(), struct(), String.t()) :: String.t()
   defp submit_sandbox_lql(conn, endpoint, lql) do
     {:ok, view, initial_html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
@@ -1311,5 +1443,15 @@ defmodule LogflareWeb.EndpointsLiveTest do
     })
 
     render(view)
+  end
+
+  defp postgres_backend_config do
+    repo = Application.fetch_env!(:logflare, Logflare.Repo)
+
+    %{
+      url:
+        "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}",
+      schema: nil
+    }
   end
 end

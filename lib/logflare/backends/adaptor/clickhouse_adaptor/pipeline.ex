@@ -30,11 +30,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @producer_concurrency 1
   @processor_concurrency 6
-  @fresh_batch_size 50_000
+  @fresh_batch_size 60_000
   @fresh_batch_timeout 5_000
   @fresh_batcher_concurrency 4
-  @stale_batch_size 50_000
-  @stale_batch_timeout 10_000
+  @stale_batch_size 60_000
+  @stale_batch_timeout 12_000
   @stale_batcher_concurrency 2
   @max_retries 0
 
@@ -116,6 +116,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   defp ingest_freshness_to_batcher(:fresh), do: :ch_fresh
   defp ingest_freshness_to_batcher(:stale), do: :ch_stale
 
+  @spec batcher_async?(:ch_fresh | :ch_stale) :: boolean()
+  defp batcher_async?(:ch_stale), do: true
+  defp batcher_async?(:ch_fresh), do: false
+
   @spec handle_batch(
           batcher :: atom(),
           messages :: [Message.t()],
@@ -168,7 +172,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
               %{event | body: mapped_body}
             end)
 
-          ClickHouseAdaptor.insert_log_events(backend, events, event_type)
+          ClickHouseAdaptor.insert_log_events(backend, events, event_type,
+            async: batcher_async?(batcher)
+          )
         end
       end
 

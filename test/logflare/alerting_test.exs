@@ -2,10 +2,13 @@ defmodule Logflare.AlertingTest do
   use Logflare.DataCase, async: false
   use Oban.Testing, repo: Logflare.Repo
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Utils.Tasks
 
   doctest Logflare.SynEventHandler
@@ -268,6 +271,49 @@ defmodule Logflare.AlertingTest do
 
       assert_receive {:reservation, reservation}
       assert reservation == user.bigquery_reservation_alerts
+    end
+
+    test "execute_alert_query logs backend errors with alert metadata", %{
+      user: user
+    } do
+      alert_query = insert(:alert, user: user) |> Logflare.Repo.preload([:user])
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:error, :timeout}
+      end)
+
+      previous_metadata = Logger.metadata()
+
+      log =
+        capture_log(
+          [level: :error, metadata: [:user_id, :alert_query_id, :alert_name, :error_kind]],
+          fn ->
+            assert {:error,
+                    %QueryError{
+                      kind: :connection_error,
+                      backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                      description: nil
+                    }} =
+                     Alerting.execute_alert_query(alert_query)
+          end
+        )
+
+      assert Logger.metadata() == previous_metadata
+      assert log =~ "Backend query error"
+      assert log =~ "user_id=#{alert_query.user_id}"
+      assert log =~ "alert_query_id=#{alert_query.id}"
+      assert log =~ "alert_name="
+      assert log =~ "error_kind=connection_error"
+    end
+
+    test "execute_alert_query returns an error for empty queries", %{user: user} do
+      insert(:endpoint, user: user)
+
+      alert_query =
+        insert(:alert, user: user, query: "")
+        |> Logflare.Repo.preload([:user])
+
+      assert {:error, "Query cannot be empty"} = Alerting.execute_alert_query(alert_query)
     end
 
     test "execute_alert_query with query composition" do

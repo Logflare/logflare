@@ -168,12 +168,18 @@ inputs =
       )
   }
 
+profile? = System.get_env("PROFILE") == "1"
+
+tprof_type =
+  if tprof_type = System.get_env("TPROF_TYPE") do
+    String.to_existing_atom(tprof_type)
+  end
+
 profile_after =
-  if System.get_env("PROFILE") == "1" do
-    type = String.to_existing_atom(System.get_env("TPROF_TYPE") || "time")
-    {:tprof, type: type, warmup: 0, sort: :per_call}
-  else
-    false
+  cond do
+    profile? && tprof_type -> {:tprof, type: tprof_type}
+    profile? -> :tprof
+    true -> false
   end
 
 suite =

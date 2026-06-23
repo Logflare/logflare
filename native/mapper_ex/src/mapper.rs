@@ -90,8 +90,20 @@ pub fn map_single<'a>(
             value
         };
 
-        // Apply value_map if configured (e.g., severity_text -> severity_number)
-        let value = if !field.value_map.is_empty() {
+        // Apply value_map if configured. The variant was decided at compile
+        // time (see `decode_field`): string fields populate `value_map_str` (a
+        // string->string remap), all non-string fields populate `value_map` (a
+        // string->integer lookup, e.g. severity_text -> severity_number). At most
+        // one is non-empty, so this is a cheap branch, not per-event inference.
+        // Either way, values absent from the map fall back to the default.
+        let value = if !field.value_map_str.is_empty() {
+            let mapped = coerce::apply_value_map_str(env, value, &field.value_map_str, nil);
+            if mapped != nil {
+                mapped
+            } else {
+                coerce::encode_default(env, &field.default, nil)
+            }
+        } else if !field.value_map.is_empty() {
             let mapped = coerce::apply_value_map(env, value, &field.value_map, nil);
             if mapped != nil {
                 mapped

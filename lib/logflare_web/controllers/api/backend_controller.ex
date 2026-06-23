@@ -117,9 +117,9 @@ defmodule LogflareWeb.Api.BackendController do
           conn
           |> json(%{connected?: true})
 
-        {:error, reason} ->
+        {:error, _reason} ->
           conn
-          |> json(%{connected?: false, reason: reason})
+          |> json(%{connected?: false})
       end
     end
   end
