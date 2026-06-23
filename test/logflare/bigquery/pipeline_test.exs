@@ -137,14 +137,14 @@ defmodule Logflare.BigQuery.PipelineTest do
         nil
       )
 
+      on_exit(fn -> :telemetry.detach(handler) end)
+
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       assert_receive {:ingest, %{ingested_bytes: bytes}, metadata}
       assert bytes > 0
       # labels resolved from the event body, no per-event ETS lookup in ack
       assert metadata["lvl"] == "error"
-
-      :telemetry.detach(handler)
     end
 
     test "handle_batch emits ingest telemetry with no labels when source has none", %{
@@ -172,13 +172,13 @@ defmodule Logflare.BigQuery.PipelineTest do
         nil
       )
 
+      on_exit(fn -> :telemetry.detach(handler) end)
+
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       source_id = source.id
       assert_receive {:ingest, %{ingested_bytes: bytes}, %{"source_id" => ^source_id}}
       assert bytes > 0
-
-      :telemetry.detach(handler)
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{

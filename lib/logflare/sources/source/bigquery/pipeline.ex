@@ -568,7 +568,13 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   defp backend_metadata(nil), do: %{}
-  defp backend_metadata(bid), do: Backends.Cache.get_backend(bid).metadata || %{}
+
+  defp backend_metadata(bid) do
+    case Backends.Cache.get_backend(bid) do
+      %{metadata: metadata} -> metadata || %{}
+      _ -> %{}
+    end
+  end
 
   defp emit_event_telemetry({sid, bid, _}, source, event_labels, size, backend_metadata) do
     metrics = %{ingested_bytes: size}
