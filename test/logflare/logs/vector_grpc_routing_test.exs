@@ -109,4 +109,36 @@ defmodule Logflare.Logs.VectorGrpcRoutingTest do
       assert mapped["value"] == 0.75
     end
   end
+
+  describe "ClickHouse field mapping for Vector logs" do
+    test "flattened log fields map onto OTEL log columns", %{source: source} do
+      log = %Event.EventWrapper{
+        event:
+          {:log,
+           %Event.Log{
+             value: %Event.Value{
+               kind:
+                 {:map,
+                  %Event.ValueMap{
+                    fields: %{
+                      "message" => %Event.Value{kind: {:raw_bytes, "boom"}},
+                      "level" => %Event.Value{kind: {:raw_bytes, "error"}},
+                      "host" => %Event.Value{kind: {:raw_bytes, "node-1"}}
+                    }
+                  }}
+             }
+           }}
+      }
+
+      assert [params] = VectorGrpc.handle_batch([log], source)
+      le = LogEvent.make(params, %{source: source})
+      assert {:ok, mapped} = Mapper.run(le.body, MappingDefaults.for_log())
+
+      assert mapped["event_message"] == "boom"
+      # severity_text reads $.level and applies the upcase transform.
+      assert mapped["severity_text"] == "ERROR"
+      # host is picked into resource_attributes from $.host.
+      assert mapped["resource_attributes"]["host"] == "node-1"
+    end
+  end
 end

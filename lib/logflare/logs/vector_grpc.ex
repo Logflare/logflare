@@ -5,9 +5,12 @@ defmodule Logflare.Logs.VectorGrpc do
 
   Each `EventWrapper` carries one of:
 
-    * `:log` — converted to a `vector_log` event. The `event_message` is
-      derived from the log `value` when it is a string, or from a
-      `"message"` field, otherwise an empty string.
+    * `:log` — converted to a `vector_log` event. The log's root `value` map
+      and the legacy `fields` map are flattened to the top level so they map
+      onto the OTEL log columns (`severity_text`, `service_name`, ...) instead
+      of nesting under a `"fields"` key. The `event_message` is derived from a
+      string `value`, then a `"message"`/`"event_message"` field, otherwise an
+      empty string.
     * `:metric` — converted to a `vector_metric` event. Fields are emitted in
       the OTEL-aligned shape expected by the ClickHouse metric mapping
       (`Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults.for_metric/0`):
@@ -43,13 +46,17 @@ defmodule Logflare.Logs.VectorGrpc do
     value_term = extract_value(value)
     fields_map = handle_map(fields)
 
-    %{
+    flattened =
+      case value_term do
+        %{} = value_map -> Map.merge(value_map, fields_map)
+        _ -> fields_map
+      end
+
+    Map.merge(flattened, %{
       "metadata" => %{"type" => "vector_log"},
-      "event_message" => log_message(value_term, fields_map),
-      "value" => value_term,
-      "fields" => fields_map,
+      "event_message" => log_message(value_term, flattened),
       "vector_metadata" => handle_metadata(metadata)
-    }
+    })
   end
 
   defp handle_metric(%Metric{} = metric) do
@@ -87,6 +94,9 @@ defmodule Logflare.Logs.VectorGrpc do
     cond do
       is_binary(value) -> value
       is_binary(fields["message"]) -> fields["message"]
+      is_binary(fields["event_message"]) -> fields["event_message"]
+      is_map(value) -> ""
+      value != nil -> to_string(value)
       true -> ""
     end
   end

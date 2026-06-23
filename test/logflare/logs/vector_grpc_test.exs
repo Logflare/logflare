@@ -17,8 +17,7 @@ defmodule Logflare.Logs.VectorGrpcTest do
       assert [event] = VectorGrpc.handle_batch([log], :source)
       assert event["metadata"] == %{"type" => "vector_log"}
       assert event["event_message"] == "hello world"
-      assert event["value"] == "hello world"
-      assert event["fields"]["host"] == "node-1"
+      assert event["host"] == "node-1"
     end
 
     test "falls back to fields['message'] when value is not a string" do
@@ -33,7 +32,7 @@ defmodule Logflare.Logs.VectorGrpcTest do
 
       assert [event] = VectorGrpc.handle_batch([log], :source)
       assert event["event_message"] == "field-msg"
-      assert event["value"] == 42
+      assert event["message"] == "field-msg"
     end
 
     test "handles nested map and array values" do
@@ -65,8 +64,9 @@ defmodule Logflare.Logs.VectorGrpcTest do
       }
 
       assert [event] = VectorGrpc.handle_batch([log], :source)
-      assert event["fields"]["nested"] == %{"k" => 1}
-      assert event["fields"]["list"] == [true, 2.5]
+      assert event["event_message"] == "msg"
+      assert event["nested"] == %{"k" => 1}
+      assert event["list"] == [true, 2.5]
     end
   end
 
