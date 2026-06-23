@@ -20,11 +20,13 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @behaviour Adaptor
 
   @trusted_endpoint_suffixes [
+    ".supabase.co",
     ".amazonaws.com",
     "storage.googleapis.com",
     ".r2.cloudflarestorage.com",
     ".backblazeb2.com",
-    ".digitaloceanspaces.com"
+    ".digitaloceanspaces.com",
+    "t3.storage.dev"
   ]
 
   @type source_backend_tuple :: {Source.t(), Backend.t()}
