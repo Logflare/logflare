@@ -53,11 +53,17 @@ defmodule Logflare.Logs.VectorGrpc do
       end
 
     Map.merge(flattened, %{
-      "metadata" => %{"type" => "vector_log"},
+      "metadata" => log_metadata(flattened),
       "event_message" => log_message(value_term, flattened),
       "vector_metadata" => handle_metadata(metadata)
     })
   end
+
+  # Preserve any `metadata` the event already carries (Supabase events nest
+  # severity, request/response, host, etc. under it) and only stamp the type
+  # marker used for routing.
+  defp log_metadata(%{"metadata" => %{} = existing}), do: Map.put(existing, "type", "vector_log")
+  defp log_metadata(_flattened), do: %{"type" => "vector_log"}
 
   defp handle_metric(%Metric{} = metric) do
     %{name: name, namespace: namespace, kind: kind} = metric

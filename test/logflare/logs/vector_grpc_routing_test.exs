@@ -140,5 +140,62 @@ defmodule Logflare.Logs.VectorGrpcRoutingTest do
       # host is picked into resource_attributes from $.host.
       assert mapped["resource_attributes"]["host"] == "node-1"
     end
+
+    test "preserves a nested metadata object (Supabase shape) instead of clobbering it",
+         %{source: source} do
+      # Mirrors how Supabase's Vector pipeline nests data under `.metadata`
+      # (e.g. db_logs sets .metadata.parsed.error_severity).
+      log = %Event.EventWrapper{
+        event:
+          {:log,
+           %Event.Log{
+             value: %Event.Value{
+               kind:
+                 {:map,
+                  %Event.ValueMap{
+                    fields: %{
+                      "event_message" => %Event.Value{kind: {:raw_bytes, "statement timeout"}},
+                      "metadata" => %Event.Value{
+                        kind:
+                          {:map,
+                           %Event.ValueMap{
+                             fields: %{
+                               "host" => %Event.Value{kind: {:raw_bytes, "db-default"}},
+                               "parsed" => %Event.Value{
+                                 kind:
+                                   {:map,
+                                    %Event.ValueMap{
+                                      fields: %{
+                                        "error_severity" => %Event.Value{
+                                          kind: {:raw_bytes, "WARNING"}
+                                        }
+                                      }
+                                    }}
+                               }
+                             }
+                           }}
+                      }
+                    }
+                  }}
+             }
+           }}
+      }
+
+      assert [params] = VectorGrpc.handle_batch([log], source)
+
+      # The event's own metadata survives, with only the routing marker added.
+      assert params["event_message"] == "statement timeout"
+      assert params["metadata"]["parsed"]["error_severity"] == "WARNING"
+      assert params["metadata"]["host"] == "db-default"
+      assert params["metadata"]["type"] == "vector_log"
+
+      le = LogEvent.make(params, %{source: source})
+      assert le.event_type == :log
+      assert {:ok, mapped} = Mapper.run(le.body, MappingDefaults.for_log())
+
+      # severity_text resolves from $.metadata.parsed.error_severity.
+      assert mapped["event_message"] == "statement timeout"
+      assert mapped["severity_text"] == "WARNING"
+    end
   end
 end
