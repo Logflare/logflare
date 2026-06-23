@@ -91,9 +91,11 @@ defmodule Logflare.Logs.VectorGrpcTest do
       assert [event] = VectorGrpc.handle_batch([metric], :source)
       assert event["metadata"] == %{"type" => "vector_metric"}
       assert event["event_message"] == "logflare.requests"
-      assert event["kind"] == "incremental"
-      assert event["tags"] == %{"env" => "test"}
-      assert event["value"] == %{"counter" => 7.0}
+      assert event["metric_type"] == "sum"
+      assert event["is_monotonic"] == true
+      assert event["aggregation_temporality"] == "delta"
+      assert event["attributes"] == %{"env" => "test"}
+      assert event["value"] == 7.0
       # Matches the OTEL log ingestion format (nanoseconds since unix epoch).
       assert event["timestamp"] == seconds * 1_000_000_000 + nanos
     end
@@ -112,8 +114,9 @@ defmodule Logflare.Logs.VectorGrpcTest do
 
       assert [event] = VectorGrpc.handle_batch([metric], :source)
       assert event["event_message"] == "cpu"
-      assert event["kind"] == "absolute"
-      assert event["value"] == %{"gauge" => 0.42}
+      assert event["metric_type"] == "gauge"
+      assert event["aggregation_temporality"] == "cumulative"
+      assert event["value"] == 0.42
     end
   end
 

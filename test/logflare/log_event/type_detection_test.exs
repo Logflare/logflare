@@ -20,6 +20,18 @@ defmodule Logflare.LogEvent.TypeDetectionTest do
       assert TypeDetection.detect(%{"metadata" => %{"type" => "otel_log"}}) == :log
     end
 
+    test "vector_metric -> :metric" do
+      assert TypeDetection.detect(%{"metadata" => %{"type" => "vector_metric"}}) == :metric
+    end
+
+    test "vector_trace -> :trace" do
+      assert TypeDetection.detect(%{"metadata" => %{"type" => "vector_trace"}}) == :trace
+    end
+
+    test "vector_log -> :log" do
+      assert TypeDetection.detect(%{"metadata" => %{"type" => "vector_log"}}) == :log
+    end
+
     test "unknown metadata.type falls through to heuristics" do
       assert TypeDetection.detect(%{"metadata" => %{"type" => "unknown"}}) == :log
     end

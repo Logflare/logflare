@@ -8,8 +8,12 @@ defmodule Logflare.Logs.VectorGrpc do
     * `:log` — converted to a `vector_log` event. The `event_message` is
       derived from the log `value` when it is a string, or from a
       `"message"` field, otherwise an empty string.
-    * `:metric` — converted to a `vector_metric` event with the metric name,
-      kind, namespace, tags, timestamp and value.
+    * `:metric` — converted to a `vector_metric` event. Fields are emitted in
+      the OTEL-aligned shape expected by the ClickHouse metric mapping
+      (`Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults.for_metric/0`):
+      a scalar `value`, an OTEL `metric_type` (`gauge`/`sum`/`histogram`/
+      `summary`), `aggregation_temporality` derived from the Vector metric
+      kind, and metric tags as `attributes`.
     * `:trace` — converted to a `vector_trace` event built from the proto
       `fields` map.
   """
@@ -52,18 +56,20 @@ defmodule Logflare.Logs.VectorGrpc do
     %{name: name, namespace: namespace, kind: kind} = metric
     sep = if namespace in [nil, ""], do: "", else: "."
 
-    %{
-      "metadata" => %{"type" => "vector_metric"},
-      "event_message" => "#{namespace || ""}#{sep}#{name}",
-      "name" => name,
-      "namespace" => namespace,
-      "kind" => kind_to_string(kind),
-      "timestamp" => extract_timestamp(metric.timestamp),
-      "tags" => handle_tags_v1(metric.tags_v1),
-      "interval_ms" => metric.interval_ms,
-      "value" => extract_metric_value(metric.value),
-      "vector_metadata" => handle_metadata(metric.metadata_full)
-    }
+    Map.merge(
+      %{
+        "metadata" => %{"type" => "vector_metric"},
+        "event_message" => "#{namespace || ""}#{sep}#{name}",
+        "name" => name,
+        "namespace" => namespace,
+        "aggregation_temporality" => kind_to_temporality(kind),
+        "timestamp" => extract_timestamp(metric.timestamp),
+        "attributes" => handle_tags_v1(metric.tags_v1),
+        "interval_ms" => metric.interval_ms,
+        "vector_metadata" => handle_metadata(metric.metadata_full)
+      },
+      metric_value_fields(metric.value)
+    )
   end
 
   defp handle_trace(%Trace{fields: fields, metadata_full: metadata}) do
@@ -85,17 +91,65 @@ defmodule Logflare.Logs.VectorGrpc do
     end
   end
 
-  defp kind_to_string(:Incremental), do: "incremental"
-  defp kind_to_string(:Absolute), do: "absolute"
-  defp kind_to_string(0), do: "incremental"
-  defp kind_to_string(1), do: "absolute"
-  defp kind_to_string(_), do: nil
+  # Vector's `Incremental`/`Absolute` map onto OTEL delta/cumulative
+  # temporality. NOTE (open question): confirm this pairing with the team.
+  defp kind_to_temporality(:Incremental), do: "delta"
+  defp kind_to_temporality(:Absolute), do: "cumulative"
+  defp kind_to_temporality(_), do: nil
 
-  defp extract_metric_value(nil), do: nil
-  defp extract_metric_value({:counter, %{value: v}}), do: %{"counter" => v}
-  defp extract_metric_value({:gauge, %{value: v}}), do: %{"gauge" => v}
-  defp extract_metric_value({:set, %{values: values}}), do: %{"set" => values}
-  defp extract_metric_value({type, _}), do: %{Atom.to_string(type) => true}
+  # Scalar Vector metric types map cleanly onto OTEL columns. Aggregate types
+  # (histograms/summaries) are classified by family and carry count/sum where
+  # available; full bucket/quantile fidelity and distribution/sketch handling
+  # remain an open question (tracked on the PR).
+  defp metric_value_fields(nil), do: %{}
+
+  defp metric_value_fields({:counter, %{value: v}}),
+    do: %{"metric_type" => "sum", "value" => v, "is_monotonic" => true}
+
+  defp metric_value_fields({:gauge, %{value: v}}),
+    do: %{"metric_type" => "gauge", "value" => v}
+
+  defp metric_value_fields({:set, %{values: values}}),
+    do: %{"metric_type" => "sum", "value" => length(values)}
+
+  defp metric_value_fields({:aggregated_histogram1, %{buckets: buckets, counts: counts} = h}) do
+    %{
+      "metric_type" => "histogram",
+      "count" => h.count,
+      "sum" => h.sum,
+      "explicit_bounds" => buckets,
+      "bucket_counts" => counts
+    }
+  end
+
+  defp metric_value_fields({:aggregated_summary1, %{quantiles: quantiles, values: values} = s}) do
+    %{
+      "metric_type" => "summary",
+      "count" => s.count,
+      "sum" => s.sum,
+      "quantiles" => quantiles,
+      "quantile_values" => values
+    }
+  end
+
+  defp metric_value_fields({type, value}) do
+    %{"metric_type" => metric_type_family(type)}
+    |> maybe_put("count", Map.get(value, :count))
+    |> maybe_put("sum", Map.get(value, :sum))
+  end
+
+  defp metric_type_family(type)
+       when type in [:aggregated_histogram2, :aggregated_histogram3],
+       do: "histogram"
+
+  defp metric_type_family(type)
+       when type in [:aggregated_summary2, :aggregated_summary3],
+       do: "summary"
+
+  defp metric_type_family(_), do: nil
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp handle_tags_v1(tags) when is_map(tags), do: tags
   defp handle_tags_v1(_), do: %{}
