@@ -55,6 +55,39 @@ defmodule LogflareWeb.EndpointsLiveTest do
       endpoints = Logflare.Endpoints.list_endpoints_by(user_id: attacker.id)
       refute Enum.any?(endpoints, &(&1.backend_id == backend.id))
     end
+
+    test "attacker cannot preview query another user's backend", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user, endpoints_beta: true)
+      backend = insert(:postgres_backend, user: victim, config: postgres_backend_config())
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live_with_redirect(~p"/endpoints/new")
+
+      view
+      |> element("form#endpoint")
+      |> render_change(%{
+        endpoint: %{
+          backend_id: backend.id,
+          name: "forged endpoint",
+          query: "SELECT 1 as testing"
+        }
+      })
+
+      html =
+        view
+        |> element("form", "Test query")
+        |> render_submit(%{
+          run: %{
+            query: "SELECT 1 as testing",
+            params: %{}
+          }
+        })
+
+      assert html =~ "Backend not found"
+    end
   end
 
   describe "with existing endpoint" do
@@ -1410,5 +1443,15 @@ defmodule LogflareWeb.EndpointsLiveTest do
     })
 
     render(view)
+  end
+
+  defp postgres_backend_config do
+    repo = Application.fetch_env!(:logflare, Logflare.Repo)
+
+    %{
+      url:
+        "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}",
+      schema: nil
+    }
   end
 end
