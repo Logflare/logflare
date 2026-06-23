@@ -164,30 +164,43 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
       {:ok, %{backend_a: backend_a, source_b: source_b, backend_b: backend_b}}
     end
 
-    test "the same Supabase-shaped event stores equivalently via the vector sink and /api/logs",
+    test "the same event stores equivalently via the vector sink and /api/logs",
          %{source: source_a} = ctx do
-      # gRPC path: real Vector (Supabase-shaped event) -> nginx -> source A.
-      grpc_marker = drive_vector(ctx, metrics?: false)
+      # Capture server for Vector's real `http`/json sink output.
+      capture_port = free_port()
 
-      # HTTP path: the same logical event posted to the real /api/logs controller
-      # in-process (full router/auth/ingest), as Vector's http+json codec would.
-      http_marker = "http-it-#{TestUtils.random_string(12)}"
+      start_supervised!(
+        {Bandit,
+         plug: {Logflare.Test.VectorCapturePlug, target: self()},
+         scheme: :http,
+         ip: {0, 0, 0, 0},
+         port: capture_port}
+      )
 
-      event = %{
-        "event_message" => http_marker,
-        "marker" => http_marker,
-        "metadata" => %{"host" => "db-default", "parsed" => %{"error_severity" => "warning"}}
-      }
+      # One real Vector instance fans the same events to two sinks: the native
+      # `vector` gRPC sink (-> nginx -> source A) and an `http`/json sink
+      # (-> capture server). Both carry the same marker.
+      marker =
+        drive_vector(ctx,
+          metrics?: false,
+          capture_url: "http://host.docker.internal:#{capture_port}/"
+        )
+
+      # Replay Vector's actual HTTP body byte-for-byte through the real
+      # /api/logs controller (in-process) -> source B.
+      assert_receive {:vector_http_body, raw_body}, 90_000
+      assert [_ | _] = Jason.decode!(raw_body)
 
       conn =
         build_conn()
         |> put_req_header("x-api-key", ctx.user.api_key)
-        |> post(Routes.log_path(build_conn(), :create, source: ctx.source_b.token), event)
+        |> put_req_header("content-type", "application/json")
+        |> post(Routes.log_path(build_conn(), :create, source: ctx.source_b.token), raw_body)
 
       assert conn.status in 200..299
 
-      body_a = await_body(ctx.backend_a, source_a, grpc_marker)
-      body_b = await_body(ctx.backend_b, ctx.source_b, http_marker)
+      body_a = await_body(ctx.backend_a, source_a, marker)
+      body_b = await_body(ctx.backend_b, ctx.source_b, marker)
 
       # The Postgres adaptor stores nested maps as single-element records, so
       # unwrap before comparing. Both paths preserve the nested metadata
@@ -195,8 +208,8 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
       meta_a = first_record(body_a["metadata"])
       meta_b = first_record(body_b["metadata"])
 
-      assert body_a["event_message"] == grpc_marker
-      assert body_b["event_message"] == http_marker
+      assert body_a["event_message"] == marker
+      assert body_b["event_message"] == marker
 
       assert meta_a["host"] == "db-default"
       assert meta_b["host"] == "db-default"
@@ -207,6 +220,13 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
       assert meta_a["type"] == "vector_log"
       refute Map.has_key?(meta_b, "type")
     end
+  end
+
+  defp free_port do
+    {:ok, socket} = :gen_tcp.listen(0, [])
+    {:ok, port} = :inet.port(socket)
+    :gen_tcp.close(socket)
+    port
   end
 
   defp first_record(value), do: value |> List.wrap() |> List.first() || %{}
@@ -234,6 +254,7 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
   # the unique marker emitted by the demo logs. Cleans up on exit.
   defp drive_vector(ctx, opts) do
     metrics? = Keyword.get(opts, :metrics?, false)
+    capture_url = Keyword.get(opts, :capture_url)
     marker = "vector-it-#{TestUtils.random_string(12)}"
     suffix = TestUtils.random_string(8)
 
@@ -242,7 +263,10 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
     vector = "logflare-it-vector-#{suffix}"
 
     nginx_conf = write_nginx_config(suffix, ctx.port, ctx.access_token.token, ctx.source.token)
-    vector_conf = write_vector_config(suffix, marker, "http://#{nginx}:#{@nginx_port}", metrics?)
+
+    vector_conf =
+      write_vector_config(suffix, marker, "http://#{nginx}:#{@nginx_port}", metrics?, capture_url)
+
     on_exit(fn -> Enum.each([nginx_conf, vector_conf], &File.rm/1) end)
 
     {_, 0} = docker(["network", "create", network])
@@ -271,6 +295,7 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
                vector,
                "--network",
                network,
+               "--add-host=host.docker.internal:host-gateway",
                "-v",
                "#{vector_conf}:/etc/vector/vector.toml:ro",
                @vector_image,
@@ -368,7 +393,7 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
     path
   end
 
-  defp write_vector_config(suffix, marker, address, metrics?) do
+  defp write_vector_config(suffix, marker, address, metrics?, capture_url) do
     path = Path.join([File.cwd!(), "test", "vector", "integration_vector_#{suffix}.toml"])
 
     metrics_source =
@@ -383,6 +408,23 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
       end
 
     sink_inputs = if metrics?, do: ~s(["tag", "metrics"]), else: ~s(["tag"])
+
+    # Mirrors Supabase's `http`/json sink so the test can capture Vector's real
+    # HTTP serialization and replay it through Logflare's /api/logs endpoint.
+    capture_sink =
+      if capture_url do
+        """
+
+        [sinks.capture]
+        type = "http"
+        inputs = ["tag"]
+        uri = "#{capture_url}"
+        method = "post"
+        encoding.codec = "json"
+        """
+      else
+        ""
+      end
 
     contents = """
     data_dir = "/tmp/vector-data"
@@ -410,6 +452,7 @@ defmodule LogflareGrpc.Vector.IntegrationTest do
     inputs = #{sink_inputs}
     address = "#{address}"
     compression = true
+    #{capture_sink}
     """
 
     File.write!(path, contents)
