@@ -152,7 +152,7 @@ services:
       LOGFLARE_SOURCE_TOKEN: ${LOGFLARE_SOURCE_TOKEN:-}
       LOGFLARE_API_KEY: ${LOGFLARE_API_KEY:-}
     volumes:
-      - ./examples/vector/vector.toml:/etc/vector/vector.toml:ro
+      - ./test/vector/vector.toml:/etc/vector/vector.toml:ro
     command: ["--config", "/etc/vector/vector.toml"]
   telegraf:
     image: telegraf:1.36
