@@ -98,7 +98,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def execute_query(%Backend{} = backend, {query_string, params}, _opts)
       when is_non_empty_binary(query_string) and is_list(params) do
     case execute_ch_query(backend, query_string, params) do
-      {:ok, result} -> {:ok, QueryResult.new(result)}
+      {:ok, {rows, bytes}} -> {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
       error -> error
     end
   end
@@ -238,10 +238,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     sql_statement = QueryTemplates.read_grant_check_statement()
 
     case execute_ch_query(backend, sql_statement) do
-      {:ok, [%{"result" => 1}]} ->
+      {:ok, {[%{"result" => 1}], _bytes}} ->
         :ok
 
-      {:ok, [%{"result" => 0}]} ->
+      {:ok, {[%{"result" => 0}], _bytes}} ->
         Logger.warning(
           "ClickHouse read cluster GRANT check failed. Required: `SELECT`",
           backend_id: backend.id
@@ -345,7 +345,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           statement :: iodata(),
           params :: map | [term] | [row :: [term]] | iodata | Enumerable.t(),
           [Ch.query_option()]
-        ) :: {:ok, Ch.Result.t()} | {:error, QueryError.t()}
+        ) :: {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, QueryError.t()}
   def execute_ch_query(backend, statement, params \\ [], opts \\ [])
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
@@ -366,7 +366,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
       case Ch.query(pool_via, statement, params, opts) do
         {:ok, %Ch.Result{} = result} ->
-          {:ok, decode_ch_result(result)}
+          rows = decode_ch_result(result)
+          bytes = parse_summary_read_bytes(result.headers)
+          {:ok, {rows, bytes}}
 
         {:error, error} ->
           {:error,
@@ -703,6 +705,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Enum.find_value(headers, fn {k, v} -> if k == name, do: v end)
   end
 
+  @spec parse_summary_read_bytes([{String.t(), String.t()}]) :: non_neg_integer() | :not_supported
+  defp parse_summary_read_bytes(headers) do
+    with raw when is_binary(raw) <- get_response_header(headers, "x-clickhouse-summary"),
+         {:ok, %{"read_bytes" => bytes}} <- Jason.decode(raw),
+         {int, _} <- Integer.parse(to_string(bytes)) do
+      int
+    else
+      _ -> :not_supported
+    end
+  end
+
   @spec parse_row_binary_header(binary()) :: {[String.t()], [String.t()], binary()}
   defp parse_row_binary_header(data) do
     {num_cols, rest} = decode_varuint(data)
@@ -778,7 +791,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     ch_params = Map.take(input_params, declared_params)
 
     case execute_ch_query(backend, converted_query, ch_params) do
-      {:ok, result} -> {:ok, QueryResult.new(result)}
+      {:ok, {rows, bytes}} -> {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
       error -> error
     end
   end
