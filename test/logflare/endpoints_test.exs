@@ -654,8 +654,8 @@ defmodule Logflare.EndpointsTest do
       :telemetry.attach(
         handler_id,
         [:logflare, :endpoints, :query],
-        fn _event, measurements, _meta, _config ->
-          send(test_pid, {:telemetry_measurements, measurements})
+        fn _event, measurements, metadata, _config ->
+          send(test_pid, {:telemetry_event, measurements, metadata})
         end,
         nil
       )
@@ -669,12 +669,14 @@ defmodule Logflare.EndpointsTest do
       """
 
       assert {:ok, %{rows: rows, total_bytes_processed: bytes}} =
-               Endpoints.run_query_string(user, {:ch_sql, query_string})
+               Endpoints.run_query_string(user, {:ch_sql, query_string}, backend_id: backend.id)
 
       assert length(rows) == length(log_events)
-      assert_received {:telemetry_measurements, measurements}
+      assert_received {:telemetry_event, measurements, metadata}
       assert measurements.total_bytes_processed == bytes
       assert is_integer(bytes) and bytes > 0
+      assert metadata["backend_type"] == "clickhouse"
+      assert metadata["backend_id"] == backend.id
     end
 
     test "run_query/1 applies PII redaction based on redact_pii flag" do

@@ -13,6 +13,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Backends.UserMonitoring
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
 
   def source_and_user(_context) do
@@ -427,6 +429,59 @@ defmodule Logflare.Backends.UserMonitoringTest do
                                 "endpoint_id" => ^endpoint_id,
                                 "user_id" => _,
                                 "endpoint_uuid" => _
+                              }
+                            ]
+                          }
+                        }
+                        | _
+                      ]},
+                     5_000
+    end
+
+    test "endpoints.query emits backend_id and backend_type in attributes" do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 _dataset_id,
+                                                 _table_name,
+                                                 opts ->
+        send(pid, {:insert_all, opts[:body].rows})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      user = insert(:user, system_monitoring: true)
+      source = insert(:source, user: user, system_source_type: :metrics)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, QueryResult.new([%{"result" => "1"}], %{total_bytes_processed: 100})}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          language: :ch_sql,
+          query: "SELECT 1 as result",
+          backend: backend
+        )
+
+      assert {:ok, _} = Endpoints.run_query(endpoint)
+      :timer.sleep(1000)
+
+      backend_id = backend.id
+
+      assert_receive {:insert_all,
+                      [
+                        %{
+                          json: %{
+                            "attributes" => [
+                              %{
+                                "backend_id" => ^backend_id,
+                                "backend_type" => "clickhouse"
                               }
                             ]
                           }
