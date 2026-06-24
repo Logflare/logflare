@@ -24,6 +24,8 @@ defmodule LogflareWeb.MonacoEditorComponent do
           />
   """
 
+  alias Logflare.Sql
+
   def mount(socket) do
     {:ok, assign(socket, parse_error_message: nil, on_query_change: nil, query: nil)}
   end
@@ -120,7 +122,7 @@ defmodule LogflareWeb.MonacoEditorComponent do
   end
 
   def handle_event("format-query", %{"value" => value}, socket) do
-    {:ok, formatted} = SqlFmt.format_query(value)
+    {:ok, formatted} = Sql.format(value)
     {:noreply, socket |> LiveMonacoEditor.set_value(formatted, to: "query_string")}
   end
 

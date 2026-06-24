@@ -433,7 +433,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       formatted_sql =
         """
-        SELECT
+        select
           t0.timestamp
         """
         |> String.trim()
@@ -467,9 +467,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       formatted_sql =
         """
-        SELECT
+        select
           (
-            CASE
+            case
         """
         |> String.trim()
 

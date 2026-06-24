@@ -9,6 +9,7 @@ defmodule LogflareWeb.QueryLive do
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Repo
+  alias Logflare.Sql
   alias Logflare.Teams.TeamContext
   alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
@@ -197,7 +198,7 @@ defmodule LogflareWeb.QueryLive do
           nil
 
         v ->
-          {:ok, formatted} = SqlFmt.format_query(v)
+          {:ok, formatted} = Sql.format(v)
           formatted
       end
 
@@ -330,7 +331,7 @@ defmodule LogflareWeb.QueryLive do
   end
 
   def handle_event("format-query", _params, socket) do
-    {:ok, formatted} = SqlFmt.format_query(socket.assigns.query_string)
+    {:ok, formatted} = Sql.format(socket.assigns.query_string)
     {:noreply, LiveMonacoEditor.set_value(socket, formatted, to: "query")}
   end
 

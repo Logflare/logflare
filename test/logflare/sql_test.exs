@@ -28,6 +28,21 @@ defmodule Logflare.SqlTest do
     end)
   end
 
+  describe "format/1" do
+    test "formats a query" do
+      assert {:ok, formatted} = Sql.format("select 1 as id")
+      assert formatted =~ "select\n  1 as id"
+    end
+
+    test "does not uppercase identifiers that collide with reserved words" do
+      assert {:ok, formatted} =
+               Sql.format("with logs as (select id from otel_logs) select id from logs")
+
+      assert formatted =~ "logs"
+      refute formatted =~ "LOGS"
+    end
+  end
+
   describe "extract_table_names/2" do
     test "extracts simple table names" do
       assert {:ok, ["my_table"]} = Sql.extract_table_names("SELECT * FROM my_table")

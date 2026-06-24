@@ -133,6 +133,17 @@ defmodule Logflare.Sql do
   ]
 
   @doc """
+  Formats a SQL query string for display.
+
+  Keyword capitalization is disabled to avoid corrupting case-sensitive
+  identifiers (e.g. a `logs` CTE being rewritten to `LOGS`).
+  """
+  @spec format(query :: String.t()) :: {:ok, String.t()}
+  def format(query) when is_binary(query) do
+    SqlFmt.format_query(query, uppercase: false)
+  end
+
+  @doc """
   Converts a language atom to its corresponding dialect.
 
   ## Examples
