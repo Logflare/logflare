@@ -15,12 +15,8 @@ defmodule Logflare.Backends.Supervisor do
   def init(_) do
     base = System.schedulers_online()
 
-    s3_children =
-      if s3_producer_mode?() do
-        [Backends.S3ProducerSup]
-      else
-        []
-      end
+    producer_children = if Backends.s3_producer_mode?(), do: [Backends.S3ProducerSup], else: []
+    consumer_children = if Backends.s3_consumer_mode?(), do: [Backends.S3ConsumerSup], else: []
 
     children =
       [
@@ -38,14 +34,11 @@ defmodule Logflare.Backends.Supervisor do
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
         {Registry,
          name: Backends.BackendRegistry, keys: :unique, partitions: max(round(base / 8), 1)}
-      ] ++ s3_children
+      ] ++ producer_children ++ consumer_children
 
     opts = [strategy: :one_for_one]
 
     Supervisor.init(children, opts)
   end
 
-  defp s3_producer_mode? do
-    :logflare |> Application.get_env(:s3_spool, []) |> Keyword.get(:mode) == :producer
-  end
 end

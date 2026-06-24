@@ -16,6 +16,13 @@ services:
       timeout: 5s
       retries: 5
 
+  elasticmq:
+    image: softwaremill/elasticmq:latest
+    ports:
+      - "9324:9324"   # SQS API
+    volumes:
+      - ./elasticmq.conf:/opt/elasticmq.conf
+
   createbuckets:
     image: minio/mc:latest
     depends_on:

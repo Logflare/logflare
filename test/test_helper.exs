@@ -3,6 +3,7 @@ Mix.Task.run("app.start")
 ExUnit.start()
 
 # Mimic mocks setup
+Mimic.copy(ExAws)
 Mimic.copy(Broadway)
 Mimic.copy(Ch)
 Mimic.copy(ConfigCat)

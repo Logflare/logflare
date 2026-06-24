@@ -605,6 +605,28 @@ defmodule Logflare.Backends do
     if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
   end
 
+  @doc """
+  Dispatches events from the S3 consumer directly to backends, bypassing the S3 producer path.
+  Use this in the consumer pipeline to avoid re-routing events back to S3 in `:both` mode.
+  """
+  @spec dispatch_from_s3([map()], Source.t()) :: {:ok, non_neg_integer()} | {:error, [term()]}
+  def dispatch_from_s3(event_params, source) do
+    ensure_source_sup_started(source)
+    {log_events, errors} = split_valid_events(source, event_params)
+    count = length(log_events)
+    increment_counters(source, count)
+
+    :telemetry.execute(
+      [:logflare, :backends, :s3_consumer, :dispatch],
+      %{count: count},
+      %{}
+    )
+
+    maybe_broadcast_and_route(source, log_events)
+    dispatch_to_backends(source, nil, log_events)
+    if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+  end
+
   defp split_valid_events(source, event_params) do
     now_us = System.system_time(:microsecond)
     min_allowed = now_us - @max_event_age_us
@@ -687,9 +709,13 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  defp s3_producer_mode? do
-    :logflare |> Application.get_env(:s3_spool, []) |> Keyword.get(:mode) == :producer
-  end
+  @spec s3_producer_mode?() :: boolean()
+  def s3_producer_mode?, do: s3_mode() in [:producer, :both]
+
+  @spec s3_consumer_mode?() :: boolean()
+  def s3_consumer_mode?, do: s3_mode() in [:consumer, :both]
+
+  defp s3_mode, do: :logflare |> Application.get_env(:s3_spool, []) |> Keyword.get(:mode)
 
   defp dispatch_to_s3_producer(log_events) do
     IngestEventQueue.add_to_table({:s3_producer, nil}, log_events)

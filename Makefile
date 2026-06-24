@@ -183,11 +183,32 @@ monitor-s3: ERL_NAME ?= st_
 monitor-s3:
 	MONITOR_PIPELINE=s3 iex --sname monitor --cookie ${ERL_COOKIE} --remsh ${ERL_NAME}-${ERL_COOKIE} --dot-iex scripts/monitor.iex.exs
 
+start.producer: ERL_NAME = producer
+start.producer: PORT = 4000
+start.producer: S3_SPOOL_MODE = producer
+start.producer: ENV_FILE = .single_tenant_bq.env
+start.producer: LOGFLARE_GRPC_PORT = 50051
+start.producer: __start__
+
+start.consumer: ERL_NAME = consumer
+start.consumer: PORT = 4001
+start.consumer: S3_SPOOL_MODE = consumer
+start.consumer: ENV_FILE = .single_tenant_bq.env
+start.consumer: LOGFLARE_GRPC_PORT = 50052
+start.consumer: __start__
+
+start.both: ERL_NAME = both
+start.both: PORT = 4000
+start.both: S3_SPOOL_MODE = both
+start.both: ENV_FILE = .single_tenant_bq.env
+start.both: LOGFLARE_GRPC_PORT = 50051
+start.both: __start__
+
 __start__:
 	@if [ ! -f ${ENV_FILE} ]; then \
 		touch ${ENV_FILE}; \
 	fi
-	@env $$(cat ${ENV_FILE} .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
+	@env $$(cat ${ENV_FILE} .dev.env | grep -v '^PHX_HTTP_PORT=' | xargs) PHX_HTTP_PORT=${PORT} S3_SPOOL_MODE=${S3_SPOOL_MODE} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
 
 
 migrate:
@@ -197,7 +218,7 @@ migrate:
 stripe:
 	stripe listen --forward-to localhost:4000/webhooks/stripe
 
-.PHONY: __start__ migrate stripe start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink
+.PHONY: __start__ migrate stripe start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink start.producer start.consumer
 
 # Encryption and decryption of secrets
 # Usage:

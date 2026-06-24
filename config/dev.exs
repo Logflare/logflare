@@ -87,7 +87,8 @@ config :logflare, :s3_spool,
   bucket: "logflare-spool",
   partitions: 4,
   batch_timeout: 5_000,
-  compress: false
+  compress: false,
+  queue_name: "logflare-spool"
 
 config :ex_aws,
   access_key_id: "minioadmin",
@@ -97,4 +98,9 @@ config :ex_aws,
     scheme: "http://",
     host: "localhost",
     port: 9002
+  ],
+  sqs: [
+    scheme: "http://",
+    host: "localhost",
+    port: 9324
   ]

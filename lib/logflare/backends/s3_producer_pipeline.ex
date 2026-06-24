@@ -14,7 +14,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
 
   @max_batch_size 500_000
   @default_batch_timeout 5_000
-  @max_s3_file_size 64 * 1024 * 1024
+  @max_s3_file_size 32 * 1024 * 1024
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
@@ -25,6 +25,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
     partitions = Keyword.get(s3_config, :partitions, 4)
     batch_timeout = Keyword.get(s3_config, :batch_timeout, @default_batch_timeout)
     compress = Keyword.get(s3_config, :compress, true)
+    queue_url = resolve_queue_url(s3_config)
 
     Broadway.start_link(__MODULE__,
       name: name,
@@ -46,7 +47,8 @@ defmodule Logflare.Backends.S3ProducerPipeline do
       context: %{
         bucket: bucket,
         partitions: partitions,
-        compress: compress
+        compress: compress,
+        queue_url: queue_url
       }
     )
   end
@@ -77,7 +79,8 @@ defmodule Logflare.Backends.S3ProducerPipeline do
   def handle_batch(:s3, messages, batch_info, %{
         bucket: bucket,
         partitions: partitions,
-        compress: compress
+        compress: compress,
+        queue_url: queue_url
       }) do
     dbg("S3ProducerPipeline handle_batch #{Enum.count(messages)}")
     dbg(batch_info)
@@ -100,6 +103,8 @@ defmodule Logflare.Backends.S3ProducerPipeline do
           %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
           %{backend_type: :s3_producer}
         )
+
+        notify_sqs(queue_url, file_key, batch_info.size)
 
         Logger.debug("s3_producer_pipeline: wrote #{batch_info.size} events to s3",
           key: file_key
@@ -193,6 +198,40 @@ defmodule Logflare.Backends.S3ProducerPipeline do
       event_type: log_event.event_type,
       ingested_at: log_event.ingested_at
     })
+  end
+
+  defp notify_sqs(nil, _file_key, _count), do: :ok
+
+  defp notify_sqs(queue_url, file_key, count) do
+    body = Jason.encode!(%{file_key: file_key, event_count: count})
+
+    case ExAws.SQS.send_message(queue_url, body) |> ExAws.request() do
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("s3_producer_pipeline: SQS notify failed",
+          file_key: file_key,
+          error: inspect(reason)
+        )
+    end
+  end
+
+  defp resolve_queue_url(s3_config) do
+    case Keyword.get(s3_config, :queue_name) do
+      nil ->
+        nil
+
+      queue_name ->
+        case ExAws.SQS.get_queue_url(queue_name) |> ExAws.request() do
+          {:ok, %{body: %{queue_url: url}}} ->
+            url
+
+          {:error, reason} ->
+            Logger.warning("s3_producer_pipeline: could not resolve SQS queue URL for #{queue_name}: #{inspect(reason)}")
+            nil
+        end
+    end
   end
 
   @spec generate_uuidv7() :: String.t()

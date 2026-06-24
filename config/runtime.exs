@@ -528,3 +528,15 @@ read_replicas =
   |> Enum.uniq()
 
 config :logflare, :read_replicas, read_replicas
+
+case System.get_env("S3_SPOOL_MODE") do
+  nil ->
+    :ok
+
+  mode when mode in ["producer", "consumer", "both"] ->
+    current = Application.get_env(:logflare, :s3_spool, [])
+    config :logflare, :s3_spool, Keyword.put(current, :mode, String.to_atom(mode))
+
+  other ->
+    raise ArgumentError, "Invalid S3_SPOOL_MODE=#{other}. Must be producer, consumer, or both."
+end
