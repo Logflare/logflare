@@ -1,6 +1,11 @@
 name: Docker Retag Dev Image to Versioned Image
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Logflare version to retag and mirror (e.g. 1.45.4). Defaults to the VERSION file when empty.'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -12,16 +17,22 @@ jobs:
       docker_tag: ${{ steps.docker-image.outputs.tag }}
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+      - id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION:-$(cat ./VERSION)}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc # v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Versioned - Merge multi-arch manifests and push (release only)
         run: |
-          make tag-versioned
+          make tag-versioned VERSION="${{ steps.version.outputs.version }}"
       - id: docker-image
         run: |
-          tag="supabase/logflare:$(cat ./VERSION)"
+          tag="supabase/logflare:${{ steps.version.outputs.version }}"
           echo "tag=$tag" >> $GITHUB_OUTPUT
 
   trigger_cloudbuild:
@@ -53,7 +64,9 @@ jobs:
           owner: 'supabase'
           repositories: |
             cli
+            logflare
           permission-packages: write
+          permission-contents: read
 
       - name: Login to DockerHub
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
