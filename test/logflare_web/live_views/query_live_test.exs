@@ -352,7 +352,7 @@ defmodule LogflareWeb.QueryLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
       html = render(view)
 
-      assert html =~ "Default postgres backend"
+      assert html =~ "Default PostgreSQL backend"
       assert html =~ "Query Language: <span id=\"query-language\">Postgres SQL</span>"
     end
   end
@@ -372,7 +372,7 @@ defmodule LogflareWeb.QueryLiveTest do
 
       refute html =~ webhook.name
 
-      assert html =~ "Default bigquery backend"
+      assert html =~ "Default BigQuery backend"
     end
 
     test "runs query against selected ClickHouse backend", %{conn: conn, user: user} do

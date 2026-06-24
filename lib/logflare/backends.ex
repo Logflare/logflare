@@ -194,7 +194,7 @@ defmodule Logflare.Backends do
         type: :postgres,
         config: Map.new(opts),
         user_id: user.id,
-        name: "Default postgres backend"
+        name: "Default PostgreSQL backend"
       }
     else
       {project_id, dataset_id} =
@@ -213,7 +213,7 @@ defmodule Logflare.Backends do
           dataset_id: dataset_id
         },
         user_id: user.id,
-        name: "Default bigquery backend"
+        name: "Default BigQuery backend"
       }
     end
   end

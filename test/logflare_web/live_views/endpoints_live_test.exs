@@ -591,7 +591,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       html = render(view)
       assert html =~ "Backend (optional)"
       assert html =~ "(clickhouse)"
-      assert html =~ "Default bigquery backend"
+      assert html =~ "Default BigQuery backend"
     end
 
     @tag env: :prod, feature_overrides: %{"endpointBackendSelection" => "false"}
@@ -647,7 +647,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
 
       html = render(view)
-      assert html =~ "Default postgres backend"
+      assert html =~ "Default PostgreSQL backend"
       assert html =~ ~s(name="endpoint[language]" type="hidden" value="bq_sql")
     end
   end
