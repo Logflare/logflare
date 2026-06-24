@@ -400,7 +400,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       assert_received {:timeouts, 60_000, 60_000}
     end
 
-    test "keeps the default timeout for searches without a reservation and for non-search queries" do
+    test "uses a 60s timeout for :search queries" do
       user = insert(:user, bigquery_dataset_id: "test_dataset")
 
       BigQueryAdaptor.execute_query(
@@ -409,8 +409,10 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
         query_type: :search
       )
 
-      assert_received {:timeouts, 25_000, 25_000}
+      assert_received {:timeouts, 60_000, 60_000}
+    end
 
+    test "keeps the default timeout for non-seareh queries" do
       user_with_reservation =
         insert(:user,
           bigquery_dataset_id: "test_dataset",

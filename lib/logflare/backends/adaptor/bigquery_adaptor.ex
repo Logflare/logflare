@@ -43,7 +43,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @managed_service_account_partition_count 5
   @service_account_prefix "logflare-managed"
   @reservation_error_regex ~r/reservation/i
-  @search_reservation_query_timeout_ms 60_000
+  @search_query_timeout_ms 60_000
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
@@ -581,7 +581,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       dryRun: Keyword.get(opts, :dry_run, false),
       query_type: query_type,
       reservation: reservation
-    ] ++ query_timeout_opts(query_type, reservation)
+    ] ++ query_timeout_opts(query_type)
   end
 
   @spec resolve_reservation(
@@ -598,16 +598,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defp resolve_reservation(%User{}, _query_type, nil), do: nil
   defp resolve_reservation(%User{}, _query_type, override), do: override
 
-  @spec query_timeout_opts(query_type :: atom() | nil, reservation :: String.t() | nil) ::
-          Keyword.t()
-  defp query_timeout_opts(:search, reservation) when is_non_empty_binary(reservation) do
+  @spec query_timeout_opts(query_type :: atom() | nil) :: Keyword.t()
+  defp query_timeout_opts(:search) do
     [
-      jobTimeoutMs: @search_reservation_query_timeout_ms,
-      timeoutMs: @search_reservation_query_timeout_ms
+      jobTimeoutMs: @search_query_timeout_ms,
+      timeoutMs: @search_query_timeout_ms
     ]
   end
 
-  defp query_timeout_opts(_query_type, _reservation), do: []
+  defp query_timeout_opts(_query_type), do: []
 
   @spec execute_query_with_context(
           user_id :: integer(),
