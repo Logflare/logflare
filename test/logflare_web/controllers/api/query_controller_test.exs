@@ -38,11 +38,27 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       assert %{"result" => %{"parameters" => []}} = json_response(conn, 200)
     end
 
-    test "valid ch_sql query returns 200 ok", %{conn: conn, user: user} do
+    test "valid deprecated ch_sql query param returns 200 ok", %{conn: conn, user: user} do
       conn =
         conn
         |> add_access_token(user, ~w(private))
         |> get(~p"/api/query/parse?#{[ch_sql: ~s|select now() as 'my_time'|]}")
+
+      assert %{"result" => %{"parameters" => []}} = json_response(conn, 200)
+    end
+
+    test "parse accepts backend_id to select the backend language for sql", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      conn =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(
+          ~p"/api/query/parse?#{[sql: ~s|select now() as 'my_time'|, backend_id: backend.id]}"
+        )
 
       assert %{"result" => %{"parameters" => []}} = json_response(conn, 200)
     end
@@ -118,6 +134,27 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
       refute inspect(response) =~ "some error"
     end
+
+    test "deprecated param bq_sql has precedence over others", %{
+      conn: conn,
+      user: user
+    } do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].query =~ "preferred_value"
+        refute opts[:body].query =~ "legacy_value"
+        {:ok, TestUtils.gen_bq_response([%{"preferred_value" => "123"}])}
+      end)
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(
+          ~p"/api/query?#{[bq_sql: ~s|select 1 as preferred_value|, ch_sql: ~s|select 2 as legacy_value|]}"
+        )
+        |> json_response(200)
+
+      assert %{"result" => [%{"preferred_value" => "123"}]} = response
+    end
   end
 
   describe "query with pg_sql" do
@@ -147,7 +184,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       %{source: source, user: user}
     end
 
-    test "?pg_sql= query param", %{
+    test "?pg_sql= query param uses the first PostgreSQL backend", %{
       conn: conn,
       user: user
     } do
@@ -226,6 +263,85 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         |> json_response(200)
 
       assert %{"result" => [%{"my_time" => "2026-06-22 00:00:00"}]} = response
+    end
+
+    test "?ch_sql= without backend_id uses the first ClickHouse backend", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, user: user, type: :clickhouse)
+      query = ~S|select now() as "my_time"|
+
+      backend_id = backend.id
+
+      expect(ClickHouseAdaptor, :execute_query, fn %{id: ^backend_id},
+                                                   {query_string, _declared_params, _input_params,
+                                                    endpoint_query},
+                                                   _opts ->
+        assert String.downcase(query_string) =~ "select now()"
+        assert endpoint_query.language == :ch_sql
+        {:ok, QueryResult.new([%{"my_time" => "2026-06-22 00:00:00"}])}
+      end)
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[ch_sql: query]}")
+        |> json_response(200)
+
+      assert %{"result" => [%{"my_time" => "2026-06-22 00:00:00"}]} = response
+    end
+
+    test "deprecated param with backend_id preserves its legacy language", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, user: user, type: :clickhouse)
+      query = ~S|select now() as "my_time"|
+
+      backend_id = backend.id
+
+      expect(ClickHouseAdaptor, :execute_query, fn %{id: ^backend_id},
+                                                   {_query_string, _declared_params,
+                                                    _input_params, endpoint_query},
+                                                   _opts ->
+        assert endpoint_query.language == :bq_sql
+        {:ok, QueryResult.new([%{"my_time" => "2026-06-22 00:00:00"}])}
+      end)
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[bq_sql: query, backend_id: backend.id]}")
+        |> json_response(200)
+
+      assert %{"result" => [%{"my_time" => "2026-06-22 00:00:00"}]} = response
+    end
+
+    test "?sql= takes precedence over deprecated params", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      backend_id = backend.id
+
+      expect(ClickHouseAdaptor, :execute_query, fn %{id: ^backend_id},
+                                                   {query_string, _declared_params, _input_params,
+                                                    endpoint_query},
+                                                   _opts ->
+        assert query_string =~ "preferred_value"
+        refute query_string =~ "legacy_value"
+        assert endpoint_query.language == :ch_sql
+        {:ok, QueryResult.new([%{"preferred_value" => 1}])}
+      end)
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(
+          ~p"/api/query?#{[sql: ~s|select 1 as "preferred_value"|, ch_sql: ~s|select 2 as "legacy_value"|, backend_id: backend.id]}"
+        )
+        |> json_response(200)
+
+      assert %{"result" => [%{"preferred_value" => 1}]} = response
     end
 
     test "invalid backend_id returns error", %{conn: conn, user: user} do
