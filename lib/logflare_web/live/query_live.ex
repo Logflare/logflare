@@ -40,7 +40,7 @@ defmodule LogflareWeb.QueryLive do
     </section>
     <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
       <.form for={@form} id="query-form" phx-submit="run-query" phx-change="set_backend" class="tw-min-h-[80px] tw-flex tw-flex-col tw-gap-4">
-        <QueryComponents.backend_select :if={Enum.any?(@backends)} backends={@backends} form={@form}>
+        <QueryComponents.backend_select :if={Enum.any?(@backends)} backends={@backends} form={@form} default_backend={@default_backend}>
           <:help>Choose which backend to execute this query against.</:help>
         </QueryComponents.backend_select>
         <LiveMonacoEditor.code_editor
@@ -237,6 +237,7 @@ defmodule LogflareWeb.QueryLive do
 
     socket
     |> assign(:backends, backends)
+    |> assign(:default_backend, Backends.get_default_backend(user))
   end
 
   defp assign_form(socket, params) do

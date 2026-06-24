@@ -342,6 +342,19 @@ defmodule LogflareWeb.QueryLiveTest do
 
       refute html =~ "bytes processed"
     end
+
+    test "shows postgres as the default backend when backend selection is available", %{
+      conn: conn,
+      user: user
+    } do
+      insert(:backend, user: user, type: :clickhouse)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
+      html = render(view)
+
+      assert html =~ "Default postgres backend"
+      assert html =~ "Query Language: <span id=\"query-language\">Postgres SQL</span>"
+    end
   end
 
   describe "backend selection" do
@@ -359,7 +372,7 @@ defmodule LogflareWeb.QueryLiveTest do
 
       refute html =~ webhook.name
 
-      assert html =~ "Default (BigQuery)"
+      assert html =~ "Default bigquery backend"
     end
 
     test "runs query against selected ClickHouse backend", %{conn: conn, user: user} do

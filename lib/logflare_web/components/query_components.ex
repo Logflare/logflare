@@ -18,14 +18,15 @@ defmodule LogflareWeb.QueryComponents do
   attr :field, :atom, default: :backend_id
   attr :show_language, :boolean, default: true
   attr :label, :string, default: nil
+  attr :default_backend, Backend, required: true
 
   slot :help
 
   def backend_select(assigns) do
     assigns =
-      assign_new(assigns, :options, fn %{backends: backends} ->
+      assign_new(assigns, :options, fn %{backends: backends, default_backend: default_backend} ->
         backend_options = Enum.map(backends, &{"#{&1.name} (#{&1.type})", &1.id})
-        [{"Default (BigQuery)", nil}] ++ backend_options
+        [{default_backend.name, nil}] ++ backend_options
       end)
 
     ~H"""
@@ -37,15 +38,16 @@ defmodule LogflareWeb.QueryComponents do
       </select>
       {error_tag(@form, @field)}
       <div :if={@show_language} class="tw-mt-2">
-        <strong>Query Language: <span id="query-language">{format_query_language(@form[@field].value, @backends)}</span></strong>
+        <strong>Query Language: <span id="query-language">{format_query_language(@form[@field].value, @backends, @default_backend)}</span></strong>
       </div>
     </div>
     """
   end
 
-  defp format_query_language(nil, _backends), do: "BigQuery SQL"
+  defp format_query_language(nil, _backends, default_backend),
+    do: format_backend_language(default_backend)
 
-  defp format_query_language(backend_id, backends) do
+  defp format_query_language(backend_id, backends, _default_backend) do
     backend = Enum.find(backends, &(to_string(&1.id) == to_string(backend_id)))
     format_backend_language(backend)
   end

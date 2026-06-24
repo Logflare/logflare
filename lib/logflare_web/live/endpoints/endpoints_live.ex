@@ -12,7 +12,9 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.PiiRedactor
+  alias Logflare.SingleTenant
   alias LogflareWeb.QueryComponents
   alias LogflareWeb.QueryErrorHelpers
   alias Logflare.Utils
@@ -468,24 +470,26 @@ defmodule LogflareWeb.EndpointsLive do
       end
 
     show_backend_selection? = flag_enabled? and backends != []
-    determined_language = get_current_endpoint_language(socket)
+    default_backend = Backends.get_default_backend(user)
 
     socket
     |> assign(:backends, backends)
+    |> assign(:default_backend, default_backend)
     |> assign(:show_backend_selection, show_backend_selection?)
-    |> assign(:determined_language, determined_language)
+    |> assign_determined_language()
   end
 
-  defp get_current_endpoint_language(%{assigns: assigns}) do
-    case Map.get(assigns, :selected_backend_id) do
-      nil -> :bq_sql
-      backend_id -> Endpoints.derive_language_from_backend_id(backend_id)
-    end
+  defp get_current_endpoint_language(%{assigns: %{selected_backend_id: nil} = assigns}) do
+    EndpointQuery.map_backend_to_language(assigns.default_backend, SingleTenant.supabase_mode?())
+  end
+
+  defp get_current_endpoint_language(%{assigns: %{selected_backend_id: selected_backend_id}}) do
+    Endpoints.derive_language_from_backend_id(selected_backend_id)
   end
 
   defp assign_determined_language(socket) do
-    determined_language = get_current_endpoint_language(socket)
-    assign(socket, :determined_language, determined_language)
+    socket
+    |> assign(:determined_language, get_current_endpoint_language(socket))
   end
 
   defp maybe_assign_transformed_query(socket, false, _endpoint, _params), do: socket
