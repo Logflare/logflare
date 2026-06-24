@@ -53,7 +53,30 @@ defmodule Logflare.Backends.Adaptor.HttpBased.EgressTracer do
     )
 
     OpenTelemetry.Tracer.with_span :http_egress, %{attributes: attributes} do
-      Tesla.run(env, next)
+      case Tesla.run(env, next) do
+        {:ok, %Tesla.Env{status: status} = resp_env} = result ->
+          OpenTelemetry.Tracer.set_attribute(:response_status_code, status)
+
+          if response_length = response_length(resp_env) do
+            OpenTelemetry.Tracer.set_attribute(:response_length, response_length)
+          end
+
+          if status >= 400 do
+            OpenTelemetry.Tracer.set_status(:error, "HTTP #{status}")
+          end
+
+          result
+
+        {:error, reason} = result ->
+          OpenTelemetry.Tracer.set_attribute(:error, inspect(reason))
+          OpenTelemetry.Tracer.set_status(:error, inspect(reason))
+          result
+      end
     end
   end
+
+  defp response_length(%Tesla.Env{body: body}) when is_binary(body),
+    do: IO.iodata_length(body)
+
+  defp response_length(_env), do: nil
 end
