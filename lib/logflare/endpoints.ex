@@ -489,7 +489,8 @@ defmodule Logflare.Endpoints do
           {run_query_return(), map()}
   defp emit_query_telemetry({:ok, data} = result, endpoint_query) do
     measurements = %{
-      total_bytes_processed: Map.get(data, :total_bytes_processed, 0)
+      total_bytes_processed:
+        if(is_integer(data.total_bytes_processed), do: data.total_bytes_processed, else: 0)
     }
 
     backend =
