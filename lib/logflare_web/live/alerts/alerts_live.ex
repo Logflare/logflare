@@ -14,6 +14,7 @@ defmodule LogflareWeb.AlertsLive do
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
   alias Logflare.Repo
+  alias Logflare.Sql
   alias LogflareWeb.QueryComponents
   alias LogflareWeb.QueryErrorHelpers
   alias LogflareWeb.Utils
@@ -74,7 +75,7 @@ defmodule LogflareWeb.AlertsLive do
     {:ok, formatted_query} =
       params
       |> Map.get("query", "")
-      |> SqlFmt.format_query()
+      |> Sql.format()
 
     params = Map.put(params, "query", formatted_query)
 

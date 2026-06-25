@@ -19,7 +19,7 @@ defmodule LogflareWeb.QueryComponentsTest do
           params: []
         })
 
-      assert html =~ ~r/SELECT\n  id,\n  name\nFROM\n  users\nWHERE\n  active = TRUE/
+      assert html =~ ~r/select\n  id,\n  name\nfrom\n  users\nwhere\n  active = true/
     end
 
     test "replaces multiple parameters in order" do
@@ -41,7 +41,7 @@ defmodule LogflareWeb.QueryComponentsTest do
         })
 
       # Check for HTML-encoded quotes: &#39; is ' and &quot; is "
-      assert html =~ "STATUS = &#39;active&#39;"
+      assert html =~ "status = &#39;active&#39;"
       assert html =~ "count &gt; &quot;100&quot;"
     end
 
