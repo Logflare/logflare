@@ -46,6 +46,18 @@ defmodule LogflareWeb.QueryErrorHelpersTest do
                QueryErrorHelpers.generic_query_error_message()
     end
 
+    test "returns timeout message for connection timeouts" do
+      error =
+        query_error(
+          kind: :connection_error,
+          backend: BigQueryAdaptor,
+          raw_error: :timeout
+        )
+
+      assert QueryErrorHelpers.query_error_message(error) ==
+               "Query timed out. Retry your query or reduce the time range."
+    end
+
     test "returns missing field message for classified query errors" do
       error =
         query_error(

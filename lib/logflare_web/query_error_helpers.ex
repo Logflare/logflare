@@ -5,6 +5,7 @@ defmodule LogflareWeb.QueryErrorHelpers do
   alias LogflareWeb.Utils
 
   @generic_query_error_message "Backend error! Retry your query. Please contact support if this continues."
+  @timeout_query_error_message "Query timed out. Retry your query or reduce the time range."
 
   @doc """
   Returns a user-facing query error message from a backend %QueryError{}.
@@ -51,6 +52,13 @@ defmodule LogflareWeb.QueryErrorHelpers do
 
       "total bytes processed for this query is expected to be greater than #{round(size)} #{units}"
     end
+  end
+
+  defp classified_query_error_message(%QueryError{
+         kind: :connection_error,
+         raw_error: :timeout
+       }) do
+    @timeout_query_error_message
   end
 
   defp classified_query_error_message(%QueryError{
