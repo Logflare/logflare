@@ -75,9 +75,7 @@ defmodule LogflareWeb.AccessTokensLive do
             <p>Access token created successfully, copy this token to a safe location. For security purposes, this token will not be shown again.</p>
 
             <pre class="p-2"><%= @created_token.token %></pre>
-            <button class="btn btn-secondary" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @created_token.token})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
-              <i class="fa fa-clone" aria-hidden="true"></i> Copy
-            </button>
+            <.clipboard_button text={@created_token.token} />
             <button class="btn btn-secondary" phx-click="dismiss-created-token">
               Dismiss
             </button>
@@ -89,9 +87,7 @@ defmodule LogflareWeb.AccessTokensLive do
         <.alert variant="dark" class="tw-max-w-md">
           <h5>Legacy Ingest API Key</h5>
           <p><strong>Deprecated</strong>, use access tokens instead.</p>
-          <button class="btn btn-secondary btn-sm" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @user.api_key})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
-            <i class="fa fa-clone" aria-hidden="true"></i> Copy
-          </button>
+          <.clipboard_button text={@user.api_key} class="btn-sm" />
         </.alert>
       <% end %>
 
@@ -130,9 +126,7 @@ defmodule LogflareWeb.AccessTokensLive do
               </td>
 
               <td class="p-2">
-                <button :if={!(token.scopes =~ "private")} class="btn btn-secondary btn-sm" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: token.token})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
-                  <i class="fa fa-clone" aria-hidden="true"></i> Copy
-                </button>
+                <.clipboard_button :if={!(token.scopes =~ "private")} text={token.token} class="btn-sm" />
                 <button class="btn text-danger btn-sm" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id} data-toggle="tooltip" data-placement="top" title="Revoke access token forever">
                   <i class="fa fa-trash" aria-hidden="true"></i> Revoke
                 </button>

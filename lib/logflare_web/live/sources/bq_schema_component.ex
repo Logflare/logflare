@@ -6,7 +6,7 @@ defmodule LogflareWeb.SourceBqSchemaComponent do
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @impl true
-  def render(%{source: source}) do
+  def render(%{source: source} = assigns) do
     bq_schema =
       SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
       |> case do
@@ -14,6 +14,12 @@ defmodule LogflareWeb.SourceBqSchemaComponent do
         %_{bigquery_schema: schema} -> schema
       end
 
-    BqSchema.format_bq_schema(bq_schema)
+    assigns = assign(assigns, :bq_schema, BqSchema.format_bq_schema(bq_schema))
+
+    ~H"""
+    <div>
+      {@bq_schema}
+    </div>
+    """
   end
 end

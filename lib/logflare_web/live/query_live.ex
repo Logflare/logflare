@@ -152,7 +152,7 @@ defmodule LogflareWeb.QueryLive do
                       </div>
                       <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                        <button type="button" class="btn btn-primary" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: Jason.encode!(value)})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard"><i class="fa fa-clone" aria-hidden="true"></i> Copy</button>
+                        <.clipboard_button text={Jason.encode!(value)} variant="primary" />
                       </div>
                     </div>
                   </div>
