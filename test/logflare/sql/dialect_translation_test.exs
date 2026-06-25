@@ -190,6 +190,15 @@ defmodule Logflare.Sql.DialectTranslationTest do
              String.contains?(pg_query, "metadata ->> 'level'")
   end
 
+  test "translates a CTE whose body is a UNION (non-SELECT body)" do
+    bq_query =
+      "WITH x AS (SELECT a FROM t UNION SELECT b FROM t2) SELECT c FROM x"
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+    assert String.contains?(pg_query, "UNION")
+  end
+
   test "translates three-part CTE column access to JSON operators" do
     bq_query = """
     WITH logs AS (

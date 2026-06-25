@@ -195,6 +195,18 @@ defmodule Logflare.SqlTest do
                "select c from src order by c asc"},
               "with src as (select a from #{table}) select c from src order by c asc"
             },
+            # sandboxed query with a derived table (subquery) in the FROM clause
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from (select c from src) as sub"},
+              "with src as (select a from #{table}) select c from (select c from src) as sub"
+            },
+            # sandboxed query with UNNEST (a non-table relation) in the FROM clause
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from src, unnest(src.col) as f"},
+              "with src as (select a from #{table}) select c from src, unnest(src.col) as f"
+            },
             # sandboxed CTEs with union all
             {
               {"with cte1 as (select a from my_table), cte2 as (select b from my_table) select a from cte1",
@@ -259,6 +271,12 @@ defmodule Logflare.SqlTest do
             {
               {"with src as (select a from my_table) select c from src",
                "select a from my_table"},
+              "Table not found in CTE: (my_table)"
+            },
+            # sandbox: disallowed table inside a subquery FROM is still caught
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from (select a from my_table) as sub"},
               "Table not found in CTE: (my_table)"
             },
             # sandbox: restricted functions
