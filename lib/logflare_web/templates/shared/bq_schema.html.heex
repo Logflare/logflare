@@ -1,4 +1,9 @@
 <div id="source-schema-modal-table" class="table-responsive" phx-hook="SourceSchemaModalTable">
+  <div class="tw-pb-3 tw-text-right">
+    <.button variant="secondary" class="btn-sm" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @markdown_schema})} data-toggle="tooltip" data-placement="top" title="Copy markdown to clipboard">
+      <i class="fa fa-clone" aria-hidden="true"></i> Copy markdown
+    </.button>
+  </div>
   <table class="table table-dark show-source-schema">
     <thead>
       <td scope="col"><strong>Field path</strong></td>
