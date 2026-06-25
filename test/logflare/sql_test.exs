@@ -1485,7 +1485,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
@@ -1499,7 +1499,7 @@ defmodule Logflare.SqlTest do
       pg_query = ~s|select 'string' ~ 'str' as has_substring|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
@@ -1513,7 +1513,7 @@ defmodule Logflare.SqlTest do
       pg_query = ~s|select (t.body ->> 'test') ~ 'str' as has_substring from "c.d.e" t|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
@@ -1531,7 +1531,7 @@ defmodule Logflare.SqlTest do
       pg_query = ~s|select (body #>> '{metadata,nested}') ~ 'val' as has_substring from "c.d.e" t|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
@@ -1550,7 +1550,7 @@ defmodule Logflare.SqlTest do
         ~s|select (body #> '{metadata,nested}') as nested from "c.d.e" t where (body #>> '{metadata,nested}') ~ 'val'|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
@@ -1580,7 +1580,7 @@ defmodule Logflare.SqlTest do
         ~s|with data as (select (body -> 'metadata') as metadata from "c.d.e") select (t.metadata #>> '{deep,even}') as nested from data t where (t.metadata #>> '{deep,even}') ~ 'deep'|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
@@ -1601,21 +1601,21 @@ defmodule Logflare.SqlTest do
       bq_query = "select countif(test = '1') from my_table"
       pg_query = ~s|select count(*) filter (where (body ->> 'test') = '1') from my_table|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "current_timestamp handling " do
       bq_query = "select current_timestamp() as t"
       pg_query = ~s|select current_timestamp as t|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
       refute translated =~ "current_timestamp()"
 
       # in cte
       bq_query = "with a as (select current_timestamp() as t) select a.t"
       pg_query = ~s|with a as (select current_timestamp as t) select a.t as t|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
       refute translated =~ "current_timestamp()"
     end
 
@@ -1623,14 +1623,14 @@ defmodule Logflare.SqlTest do
       bq_query = "select timestamp_sub(current_timestamp(), interval 1 day) as t"
       pg_query = ~s|select current_timestamp - interval '1 day' as t|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "timestamp_trunc without a field reference" do
       bq_query = "select timestamp_trunc(current_timestamp(), day) as t"
       pg_query = ~s|select date_trunc('day', current_timestamp) as t|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "CTE aliases are not converted to json query" do
@@ -1641,7 +1641,7 @@ defmodule Logflare.SqlTest do
         ~s|with test as (select (body -> 'id') as id, (body -> 'metadata') as metadata from mytable) select id as id, (metadata -> 'request') as request from test|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "CTE alias fields do not get converted to json query if referenced" do
@@ -1668,7 +1668,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "CTE table quotations are converted" do
@@ -1684,7 +1684,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "CTE cross join UNNESTs are removed" do
@@ -1704,7 +1704,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "CTE order by is " do
@@ -1725,7 +1725,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "CTE order by without from " do
@@ -1746,7 +1746,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "CTE cross join UNNESTs with filter reference" do
@@ -1768,7 +1768,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "CTE cross join UNNESTs with multiple from" do
@@ -1790,7 +1790,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "field references within a cast() are converted to ->> syntax for string casting" do
@@ -1798,7 +1798,7 @@ defmodule Logflare.SqlTest do
       pg_query = ~s|select cast( (body ->> 'col') as timestamp) as date from my_table|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "field references within a DATE_TRUNC() are converted to ->> syntax for string casting" do
@@ -1806,7 +1806,7 @@ defmodule Logflare.SqlTest do
       pg_query = ~s|select DATE_TRUNC('day',  (body ->> 'col')) as date from my_table|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "field references in left-right operators are converted to ->> syntax" do
@@ -1814,7 +1814,7 @@ defmodule Logflare.SqlTest do
       pg_query = ~s|select (t.body ->> 'id') = 'test' as value from my_table t|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "order by json query" do
@@ -1823,7 +1823,7 @@ defmodule Logflare.SqlTest do
       pg_query = ~s|select (body -> 'id') as id from my_source t order by (t.body -> 'my_col')|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     # test "cte WHERE identifiers are translated correctly"
@@ -1837,7 +1837,7 @@ defmodule Logflare.SqlTest do
         ~s|select $1::text as arg1, $2::text as arg2, coalesce($3::text, '') > $4::text as arg_copy|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
       # determines sequence of parameters
       assert {:ok, %{1 => "test", 2 => "test_another", 4 => "test"}} =
                Sql.parameter_positions(bq_query)
@@ -1868,7 +1868,7 @@ defmodule Logflare.SqlTest do
       pg_query = ~s|select (t.body -> 'timestamp') as ts from my_table t|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
 
       # only convert if not in projection
       bq_query = ~s|select t.id as id from my_table t where t.timestamp is not null|
@@ -1877,7 +1877,7 @@ defmodule Logflare.SqlTest do
         ~s|select (t.body -> 'id') as id from my_table t where (to_timestamp( (t.body ->> 'timestamp')::bigint / 1000000.0) AT TIME ZONE 'UTC') is not null|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "special handling of timestamp field and date_trunc : " do
@@ -1892,7 +1892,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "special handling of timestamp field for binary ops" do
@@ -1909,7 +1909,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "CTE fields in binary op are cast to text only when equal" do
@@ -1926,7 +1926,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "translate in operator arguments to text" do
@@ -1941,7 +1941,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "translate between operator sides to numeric" do
@@ -1956,7 +1956,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     test "translate >, >=, =, <, <=  operator to numeric if comparison side is a number" do
@@ -1991,7 +1991,7 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+      assert_semantically_equal(translated, pg_query)
     end
 
     # functions metrics
@@ -2029,4 +2029,28 @@ defmodule Logflare.SqlTest do
 
     PostgresAdaptor.insert_log_event(source, backend, log_event)
   end
+
+  # sqlparser 0.53+ records source-location metadata on the AST (`span` byte offsets and `*_token` keys such as `select_token`).
+  # The crate treats these as non-semantic. Its `AttachedToken`/span comparisons ignore them
+  # but the NIF serializes them to JSON, so a plain `==` on the decoded ASTs would fail
+  # on cosmetic differences (e.g. a lowercase `select` vs the rendered `SELECT`).
+  #
+  # These helpers compare two SQL strings for semantic equality by stripping that
+  # metadata first, mirroring the crate's own equality semantics.
+  defp assert_semantically_equal(actual_sql, expected_sql) do
+    assert {:ok, actual_ast} = Sql.Parser.parse("postgres", actual_sql)
+    assert {:ok, expected_ast} = Sql.Parser.parse("postgres", expected_sql)
+    assert strip_source_metadata(actual_ast) == strip_source_metadata(expected_ast)
+  end
+
+  defp strip_source_metadata(%{} = node) do
+    node
+    |> Enum.reject(fn {key, _value} -> key == "span" or String.ends_with?(key, "_token") end)
+    |> Map.new(fn {key, value} -> {key, strip_source_metadata(value)} end)
+  end
+
+  defp strip_source_metadata(list) when is_list(list),
+    do: Enum.map(list, &strip_source_metadata/1)
+
+  defp strip_source_metadata(other), do: other
 end

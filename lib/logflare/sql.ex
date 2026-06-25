@@ -881,12 +881,7 @@ defmodule Logflare.Sql do
       if qualified_name in data.source_names do
         transformed_name = transformer.transform_source_name(qualified_name, data)
 
-        [
-          %{
-            "quote_style" => dialect_quote_style,
-            "value" => transformed_name
-          }
-        ]
+        [AstUtils.build_identifier(transformed_name, dialect_quote_style)]
       else
         names
       end
