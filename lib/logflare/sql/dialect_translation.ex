@@ -630,7 +630,7 @@ defmodule Logflare.Sql.DialectTranslation do
   defp cte_from_table_aliases(nil), do: []
 
   defp cte_from_table_aliases(tree) do
-    for from_tree <- get_in(tree, ["query", "body", "Select", "from"]),
+    for from_tree <- get_in(tree, ["query", "body", "Select", "from"]) || [],
         table_name = get_in(from_tree, ["relation", "Table", "alias", "name", "value"]),
         table_name != nil do
       table_name
