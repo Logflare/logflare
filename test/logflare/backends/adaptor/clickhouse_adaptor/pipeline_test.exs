@@ -157,14 +157,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, query_result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      [first_row] = query_result
-      assert %{"count" => 2} = first_row
+      assert {:ok, {[%{"count" => 2}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) as count FROM #{table_name}"
+               )
     end
 
     test "handles empty messages list", %{context: context} do
@@ -227,7 +224,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, query_result} =
+      {:ok, {query_result, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT event_message, timestamp FROM #{table_name} ORDER BY timestamp DESC"
@@ -277,13 +274,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, query_result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 3}] = query_result
+      assert {:ok, {[%{"count" => 3}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) as count FROM #{table_name}"
+               )
     end
 
     test "routes metric events to metrics table", %{
@@ -314,13 +309,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
-      {:ok, query_result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = query_result
+      assert {:ok, {[%{"count" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) as count FROM #{table_name}"
+               )
     end
 
     test "routes trace events to traces table", %{
@@ -350,13 +343,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
-      {:ok, query_result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = query_result
+      assert {:ok, {[%{"count" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) as count FROM #{table_name}"
+               )
     end
 
     test "inserts logs with all scalar fields readable via SELECT", %{
@@ -387,7 +378,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, [row]} =
+      {:ok, {[row], _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           """
@@ -451,7 +442,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
-      {:ok, [row]} =
+      {:ok, {[row], _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           """
@@ -507,7 +498,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
-      {:ok, [row]} =
+      {:ok, {[row], _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           """

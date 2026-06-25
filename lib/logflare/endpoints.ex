@@ -489,14 +489,20 @@ defmodule Logflare.Endpoints do
           {run_query_return(), map()}
   defp emit_query_telemetry({:ok, data} = result, endpoint_query) do
     measurements = %{
-      total_bytes_processed: Map.get(data, :total_bytes_processed, 0)
+      total_bytes_processed:
+        if(is_integer(data.total_bytes_processed), do: data.total_bytes_processed, else: 0)
     }
+
+    backend =
+      endpoint_query.backend_id && Backends.Cache.get_backend(endpoint_query.backend_id)
 
     metadata =
       Map.merge(endpoint_query.parsed_labels || %{}, %{
         "endpoint_id" => endpoint_query.id,
         "endpoint_uuid" => Utils.stringify(endpoint_query.token),
-        "user_id" => endpoint_query.user_id
+        "user_id" => endpoint_query.user_id,
+        "backend_id" => endpoint_query.backend_id,
+        "backend_type" => backend && to_string(backend.type)
       })
 
     :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)
