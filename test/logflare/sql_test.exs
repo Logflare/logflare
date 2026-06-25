@@ -180,6 +180,12 @@ defmodule Logflare.SqlTest do
                "select c from src order by c asc"},
               "with src as (select a from #{table}) select c from src order by c asc"
             },
+            # sandboxed query with a derived table (subquery) in the FROM clause
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from (select c from src) as sub"},
+              "with src as (select a from #{table}) select c from (select c from src) as sub"
+            },
             # sandboxed CTEs with union all
             {
               {"with cte1 as (select a from my_table), cte2 as (select b from my_table) select a from cte1",

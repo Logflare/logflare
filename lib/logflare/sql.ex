@@ -784,7 +784,7 @@ defmodule Logflare.Sql do
     unknown_table_names =
       for statement <- ast,
           from <- extract_all_from(statement),
-          %{"value" => table_name} <- get_in(from, ["relation", "Table", "name"]),
+          %{"value" => table_name} <- get_in(from, ["relation", "Table", "name"]) || [],
           table_name not in aliases,
           table_name not in sandboxed_cte_names do
         table_name
