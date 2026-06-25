@@ -33,8 +33,8 @@
       </small>
     </div>
 
-    <QueryComponents.backend_select :if={@show_backend_selection} backends={@backends} form={f} label="Backend (optional)">
-      <:help>Choose which backend to execute this endpoint query against. Defaults to BigQuery if no backend is selected.</:help>
+    <QueryComponents.backend_select :if={@show_backend_selection} backends={@backends} form={f} label="Backend (optional)" default_backend={@default_backend}>
+      <:help>Choose which backend to execute this endpoint query against.</:help>
     </QueryComponents.backend_select>
 
     <.header_with_anchor text="Query" />

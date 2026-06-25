@@ -4,12 +4,30 @@ defmodule LogflareWeb.QueryComponentsTest do
   alias GoogleApi.BigQuery.V2.Model.QueryParameter
   alias GoogleApi.BigQuery.V2.Model.QueryParameterType
   alias GoogleApi.BigQuery.V2.Model.QueryParameterValue
+  alias Logflare.Backends.Backend
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
   alias LogflareWeb.QueryComponents
 
   doctest LogflareWeb.QueryComponents, import: true
+
+  describe "backend_select/1" do
+    test "renders the default backend type in the option and language label" do
+      form = Phoenix.Component.to_form(%{"backend_id" => nil}, as: :backend)
+      backends = [%Backend{id: 1, name: "ClickHouse", type: :clickhouse}]
+
+      html =
+        render_component(&QueryComponents.backend_select/1, %{
+          backends: backends,
+          form: form,
+          default_backend: %Backend{name: "Default Postgres", type: :postgres}
+        })
+
+      assert html =~ "Default Postgres"
+      assert html =~ "Query Language: <span id=\"query-language\">Postgres SQL</span>"
+    end
+  end
 
   describe "formatted_sql/1" do
     test "formats SQL" do

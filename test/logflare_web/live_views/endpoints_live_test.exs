@@ -591,7 +591,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       html = render(view)
       assert html =~ "Backend (optional)"
       assert html =~ "(clickhouse)"
-      assert html =~ "Default (BigQuery)"
+      assert html =~ "Default BigQuery backend"
     end
 
     @tag env: :prod, feature_overrides: %{"endpointBackendSelection" => "false"}
@@ -632,6 +632,23 @@ defmodule LogflareWeb.EndpointsLiveTest do
       })
 
       assert has_element?(view, "#query-language", "ClickHouse SQL")
+    end
+  end
+
+  describe "backend selection in supabase mode with postgres default backend" do
+    TestUtils.setup_single_tenant(backend_type: :postgres, supabase_mode: true)
+
+    setup %{user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse, name: "Test ClickHouse")
+      {:ok, backend: backend}
+    end
+
+    test "keeps the default backend language as BigQuery SQL", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
+
+      html = render(view)
+      assert html =~ "Default PostgreSQL backend"
+      assert html =~ ~s(name="endpoint[language]" type="hidden" value="bq_sql")
     end
   end
 
