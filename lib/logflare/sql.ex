@@ -730,7 +730,7 @@ defmodule Logflare.Sql do
   end
 
   defp has_restricted_functions(
-         {"Table", %{"args" => args, "name" => [%{"value" => _} | _] = names}},
+         {"Table", %{"args" => %{"args" => args}, "name" => [%{"value" => _} | _] = names}},
          :ok,
          %{dialect: dialect} = data
        )
