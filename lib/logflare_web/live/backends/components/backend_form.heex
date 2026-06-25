@@ -298,14 +298,23 @@
             {label(f_config, :secret_access_key, "Secret Access Key")}
             {text_input(f_config, :secret_access_key, class: "form-control", type: "password")}
             <small class="form-text text-muted">
-              Credentials used to access to the S3 bucket.
+              Credentials used to access the S3 bucket.
             </small>
           </div>
           <div class="form-group">
             {label(f_config, :s3_bucket, "S3 Bucket Name")}
             {text_input(f_config, :s3_bucket, class: "form-control")}
             <small class="form-text text-muted">
-              The S3 bucket name to where files will be stored.
+              The S3 bucket where files will be stored.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :endpoint, "Endpoint (optional)")}
+            {text_input(f_config, :endpoint, class: "form-control")}
+            <small class="form-text text-muted">
+              Custom endpoint for S3-compatible services other than AWS, e.g. <code>https://storage.googleapis.com</code>.
+              By default, only known providers are allowed (Supabase, AWS, Google Cloud Storage, Cloudflare R2, Backblaze B2, DigitalOcean Spaces, Tigris).
+              Operators can disable this restriction via <code>LOGFLARE_UNSAFE_DISABLE_SSRF_S3_ENDPOINT_CHECK</code>.
             </small>
           </div>
           <div class="form-group">
