@@ -300,8 +300,22 @@ defmodule Logflare.Backends.IngestEventQueue do
         {id, :pending, event, :erlang.external_size(event.body), 0, 0}
       end
 
-    :ets.insert(tid, objects)
-    :ok
+    try do
+      :ets.insert(tid, objects)
+      :ok
+    rescue
+      ArgumentError ->
+        # The owning producer died and ETS reclaimed its table between tid
+        # resolution and this insert. Re-route to the supervisor-owned startup
+        # queue (where a clean producer exit also drains to) so the batch is not
+        # lost; give up only if the startup queue itself is gone.
+        :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+
+        case sid_bid_pid do
+          {_, _, nil} -> {:error, :not_initialized}
+          _ -> add_to_table(put_elem(sid_bid_pid, 2, nil), batch)
+        end
+    end
   end
 
   def add_to_table({_, _, _} = sid_bid_pid, batch, _opts) do

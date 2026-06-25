@@ -39,6 +39,26 @@ defmodule LogflareWeb.CoreComponents do
     """
   end
 
+  @doc "Button that copies text to the clipboard"
+  attr :text, :string, required: true
+
+  attr :variant, :string,
+    default: "secondary",
+    values: ["primary", "secondary"]
+
+  attr :class, :string, default: ""
+  attr :label, :string, default: "Copy"
+  attr :title, :string, default: "Copy to clipboard"
+  attr :rest, :global
+
+  def clipboard_button(assigns) do
+    ~H"""
+    <.button variant={@variant} class={@class} phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @text})} data-toggle="tooltip" data-placement="top" title={@title} {@rest}>
+      <i class="fa fa-clone" aria-hidden="true"></i> {@label}
+    </.button>
+    """
+  end
+
   attr :id, :string, required: false
   attr :disabled, :boolean, default: false
   slot :inner_block, required: true

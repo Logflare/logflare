@@ -15,6 +15,7 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.SingleTenant
+  alias Logflare.Sql
   alias LogflareWeb.QueryComponents
   alias LogflareWeb.QueryErrorHelpers
   alias Logflare.Utils
@@ -146,7 +147,7 @@ defmodule LogflareWeb.EndpointsLive do
         %{assigns: %{live_action: :new}} = socket ->
           params =
             Map.replace_lazy(params, "query", fn sql ->
-              {:ok, formatted} = SqlFmt.format_query(sql)
+              {:ok, formatted} = Sql.format(sql)
               formatted
             end)
 

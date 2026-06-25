@@ -142,7 +142,7 @@ defmodule Logflare.Teams.TeamContext do
 
   def resource_team_id_query(LogflareWeb.QueryLive, %{"q" => query}, user_or_team_user)
       when is_binary(query) and query != "" do
-    with {:ok, formatted} <- SqlFmt.format_query(query),
+    with {:ok, formatted} <- Sql.format(query),
          {:ok, [source_name | _]} <- Sql.extract_table_names(formatted) do
       Sources.Source
       |> Teams.filter_by_user_access(user_or_team_user)

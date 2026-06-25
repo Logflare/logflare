@@ -98,6 +98,40 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert [] == IngestEventQueue.list_counts({source.id, nil})
     end
 
+    test "add_to_table/2 falls back to the startup queue when a producer table died mid-dispatch",
+         %{source: %{id: source_id}, backend: %{id: backend_id}} do
+      pid = self()
+      producer_key = {source_id, backend_id, pid}
+      startup_key = {source_id, backend_id, nil}
+
+      assert {:ok, producer_tid} = IngestEventQueue.upsert_tid(producer_key)
+      assert {:ok, _} = IngestEventQueue.upsert_tid(startup_key)
+
+      # Simulate the owning producer dying after its tid was resolved but before
+      # the insert ran. Driving the {key, tid} clause directly reproduces that
+      # window: get_tid would otherwise filter the dead table out first.
+      :ets.delete(producer_tid)
+
+      le = build(:log_event)
+      assert :ok = IngestEventQueue.add_to_table({producer_key, producer_tid}, [le])
+
+      assert IngestEventQueue.total_pending(startup_key) == 1
+    end
+
+    test "add_to_table/3 does not recurse when the startup queue table is stale", %{
+      source: %{id: source_id},
+      backend: %{id: backend_id}
+    } do
+      startup_key = {source_id, backend_id, nil}
+      assert {:ok, startup_tid} = IngestEventQueue.upsert_tid(startup_key)
+      :ets.delete(startup_tid)
+
+      # Drive the insert clause directly with the stale startup-queue tid; the
+      # fallback must bottom out instead of looping on {_, _, nil}.
+      assert {:error, :not_initialized} =
+               IngestEventQueue.add_to_table({startup_key, startup_tid}, [build(:log_event)])
+    end
+
     test "queues_pending_size/1 returns counts across all queues", %{
       source: %{id: source_id},
       backend: %{id: backend_id}

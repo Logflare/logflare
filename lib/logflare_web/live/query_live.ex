@@ -9,6 +9,7 @@ defmodule LogflareWeb.QueryLive do
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Repo
+  alias Logflare.Sql
   alias Logflare.Teams.TeamContext
   alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
@@ -151,7 +152,7 @@ defmodule LogflareWeb.QueryLive do
                       </div>
                       <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                        <button type="button" class="btn btn-primary" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: Jason.encode!(value)})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard"><i class="fa fa-clone" aria-hidden="true"></i> Copy</button>
+                        <.clipboard_button text={Jason.encode!(value)} variant="primary" />
                       </div>
                     </div>
                   </div>
@@ -197,7 +198,7 @@ defmodule LogflareWeb.QueryLive do
           nil
 
         v ->
-          {:ok, formatted} = SqlFmt.format_query(v)
+          {:ok, formatted} = Sql.format(v)
           formatted
       end
 
@@ -331,7 +332,7 @@ defmodule LogflareWeb.QueryLive do
   end
 
   def handle_event("format-query", _params, socket) do
-    {:ok, formatted} = SqlFmt.format_query(socket.assigns.query_string)
+    {:ok, formatted} = Sql.format(socket.assigns.query_string)
     {:noreply, LiveMonacoEditor.set_value(socket, formatted, to: "query")}
   end
 

@@ -10,6 +10,7 @@ defmodule LogflareWeb.QueryComponents do
   alias Logflare.Logs.SearchOperations.Helpers
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Sql
   alias LogflareWeb.Utils
   alias Phoenix.LiveView.JS
 
@@ -120,7 +121,7 @@ defmodule LogflareWeb.QueryComponents do
         {:ok, formatted} =
           Utils.sql_params_to_sql(assigns.sql_string, assigns.params)
           |> prepare_table_name()
-          |> SqlFmt.format_query()
+          |> Sql.format()
 
         formatted
       end)
