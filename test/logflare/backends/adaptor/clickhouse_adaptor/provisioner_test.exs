@@ -43,13 +43,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       for event_type <- [:log, :metric, :trace] do
         table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
-        {:ok, result} =
-          ClickHouseAdaptor.execute_ch_query(
-            backend,
-            "EXISTS TABLE #{table_name}"
-          )
-
-        assert [%{"result" => 1}] = result
+        assert {:ok, {[%{"result" => 1}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "EXISTS TABLE #{table_name}"
+                 )
       end
     end
 
@@ -62,10 +60,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       for event_type <- [:log, :metric, :trace] do
         table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
-        {:ok, exists} =
-          ClickHouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{table_name}")
-
-        assert [%{"result" => 1}] = exists
+        assert {:ok, {[%{"result" => 1}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{table_name}")
       end
     end
   end
@@ -112,13 +108,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       for event_type <- [:log, :metric, :trace] do
         table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
-        {:ok, result} =
-          ClickHouseAdaptor.execute_ch_query(
-            backend,
-            "SELECT count(*) as count FROM #{table_name}"
-          )
-
-        assert [%{"count" => 0}] = result
+        assert {:ok, {[%{"count" => 0}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT count(*) as count FROM #{table_name}"
+                 )
       end
     end
   end
@@ -143,13 +137,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
+      assert {:ok, {[%{"count" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) as count FROM #{table_name}"
+               )
     end
   end
 
@@ -161,7 +153,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, columns} =
+      {:ok, {columns, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(backend, "DESCRIBE TABLE #{table_name}")
 
       column_names = Enum.map(columns, & &1["name"])
@@ -193,7 +185,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
-      {:ok, columns} =
+      {:ok, {columns, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(backend, "DESCRIBE TABLE #{table_name}")
 
       column_names = Enum.map(columns, & &1["name"])
@@ -225,7 +217,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
-      {:ok, columns} =
+      {:ok, {columns, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(backend, "DESCRIBE TABLE #{table_name}")
 
       column_names = Enum.map(columns, & &1["name"])
