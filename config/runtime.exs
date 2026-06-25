@@ -540,3 +540,15 @@ case System.get_env("S3_SPOOL_MODE") do
   other ->
     raise ArgumentError, "Invalid S3_SPOOL_MODE=#{other}. Must be producer, consumer, or both."
 end
+
+case System.get_env("S3_SPOOL_PROVIDER") do
+  nil ->
+    :ok
+
+  provider when provider in ["aws", "gcp"] ->
+    current = Application.get_env(:logflare, :s3_spool, [])
+    config :logflare, :s3_spool, Keyword.put(current, :provider, String.to_existing_atom(provider))
+
+  other ->
+    raise ArgumentError, "Invalid S3_SPOOL_PROVIDER=#{other}. Must be aws or gcp."
+end

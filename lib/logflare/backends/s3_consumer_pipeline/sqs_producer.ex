@@ -18,8 +18,10 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
   def init(opts) do
     queue_url = Keyword.fetch!(opts, :queue_url)
     bucket = Keyword.fetch!(opts, :bucket)
+    storage_mod = Keyword.fetch!(opts, :storage_mod)
+    queue_mod = Keyword.fetch!(opts, :queue_mod)
     schedule_poll()
-    {:producer, %{queue_url: queue_url, bucket: bucket, demand: 0, current: nil}}
+    {:producer, %{queue_url: queue_url, bucket: bucket, storage_mod: storage_mod, queue_mod: queue_mod, demand: 0, current: nil}}
   end
 
   # Serve from the existing in-memory buffer only — never blocks on IO.
@@ -54,14 +56,14 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
   defp buffered?(_), do: true
 
   defp maybe_ack_exhausted(%{current: %{lines: [], handle: handle}} = state) do
-    ack_sqs(state.queue_url, handle)
+    state.queue_mod.ack(state.queue_url, handle)
     %{state | current: nil}
   end
 
   defp maybe_ack_exhausted(state), do: state
 
   defp maybe_load_next(%{current: nil} = state) do
-    case fetch_next(state.queue_url, state.bucket) do
+    case fetch_next(state.queue_url, state.bucket, state.queue_mod, state.storage_mod) do
       nil -> state
       current -> %{state | current: current}
     end
@@ -84,43 +86,46 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
     {:noreply, to_emit, new_state}
   end
 
-  defp fetch_next(queue_url, bucket) do
-    case sqs_request(ExAws.SQS.receive_message(queue_url, max_number_of_messages: 1)) do
-      {:ok, %{body: %{messages: [%{body: body, receipt_handle: handle}]}}} ->
-        load_file(queue_url, bucket, handle, body)
+  defp fetch_next(queue_url, bucket, queue_mod, storage_mod) do
+    case queue_mod.receive(queue_url, max_number_of_messages: 1) do
+      {:ok, [%{id: handle, body: body}]} ->
+        load_file(queue_url, bucket, handle, body, queue_mod, storage_mod)
 
-      {:ok, %{body: %{messages: []}}} ->
+      {:ok, []} ->
         nil
 
       {:error, reason} ->
-        Logger.error("s3_consumer: SQS receive failed: #{inspect(reason)}")
+        Logger.error("s3_consumer: queue receive failed: #{inspect(reason)}")
         nil
     end
   end
 
-  defp load_file(queue_url, bucket, handle, body) do
+  defp load_file(queue_url, bucket, handle, body, queue_mod, storage_mod) do
     case Jason.decode(body) do
       {:ok, %{"file_key" => file_key}} when is_binary(file_key) ->
-        case download_and_parse(bucket, file_key) do
+        case download_and_parse(bucket, file_key, storage_mod) do
           {:ok, lines} ->
             %{handle: handle, lines: lines}
 
           {:error, reason} ->
             Logger.error("s3_consumer: failed to download #{file_key}: #{inspect(reason)}")
-            nack_sqs(queue_url, handle)
+            case queue_mod.nack(queue_url, handle) do
+              :ok -> :ok
+              {:error, nack_reason} -> Logger.error("s3_consumer: nack failed: #{inspect(nack_reason)}")
+            end
             nil
         end
 
       _ ->
-        Logger.warning("s3_consumer: SQS message has no file_key, discarding")
-        ack_sqs(queue_url, handle)
+        Logger.warning("s3_consumer: queue message has no file_key, discarding")
+        queue_mod.ack(queue_url, handle)
         nil
     end
   end
 
-  defp download_and_parse(bucket, file_key) do
-    case sqs_request(ExAws.S3.get_object(bucket, file_key)) do
-      {:ok, %{body: raw}} ->
+  defp download_and_parse(bucket, file_key, storage_mod) do
+    case storage_mod.get(bucket, file_key) do
+      {:ok, raw} ->
         content =
           if String.ends_with?(file_key, ".gz") do
             :zlib.gunzip(raw)
@@ -142,29 +147,6 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
 
       {:error, reason} ->
         {:error, reason}
-    end
-  end
-
-  defp ack_sqs(queue_url, handle) do
-    # ElasticMQ returns 200 with an empty body for DeleteMessage, which the XML
-    # parser raises on. A 200 means the delete landed — ignore parse errors.
-    # Real network failures let the visibility timeout expire and redeliver.
-    sqs_request(ExAws.SQS.delete_message(queue_url, handle))
-    :ok
-  end
-
-  defp nack_sqs(queue_url, handle) do
-    case sqs_request(ExAws.SQS.change_message_visibility(queue_url, handle, 0)) do
-      {:ok, _} -> :ok
-      {:error, reason} -> Logger.error("s3_consumer: SQS nack failed: #{inspect(reason)}")
-    end
-  end
-
-  defp sqs_request(operation) do
-    try do
-      ExAws.request(operation)
-    rescue
-      e -> {:error, Exception.message(e)}
     end
   end
 

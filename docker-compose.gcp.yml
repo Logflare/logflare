@@ -1,0 +1,35 @@
+services:
+  fake-gcs:
+    image: fsouza/fake-gcs-server:latest
+    ports:
+      - "4443:4443"   # GCS JSON API
+    command: ["-scheme", "http", "-port", "4443", "-public-host", "localhost"]
+    volumes:
+      - ./tmp/fake-gcs:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4443/storage/v1/b"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
+    ports:
+      - "8085:8085"   # Pub/Sub API
+    command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085
+
+  setup-gcp:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
+    depends_on:
+      fake-gcs:
+        condition: service_healthy
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      curl -X POST http://fake-gcs:4443/storage/v1/b -H 'Content-Type: application/json' -d '{\"name\": \"logflare-spool\"}';
+      gcloud beta pubsub topics create logflare-spool;
+      gcloud beta pubsub subscriptions create logflare-spool-sub --topic=logflare-spool;
+      echo 'GCP emulators ready';
+      "

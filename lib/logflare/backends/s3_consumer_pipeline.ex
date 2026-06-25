@@ -8,6 +8,8 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.S3ConsumerPipeline.SqsProducer
+  alias Logflare.Backends.Spool.Queue
+  alias Logflare.Backends.Spool.Storage
   alias Logflare.Sources
 
   @behaviour Broadway.Acknowledger
@@ -21,12 +23,15 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
     concurrency = Keyword.get(s3_config, :consumer_concurrency, 4)
     batch_size = Keyword.get(s3_config, :consumer_batch_size, 5_000)
     queue_name = Keyword.fetch!(s3_config, :queue_name)
-    queue_url = resolve_queue_url!(queue_name)
+    provider = Keyword.get(s3_config, :provider, :aws)
+    storage_mod = Keyword.get(s3_config, :storage_mod, default_storage_mod(provider))
+    queue_mod = Keyword.get(s3_config, :queue_mod, default_queue_mod(provider))
+    queue_url = resolve_queue_url!(queue_name, queue_mod)
 
     Broadway.start_link(__MODULE__,
       name: name,
       producer: [
-        module: {SqsProducer, [queue_url: queue_url, bucket: bucket]},
+        module: {SqsProducer, [queue_url: queue_url, bucket: bucket, storage_mod: storage_mod, queue_mod: queue_mod]},
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [
@@ -92,13 +97,19 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
     messages
   end
 
-  defp resolve_queue_url!(queue_name) do
-    case ExAws.SQS.get_queue_url(queue_name) |> ExAws.request() do
-      {:ok, %{body: %{queue_url: url}}} ->
-        url
+  defp resolve_queue_url!(queue_name, queue_mod) do
+    case queue_mod.resolve(queue_name) do
+      {:ok, ref} ->
+        ref
 
       {:error, reason} ->
-        raise "s3_consumer: failed to resolve SQS queue URL for #{queue_name}: #{inspect(reason)}"
+        raise "s3_consumer: failed to resolve queue ref for #{queue_name}: #{inspect(reason)}"
     end
   end
+
+  defp default_storage_mod(:gcp), do: Storage.GCS
+  defp default_storage_mod(_), do: Storage.S3
+
+  defp default_queue_mod(:gcp), do: Queue.PubSub
+  defp default_queue_mod(_), do: Queue.SQS
 end

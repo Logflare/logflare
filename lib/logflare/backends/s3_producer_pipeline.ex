@@ -9,6 +9,8 @@ defmodule Logflare.Backends.S3ProducerPipeline do
 
   alias Broadway.Message
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.Spool.Storage
+  alias Logflare.Backends.Spool.Queue
 
   @behaviour Broadway.Acknowledger
 
@@ -25,7 +27,8 @@ defmodule Logflare.Backends.S3ProducerPipeline do
     partitions = Keyword.get(s3_config, :partitions, 4)
     batch_timeout = Keyword.get(s3_config, :batch_timeout, @default_batch_timeout)
     compress = Keyword.get(s3_config, :compress, true)
-    queue_url = resolve_queue_url(s3_config)
+    {storage_mod, queue_mod} = resolve_mods(s3_config)
+    queue_ref = resolve_queue_ref(s3_config, queue_mod)
 
     Broadway.start_link(__MODULE__,
       name: name,
@@ -48,7 +51,9 @@ defmodule Logflare.Backends.S3ProducerPipeline do
         bucket: bucket,
         partitions: partitions,
         compress: compress,
-        queue_url: queue_url
+        queue_ref: queue_ref,
+        storage_mod: storage_mod,
+        queue_mod: queue_mod
       }
     )
   end
@@ -80,7 +85,9 @@ defmodule Logflare.Backends.S3ProducerPipeline do
         bucket: bucket,
         partitions: partitions,
         compress: compress,
-        queue_url: queue_url
+        queue_ref: queue_ref,
+        storage_mod: storage_mod,
+        queue_mod: queue_mod
       }) do
     dbg("S3ProducerPipeline handle_batch #{Enum.count(messages)}")
     dbg(batch_info)
@@ -90,10 +97,10 @@ defmodule Logflare.Backends.S3ProducerPipeline do
     {file_key, result} =
       if compress do
         key = "#{partition}/#{generate_uuidv7()}.ndjson.gz"
-        {key, upload_compressed(messages, bucket, key)}
+        {key, upload_compressed(messages, bucket, key, storage_mod)}
       else
         key = "#{partition}/#{generate_uuidv7()}.ndjson"
-        {key, upload_plain(messages, bucket, key)}
+        {key, upload_plain(messages, bucket, key, storage_mod)}
       end
 
     case result do
@@ -104,7 +111,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
           %{backend_type: :s3_producer}
         )
 
-        notify_sqs(queue_url, file_key, batch_info.size)
+        notify_queue(queue_mod, queue_ref, file_key, batch_info.size)
 
         Logger.debug("s3_producer_pipeline: wrote #{batch_info.size} events to s3",
           key: file_key
@@ -143,16 +150,15 @@ defmodule Logflare.Backends.S3ProducerPipeline do
     }
   end
 
-  defp upload_compressed(messages, bucket, file_key) do
+  defp upload_compressed(messages, bucket, file_key, storage_mod) do
     body = compress_to_binary(messages)
 
-    ExAws.S3.put_object(bucket, file_key, body,
+    storage_mod.put(bucket, file_key, body,
       headers: %{"content-type" => "application/x-ndjson", "content-encoding" => "gzip"}
     )
-    |> ExAws.request()
   end
 
-  defp upload_plain(messages, bucket, file_key) do
+  defp upload_plain(messages, bucket, file_key, storage_mod) do
     body =
       Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
         case :ets.lookup(tid, id) do
@@ -162,10 +168,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
       end)
       |> IO.iodata_to_binary()
 
-    ExAws.S3.put_object(bucket, file_key, body,
-      headers: %{"content-type" => "application/x-ndjson"}
-    )
-    |> ExAws.request()
+    storage_mod.put(bucket, file_key, body, headers: %{"content-type" => "application/x-ndjson"})
   end
 
   defp compress_to_binary(messages) do
@@ -200,39 +203,52 @@ defmodule Logflare.Backends.S3ProducerPipeline do
     })
   end
 
-  defp notify_sqs(nil, _file_key, _count), do: :ok
+  defp notify_queue(_queue_mod, nil, _file_key, _count), do: :ok
 
-  defp notify_sqs(queue_url, file_key, count) do
+  defp notify_queue(queue_mod, queue_ref, file_key, count) do
     body = Jason.encode!(%{file_key: file_key, event_count: count})
 
-    case ExAws.SQS.send_message(queue_url, body) |> ExAws.request() do
-      {:ok, _} ->
+    case queue_mod.publish(queue_ref, body) do
+      :ok ->
         :ok
 
       {:error, reason} ->
-        Logger.error("s3_producer_pipeline: SQS notify failed",
+        Logger.error("s3_producer_pipeline: queue notify failed",
           file_key: file_key,
           error: inspect(reason)
         )
     end
   end
 
-  defp resolve_queue_url(s3_config) do
+  defp resolve_queue_ref(s3_config, queue_mod) do
     case Keyword.get(s3_config, :queue_name) do
       nil ->
         nil
 
       queue_name ->
-        case ExAws.SQS.get_queue_url(queue_name) |> ExAws.request() do
-          {:ok, %{body: %{queue_url: url}}} ->
-            url
+        case queue_mod.resolve(queue_name) do
+          {:ok, ref} ->
+            ref
 
           {:error, reason} ->
-            Logger.warning("s3_producer_pipeline: could not resolve SQS queue URL for #{queue_name}: #{inspect(reason)}")
+            Logger.warning("s3_producer_pipeline: could not resolve queue ref for #{queue_name}: #{inspect(reason)}")
             nil
         end
     end
   end
+
+  defp resolve_mods(s3_config) do
+    provider = Keyword.get(s3_config, :provider, :aws)
+    storage_mod = Keyword.get(s3_config, :storage_mod, default_storage_mod(provider))
+    queue_mod = Keyword.get(s3_config, :queue_mod, default_queue_mod(provider))
+    {storage_mod, queue_mod}
+  end
+
+  defp default_storage_mod(:gcp), do: Storage.GCS
+  defp default_storage_mod(_), do: Storage.S3
+
+  defp default_queue_mod(:gcp), do: Queue.PubSub
+  defp default_queue_mod(_), do: Queue.SQS
 
   @spec generate_uuidv7() :: String.t()
   defp generate_uuidv7 do

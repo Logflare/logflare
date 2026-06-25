@@ -169,6 +169,8 @@ defmodule Logflare.Mixfile do
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
       {:google_api_big_query, "~> 0.88.0"},
       {:google_api_iam, "~> 0.45.0"},
+      {:google_api_storage, "~> 0.46"},
+      {:google_api_pub_sub, "~> 0.42"},
       {:goth, github: "Logflare/goth", branch: "feat/service-account-impersonation"},
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
 
