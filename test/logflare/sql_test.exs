@@ -186,6 +186,12 @@ defmodule Logflare.SqlTest do
                "select c from (select c from src) as sub"},
               "with src as (select a from #{table}) select c from (select c from src) as sub"
             },
+            # sandboxed query with UNNEST (a non-table relation) in the FROM clause
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from src, unnest(src.col) as f"},
+              "with src as (select a from #{table}) select c from src, unnest(src.col) as f"
+            },
             # sandboxed CTEs with union all
             {
               {"with cte1 as (select a from my_table), cte2 as (select b from my_table) select a from cte1",
