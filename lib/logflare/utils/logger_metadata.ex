@@ -1,5 +1,8 @@
 defmodule Logflare.Utils.LoggerMetadata do
-  @moduledoc false
+  @doc """
+  Executes the given function with the provided metadata set in the logger.
+  Restores original logger metadata after execution.
+  """
 
   @spec with_metadata(Keyword.t(), (-> term())) :: term()
   def with_metadata(metadata, fun) when is_list(metadata) and is_function(fun, 0) do
