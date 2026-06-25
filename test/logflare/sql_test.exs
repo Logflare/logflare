@@ -252,6 +252,12 @@ defmodule Logflare.SqlTest do
                "select a from my_table"},
               "Table not found in CTE: (my_table)"
             },
+            # sandbox: disallowed table inside a subquery FROM is still caught
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from (select a from my_table) as sub"},
+              "Table not found in CTE: (my_table)"
+            },
             # sandbox: restricted functions
             {"SELECT SESSION_USER()", "Restricted function session_user"},
             {"SELECT EXTERNAL_QUERY('','')", "Restricted function external_query"},
