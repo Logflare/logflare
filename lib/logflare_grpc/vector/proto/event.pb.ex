@@ -370,7 +370,12 @@ defmodule Event.Metric do
 
   field :name, 1, type: :string
   field :timestamp, 2, type: Google.Protobuf.Timestamp
-  field :tags_v1, 3, repeated: true, type: Event.Metric.TagsV1Entry, json_name: "tagsV1", map: true
+
+  field :tags_v1, 3,
+    repeated: true,
+    type: Event.Metric.TagsV1Entry,
+    json_name: "tagsV1",
+    map: true
 
   field :tags_v2, 20,
     repeated: true,
