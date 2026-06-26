@@ -317,6 +317,32 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "json_encodable?/1 mirrors Tesla.Middleware.JSON" do
+    # Client.reserved_header_names/1 predicts whether the JSON middleware will
+    # encode the body (and thus own content-type) via a private json_encodable?/1
+    # that mirrors Tesla.Middleware.JSON's own encodable? clauses. Tesla exposes no
+    # public predicate, so this pins Tesla's actual encode/2 behavior: if an upgrade
+    # changes which bodies get a content-type, this fails and we update the mirror,
+    # rather than silently regressing the duplicate-header fix.
+    test "encode/2 sets content-type for exactly the bodies the mirror treats as encodable" do
+      cases = [
+        {nil, false},
+        {"already-a-binary", false},
+        {%Tesla.Multipart{}, false},
+        {[%{"message" => "hello"}], true},
+        {%{"message" => "hello"}, true}
+      ]
+
+      for {body, expected_encodable} <- cases do
+        {:ok, env} = Tesla.Middleware.JSON.encode(%Tesla.Env{body: body}, [])
+        tesla_set_content_type? = Tesla.get_header(env, "content-type") != nil
+
+        assert tesla_set_content_type? == expected_encodable,
+               "Tesla content-type behavior for #{inspect(body)} diverged from json_encodable?/1"
+      end
+    end
+  end
+
   describe "SSRF middleware integration" do
     test "Client.send/1 blocks private IPs at request time" do
       # Call Client.send/1 directly without mocking to verify SSRFProtection is
