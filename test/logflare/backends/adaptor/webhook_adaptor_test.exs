@@ -9,6 +9,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Backends.SourceSup
+  alias Tesla.Middleware.JSON
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
 
   setup do
@@ -334,7 +335,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       ]
 
       for {body, expected_encodable} <- cases do
-        {:ok, env} = Tesla.Middleware.JSON.encode(%Tesla.Env{body: body}, [])
+        {:ok, env} = JSON.encode(%Tesla.Env{body: body}, [])
         tesla_set_content_type? = Tesla.get_header(env, "content-type") != nil
 
         assert tesla_set_content_type? == expected_encodable,
