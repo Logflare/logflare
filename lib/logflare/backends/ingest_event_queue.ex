@@ -657,22 +657,38 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   def truncate_table({:consolidated, _bid, _pid} = key, status, n)
       when status in [:all, :pending, :ingested],
-      do: do_truncate_table(key, status, n)
+      do: truncate_tid(get_tid(key), status, n)
 
   def truncate_table({sid, _bid, _pid} = key, status, n)
       when is_integer(sid) and status in [:all, :pending, :ingested],
-      do: do_truncate_table(key, status, n)
+      do: truncate_tid(get_tid(key), status, n)
 
-  defp do_truncate_table(key, :all, 0) do
-    with tid when tid != nil <- get_tid(key) do
-      :ets.delete_all_objects(tid)
-      :ok
-    else
-      nil -> {:error, :not_initialized}
-    end
+  @doc """
+  Truncates a queue by its already-resolved `tid`, tolerating a stale
+  (deleted) table.
+
+  This is the tid-based counterpart to `truncate_table/3`, which resolves the
+  tid via `get_tid/1` first. The owning producer can die and ETS can reclaim
+  its table between that resolution and the operations here; in that case the
+  ETS calls raise `ArgumentError` (or `:ets.info/2` returns `:undefined`).
+  Both are treated as a gone queue: `:stale_table` telemetry is emitted and
+  `{:error, :not_initialized}` is returned instead of crashing the caller.
+  """
+  @spec truncate_tid(:ets.tid() | nil, :all | :pending | :ingested, integer()) ::
+          :ok | {:error, :not_initialized}
+  def truncate_tid(nil, status, _n) when status in [:all, :pending, :ingested],
+    do: {:error, :not_initialized}
+
+  def truncate_tid(tid, :all, 0) do
+    :ets.delete_all_objects(tid)
+    :ok
+  rescue
+    ArgumentError ->
+      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+      {:error, :not_initialized}
   end
 
-  defp do_truncate_table(key, status, n) do
+  def truncate_tid(tid, status, n) when status in [:all, :pending, :ingested] do
     ms =
       Ex2ms.fun do
         {_event_id, _event_status, event, _size, _claim, _claimed_at} = obj
@@ -695,15 +711,20 @@ defmodule Logflare.Backends.IngestEventQueue do
           true
       end
 
-    with tid when tid != nil <- get_tid(key),
-         size when is_integer(size) <- :ets.info(tid, :size) do
+    with size when is_integer(size) <- :ets.info(tid, :size) do
       to_insert = select_to_insert(tid, ms, size, n)
       :ets.select_delete(tid, del_ms)
       :ets.insert(tid, to_insert)
       :ok
     else
-      nil -> {:error, :not_initialized}
+      # :undefined from :ets.info/2 when the table was reclaimed before the
+      # size read.
+      _ -> {:error, :not_initialized}
     end
+  rescue
+    ArgumentError ->
+      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+      {:error, :not_initialized}
   end
 
   @doc """

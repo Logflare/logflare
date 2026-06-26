@@ -356,6 +356,58 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "truncate_tid/3 with a stale (reclaimed) table" do
+    setup do
+      # A tid whose ETS table has been reclaimed, simulating the owning
+      # producer dying after truncate_table/3 resolved the tid via get_tid/1
+      # but before the ETS operations run.
+      tid = :ets.new(:stale_truncate_queue, [:public, :set])
+      :ets.delete(tid)
+      [stale_tid: tid]
+    end
+
+    test "nil tid returns :not_initialized without raising" do
+      assert {:error, :not_initialized} = IngestEventQueue.truncate_tid(nil, :all, 0)
+      assert {:error, :not_initialized} = IngestEventQueue.truncate_tid(nil, :pending, 100)
+    end
+
+    test ":all/0 truncate tolerates the reclaimed table and emits telemetry", %{
+      stale_tid: stale_tid
+    } do
+      ref = make_ref()
+
+      :telemetry.attach(
+        "test-stale-table-#{inspect(ref)}",
+        [:logflare, :ingest_event_queue, :stale_table],
+        fn _event, measurements, _meta, pid -> send(pid, {:telemetry, measurements}) end,
+        self()
+      )
+
+      assert {:error, :not_initialized} = IngestEventQueue.truncate_tid(stale_tid, :all, 0)
+      assert_receive {:telemetry, %{count: 1}}
+
+      :telemetry.detach("test-stale-table-#{inspect(ref)}")
+    end
+
+    test "size-bounded truncate tolerates the reclaimed table", %{stale_tid: stale_tid} do
+      assert {:error, :not_initialized} = IngestEventQueue.truncate_tid(stale_tid, :all, 50)
+      assert {:error, :not_initialized} = IngestEventQueue.truncate_tid(stale_tid, :pending, 100)
+      assert {:error, :not_initialized} = IngestEventQueue.truncate_tid(stale_tid, :ingested, 0)
+    end
+
+    test "truncate_table/3 returns :not_initialized when the queue table is gone" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      sbp = {source.id, backend.id, self()}
+      assert {:ok, tid} = IngestEventQueue.upsert_tid(sbp)
+      :ets.delete(tid)
+
+      assert {:error, :not_initialized} = IngestEventQueue.truncate_table(sbp, :all, 0)
+      assert {:error, :not_initialized} = IngestEventQueue.truncate_table(sbp, :pending, 100)
+    end
+  end
+
   describe "take_pending_ids/2" do
     setup do
       user = insert(:user)
