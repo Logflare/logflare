@@ -2030,7 +2030,8 @@ defmodule Logflare.SqlTest do
     PostgresAdaptor.insert_log_event(source, backend, log_event)
   end
 
-  # sqlparser 0.53+ records source-location metadata on the AST (`span` byte offsets and `*_token` keys such as `select_token`).
+  # sqlparser 0.53+ records source-location metadata on the AST
+  # (`span` byte offsets and `*_token` keys such as `select_token`).
   # The crate treats these as non-semantic. Its `AttachedToken`/span comparisons ignore them
   # but the NIF serializes them to JSON, so a plain `==` on the decoded ASTs would fail
   # on cosmetic differences (e.g. a lowercase `select` vs the rendered `SELECT`).
