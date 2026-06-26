@@ -676,14 +676,13 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp check_all_sources_allowed(kv, acc, data) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc ->
+  defp check_all_sources_allowed(kv, acc, data) when is_list_or_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc ->
       check_all_sources_allowed(kv, nested_acc, data)
     end)
   end
 
-  defp check_all_sources_allowed({_k, v}, acc, data) when is_list(v) or is_map(v) do
+  defp check_all_sources_allowed({_k, v}, acc, data) when is_list_or_map(v) do
     check_all_sources_allowed(v, acc, data)
   end
 
@@ -751,12 +750,11 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp has_restricted_functions(kv, :ok = acc, data) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc -> has_restricted_functions(kv, nested_acc, data) end)
+  defp has_restricted_functions(kv, :ok = acc, data) when is_list_or_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc -> has_restricted_functions(kv, nested_acc, data) end)
   end
 
-  defp has_restricted_functions({_k, v}, :ok = acc, data) when is_list(v) or is_map(v) do
+  defp has_restricted_functions({_k, v}, :ok = acc, data) when is_list_or_map(v) do
     has_restricted_functions(v, acc, data)
   end
 
@@ -801,11 +799,11 @@ defmodule Logflare.Sql do
     check_settings_allowed(settings)
   end
 
-  defp has_restricted_settings(kv, :ok = acc) when is_list(kv) or is_map(kv) do
+  defp has_restricted_settings(kv, :ok = acc) when is_list_or_map(kv) do
     Enum.reduce(kv, acc, fn kv, nested_acc -> has_restricted_settings(kv, nested_acc) end)
   end
 
-  defp has_restricted_settings({_k, v}, :ok = acc) when is_list(v) or is_map(v) do
+  defp has_restricted_settings({_k, v}, :ok = acc) when is_list_or_map(v) do
     has_restricted_settings(v, acc)
   end
 
@@ -889,12 +887,11 @@ defmodule Logflare.Sql do
     {:error, "restricted wildcard (*) in a result column"}
   end
 
-  defp has_wildcard_in_select(kv, acc) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc -> has_wildcard_in_select(kv, nested_acc) end)
+  defp has_wildcard_in_select(kv, acc) when is_list_or_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc -> has_wildcard_in_select(kv, nested_acc) end)
   end
 
-  defp has_wildcard_in_select({_k, v}, acc) when is_list(v) or is_map(v) do
+  defp has_wildcard_in_select({_k, v}, acc) when is_list_or_map(v) do
     has_wildcard_in_select(v, acc)
   end
 
@@ -1026,14 +1023,13 @@ defmodule Logflare.Sql do
     new_names ++ prev
   end
 
-  defp find_all_source_names(kv, acc, data) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc ->
+  defp find_all_source_names(kv, acc, data) when is_list_or_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc ->
       find_all_source_names(kv, nested_acc, data)
     end)
   end
 
-  defp find_all_source_names({_k, v}, acc, data) when is_list(v) or is_map(v) do
+  defp find_all_source_names({_k, v}, acc, data) when is_list_or_map(v) do
     find_all_source_names(v, acc, data)
   end
 
@@ -1081,7 +1077,7 @@ defmodule Logflare.Sql do
     {k, [new_first | other]}
   end
 
-  defp replace_old_source_names({k, v}, data) when is_list(v) or is_map(v) do
+  defp replace_old_source_names({k, v}, data) when is_list_or_map(v) do
     {k, replace_old_source_names(v, data)}
   end
 
