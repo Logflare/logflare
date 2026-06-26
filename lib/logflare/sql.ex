@@ -134,8 +134,26 @@ defmodule Logflare.Sql do
 
   @allowed_clickhouse_settings [
     "distributed_index_analysis",
+    "enable_multiple_prewhere_read_steps",
     "enable_parallel_replicas",
-    "max_parallel_replicas"
+    "force_data_skipping_indices",
+    "force_index_by_date",
+    "force_primary_key",
+    "join_algorithm",
+    "max_parallel_replicas",
+    "optimize_aggregation_in_order",
+    "optimize_move_to_prewhere",
+    "optimize_move_to_prewhere_if_final",
+    "optimize_read_in_order",
+    "optimize_read_in_window_order",
+    "optimize_use_implicit_projections",
+    "query_plan_direct_read_from_text_index",
+    "query_plan_text_index_add_hint",
+    "text_index_hint_max_selectivity",
+    "use_query_condition_cache",
+    "use_skip_indexes",
+    "use_skip_indexes_for_disjunctions",
+    "use_skip_indexes_if_final"
   ]
 
   @doc """

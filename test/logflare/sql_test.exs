@@ -816,7 +816,17 @@ defmodule Logflare.SqlTest do
       _source = insert(:source, user: user, name: "my_ch_table")
 
       allowed_settings =
-        ~w(distributed_index_analysis enable_parallel_replicas max_parallel_replicas)
+        ~w(
+          distributed_index_analysis
+          enable_multiple_prewhere_read_steps
+          enable_parallel_replicas
+          force_primary_key
+          max_parallel_replicas
+          optimize_read_in_order
+          query_plan_direct_read_from_text_index
+          use_skip_indexes
+          use_skip_indexes_for_disjunctions
+        )
 
       for setting <- allowed_settings do
         query = "select a from my_ch_table SETTINGS #{setting} = 1"
