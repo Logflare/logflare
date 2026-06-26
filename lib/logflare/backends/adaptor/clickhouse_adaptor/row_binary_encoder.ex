@@ -387,7 +387,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
   end
 
   @spec map_string_string(map() | [{String.t(), String.t()}]) :: iodata()
-  def map_string_string(items), do: map(items, &string/1, &string/1)
+  def map_string_string(items) when is_map(items) do
+    :maps.fold(&fold_string_string/3, [varint(map_size(items))], items)
+  end
+
+  def map_string_string(items) when is_list(items) do
+    map(items, &string/1, &string/1)
+  end
+
+  @spec fold_string_string(String.t() | iodata(), String.t() | iodata(), iodata()) :: iodata()
+  defp fold_string_string(key, value, acc) when is_binary(key) and is_binary(value) do
+    [acc, varint(byte_size(key)), key, varint(byte_size(value)), value]
+  end
+
+  defp fold_string_string(key, value, acc) do
+    [acc, string(key), string(value)]
+  end
 
   @spec map_string_uint64(map() | [{String.t(), non_neg_integer()}]) :: iodata()
   def map_string_uint64(items), do: map(items, &string/1, &uint64/1)
