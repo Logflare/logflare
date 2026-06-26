@@ -132,6 +132,12 @@ defmodule Logflare.Sql do
     "zookeepersessionuptime"
   ]
 
+  @allowed_clickhouse_settings [
+    "distributed_index_analysis",
+    "enable_parallel_replicas",
+    "max_parallel_replicas"
+  ]
+
   @doc """
   Formats a SQL query string for display.
 
@@ -584,6 +590,7 @@ defmodule Logflare.Sql do
     with :ok <- check_single_query_only(ast),
          :ok <- check_select_statement_only(ast, dialect),
          :ok <- maybe_check_restricted_functions(ast, dialect, data),
+         :ok <- maybe_check_restricted_settings(ast, dialect),
          :ok <- has_wildcard_in_select(ast),
          :ok <- check_all_sources_allowed(ast, data) do
       :ok
@@ -595,6 +602,10 @@ defmodule Logflare.Sql do
        do: has_restricted_functions(ast, data)
 
   defp maybe_check_restricted_functions(_ast, _dialect, _data), do: :ok
+
+  defp maybe_check_restricted_settings(ast, "clickhouse"), do: has_restricted_settings(ast)
+
+  defp maybe_check_restricted_settings(_ast, _dialect), do: :ok
 
   # applies only to the sandboed query
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}, data) when is_list(ast) do
@@ -782,6 +793,38 @@ defmodule Logflare.Sql do
   defp function_restricted?(name, "bigquery"), do: name in @bq_restricted_functions
   defp function_restricted?(name, "clickhouse"), do: name in @ch_restricted_functions
   defp function_restricted?(_name, _dialect), do: false
+
+  defp has_restricted_settings(ast) when is_list(ast),
+    do: has_restricted_settings(ast, :ok)
+
+  defp has_restricted_settings({"settings", settings}, :ok) when is_list(settings) do
+    check_settings_allowed(settings)
+  end
+
+  defp has_restricted_settings(kv, :ok = acc) when is_list(kv) or is_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc -> has_restricted_settings(kv, nested_acc) end)
+  end
+
+  defp has_restricted_settings({_k, v}, :ok = acc) when is_list(v) or is_map(v) do
+    has_restricted_settings(v, acc)
+  end
+
+  defp has_restricted_settings(_kv, acc), do: acc
+
+  defp check_settings_allowed(settings) do
+    found_restricted =
+      for %{"key" => %{"value" => key}} <- settings,
+          normalized = String.downcase(key),
+          normalized not in @allowed_clickhouse_settings do
+        normalized
+      end
+
+    if Enum.empty?(found_restricted) do
+      :ok
+    else
+      {:error, "Restricted setting #{Enum.join(found_restricted, ", ")}"}
+    end
+  end
 
   defp has_restricted_sources(cte_ast, ast) when is_list(ast) do
     aliases =

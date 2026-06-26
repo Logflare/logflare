@@ -810,6 +810,40 @@ defmodule Logflare.SqlTest do
         assert String.downcase(err) =~ "restricted function #{function_name}"
       end
     end
+
+    test "allows allowlisted query-level settings" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      allowed_settings =
+        ~w(distributed_index_analysis enable_parallel_replicas max_parallel_replicas)
+
+      for setting <- allowed_settings do
+        query = "select a from my_ch_table SETTINGS #{setting} = 1"
+        assert {:ok, _transformed} = Sql.transform(:ch_sql, query, user)
+      end
+    end
+
+    test "rejects disallowed query-level settings" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      query = "select a from my_ch_table SETTINGS allow_introspection_functions = 1"
+
+      assert {:error, err} = Sql.transform(:ch_sql, query, user)
+      assert String.downcase(err) =~ "restricted setting allow_introspection_functions"
+    end
+
+    test "rejects disallowed query-level settings in sandboxed queries" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = "with src as (select a from my_ch_table) select a from src"
+      consumer_query = "select a from src SETTINGS allow_introspection_functions = 1"
+
+      assert {:error, err} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert String.downcase(err) =~ "restricted setting allow_introspection_functions"
+    end
   end
 
   test "sources/2 creates a source mapping present for sources present in the query" do
