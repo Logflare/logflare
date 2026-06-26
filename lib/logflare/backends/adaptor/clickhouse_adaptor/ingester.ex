@@ -130,6 +130,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @spec encode_batch([LogEvent.t()], TypeDetection.event_type()) :: iodata()
   def encode_batch([%LogEvent{body: body} | _] = rows, event_type)
       when is_event_type(event_type) do
+    # mapping_config_id is uniform across the batch (set from the event-type's
+    # config_id), so encode it once. Do NOT hoist source_uuid/source_name the
+    # same way -- a batch can mix sources (see pipeline.ex), so those vary per row.
     mapping_config_id = RowBinaryEncoder.uuid(body["mapping_config_id"])
     Enum.map(rows, &encode_row(&1, event_type, mapping_config_id))
   end

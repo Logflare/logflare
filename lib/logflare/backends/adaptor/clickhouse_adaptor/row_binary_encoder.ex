@@ -400,6 +400,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
     [acc, varint(byte_size(key)), key, varint(byte_size(value)), value]
   end
 
+  # Fallback for non-binary (iodata) keys/values -- preserves string/1 behavior.
   defp fold_string_string(key, value, acc) do
     [acc, string(key), string(value)]
   end
