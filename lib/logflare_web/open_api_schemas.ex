@@ -44,7 +44,7 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule QueryResult do
     @properties %{
-      result: %Schema{type: :object},
+      result: %Schema{type: :array, items: %Schema{type: :object}},
       errors: %Schema{
         oneOf: [
           %Schema{type: :object},
@@ -75,10 +75,10 @@ defmodule LogflareWeb.OpenApiSchemas do
   defmodule AccessToken do
     @properties %{
       id: %Schema{type: :integer},
-      token: %Schema{type: :string},
-      description: %Schema{type: :string},
+      token: %Schema{type: :string, nullable: true},
+      description: %Schema{type: :string, nullable: true},
       scopes: %Schema{type: :string},
-      inserted_at: %Schema{type: :string, format: :"date-time"}
+      inserted_at: %Schema{type: :string}
     }
     use LogflareWeb.OpenApi, properties: @properties, required: []
   end
@@ -103,19 +103,19 @@ defmodule LogflareWeb.OpenApiSchemas do
       token: %Schema{type: :string},
       id: %Schema{type: :integer},
       favorite: %Schema{type: :boolean},
-      webhook_notification_url: %Schema{type: :string},
+      webhook_notification_url: %Schema{type: :string, nullable: true},
       api_quota: %Schema{type: :integer},
-      slack_hook_url: %Schema{type: :string},
-      bigquery_table_ttl: %Schema{type: :integer},
-      public_token: %Schema{type: :string},
-      bq_table_id: %Schema{type: :string},
+      slack_hook_url: %Schema{type: :string, nullable: true},
+      bigquery_table_ttl: %Schema{type: :integer, nullable: true},
+      public_token: %Schema{type: :string, nullable: true},
+      bq_table_id: %Schema{type: :string, nullable: true},
       has_rejected_events: %Schema{type: :boolean},
-      metrics: %Schema{type: :object},
-      notifications: %Schema{type: :object, items: Notification},
-      custom_event_message_keys: %Schema{type: :string},
+      metrics: %Schema{type: :object, nullable: true},
+      notifications: %Schema{type: :object, items: Notification, nullable: true},
+      custom_event_message_keys: %Schema{type: :string, nullable: true},
       default_ingest_backend_enabled?: %Schema{type: :boolean},
-      inserted_at: %Schema{type: :string, format: :"date-time"},
-      updated_at: %Schema{type: :string, format: :"date-time"}
+      inserted_at: %Schema{type: :string},
+      updated_at: %Schema{type: :string}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name]
@@ -134,11 +134,28 @@ defmodule LogflareWeb.OpenApiSchemas do
       lql_string: %Schema{type: :string},
       backend_id: %Schema{type: :integer},
       source_id: %Schema{type: :integer},
-      inserted_at: %Schema{type: :string, format: :"date-time"},
-      updated_at: %Schema{type: :string, format: :"date-time"}
+      inserted_at: %Schema{type: :string},
+      updated_at: %Schema{type: :string}
     }
 
-    use LogflareWeb.OpenApi, properties: @properties, required: [:name]
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule RuleBatchResponse do
+    @properties %{
+      errors: %Schema{type: :array, items: %Schema{type: :string}},
+      results: %Schema{type: :array, items: RuleApiSchema}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:errors, :results]
+  end
+
+  defmodule RuleCreateResponse do
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{anyOf: [RuleApiSchema, RuleBatchResponse]})
+
+    def response, do: {"Rule create response", "application/json", __MODULE__}
   end
 
   defmodule KeyValueApiSchema do
@@ -151,16 +168,22 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:key, :value]
   end
 
+  defmodule KeyValueBulkUpsertResponse do
+    @properties %{inserted_count: %Schema{type: :integer}}
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:inserted_count]
+  end
+
   defmodule BackendApiSchema do
     @properties %{
       name: %Schema{type: :string},
       id: %Schema{type: :integer},
       token: %Schema{type: :string},
       config: %Schema{type: :object},
-      metadata: %Schema{type: :object},
+      metadata: %Schema{type: :object, nullable: true},
       default_ingest?: %Schema{type: :boolean},
-      inserted_at: %Schema{type: :string, format: :"date-time"},
-      updated_at: %Schema{type: :string, format: :"date-time"}
+      inserted_at: %Schema{type: :string},
+      updated_at: %Schema{type: :string}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name]

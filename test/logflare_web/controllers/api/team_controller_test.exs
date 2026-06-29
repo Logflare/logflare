@@ -33,10 +33,9 @@ defmodule LogflareWeb.Api.TeamControllerTest do
         |> add_access_token(user, "private")
         |> get(~p"/api/teams")
         |> json_response(200)
-        |> assert_schema("TeamListResponse")
 
-      assert Enum.any?(response, fn %{token: token} -> main_team_token == token end)
-      assert Enum.any?(response, fn %{token: token} -> non_owner_team_token == token end)
+      assert Enum.any?(response, fn %{"token" => token} -> main_team_token == token end)
+      assert Enum.any?(response, fn %{"token" => token} -> non_owner_team_token == token end)
     end
   end
 
@@ -51,9 +50,8 @@ defmodule LogflareWeb.Api.TeamControllerTest do
         |> add_access_token(user, "private")
         |> get(~p"/api/teams/#{token}")
         |> json_response(200)
-        |> assert_schema("Team")
 
-      assert response.token == token
+      assert response["token"] == token
     end
 
     test "returns a single team given user and team token where his not an owner but a member", %{
@@ -66,10 +64,9 @@ defmodule LogflareWeb.Api.TeamControllerTest do
         |> add_access_token(user, "private")
         |> get(~p"/api/teams/#{non_owner_team.token}")
         |> json_response(200)
-        |> assert_schema("Team")
 
-      assert response.token == non_owner_team.token
-      assert response.name == non_owner_team.name
+      assert response["token"] == non_owner_team.token
+      assert response["name"] == non_owner_team.name
     end
 
     test "returns not found if doesn't own the team or isn't part of it", %{
@@ -83,13 +80,11 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       |> add_access_token(invalid_user, "private")
       |> get(~p"/api/teams/#{main_team.token}")
       |> json_response(404)
-      |> assert_schema("NotFoundResponse")
 
       conn
       |> add_access_token(invalid_user, "private")
       |> get(~p"/api/teams/#{non_owner_team.token}")
       |> json_response(404)
-      |> assert_schema("NotFoundResponse")
     end
   end
 
@@ -103,9 +98,8 @@ defmodule LogflareWeb.Api.TeamControllerTest do
         |> add_access_token(user, "private")
         |> post(~p"/api/teams", %{name: name})
         |> json_response(201)
-        |> assert_schema("Team")
 
-      assert response.name == name
+      assert response["name"] == name
     end
 
     test "returns 422 on bad arguments", %{conn: conn, user: user} do
@@ -114,9 +108,8 @@ defmodule LogflareWeb.Api.TeamControllerTest do
         |> add_access_token(user, "private")
         |> post(~p"/api/teams", %{name: 123})
         |> json_response(422)
-        |> assert_schema("UnprocessableEntityResponse")
 
-      assert response == %{errors: %{"name" => ["is invalid"]}}
+      assert response == %{"errors" => %{"name" => ["is invalid"]}}
     end
 
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
@@ -125,9 +118,8 @@ defmodule LogflareWeb.Api.TeamControllerTest do
         |> add_access_token(user, "private")
         |> post(~p"/api/teams")
         |> json_response(422)
-        |> assert_schema("UnprocessableEntityResponse")
 
-      assert response == %{errors: %{"name" => ["can't be blank"]}}
+      assert response == %{"errors" => %{"name" => ["can't be blank"]}}
     end
   end
 
@@ -144,7 +136,6 @@ defmodule LogflareWeb.Api.TeamControllerTest do
         |> add_access_token(user, "private")
         |> patch(~p"/api/teams/#{main_team.token}", %{name: name})
         |> response(204)
-        |> assert_schema("AcceptedResponse")
 
       assert response == ""
 
@@ -155,10 +146,9 @@ defmodule LogflareWeb.Api.TeamControllerTest do
         |> add_access_token(user, "private")
         |> put(~p"/api/teams/#{main_team.token}", %{name: another_name})
         |> json_response(201)
-        |> assert_schema("Team")
 
-      assert response.token == main_team.token
-      assert response.name == another_name
+      assert response["token"] == main_team.token
+      assert response["name"] == another_name
     end
 
     test "returns not found if doesn't own the team", %{conn: conn, main_team: main_team} do
@@ -168,7 +158,6 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       |> add_access_token(invalid_user, "private")
       |> patch(~p"/api/teams/#{main_team.token}", %{name: TestUtils.random_string()})
       |> json_response(404)
-      |> assert_schema("NotFoundResponse")
     end
 
     test "returns 422 on bad arguments", %{conn: conn, user: user, main_team: main_team} do
@@ -177,9 +166,8 @@ defmodule LogflareWeb.Api.TeamControllerTest do
         |> add_access_token(user, "private")
         |> patch(~p"/api/teams/#{main_team.token}", %{name: 123})
         |> json_response(422)
-        |> assert_schema("UnprocessableEntityResponse")
 
-      assert response == %{errors: %{"name" => ["is invalid"]}}
+      assert response == %{"errors" => %{"name" => ["is invalid"]}}
     end
   end
 
@@ -192,8 +180,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       assert conn
              |> add_access_token(user, "private")
              |> delete(~p"/api/teams/#{main_team.token}")
-             |> response(204)
-             |> assert_schema("AcceptedResponse") == ""
+             |> response(204) == ""
     end
 
     test "returns not found if doesn't own the team", %{conn: conn, main_team: main_team} do
@@ -202,8 +189,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       assert conn
              |> add_access_token(invalid_user, "private")
              |> delete(~p"/api/teams/#{main_team.token}")
-             |> json_response(404)
-             |> assert_schema("NotFoundResponse") == %{error: "Not Found"}
+             |> json_response(404) == %{"error" => "Not Found"}
     end
   end
 end

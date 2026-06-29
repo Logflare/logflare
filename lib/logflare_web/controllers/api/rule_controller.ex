@@ -6,10 +6,11 @@ defmodule LogflareWeb.Api.RuleController do
   alias Logflare.Sources
   alias Logflare.Rules
   alias LogflareWeb.OpenApi.Accepted
-  alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApiSchemas.RuleApiSchema
+  alias LogflareWeb.OpenApiSchemas.RuleBatchResponse
+  alias LogflareWeb.OpenApiSchemas.RuleCreateResponse
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -53,7 +54,8 @@ defmodule LogflareWeb.Api.RuleController do
     summary: "Create rule. Allows batch creation if as a list.",
     request_body: RuleApiSchema.params(),
     responses: %{
-      201 => Created.response(RuleApiSchema),
+      201 => RuleCreateResponse.response(),
+      400 => RuleBatchResponse.response(),
       404 => NotFound.response()
     }
   )
