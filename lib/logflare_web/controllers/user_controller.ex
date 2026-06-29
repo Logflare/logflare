@@ -1,5 +1,6 @@
 defmodule LogflareWeb.UserController do
   use LogflareWeb, :controller
+  use OpenApiSpex.ControllerSpecs
 
   use PhoenixHTMLHelpers
 
@@ -14,6 +15,8 @@ defmodule LogflareWeb.UserController do
   alias Logflare.TeamUsers
   alias Logflare.User
   alias Logflare.Users
+  alias LogflareWeb.OpenApi.One
+  alias LogflareWeb.OpenApiSchemas.User, as: UserSchema
 
   @bq_fields ~w(
     bigquery_project_id
@@ -25,6 +28,19 @@ defmodule LogflareWeb.UserController do
     bigquery_enable_managed_service_accounts
     bigquery_additional_projects
   )a
+
+  tags(["management"])
+
+  operation(:api_show,
+    summary: "Fetch account",
+    responses: %{200 => One.response(UserSchema)}
+  )
+
+  operation(:new_api_key, false)
+  operation(:edit, false)
+  operation(:update, false)
+  operation(:change_owner, false)
+  operation(:delete, false)
 
   def api_show(%{assigns: %{user: user}} = conn, _params) do
     conn

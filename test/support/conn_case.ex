@@ -22,7 +22,14 @@ defmodule LogflareWeb.ConnCase do
 
   use ExUnit.CaseTemplate
 
+  import ExUnit.Assertions
+
   alias Logflare.Partners.Partner
+  alias LogflareWeb.Router
+
+  @http_methods [:get, :post, :put, :patch, :delete, :options, :connect, :trace, :head]
+  @conn_test_request_macros for method <- @http_methods, arity <- [2, 3], do: {method, arity}
+  @open_api_methods Map.new(@http_methods, &{&1 |> Atom.to_string() |> String.upcase(), &1})
 
   using _opts do
     quote do
@@ -32,7 +39,7 @@ defmodule LogflareWeb.ConnCase do
 
       import Logflare.Factory
       import LogflareWeb.Router.Helpers
-      import Phoenix.ConnTest
+      import Phoenix.ConnTest, except: unquote(@conn_test_request_macros)
       import Phoenix.LiveViewTest
       import Phoenix.VerifiedRoutes
       import PhoenixTest
@@ -120,8 +127,79 @@ defmodule LogflareWeb.ConnCase do
     Plug.Conn.put_req_header(conn, "authorization", "Bearer #{access_token.token}")
   end
 
-  def assert_schema(data, schema_name) do
-    OpenApiSpex.TestAssertions.assert_schema(data, schema_name, LogflareWeb.ApiSpec.spec())
+  for method <- @http_methods do
+    defmacro unquote(method)(conn, path_or_action, params_or_body \\ nil) do
+      method = unquote(method)
+
+      quote do
+        LogflareWeb.ConnCase.dispatch_and_assert_open_api_response(
+          unquote(conn),
+          @endpoint,
+          unquote(method),
+          unquote(path_or_action),
+          unquote(params_or_body)
+        )
+      end
+    end
+  end
+
+  @spec dispatch_and_assert_open_api_response(
+          Plug.Conn.t(),
+          module(),
+          atom(),
+          String.t() | atom(),
+          term()
+        ) :: Plug.Conn.t()
+  def dispatch_and_assert_open_api_response(
+        conn,
+        endpoint,
+        method,
+        path_or_action,
+        params_or_body
+      ) do
+    conn = Phoenix.ConnTest.dispatch(conn, endpoint, method, path_or_action, params_or_body)
+    assert_open_api_response(conn)
+  end
+
+  @spec assert_open_api_response(Plug.Conn.t()) :: Plug.Conn.t()
+  def assert_open_api_response(conn) do
+    case open_api_operation(conn) do
+      nil ->
+        conn
+
+      operation ->
+        assert_documented_response!(operation, conn)
+        OpenApiSpex.TestAssertions.assert_operation_response(conn, operation.operationId)
+        conn
+    end
+  end
+
+  defp open_api_operation(conn) do
+    with %{route: route} <-
+           Phoenix.Router.route_info(Router, conn.method, conn.request_path, conn.host),
+         true <- String.starts_with?(route, "/api"),
+         {spec, _operation_lookup} <-
+           OpenApiSpex.Plug.PutApiSpec.get_spec_and_operation_lookup(conn),
+         path_item when not is_nil(path_item) <- Map.get(spec.paths, open_api_path(route)) do
+      Map.get(path_item, Map.fetch!(@open_api_methods, conn.method))
+    else
+      _ -> nil
+    end
+  end
+
+  defp assert_documented_response!(operation, conn) do
+    if Map.has_key?(operation.responses, conn.status) ||
+         Map.has_key?(operation.responses, :default) do
+      :ok
+    else
+      flunk(
+        "No OpenAPI response is documented for #{conn.method} #{conn.request_path} with status #{conn.status}"
+      )
+    end
+  end
+
+  defp open_api_path(path) do
+    Regex.replace(~r|:([^/]+)|, path, fn _, parameter -> "{#{parameter}}" end)
   end
 
   @doc """

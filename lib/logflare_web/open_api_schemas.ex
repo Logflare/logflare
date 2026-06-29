@@ -74,10 +74,10 @@ defmodule LogflareWeb.OpenApiSchemas do
   defmodule AccessToken do
     @properties %{
       id: %Schema{type: :integer},
-      token: %Schema{type: :string},
-      description: %Schema{type: :string},
+      token: %Schema{type: :string, nullable: true},
+      description: %Schema{type: :string, nullable: true},
       scopes: %Schema{type: :string},
-      inserted_at: %Schema{type: :string, format: :"date-time"}
+      inserted_at: %Schema{type: :string}
     }
     use LogflareWeb.OpenApi, properties: @properties, required: []
   end
@@ -103,16 +103,16 @@ defmodule LogflareWeb.OpenApiSchemas do
       token: %Schema{type: :string},
       id: %Schema{type: :integer},
       favorite: %Schema{type: :boolean},
-      webhook_notification_url: %Schema{type: :string},
+      webhook_notification_url: %Schema{type: :string, nullable: true},
       api_quota: %Schema{type: :integer},
-      slack_hook_url: %Schema{type: :string},
-      bigquery_table_ttl: %Schema{type: :integer},
-      public_token: %Schema{type: :string},
-      bq_table_id: %Schema{type: :string},
+      slack_hook_url: %Schema{type: :string, nullable: true},
+      bigquery_table_ttl: %Schema{type: :integer, nullable: true},
+      public_token: %Schema{type: :string, nullable: true},
+      bq_table_id: %Schema{type: :string, nullable: true},
       has_rejected_events: %Schema{type: :boolean},
-      metrics: %Schema{type: :object},
-      notifications: %Schema{type: :object, items: Notification},
-      custom_event_message_keys: %Schema{type: :string},
+      metrics: %Schema{type: :object, nullable: true},
+      notifications: %Schema{type: :object, items: Notification, nullable: true},
+      custom_event_message_keys: %Schema{type: :string, nullable: true},
       backends: %Schema{type: :array, items: LogflareWeb.OpenApiSchemas.BackendApiSchema},
       retention_days: %Schema{type: :integer, nullable: true},
       transform_copy_fields: %Schema{type: :string, nullable: true},
@@ -151,6 +151,23 @@ defmodule LogflareWeb.OpenApiSchemas do
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:lql_string]
+  end
+
+  defmodule RuleBatchResponse do
+    @properties %{
+      errors: %Schema{type: :array, items: %Schema{type: :string}},
+      results: %Schema{type: :array, items: RuleApiSchema}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:errors, :results]
+  end
+
+  defmodule RuleCreateResponse do
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{anyOf: [RuleApiSchema, RuleBatchResponse]})
+
+    def response, do: {"Rule create response", "application/json", __MODULE__}
   end
 
   defmodule AlertApiCreateParams do
@@ -219,6 +236,12 @@ defmodule LogflareWeb.OpenApiSchemas do
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:key, :value]
+  end
+
+  defmodule KeyValueBulkUpsertResponse do
+    @properties %{inserted_count: %Schema{type: :integer}}
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:inserted_count]
   end
 
   defmodule WebhookConfigSchema do

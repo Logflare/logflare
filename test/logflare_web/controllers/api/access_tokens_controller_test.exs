@@ -112,10 +112,9 @@ defmodule LogflareWeb.Api.AccessTokensTest do
 
       assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
 
-      assert %{error: "Unauthorized"} =
+      assert %{"error" => "Unauthorized"} =
                conn
                |> json_response(401)
-               |> assert_schema("UnauthorizedResponse")
     end
   end
 
