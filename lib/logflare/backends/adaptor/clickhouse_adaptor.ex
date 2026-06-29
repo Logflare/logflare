@@ -14,6 +14,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   require Logger
 
+  alias __MODULE__.CircuitBreaker
   alias __MODULE__.ConnectionManager
   alias __MODULE__.Ingester
   alias __MODULE__.NativeIngester
@@ -590,6 +591,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         else: []
       ) ++
         [
+          CircuitBreaker.child_spec(backend),
           {
             DynamicPipeline,
             name: Backends.via_backend(backend, Pipeline),
