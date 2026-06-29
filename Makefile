@@ -224,7 +224,7 @@ start.gcp.consumer: ENV_FILE = .single_tenant_bq.env
 start.gcp.consumer: LOGFLARE_GRPC_PORT = 50052
 start.gcp.consumer: __start__
 
-start.gcp.both: ERL_NAME = gcp_both
+start.gcp.both: ERL_NAME = st_
 start.gcp.both: PORT = 4000
 start.gcp.both: S3_SPOOL_MODE = both
 start.gcp.both: S3_SPOOL_PROVIDER = gcp

@@ -21,11 +21,23 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
     storage_mod = Keyword.fetch!(opts, :storage_mod)
     queue_mod = Keyword.fetch!(opts, :queue_mod)
     schedule_poll()
-    {:producer, %{queue_url: queue_url, bucket: bucket, storage_mod: storage_mod, queue_mod: queue_mod, demand: 0, current: nil}}
+
+    {:producer,
+     %{
+       queue_url: queue_url,
+       bucket: bucket,
+       storage_mod: storage_mod,
+       queue_mod: queue_mod,
+       demand: 0,
+       current: nil,
+       # nil | :running | {:ready, fetch_result}
+       # fetch_result = {:ok, handle, lines} | :empty | {:error, handle, reason}
+       prefetch: nil
+     }}
   end
 
   # Serve from the existing in-memory buffer only — never blocks on IO.
-  # File loading happens exclusively in handle_info(:poll).
+  # File loading happens in handle_info(:poll); prefetch runs concurrently in a Task.
   # When demand arrives with no buffer, kick an immediate poll rather than
   # waiting up to @poll_interval for the next tick.
   @impl GenStage
@@ -51,13 +63,36 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
         |> maybe_ack_exhausted()
         |> maybe_load_next()
 
-      # If the queue was empty, back off to the periodic interval.
-      # If we got a file, Broadway will send demand again immediately which
-      # triggers handle_demand → send(self(), :poll) for the next file.
-      if new_state.current == nil, do: schedule_poll()
+      new_state = maybe_start_prefetch(new_state)
+
+      cond do
+        new_state.current != nil ->
+          # Emitting — demand will drive the next poll when this file exhausts
+          :ok
+
+        new_state.prefetch == :running ->
+          # Prefetch download in flight; handle_info(:prefetch_result) will send :poll when ready
+          :ok
+
+        true ->
+          # Queue was empty
+          schedule_poll()
+      end
 
       emit_from_buffer(new_state)
     end
+  end
+
+  @impl GenStage
+  def handle_info({:prefetch_result, result}, state) do
+    new_state = %{state | prefetch: {:ready, result}}
+
+    # If demand is waiting and we have nothing buffered, kick a poll to load the prefetch now
+    if state.demand > 0 and not buffered?(state) do
+      send(self(), :poll)
+    end
+
+    {:noreply, [], new_state}
   end
 
   defp buffered?(%{current: nil}), do: false
@@ -71,14 +106,67 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
 
   defp maybe_ack_exhausted(state), do: state
 
-  defp maybe_load_next(%{current: nil} = state) do
-    case fetch_next(state.queue_url, state.bucket, state.queue_mod, state.storage_mod) do
-      nil -> state
-      current -> %{state | current: current}
+  # Prefetch landed — use it immediately with zero download wait
+  defp maybe_load_next(%{current: nil, prefetch: {:ready, {:ok, handle, lines}}} = state) do
+    dbg({:prefetch_hit, length(lines)})
+    %{state | current: %{handle: handle, lines: lines}, prefetch: nil}
+  end
+
+  # Prefetch landed but queue was empty
+  defp maybe_load_next(%{current: nil, prefetch: {:ready, :empty}} = state) do
+    %{state | prefetch: nil}
+  end
+
+  # Prefetch landed but download failed — nack and fall through to empty
+  defp maybe_load_next(%{current: nil, prefetch: {:ready, {:error, handle, reason}}} = state) do
+    Logger.error("s3_consumer: prefetch failed: #{inspect(reason)}")
+    state.queue_mod.nack(state.queue_url, handle)
+    %{state | prefetch: nil}
+  end
+
+  # Prefetch still in flight — do nothing; handle_info(:prefetch_result) will send :poll
+  defp maybe_load_next(%{current: nil, prefetch: :running} = state), do: state
+
+  # No prefetch at all — blocking fetch (cold start or after queue-empty)
+  defp maybe_load_next(%{current: nil, prefetch: nil} = state) do
+    case do_fetch_next(state.queue_url, state.bucket, state.queue_mod, state.storage_mod) do
+      {:ok, handle, lines} ->
+        %{state | current: %{handle: handle, lines: lines}}
+
+      :empty ->
+        state
+
+      {:error, handle, reason} ->
+        Logger.error("s3_consumer: fetch failed: #{inspect(reason)}")
+        state.queue_mod.nack(state.queue_url, handle)
+        state
     end
   end
 
   defp maybe_load_next(state), do: state
+
+  # Start a background Task to fetch the next file while we stream the current one.
+  # Only when we have a current file and no prefetch already running.
+  defp maybe_start_prefetch(%{prefetch: nil, current: %{}} = state) do
+    if not over_limit?() do
+      parent = self()
+      queue_url = state.queue_url
+      bucket = state.bucket
+      queue_mod = state.queue_mod
+      storage_mod = state.storage_mod
+
+      Task.start(fn ->
+        result = do_fetch_next(queue_url, bucket, queue_mod, storage_mod)
+        send(parent, {:prefetch_result, result})
+      end)
+
+      %{state | prefetch: :running}
+    else
+      state
+    end
+  end
+
+  defp maybe_start_prefetch(state), do: state
 
   defp emit_from_buffer(%{current: nil} = state), do: {:noreply, [], state}
   defp emit_from_buffer(%{current: %{lines: []}} = state), do: {:noreply, [], state}
@@ -87,51 +175,40 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
   defp emit_from_buffer(state) do
     {to_emit, remaining} = Enum.split(state.current.lines, state.demand)
 
-    new_state = %{state |
-      demand: state.demand - length(to_emit),
-      current: %{state.current | lines: remaining}
+    new_state = %{
+      state
+      | demand: state.demand - length(to_emit),
+        current: %{state.current | lines: remaining}
     }
 
     {:noreply, to_emit, new_state}
   end
 
-  defp fetch_next(queue_url, bucket, queue_mod, storage_mod) do
+  defp do_fetch_next(queue_url, bucket, queue_mod, storage_mod) do
     {queue_us, result} = :timer.tc(fn -> queue_mod.receive(queue_url, max_number_of_messages: 1) end)
     dbg({:queue_receive_ms, Float.round(queue_us / 1000, 1)})
 
     case result do
       {:ok, [%{id: handle, body: body}]} ->
-        load_file(queue_url, bucket, handle, body, queue_mod, storage_mod)
+        case Jason.decode(body) do
+          {:ok, %{"file_key" => file_key}} when is_binary(file_key) ->
+            case download_and_parse(bucket, file_key, storage_mod) do
+              {:ok, lines} -> {:ok, handle, lines}
+              {:error, reason} -> {:error, handle, reason}
+            end
+
+          _ ->
+            Logger.warning("s3_consumer: queue message has no file_key, discarding")
+            queue_mod.ack(queue_url, handle)
+            :empty
+        end
 
       {:ok, []} ->
-        nil
+        :empty
 
       {:error, reason} ->
         Logger.error("s3_consumer: queue receive failed: #{inspect(reason)}")
-        nil
-    end
-  end
-
-  defp load_file(queue_url, bucket, handle, body, queue_mod, storage_mod) do
-    case Jason.decode(body) do
-      {:ok, %{"file_key" => file_key}} when is_binary(file_key) ->
-        case download_and_parse(bucket, file_key, storage_mod) do
-          {:ok, lines} ->
-            %{handle: handle, lines: lines}
-
-          {:error, reason} ->
-            Logger.error("s3_consumer: failed to download #{file_key}: #{inspect(reason)}")
-            case queue_mod.nack(queue_url, handle) do
-              :ok -> :ok
-              {:error, nack_reason} -> Logger.error("s3_consumer: nack failed: #{inspect(nack_reason)}")
-            end
-            nil
-        end
-
-      _ ->
-        Logger.warning("s3_consumer: queue message has no file_key, discarding")
-        queue_mod.ack(queue_url, handle)
-        nil
+        :empty
     end
   end
 
@@ -149,7 +226,8 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
         {parse_us, lines} =
           :timer.tc(fn -> parse_content(file_key, content) end)
 
-        dbg({:decompress_ms, Float.round(decompress_us / 1000, 1), :parse_ms, Float.round(parse_us / 1000, 1), :line_count, length(lines)})
+        dbg({:decompress_ms, Float.round(decompress_us / 1000, 1), :parse_ms,
+         Float.round(parse_us / 1000, 1), :line_count, length(lines)})
 
         {:ok, lines}
 
@@ -159,7 +237,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
   end
 
   defp parse_content(file_key, content) do
-    base = file_key |> String.replace_suffix(".gz", "")
+    base = String.replace_suffix(file_key, ".gz", "")
 
     if String.ends_with?(base, ".etf") do
       :erlang.binary_to_term(content, [:safe])
