@@ -163,6 +163,35 @@ defmodule Logflare.Endpoints do
     end
   end
 
+  @spec restore_query_version(EndpointQuery.t(), integer(), origin()) ::
+          {:ok, EndpointQuery.t(), integer()}
+          | {:error, Ecto.Changeset.t()}
+  def restore_query_version(%EndpointQuery{id: endpoint_id} = query, version_number, origin)
+      when is_integer(version_number) do
+    with {:version, %Version{id: version_id, meta: meta}} <-
+           {:version, get_endpoint_query_version(endpoint_id, version_number)},
+         {:restorable, true} <-
+           {:restorable, version_id != current_endpoint_version_id(endpoint_id)},
+         {:snapshot, snapshot} when is_map(snapshot) and map_size(snapshot) > 0 <-
+           {:snapshot, Map.get(meta, "endpoint_snapshot")},
+         {:ok, endpoint} <-
+           update_query(query, EndpointQuery.version_snapshot_attrs(snapshot), origin) do
+      {:ok, endpoint, version_number}
+    else
+      {:error, %Ecto.Changeset{}} = error ->
+        error
+
+      {:restorable, false} ->
+        {:error, invalid_restore_changeset(query, "Version is already current")}
+
+      {:snapshot, _} ->
+        {:error, invalid_restore_changeset(query, "Version snapshot is missing")}
+
+      {:version, nil} ->
+        {:error, invalid_restore_changeset(query, "Version not found")}
+    end
+  end
+
   @doc """
   Derives the SQL language from a backend ID.
 
@@ -247,6 +276,13 @@ defmodule Logflare.Endpoints do
 
   defp version_origin(%OauthAccessToken{id: id}), do: "API: id #{id}"
 
+  @spec invalid_restore_changeset(EndpointQuery.t(), String.t()) :: Ecto.Changeset.t()
+  defp invalid_restore_changeset(%EndpointQuery{} = query, message) do
+    query
+    |> change_query(%{})
+    |> Ecto.Changeset.add_error(:base, message)
+  end
+
   @spec lock_endpoint_query(EndpointQuery.t()) :: EndpointQuery.t()
   defp lock_endpoint_query(%EndpointQuery{id: query_id}) do
     from(query in EndpointQuery,
@@ -265,6 +301,17 @@ defmodule Logflare.Endpoints do
     )
     |> Repo.one()
     |> Kernel.+(1)
+  end
+
+  @spec current_endpoint_version_id(integer()) :: integer() | nil
+  defp current_endpoint_version_id(endpoint_id) do
+    from(version in Version,
+      where: version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id,
+      order_by: [desc: version.id],
+      limit: 1,
+      select: version.id
+    )
+    |> Repo.one()
   end
 
   @spec should_kill_caches?(map()) :: boolean()

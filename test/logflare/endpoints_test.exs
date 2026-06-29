@@ -134,7 +134,7 @@ defmodule Logflare.EndpointsTest do
                Endpoints.update_query(endpoint, %{query: "select a from my_table"}, user)
 
       assert_endpoint_version(endpoint, 1, user.email)
-      assert_endpoint_version(updated, 2, user.email, endpoint.token)
+      assert_endpoint_version(updated, 2, user.email)
     end
 
     test "update_query/3 does not create a version row when the update fails", %{user: user} do
@@ -155,7 +155,7 @@ defmodule Logflare.EndpointsTest do
 
       assert {:ok, deleted_endpoint} = Endpoints.delete_query(endpoint, user)
       assert_endpoint_version(endpoint, 1, user.email)
-      assert_endpoint_version(deleted_endpoint, 2, user.email, endpoint.token)
+      assert_endpoint_version(deleted_endpoint, 2, user.email)
     end
 
     test "get_endpoint_query_version/2 returns the requested version", %{
@@ -180,6 +180,58 @@ defmodule Logflare.EndpointsTest do
                Endpoints.get_endpoint_query_version(endpoint.id, 1)
 
       assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 99)
+    end
+
+    test "restore_query_version/3 restores a historical version by requested version number", %{
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user, description: "second description")
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        origin: user.email,
+        snapshot_overrides: %{"description" => "first description"}
+      )
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 2,
+        origin: user.email
+      )
+
+      assert {:ok, restored_endpoint, 1} =
+               Endpoints.restore_query_version(endpoint, 1, user)
+
+      assert restored_endpoint.description == "first description"
+      assert restored_endpoint.token == endpoint.token
+      assert_endpoint_version(restored_endpoint, 3, user.email)
+    end
+
+    test "restore_query_version/3 rejects current and missing version numbers", %{
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user)
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        origin: user.email
+      )
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 2,
+        origin: user.email
+      )
+
+      assert {:error, changeset} = Endpoints.restore_query_version(endpoint, 2, user)
+      assert "Version is already current" in errors_on(changeset).base
+
+      assert {:error, changeset} = Endpoints.restore_query_version(endpoint, 99, user)
+      assert "Version not found" in errors_on(changeset).base
+
+      assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 3)
     end
   end
 
@@ -218,8 +270,7 @@ defmodule Logflare.EndpointsTest do
                }
              ] = versions_for_endpoint(endpoint)
 
-      assert version_meta["endpoint_snapshot"] ==
-               expected_endpoint_snapshot(endpoint, %{"token" => nil})
+      assert version_meta["endpoint_snapshot"] == expected_endpoint_snapshot(endpoint)
     end
 
     test "create_query/3 writes version 1 with TeamUser origin", %{
@@ -239,8 +290,7 @@ defmodule Logflare.EndpointsTest do
                }
              ] = versions_for_endpoint(endpoint)
 
-      assert version_meta["endpoint_snapshot"] ==
-               expected_endpoint_snapshot(endpoint, %{"token" => nil})
+      assert version_meta["endpoint_snapshot"] == expected_endpoint_snapshot(endpoint)
     end
 
     test "create_query/3 writes version 1 with the expected API token description origin", %{
@@ -259,8 +309,7 @@ defmodule Logflare.EndpointsTest do
                }
              ] = versions_for_endpoint(endpoint)
 
-      assert version_meta["endpoint_snapshot"] ==
-               expected_endpoint_snapshot(endpoint, %{"token" => nil})
+      assert version_meta["endpoint_snapshot"] == expected_endpoint_snapshot(endpoint)
     end
 
     test "update_query/3 increments the version number and preserves the snapshot contract", %{
@@ -1036,13 +1085,12 @@ defmodule Logflare.EndpointsTest do
       "query" => endpoint.query,
       "redact_pii" => endpoint.redact_pii,
       "sandboxable" => endpoint.sandboxable,
-      "source_mapping" => endpoint.source_mapping,
-      "token" => endpoint.token
+      "source_mapping" => endpoint.source_mapping
     }
     |> Map.merge(overrides)
   end
 
-  defp assert_endpoint_version(endpoint, version_number, expected_origin, expected_token \\ nil) do
+  defp assert_endpoint_version(endpoint, version_number, expected_origin) do
     assert version =
              Endpoints.get_endpoint_query_version(endpoint.id, version_number)
 
@@ -1050,7 +1098,7 @@ defmodule Logflare.EndpointsTest do
     assert version.meta["version_number"] == version_number
 
     assert version.meta["endpoint_snapshot"] ==
-             expected_endpoint_snapshot(endpoint, %{"token" => expected_token})
+             expected_endpoint_snapshot(endpoint)
 
     version
   end
