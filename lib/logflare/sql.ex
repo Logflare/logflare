@@ -132,6 +132,30 @@ defmodule Logflare.Sql do
     "zookeepersessionuptime"
   ]
 
+  @allowed_clickhouse_settings [
+    "distributed_index_analysis",
+    "enable_multiple_prewhere_read_steps",
+    "enable_parallel_replicas",
+    "force_data_skipping_indices",
+    "force_index_by_date",
+    "force_primary_key",
+    "join_algorithm",
+    "max_parallel_replicas",
+    "optimize_aggregation_in_order",
+    "optimize_move_to_prewhere",
+    "optimize_move_to_prewhere_if_final",
+    "optimize_read_in_order",
+    "optimize_read_in_window_order",
+    "optimize_use_implicit_projections",
+    "query_plan_direct_read_from_text_index",
+    "query_plan_text_index_add_hint",
+    "text_index_hint_max_selectivity",
+    "use_query_condition_cache",
+    "use_skip_indexes",
+    "use_skip_indexes_for_disjunctions",
+    "use_skip_indexes_if_final"
+  ]
+
   @doc """
   Formats a SQL query string for display.
 
@@ -584,6 +608,7 @@ defmodule Logflare.Sql do
     with :ok <- check_single_query_only(ast),
          :ok <- check_select_statement_only(ast, dialect),
          :ok <- maybe_check_restricted_functions(ast, dialect, data),
+         :ok <- maybe_check_restricted_settings(ast, dialect),
          :ok <- has_wildcard_in_select(ast),
          :ok <- check_all_sources_allowed(ast, data) do
       :ok
@@ -595,6 +620,10 @@ defmodule Logflare.Sql do
        do: has_restricted_functions(ast, data)
 
   defp maybe_check_restricted_functions(_ast, _dialect, _data), do: :ok
+
+  defp maybe_check_restricted_settings(ast, "clickhouse"), do: has_restricted_settings(ast)
+
+  defp maybe_check_restricted_settings(_ast, _dialect), do: :ok
 
   # applies only to the sandboed query
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}, data) when is_list(ast) do
@@ -665,14 +694,13 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp check_all_sources_allowed(kv, acc, data) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc ->
+  defp check_all_sources_allowed(kv, acc, data) when is_list_or_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc ->
       check_all_sources_allowed(kv, nested_acc, data)
     end)
   end
 
-  defp check_all_sources_allowed({_k, v}, acc, data) when is_list(v) or is_map(v) do
+  defp check_all_sources_allowed({_k, v}, acc, data) when is_list_or_map(v) do
     check_all_sources_allowed(v, acc, data)
   end
 
@@ -730,7 +758,7 @@ defmodule Logflare.Sql do
   end
 
   defp has_restricted_functions(
-         {"Table", %{"args" => args, "name" => [%{"value" => _} | _] = names}},
+         {"Table", %{"args" => %{"args" => args}, "name" => [%{"value" => _} | _] = names}},
          :ok,
          %{dialect: dialect} = data
        )
@@ -740,12 +768,11 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp has_restricted_functions(kv, :ok = acc, data) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc -> has_restricted_functions(kv, nested_acc, data) end)
+  defp has_restricted_functions(kv, :ok = acc, data) when is_list_or_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc -> has_restricted_functions(kv, nested_acc, data) end)
   end
 
-  defp has_restricted_functions({_k, v}, :ok = acc, data) when is_list(v) or is_map(v) do
+  defp has_restricted_functions({_k, v}, :ok = acc, data) when is_list_or_map(v) do
     has_restricted_functions(v, acc, data)
   end
 
@@ -782,6 +809,38 @@ defmodule Logflare.Sql do
   defp function_restricted?(name, "bigquery"), do: name in @bq_restricted_functions
   defp function_restricted?(name, "clickhouse"), do: name in @ch_restricted_functions
   defp function_restricted?(_name, _dialect), do: false
+
+  defp has_restricted_settings(ast) when is_list(ast),
+    do: has_restricted_settings(ast, :ok)
+
+  defp has_restricted_settings({"settings", settings}, :ok) when is_list(settings) do
+    check_settings_allowed(settings)
+  end
+
+  defp has_restricted_settings(kv, :ok = acc) when is_list_or_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc -> has_restricted_settings(kv, nested_acc) end)
+  end
+
+  defp has_restricted_settings({_k, v}, :ok = acc) when is_list_or_map(v) do
+    has_restricted_settings(v, acc)
+  end
+
+  defp has_restricted_settings(_kv, acc), do: acc
+
+  defp check_settings_allowed(settings) do
+    found_restricted =
+      for %{"key" => %{"value" => key}} <- settings,
+          normalized = String.downcase(key),
+          normalized not in @allowed_clickhouse_settings do
+        normalized
+      end
+
+    if Enum.empty?(found_restricted) do
+      :ok
+    else
+      {:error, "Restricted setting #{Enum.join(found_restricted, ", ")}"}
+    end
+  end
 
   defp has_restricted_sources(cte_ast, ast) when is_list(ast) do
     aliases =
@@ -846,12 +905,11 @@ defmodule Logflare.Sql do
     {:error, "restricted wildcard (*) in a result column"}
   end
 
-  defp has_wildcard_in_select(kv, acc) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc -> has_wildcard_in_select(kv, nested_acc) end)
+  defp has_wildcard_in_select(kv, acc) when is_list_or_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc -> has_wildcard_in_select(kv, nested_acc) end)
   end
 
-  defp has_wildcard_in_select({_k, v}, acc) when is_list(v) or is_map(v) do
+  defp has_wildcard_in_select({_k, v}, acc) when is_list_or_map(v) do
     has_wildcard_in_select(v, acc)
   end
 
@@ -881,12 +939,7 @@ defmodule Logflare.Sql do
       if qualified_name in data.source_names do
         transformed_name = transformer.transform_source_name(qualified_name, data)
 
-        [
-          %{
-            "quote_style" => dialect_quote_style,
-            "value" => transformed_name
-          }
-        ]
+        [AstUtils.build_identifier(transformed_name, dialect_quote_style)]
       else
         names
       end
@@ -988,14 +1041,13 @@ defmodule Logflare.Sql do
     new_names ++ prev
   end
 
-  defp find_all_source_names(kv, acc, data) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc ->
+  defp find_all_source_names(kv, acc, data) when is_list_or_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc ->
       find_all_source_names(kv, nested_acc, data)
     end)
   end
 
-  defp find_all_source_names({_k, v}, acc, data) when is_list(v) or is_map(v) do
+  defp find_all_source_names({_k, v}, acc, data) when is_list_or_map(v) do
     find_all_source_names(v, acc, data)
   end
 
@@ -1043,7 +1095,7 @@ defmodule Logflare.Sql do
     {k, [new_first | other]}
   end
 
-  defp replace_old_source_names({k, v}, data) when is_list(v) or is_map(v) do
+  defp replace_old_source_names({k, v}, data) when is_list_or_map(v) do
     {k, replace_old_source_names(v, data)}
   end
 

@@ -633,6 +633,69 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "SAMPLE and query-level SETTINGS execution" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} = setup_clickhouse_test()
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+      [source: source, backend: backend]
+    end
+
+    test "executes a query with query-level SETTINGS", %{source: source, backend: backend} do
+      log_event = build_mapped_log_event(source: source, message: "settings exec test")
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
+
+      Process.sleep(100)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      query =
+        "SELECT source_name, count(*) AS event_count FROM #{table_name} " <>
+          "GROUP BY source_name SETTINGS max_threads = 4, max_execution_time = 10"
+
+      assert {:ok, {[row], bytes}} = ClickHouseAdaptor.execute_ch_query(backend, query)
+      assert row["source_name"] == source.name
+      assert row["event_count"] >= 1
+      assert is_integer(bytes)
+    end
+
+    test "executes a SAMPLE query against a sampling-keyed table", %{backend: backend} do
+      table_name = "sample_test_#{System.unique_integer([:positive])}"
+
+      ddl =
+        "CREATE TABLE #{table_name} (id UInt64, val String) " <>
+          "ENGINE = MergeTree ORDER BY cityHash64(id) SAMPLE BY cityHash64(id)"
+
+      assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, ddl)
+
+      on_exit(fn ->
+        ClickHouseAdaptor.execute_ch_query(backend, "DROP TABLE IF EXISTS #{table_name}")
+      end)
+
+      values = Enum.map_join(1..100, ", ", fn i -> "(#{i}, 'v#{i}')" end)
+
+      assert {:ok, _} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "INSERT INTO #{table_name} (id, val) VALUES #{values}"
+               )
+
+      assert {:ok, {[%{"sampled" => sampled}], bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) AS sampled FROM #{table_name} SAMPLE 0.1"
+               )
+
+      assert is_integer(sampled)
+      assert sampled <= 100
+      assert is_integer(bytes)
+    end
+  end
+
   describe "LQL query integration" do
     setup do
       insert(:plan, name: "Free")
