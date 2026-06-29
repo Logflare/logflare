@@ -610,9 +610,9 @@ defmodule Logflare.Backends do
   Use this in the consumer pipeline to avoid re-routing events back to S3 in `:both` mode.
   """
   @spec dispatch_from_s3([map()], Source.t()) :: {:ok, non_neg_integer()} | {:error, [term()]}
-  def dispatch_from_s3(event_params, source) do
+  def dispatch_from_s3(s3_records, source) do
     ensure_source_sup_started(source)
-    {log_events, errors} = split_valid_events(source, event_params)
+    log_events = Enum.map(s3_records, &LogEvent.make_from_s3(&1, source))
     count = length(log_events)
     increment_counters(source, count)
 
@@ -624,7 +624,7 @@ defmodule Logflare.Backends do
 
     maybe_broadcast_and_route(source, log_events)
     dispatch_to_backends(source, nil, log_events)
-    if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+    {:ok, count}
   end
 
   defp split_valid_events(source, event_params) do

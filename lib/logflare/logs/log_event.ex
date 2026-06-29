@@ -47,6 +47,72 @@ defmodule Logflare.LogEvent do
   end
 
   @doc """
+  Reconstructs a LogEvent from a record stored in S3 by the producer pipeline.
+  Skips the full make/transform/validate pipeline — the body is already in
+  BQ column spec format and the event was already validated on ingest.
+
+  Handles both NDJSON (string keys, ISO8601 ingested_at) and ETF (atom keys,
+  native DateTime) formats written by the producer.
+  """
+  @spec make_from_s3(map(), Source.t()) :: t()
+  def make_from_s3(
+        %{
+          id: id,
+          body: body,
+          event_type: event_type,
+          ingested_at: ingested_at_us
+        },
+        source
+      )
+      when is_integer(ingested_at_us) do
+    ingested_at_dt = DateTime.from_unix!(ingested_at_us, :microsecond)
+    day_bucket = body["timestamp"] && DayBucket.from_microseconds(body["timestamp"])
+    ingest_freshness = day_bucket && DayBucket.classify_freshness(day_bucket)
+
+    %__MODULE__{
+      id: id,
+      source_id: source.id,
+      source_uuid: source.token,
+      source_name: source.name,
+      body: body,
+      event_type: event_type,
+      ingested_at: ingested_at_dt,
+      valid: true,
+      drop: false,
+      day_bucket: day_bucket,
+      ingest_freshness: ingest_freshness
+    }
+  end
+
+  def make_from_s3(
+        %{
+          "id" => id,
+          "body" => body,
+          "event_type" => event_type,
+          "ingested_at" => ingested_at
+        },
+        source
+      ) do
+    {:ok, ingested_at_dt, _} = DateTime.from_iso8601(ingested_at)
+    day_bucket = body["timestamp"] && DayBucket.from_microseconds(body["timestamp"])
+    ingest_freshness = day_bucket && DayBucket.classify_freshness(day_bucket)
+
+    %__MODULE__{
+      id: id,
+      source_id: source.id,
+      source_uuid: source.token,
+      source_name: source.name,
+      body: body,
+      event_type: String.to_existing_atom(event_type),
+      ingested_at: ingested_at_dt,
+      valid: true,
+      drop: false,
+      day_bucket: day_bucket,
+      ingest_freshness: ingest_freshness
+    }
+  end
+
+  @doc """
   Used to generate log events from bigquery rows.
   """
   @spec make_from_db(map(), %{source: Source.t()}) :: LE.t()

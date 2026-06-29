@@ -28,6 +28,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
     partitions = Keyword.get(s3_config, :partitions, 4)
     batch_timeout = Keyword.get(s3_config, :batch_timeout, @default_batch_timeout)
     compress = Keyword.get(s3_config, :compress, true)
+    format = Keyword.get(s3_config, :format, :ndjson)
     {storage_mod, queue_mod} = resolve_mods(s3_config)
     queue_ref = resolve_queue_ref(s3_config, queue_mod)
 
@@ -52,6 +53,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
         bucket: bucket,
         partitions: partitions,
         compress: compress,
+        format: format,
         queue_ref: queue_ref,
         storage_mod: storage_mod,
         queue_mod: queue_mod
@@ -86,6 +88,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
         bucket: bucket,
         partitions: partitions,
         compress: compress,
+        format: format,
         queue_ref: queue_ref,
         storage_mod: storage_mod,
         queue_mod: queue_mod
@@ -95,15 +98,8 @@ defmodule Logflare.Backends.S3ProducerPipeline do
     dbg(Enum.take(messages,1))
 
     partition = :rand.uniform(partitions) - 1
-
-    {file_key, result} =
-      if compress do
-        key = "#{partition}/#{generate_uuidv7()}.ndjson.gz"
-        {key, upload_compressed(messages, bucket, key, storage_mod)}
-      else
-        key = "#{partition}/#{generate_uuidv7()}.ndjson"
-        {key, upload_plain(messages, bucket, key, storage_mod)}
-      end
+    file_key = "#{partition}/#{generate_uuidv7()}.#{file_extension(format, compress)}"
+    result = do_upload(format, compress, messages, bucket, file_key, storage_mod)
 
     case result do
       {:ok, _} ->
@@ -149,25 +145,85 @@ defmodule Logflare.Backends.S3ProducerPipeline do
     }
   end
 
-  defp upload_compressed(messages, bucket, file_key, storage_mod) do
-    body = compress_to_binary(messages)
+  defp file_extension(:ndjson, true), do: "ndjson.gz"
+  defp file_extension(:ndjson, false), do: "ndjson"
+  defp file_extension(:etf, true), do: "etf.gz"
+  defp file_extension(:etf, false), do: "etf"
 
-    storage_mod.put(bucket, file_key, body,
-      headers: %{"content-type" => "application/x-ndjson", "content-encoding" => "gzip"}
-    )
+  defp do_upload(:ndjson, true, messages, bucket, file_key, storage_mod),
+    do: upload_compressed(messages, bucket, file_key, storage_mod)
+
+  defp do_upload(:ndjson, false, messages, bucket, file_key, storage_mod),
+    do: upload_plain(messages, bucket, file_key, storage_mod)
+
+  defp do_upload(:etf, compress, messages, bucket, file_key, storage_mod),
+    do: upload_etf(compress, messages, bucket, file_key, storage_mod)
+
+  defp upload_compressed(messages, bucket, file_key, storage_mod) do
+    {serialize_us, body} = :timer.tc(fn -> compress_to_binary(messages) end)
+    dbg({:serialize_ms, Float.round(serialize_us / 1000, 1), :format, :ndjson_gz, :bytes, byte_size(body)})
+
+    {upload_us, result} = :timer.tc(fn ->
+      storage_mod.put(bucket, file_key, body,
+        headers: %{"content-type" => "application/x-ndjson", "content-encoding" => "gzip"}
+      )
+    end)
+    dbg({:upload_ms, Float.round(upload_us / 1000, 1), file_key})
+    result
   end
 
   defp upload_plain(messages, bucket, file_key, storage_mod) do
-    body =
-      Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
-        case :ets.lookup(tid, id) do
-          [{^id, _status, log_event, _byte_size}] -> [encode_line(log_event), "\n"]
-          [] -> []
-        end
+    {serialize_us, body} =
+      :timer.tc(fn ->
+        Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
+          case :ets.lookup(tid, id) do
+            [{^id, _status, log_event, _byte_size}] -> [encode_line(log_event), "\n"]
+            [] -> []
+          end
+        end)
+        |> IO.iodata_to_binary()
       end)
-      |> IO.iodata_to_binary()
 
-    storage_mod.put(bucket, file_key, body, headers: %{"content-type" => "application/x-ndjson"})
+    dbg({:serialize_ms, Float.round(serialize_us / 1000, 1), :format, :ndjson, :bytes, byte_size(body)})
+
+    {upload_us, result} = :timer.tc(fn ->
+      storage_mod.put(bucket, file_key, body, headers: %{"content-type" => "application/x-ndjson"})
+    end)
+    dbg({:upload_ms, Float.round(upload_us / 1000, 1), file_key})
+    result
+  end
+
+  defp upload_etf(compress, messages, bucket, file_key, storage_mod) do
+    {serialize_us, body} =
+      :timer.tc(fn ->
+        records =
+          Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
+            case :ets.lookup(tid, id) do
+              [{^id, _status, log_event, _byte_size}] ->
+                [%{
+                  id: log_event.id,
+                  source_id: log_event.source_id,
+                  body: log_event.body,
+                  event_type: log_event.event_type,
+                  ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond)
+                }]
+
+              [] ->
+                []
+            end
+          end)
+
+        body = :erlang.term_to_binary(records)
+        if compress, do: gzip(body), else: body
+      end)
+
+    dbg({:serialize_ms, Float.round(serialize_us / 1000, 1), :format, (if compress, do: :etf_gz, else: :etf), :bytes, byte_size(body)})
+
+    {upload_us, result} = :timer.tc(fn ->
+      storage_mod.put(bucket, file_key, body, headers: %{"content-type" => "application/octet-stream"})
+    end)
+    dbg({:upload_ms, Float.round(upload_us / 1000, 1), file_key})
+    result
   end
 
   defp compress_to_binary(messages) do
@@ -190,6 +246,15 @@ defmodule Logflare.Backends.S3ProducerPipeline do
     :zlib.close(z)
 
     IO.iodata_to_binary([chunks, final])
+  end
+
+  defp gzip(data) do
+    z = :zlib.open()
+    :ok = :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
+    chunks = :zlib.deflate(z, data, :finish)
+    :zlib.deflateEnd(z)
+    :zlib.close(z)
+    IO.iodata_to_binary(chunks)
   end
 
   defp encode_line(log_event) do

@@ -3,7 +3,7 @@ services:
     image: fsouza/fake-gcs-server:latest
     ports:
       - "4443:4443"   # GCS JSON API
-    command: ["-scheme", "http", "-port", "4443", "-public-host", "localhost:4443"]
+    command: ["-scheme", "http", "-port", "4443", "-public-host", "localhost:4443", "-filesystem-root", "/data"]
     volumes:
       - ./tmp/fake-gcs:/data
 

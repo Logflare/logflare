@@ -74,7 +74,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
   def handle_batch(_batcher, messages, _batch_info, _context) do
     messages
     |> Enum.map(& &1.data)
-    |> Enum.group_by(& &1["source_id"])
+    |> Enum.group_by(&record_source_id/1)
     |> Enum.each(fn
       {nil, lines} ->
         Logger.warning("s3_consumer: #{length(lines)} events missing source_id, skipping")
@@ -85,9 +85,10 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
             Logger.warning("s3_consumer: unknown source_id=#{source_id}, skipping #{length(lines)} events")
 
           source ->
-            event_params = Enum.map(lines, & &1["body"])
+            {dispatch_us, result} = :timer.tc(fn -> Backends.dispatch_from_s3(lines, source) end)
+            dbg({:dispatch_ms, Float.round(dispatch_us / 1000, 1), :event_count, length(lines)})
 
-            case Backends.dispatch_from_s3(event_params, source) do
+            case result do
               {:ok, _} -> :ok
               {:error, reason} -> Logger.error("s3_consumer: dispatch failed for source #{source_id}: #{inspect(reason)}")
             end
@@ -106,6 +107,10 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
         raise "s3_consumer: failed to resolve queue ref for #{queue_name}: #{inspect(reason)}"
     end
   end
+
+  defp record_source_id(%{source_id: id}), do: id
+  defp record_source_id(%{"source_id" => id}), do: id
+  defp record_source_id(_), do: nil
 
   defp default_storage_mod(:gcp), do: Storage.GCS
   defp default_storage_mod(_), do: Storage.S3

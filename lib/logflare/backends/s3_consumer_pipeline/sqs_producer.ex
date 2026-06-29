@@ -96,7 +96,10 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
   end
 
   defp fetch_next(queue_url, bucket, queue_mod, storage_mod) do
-    case queue_mod.receive(queue_url, max_number_of_messages: 1) do
+    {queue_us, result} = :timer.tc(fn -> queue_mod.receive(queue_url, max_number_of_messages: 1) end)
+    dbg({:queue_receive_ms, Float.round(queue_us / 1000, 1)})
+
+    case result do
       {:ok, [%{id: handle, body: body}]} ->
         load_file(queue_url, bucket, handle, body, queue_mod, storage_mod)
 
@@ -133,29 +136,42 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
   end
 
   defp download_and_parse(bucket, file_key, storage_mod) do
-    case storage_mod.get(bucket, file_key) do
-      {:ok, raw} ->
-        content =
-          if String.ends_with?(file_key, ".gz") do
-            :zlib.gunzip(raw)
-          else
-            raw
-          end
+    {download_us, download_result} = :timer.tc(fn -> storage_mod.get(bucket, file_key) end)
+    dbg({:gcs_download_ms, Float.round(download_us / 1000, 1), file_key})
 
-        lines =
-          content
-          |> String.split("\n", trim: true)
-          |> Enum.flat_map(fn line ->
-            case Jason.decode(line) do
-              {:ok, map} -> [map]
-              {:error, _} -> []
-            end
+    case download_result do
+      {:ok, raw} ->
+        {decompress_us, content} =
+          :timer.tc(fn ->
+            if String.ends_with?(file_key, ".gz"), do: :zlib.gunzip(raw), else: raw
           end)
+
+        {parse_us, lines} =
+          :timer.tc(fn -> parse_content(file_key, content) end)
+
+        dbg({:decompress_ms, Float.round(decompress_us / 1000, 1), :parse_ms, Float.round(parse_us / 1000, 1), :line_count, length(lines)})
 
         {:ok, lines}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp parse_content(file_key, content) do
+    base = file_key |> String.replace_suffix(".gz", "")
+
+    if String.ends_with?(base, ".etf") do
+      :erlang.binary_to_term(content, [:safe])
+    else
+      content
+      |> String.split("\n", trim: true)
+      |> Enum.flat_map(fn line ->
+        case Jason.decode(line) do
+          {:ok, map} -> [map]
+          {:error, _} -> []
+        end
+      end)
     end
   end
 

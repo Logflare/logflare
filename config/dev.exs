@@ -88,6 +88,10 @@ config :logflare, :s3_spool,
   partitions: 4,
   batch_timeout: 5_000,
   compress: false,
+  # Serialization format for spool files. Options: :ndjson | :etf
+  # :etf encodes the whole batch as a single Erlang term — ~10x faster decode,
+  # but files are binary (use IEx to inspect, not cat/jq).
+  format: :etf,
   queue_name: "logflare-spool"
 
 config :ex_aws,
