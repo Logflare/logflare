@@ -6,10 +6,13 @@ defmodule LogflareWeb.Api.RuleController do
   alias Logflare.Sources
   alias Logflare.Rules
   alias LogflareWeb.OpenApi.Accepted
-  alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApi.UnprocessableEntity
   alias LogflareWeb.OpenApiSchemas.RuleApiSchema
+  alias LogflareWeb.OpenApiSchemas.RuleParams
+  alias LogflareWeb.OpenApiSchemas.RuleBatchResponse
+  alias LogflareWeb.OpenApiSchemas.RuleCreateResponse
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -51,9 +54,11 @@ defmodule LogflareWeb.Api.RuleController do
 
   operation(:create,
     summary: "Create rule. Allows batch creation if as a list.",
-    request_body: RuleApiSchema.params(),
+    request_body: RuleParams.params(),
     responses: %{
-      201 => Created.response(RuleApiSchema),
+      201 => RuleCreateResponse.response(),
+      400 => RuleBatchResponse.response(),
+      422 => UnprocessableEntity.response(),
       404 => NotFound.response()
     }
   )
@@ -124,11 +129,12 @@ defmodule LogflareWeb.Api.RuleController do
   operation(:update,
     summary: "Update rule",
     parameters: [token: [in: :path, description: "Rule UUID", type: :string]],
-    request_body: RuleApiSchema.params(),
+    request_body: RuleParams.params(),
     responses: %{
       204 => Accepted.response(),
       200 => Accepted.response(RuleApiSchema),
-      404 => NotFound.response()
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 

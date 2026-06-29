@@ -4,9 +4,11 @@ defmodule LogflareWeb.Api.KeyValueController do
 
   alias Logflare.Billing
   alias Logflare.KeyValues
+  alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApiSchemas.KeyValueApiSchema
+  alias LogflareWeb.OpenApiSchemas.KeyValueBulkUpsertResponse
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -36,7 +38,8 @@ defmodule LogflareWeb.Api.KeyValueController do
          items: KeyValueApiSchema
        }},
     responses: %{
-      201 => Created.response(KeyValueApiSchema)
+      201 => Created.response(KeyValueBulkUpsertResponse),
+      400 => BadRequest.response()
     }
   )
 
