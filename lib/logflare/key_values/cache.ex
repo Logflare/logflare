@@ -1,8 +1,17 @@
 defmodule Logflare.KeyValues.Cache do
-  @moduledoc false
+  @moduledoc """
+  Read-through cache for the `Logflare.KeyValues` context.
+
+  Caller-facing facade over a Nebulex multi-level cache
+  (`Logflare.KeyValues.Cache.Multilevel`). Today the only level is a local,
+  Cachex-backed cache (`Logflare.KeyValues.Cache.L1`); a distributed level can
+  be added later (O11Y-1504) without touching callers.
+  """
 
   alias Logflare.ContextCache
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.Cache.L1
+  alias Logflare.KeyValues.Cache.Multilevel
   alias Logflare.Repo
   alias Logflare.Utils
 
@@ -10,50 +19,21 @@ defmodule Logflare.KeyValues.Cache do
 
   @behaviour ContextCache
 
-  def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
+  @cache_stats_default false
+  @cache_limit 10_000_000
 
+  def child_spec(_) do
     %{
       id: __MODULE__,
-      start: {
-        Cachex,
-        :start_link,
-        [
-          __MODULE__,
-          [
-            compressed: true,
-            warmers: [
-              warmer(
-                required: false,
-                module: KeyValues.CacheWarmer,
-                name: KeyValues.CacheWarmer,
-                interval: :timer.hours(1)
-              )
-            ],
-            hooks:
-              [
-                if(stats, do: Utils.cache_stats()),
-                Utils.cache_limit(10_000_000)
-              ]
-              |> Enum.filter(& &1),
-            expiration: Utils.cache_expiration_min(1440, 60)
-          ]
-        ]
-      }
+      start: {Multilevel, :start_link, [multilevel_opts()]}
     }
   end
 
   @spec count(integer()) :: non_neg_integer()
   def count(user_id) do
-    cache_key = {:count, user_id}
-
-    Cachex.fetch(__MODULE__, cache_key, fn _key ->
-      {:commit, {:cached, Repo.apply_with_replica(KeyValues, :count_key_values, [user_id])}}
+    fetch_or_store({:count, user_id}, fn ->
+      Repo.apply_with_replica(KeyValues, :count_key_values, [user_id])
     end)
-    |> case do
-      {:commit, {:cached, v}} -> v
-      {:ok, {:cached, v}} -> v
-    end
   end
 
   @spec lookup(integer(), String.t()) :: map() | nil
@@ -63,56 +43,84 @@ defmodule Logflare.KeyValues.Cache do
 
   @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
   def lookup(user_id, key, accessor_path) do
-    cache_key = {:lookup, [user_id, key, accessor_path]}
-
-    Cachex.fetch(__MODULE__, cache_key, fn _key ->
-      {:commit,
-       {:cached, Repo.apply_with_replica(KeyValues, :lookup, [user_id, key, accessor_path])}}
+    fetch_or_store({:lookup, [user_id, key, accessor_path]}, fn ->
+      Repo.apply_with_replica(KeyValues, :lookup, [user_id, key, accessor_path])
     end)
-    |> case do
-      {:commit, {:cached, v}} -> v
-      {:ok, {:cached, v}} -> v
-    end
   end
+
+  @doc """
+  Writes entries through the cache. Used by `Logflare.KeyValues.CacheWarmer`.
+  """
+  @spec put_all([{term(), term()}]) :: :ok | {:error, term()}
+  def put_all([]), do: :ok
+  def put_all(entries), do: Multilevel.put_all(entries)
 
   @impl ContextCache
   def bust_by(kw) do
-    entries = bust_entries(kw)
-
-    Cachex.execute(__MODULE__, fn worker ->
-      Enum.reduce(entries, 0, fn k, acc ->
-        acc + delete_and_count(worker, k)
-      end)
-    end)
-  end
-
-  defp bust_entries(kw) do
     user_id = Keyword.get(kw, :user_id)
     key = Keyword.get(kw, :key)
 
-    entries = if user_id, do: [{:count, user_id}], else: []
+    keys = bust_keys(user_id, key)
+    # delete by exact keys so the bust propagates to every cache level
+    Multilevel.delete_all(in: keys)
+  end
 
-    if user_id && key do
-      lookup_keys = find_lookup_keys(user_id, key)
-      lookup_keys ++ entries
-    else
-      entries
+  defp fetch_or_store(cache_key, getter) do
+    case Multilevel.fetch(cache_key) do
+      {:ok, value} ->
+        value
+
+      {:error, %Nebulex.KeyError{}} ->
+        value = getter.()
+        Multilevel.put(cache_key, value)
+        value
     end
   end
 
-  defp find_lookup_keys(user_id, key) do
-    {:ok, keys} = Cachex.keys(__MODULE__)
+  defp bust_keys(nil, _key), do: []
 
-    Enum.filter(keys, fn
+  defp bust_keys(user_id, nil), do: [{:count, user_id}]
+
+  defp bust_keys(user_id, key) do
+    [{:count, user_id} | lookup_keys(user_id, key)]
+  end
+
+  # Gathers `{:lookup, [user_id, key, _accessor]}` keys for every cached accessor
+  # variant. Streams keys (not values) from the local level and filters them with
+  # a compiled match, which benchmarks faster than an interpreted ETS guard.
+  defp lookup_keys(user_id, key) do
+    [select: :key]
+    |> L1.stream!()
+    |> Stream.filter(fn
       {:lookup, [^user_id, ^key | _]} -> true
       _ -> false
     end)
+    |> Enum.to_list()
   end
 
-  defp delete_and_count(cache, key) do
-    case Cachex.take(cache, key) do
-      {:ok, nil} -> 0
-      {:ok, _value} -> 1
-    end
+  defp multilevel_opts do
+    [
+      inclusion_policy: :inclusive,
+      levels: [{L1, l1_opts()}]
+    ]
+  end
+
+  defp l1_opts do
+    stats = Application.get_env(:logflare, :cache_stats, @cache_stats_default)
+
+    [
+      stats: stats,
+      compressed: true,
+      warmers: [
+        warmer(
+          required: false,
+          module: KeyValues.CacheWarmer,
+          name: KeyValues.CacheWarmer,
+          interval: :timer.hours(1)
+        )
+      ],
+      hooks: [Utils.cache_limit(@cache_limit)],
+      expiration: Utils.cache_expiration_min(1440, 60)
+    ]
   end
 end
