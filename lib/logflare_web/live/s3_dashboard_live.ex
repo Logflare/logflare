@@ -187,29 +187,36 @@ defmodule LogflareWeb.Live.S3DashboardLive do
 
   defp fetch_sqs_depth do
     s3_config = Application.get_env(:logflare, :s3_spool, [])
+    provider = Keyword.get(s3_config, :provider, :aws)
     queue_name = Keyword.get(s3_config, :queue_name)
 
-    if queue_name do
-      sqs_cfg = Application.get_env(:ex_aws, :sqs, [])
-      scheme = Keyword.get(sqs_cfg, :scheme, "https://")
-      host = Keyword.get(sqs_cfg, :host, "sqs.us-east-1.amazonaws.com")
-      port = Keyword.get(sqs_cfg, :port)
-      base = if port, do: "#{scheme}#{host}:#{port}", else: "#{scheme}#{host}"
-      queue_url = "#{base}/000000000000/#{queue_name}"
+    cond do
+      provider != :aws ->
+        # Pub/Sub has no cheap message-count attribute; Cloud Monitoring would be needed.
+        {0, 0}
 
-      attrs = [:approximate_number_of_messages, :approximate_number_of_messages_not_visible]
+      is_nil(queue_name) ->
+        {0, 0}
 
-      case ExAws.SQS.get_queue_attributes(queue_url, attrs) |> ExAws.request() do
-        {:ok, %{body: %{attributes: attrs}}} ->
-          visible = Map.get(attrs, :approximate_number_of_messages, 0)
-          inflight = Map.get(attrs, :approximate_number_of_messages_not_visible, 0)
-          {visible, inflight}
+      true ->
+        sqs_cfg = Application.get_env(:ex_aws, :sqs, [])
+        scheme = Keyword.get(sqs_cfg, :scheme, "https://")
+        host = Keyword.get(sqs_cfg, :host, "sqs.us-east-1.amazonaws.com")
+        port = Keyword.get(sqs_cfg, :port)
+        base = if port, do: "#{scheme}#{host}:#{port}", else: "#{scheme}#{host}"
+        queue_url = "#{base}/000000000000/#{queue_name}"
 
-        _ ->
-          {0, 0}
-      end
-    else
-      {0, 0}
+        attrs = [:approximate_number_of_messages, :approximate_number_of_messages_not_visible]
+
+        case ExAws.SQS.get_queue_attributes(queue_url, attrs) |> ExAws.request() do
+          {:ok, %{body: %{attributes: attrs}}} ->
+            visible = Map.get(attrs, :approximate_number_of_messages, 0)
+            inflight = Map.get(attrs, :approximate_number_of_messages_not_visible, 0)
+            {visible, inflight}
+
+          _ ->
+            {0, 0}
+        end
     end
   end
 

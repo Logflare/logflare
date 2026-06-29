@@ -204,11 +204,42 @@ start.both: ENV_FILE = .single_tenant_bq.env
 start.both: LOGFLARE_GRPC_PORT = 50051
 start.both: __start__
 
+start.gcp.producer: ERL_NAME = gcp_producer
+start.gcp.producer: PORT = 4000
+start.gcp.producer: S3_SPOOL_MODE = producer
+start.gcp.producer: S3_SPOOL_PROVIDER = gcp
+start.gcp.producer: S3_SPOOL_BUCKET = logflare-spool
+start.gcp.producer: S3_SPOOL_PUBSUB_TOPIC = projects/logflare/topics/logflare-spool
+start.gcp.producer: ENV_FILE = .single_tenant_bq.env
+start.gcp.producer: LOGFLARE_GRPC_PORT = 50051
+start.gcp.producer: __start__
+
+start.gcp.consumer: ERL_NAME = gcp_consumer
+start.gcp.consumer: PORT = 4001
+start.gcp.consumer: S3_SPOOL_MODE = consumer
+start.gcp.consumer: S3_SPOOL_PROVIDER = gcp
+start.gcp.consumer: S3_SPOOL_BUCKET = logflare-spool
+start.gcp.consumer: S3_SPOOL_QUEUE_NAME = projects/logflare/subscriptions/logflare-spool-sub
+start.gcp.consumer: ENV_FILE = .single_tenant_bq.env
+start.gcp.consumer: LOGFLARE_GRPC_PORT = 50052
+start.gcp.consumer: __start__
+
+start.gcp.both: ERL_NAME = gcp_both
+start.gcp.both: PORT = 4000
+start.gcp.both: S3_SPOOL_MODE = both
+start.gcp.both: S3_SPOOL_PROVIDER = gcp
+start.gcp.both: S3_SPOOL_BUCKET = logflare-spool
+start.gcp.both: S3_SPOOL_PUBSUB_TOPIC = projects/logflare/topics/logflare-spool
+start.gcp.both: S3_SPOOL_QUEUE_NAME = projects/logflare/subscriptions/logflare-spool-sub
+start.gcp.both: LOGFLARE_GRPC_PORT = 50051
+start.gcp.both: ENV_FILE = .single_tenant_bq.env
+start.gcp.both: __start__
+
 __start__:
 	@if [ ! -f ${ENV_FILE} ]; then \
 		touch ${ENV_FILE}; \
 	fi
-	@env $$(cat ${ENV_FILE} .dev.env | grep -v '^PHX_HTTP_PORT=' | xargs) PHX_HTTP_PORT=${PORT} S3_SPOOL_MODE=${S3_SPOOL_MODE} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
+	@env $$(cat ${ENV_FILE} .dev.env | grep -v '^PHX_HTTP_PORT=' | xargs) PHX_HTTP_PORT=${PORT} S3_SPOOL_MODE=${S3_SPOOL_MODE} S3_SPOOL_PROVIDER=${S3_SPOOL_PROVIDER} S3_SPOOL_QUEUE_NAME=${S3_SPOOL_QUEUE_NAME} S3_SPOOL_PUBSUB_TOPIC=${S3_SPOOL_PUBSUB_TOPIC} S3_SPOOL_BUCKET=${S3_SPOOL_BUCKET} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
 
 
 migrate:
@@ -218,7 +249,29 @@ migrate:
 stripe:
 	stripe listen --forward-to localhost:4000/webhooks/stripe
 
-.PHONY: __start__ migrate stripe start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink start.producer start.consumer
+# Creates the GCS bucket and PubSub topic/subscription in the local emulators.
+# Run this after `docker compose -f docker-compose.gcp.yml up` if resources are missing.
+setup.gcp:
+	@echo "Creating GCS bucket..."
+	@curl -sf -X POST "http://localhost:4443/storage/v1/b" \
+	  -H "Content-Type: application/json" \
+	  -d '{"name": "logflare-spool"}' > /dev/null && echo "  bucket created" || echo "  bucket already exists"
+	@mkdir -p tmp/fake-gcs/logflare-spool && touch tmp/fake-gcs/logflare-spool/.keep
+	@echo "Creating PubSub topic..."
+	@curl -sf -X PUT "http://localhost:8085/v1/projects/logflare/topics/logflare-spool" \
+	  -H "Content-Type: application/json" -d '{}' > /dev/null && echo "  topic created" || echo "  topic already exists"
+	@echo "Creating PubSub subscription..."
+	@curl -sf -X PUT "http://localhost:8085/v1/projects/logflare/subscriptions/logflare-spool-sub" \
+	  -H "Content-Type: application/json" \
+	  -d '{"topic": "projects/logflare/topics/logflare-spool"}' > /dev/null && echo "  subscription created" || echo "  subscription already exists"
+	@echo "GCP emulator setup complete."
+
+monitor.gcp:
+	@watch -n2 'echo "=== GCS spool files ===" && \
+	  curl -s "http://localhost:4443/storage/v1/b/logflare-spool/o" | \
+	  python3 -c "import sys,json; items=[i for i in json.load(sys.stdin).get(\"items\",[]) if i[\"name\"]!=\".keep\"]; print(f\"{len(items)} files, {sum(int(i[\"size\"]) for i in items)/1024/1024:.1f} MB total\")"'
+
+.PHONY: __start__ migrate stripe setup.gcp monitor.gcp start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink start.producer start.consumer start.both start.gcp.producer start.gcp.consumer start.gcp.both
 
 # Encryption and decryption of secrets
 # Usage:

@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Supervisor do
   use Supervisor
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   def start_link(_) do
     Supervisor.start_link(__MODULE__, [])
@@ -15,8 +16,14 @@ defmodule Logflare.Backends.Supervisor do
   def init(_) do
     base = System.schedulers_online()
 
+    s3_config = Application.get_env(:logflare, :s3_spool, [])
+    s3_provider = Keyword.get(s3_config, :provider, :aws)
+
     producer_children = if Backends.s3_producer_mode?(), do: [Backends.S3ProducerSup], else: []
     consumer_children = if Backends.s3_consumer_mode?(), do: [Backends.S3ConsumerSup], else: []
+    spool_goth_children = if s3_provider == :gcp, do: List.wrap(spool_goth_child_spec()), else: []
+
+    dbg({s3_provider, Backends.s3_producer_mode?(), Backends.s3_consumer_mode?()})
 
     children =
       [
@@ -34,11 +41,22 @@ defmodule Logflare.Backends.Supervisor do
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
         {Registry,
          name: Backends.BackendRegistry, keys: :unique, partitions: max(round(base / 8), 1)}
-      ] ++ producer_children ++ consumer_children
+      ] ++ spool_goth_children ++ producer_children ++ consumer_children
 
     opts = [strategy: :one_for_one]
 
     Supervisor.init(children, opts)
   end
 
+  defp spool_goth_child_spec do
+    case Application.get_env(:goth, :json) do
+      nil ->
+        nil
+
+      json ->
+        {Goth, opts} = BigQueryAdaptor.goth_child_spec(json)
+        # prefetch: :async so a slow/failed token fetch doesn't block supervisor startup
+        {Goth, opts |> Keyword.put(:name, Logflare.Spool.Goth) |> Keyword.put(:prefetch, :async)}
+    end
+  end
 end

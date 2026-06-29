@@ -77,8 +77,21 @@ defmodule Logflare.Backends.Spool.Queue.PubSub do
   end
 
   defp build_conn do
-    with {:ok, %{token: token}} <- Goth.fetch(Logflare.Goth) do
-      {:ok, GoogleApi.PubSub.V1.Connection.new(token)}
-    end
+    token =
+      case Application.get_env(:goth, :json) do
+        nil ->
+          # No credentials — assume local emulator which doesn't validate tokens
+          "local-dev-token"
+
+        _ ->
+          case Goth.fetch(Logflare.Spool.Goth) do
+            {:ok, %{token: t}} -> t
+            {:error, reason} -> throw({:goth_fetch_error, reason})
+          end
+      end
+
+    {:ok, GoogleApi.PubSub.V1.Connection.new(token)}
+  catch
+    {:goth_fetch_error, reason} -> {:error, reason}
   end
 end

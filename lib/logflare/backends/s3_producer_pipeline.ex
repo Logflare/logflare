@@ -20,6 +20,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
+    dbg("Started s3 producer")
     {name, _args} = Keyword.pop!(args, :name)
 
     s3_config = Application.get_env(:logflare, :s3_spool, [])
@@ -91,6 +92,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
       }) do
     dbg("S3ProducerPipeline handle_batch #{Enum.count(messages)}")
     dbg(batch_info)
+    dbg(Enum.take(messages,1))
 
     partition = :rand.uniform(partitions) - 1
 
@@ -120,10 +122,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
         messages
 
       {:error, reason} ->
-        Logger.error("s3_producer_pipeline: S3 write failed",
-          key: file_key,
-          error: inspect(reason)
-        )
+        Logger.error("s3_producer_pipeline: S3 write failed key=#{file_key} error=#{inspect(reason)}")
 
         Enum.map(messages, &Message.failed(&1, reason))
     end
@@ -213,15 +212,16 @@ defmodule Logflare.Backends.S3ProducerPipeline do
         :ok
 
       {:error, reason} ->
-        Logger.error("s3_producer_pipeline: queue notify failed",
-          file_key: file_key,
-          error: inspect(reason)
-        )
+        Logger.error("s3_producer_pipeline: queue notify failed for #{file_key}: #{inspect reason}")
     end
   end
 
   defp resolve_queue_ref(s3_config, queue_mod) do
-    case Keyword.get(s3_config, :queue_name) do
+    # For PubSub: producer publishes to a topic, consumer reads from a subscription.
+    # pubsub_topic overrides queue_name when set (GCP producer mode).
+    name = Keyword.get(s3_config, :pubsub_topic) || Keyword.get(s3_config, :queue_name)
+
+    case name do
       nil ->
         nil
 

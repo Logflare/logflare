@@ -83,7 +83,7 @@ config :stripity_stripe,
   api_key: "sk_test_thisisaboguskey"
 
 config :logflare, :s3_spool,
-  mode: :producer,
+  mode: :disable,
   bucket: "logflare-spool",
   partitions: 4,
   batch_timeout: 5_000,
@@ -104,3 +104,9 @@ config :ex_aws,
     host: "localhost",
     port: 9324
   ]
+
+# GCP local emulators (docker-compose.gcp.yml)
+# Switch to GCP by setting provider: :gcp and queue_name to the Pub/Sub topic/subscription path.
+# fake-gcs-server runs on :4443, Pub/Sub emulator on :8085.
+config :google_api_storage, base_url: "http://localhost:4443/"
+config :google_api_pub_sub, base_url: "http://localhost:8085/"

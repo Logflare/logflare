@@ -6,8 +6,8 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
   require Logger
 
   @poll_interval 1_000
-  @default_memory_limit_mb 2048
-  @default_max_ets_mb 512
+  @default_memory_limit_mb 4096
+  @default_max_ets_mb 1024
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(opts) do
@@ -26,6 +26,8 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
 
   # Serve from the existing in-memory buffer only — never blocks on IO.
   # File loading happens exclusively in handle_info(:poll).
+  # When demand arrives with no buffer, kick an immediate poll rather than
+  # waiting up to @poll_interval for the next tick.
   @impl GenStage
   def handle_demand(demand, state) do
     new_state = %{state | demand: state.demand + demand}
@@ -33,21 +35,28 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
     if buffered?(new_state) and not over_limit?() do
       emit_from_buffer(new_state)
     else
+      unless over_limit?(), do: send(self(), :poll)
       {:noreply, [], new_state}
     end
   end
 
   @impl GenStage
   def handle_info(:poll, state) do
-    schedule_poll()
-
     if state.demand <= 0 or over_limit?() do
+      schedule_poll()
       {:noreply, [], state}
     else
-      state
-      |> maybe_ack_exhausted()
-      |> maybe_load_next()
-      |> emit_from_buffer()
+      new_state =
+        state
+        |> maybe_ack_exhausted()
+        |> maybe_load_next()
+
+      # If the queue was empty, back off to the periodic interval.
+      # If we got a file, Broadway will send demand again immediately which
+      # triggers handle_demand → send(self(), :poll) for the next file.
+      if new_state.current == nil, do: schedule_poll()
+
+      emit_from_buffer(new_state)
     end
   end
 
