@@ -99,6 +99,7 @@ jobs:
         with:
           path: |
             ~/.cargo
+            target
           key: cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-
@@ -110,10 +111,11 @@ jobs:
           path: |
             deps
             _build
-          key: mix-v2-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock', '**/Cargo.lock', 'native/**') }}
+            priv/native
+          key: mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock', '**/Cargo.lock', 'native/**') }}
           restore-keys: |
-            mix-v2-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
-            mix-v2-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+            mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
+            mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
 
       - name: Install dependencies
         run: mix deps.get
