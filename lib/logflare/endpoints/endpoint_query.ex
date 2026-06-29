@@ -71,6 +71,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
     field(:labels, :string)
     field(:parsed_labels, :map, virtual: true)
     field(:metrics, :map, virtual: true)
+    field(:version_number, :integer, virtual: true)
 
     belongs_to(:user, User)
     belongs_to(:backend, Backend)

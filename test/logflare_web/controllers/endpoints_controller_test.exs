@@ -5,6 +5,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
+  alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources
@@ -391,6 +392,156 @@ defmodule LogflareWeb.EndpointsControllerTest do
                LogflareWeb.QueryErrorHelpers.generic_query_error_message()
 
       refute response.result
+    end
+  end
+
+  describe "lf-endpoint-version" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+      {_source, backend} = Logflare.DataCase.setup_clickhouse_test(user: user)
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(
+                 user,
+                 %{
+                   name: "versioned-clickhouse-endpoint",
+                   query: "select 'historical' as versioned_value",
+                   backend_id: backend.id,
+                   cache_duration_seconds: 0,
+                   enable_auth: false,
+                   sandboxable: false,
+                   labels: "endpoint_version=caller"
+                 },
+                 user
+               )
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(
+                 endpoint,
+                 %{
+                   query: "select 'current' as versioned_value",
+                   sandboxable: true
+                 },
+                 user
+               )
+
+      {:ok, user: user, endpoint: endpoint}
+    end
+
+    test "runs the requested endpoint version", %{
+      conn: init_conn,
+      endpoint: endpoint,
+      user: user
+    } do
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-version", "1")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert %{"result" => [%{"versioned_value" => "historical"}]} = json_response(conn, 200)
+
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("lf-endpoint-version", "1")
+        |> get(~p"/api/endpoints/query/#{endpoint.name}")
+
+      assert %{"result" => [%{"versioned_value" => "historical"}]} = json_response(conn, 200)
+
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("lf-endpoint-version", "1")
+        |> post(~p"/api/endpoints/query/#{endpoint.name}", %{})
+
+      assert %{"result" => [%{"versioned_value" => "historical"}]} = json_response(conn, 200)
+    end
+
+    test "uses version sandboxability when deciding whether to parse body", %{
+      conn: init_conn,
+      endpoint: endpoint
+    } do
+      conn =
+        init_conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("lf-endpoint-version", "1")
+        |> get(
+          ~p"/endpoints/query/#{endpoint.token}",
+          Jason.encode!(%{sql: "select 'override' as versioned_value"})
+        )
+
+      assert %{"result" => [%{"versioned_value" => "historical"}]} = json_response(conn, 200)
+      refute conn.halted
+    end
+
+    test "returns version not found for a missing version", %{
+      conn: init_conn,
+      endpoint: endpoint
+    } do
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-version", "99")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert %{"error" => "version not found"} = json_response(conn, 404)
+
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-version", "2147483648")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert %{"error" => "version not found"} = json_response(conn, 404)
+    end
+
+    test "returns a client error for an invalid version", %{
+      conn: init_conn,
+      endpoint: endpoint
+    } do
+      for version <- ["latest", "0", "-1"] do
+        conn =
+          init_conn
+          |> put_req_header("lf-endpoint-version", version)
+          |> get(~p"/endpoints/query/#{endpoint.token}")
+
+        assert %{"error" => "invalid lf-endpoint-version"} = json_response(conn, 400)
+      end
+    end
+
+    test "adds the requested endpoint version to query telemetry labels", %{
+      conn: init_conn,
+      endpoint: endpoint,
+      user: user
+    } do
+      test_pid = self()
+      handler_id = "test-endpoint-version-label-#{inspect(self())}"
+
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :endpoints, :query],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:endpoint_query_metadata, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("lf-endpoint-version", "1")
+        |> get(~p"/api/endpoints/query/#{endpoint.name}")
+
+      assert [_] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+
+      assert_received {:endpoint_query_metadata,
+                       %{
+                         "endpoint_id" => _endpoint_id,
+                         "endpoint_version" => "1"
+                       }}
     end
   end
 

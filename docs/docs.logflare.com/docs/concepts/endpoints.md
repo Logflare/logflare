@@ -102,7 +102,9 @@ All endpoint queries by default are set to cache results for 3,600 seconds. The 
 
 To disable the cache, set the cached duration to `0`. However, it is not recommended to do so unless you absolutely need up-to-date results. To prevent stale data while keeping the cache warm, use the cache proactive requerying feature.
 
-Caching is performed on a query parameter basis. As such, if there are three API requests sent to an endpoint, `?path=123`, `?path=223`, and `?other=value`, this will result in 3 difference caches being created.
+Caching is performed on a query parameter basis. As such, if there are three API requests sent to an endpoint, `?path=123`, `?path=223`, and `?other=value`, this will result in 3 different caches being created.
+
+When querying a specific endpoint version with `LF-ENDPOINT-VERSION`, the version number also partitions the cache. A request for the current endpoint and a request for version `1` use separate caches even when the query parameters match.
 
 ### Proactive Requerying
 
@@ -113,6 +115,8 @@ When configured, the cache will be automatically updated at the set interval, pe
 ## Query Tagging with Labels
 
 Endpoints support query labeling for tracking and monitoring in the backend. Labels are configured as a comma-separated allowlist and can reference parameters (`@my_param`), values provided in the `LF-ENDPOINT-LABELS` request header, or static values.
+
+Logflare also adds a reserved `endpoint_version` label automatically for endpoint executions that use `LF-ENDPOINT-VERSION`. For example, `LF-ENDPOINT-VERSION: 1` produces `endpoint_version=1`. This label is used for query execution logging and overrides any caller-provided label with the same key. Requests without `LF-ENDPOINT-VERSION` do not include an `endpoint_version` label.
 
 ### Configuration Format
 
@@ -148,6 +152,21 @@ LF-ENDPOINT-LABELS: session_id=abc123,ignored=xyz
 ```
 
 Only allowlisted labels are processed. Query parameters override header values for the same key.
+
+## Querying a Specific Endpoint Version
+
+Endpoints can be queried at a previous version by passing the `LF-ENDPOINT-VERSION` request header with the version number.
+
+```bash
+curl "https://api.logflare.app/api/endpoints/query/my-endpoint" \
+  -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
+  -H 'LF-ENDPOINT-VERSION: 1' \
+  -H 'Content-Type: application/json; charset=utf-8'
+```
+
+If the header is omitted the current endpoint definition is used. If the requested version does not exist for the resolved endpoint the response contains `version not found`.
+
+Versioned endpoint requests are tagged in query execution logs. For example, `LF-ENDPOINT-VERSION: 1` produces `endpoint_version=1`. See [Query tagging with labels](#query-tagging-with-labels) for more details on labels.
 
 ## Subquery Expansion with Other Endpoints
 
@@ -241,4 +260,3 @@ The main Logflare service account must be granted the following IAM roles on the
 
 - **Project IAM Admin** (`roles/resourcemanager.projectIamAdmin`) — required to set IAM policies for managed service accounts on the additional project
 - **BigQuery Admin** (`roles/bigquery.admin`) — required for managed service accounts to execute queries against reservations in the additional project
-

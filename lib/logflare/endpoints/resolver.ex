@@ -29,7 +29,7 @@ defmodule Logflare.Endpoints.Resolver do
       "endpoint.user_id" => query.user_id
     }
 
-    ResultsCache.name(query.id, params)
+    ResultsCache.name(query, params)
     |> GenServer.whereis()
     |> case do
       pid when is_pid(pid) ->
@@ -45,7 +45,8 @@ defmodule Logflare.Endpoints.Resolver do
 
           via =
             {:via, PartitionSupervisor,
-             {Logflare.Endpoints.ResultsCache.PartitionSupervisor, {id, params, opts}}}
+             {Logflare.Endpoints.ResultsCache.PartitionSupervisor,
+              ResultsCache.cache_partition_key(query, params, opts)}}
 
           case DynamicSupervisor.start_child(via, spec) do
             {:ok, pid} ->

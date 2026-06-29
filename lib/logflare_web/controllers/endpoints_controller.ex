@@ -6,9 +6,12 @@ defmodule LogflareWeb.EndpointsController do
 
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
+  alias LogflareWeb.Api.FallbackController
   alias LogflareWeb.JsonParser
-  alias LogflareWeb.OpenApi.Unauthorized
+  alias LogflareWeb.OpenApi.BadRequest
+  alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApi.ServerError
+  alias LogflareWeb.OpenApi.Unauthorized
   alias LogflareWeb.OpenApiSchemas.EndpointQuery
   alias LogflareWeb.QueryErrorHelpers
 
@@ -32,7 +35,8 @@ defmodule LogflareWeb.EndpointsController do
       "X-API-Key",
       "LF-ENDPOINT-LABELS",
       "LF-ENDPOINT-REDACT-PII",
-      "LF-ENDPOINT-BIGQUERY-RESERVATION"
+      "LF-ENDPOINT-BIGQUERY-RESERVATION",
+      "LF-ENDPOINT-VERSION"
     ],
     methods: ["GET", "POST", "OPTIONS"],
     send_preflight_response?: true
@@ -48,20 +52,28 @@ defmodule LogflareWeb.EndpointsController do
         type: :string,
         example: "a040ae88-3e27-448b-9ee6-622278b23193",
         required: true
+      ],
+      lf_endpoint_version: [
+        in: :header,
+        name: "LF-ENDPOINT-VERSION",
+        description: "Endpoint version number to execute",
+        type: :integer,
+        required: false
       ]
     ],
     responses: %{
       200 => EndpointQuery.response(),
+      400 => BadRequest.response(),
       401 => Unauthorized.response(),
+      404 => NotFound.response(),
       500 => ServerError.response()
     }
   )
 
+  plug(:load_endpoint_query)
   plug(:parse_get_body)
 
-  def query(%{assigns: %{endpoint: endpoint}} = conn, params) do
-    endpoint_query = Endpoints.map_query_sources(endpoint)
-
+  def query(%{assigns: %{endpoint_query: endpoint_query}} = conn, params) do
     header_str =
       get_req_header(conn, "lf-endpoint-labels")
       |> case do
@@ -98,13 +110,44 @@ defmodule LogflareWeb.EndpointsController do
     end
   end
 
-  # only parse body for get when `?sql=` and `?lql=` are empty and it is sandboxable
+  @spec load_endpoint_query(Plug.Conn.t(), any()) :: Plug.Conn.t()
+  defp load_endpoint_query(%{assigns: %{endpoint: endpoint}} = conn, _opts) do
+    with [version_str | _] <- get_req_header(conn, "lf-endpoint-version"),
+         {:ok, version_number} <- parse_endpoint_version(version_str),
+         {:ok, endpoint_query} <-
+           Endpoints.get_endpoint_query_at_version(endpoint, version_number) do
+      assign(conn, :endpoint_query, endpoint_query)
+    else
+      [] ->
+        assign(conn, :endpoint_query, Endpoints.map_query_sources(endpoint))
+
+      {:error, :version_not_found} ->
+        conn
+        |> FallbackController.call({:error, :not_found, "version not found"})
+        |> halt()
+
+      _ ->
+        conn
+        |> FallbackController.call({:error, "invalid lf-endpoint-version"})
+        |> halt()
+    end
+  end
+
+  # only parse body for get when `?sql=` and `?lql=` are empty
   # passthrough for all other cases
   defp parse_get_body(
-         %{method: "GET", assigns: %{endpoint: %_{sandboxable: true}}, query_params: qp} = conn,
+         %{method: "GET", assigns: %{endpoint_query: %{sandboxable: true}}, query_params: qp} =
+           conn,
          _opts
        )
        when not is_map_key(qp, "sql") and not is_map_key(qp, "lql") do
+    parse_get_body(conn)
+  end
+
+  defp parse_get_body(conn, _opts), do: conn
+
+  @spec parse_get_body(Plug.Conn.t()) :: Plug.Conn.t()
+  defp parse_get_body(conn) do
     conn
     # Plug.Parsers only supports POST/PUT/PATCH
     |> Map.put(:method, "POST")
@@ -113,5 +156,14 @@ defmodule LogflareWeb.EndpointsController do
     |> Map.put(:method, "GET")
   end
 
-  defp parse_get_body(conn, _opts), do: conn
+  @spec parse_endpoint_version(String.t()) :: {:ok, pos_integer()} | {:error, :invalid_version}
+  defp parse_endpoint_version(version_str) do
+    case Integer.parse(version_str) do
+      {version_number, ""} when version_number > 0 ->
+        {:ok, version_number}
+
+      _ ->
+        {:error, :invalid_version}
+    end
+  end
 end

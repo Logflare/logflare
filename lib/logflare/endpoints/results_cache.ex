@@ -6,6 +6,7 @@ defmodule Logflare.Endpoints.ResultsCache do
   require Logger
 
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Utils
   alias Logflare.Utils.Tasks
 
@@ -19,22 +20,24 @@ defmodule Logflare.Endpoints.ResultsCache do
             refresh_timer: nil,
             endpoint_query_id: nil,
             endpoint_query_token: nil,
+            endpoint_version_number: nil,
             parsed_labels: %{}
 
   @type t :: %__MODULE__{
           endpoint_query_id: integer(),
           endpoint_query_token: String.t(),
+          endpoint_version_number: integer() | nil,
           query_tasks: list(%Task{}),
           params: map(),
           opts: list(),
-          cached_result: binary(),
-          shutdown_timer: reference(),
-          refresh_timer: reference(),
+          cached_result: map() | nil,
+          shutdown_timer: reference() | nil,
+          refresh_timer: reference() | nil,
           parsed_labels: map()
         }
 
   def start_link({query, params, opts}) do
-    name = name(query.id, params)
+    name = name(query, params)
     GenServer.start_link(__MODULE__, {query, params, opts}, name: name, hibernate_after: 5_000)
   end
 
@@ -99,6 +102,7 @@ defmodule Logflare.Endpoints.ResultsCache do
       %__MODULE__{
         endpoint_query_id: query.id,
         endpoint_query_token: query.token,
+        endpoint_version_number: query.version_number,
         params: params,
         opts: opts,
         shutdown_timer: timer,
@@ -188,17 +192,18 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   def do_query(state) do
-    query =
-      Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
-      |> Map.put(:parsed_labels, state.parsed_labels)
+    with %EndpointQuery{} = query <- endpoint_query(state) do
+      query = Map.put(query, :parsed_labels, state.parsed_labels)
 
-    Logflare.Endpoints.run_query(query, state.params, state.opts)
-    |> Utils.append_to_tuple(query)
-  end
+      Logflare.Endpoints.run_query(query, state.params, state.opts)
+      |> Utils.append_to_tuple(query)
+    else
+      {:error, error} ->
+        {:error, error, nil}
 
-  def endpoints_part(query_id, params) do
-    part = :erlang.phash2({query_id, params}, System.schedulers_online())
-    "endpoints_#{part}" |> String.to_existing_atom()
+      nil ->
+        {:error, :not_found, nil}
+    end
   end
 
   def endpoints_part(query_id) do
@@ -206,10 +211,43 @@ defmodule Logflare.Endpoints.ResultsCache do
     "endpoints_#{part}" |> String.to_existing_atom()
   end
 
-  def name(query_id, params) do
-    partition = endpoints_part(query_id, params)
+  def name(%EndpointQuery{id: query_id, version_number: version_number}, params) do
     param_hash = :erlang.phash2(params)
-    {:via, :syn, {partition, {query_id, param_hash}}}
+
+    {key, partition_key} =
+      case version_number do
+        version_number when is_integer(version_number) ->
+          {
+            {query_id, {:version, version_number}, param_hash},
+            {query_id, {:version, version_number}, params}
+          }
+
+        _ ->
+          {{query_id, param_hash}, {query_id, params}}
+      end
+
+    {:via, :syn, {endpoints_part(partition_key), key}}
+  end
+
+  @spec cache_partition_key(EndpointQuery.t(), map(), Keyword.t()) :: tuple()
+  def cache_partition_key(%EndpointQuery{id: id, version_number: nil}, params, opts),
+    do: {id, params, opts}
+
+  def cache_partition_key(%EndpointQuery{id: id, version_number: version_number}, params, opts)
+      when is_integer(version_number),
+      do: {id, {:version, version_number}, params, opts}
+
+  @spec endpoint_query(t()) :: EndpointQuery.t() | {:error, atom()} | nil
+  defp endpoint_query(%__MODULE__{endpoint_version_number: version_number} = state)
+       when is_integer(version_number) do
+    case Endpoints.Cache.get_endpoint_query_at_version(state.endpoint_query_id, version_number) do
+      {:ok, query} -> query
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  defp endpoint_query(%__MODULE__{} = state) do
+    Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
   end
 
   defp refresh(every) do

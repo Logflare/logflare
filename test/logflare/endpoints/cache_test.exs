@@ -49,6 +49,117 @@ defmodule Logflare.Endpoints.CacheTest do
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
     end
 
+    test "cache separates current and versioned endpoint results", %{endpoint_2: endpoint} do
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{"query" => "select 'historical' as testing"}
+      )
+
+      assert {:ok, versioned_endpoint} = Endpoints.get_endpoint_query_at_version(endpoint, 1)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 2, fn _conn, _proj_id, opts ->
+        cond do
+          opts[:body].query =~ "historical" ->
+            {:ok, TestUtils.gen_bq_response([%{"testing" => "historical"}])}
+
+          opts[:body].query =~ "current_datetime" ->
+            {:ok, TestUtils.gen_bq_response([%{"testing" => "current"}])}
+        end
+      end)
+
+      assert {:ok, %{rows: [%{"testing" => "current"}]}} = Endpoints.run_cached_query(endpoint)
+
+      assert {:ok, %{rows: [%{"testing" => "historical"}]}} =
+               Endpoints.run_cached_query(versioned_endpoint)
+
+      assert {:ok, %{rows: [%{"testing" => "current"}]}} = Endpoints.run_cached_query(endpoint)
+
+      assert {:ok, %{rows: [%{"testing" => "historical"}]}} =
+               Endpoints.run_cached_query(versioned_endpoint)
+    end
+
+    test "versioned cache refresh keeps running the selected snapshot", %{endpoint: endpoint} do
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{
+          "query" => "select 'historical' as testing",
+          "cache_duration_seconds" => 3,
+          "proactive_requerying_seconds" => 1
+        }
+      )
+
+      assert {:ok, versioned_endpoint} = Endpoints.get_endpoint_query_at_version(endpoint, 1)
+
+      {:ok, responses} = Agent.start_link(fn -> ["first", "second"] end)
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 2, fn _conn, _proj_id, opts ->
+        send(pid, {:query, opts[:body].query})
+
+        value =
+          Agent.get_and_update(responses, fn
+            [value | rest] -> {value, rest}
+            [] -> {"extra", []}
+          end)
+
+        {:ok, TestUtils.gen_bq_response([%{"testing" => value}])}
+      end)
+
+      assert {:ok, %{rows: [%{"testing" => "first"}]}} =
+               Endpoints.run_cached_query(versioned_endpoint)
+
+      Logflare.Repo.update_all(Endpoints.EndpointQuery,
+        set: [query: "select 'current updated' as testing"]
+      )
+
+      Process.sleep(versioned_endpoint.proactive_requerying_seconds * 1000 + 100)
+
+      assert {:ok, %{rows: [%{"testing" => "second"}]}} =
+               Endpoints.run_cached_query(versioned_endpoint)
+
+      assert_received {:query, first_query}
+      assert_received {:query, second_query}
+      assert first_query =~ "historical"
+      assert second_query =~ "historical"
+
+      versioned_endpoint
+      |> Endpoints.ResultsCache.name(%{})
+      |> GenServer.whereis()
+      |> Endpoints.ResultsCache.invalidate()
+    end
+
+    test "endpoint updates invalidate versioned caches", %{endpoint: endpoint, user: user} do
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{"query" => "select 'historical' as testing"}
+      )
+
+      assert {:ok, versioned_endpoint} = Endpoints.get_endpoint_query_at_version(endpoint, 1)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "historical"}])}
+      end)
+
+      {:ok, cache_pid} =
+        start_supervised({Logflare.Endpoints.ResultsCache, {versioned_endpoint, %{}, []}})
+
+      assert {:ok, %{rows: [%{"testing" => "historical"}]}} =
+               Endpoints.run_cached_query(versioned_endpoint)
+
+      assert {:ok, _updated_endpoint} =
+               Endpoints.update_query(endpoint, %{query: "select 'updated' as testing"}, user)
+
+      TestUtils.retry_assert(fn ->
+        refute Process.alive?(cache_pid)
+      end)
+    end
+
     test "cache dies on timeout error from query", %{endpoint: endpoint} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
