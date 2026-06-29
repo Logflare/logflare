@@ -21,7 +21,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
   alias Logflare.Backends.BackendRegistry
 
   @blocked_key :blocked_until
-  @max_failures 50
+  @max_failures 20
   @window_ms :timer.seconds(30)
   @block_ms :timer.seconds(30)
 
