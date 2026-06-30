@@ -193,8 +193,16 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
         case Jason.decode(body) do
           {:ok, %{"file_key" => file_key}} when is_binary(file_key) ->
             case download_and_parse(bucket, file_key, storage_mod) do
-              {:ok, lines} -> {:ok, handle, lines}
-              {:error, reason} -> {:error, handle, reason}
+              {:ok, lines} ->
+                {:ok, handle, lines}
+
+              {:error, %Tesla.Env{status: 404}} ->
+                Logger.warning("s3_consumer: file not found in storage, discarding stale queue entry: #{file_key}")
+                queue_mod.ack(queue_url, handle)
+                :empty
+
+              {:error, reason} ->
+                {:error, handle, reason}
             end
 
           _ ->
@@ -255,11 +263,22 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
 
   defp over_limit? do
     s3_config = Application.get_env(:logflare, :s3_spool, [])
-    total_limit = Keyword.get(s3_config, :consumer_memory_limit_mb, @default_memory_limit_mb)
-    ets_limit = Keyword.get(s3_config, :consumer_max_ets_mb, @default_max_ets_mb)
+    total_limit_mb = Keyword.get(s3_config, :consumer_memory_limit_mb, @default_memory_limit_mb)
+    ets_limit_mb = Keyword.get(s3_config, :consumer_max_ets_mb, @default_max_ets_mb)
 
-    :erlang.memory(:total) > total_limit * 1_048_576 or
-      :erlang.memory(:ets) > ets_limit * 1_048_576
+    total = :erlang.memory(:total)
+    ets = :erlang.memory(:ets)
+    over = total > total_limit_mb * 1_048_576 or ets > ets_limit_mb * 1_048_576
+
+    if over do
+      total_mb = Float.round(total / 1_048_576, 1)
+      ets_mb = Float.round(ets / 1_048_576, 1)
+      dbg({"***************** s3_consumer THROTTLING *****************",
+           total_mb: total_mb, total_limit_mb: total_limit_mb,
+           ets_mb: ets_mb, ets_limit_mb: ets_limit_mb})
+    end
+
+    over
   end
 
   defp schedule_poll do
