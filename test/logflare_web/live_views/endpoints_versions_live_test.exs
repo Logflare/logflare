@@ -143,6 +143,16 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       assert modal_html =~ "2 as version_number"
       assert modal_html =~ "snapshot description"
       assert_query_displayed(view, "select 2 as version_number")
+
+      view
+      |> element("#endpoint-version-snapshot-modal .phx-modal-close")
+      |> render_click()
+
+      patched_uri = assert_patch(view) |> URI.parse()
+
+      assert "/endpoints/#{endpoint.id}/versions" == patched_uri.path
+      assert "t=#{team.id}" == patched_uri.query
+      refute has_element?(view, "#endpoint-version-snapshot-modal")
     end
 
     test "loads additional versions", %{
