@@ -39,14 +39,14 @@ defmodule Logflare.Backends.BufferProducer do
   def init(opts) do
     Process.flag(:trap_exit, true)
 
-    s3_producer? = Keyword.get(opts, :s3_producer, false)
+    spool_producer? = Keyword.get(opts, :spool_producer, false)
     consolidated? = Keyword.get(opts, :consolidated, false)
     backend_id = opts[:backend_id]
     interval = Keyword.get(opts, :interval, @default_interval)
 
     state =
       cond do
-        s3_producer? -> init_s3_producer_state(interval)
+        spool_producer? -> init_spool_producer_state(interval)
         consolidated? -> init_consolidated_state(backend_id, interval, opts)
         true -> init_standard_state(opts, interval)
       end
@@ -54,10 +54,10 @@ defmodule Logflare.Backends.BufferProducer do
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
   end
 
-  @spec init_s3_producer_state(pos_integer()) :: state()
-  defp init_s3_producer_state(interval) do
+  @spec init_spool_producer_state(pos_integer()) :: state()
+  defp init_spool_producer_state(interval) do
     state = %{
-      s3_producer: true,
+      spool_producer: true,
       consolidated: false,
       id_passing: true,
       demand: 0,
@@ -68,8 +68,8 @@ defmodule Logflare.Backends.BufferProducer do
       interval: interval
     }
 
-    table_key = {:s3_producer, nil, self()}
-    startup_table_key = {:s3_producer, nil, nil}
+    table_key = {:spool_producer, nil, self()}
+    startup_table_key = {:spool_producer, nil, nil}
     IngestEventQueue.upsert_tid(table_key)
     IngestEventQueue.move(startup_table_key, table_key)
     schedule(state, false)
@@ -124,9 +124,9 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @impl GenStage
-  def format_discarded(discarded, %{s3_producer: true} = state) do
+  def format_discarded(discarded, %{spool_producer: true} = state) do
     maybe_log_discarded(state, fn ->
-      Logger.warning("S3 producer GenStage has discarded #{discarded} events from buffer")
+      Logger.warning("Spool producer GenStage has discarded #{discarded} events from buffer")
     end)
   end
 
@@ -188,9 +188,9 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @impl GenStage
-  def handle_info({:EXIT, _caller_pid, _reason}, %{s3_producer: true} = state) do
-    table_key = {:s3_producer, nil, self()}
-    startup_table_key = {:s3_producer, nil, nil}
+  def handle_info({:EXIT, _caller_pid, _reason}, %{spool_producer: true} = state) do
+    table_key = {:spool_producer, nil, self()}
+    startup_table_key = {:spool_producer, nil, nil}
     IngestEventQueue.move(table_key, startup_table_key)
     {:noreply, [], state}
   end
@@ -212,9 +212,9 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @impl GenStage
-  def terminate(_reason, %{s3_producer: true} = state) do
-    table_key = {:s3_producer, nil, self()}
-    startup_table_key = {:s3_producer, nil, nil}
+  def terminate(_reason, %{spool_producer: true} = state) do
+    table_key = {:spool_producer, nil, self()}
+    startup_table_key = {:spool_producer, nil, nil}
     IngestEventQueue.move(table_key, startup_table_key)
     state
   end
@@ -228,7 +228,7 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @spec schedule(state :: state(), scale? :: boolean()) :: reference()
-  defp schedule(%{s3_producer: true} = state, _scale?) do
+  defp schedule(%{spool_producer: true} = state, _scale?) do
     Process.send_after(self(), :scheduled_resolve, state.interval)
   end
 
@@ -288,12 +288,12 @@ defmodule Logflare.Backends.BufferProducer do
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [
           LogEvent.t() | {term(), :ets.tid()}
         ]
-  defp do_fetch(%{s3_producer: true} = _state, n) do
-    key = {:s3_producer, nil, self()}
+  defp do_fetch(%{spool_producer: true} = _state, n) do
+    key = {:spool_producer, nil, self()}
 
     case IngestEventQueue.take_pending_ids(key, n) do
       {:error, :not_initialized} ->
-        Logger.warning("IngestEventQueue not initialized for s3_producer")
+        Logger.warning("IngestEventQueue not initialized for spool_producer")
         []
 
       {:ok, [], _tid} ->

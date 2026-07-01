@@ -1,11 +1,11 @@
-defmodule Logflare.Backends.S3ConsumerPipelineTest do
+defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
   use Logflare.DataCase, async: false
 
   import Mimic
   import Logflare.Factory
 
   alias Broadway.Message
-  alias Logflare.Backends.S3ConsumerPipeline
+  alias Logflare.Backends.Spool.ConsumerPipeline
 
   setup :set_mimic_global
 
@@ -14,7 +14,7 @@ defmodule Logflare.Backends.S3ConsumerPipelineTest do
   defp line_message(source_id, event_id, extra_body \\ %{}) do
     body = Map.merge(%{"id" => event_id, "timestamp" => System.system_time(:microsecond)}, extra_body)
     line = %{"source_id" => source_id, "body" => body, "id" => event_id, "event_type" => "log"}
-    %Message{data: line, acknowledger: {S3ConsumerPipeline, :noop, nil}}
+    %Message{data: line, acknowledger: {ConsumerPipeline, :noop, nil}}
   end
 
   describe "handle_batch/4" do
@@ -31,12 +31,12 @@ defmodule Logflare.Backends.S3ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_s3, fn event_params, dispatched_source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source ->
         send(pid, {:dispatched, event_params, dispatched_source.id})
         {:ok, length(event_params)}
       end)
 
-      S3ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
+      ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
 
       assert_receive {:dispatched, [params], source_id}
       assert source_id == source.id
@@ -50,12 +50,12 @@ defmodule Logflare.Backends.S3ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_s3, fn event_params, _source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source ->
         send(pid, {:dispatched, Enum.map(event_params, & &1["id"])})
         {:ok, length(event_params)}
       end)
 
-      S3ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
+      ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
 
       assert_receive {:dispatched, ids}
       assert MapSet.new(ids) == MapSet.new([id1, id2])
@@ -71,12 +71,12 @@ defmodule Logflare.Backends.S3ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_s3, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
         send(pid, {:dispatched, source.id, Enum.map(event_params, & &1["id"])})
         {:ok, length(event_params)}
       end)
 
-      S3ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
+      ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
 
       dispatched =
         1..2
@@ -97,12 +97,12 @@ defmodule Logflare.Backends.S3ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_s3, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
         send(pid, {:dispatched, event_params, source.id})
         {:ok, length(event_params)}
       end)
 
-      S3ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
+      ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
 
       refute_receive {:dispatched, _, _}
     end
@@ -110,17 +110,17 @@ defmodule Logflare.Backends.S3ConsumerPipelineTest do
     test "skips events with a nil source_id", %{source: _source} do
       message = %Message{
         data: %{"source_id" => nil, "body" => %{"id" => Ecto.UUID.generate()}, "event_type" => "log"},
-        acknowledger: {S3ConsumerPipeline, :noop, nil}
+        acknowledger: {ConsumerPipeline, :noop, nil}
       }
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_s3, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
         send(pid, {:dispatched, event_params, source.id})
         {:ok, length(event_params)}
       end)
 
-      S3ConsumerPipeline.handle_batch(:default, [message], %{}, %{})
+      ConsumerPipeline.handle_batch(:default, [message], %{}, %{})
 
       refute_receive {:dispatched, _, _}
     end
@@ -128,11 +128,11 @@ defmodule Logflare.Backends.S3ConsumerPipelineTest do
     test "returns all messages regardless of dispatch errors", %{source: source} do
       messages = [line_message(source.id, Ecto.UUID.generate())]
 
-      stub(Logflare.Backends, :dispatch_from_s3, fn _params, _source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn _params, _source ->
         {:error, "downstream failure"}
       end)
 
-      result = S3ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
+      result = ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
 
       assert result == messages
     end

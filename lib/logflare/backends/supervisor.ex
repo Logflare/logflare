@@ -16,14 +16,14 @@ defmodule Logflare.Backends.Supervisor do
   def init(_) do
     base = System.schedulers_online()
 
-    s3_config = Application.get_env(:logflare, :s3_spool, [])
-    s3_provider = Keyword.get(s3_config, :provider, :aws)
+    spool_config = Application.get_env(:logflare, :spool, [])
+    spool_provider = Keyword.get(spool_config, :provider, :aws)
 
-    producer_children = if Backends.s3_producer_mode?(), do: [Backends.S3ProducerSup], else: []
-    consumer_children = if Backends.s3_consumer_mode?(), do: [Backends.S3ConsumerSup], else: []
-    spool_goth_children = if s3_provider == :gcp, do: List.wrap(spool_goth_child_spec()), else: []
+    producer_children = if Backends.spool_producer_mode?(), do: [Backends.Spool.ProducerSup], else: []
+    consumer_children = if Backends.spool_consumer_mode?(), do: [Backends.Spool.ConsumerSup], else: []
+    spool_goth_children = if spool_provider == :gcp, do: List.wrap(spool_goth_child_spec()), else: []
 
-    dbg({s3_provider, Backends.s3_producer_mode?(), Backends.s3_consumer_mode?()})
+    dbg({spool_provider, Backends.spool_producer_mode?(), Backends.spool_consumer_mode?()})
 
     children =
       [

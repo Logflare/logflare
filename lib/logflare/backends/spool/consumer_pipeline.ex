@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.S3ConsumerPipeline do
+defmodule Logflare.Backends.Spool.ConsumerPipeline do
   @moduledoc false
 
   use Broadway
@@ -7,7 +7,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
 
   alias Broadway.Message
   alias Logflare.Backends
-  alias Logflare.Backends.S3ConsumerPipeline.SqsProducer
+  alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
   alias Logflare.Backends.Spool.Queue
   alias Logflare.Backends.Spool.Storage
   alias Logflare.Sources
@@ -18,20 +18,20 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
   def start_link(args) do
     {name, _args} = Keyword.pop!(args, :name)
 
-    s3_config = Application.get_env(:logflare, :s3_spool, [])
-    bucket = Keyword.fetch!(s3_config, :bucket)
-    concurrency = Keyword.get(s3_config, :consumer_concurrency, 4)
-    batch_size = Keyword.get(s3_config, :consumer_batch_size, 5_000)
-    queue_name = Keyword.fetch!(s3_config, :queue_name)
-    provider = Keyword.get(s3_config, :provider, :aws)
-    storage_mod = Keyword.get(s3_config, :storage_mod, default_storage_mod(provider))
-    queue_mod = Keyword.get(s3_config, :queue_mod, default_queue_mod(provider))
+    spool_config = Application.get_env(:logflare, :spool, [])
+    bucket = Keyword.fetch!(spool_config, :bucket)
+    concurrency = Keyword.get(spool_config, :consumer_concurrency, 4)
+    batch_size = Keyword.get(spool_config, :consumer_batch_size, 5_000)
+    queue_name = Keyword.fetch!(spool_config, :queue_name)
+    provider = Keyword.get(spool_config, :provider, :aws)
+    storage_mod = Keyword.get(spool_config, :storage_mod, default_storage_mod(provider))
+    queue_mod = Keyword.get(spool_config, :queue_mod, default_queue_mod(provider))
     queue_url = resolve_queue_url!(queue_name, queue_mod)
 
     Broadway.start_link(__MODULE__,
       name: name,
       producer: [
-        module: {SqsProducer, [queue_url: queue_url, bucket: bucket, storage_mod: storage_mod, queue_mod: queue_mod]},
+        module: {QueueProducer, [queue_url: queue_url, bucket: bucket, storage_mod: storage_mod, queue_mod: queue_mod]},
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [
@@ -55,11 +55,11 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
     }
   end
 
-  # SQS acking is managed by the producer — individual message ack is a no-op.
+  # Queue acking is managed by the producer — individual message ack is a no-op.
   @impl Broadway.Acknowledger
   def ack(_ack_ref, _successful, failed) do
     if failed != [] do
-      Logger.error("s3_consumer: #{length(failed)} messages failed during processing")
+      Logger.error("spool_consumer: #{length(failed)} messages failed during processing")
     end
 
     :ok
@@ -77,20 +77,20 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
     |> Enum.group_by(&record_source_id/1)
     |> Enum.each(fn
       {nil, lines} ->
-        Logger.warning("s3_consumer: #{length(lines)} events missing source_id, skipping")
+        Logger.warning("spool_consumer: #{length(lines)} events missing source_id, skipping")
 
       {source_id, lines} ->
         case Sources.get(source_id) do
           nil ->
-            Logger.warning("s3_consumer: unknown source_id=#{source_id}, skipping #{length(lines)} events")
+            Logger.warning("spool_consumer: unknown source_id=#{source_id}, skipping #{length(lines)} events")
 
           source ->
-            {dispatch_us, result} = :timer.tc(fn -> Backends.dispatch_from_s3(lines, source) end)
+            {dispatch_us, result} = :timer.tc(fn -> Backends.dispatch_from_spool(lines, source) end)
             dbg({:dispatch_ms, Float.round(dispatch_us / 1000, 1), :event_count, length(lines)})
 
             case result do
               {:ok, _} -> :ok
-              {:error, reason} -> Logger.error("s3_consumer: dispatch failed for source #{source_id}: #{inspect(reason)}")
+              {:error, reason} -> Logger.error("spool_consumer: dispatch failed for source #{source_id}: #{inspect(reason)}")
             end
         end
     end)
@@ -104,7 +104,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline do
         ref
 
       {:error, reason} ->
-        raise "s3_consumer: failed to resolve queue ref for #{queue_name}: #{inspect(reason)}"
+        raise "spool_consumer: failed to resolve queue ref for #{queue_name}: #{inspect(reason)}"
     end
   end
 

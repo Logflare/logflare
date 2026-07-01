@@ -47,15 +47,15 @@ defmodule Logflare.LogEvent do
   end
 
   @doc """
-  Reconstructs a LogEvent from a record stored in S3 by the producer pipeline.
+  Reconstructs a LogEvent from a record stored in the spool by the producer pipeline.
   Skips the full make/transform/validate pipeline — the body is already in
   BQ column spec format and the event was already validated on ingest.
 
   Handles both NDJSON (string keys, ISO8601 ingested_at) and ETF (atom keys,
   native DateTime) formats written by the producer.
   """
-  @spec make_from_s3(map(), Source.t()) :: t()
-  def make_from_s3(
+  @spec make_from_spool(map(), Source.t()) :: t()
+  def make_from_spool(
         %{
           id: id,
           body: body,
@@ -84,7 +84,7 @@ defmodule Logflare.LogEvent do
     }
   end
 
-  def make_from_s3(
+  def make_from_spool(
         %{
           "id" => id,
           "body" => body,

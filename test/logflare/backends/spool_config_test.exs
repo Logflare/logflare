@@ -24,58 +24,58 @@ defmodule Logflare.Backends.SpoolConfigTest do
     end
   end
 
-  describe "S3_SPOOL_PROVIDER env var parsing" do
+  describe "SPOOL_PROVIDER env var parsing" do
     test "aws sets provider atom" do
-      prev = Application.get_env(:logflare, :s3_spool, [])
+      prev = Application.get_env(:logflare, :spool, [])
 
       try do
         provider = "aws"
         atom = String.to_atom(provider)
         assert atom == :aws
       after
-        Application.put_env(:logflare, :s3_spool, prev)
+        Application.put_env(:logflare, :spool, prev)
       end
     end
 
     test "gcp sets provider atom" do
-      prev = Application.get_env(:logflare, :s3_spool, [])
+      prev = Application.get_env(:logflare, :spool, [])
 
       try do
         provider = "gcp"
         atom = String.to_atom(provider)
         assert atom == :gcp
       after
-        Application.put_env(:logflare, :s3_spool, prev)
+        Application.put_env(:logflare, :spool, prev)
       end
     end
 
     test "provider config key is picked up by pipeline module selection" do
-      prev = Application.get_env(:logflare, :s3_spool, [])
+      prev = Application.get_env(:logflare, :spool, [])
 
       try do
-        Application.put_env(:logflare, :s3_spool, Keyword.put(prev, :provider, :gcp))
-        s3_config = Application.get_env(:logflare, :s3_spool, [])
-        provider = Keyword.get(s3_config, :provider, :aws)
+        Application.put_env(:logflare, :spool, Keyword.put(prev, :provider, :gcp))
+        spool_config = Application.get_env(:logflare, :spool, [])
+        provider = Keyword.get(spool_config, :provider, :aws)
         assert provider == :gcp
         assert storage_mod(provider) == GCS
         assert queue_mod(provider) == PubSub
       after
-        Application.put_env(:logflare, :s3_spool, prev)
+        Application.put_env(:logflare, :spool, prev)
       end
     end
 
     test "missing provider defaults to aws" do
-      prev = Application.get_env(:logflare, :s3_spool, [])
+      prev = Application.get_env(:logflare, :spool, [])
 
       try do
-        Application.put_env(:logflare, :s3_spool, Keyword.delete(prev, :provider))
-        s3_config = Application.get_env(:logflare, :s3_spool, [])
-        provider = Keyword.get(s3_config, :provider, :aws)
+        Application.put_env(:logflare, :spool, Keyword.delete(prev, :provider))
+        spool_config = Application.get_env(:logflare, :spool, [])
+        provider = Keyword.get(spool_config, :provider, :aws)
         assert provider == :aws
         assert storage_mod(provider) == S3
         assert queue_mod(provider) == SQS
       after
-        Application.put_env(:logflare, :s3_spool, prev)
+        Application.put_env(:logflare, :spool, prev)
       end
     end
   end

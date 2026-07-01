@@ -1,4 +1,4 @@
-defmodule LogflareWeb.Live.S3DashboardLive do
+defmodule LogflareWeb.Live.Dev.DashboardLive do
   @moduledoc false
 
   use LogflareWeb, :live_view
@@ -8,7 +8,7 @@ defmodule LogflareWeb.Live.S3DashboardLive do
 
   @max_points 60
   @tick_ms 1_000
-  @pipeline Logflare.Backends.S3ProducerPipeline
+  @pipeline Logflare.Backends.Spool.ProducerPipeline
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -25,10 +25,10 @@ defmodule LogflareWeb.Live.S3DashboardLive do
       pid = :erlang.pid_to_list(self())
 
       :telemetry.attach(
-        "s3-dashboard-write-#{pid}",
+        "dev-dashboard-write-#{pid}",
         [:logflare, :backends, :pipeline, :handle_batch],
         fn _event, %{batch_size: size}, meta, {rate_ref, total_ref} ->
-          if Map.get(meta, :backend_type) == :s3_producer do
+          if Map.get(meta, :backend_type) == :spool_producer do
             :atomics.add(rate_ref, 1, size)
             :atomics.add(total_ref, 1, size)
           end
@@ -37,7 +37,7 @@ defmodule LogflareWeb.Live.S3DashboardLive do
       )
 
       :telemetry.attach(
-        "s3-dashboard-ch-#{pid}",
+        "dev-dashboard-ch-#{pid}",
         [:logflare, :backends, :pipeline, :handle_batch],
         fn _event, %{batch_size: size}, meta, {rate_ref, total_ref} ->
           if Map.get(meta, :backend_type) == :clickhouse do
@@ -49,7 +49,7 @@ defmodule LogflareWeb.Live.S3DashboardLive do
       )
 
       :telemetry.attach(
-        "s3-dashboard-bq-#{pid}",
+        "dev-dashboard-bq-#{pid}",
         [:logflare, :backends, :pipeline, :handle_batch],
         fn _event, %{batch_size: size}, meta, {rate_ref, total_ref} ->
           if Map.get(meta, :backend_type) == :bigquery do
@@ -61,8 +61,8 @@ defmodule LogflareWeb.Live.S3DashboardLive do
       )
 
       :telemetry.attach(
-        "s3-dashboard-read-#{pid}",
-        [:logflare, :backends, :s3_consumer, :dispatch],
+        "dev-dashboard-read-#{pid}",
+        [:logflare, :backends, :spool_consumer, :dispatch],
         fn _event, %{count: count}, _meta, {rate_ref, total_ref} ->
           :atomics.add(rate_ref, 1, count)
           :atomics.add(total_ref, 1, count)
@@ -75,9 +75,9 @@ defmodule LogflareWeb.Live.S3DashboardLive do
 
     mode =
       cond do
-        Backends.s3_producer_mode?() and Backends.s3_consumer_mode?() -> "both"
-        Backends.s3_producer_mode?() -> "producer"
-        Backends.s3_consumer_mode?() -> "consumer"
+        Backends.spool_producer_mode?() and Backends.spool_consumer_mode?() -> "both"
+        Backends.spool_producer_mode?() -> "producer"
+        Backends.spool_consumer_mode?() -> "consumer"
         true -> "none"
       end
 
@@ -104,10 +104,10 @@ defmodule LogflareWeb.Live.S3DashboardLive do
   @impl Phoenix.LiveView
   def terminate(_reason, socket) do
     pid = :erlang.pid_to_list(self())
-    :telemetry.detach("s3-dashboard-write-#{pid}")
-    :telemetry.detach("s3-dashboard-ch-#{pid}")
-    :telemetry.detach("s3-dashboard-bq-#{pid}")
-    :telemetry.detach("s3-dashboard-read-#{pid}")
+    :telemetry.detach("dev-dashboard-write-#{pid}")
+    :telemetry.detach("dev-dashboard-ch-#{pid}")
+    :telemetry.detach("dev-dashboard-bq-#{pid}")
+    :telemetry.detach("dev-dashboard-read-#{pid}")
     socket
   end
 
@@ -182,14 +182,14 @@ defmodule LogflareWeb.Live.S3DashboardLive do
     ~H"""
     <div style="background: #181825; min-height: 100vh; padding: 0;">
       {live_react_component(
-        "Components.S3Dashboard",
+        "Components.DevDashboard",
         %{
           data: @series,
           current: @current,
           producer_paused: @producer_paused,
           mode: @mode
         },
-        id: "s3-dashboard"
+        id: "dev-dashboard"
       )}
 
       <div style="padding: 0 24px 24px; display: flex; gap: 12px;">
@@ -207,7 +207,7 @@ defmodule LogflareWeb.Live.S3DashboardLive do
         </button>
 
         <div style="color: #6c7086; font-size: 12px; align-self: center; font-family: monospace;">
-          Pausing the producer suspends S3 writes — ETS queue will grow.
+          Pausing the producer suspends spool writes — ETS queue will grow.
         </div>
       </div>
     </div>
@@ -215,9 +215,9 @@ defmodule LogflareWeb.Live.S3DashboardLive do
   end
 
   defp gather_metrics(write_rate_atomic, write_total_atomic, read_rate_atomic, read_total_atomic) do
-    s3_key = {:s3_producer, nil}
-    ets_pending = to_int(IngestEventQueue.total_by_status(s3_key, :pending))
-    ets_processing = to_int(IngestEventQueue.total_by_status(s3_key, :processing))
+    spool_key = {:spool_producer, nil}
+    ets_pending = to_int(IngestEventQueue.total_by_status(spool_key, :pending))
+    ets_processing = to_int(IngestEventQueue.total_by_status(spool_key, :processing))
 
     ets_bytes = :erlang.memory(:ets)
     proc_bytes = :erlang.memory(:processes)
@@ -245,14 +245,15 @@ defmodule LogflareWeb.Live.S3DashboardLive do
     }
   end
 
+  # SQS-specific: Pub/Sub has no cheap message-count attribute (Cloud Monitoring
+  # would be needed), so this stays zero for the GCP provider.
   defp fetch_sqs_depth do
-    s3_config = Application.get_env(:logflare, :s3_spool, [])
-    provider = Keyword.get(s3_config, :provider, :aws)
-    queue_name = Keyword.get(s3_config, :queue_name)
+    spool_config = Application.get_env(:logflare, :spool, [])
+    provider = Keyword.get(spool_config, :provider, :aws)
+    queue_name = Keyword.get(spool_config, :queue_name)
 
     cond do
       provider != :aws ->
-        # Pub/Sub has no cheap message-count attribute; Cloud Monitoring would be needed.
         {0, 0}
 
       is_nil(queue_name) ->

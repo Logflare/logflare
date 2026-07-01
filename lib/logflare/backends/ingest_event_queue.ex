@@ -24,8 +24,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   @type queues_key :: {pos_integer(), pos_integer() | nil}
   @type consolidated_queues_key :: {:consolidated, pos_integer()}
   @type consolidated_table_key :: {:consolidated, pos_integer(), pid() | nil}
-  @type s3_producer_queues_key :: {:s3_producer, nil}
-  @type s3_producer_table_key :: {:s3_producer, nil, pid() | nil}
+  @type spool_producer_queues_key :: {:spool_producer, nil}
+  @type spool_producer_table_key :: {:spool_producer, nil, pid() | nil}
 
   defguardp is_pid_or_nil(value) when is_pid(value) or is_nil(value)
 
@@ -66,8 +66,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   def get_tid({:consolidated, bid, pid}) when is_integer(bid),
     do: do_get_tid({:consolidated, bid}, pid)
 
-  def get_tid({:s3_producer, nil, pid}),
-    do: do_get_tid({:s3_producer, nil}, pid)
+  def get_tid({:spool_producer, nil, pid}),
+    do: do_get_tid({:spool_producer, nil}, pid)
 
   def get_tid({sid, bid, pid}) when is_integer(sid),
     do: do_get_tid({sid, bid}, pid)
@@ -108,7 +108,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  def upsert_tid({:s3_producer, nil, pid} = key) when is_pid_or_nil(pid) do
+  def upsert_tid({:spool_producer, nil, pid} = key) when is_pid_or_nil(pid) do
     case get_tid(key) do
       nil ->
         tid =
@@ -120,7 +120,7 @@ defmodule Logflare.Backends.IngestEventQueue do
             {:read_concurrency, true}
           ])
 
-        :ets.insert(@ets_table_mapper, {{:s3_producer, nil}, pid, tid})
+        :ets.insert(@ets_table_mapper, {{:spool_producer, nil}, pid, tid})
         {:ok, tid}
 
       tid ->
@@ -200,12 +200,12 @@ defmodule Logflare.Backends.IngestEventQueue do
         ) :: :ok | {:error, :not_initialized}
   def add_to_table(sid_bid_or_sid_bid_pid, batch, opts \\ [])
 
-  def add_to_table({:s3_producer, nil} = key, batch, opts) do
+  def add_to_table({:spool_producer, nil} = key, batch, opts) do
     chunk_size = Keyword.get(opts, :chunk_size, 100)
-    startup_queue = {:s3_producer, nil, nil}
+    startup_queue = {:spool_producer, nil, nil}
 
     reducer = fn
-      {{:s3_producer, nil, nil}, _}, acc -> acc
+      {{:spool_producer, nil, nil}, _}, acc -> acc
       {obj, _count}, acc -> [obj | acc]
     end
 

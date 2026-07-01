@@ -10,7 +10,7 @@ IO.puts("Baseline proc=#{Float.round(baseline_proc / 1_048_576, 1)}MB\n")
 # ---------------------------------------------------------------------------
 # Event throughput counter
 # Attaches to [:logflare, :backends, :pipeline, :handle_batch] which is
-# emitted by both the standard BigQuery pipeline and S3ProducerPipeline.
+# emitted by both the standard BigQuery pipeline and Spool.ProducerPipeline.
 # ---------------------------------------------------------------------------
 event_counter = :atomics.new(1, [])
 test_start_ms = System.monotonic_time(:millisecond)
@@ -57,10 +57,9 @@ stale_drop_count   = :atomics.new(1, [])
 )
 
 # ---------------------------------------------------------------------------
-# SQS queue depth helper (used in s3 mode)
+# SQS queue depth helper (used in spool mode)
 # ---------------------------------------------------------------------------
 sqs_queue_depth = fn queue_name ->
-  s3_config = Application.get_env(:logflare, :s3_spool, [])
   sqs_config = Application.get_env(:ex_aws, :sqs, [])
   scheme = Keyword.get(sqs_config, :scheme, "https://")
   host = Keyword.get(sqs_config, :host, "sqs.us-east-1.amazonaws.com")
@@ -97,14 +96,14 @@ spawn(fn ->
 
     queue_str =
       case pipeline_mode do
-        "s3" ->
-          s3_key = {:s3_producer, nil}
-          pending    = Logflare.Backends.IngestEventQueue.total_by_status(s3_key, :pending)
-          processing = Logflare.Backends.IngestEventQueue.total_by_status(s3_key, :processing)
-          ets_size   = Logflare.Backends.IngestEventQueue.get_table_size({:s3_producer, nil, nil})
+        "spool" ->
+          spool_key = {:spool_producer, nil}
+          pending    = Logflare.Backends.IngestEventQueue.total_by_status(spool_key, :pending)
+          processing = Logflare.Backends.IngestEventQueue.total_by_status(spool_key, :processing)
+          ets_size   = Logflare.Backends.IngestEventQueue.get_table_size({:spool_producer, nil, nil})
 
-          s3_config = Application.get_env(:logflare, :s3_spool, [])
-          queue_name = Keyword.get(s3_config, :queue_name)
+          spool_config = Application.get_env(:logflare, :spool, [])
+          queue_name = Keyword.get(spool_config, :queue_name)
 
           sqs_str =
             if queue_name do

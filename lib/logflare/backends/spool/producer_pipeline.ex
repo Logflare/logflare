@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.S3ProducerPipeline do
+defmodule Logflare.Backends.Spool.ProducerPipeline do
   @moduledoc false
 
   use Broadway
@@ -16,35 +16,35 @@ defmodule Logflare.Backends.S3ProducerPipeline do
 
   @max_batch_size 500_000
   @default_batch_timeout 5_000
-  @max_s3_file_size 32 * 1024 * 1024
+  @max_spool_file_size 32 * 1024 * 1024
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
-    dbg("Started s3 producer")
+    dbg("Started spool producer")
     {name, _args} = Keyword.pop!(args, :name)
 
-    s3_config = Application.get_env(:logflare, :s3_spool, [])
-    bucket = Keyword.fetch!(s3_config, :bucket)
-    partitions = Keyword.get(s3_config, :partitions, 4)
-    batch_timeout = Keyword.get(s3_config, :batch_timeout, @default_batch_timeout)
-    compress = Keyword.get(s3_config, :compress, true)
-    format = Keyword.get(s3_config, :format, :ndjson)
-    {storage_mod, queue_mod} = resolve_mods(s3_config)
-    queue_ref = resolve_queue_ref(s3_config, queue_mod)
+    spool_config = Application.get_env(:logflare, :spool, [])
+    bucket = Keyword.fetch!(spool_config, :bucket)
+    partitions = Keyword.get(spool_config, :partitions, 4)
+    batch_timeout = Keyword.get(spool_config, :batch_timeout, @default_batch_timeout)
+    compress = Keyword.get(spool_config, :compress, true)
+    format = Keyword.get(spool_config, :format, :ndjson)
+    {storage_mod, queue_mod} = resolve_mods(spool_config)
+    queue_ref = resolve_queue_ref(spool_config, queue_mod)
 
     Broadway.start_link(__MODULE__,
       name: name,
       hibernate_after: 5_000,
       spawn_opt: [fullsweep_after: 10],
       producer: [
-        module: {BufferProducer, [s3_producer: true, id_passing: true]},
+        module: {BufferProducer, [spool_producer: true, id_passing: true]},
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [default: [concurrency: 8, max_demand: 1_000]],
       batchers: [
-        s3: [
+        spool: [
           concurrency: partitions,
-          batch_size: s3_batch_size_splitter(),
+          batch_size: spool_batch_size_splitter(),
           batch_timeout: batch_timeout,
           max_demand: @max_batch_size
         ]
@@ -80,11 +80,11 @@ defmodule Logflare.Backends.S3ProducerPipeline do
 
   @impl Broadway
   def handle_message(_processor, message, _context) do
-    Message.put_batcher(message, :s3)
+    Message.put_batcher(message, :spool)
   end
 
   @impl Broadway
-  def handle_batch(:s3, messages, batch_info, %{
+  def handle_batch(:spool, messages, batch_info, %{
         bucket: bucket,
         partitions: partitions,
         compress: compress,
@@ -93,7 +93,7 @@ defmodule Logflare.Backends.S3ProducerPipeline do
         storage_mod: storage_mod,
         queue_mod: queue_mod
       }) do
-    dbg("S3ProducerPipeline handle_batch #{Enum.count(messages)}")
+    dbg("SpoolProducerPipeline handle_batch #{Enum.count(messages)}")
     dbg(batch_info)
     dbg(Enum.take(messages,1))
 
@@ -106,38 +106,38 @@ defmodule Logflare.Backends.S3ProducerPipeline do
         :telemetry.execute(
           [:logflare, :backends, :pipeline, :handle_batch],
           %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
-          %{backend_type: :s3_producer}
+          %{backend_type: :spool_producer}
         )
 
         notify_queue(queue_mod, queue_ref, file_key, batch_info.size)
 
-        Logger.debug("s3_producer_pipeline: wrote #{batch_info.size} events to s3",
+        Logger.debug("spool_producer_pipeline: wrote #{batch_info.size} events to spool",
           key: file_key
         )
 
         messages
 
       {:error, reason} ->
-        Logger.error("s3_producer_pipeline: S3 write failed key=#{file_key} error=#{inspect(reason)}")
+        Logger.error("spool_producer_pipeline: write failed key=#{file_key} error=#{inspect(reason)}")
 
         Enum.map(messages, &Message.failed(&1, reason))
     end
   end
 
-  @spec s3_batch_size_splitter() ::
+  @spec spool_batch_size_splitter() ::
           {{non_neg_integer(), non_neg_integer()},
            (Message.t(), {non_neg_integer(), non_neg_integer()} ->
               {:emit | :cont, {non_neg_integer(), non_neg_integer()}})}
-  defp s3_batch_size_splitter do
+  defp spool_batch_size_splitter do
     {
-      {@max_batch_size, @max_s3_file_size},
+      {@max_batch_size, @max_spool_file_size},
       fn
         _message, {1, _remaining} ->
-          {:emit, {@max_batch_size, @max_s3_file_size}}
+          {:emit, {@max_batch_size, @max_spool_file_size}}
 
         %{data: {_id, _tid, size}}, {count, remaining} ->
           if remaining - size <= 0 do
-            {:emit, {@max_batch_size, @max_s3_file_size}}
+            {:emit, {@max_batch_size, @max_spool_file_size}}
           else
             {:cont, {count - 1, remaining - size}}
           end
@@ -277,14 +277,14 @@ defmodule Logflare.Backends.S3ProducerPipeline do
         :ok
 
       {:error, reason} ->
-        Logger.error("s3_producer_pipeline: queue notify failed for #{file_key}: #{inspect reason}")
+        Logger.error("spool_producer_pipeline: queue notify failed for #{file_key}: #{inspect reason}")
     end
   end
 
-  defp resolve_queue_ref(s3_config, queue_mod) do
+  defp resolve_queue_ref(spool_config, queue_mod) do
     # For PubSub: producer publishes to a topic, consumer reads from a subscription.
     # pubsub_topic overrides queue_name when set (GCP producer mode).
-    name = Keyword.get(s3_config, :pubsub_topic) || Keyword.get(s3_config, :queue_name)
+    name = Keyword.get(spool_config, :pubsub_topic) || Keyword.get(spool_config, :queue_name)
 
     case name do
       nil ->
@@ -296,16 +296,16 @@ defmodule Logflare.Backends.S3ProducerPipeline do
             ref
 
           {:error, reason} ->
-            Logger.warning("s3_producer_pipeline: could not resolve queue ref for #{queue_name}: #{inspect(reason)}")
+            Logger.warning("spool_producer_pipeline: could not resolve queue ref for #{queue_name}: #{inspect(reason)}")
             nil
         end
     end
   end
 
-  defp resolve_mods(s3_config) do
-    provider = Keyword.get(s3_config, :provider, :aws)
-    storage_mod = Keyword.get(s3_config, :storage_mod, default_storage_mod(provider))
-    queue_mod = Keyword.get(s3_config, :queue_mod, default_queue_mod(provider))
+  defp resolve_mods(spool_config) do
+    provider = Keyword.get(spool_config, :provider, :aws)
+    storage_mod = Keyword.get(spool_config, :storage_mod, default_storage_mod(provider))
+    queue_mod = Keyword.get(spool_config, :queue_mod, default_queue_mod(provider))
     {storage_mod, queue_mod}
   end
 

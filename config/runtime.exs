@@ -529,8 +529,8 @@ read_replicas =
 
 config :logflare, :read_replicas, read_replicas
 
-s3_spool_mode_override =
-  case System.get_env("S3_SPOOL_MODE") do
+spool_mode_override =
+  case System.get_env("SPOOL_MODE") do
     p when p in [nil, ""] ->
       []
 
@@ -538,11 +538,11 @@ s3_spool_mode_override =
       [mode: String.to_atom(mode)]
 
     other ->
-      raise ArgumentError, "Invalid S3_SPOOL_MODE=#{other}. Must be producer, consumer, or both."
+      raise ArgumentError, "Invalid SPOOL_MODE=#{other}. Must be producer, consumer, or both."
   end
 
-s3_spool_provider_override =
-  case System.get_env("S3_SPOOL_PROVIDER") do
+spool_provider_override =
+  case System.get_env("SPOOL_PROVIDER") do
     p when p in [nil, ""] ->
       []
 
@@ -550,17 +550,17 @@ s3_spool_provider_override =
       [provider: String.to_atom(provider)]
 
     other ->
-      raise ArgumentError, "Invalid S3_SPOOL_PROVIDER=#{other}. Must be aws or gcp."
+      raise ArgumentError, "Invalid SPOOL_PROVIDER=#{other}. Must be aws or gcp."
   end
 
-s3_spool_overrides =
-  s3_spool_mode_override ++
-    s3_spool_provider_override ++
-    (if (q = System.get_env("S3_SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
-    (if (t = System.get_env("S3_SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
-    (if (b = System.get_env("S3_SPOOL_BUCKET")) && b != "", do: [bucket: b], else: [])
+spool_overrides =
+  spool_mode_override ++
+    spool_provider_override ++
+    (if (q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
+    (if (t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
+    (if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: [])
 
-if s3_spool_overrides != [] do
-  config :logflare, :s3_spool,
-    Keyword.merge(Application.get_env(:logflare, :s3_spool, []), s3_spool_overrides)
+if spool_overrides != [] do
+  config :logflare, :spool,
+    Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
 end

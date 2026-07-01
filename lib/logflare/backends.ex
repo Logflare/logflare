@@ -595,8 +595,8 @@ defmodule Logflare.Backends do
     count = Enum.count(log_events)
     increment_counters(source, count)
 
-    if s3_producer_mode?() do
-      dispatch_to_s3_producer(log_events)
+    if spool_producer_mode?() do
+      dispatch_to_spool_producer(log_events)
     else
       maybe_broadcast_and_route(source, log_events)
       dispatch_to_backends(source, backend, log_events)
@@ -606,18 +606,18 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Dispatches events from the S3 consumer directly to backends, bypassing the S3 producer path.
-  Use this in the consumer pipeline to avoid re-routing events back to S3 in `:both` mode.
+  Dispatches events from the spool consumer directly to backends, bypassing the spool producer path.
+  Use this in the consumer pipeline to avoid re-routing events back to the spool in `:both` mode.
   """
-  @spec dispatch_from_s3([map()], Source.t()) :: {:ok, non_neg_integer()} | {:error, [term()]}
-  def dispatch_from_s3(s3_records, source) do
+  @spec dispatch_from_spool([map()], Source.t()) :: {:ok, non_neg_integer()} | {:error, [term()]}
+  def dispatch_from_spool(spool_records, source) do
     ensure_source_sup_started(source)
-    log_events = Enum.map(s3_records, &LogEvent.make_from_s3(&1, source))
+    log_events = Enum.map(spool_records, &LogEvent.make_from_spool(&1, source))
     count = length(log_events)
     increment_counters(source, count)
 
     :telemetry.execute(
-      [:logflare, :backends, :s3_consumer, :dispatch],
+      [:logflare, :backends, :spool_consumer, :dispatch],
       %{count: count},
       %{}
     )
@@ -709,16 +709,16 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  @spec s3_producer_mode?() :: boolean()
-  def s3_producer_mode?, do: s3_mode() in [:producer, :both]
+  @spec spool_producer_mode?() :: boolean()
+  def spool_producer_mode?, do: spool_mode() in [:producer, :both]
 
-  @spec s3_consumer_mode?() :: boolean()
-  def s3_consumer_mode?, do: s3_mode() in [:consumer, :both]
+  @spec spool_consumer_mode?() :: boolean()
+  def spool_consumer_mode?, do: spool_mode() in [:consumer, :both]
 
-  defp s3_mode, do: :logflare |> Application.get_env(:s3_spool, []) |> Keyword.get(:mode)
+  defp spool_mode, do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode)
 
-  defp dispatch_to_s3_producer(log_events) do
-    IngestEventQueue.add_to_table({:s3_producer, nil}, log_events)
+  defp dispatch_to_spool_producer(log_events) do
+    IngestEventQueue.add_to_table({:spool_producer, nil}, log_events)
   end
 
   defp maybe_broadcast_and_route(source, log_events) do

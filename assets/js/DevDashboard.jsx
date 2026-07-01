@@ -113,7 +113,7 @@ function GcChart({ data }) {
   );
 }
 
-export default function S3Dashboard({ data = [], current = {}, producer_paused = false, mode = "none" }) {
+export default function DevDashboard({ data = [], current = {}, producer_paused = false, mode = "none" }) {
   const pending = current.ets_pending ?? 0;
   const processing = current.ets_processing ?? 0;
   const sqsReady = current.sqs_visible ?? 0;
@@ -143,7 +143,7 @@ export default function S3Dashboard({ data = [], current = {}, producer_paused =
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <h1 style={{ color: "#cdd6f4", fontSize: 22, fontWeight: 700, margin: 0 }}>
-              S3 Spool Dashboard
+              Spool Dashboard
             </h1>
             <span
               style={{
@@ -274,7 +274,7 @@ export default function S3Dashboard({ data = [], current = {}, producer_paused =
           </ResponsiveContainer>
         </Panel>
 
-        <Panel title="Throughput (events/s written to S3)">
+        <Panel title="Throughput (events/s written to spool)">
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={GRID} />

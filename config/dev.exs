@@ -82,7 +82,7 @@ config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
 config :stripity_stripe,
   api_key: "sk_test_thisisaboguskey"
 
-config :logflare, :s3_spool,
+config :logflare, :spool,
   mode: :disable,
   bucket: "logflare-spool",
   partitions: 4,

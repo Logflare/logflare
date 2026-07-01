@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
+defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   @moduledoc false
 
   use GenStage
@@ -156,7 +156,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
   # Prefetch landed but download failed — nack and fall through to empty.
   # handle may be nil if the prefetch task crashed before receiving a message.
   defp maybe_load_next(%{current: nil, prefetch: {:ready, {:error, handle, reason}}} = state) do
-    Logger.error("s3_consumer: prefetch failed: #{inspect(reason)}")
+    Logger.error("spool_consumer: prefetch failed: #{inspect(reason)}")
     if handle, do: state.queue_mod.nack(state.queue_url, handle)
     %{state | prefetch: nil}
   end
@@ -177,7 +177,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
         state
 
       {:error, handle, reason} ->
-        Logger.error("s3_consumer: fetch failed: #{inspect(reason)}")
+        Logger.error("spool_consumer: fetch failed: #{inspect(reason)}")
         if handle, do: state.queue_mod.nack(state.queue_url, handle)
         state
     end
@@ -253,7 +253,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
                 {:ok, handle, lines}
 
               {:error, %Tesla.Env{status: 404}} ->
-                Logger.warning("s3_consumer: file not found in storage, discarding stale queue entry: #{file_key}")
+                Logger.warning("spool_consumer: file not found in storage, discarding stale queue entry: #{file_key}")
                 queue_mod.ack(queue_url, handle)
                 :empty
 
@@ -262,7 +262,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
             end
 
           _ ->
-            Logger.warning("s3_consumer: queue message has no file_key, discarding")
+            Logger.warning("spool_consumer: queue message has no file_key, discarding")
             queue_mod.ack(queue_url, handle)
             :empty
         end
@@ -271,14 +271,14 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
         :empty
 
       {:error, reason} ->
-        Logger.error("s3_consumer: queue receive failed: #{inspect(reason)}")
+        Logger.error("spool_consumer: queue receive failed: #{inspect(reason)}")
         :empty
     end
   end
 
   defp download_and_parse(bucket, file_key, storage_mod) do
     {download_us, download_result} = :timer.tc(fn -> storage_mod.get(bucket, file_key) end)
-    dbg({:gcs_download_ms, Float.round(download_us / 1000, 1), file_key})
+    dbg({:storage_download_ms, Float.round(download_us / 1000, 1), file_key})
 
     case download_result do
       {:ok, raw} ->
@@ -318,9 +318,9 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
   end
 
   defp over_limit? do
-    s3_config = Application.get_env(:logflare, :s3_spool, [])
-    total_limit_mb = Keyword.get(s3_config, :consumer_memory_limit_mb, @default_memory_limit_mb)
-    ets_limit_mb = Keyword.get(s3_config, :consumer_max_ets_mb, @default_max_ets_mb)
+    spool_config = Application.get_env(:logflare, :spool, [])
+    total_limit_mb = Keyword.get(spool_config, :consumer_memory_limit_mb, @default_memory_limit_mb)
+    ets_limit_mb = Keyword.get(spool_config, :consumer_max_ets_mb, @default_max_ets_mb)
 
     total = :erlang.memory(:total)
     ets = :erlang.memory(:ets)
@@ -329,7 +329,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
     if over do
       total_mb = Float.round(total / 1_048_576, 1)
       ets_mb = Float.round(ets / 1_048_576, 1)
-      dbg({"***************** s3_consumer THROTTLING *****************",
+      dbg({"***************** spool_consumer THROTTLING *****************",
            total_mb: total_mb, total_limit_mb: total_limit_mb,
            ets_mb: ets_mb, ets_limit_mb: ets_limit_mb})
     end

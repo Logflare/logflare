@@ -1,9 +1,9 @@
-defmodule Logflare.Backends.S3ConsumerSup do
+defmodule Logflare.Backends.Spool.ConsumerSup do
   @moduledoc false
 
   use Supervisor
 
-  alias Logflare.Backends.S3ConsumerPipeline
+  alias Logflare.Backends.Spool.ConsumerPipeline
 
   @spec start_link(term()) :: {:ok, pid()} | {:error, term()}
   def start_link(_) do
@@ -13,7 +13,7 @@ defmodule Logflare.Backends.S3ConsumerSup do
   @impl Supervisor
   def init(_) do
     children = [
-      {S3ConsumerPipeline, [name: S3ConsumerPipeline]}
+      {ConsumerPipeline, [name: ConsumerPipeline]}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

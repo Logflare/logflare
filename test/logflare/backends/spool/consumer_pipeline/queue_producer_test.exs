@@ -1,22 +1,22 @@
-defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducerTest do
+defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   use ExUnit.Case, async: false
 
   import Mimic
 
-  alias Logflare.Backends.S3ConsumerPipeline.SqsProducer
+  alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
 
   setup :set_mimic_global
 
   setup do
-    original = Application.get_env(:logflare, :s3_spool)
+    original = Application.get_env(:logflare, :spool)
 
     on_exit(fn ->
       if original do
-        Application.put_env(:logflare, :s3_spool, original)
+        Application.put_env(:logflare, :spool, original)
       else
-        Application.delete_env(:logflare, :s3_spool)
+        Application.delete_env(:logflare, :spool)
       end
     end)
 
@@ -31,7 +31,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducerTest do
       queue_mod: QueueMod
     ]
 
-    start_supervised!({SqsProducer, Keyword.merge(defaults, opts)})
+    start_supervised!({QueueProducer, Keyword.merge(defaults, opts)})
   end
 
   defp queue_message(handle, file_key) do
@@ -122,7 +122,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducerTest do
 
   describe "throttling (memory pressure)" do
     test "schedules a fallback poll instead of dropping the trigger when throttled" do
-      Application.put_env(:logflare, :s3_spool, consumer_memory_limit_mb: 0, consumer_max_ets_mb: 0)
+      Application.put_env(:logflare, :spool, consumer_memory_limit_mb: 0, consumer_max_ets_mb: 0)
       stub_queue([])
 
       pid = start_producer()
@@ -137,7 +137,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducerTest do
     end
 
     test "recovers automatically once memory pressure drops, without any new demand arriving" do
-      Application.put_env(:logflare, :s3_spool, consumer_memory_limit_mb: 0, consumer_max_ets_mb: 0)
+      Application.put_env(:logflare, :spool, consumer_memory_limit_mb: 0, consumer_max_ets_mb: 0)
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/a.ndjson")])
@@ -152,7 +152,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducerTest do
 
       refute Task.yield(task, 200)
 
-      Application.put_env(:logflare, :s3_spool, consumer_memory_limit_mb: 4096, consumer_max_ets_mb: 1024)
+      Application.put_env(:logflare, :spool, consumer_memory_limit_mb: 4096, consumer_max_ets_mb: 1024)
 
       assert {:ok, [event]} = Task.yield(task, 2000)
       assert event["id"] == "e1"

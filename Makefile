@@ -179,58 +179,58 @@ monitor: ERL_NAME ?= st_
 monitor:
 	MONITOR_SOURCE=${MONITOR_SOURCE} iex --sname monitor --cookie ${ERL_COOKIE} --remsh ${ERL_NAME}-${ERL_COOKIE} --dot-iex scripts/monitor.iex.exs
 
-monitor-s3: ERL_NAME ?= st_
-monitor-s3:
-	MONITOR_PIPELINE=s3 iex --sname monitor --cookie ${ERL_COOKIE} --remsh ${ERL_NAME}-${ERL_COOKIE} --dot-iex scripts/monitor.iex.exs
+monitor-spool: ERL_NAME ?= st_
+monitor-spool:
+	MONITOR_PIPELINE=spool iex --sname monitor --cookie ${ERL_COOKIE} --remsh ${ERL_NAME}-${ERL_COOKIE} --dot-iex scripts/monitor.iex.exs
 
 start.producer: ERL_NAME = producer
 start.producer: PORT = 4000
-start.producer: S3_SPOOL_MODE = producer
+start.producer: SPOOL_MODE = producer
 start.producer: ENV_FILE = .single_tenant_bq.env
 start.producer: LOGFLARE_GRPC_PORT = 50051
 start.producer: __start__
 
 start.consumer: ERL_NAME = consumer
 start.consumer: PORT = 4001
-start.consumer: S3_SPOOL_MODE = consumer
+start.consumer: SPOOL_MODE = consumer
 start.consumer: ENV_FILE = .single_tenant_bq.env
 start.consumer: LOGFLARE_GRPC_PORT = 50052
 start.consumer: __start__
 
 start.both: ERL_NAME = both
 start.both: PORT = 4000
-start.both: S3_SPOOL_MODE = both
+start.both: SPOOL_MODE = both
 start.both: ENV_FILE = .single_tenant_bq.env
 start.both: LOGFLARE_GRPC_PORT = 50051
 start.both: __start__
 
 start.gcp.producer: ERL_NAME = gcp_producer
 start.gcp.producer: PORT = 4000
-start.gcp.producer: S3_SPOOL_MODE = producer
-start.gcp.producer: S3_SPOOL_PROVIDER = gcp
-start.gcp.producer: S3_SPOOL_BUCKET = logflare-spool
-start.gcp.producer: S3_SPOOL_PUBSUB_TOPIC = projects/logflare/topics/logflare-spool
+start.gcp.producer: SPOOL_MODE = producer
+start.gcp.producer: SPOOL_PROVIDER = gcp
+start.gcp.producer: SPOOL_BUCKET = logflare-spool
+start.gcp.producer: SPOOL_PUBSUB_TOPIC = projects/logflare/topics/logflare-spool
 start.gcp.producer: ENV_FILE = .single_tenant_bq.env
 start.gcp.producer: LOGFLARE_GRPC_PORT = 50051
 start.gcp.producer: __start__
 
 start.gcp.consumer: ERL_NAME = gcp_consumer
 start.gcp.consumer: PORT = 4001
-start.gcp.consumer: S3_SPOOL_MODE = consumer
-start.gcp.consumer: S3_SPOOL_PROVIDER = gcp
-start.gcp.consumer: S3_SPOOL_BUCKET = logflare-spool
-start.gcp.consumer: S3_SPOOL_QUEUE_NAME = projects/logflare/subscriptions/logflare-spool-sub
+start.gcp.consumer: SPOOL_MODE = consumer
+start.gcp.consumer: SPOOL_PROVIDER = gcp
+start.gcp.consumer: SPOOL_BUCKET = logflare-spool
+start.gcp.consumer: SPOOL_QUEUE_NAME = projects/logflare/subscriptions/logflare-spool-sub
 start.gcp.consumer: ENV_FILE = .single_tenant_bq.env
 start.gcp.consumer: LOGFLARE_GRPC_PORT = 50052
 start.gcp.consumer: __start__
 
 start.gcp.both: ERL_NAME = st_
 start.gcp.both: PORT = 4000
-start.gcp.both: S3_SPOOL_MODE = both
-start.gcp.both: S3_SPOOL_PROVIDER = gcp
-start.gcp.both: S3_SPOOL_BUCKET = logflare-spool
-start.gcp.both: S3_SPOOL_PUBSUB_TOPIC = projects/logflare/topics/logflare-spool
-start.gcp.both: S3_SPOOL_QUEUE_NAME = projects/logflare/subscriptions/logflare-spool-sub
+start.gcp.both: SPOOL_MODE = both
+start.gcp.both: SPOOL_PROVIDER = gcp
+start.gcp.both: SPOOL_BUCKET = logflare-spool
+start.gcp.both: SPOOL_PUBSUB_TOPIC = projects/logflare/topics/logflare-spool
+start.gcp.both: SPOOL_QUEUE_NAME = projects/logflare/subscriptions/logflare-spool-sub
 start.gcp.both: LOGFLARE_GRPC_PORT = 50051
 start.gcp.both: ENV_FILE = .single_tenant_bq.env
 start.gcp.both: __start__
@@ -239,7 +239,7 @@ __start__:
 	@if [ ! -f ${ENV_FILE} ]; then \
 		touch ${ENV_FILE}; \
 	fi
-	@env $$(cat ${ENV_FILE} .dev.env | grep -v '^PHX_HTTP_PORT=' | xargs) PHX_HTTP_PORT=${PORT} S3_SPOOL_MODE=${S3_SPOOL_MODE} S3_SPOOL_PROVIDER=${S3_SPOOL_PROVIDER} S3_SPOOL_QUEUE_NAME=${S3_SPOOL_QUEUE_NAME} S3_SPOOL_PUBSUB_TOPIC=${S3_SPOOL_PUBSUB_TOPIC} S3_SPOOL_BUCKET=${S3_SPOOL_BUCKET} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
+	@env $$(cat ${ENV_FILE} .dev.env | grep -v '^PHX_HTTP_PORT=' | xargs) PHX_HTTP_PORT=${PORT} SPOOL_MODE=${SPOOL_MODE} SPOOL_PROVIDER=${SPOOL_PROVIDER} SPOOL_QUEUE_NAME=${SPOOL_QUEUE_NAME} SPOOL_PUBSUB_TOPIC=${SPOOL_PUBSUB_TOPIC} SPOOL_BUCKET=${SPOOL_BUCKET} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
 
 
 migrate:
