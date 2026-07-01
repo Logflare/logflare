@@ -23,6 +23,15 @@ defmodule Logflare.Backends.Supervisor do
     consumer_children = if Backends.spool_consumer_mode?(), do: [Backends.Spool.ConsumerSup], else: []
     spool_goth_children = if spool_provider == :gcp, do: List.wrap(spool_goth_child_spec()), else: []
 
+    # Shared by both Spool.ProducerSup (batch splitter early-flush decision)
+    # and Spool.ConsumerPipeline.QueueProducer (fetch throttling) — started
+    # here rather than under either sup, since a node can run producer-only,
+    # consumer-only, or both.
+    spool_memory_monitor_children =
+      if producer_children != [] or consumer_children != [],
+        do: [Backends.Spool.MemoryMonitor],
+        else: []
+
     dbg({spool_provider, Backends.spool_producer_mode?(), Backends.spool_consumer_mode?()})
 
     children =
@@ -41,7 +50,9 @@ defmodule Logflare.Backends.Supervisor do
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
         {Registry,
          name: Backends.BackendRegistry, keys: :unique, partitions: max(round(base / 8), 1)}
-      ] ++ spool_goth_children ++ producer_children ++ consumer_children
+      ] ++
+        spool_goth_children ++
+        spool_memory_monitor_children ++ producer_children ++ consumer_children
 
     opts = [strategy: :one_for_one]
 

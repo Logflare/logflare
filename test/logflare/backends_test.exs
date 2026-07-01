@@ -1817,4 +1817,68 @@ defmodule Logflare.BackendsTest do
       refute log =~ "timestamps outside"
     end
   end
+
+  describe "ingest_logs/3 per-source spooling gate" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user, enable_spooling: false)
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      prev_spool_config = Application.get_env(:logflare, :spool)
+
+      on_exit(fn ->
+        if prev_spool_config do
+          Application.put_env(:logflare, :spool, prev_spool_config)
+        else
+          Application.delete_env(:logflare, :spool)
+        end
+      end)
+
+      {:ok, source: source}
+    end
+
+    defp stub_add_to_table_observer(test_pid) do
+      stub(IngestEventQueue, :add_to_table, fn key, _batch ->
+        send(test_pid, {:add_to_table, key})
+        :ok
+      end)
+    end
+
+    test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling is true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :disable)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "dispatches to the spool producer only when both the global mode and source.enable_spooling are true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+
+      assert_receive {:add_to_table, {:spool_producer, nil}}
+    end
+  end
 end

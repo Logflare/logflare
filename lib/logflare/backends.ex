@@ -595,7 +595,7 @@ defmodule Logflare.Backends do
     count = Enum.count(log_events)
     increment_counters(source, count)
 
-    if spool_producer_mode?() do
+    if spool_producer_mode?() and source.enable_spooling do
       dispatch_to_spool_producer(log_events)
     else
       maybe_broadcast_and_route(source, log_events)

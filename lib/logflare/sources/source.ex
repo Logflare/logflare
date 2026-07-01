@@ -139,6 +139,7 @@ defmodule Logflare.Sources.Source do
     field :drop_lql_string, :string
     field :default_search_lql, :string, default: nil
     field :disable_tailing, :boolean, default: false
+    field :enable_spooling, :boolean, default: false
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
     field :transform_copy_fields, :string
@@ -212,6 +213,7 @@ defmodule Logflare.Sources.Source do
       :transform_key_values,
       :transform_drop_fields,
       :disable_tailing,
+      :enable_spooling,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,
       :labels,
@@ -248,6 +250,7 @@ defmodule Logflare.Sources.Source do
       :transform_key_values,
       :transform_drop_fields,
       :disable_tailing,
+      :enable_spooling,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,
       :labels

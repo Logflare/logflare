@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
   alias Broadway.Message
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Storage
   alias Logflare.Backends.Spool.Queue
 
@@ -17,6 +18,12 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @max_batch_size 500_000
   @default_batch_timeout 5_000
   @max_spool_file_size 32 * 1024 * 1024
+  @early_flush_file_size 12 * 1024 * 1024
+
+  @processor_concurrency 6
+  @batcher_concurrency 4
+  @producer_concurrency 1
+
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
@@ -38,12 +45,13 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       spawn_opt: [fullsweep_after: 10],
       producer: [
         module: {BufferProducer, [spool_producer: true, id_passing: true]},
-        transformer: {__MODULE__, :transform, []}
+        transformer: {__MODULE__, :transform, []},
+        concurrency: @producer_concurrency
       ],
-      processors: [default: [concurrency: 8, max_demand: 1_000]],
+      processors: [default: [concurrency: @processor_concurrency, max_demand: 1_000]],
       batchers: [
         spool: [
-          concurrency: partitions,
+          concurrency: @batcher_concurrency,
           batch_size: spool_batch_size_splitter(),
           batch_timeout: batch_timeout,
           max_demand: @max_batch_size
@@ -124,25 +132,54 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     end
   end
 
+  # Throttle state is sampled once per batch (on the first message after a
+  # reset), not once per message — the :pending sentinel marks "not yet
+  # decided for this batch". Logflare.Backends.Spool.MemoryMonitor.throttled?/0
+  # is a cheap :persistent_term read, but even that isn't worth paying on
+  # every single message when a batch can be up to @max_batch_size messages.
+  #
+  # Public (not private) so the returned {initial_acc, reducer_fn} tuple can
+  # be exercised directly in tests without spinning up a full Broadway pipeline.
+  @doc false
   @spec spool_batch_size_splitter() ::
-          {{non_neg_integer(), non_neg_integer()},
-           (Message.t(), {non_neg_integer(), non_neg_integer()} ->
-              {:emit | :cont, {non_neg_integer(), non_neg_integer()}})}
-  defp spool_batch_size_splitter do
+          {{non_neg_integer(), non_neg_integer() | :pending},
+           (Message.t(), {non_neg_integer(), non_neg_integer() | :pending} ->
+              {:emit | :cont, {non_neg_integer(), non_neg_integer() | :pending}})}
+  def spool_batch_size_splitter do
     {
-      {@max_batch_size, @max_spool_file_size},
+      {@max_batch_size, :pending},
       fn
-        _message, {1, _remaining} ->
-          {:emit, {@max_batch_size, @max_spool_file_size}}
+        _message, {1, _budget} ->
+          {:emit, {@max_batch_size, :pending}}
 
-        %{data: {_id, _tid, size}}, {count, remaining} ->
-          if remaining - size <= 0 do
-            {:emit, {@max_batch_size, @max_spool_file_size}}
-          else
-            {:cont, {count - 1, remaining - size}}
-          end
+        %{data: {_id, _tid, size}}, {count, :pending} ->
+          budget = effective_max_file_size()
+          dbg({:spool_batch_budget, budget, :early_flush?, budget != @max_spool_file_size})
+          continue_or_emit(size, count, budget)
+
+        %{data: {_id, _tid, size}}, {count, budget} ->
+          continue_or_emit(size, count, budget)
       end
     }
+  end
+
+  @spec continue_or_emit(non_neg_integer(), non_neg_integer(), non_neg_integer()) ::
+          {:emit | :cont, {non_neg_integer(), non_neg_integer() | :pending}}
+  defp continue_or_emit(size, count, budget) do
+    if budget - size <= 0 do
+      {:emit, {@max_batch_size, :pending}}
+    else
+      {:cont, {count - 1, budget - size}}
+    end
+  end
+
+  @spec effective_max_file_size() :: non_neg_integer()
+  defp effective_max_file_size do
+    if MemoryMonitor.throttled?() do
+      @early_flush_file_size
+    else
+      @max_spool_file_size
+    end
   end
 
   defp file_extension(:ndjson, true), do: "ndjson.gz"

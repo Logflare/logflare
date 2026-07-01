@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   import Mimic
 
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
+  alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
 
@@ -19,6 +20,17 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         Application.delete_env(:logflare, :spool)
       end
     end)
+
+    # MemoryMonitor's stats() are cached in :persistent_term — global, and
+    # NOT reset between tests or test files. Without this, a test here could
+    # inherit a stale "throttled" value left by any test anywhere in the
+    # suite that ran MemoryMonitor last, hanging tests that have nothing to
+    # do with throttling (e.g. prefetch/happy-path tests below). Starting a
+    # fresh, explicitly non-throttled MemoryMonitor for every test in this
+    # file guarantees a known baseline; throttled!/0 overrides it as needed.
+    Application.put_env(:logflare, :spool, spool_memory_limit_percent: 1.0, spool_max_ets_percent: 1.0)
+    start_supervised!(MemoryMonitor)
+    Process.sleep(50)
 
     :ok
   end
@@ -84,6 +96,23 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     end)
   end
 
+  # MemoryMonitor is a shared, globally-named singleton — the file's own
+  # `setup` block already starts one instance per test (non-throttled by
+  # default). These helpers mutate config and wait for THAT SAME instance's
+  # own ~1s refresh timer to pick up the change; they must not try to start
+  # a second one (would fail with {:already_started, _}).
+  defp throttled! do
+    Application.put_env(:logflare, :spool, spool_memory_limit_percent: 0.0, spool_max_ets_percent: 0.0)
+    Process.sleep(1_100)
+    assert MemoryMonitor.throttled?() == true
+  end
+
+  defp not_throttled! do
+    Application.put_env(:logflare, :spool, spool_memory_limit_percent: 1.0, spool_max_ets_percent: 1.0)
+    Process.sleep(1_100)
+    assert MemoryMonitor.throttled?() == false
+  end
+
   defp count_messages_within(tag, total_ms) do
     deadline = System.monotonic_time(:millisecond) + total_ms
     do_count_messages(tag, deadline, 0)
@@ -122,7 +151,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
   describe "throttling (memory pressure)" do
     test "schedules a fallback poll instead of dropping the trigger when throttled" do
-      Application.put_env(:logflare, :spool, consumer_memory_limit_mb: 0, consumer_max_ets_mb: 0)
+      throttled!()
       stub_queue([])
 
       pid = start_producer()
@@ -137,7 +166,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     end
 
     test "recovers automatically once memory pressure drops, without any new demand arriving" do
-      Application.put_env(:logflare, :spool, consumer_memory_limit_mb: 0, consumer_max_ets_mb: 0)
+      throttled!()
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/a.ndjson")])
@@ -152,7 +181,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       refute Task.yield(task, 200)
 
-      Application.put_env(:logflare, :spool, consumer_memory_limit_mb: 4096, consumer_max_ets_mb: 1024)
+      not_throttled!()
 
       assert {:ok, [event]} = Task.yield(task, 2000)
       assert event["id"] == "e1"

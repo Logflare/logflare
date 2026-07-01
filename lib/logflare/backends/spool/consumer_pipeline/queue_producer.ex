@@ -5,9 +5,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   require Logger
 
+  alias Logflare.Backends.Spool.MemoryMonitor
+
   @poll_interval 1_000
-  @default_memory_limit_mb 4096
-  @default_max_ets_mb 1024
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(opts) do
@@ -317,23 +317,21 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     end
   end
 
+  # Deliberately well below BufferLimiter's hardcoded 0.85 global threshold
+  # (lib/logflare_web/controllers/plugs/buffer_limiter.ex) — the gap absorbs
+  # the lag between "stop starting new fetches" and already-in-flight
+  # downloads/decodes actually landing in memory, so the spool self-throttles
+  # before it can ever contribute to a global 429 for unrelated sources.
+  # Shared with the spool producer's early-flush decision via MemoryMonitor.
   defp over_limit? do
-    spool_config = Application.get_env(:logflare, :spool, [])
-    total_limit_mb = Keyword.get(spool_config, :consumer_memory_limit_mb, @default_memory_limit_mb)
-    ets_limit_mb = Keyword.get(spool_config, :consumer_max_ets_mb, @default_max_ets_mb)
+    stats = MemoryMonitor.stats()
 
-    total = :erlang.memory(:total)
-    ets = :erlang.memory(:ets)
-    over = total > total_limit_mb * 1_048_576 or ets > ets_limit_mb * 1_048_576
-
-    if over do
-      total_mb = Float.round(total / 1_048_576, 1)
-      ets_mb = Float.round(ets / 1_048_576, 1)
+    if stats.throttled? do
       dbg({"***************** spool_consumer THROTTLING *****************",
-           total_mb: total_mb, total_limit_mb: total_limit_mb,
-           ets_mb: ets_mb, ets_limit_mb: ets_limit_mb})
+           total_percent: Float.round(stats.total_percent * 100, 1), total_limit_percent: stats.total_limit_percent * 100,
+           ets_percent: Float.round(stats.ets_percent * 100, 1), ets_limit_percent: stats.ets_limit_percent * 100})
     end
 
-    over
+    stats.throttled?
   end
 end
