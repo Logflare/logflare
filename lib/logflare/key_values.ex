@@ -8,6 +8,7 @@ defmodule Logflare.KeyValues do
   alias Logflare.Repo
 
   @list_limit 500
+  @usage_retention_days 30
 
   @spec list_key_values_query(keyword()) :: Ecto.Query.t()
   def list_key_values_query(kw) do
@@ -144,6 +145,12 @@ defmodule Logflare.KeyValues do
     end)
 
     :ok
+  end
+
+  @spec prune_usages(DateTime.t()) :: {non_neg_integer(), nil}
+  def prune_usages(now \\ DateTime.utc_now()) do
+    cutoff = DateTime.add(now, -@usage_retention_days, :day)
+    KeyValueUsage |> where([u], u.last_used_at < ^cutoff) |> Repo.delete_all()
   end
 
   @spec bulk_delete_by_keys(integer(), [String.t()]) :: {non_neg_integer(), nil}

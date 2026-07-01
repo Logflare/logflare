@@ -41,7 +41,6 @@ defmodule Logflare.ContextCache.Supervisor do
 
   defp get_children(_env) do
     [
-      KeyValues.UsageTracker,
       list_caches(),
       ContextCache.TransactionBroadcaster,
       cainophile_spec(),
