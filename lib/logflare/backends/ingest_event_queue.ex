@@ -309,7 +309,7 @@ defmodule Logflare.Backends.IngestEventQueue do
         # resolution and this insert. Re-route to the supervisor-owned startup
         # queue (where a clean producer exit also drains to) so the batch is not
         # lost; give up only if the startup queue itself is gone.
-        :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+        emit_stale_ets_table_telemetry()
 
         case sid_bid_pid do
           {_, _, nil} -> {:error, :not_initialized}
@@ -684,7 +684,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   rescue
     ArgumentError ->
-      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+      emit_stale_ets_table_telemetry()
       {:error, :not_initialized}
   end
 
@@ -723,7 +723,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   rescue
     ArgumentError ->
-      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+      emit_stale_ets_table_telemetry()
       {:error, :not_initialized}
   end
 
@@ -737,7 +737,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   rescue
     ArgumentError ->
-      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+      emit_stale_ets_table_telemetry()
       :ok
   end
 
@@ -762,7 +762,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   rescue
     ArgumentError ->
-      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+      emit_stale_ets_table_telemetry()
       :ok
   end
 
@@ -1123,5 +1123,10 @@ defmodule Logflare.Backends.IngestEventQueue do
         :ets.select(cont)
         |> select_traverse(func, acc)
     end
+  end
+
+  @spec emit_stale_ets_table_telemetry() :: :ok
+  defp emit_stale_ets_table_telemetry do
+    :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
   end
 end
