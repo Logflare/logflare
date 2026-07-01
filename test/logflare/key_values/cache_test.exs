@@ -3,31 +3,10 @@ defmodule Logflare.KeyValues.CacheTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.KeyValues
-  alias Logflare.KeyValues.UsageTracker
 
   setup do
     user = insert(:user)
     [user: user]
-  end
-
-  test "lookup/2 usage tracking", %{user: user} do
-    value = %{"v" => "1"}
-    insert(:key_value, user: user, key: "k1", value: value)
-
-    user_id = user.id
-    parent = self()
-    stub(UsageTracker, :touch, fn uid, key -> send(parent, {:touched, uid, key}) end)
-
-    assert ^value = KeyValues.Cache.lookup(user_id, "k1")
-    assert_received {:touched, ^user_id, "k1"}
-
-    # second call is a cache hit but should still touch
-    assert ^value = KeyValues.Cache.lookup(user_id, "k1")
-    assert_received {:touched, ^user_id, "k1"}
-
-    missing_key = "missing"
-    assert nil == KeyValues.Cache.lookup(user_id, missing_key)
-    refute_received {:touched, ^user_id, ^missing_key}
   end
 
   test "lookup/2 caches results", %{user: user} do
@@ -70,6 +49,57 @@ defmodule Logflare.KeyValues.CacheTest do
 
   test "bust_by/1 returns 0 when key not cached", %{user: user} do
     assert {:ok, 0} = KeyValues.Cache.bust_by(user_id: user.id, key: "nonexistent")
+  end
+
+  describe "touch_recent_usages/1" do
+    alias Logflare.KeyValues.KeyValueUsage
+
+    setup %{user: user} do
+      kv1 = insert(:key_value, user: user, key: "k1")
+      kv2 = insert(:key_value, user: user, key: "k2")
+      [kv1: kv1, kv2: kv2]
+    end
+
+    test "duplicated accessor-path", %{user: user, kv1: %{id: kv1_id}} do
+      for path <- [nil, "org.id", "$.org.id"] do
+        {:ok, true} =
+          Cachex.put(KeyValues.Cache, {:lookup, [user.id, "k1", path]}, {:cached, "v"})
+      end
+
+      assert {:ok, 1} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
+      assert [%KeyValueUsage{key_value_id: ^kv1_id}] = Repo.all(KeyValueUsage)
+    end
+
+    test "count key", %{user: user} do
+      {:ok, true} = Cachex.put(KeyValues.Cache, {:count, user.id}, {:cached, 5})
+
+      assert {:ok, 0} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
+      assert [] = Repo.all(KeyValueUsage)
+    end
+
+    test "outside window", %{user: user} do
+      {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [user.id, "k1", nil]}, {:cached, "v"})
+
+      # Passing a future `now` makes cutoff = future - 20min, which is after the
+      # entry's modified time (≈ real now), so the entry falls outside the window.
+      future = DateTime.add(DateTime.utc_now(), 25, :minute)
+      assert {:ok, 0} = KeyValues.Cache.touch_recent_usages(future)
+      assert [] = Repo.all(KeyValueUsage)
+    end
+
+    test "multiple users", %{user: user, kv1: kv1, kv2: kv2} do
+      other = insert(:user)
+      kv_other = insert(:key_value, user: other, key: "k3")
+
+      for {uid, key} <- [{user.id, "k1"}, {user.id, "k2"}, {other.id, "k3"}] do
+        {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [uid, key, nil]}, {:cached, "v"})
+      end
+
+      assert {:ok, 3} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
+
+      ids = Repo.all(KeyValueUsage) |> MapSet.new(& &1.key_value_id)
+      assert ids == MapSet.new([kv1.id, kv2.id, kv_other.id])
+    end
   end
 
   describe "count/1" do

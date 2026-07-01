@@ -1,15 +1,17 @@
 defmodule Logflare.KeyValues.Cache do
   @moduledoc false
 
+  import Cachex.Spec
+
   alias Logflare.ContextCache
   alias Logflare.KeyValues
-  alias Logflare.KeyValues.UsageTracker
   alias Logflare.Repo
   alias Logflare.Utils
 
-  import Cachex.Spec
-
   @behaviour ContextCache
+
+  @usage_touch_window :timer.minutes(20)
+  @usage_touch_chunk 1_000
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
@@ -74,10 +76,26 @@ defmodule Logflare.KeyValues.Cache do
       {:commit, {:cached, v}} -> v
       {:ok, {:cached, v}} -> v
     end
-    |> tap(fn
-      nil -> :ok
-      _v -> UsageTracker.touch(user_id, key)
+  end
+
+  @spec touch_recent_usages(DateTime.t()) :: {:ok, non_neg_integer()}
+  def touch_recent_usages(now \\ DateTime.utc_now()) do
+    cutoff = DateTime.to_unix(now, :millisecond) - @usage_touch_window
+    query = Cachex.Query.build(where: {:>=, :modified, cutoff}, output: :key)
+
+    __MODULE__
+    |> Cachex.stream!(query)
+    |> Stream.flat_map(fn
+      {:lookup, [user_id, key, _accessor]} -> [{user_id, key}]
+      _ -> []
     end)
+    |> Stream.uniq()
+    |> Stream.chunk_every(@usage_touch_chunk)
+    |> Enum.reduce(0, fn pairs, acc ->
+      KeyValues.bump_usages(pairs, now)
+      acc + length(pairs)
+    end)
+    |> then(&{:ok, &1})
   end
 
   @impl ContextCache

@@ -3,6 +3,7 @@ defmodule Logflare.KeyValuesTest do
   use Logflare.DataCase
 
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.KeyValueUsage
 
   setup do
     user = insert(:user)
@@ -90,6 +91,16 @@ defmodule Logflare.KeyValuesTest do
     assert [upserted] = Logflare.Repo.all(KeyValues.KeyValue)
     assert DateTime.after?(upserted.updated_at, updated_at)
     assert upserted.inserted_at == inserted_at
+  end
+
+  test "prune_usages/1", %{user: user} do
+    insert(:key_value, user: user, key: "stale")
+    %{id: fresh_id} = insert(:key_value, user: user, key: "fresh")
+    KeyValues.bump_usages([{user.id, "stale"}], DateTime.add(DateTime.utc_now(), -31, :day))
+    KeyValues.bump_usages([{user.id, "fresh"}], DateTime.add(DateTime.utc_now(), -1, :day))
+
+    assert {1, _} = KeyValues.prune_usages(DateTime.utc_now())
+    assert [%KeyValueUsage{key_value_id: ^fresh_id}] = Repo.all(KeyValueUsage)
   end
 
   describe "bump_usages/2" do
