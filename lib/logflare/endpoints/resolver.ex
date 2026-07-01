@@ -10,10 +10,11 @@ defmodule Logflare.Endpoints.Resolver do
   @doc """
   Lists all caches for an endpoint across all paritions
   """
-  def list_caches(%Logflare.Endpoints.EndpointQuery{id: id}) do
-    endpoints_partition = ResultsCache.endpoints_part(id)
+  def list_caches(%Logflare.Endpoints.EndpointQuery{} = query) do
+    {query_id, version_key} = ResultsCache.endpoint_cache_key(query)
+    endpoints_partition = ResultsCache.endpoints_part(query_id, version_key)
 
-    :syn.members(endpoints_partition, id)
+    :syn.members(endpoints_partition, {query_id, version_key})
     |> Enum.map(fn {pid, _} -> pid end)
   end
 
