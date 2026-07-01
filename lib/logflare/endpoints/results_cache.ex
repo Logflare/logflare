@@ -12,6 +12,8 @@ defmodule Logflare.Endpoints.ResultsCache do
 
   use GenServer, restart: :temporary
 
+  @latest_version :latest
+
   defstruct query_tasks: [],
             params: %{},
             opts: [],
@@ -93,8 +95,9 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   def init({query, params, opts}) do
-    endpoints = endpoints_part(query.id)
-    :syn.join(endpoints, query.id, self())
+    endpoint_cache_key = {query_id, version_key} = endpoint_cache_key(query)
+    endpoints = endpoints_part(query_id, version_key)
+    :syn.join(endpoints, endpoint_cache_key, self())
 
     timer = query |> cache_duration_ms() |> shutdown()
 
@@ -206,36 +209,42 @@ defmodule Logflare.Endpoints.ResultsCache do
     end
   end
 
-  def endpoints_part(query_id) do
-    part = :erlang.phash2(query_id, System.schedulers_online())
+  def endpoints_part(query_id, version_key) do
+    endpoints_part({query_id, version_key})
+  end
+
+  def endpoints_part(query_id, version_key, params) do
+    endpoints_part({query_id, version_key, params})
+  end
+
+  defp endpoints_part(partition_key) do
+    part = :erlang.phash2(partition_key, System.schedulers_online())
     "endpoints_#{part}" |> String.to_existing_atom()
   end
 
-  def name(%EndpointQuery{id: query_id, version_number: version_number}, params) do
+  def name(%EndpointQuery{} = query, params) do
     param_hash = :erlang.phash2(params)
+    {query_id, version_key} = endpoint_cache_key(query)
 
-    {key, partition_key} =
-      case version_number do
-        version_number when is_integer(version_number) ->
-          {
-            {query_id, {:version, version_number}, param_hash},
-            {query_id, {:version, version_number}, params}
-          }
+    key = {query_id, version_key, param_hash}
 
-        _ ->
-          {{query_id, param_hash}, {query_id, params}}
-      end
-
-    {:via, :syn, {endpoints_part(partition_key), key}}
+    {:via, :syn, {endpoints_part(query_id, version_key, params), key}}
   end
 
   @spec cache_partition_key(EndpointQuery.t(), map(), Keyword.t()) :: tuple()
-  def cache_partition_key(%EndpointQuery{id: id, version_number: nil}, params, opts),
-    do: {id, params, opts}
+  def cache_partition_key(%EndpointQuery{} = query, params, opts) do
+    {query_id, version_key} = endpoint_cache_key(query)
 
-  def cache_partition_key(%EndpointQuery{id: id, version_number: version_number}, params, opts)
-      when is_integer(version_number),
-      do: {id, {:version, version_number}, params, opts}
+    {query_id, version_key, params, opts}
+  end
+
+  def endpoint_cache_key(%EndpointQuery{id: id, version_number: version_number}),
+    do: {id, version_cache_key(version_number)}
+
+  defp version_cache_key(version_number) when is_integer(version_number),
+    do: {:version, version_number}
+
+  defp version_cache_key(_version_number), do: {:version, @latest_version}
 
   @spec endpoint_query(t()) :: EndpointQuery.t() | {:error, atom()} | nil
   defp endpoint_query(%__MODULE__{endpoint_version_number: version_number} = state)
