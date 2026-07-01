@@ -16,6 +16,10 @@ defmodule LogflareWeb.Live.S3DashboardLive do
     write_total_atomic = :atomics.new(1, [])
     read_rate_atomic = :atomics.new(1, [])
     read_total_atomic = :atomics.new(1, [])
+    ch_rate_atomic = :atomics.new(1, [])
+    ch_total_atomic = :atomics.new(1, [])
+    bq_rate_atomic = :atomics.new(1, [])
+    bq_total_atomic = :atomics.new(1, [])
 
     if connected?(socket) do
       pid = :erlang.pid_to_list(self())
@@ -30,6 +34,30 @@ defmodule LogflareWeb.Live.S3DashboardLive do
           end
         end,
         {write_rate_atomic, write_total_atomic}
+      )
+
+      :telemetry.attach(
+        "s3-dashboard-ch-#{pid}",
+        [:logflare, :backends, :pipeline, :handle_batch],
+        fn _event, %{batch_size: size}, meta, {rate_ref, total_ref} ->
+          if Map.get(meta, :backend_type) == :clickhouse do
+            :atomics.add(rate_ref, 1, size)
+            :atomics.add(total_ref, 1, size)
+          end
+        end,
+        {ch_rate_atomic, ch_total_atomic}
+      )
+
+      :telemetry.attach(
+        "s3-dashboard-bq-#{pid}",
+        [:logflare, :backends, :pipeline, :handle_batch],
+        fn _event, %{batch_size: size}, meta, {rate_ref, total_ref} ->
+          if Map.get(meta, :backend_type) == :bigquery do
+            :atomics.add(rate_ref, 1, size)
+            :atomics.add(total_ref, 1, size)
+          end
+        end,
+        {bq_rate_atomic, bq_total_atomic}
       )
 
       :telemetry.attach(
@@ -62,7 +90,14 @@ defmodule LogflareWeb.Live.S3DashboardLive do
        write_rate_atomic: write_rate_atomic,
        write_total_atomic: write_total_atomic,
        read_rate_atomic: read_rate_atomic,
-       read_total_atomic: read_total_atomic
+       read_total_atomic: read_total_atomic,
+       ch_rate_atomic: ch_rate_atomic,
+       ch_total_atomic: ch_total_atomic,
+       bq_rate_atomic: bq_rate_atomic,
+       bq_total_atomic: bq_total_atomic,
+       prev_minor_gc: elem(:erlang.statistics(:garbage_collection), 0),
+       prev_words_reclaimed: elem(:erlang.statistics(:garbage_collection), 1),
+       prev_scheduler_wall_time: sample_scheduler_wall_time()
      )}
   end
 
@@ -70,6 +105,8 @@ defmodule LogflareWeb.Live.S3DashboardLive do
   def terminate(_reason, socket) do
     pid = :erlang.pid_to_list(self())
     :telemetry.detach("s3-dashboard-write-#{pid}")
+    :telemetry.detach("s3-dashboard-ch-#{pid}")
+    :telemetry.detach("s3-dashboard-bq-#{pid}")
     :telemetry.detach("s3-dashboard-read-#{pid}")
     socket
   end
@@ -78,6 +115,19 @@ defmodule LogflareWeb.Live.S3DashboardLive do
   def handle_info(:tick, socket) do
     Process.send_after(self(), :tick, @tick_ms)
 
+    {ch_metrics, prev_minor_gc, prev_words_reclaimed} =
+      gather_ch_metrics(
+        socket.assigns.ch_rate_atomic,
+        socket.assigns.ch_total_atomic,
+        socket.assigns.bq_rate_atomic,
+        socket.assigns.bq_total_atomic,
+        socket.assigns.prev_minor_gc,
+        socket.assigns.prev_words_reclaimed
+      )
+
+    {cpu_metrics, prev_scheduler_wall_time} =
+      gather_cpu_metrics(socket.assigns.prev_scheduler_wall_time)
+
     metrics =
       gather_metrics(
         socket.assigns.write_rate_atomic,
@@ -85,11 +135,21 @@ defmodule LogflareWeb.Live.S3DashboardLive do
         socket.assigns.read_rate_atomic,
         socket.assigns.read_total_atomic
       )
+      |> Map.merge(ch_metrics)
+      |> Map.merge(cpu_metrics)
+
     label = Time.utc_now() |> Time.truncate(:second) |> Time.to_string()
     point = Map.put(metrics, :t, label)
     series = (socket.assigns.series ++ [point]) |> Enum.take(-@max_points)
 
-    {:noreply, assign(socket, series: series, current: metrics)}
+    {:noreply,
+     assign(socket,
+       series: series,
+       current: metrics,
+       prev_minor_gc: prev_minor_gc,
+       prev_words_reclaimed: prev_words_reclaimed,
+       prev_scheduler_wall_time: prev_scheduler_wall_time
+     )}
   end
 
   @impl Phoenix.LiveView
@@ -220,6 +280,84 @@ defmodule LogflareWeb.Live.S3DashboardLive do
     end
   end
 
+  defp gather_ch_metrics(ch_rate_atomic, ch_total_atomic, bq_rate_atomic, bq_total_atomic, prev_minor_gc, prev_words_reclaimed) do
+    ch_batch_rate = :atomics.exchange(ch_rate_atomic, 1, 0)
+    ch_total = :atomics.get(ch_total_atomic, 1)
+    bq_batch_rate = :atomics.exchange(bq_rate_atomic, 1, 0)
+    bq_total = :atomics.get(bq_total_atomic, 1)
+
+    sum_mem = fn pids ->
+      Enum.reduce(pids, 0, fn pid, acc ->
+        case Process.info(pid, :memory) do
+          {:memory, mem} -> acc + mem
+          nil -> acc
+        end
+      end)
+    end
+
+    ch_mem = sum_mem.(ch_pipeline_pids())
+    bq_mem = sum_mem.(bq_pipeline_pids())
+
+    {total_minor_gc, total_words_reclaimed, _} = :erlang.statistics(:garbage_collection)
+    gc_minor_rate = max(0, total_minor_gc - prev_minor_gc)
+    gc_reclaimed_mb = Float.round(max(0, total_words_reclaimed - prev_words_reclaimed) * 8 / 1_048_576, 1)
+
+    metrics = %{
+      ch_batch_rate: ch_batch_rate,
+      ch_total: ch_total,
+      bq_batch_rate: bq_batch_rate,
+      bq_total: bq_total,
+      ch_proc_mb: Float.round(ch_mem / 1_048_576, 1),
+      bq_proc_mb: Float.round(bq_mem / 1_048_576, 1),
+      gc_minor_rate: gc_minor_rate,
+      gc_major_rate: 0,
+      gc_long_rate: 0,
+      gc_reclaimed_mb: gc_reclaimed_mb
+    }
+
+    {metrics, total_minor_gc, total_words_reclaimed}
+  end
+
+  defp gather_cpu_metrics(prev_wall_time) do
+    os_cpu = Float.round(:cpu_sup.util() * 1.0, 1)
+    new_wall_time = sample_scheduler_wall_time()
+
+    scheduler_pct =
+      prev_wall_time
+      |> Enum.zip(new_wall_time)
+      |> Enum.map(fn {{_, prev_active, prev_total}, {_, new_active, new_total}} ->
+        active_delta = new_active - prev_active
+        total_delta = new_total - prev_total
+        if total_delta > 0, do: active_delta / total_delta, else: 0.0
+      end)
+      |> then(fn utils ->
+        if utils == [], do: 0.0, else: Enum.sum(utils) / length(utils) * 100
+      end)
+      |> Float.round(1)
+
+    {%{os_cpu: os_cpu, scheduler_pct: scheduler_pct}, new_wall_time}
+  end
+
+  defp sample_scheduler_wall_time do
+    :erlang.system_flag(:scheduler_wall_time, true)
+    :erlang.statistics(:scheduler_wall_time) |> Enum.sort()
+  end
+
+  defp pipeline_pids(ancestor) do
+    Process.list()
+    |> Enum.filter(fn pid ->
+      case Process.info(pid, :dictionary) do
+        {:dictionary, dict} ->
+          Enum.member?(Keyword.get(dict, :"$ancestors", []), ancestor)
+        _ ->
+          false
+      end
+    end)
+  end
+
+  defp ch_pipeline_pids, do: pipeline_pids(Logflare.Backends.ConsolidatedSup)
+  defp bq_pipeline_pids, do: pipeline_pids(Logflare.Backends.SourcesSup)
+
   defp to_int(n) when is_integer(n), do: n
   defp to_int(_), do: 0
 
@@ -235,7 +373,19 @@ defmodule LogflareWeb.Live.S3DashboardLive do
       read_total: 0,
       ets_mb: 0.0,
       proc_mb: 0.0,
-      total_mb: 0.0
+      total_mb: 0.0,
+      ch_batch_rate: 0,
+      ch_total: 0,
+      bq_batch_rate: 0,
+      bq_total: 0,
+      ch_proc_mb: 0.0,
+      bq_proc_mb: 0.0,
+      gc_minor_rate: 0,
+      gc_major_rate: 0,
+      gc_long_rate: 0,
+      gc_reclaimed_mb: 0.0,
+      os_cpu: 0.0,
+      scheduler_pct: 0.0
     }
   end
 end

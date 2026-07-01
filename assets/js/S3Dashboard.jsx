@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   AreaChart,
   Area,
   LineChart,
   Line,
+  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -81,6 +82,37 @@ const MODE_COLORS = {
   none:     { bg: "#313244", text: "#6c7086" },
 };
 
+const GC_LINES = [
+  { key: "gc_minor_rate", name: "minor", color: "#94e2d5" },
+  { key: "gc_major_rate", name: "major (large heap)", color: "#f9e2af" },
+  { key: "gc_long_rate",  name: "long (>200ms)",     color: "#f38ba8" },
+];
+
+function GcChart({ data }) {
+  const [hidden, setHidden] = useState({});
+  const toggle = (e) => {
+    const key = GC_LINES.find((l) => l.name === e.value)?.key;
+    if (key) setHidden((h) => ({ ...h, [key]: !h[key] }));
+  };
+  return (
+    <Panel title="GC Events /s (VM-wide minor · large-heap · long >200ms)">
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+          <XAxis dataKey="t" tick={AXIS} interval="preserveStartEnd" />
+          <YAxis tick={AXIS} width={65} />
+          <Tooltip contentStyle={TOOLTIP} />
+          <Legend wrapperStyle={{ fontSize: 11, color: "#6c7086", cursor: "pointer" }} onClick={toggle} />
+          {GC_LINES.map(({ key, name, color }) => (
+            <Line key={key} type="monotone" dataKey={key} stroke={color} strokeWidth={2}
+              dot={false} name={name} hide={!!hidden[key]} isAnimationActive={false} />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </Panel>
+  );
+}
+
 export default function S3Dashboard({ data = [], current = {}, producer_paused = false, mode = "none" }) {
   const pending = current.ets_pending ?? 0;
   const processing = current.ets_processing ?? 0;
@@ -92,6 +124,16 @@ export default function S3Dashboard({ data = [], current = {}, producer_paused =
   const readTotal = current.read_total ?? 0;
   const etsMb = current.ets_mb ?? 0;
   const procMb = current.proc_mb ?? 0;
+  const chProcMb = current.ch_proc_mb ?? 0;
+  const bqProcMb = current.bq_proc_mb ?? 0;
+  const gcMinorRate = current.gc_minor_rate ?? 0;
+  const gcMajorRate = current.gc_major_rate ?? 0;
+  const gcLongRate = current.gc_long_rate ?? 0;
+  const gcReclaimedMb = current.gc_reclaimed_mb ?? 0;
+  const chBatchRate = current.ch_batch_rate ?? 0;
+  const chTotal = current.ch_total ?? 0;
+  const bqBatchRate = current.bq_batch_rate ?? 0;
+  const bqTotal = current.bq_total ?? 0;
   const totalMb = current.total_mb ?? 0;
 
   return (
@@ -290,6 +332,82 @@ export default function S3Dashboard({ data = [], current = {}, producer_paused =
             </AreaChart>
           </ResponsiveContainer>
         </Panel>
+      </div>
+
+      {/* CPU section */}
+      <div style={{ marginTop: 32 }}>
+        <div style={{ color: "#6c7086", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>
+          CPU
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 16 }}>
+          <StatCard label="OS CPU" value={current.os_cpu ?? 0} color="#89b4fa" unit="%" />
+          <StatCard label="BEAM Schedulers" value={current.scheduler_pct ?? 0} color="#fab387" unit="%" />
+        </div>
+        <Panel title="CPU Utilization">
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+              <XAxis dataKey="t" tick={AXIS} interval="preserveStartEnd" />
+              <YAxis tick={AXIS} width={65} unit="%" domain={[0, 100]} />
+              <Tooltip contentStyle={TOOLTIP} formatter={(v) => `${v}%`} />
+              <Legend wrapperStyle={{ fontSize: 11, color: "#6c7086" }} />
+              <Line type="monotone" dataKey="os_cpu" stroke="#89b4fa" strokeWidth={2} dot={false} name="OS CPU" isAnimationActive={false} />
+              <Line type="monotone" dataKey="scheduler_pct" stroke="#fab387" strokeWidth={2} dot={false} name="BEAM Schedulers" isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Panel>
+      </div>
+
+      {/* ClickHouse / BigQuery section */}
+      <div style={{ marginTop: 32 }}>
+        <div style={{ color: "#6c7086", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>
+          Pipeline
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
+          <StatCard label="CH Process Memory" value={chProcMb} color="#a6e3a1" unit="MB" />
+          <StatCard label="BQ Process Memory" value={bqProcMb} color="#cba6f7" unit="MB" />
+          <StatCard label="Minor GC /s" value={gcMinorRate} color="#94e2d5" unit="/s" />
+          <StatCard label="Major GC /s" value={gcMajorRate} color="#f9e2af" unit="/s" />
+          <StatCard label="Long GC /s" value={gcLongRate} color="#f38ba8" unit="/s" />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <Panel title="Pipeline Memory + GC Reclaimed">
+            <ResponsiveContainer width="100%" height={200}>
+              <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+                <XAxis dataKey="t" tick={AXIS} interval="preserveStartEnd" />
+                <YAxis tick={AXIS} width={65} unit="MB" />
+                <Tooltip contentStyle={TOOLTIP} formatter={(v) => `${v} MB`} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#6c7086" }} />
+                <Area type="monotone" dataKey="ch_proc_mb" stroke="#a6e3a1" fill="#a6e3a1" fillOpacity={0.3} name="ClickHouse" isAnimationActive={false} />
+                <Area type="monotone" dataKey="bq_proc_mb" stroke="#cba6f7" fill="#cba6f7" fillOpacity={0.3} name="BigQuery" isAnimationActive={false} />
+                <Line type="monotone" dataKey="gc_reclaimed_mb" stroke="#f9e2af" strokeWidth={2} dot={false} name="GC Reclaimed" isAnimationActive={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </Panel>
+          <GcChart data={data} />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12 }}>
+            <StatCard label="CH Total Acked" value={chTotal.toLocaleString()} color="#a6e3a1" />
+            <StatCard label="BQ Total Acked" value={bqTotal.toLocaleString()} color="#cba6f7" />
+            <StatCard label="CH events/s" value={chBatchRate} color="#a6e3a1" unit="/s" />
+            <StatCard label="BQ events/s" value={bqBatchRate} color="#cba6f7" unit="/s" />
+          </div>
+          <Panel title="Pipeline Throughput (events/s)">
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+                <XAxis dataKey="t" tick={AXIS} interval="preserveStartEnd" />
+                <YAxis tick={AXIS} width={65} unit="/s" />
+                <Tooltip contentStyle={TOOLTIP} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#6c7086" }} />
+                <Line type="monotone" dataKey="ch_batch_rate" stroke="#a6e3a1" strokeWidth={2} dot={false} name="ClickHouse" isAnimationActive={false} />
+                <Line type="monotone" dataKey="bq_batch_rate" stroke="#cba6f7" strokeWidth={2} dot={false} name="BigQuery" isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </Panel>
+        </div>
       </div>
     </div>
   );

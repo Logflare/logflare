@@ -20,43 +20,63 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
     bucket = Keyword.fetch!(opts, :bucket)
     storage_mod = Keyword.fetch!(opts, :storage_mod)
     queue_mod = Keyword.fetch!(opts, :queue_mod)
-    schedule_poll()
 
-    {:producer,
-     %{
-       queue_url: queue_url,
-       bucket: bucket,
-       storage_mod: storage_mod,
-       queue_mod: queue_mod,
-       demand: 0,
-       current: nil,
-       # nil | :running | {:ready, fetch_result}
-       # fetch_result = {:ok, handle, lines} | :empty | {:error, handle, reason}
-       prefetch: nil
-     }}
+    state = %{
+      queue_url: queue_url,
+      bucket: bucket,
+      storage_mod: storage_mod,
+      queue_mod: queue_mod,
+      demand: 0,
+      current: nil,
+      # nil | :running | {:ready, fetch_result}
+      # fetch_result = {:ok, handle, lines} | :empty | {:error, handle, reason}
+      prefetch: nil,
+      # Process.send_after/3 timer ref for the one outstanding :poll trigger,
+      # or nil if none is pending. Deduplicates concurrent handle_demand calls
+      # (one per processor, see consumer_concurrency) so they can't each spawn
+      # their own poll chain. Delay-0 sends (maybe_send_poll) go through
+      # send_after too, purely to get a ref back — Process.read_timer/1 on
+      # this field should always return a valid remaining time (or `false`
+      # only in the brief window between firing and this field being cleared);
+      # a stuck non-nil poll_timer that read_timer reports as `false` is a bug.
+      poll_timer: nil
+    }
+
+    # Immediate, not scheduled: no reason to wait @poll_interval for the very
+    # first check.
+    {:producer, maybe_send_poll(state)}
   end
 
   # Serve from the existing in-memory buffer only — never blocks on IO.
   # File loading happens in handle_info(:poll); prefetch runs concurrently in a Task.
   # When demand arrives with no buffer, kick an immediate poll rather than
-  # waiting up to @poll_interval for the next tick.
+  # waiting up to @poll_interval for the next tick. Under memory throttling we
+  # still must schedule a fallback poll — never silently drop the only trigger
+  # that would ever re-check state, or the producer freezes permanently even
+  # after memory drops back under the limit.
   @impl GenStage
   def handle_demand(demand, state) do
     new_state = %{state | demand: state.demand + demand}
+    throttled = over_limit?()
 
-    if buffered?(new_state) and not over_limit?() do
-      emit_from_buffer(new_state)
-    else
-      unless over_limit?(), do: send(self(), :poll)
-      {:noreply, [], new_state}
+    cond do
+      buffered?(new_state) and not throttled ->
+        emit_from_buffer(new_state)
+
+      throttled ->
+        {:noreply, [], maybe_schedule_poll(new_state)}
+
+      true ->
+        {:noreply, [], maybe_send_poll(new_state)}
     end
   end
 
   @impl GenStage
   def handle_info(:poll, state) do
+    state = %{state | poll_timer: nil}
+
     if state.demand <= 0 or over_limit?() do
-      schedule_poll()
-      {:noreply, [], state}
+      {:noreply, [], maybe_schedule_poll(state)}
     else
       new_state =
         state
@@ -65,19 +85,20 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
 
       new_state = maybe_start_prefetch(new_state)
 
-      cond do
-        new_state.current != nil ->
-          # Emitting — demand will drive the next poll when this file exhausts
-          :ok
+      new_state =
+        cond do
+          new_state.current != nil ->
+            # Emitting — demand will drive the next poll when this file exhausts
+            new_state
 
-        new_state.prefetch == :running ->
-          # Prefetch download in flight; handle_info(:prefetch_result) will send :poll when ready
-          :ok
+          new_state.prefetch == :running ->
+            # Prefetch download in flight; handle_info(:prefetch_result) will send :poll when ready
+            new_state
 
-        true ->
-          # Queue was empty
-          schedule_poll()
-      end
+          true ->
+            # Queue was empty
+            maybe_schedule_poll(new_state)
+        end
 
       emit_from_buffer(new_state)
     end
@@ -88,11 +109,26 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
     new_state = %{state | prefetch: {:ready, result}}
 
     # If demand is waiting and we have nothing buffered, kick a poll to load the prefetch now
-    if state.demand > 0 and not buffered?(state) do
-      send(self(), :poll)
-    end
+    new_state =
+      if state.demand > 0 and not buffered?(state) do
+        maybe_send_poll(new_state)
+      else
+        new_state
+      end
 
     {:noreply, [], new_state}
+  end
+
+  defp maybe_schedule_poll(%{poll_timer: ref} = state) when not is_nil(ref), do: state
+
+  defp maybe_schedule_poll(state) do
+    %{state | poll_timer: Process.send_after(self(), :poll, @poll_interval)}
+  end
+
+  defp maybe_send_poll(%{poll_timer: ref} = state) when not is_nil(ref), do: state
+
+  defp maybe_send_poll(state) do
+    %{state | poll_timer: Process.send_after(self(), :poll, 0)}
   end
 
   defp buffered?(%{current: nil}), do: false
@@ -117,19 +153,23 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
     %{state | prefetch: nil}
   end
 
-  # Prefetch landed but download failed — nack and fall through to empty
+  # Prefetch landed but download failed — nack and fall through to empty.
+  # handle may be nil if the prefetch task crashed before receiving a message.
   defp maybe_load_next(%{current: nil, prefetch: {:ready, {:error, handle, reason}}} = state) do
     Logger.error("s3_consumer: prefetch failed: #{inspect(reason)}")
-    state.queue_mod.nack(state.queue_url, handle)
+    if handle, do: state.queue_mod.nack(state.queue_url, handle)
     %{state | prefetch: nil}
   end
 
   # Prefetch still in flight — do nothing; handle_info(:prefetch_result) will send :poll
   defp maybe_load_next(%{current: nil, prefetch: :running} = state), do: state
 
-  # No prefetch at all — blocking fetch (cold start or after queue-empty)
+  # No prefetch at all — blocking fetch (cold start or after queue-empty).
+  # Wrapped so a bad message (unexpected exception) degrades to a logged skip
+  # instead of crashing the whole producer and repeatedly re-fetching the same
+  # poison message on every supervisor restart.
   defp maybe_load_next(%{current: nil, prefetch: nil} = state) do
-    case do_fetch_next(state.queue_url, state.bucket, state.queue_mod, state.storage_mod) do
+    case safe_fetch_next(state.queue_url, state.bucket, state.queue_mod, state.storage_mod) do
       {:ok, handle, lines} ->
         %{state | current: %{handle: handle, lines: lines}}
 
@@ -138,7 +178,7 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
 
       {:error, handle, reason} ->
         Logger.error("s3_consumer: fetch failed: #{inspect(reason)}")
-        state.queue_mod.nack(state.queue_url, handle)
+        if handle, do: state.queue_mod.nack(state.queue_url, handle)
         state
     end
   end
@@ -156,7 +196,10 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
       storage_mod = state.storage_mod
 
       Task.start(fn ->
-        result = do_fetch_next(queue_url, bucket, queue_mod, storage_mod)
+        # A crash here must still deliver a {:prefetch_result, _} message —
+        # otherwise state.prefetch is stuck at :running forever (maybe_start_prefetch
+        # refuses to start a new one, and nothing else will ever unstick it).
+        result = safe_fetch_next(queue_url, bucket, queue_mod, storage_mod)
         send(parent, {:prefetch_result, result})
       end)
 
@@ -182,6 +225,19 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
     }
 
     {:noreply, to_emit, new_state}
+  end
+
+  # Wraps do_fetch_next so an unexpected exception always yields a normal
+  # {:error, handle | nil, reason} result instead of propagating and crashing
+  # the caller (the GenStage process itself for the blocking path, or the
+  # unmonitored Task for the prefetch path). handle is nil when the crash
+  # happened before a queue message was successfully retrieved.
+  defp safe_fetch_next(queue_url, bucket, queue_mod, storage_mod) do
+    do_fetch_next(queue_url, bucket, queue_mod, storage_mod)
+  rescue
+    e -> {:error, nil, e}
+  catch
+    kind, reason -> {:error, nil, {kind, reason}}
   end
 
   defp do_fetch_next(queue_url, bucket, queue_mod, storage_mod) do
@@ -279,9 +335,5 @@ defmodule Logflare.Backends.S3ConsumerPipeline.SqsProducer do
     end
 
     over
-  end
-
-  defp schedule_poll do
-    Process.send_after(self(), :poll, @poll_interval)
   end
 end
