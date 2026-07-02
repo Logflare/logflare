@@ -152,8 +152,21 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
   def test_connection(%Backend{} = backend) do
     case execute_query(backend, "SELECT 1 AS result", []) do
-      {:ok, %QueryResult{rows: [%{"result" => 1}]}} -> :ok
-      {:error, _} = error -> error
+      {:ok, %QueryResult{rows: [%{"result" => 1}]}} ->
+        :ok
+
+      {:error, %QueryError{kind: kind}}
+      when kind in [:connection_error, :backend_error] ->
+        {:error, kind}
+
+      {:error, reason} ->
+        Logger.warning(
+          "Unexpected error when testing Postgres backend connection: #{inspect(reason)}",
+          backend_id: backend.id,
+          user_id: backend.user_id
+        )
+
+        {:error, :unknown_error}
     end
   end
 

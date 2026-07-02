@@ -192,7 +192,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           :ok
           | {:error, :permissions_missing}
           | {:error, :read_permissions_missing}
-          | {:error, term()}
+          | {:error, :grant_check_unknown_failure}
   def test_connection(%Backend{config: config} = backend) do
     with :ok <- check_ingest_grants(backend, config),
          :ok <- maybe_check_read_grants(backend, config) do
@@ -201,7 +201,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec check_ingest_grants(Backend.t(), map()) ::
-          :ok | {:error, :permissions_missing} | {:error, term()}
+          :ok | {:error, :permissions_missing} | {:error, :grant_check_unknown_failure}
   defp check_ingest_grants(%Backend{} = backend, config) do
     sql_statement = QueryTemplates.grant_check_statement()
 
@@ -223,7 +223,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           backend_id: backend.id
         )
 
-        error_result
+        {:error, :grant_check_unknown_failure}
     end
   end
 
@@ -256,7 +256,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           backend_id: backend.id
         )
 
-        error_result
+        {:error, :grant_check_unknown_failure}
     end
   end
 

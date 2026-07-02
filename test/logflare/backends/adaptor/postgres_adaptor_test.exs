@@ -231,13 +231,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
         {:error, :cannot_connect}
       end)
 
-      assert {:error,
-              %QueryError{
-                kind: :connection_error,
-                backend: Logflare.Backends.Adaptor.PostgresAdaptor,
-                raw_error: :cannot_connect,
-                description: nil
-              }} = PostgresAdaptor.test_connection(backend)
+      assert {:error, :connection_error} = PostgresAdaptor.test_connection(backend)
     end
 
     test "execute_query/3 returns error tuple on invalid query", %{backend: backend} do

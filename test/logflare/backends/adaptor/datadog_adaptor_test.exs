@@ -80,16 +80,14 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
         {:ok, %Tesla.Env{status: 403, body: %{"errors" => ["Forbidden"]}}}
       end)
 
-      assert {:error, reason} = @subject.test_connection(backend)
-      assert reason =~ "403"
+      assert {:error, :http_client_error} = @subject.test_connection(backend)
     end
 
     test "returns error on transport failure", %{backend: backend} do
       @client
       |> expect(:send, fn _req -> {:error, :nxdomain} end)
 
-      assert {:error, reason} = @subject.test_connection(backend)
-      assert reason =~ "nxdomain"
+      assert {:error, :unknown_error} = @subject.test_connection(backend)
     end
   end
 
