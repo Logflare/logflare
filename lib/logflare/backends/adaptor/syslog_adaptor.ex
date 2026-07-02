@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
   alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Socket, Pipeline}
+  alias Logflare.Backends.Backend
   require Logger
 
   @behaviour Logflare.Backends.Adaptor
