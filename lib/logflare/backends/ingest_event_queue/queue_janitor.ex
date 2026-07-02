@@ -193,17 +193,20 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   defp process_stale_events(_table_key, []), do: {0, 0}
 
   defp process_stale_events(table_key, stale_ids) do
-    with tid when tid != nil <- IngestEventQueue.get_tid(table_key) do
-      Enum.reduce(stale_ids, {0, 0}, fn id, {resets, drops} ->
-        case act_on_stale_event(tid, id) do
-          :reset -> {resets + 1, drops}
-          :drop -> {resets, drops + 1}
-          :skip -> {resets, drops}
-        end
-      end)
-    else
-      _ -> {0, 0}
+    case IngestEventQueue.get_tid(table_key) do
+      nil -> {0, 0}
+      tid -> tally_stale_events(tid, stale_ids)
     end
+  end
+
+  defp tally_stale_events(tid, stale_ids) do
+    Enum.reduce(stale_ids, {0, 0}, fn id, {resets, drops} ->
+      case act_on_stale_event(tid, id) do
+        :reset -> {resets + 1, drops}
+        :drop -> {resets, drops + 1}
+        :skip -> {resets, drops}
+      end
+    end)
   end
 
   # Pass the exact row observed by the lookup to IngestEventQueue's CAS helpers, so an event

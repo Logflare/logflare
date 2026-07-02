@@ -687,7 +687,7 @@ defmodule Logflare.Lql.BackendTransformer.Postgres do
   end
 
   @spec build_jsonb_accessor([String.t()]) :: String.t()
-  defp build_jsonb_accessor(path) when is_list(path) and path != [] do
+  defp build_jsonb_accessor(path) when is_non_empty_list(path) do
     # For ["metadata", "status"]: body->'metadata'->>'status'
     # For ["metadata", "user", "email"]: body->'metadata'->'user'->>'email'
     {last, rest} = List.pop_at(path, -1)

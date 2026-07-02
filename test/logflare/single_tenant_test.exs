@@ -1,6 +1,7 @@
 defmodule Logflare.SingleTenantTest do
   @moduledoc false
   use Logflare.DataCase
+  import Logflare.Utils.Guards
   alias Logflare.SingleTenant
   alias Logflare.Billing
   alias Logflare.Users
@@ -166,7 +167,7 @@ defmodule Logflare.SingleTenantTest do
       user = SingleTenant.get_default_user()
       sources = Sources.list_sources_by_user(user)
 
-      assert is_list(sources) and sources != []
+      assert is_non_empty_list(sources)
       assert Endpoints.list_endpoints_by(user_id: user.id) != []
     end
 
@@ -263,7 +264,7 @@ defmodule Logflare.SingleTenantTest do
       user = SingleTenant.get_default_user()
       sources = Sources.list_sources_by_user(user)
 
-      assert is_list(sources) and sources != []
+      assert is_non_empty_list(sources)
       assert Endpoints.list_endpoints_by(user_id: user.id) != []
     end
 
