@@ -117,7 +117,7 @@ defmodule LogflareWeb.Api.BackendController do
           conn
           |> json(%{connected?: true})
 
-        {:error, reason} ->
+        {:error, reason} when is_atom(reason) ->
           conn
           |> json(%{connected?: false, reason: reason})
       end
