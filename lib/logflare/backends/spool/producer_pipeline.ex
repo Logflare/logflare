@@ -27,7 +27,6 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
-    dbg("Started spool producer")
     {name, _args} = Keyword.pop!(args, :name)
 
     spool_config = Application.get_env(:logflare, :spool, [])
@@ -101,10 +100,6 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         storage_mod: storage_mod,
         queue_mod: queue_mod
       }) do
-    dbg("SpoolProducerPipeline handle_batch #{Enum.count(messages)}")
-    dbg(batch_info)
-    dbg(Enum.take(messages,1))
-
     partition = :rand.uniform(partitions) - 1
     file_key = "#{partition}/#{generate_uuidv7()}.#{file_extension(format, compress)}"
     result = do_upload(format, compress, messages, bucket, file_key, storage_mod)
@@ -154,7 +149,6 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
         %{data: {_id, _tid, size}}, {count, :pending} ->
           budget = effective_max_file_size()
-          dbg({:spool_batch_budget, budget, :early_flush?, budget != @max_spool_file_size})
           continue_or_emit(size, count, budget)
 
         %{data: {_id, _tid, size}}, {count, budget} ->
@@ -197,70 +191,66 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     do: upload_etf(compress, messages, bucket, file_key, storage_mod)
 
   defp upload_compressed(messages, bucket, file_key, storage_mod) do
-    {serialize_us, body} = :timer.tc(fn -> compress_to_binary(messages) end)
-    dbg({:serialize_ms, Float.round(serialize_us / 1000, 1), :format, :ndjson_gz, :bytes, byte_size(body)})
+    body = compress_to_binary(messages)
 
-    {upload_us, result} = :timer.tc(fn ->
+    result =
       storage_mod.put(bucket, file_key, body,
         headers: %{"content-type" => "application/x-ndjson", "content-encoding" => "gzip"}
       )
-    end)
-    dbg({:upload_ms, Float.round(upload_us / 1000, 1), file_key})
+
+    emit_storage_put_telemetry(:ndjson_gz, byte_size(body), result)
     result
   end
 
   defp upload_plain(messages, bucket, file_key, storage_mod) do
-    {serialize_us, body} =
-      :timer.tc(fn ->
-        Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
-          case :ets.lookup(tid, id) do
-            [{^id, _status, log_event, _byte_size}] -> [encode_line(log_event), "\n"]
-            [] -> []
-          end
-        end)
-        |> IO.iodata_to_binary()
+    body =
+      Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
+        case :ets.lookup(tid, id) do
+          [{^id, _status, log_event, _byte_size}] -> [encode_line(log_event), "\n"]
+          [] -> []
+        end
       end)
+      |> IO.iodata_to_binary()
 
-    dbg({:serialize_ms, Float.round(serialize_us / 1000, 1), :format, :ndjson, :bytes, byte_size(body)})
+    result = storage_mod.put(bucket, file_key, body, headers: %{"content-type" => "application/x-ndjson"})
 
-    {upload_us, result} = :timer.tc(fn ->
-      storage_mod.put(bucket, file_key, body, headers: %{"content-type" => "application/x-ndjson"})
-    end)
-    dbg({:upload_ms, Float.round(upload_us / 1000, 1), file_key})
+    emit_storage_put_telemetry(:ndjson, byte_size(body), result)
     result
   end
 
   defp upload_etf(compress, messages, bucket, file_key, storage_mod) do
-    {serialize_us, body} =
-      :timer.tc(fn ->
-        records =
-          Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
-            case :ets.lookup(tid, id) do
-              [{^id, _status, log_event, _byte_size}] ->
-                [%{
-                  id: log_event.id,
-                  source_id: log_event.source_id,
-                  body: log_event.body,
-                  event_type: log_event.event_type,
-                  ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond)
-                }]
+    records =
+      Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
+        case :ets.lookup(tid, id) do
+          [{^id, _status, log_event, _byte_size}] ->
+            [%{
+              id: log_event.id,
+              source_id: log_event.source_id,
+              body: log_event.body,
+              event_type: log_event.event_type,
+              ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond)
+            }]
 
-              [] ->
-                []
-            end
-          end)
-
-        body = :erlang.term_to_binary(records)
-        if compress, do: gzip(body), else: body
+          [] ->
+            []
+        end
       end)
 
-    dbg({:serialize_ms, Float.round(serialize_us / 1000, 1), :format, (if compress, do: :etf_gz, else: :etf), :bytes, byte_size(body)})
+    body = :erlang.term_to_binary(records)
+    body = if compress, do: gzip(body), else: body
 
-    {upload_us, result} = :timer.tc(fn ->
-      storage_mod.put(bucket, file_key, body, headers: %{"content-type" => "application/octet-stream"})
-    end)
-    dbg({:upload_ms, Float.round(upload_us / 1000, 1), file_key})
+    result = storage_mod.put(bucket, file_key, body, headers: %{"content-type" => "application/octet-stream"})
+
+    emit_storage_put_telemetry((if compress, do: :etf_gz, else: :etf), byte_size(body), result)
     result
+  end
+
+  defp emit_storage_put_telemetry(format, bytes, result) do
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :storage, :put],
+      %{count: 1, bytes: bytes},
+      %{format: format, result: (if match?({:ok, _}, result), do: :ok, else: :error)}
+    )
   end
 
   defp compress_to_binary(messages) do
@@ -320,8 +310,15 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
   defp notify_queue(queue_mod, queue_ref, file_key, count) do
     body = Jason.encode!(%{file_key: file_key, event_count: count})
+    result = queue_mod.publish(queue_ref, body)
 
-    case queue_mod.publish(queue_ref, body) do
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :queue, :publish],
+      %{count: 1},
+      %{result: (if result == :ok, do: :ok, else: :error)}
+    )
+
+    case result do
       :ok ->
         :ok
 

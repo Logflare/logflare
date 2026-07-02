@@ -32,8 +32,6 @@ defmodule Logflare.Backends.Supervisor do
         do: [Backends.Spool.MemoryMonitor],
         else: []
 
-    dbg({spool_provider, Backends.spool_producer_mode?(), Backends.spool_consumer_mode?()})
-
     children =
       [
         Backends.IngestEventQueue,

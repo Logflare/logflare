@@ -85,12 +85,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
             Logger.warning("spool_consumer: unknown source_id=#{source_id}, skipping #{length(lines)} events")
 
           source ->
-            {dispatch_us, result} = :timer.tc(fn -> Backends.dispatch_from_spool(lines, source) end)
-            dbg({:dispatch_ms, Float.round(dispatch_us / 1000, 1), :event_count, length(lines)})
-
-            case result do
+            case Backends.dispatch_from_spool(lines, source) do
               {:ok, _} -> :ok
-              {:error, reason} -> Logger.error("spool_consumer: dispatch failed for source #{source_id}: #{inspect(reason)}")
+              other -> Logger.error("spool_consumer: dispatch failed for source #{source_id}: #{inspect(other)}")
             end
         end
     end)

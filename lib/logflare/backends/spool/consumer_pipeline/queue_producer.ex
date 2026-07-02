@@ -137,6 +137,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   defp maybe_ack_exhausted(%{current: %{lines: [], handle: handle}} = state) do
     state.queue_mod.ack(state.queue_url, handle)
+    emit_ack_telemetry(:buffer_exhausted)
     %{state | current: nil}
   end
 
@@ -144,7 +145,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   # Prefetch landed — use it immediately with zero download wait
   defp maybe_load_next(%{current: nil, prefetch: {:ready, {:ok, handle, lines}}} = state) do
-    dbg({:prefetch_hit, length(lines)})
     %{state | current: %{handle: handle, lines: lines}, prefetch: nil}
   end
 
@@ -157,7 +157,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # handle may be nil if the prefetch task crashed before receiving a message.
   defp maybe_load_next(%{current: nil, prefetch: {:ready, {:error, handle, reason}}} = state) do
     Logger.error("spool_consumer: prefetch failed: #{inspect(reason)}")
-    if handle, do: state.queue_mod.nack(state.queue_url, handle)
+
+    if handle do
+      state.queue_mod.nack(state.queue_url, handle)
+      emit_nack_telemetry(:prefetch_failed)
+    end
+
     %{state | prefetch: nil}
   end
 
@@ -178,7 +183,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
       {:error, handle, reason} ->
         Logger.error("spool_consumer: fetch failed: #{inspect(reason)}")
-        if handle, do: state.queue_mod.nack(state.queue_url, handle)
+
+        if handle do
+          state.queue_mod.nack(state.queue_url, handle)
+          emit_nack_telemetry(:fetch_failed)
+        end
+
         state
     end
   end
@@ -241,8 +251,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp do_fetch_next(queue_url, bucket, queue_mod, storage_mod) do
-    {queue_us, result} = :timer.tc(fn -> queue_mod.receive(queue_url, max_number_of_messages: 1) end)
-    dbg({:queue_receive_ms, Float.round(queue_us / 1000, 1)})
+    result = queue_mod.receive(queue_url, max_number_of_messages: 1)
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :queue, :receive],
+      %{count: (if match?({:ok, _}, result), do: length(elem(result, 1)), else: 0)},
+      %{result: (if match?({:ok, _}, result), do: :ok, else: :error)}
+    )
 
     case result do
       {:ok, [%{id: handle, body: body}]} ->
@@ -255,6 +270,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
               {:error, %Tesla.Env{status: 404}} ->
                 Logger.warning("spool_consumer: file not found in storage, discarding stale queue entry: #{file_key}")
                 queue_mod.ack(queue_url, handle)
+                emit_ack_telemetry(:stale_file)
                 :empty
 
               {:error, reason} ->
@@ -264,6 +280,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
           _ ->
             Logger.warning("spool_consumer: queue message has no file_key, discarding")
             queue_mod.ack(queue_url, handle)
+            emit_ack_telemetry(:no_file_key)
             :empty
         end
 
@@ -277,27 +294,30 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp download_and_parse(bucket, file_key, storage_mod) do
-    {download_us, download_result} = :timer.tc(fn -> storage_mod.get(bucket, file_key) end)
-    dbg({:storage_download_ms, Float.round(download_us / 1000, 1), file_key})
+    download_result = storage_mod.get(bucket, file_key)
 
-    case download_result do
-      {:ok, raw} ->
-        {decompress_us, content} =
-          :timer.tc(fn ->
-            if String.ends_with?(file_key, ".gz"), do: :zlib.gunzip(raw), else: raw
-          end)
+    result =
+      case download_result do
+        {:ok, raw} ->
+          content = if String.ends_with?(file_key, ".gz"), do: :zlib.gunzip(raw), else: raw
+          lines = parse_content(file_key, content)
+          {:ok, lines}
 
-        {parse_us, lines} =
-          :timer.tc(fn -> parse_content(file_key, content) end)
+        {:error, reason} ->
+          {:error, reason}
+      end
 
-        dbg({:decompress_ms, Float.round(decompress_us / 1000, 1), :parse_ms,
-         Float.round(parse_us / 1000, 1), :line_count, length(lines)})
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :storage, :get],
+      %{
+        count: 1,
+        bytes: (if match?({:ok, _}, download_result), do: byte_size(elem(download_result, 1)), else: 0),
+        line_count: (if match?({:ok, _}, result), do: length(elem(result, 1)), else: 0)
+      },
+      %{result: (if match?({:ok, _}, result), do: :ok, else: :error)}
+    )
 
-        {:ok, lines}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    result
   end
 
   defp parse_content(file_key, content) do
@@ -324,14 +344,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # before it can ever contribute to a global 429 for unrelated sources.
   # Shared with the spool producer's early-flush decision via MemoryMonitor.
   defp over_limit? do
-    stats = MemoryMonitor.stats()
+    MemoryMonitor.throttled?()
+  end
 
-    if stats.throttled? do
-      dbg({"***************** spool_consumer THROTTLING *****************",
-           total_percent: Float.round(stats.total_percent * 100, 1), total_limit_percent: stats.total_limit_percent * 100,
-           ets_percent: Float.round(stats.ets_percent * 100, 1), ets_limit_percent: stats.ets_limit_percent * 100})
-    end
+  defp emit_ack_telemetry(reason) do
+    :telemetry.execute([:logflare, :backends, :spool, :queue, :ack], %{count: 1}, %{reason: reason})
+  end
 
-    stats.throttled?
+  defp emit_nack_telemetry(reason) do
+    :telemetry.execute([:logflare, :backends, :spool, :queue, :nack], %{count: 1}, %{reason: reason})
   end
 end

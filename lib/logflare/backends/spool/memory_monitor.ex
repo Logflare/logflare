@@ -73,7 +73,19 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
   end
 
   defp refresh do
-    :persistent_term.put(@pt_key, compute_stats())
+    stats = compute_stats()
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :throttled],
+      %{
+        throttled: if(stats.throttled?, do: 1, else: 0),
+        total_percent: stats.total_percent,
+        ets_percent: stats.ets_percent
+      },
+      %{}
+    )
+
+    :persistent_term.put(@pt_key, stats)
   end
 
   defp compute_stats do
