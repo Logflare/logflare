@@ -265,33 +265,45 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
   defp compress_to_binary(messages) do
     z = :zlib.open()
-    :ok = :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
 
-    chunks =
-      Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
-        case :ets.lookup(tid, id) do
-          [{^id, _status, log_event, _byte_size}] ->
-            :zlib.deflate(z, [encode_line(log_event), "\n"], :none)
+    try do
+      :ok = :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
 
-          [] ->
-            []
-        end
-      end)
+      chunks =
+        Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
+          case :ets.lookup(tid, id) do
+            [{^id, _status, log_event, _byte_size}] ->
+              :zlib.deflate(z, [encode_line(log_event), "\n"], :none)
 
-    final = :zlib.deflate(z, [], :finish)
-    :zlib.deflateEnd(z)
-    :zlib.close(z)
+            [] ->
+              []
+          end
+        end)
 
-    IO.iodata_to_binary([chunks, final])
+      final = :zlib.deflate(z, [], :finish)
+      :zlib.deflateEnd(z)
+
+      IO.iodata_to_binary([chunks, final])
+    after
+      # Broadway rescues exceptions raised from handle_batch/4 without crashing
+      # this process, so the port is never closed by BEAM's automatic
+      # close-on-owner-death cleanup either — without this `after`, a raise
+      # partway through deflate leaks the port permanently.
+      :zlib.close(z)
+    end
   end
 
   defp gzip(data) do
     z = :zlib.open()
-    :ok = :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
-    chunks = :zlib.deflate(z, data, :finish)
-    :zlib.deflateEnd(z)
-    :zlib.close(z)
-    IO.iodata_to_binary(chunks)
+
+    try do
+      :ok = :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
+      chunks = :zlib.deflate(z, data, :finish)
+      :zlib.deflateEnd(z)
+      IO.iodata_to_binary(chunks)
+    after
+      :zlib.close(z)
+    end
   end
 
   defp encode_line(log_event) do
