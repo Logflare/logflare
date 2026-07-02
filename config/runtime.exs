@@ -556,11 +556,12 @@ spool_provider_override =
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
-    (if (q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
-    (if (t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
-    (if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: [])
+    if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
+    if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
+    if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []
 
 if spool_overrides != [] do
-  config :logflare, :spool,
-    Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
+  config :logflare,
+         :spool,
+         Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
 end

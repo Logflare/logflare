@@ -24,7 +24,6 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @batcher_concurrency 4
   @producer_concurrency 1
 
-
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
     {name, _args} = Keyword.pop!(args, :name)
@@ -121,7 +120,9 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         messages
 
       {:error, reason} ->
-        Logger.error("spool_producer_pipeline: write failed key=#{file_key} error=#{inspect(reason)}")
+        Logger.error(
+          "spool_producer_pipeline: write failed key=#{file_key} error=#{inspect(reason)}"
+        )
 
         Enum.map(messages, &Message.failed(&1, reason))
     end
@@ -212,7 +213,10 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       end)
       |> IO.iodata_to_binary()
 
-    result = storage_mod.put(bucket, file_key, body, headers: %{"content-type" => "application/x-ndjson"})
+    result =
+      storage_mod.put(bucket, file_key, body,
+        headers: %{"content-type" => "application/x-ndjson"}
+      )
 
     emit_storage_put_telemetry(:ndjson, byte_size(body), result)
     result
@@ -223,13 +227,15 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
         case :ets.lookup(tid, id) do
           [{^id, _status, log_event, _byte_size}] ->
-            [%{
-              id: log_event.id,
-              source_id: log_event.source_id,
-              body: log_event.body,
-              event_type: log_event.event_type,
-              ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond)
-            }]
+            [
+              %{
+                id: log_event.id,
+                source_id: log_event.source_id,
+                body: log_event.body,
+                event_type: log_event.event_type,
+                ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond)
+              }
+            ]
 
           [] ->
             []
@@ -239,9 +245,12 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     body = :erlang.term_to_binary(records)
     body = if compress, do: gzip(body), else: body
 
-    result = storage_mod.put(bucket, file_key, body, headers: %{"content-type" => "application/octet-stream"})
+    result =
+      storage_mod.put(bucket, file_key, body,
+        headers: %{"content-type" => "application/octet-stream"}
+      )
 
-    emit_storage_put_telemetry((if compress, do: :etf_gz, else: :etf), byte_size(body), result)
+    emit_storage_put_telemetry(if(compress, do: :etf_gz, else: :etf), byte_size(body), result)
     result
   end
 
@@ -249,7 +258,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     :telemetry.execute(
       [:logflare, :backends, :spool, :storage, :put],
       %{count: 1, bytes: bytes},
-      %{format: format, result: (if match?({:ok, _}, result), do: :ok, else: :error)}
+      %{format: format, result: if(match?({:ok, _}, result), do: :ok, else: :error)}
     )
   end
 
@@ -315,7 +324,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     :telemetry.execute(
       [:logflare, :backends, :spool, :queue, :publish],
       %{count: 1},
-      %{result: (if result == :ok, do: :ok, else: :error)}
+      %{result: if(result == :ok, do: :ok, else: :error)}
     )
 
     case result do
@@ -323,7 +332,9 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         :ok
 
       {:error, reason} ->
-        Logger.error("spool_producer_pipeline: queue notify failed for #{file_key}: #{inspect reason}")
+        Logger.error(
+          "spool_producer_pipeline: queue notify failed for #{file_key}: #{inspect(reason)}"
+        )
     end
   end
 
@@ -342,7 +353,10 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
             ref
 
           {:error, reason} ->
-            Logger.warning("spool_producer_pipeline: could not resolve queue ref for #{queue_name}: #{inspect(reason)}")
+            Logger.warning(
+              "spool_producer_pipeline: could not resolve queue ref for #{queue_name}: #{inspect(reason)}"
+            )
+
             nil
         end
     end

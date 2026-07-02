@@ -84,6 +84,7 @@ config :stripity_stripe,
 
 config :logflare, :spool,
   mode: :disable,
+  provider: :gcp,
   bucket: "logflare-spool",
   partitions: 4,
   batch_timeout: 5_000,
@@ -92,7 +93,10 @@ config :logflare, :spool,
   # :etf encodes the whole batch as a single Erlang term — ~10x faster decode,
   # but files are binary (use IEx to inspect, not cat/jq).
   format: :etf,
-  queue_name: "logflare-spool"
+  # Matches the resources created by `make setup.gcp` against the local
+  # GCS/PubSub emulators (docker-compose.gcp.yml).
+  pubsub_topic: "projects/logflare/topics/logflare-spool",
+  queue_name: "projects/logflare/subscriptions/logflare-spool-sub"
 
 config :ex_aws,
   access_key_id: "minioadmin",

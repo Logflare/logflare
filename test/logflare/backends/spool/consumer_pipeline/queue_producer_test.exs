@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
+  alias Logflare.TestUtils
 
   setup :set_mimic_global
 
@@ -28,7 +29,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     # do with throttling (e.g. prefetch/happy-path tests below). Starting a
     # fresh, explicitly non-throttled MemoryMonitor for every test in this
     # file guarantees a known baseline; throttled!/0 overrides it as needed.
-    Application.put_env(:logflare, :spool, spool_memory_limit_percent: 1.0, spool_max_ets_percent: 1.0)
+    Application.put_env(:logflare, :spool,
+      spool_memory_limit_percent: 1.0,
+      spool_max_ets_percent: 1.0
+    )
+
     start_supervised!(MemoryMonitor)
     Process.sleep(50)
 
@@ -84,12 +89,17 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     end)
   end
 
-  # contents: %{file_key => body} | %{file_key => :raise} to simulate a
-  # crashing download (e.g. an uncaught exception during a prefetch).
+  # contents: %{file_key => body} | %{file_key => :raise} | %{file_key => {:error, reason}}
+  # `:raise` simulates a crashing download (e.g. an uncaught exception during
+  # a prefetch) — safe_fetch_next's rescue always loses the queue handle for
+  # these, so they never reach the nack/no-handle branch with a real handle.
+  # `{:error, reason}` simulates a normal (non-crashing) failed download —
+  # this is the only path that preserves the handle for nack telemetry.
   defp stub_storage(contents) do
     stub(StorageMod, :get, fn _bucket, key ->
       case Map.fetch(contents, key) do
         {:ok, :raise} -> raise "boom: #{key}"
+        {:ok, {:error, _reason} = error} -> error
         {:ok, body} -> {:ok, body}
         :error -> {:error, %Tesla.Env{status: 404}}
       end
@@ -102,13 +112,21 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   # own ~1s refresh timer to pick up the change; they must not try to start
   # a second one (would fail with {:already_started, _}).
   defp throttled! do
-    Application.put_env(:logflare, :spool, spool_memory_limit_percent: 0.0, spool_max_ets_percent: 0.0)
+    Application.put_env(:logflare, :spool,
+      spool_memory_limit_percent: 0.0,
+      spool_max_ets_percent: 0.0
+    )
+
     Process.sleep(1_100)
     assert MemoryMonitor.throttled?() == true
   end
 
   defp not_throttled! do
-    Application.put_env(:logflare, :spool, spool_memory_limit_percent: 1.0, spool_max_ets_percent: 1.0)
+    Application.put_env(:logflare, :spool,
+      spool_memory_limit_percent: 1.0,
+      spool_max_ets_percent: 1.0
+    )
+
     Process.sleep(1_100)
     assert MemoryMonitor.throttled?() == false
   end
@@ -134,6 +152,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
   describe "happy path" do
     test "streams events from a file and acks the queue message once exhausted" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :receive])
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :get])
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
+
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/a.ndjson")])
       stub_storage(%{"0/a.ndjson" => ndjson_body([%{"id" => "e1"}, %{"id" => "e2"}])})
@@ -146,6 +168,17 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert Enum.map(events, & &1["id"]) == ["e1", "e2"]
       assert_receive {:acked, "h1"}, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :receive],
+                      %{count: 1}, %{result: :ok}}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :get],
+                      %{count: 1, bytes: bytes, line_count: 2}, %{result: :ok}}
+
+      assert bytes > 0
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+                      %{reason: :buffer_exhausted}}
     end
   end
 
@@ -274,6 +307,164 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert event["id"] == "e1"
       refute_received {:DOWN, ^ref, :process, ^pid, _reason}
+    end
+  end
+
+  describe "ack telemetry reasons" do
+    test "acks with reason: :stale_file and emits storage.get with result: :error when the file is missing (404)" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :get])
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/missing.ndjson")])
+      # stub_storage/1 returns a 404 Tesla.Env for any file_key not in the map.
+      stub_storage(%{})
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      assert_receive {:acked, "h1"}, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+                      %{reason: :stale_file}}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :get],
+                      %{count: 1, bytes: 0, line_count: 0}, %{result: :error}}
+    end
+
+    test "acks with reason: :no_file_key when the queue message body has no file_key" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
+
+      stub_ack_nack(self())
+      stub_queue([%{id: "h1", body: Jason.encode!(%{"not_file_key" => "oops"})}])
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      assert_receive {:acked, "h1"}, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+                      %{reason: :no_file_key}}
+    end
+
+    test "acks with reason: :decode_error and drops the message when the downloaded content is not valid ETF" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/corrupt.etf")])
+      # Well-formed bytes for storage.get, but not a valid Erlang external term —
+      # this is exactly the "invalid or unsafe external representation of a
+      # term" ArgumentError that :erlang.binary_to_term/2 raises on corrupt or
+      # incompatible spool content.
+      stub_storage(%{"0/corrupt.etf" => "this is not valid etf"})
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      assert_receive {:acked, "h1"}, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+                      %{reason: :decode_error}}
+    end
+
+    test "acks with reason: :decode_error when the downloaded .gz content is not valid gzip" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/corrupt.etf.gz")])
+      stub_storage(%{"0/corrupt.etf.gz" => "not gzip data"})
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      assert_receive {:acked, "h1"}, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+                      %{reason: :decode_error}}
+    end
+  end
+
+  describe "ack/nack result telemetry" do
+    test "reports result: :error when the underlying queue ack call itself fails" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
+
+      stub(QueueMod, :ack, fn _url, _handle -> {:error, :throttled} end)
+      stub_queue([queue_message("h1", "0/missing.ndjson")])
+      stub_storage(%{})
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+                      %{reason: :stale_file, result: :error}}
+    end
+
+    test "reports result: :error when the underlying queue nack call itself fails" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
+
+      stub(QueueMod, :nack, fn _url, _handle -> {:error, :throttled} end)
+      stub_queue([queue_message("h1", "0/broken.ndjson")])
+      stub_storage(%{"0/broken.ndjson" => {:error, :network_error}})
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
+                      %{count: 1}, %{reason: :fetch_failed, result: :error}}
+    end
+  end
+
+  describe "nack telemetry reasons" do
+    # Note: an exception-based failure (storage_mod.get raising, exercised in
+    # "prefetch task crash resilience" above) always loses the queue handle in
+    # safe_fetch_next's rescue, so it can never reach the nack/telemetry branch
+    # (`if handle do ... end` is always false there). Only a *normal* {:error,
+    # reason} return preserves the handle — these tests use that path.
+    test "nacks with reason: :fetch_failed on a normal (non-raising) download error, cold start" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/broken.ndjson")])
+      stub_storage(%{"0/broken.ndjson" => {:error, :network_error}})
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      assert_receive {:nacked, "h1"}, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
+                      %{count: 1}, %{reason: :fetch_failed}}
+    end
+
+    test "nacks with reason: :prefetch_failed on a normal (non-raising) download error during prefetch" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
+
+      stub_ack_nack(self())
+
+      stub_queue([
+        queue_message("h1", "0/a.ndjson"),
+        queue_message("h2", "0/broken.ndjson")
+      ])
+
+      stub_storage(%{
+        "0/a.ndjson" => ndjson_body([%{"id" => "e1"}]),
+        "0/broken.ndjson" => {:error, :network_error}
+      })
+
+      pid = start_producer()
+
+      # File A streams fine; its background prefetch (file B) fails normally
+      # (not an exception) while A is still being consumed.
+      [event] =
+        GenStage.stream([{pid, max_demand: 10}])
+        |> Enum.take(1)
+
+      assert event["id"] == "e1"
+
+      assert_receive {:nacked, "h2"}, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
+                      %{count: 1}, %{reason: :prefetch_failed}}
     end
   end
 end

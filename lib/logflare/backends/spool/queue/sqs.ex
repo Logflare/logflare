@@ -54,10 +54,8 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
   end
 
   defp request(operation) do
-    try do
-      ExAws.request(operation)
-    rescue
-      e -> {:error, Exception.message(e)}
-    end
+    ExAws.request(operation)
+  rescue
+    e -> {:error, Exception.message(e)}
   end
 end

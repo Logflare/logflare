@@ -715,7 +715,8 @@ defmodule Logflare.Backends do
   @spec spool_consumer_mode?() :: boolean()
   def spool_consumer_mode?, do: spool_mode() in [:consumer, :both]
 
-  defp spool_mode, do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode)
+  defp spool_mode,
+    do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
 
   defp dispatch_to_spool_producer(log_events) do
     IngestEventQueue.add_to_table({:spool_producer, nil}, log_events)

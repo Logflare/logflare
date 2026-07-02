@@ -1,8 +1,17 @@
 defmodule Logflare.Backends.Spool.ProducerPipelineTest do
   use ExUnit.Case, async: false
 
+  import Mimic
+
+  alias Broadway.Message
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.ProducerPipeline
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
+  alias Logflare.LogEvent
+  alias Logflare.TestUtils
+
+  setup :set_mimic_global
 
   @max_spool_file_size 32 * 1024 * 1024
   @early_flush_file_size 12 * 1024 * 1024
@@ -22,6 +31,45 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
   end
 
   defp message(size), do: %{data: {Ecto.UUID.generate(), :fake_tid, size}}
+
+  # Builds a real ETS-backed {id, tid, size} message, matching what
+  # BufferProducer's id_passing: true path actually hands to handle_batch/4 —
+  # unlike message/1 above, this is a real log event the upload functions can
+  # :ets.lookup/2 and serialize.
+  defp log_event_message(body \\ %{"message" => "hello"}) do
+    log_event = %LogEvent{
+      id: Ecto.UUID.generate(),
+      source_id: 1,
+      body: body,
+      event_type: :log,
+      ingested_at: DateTime.utc_now(),
+      valid: true,
+      drop: false
+    }
+
+    byte_size = :erlang.external_size(log_event)
+    tid = :ets.new(:test_producer_pipeline_ets, [:set, :public])
+    :ets.insert(tid, {log_event.id, :pending, log_event, byte_size})
+
+    %Message{
+      data: {log_event.id, tid, byte_size},
+      acknowledger: {ProducerPipeline, :no_ack_ref, :ack_data}
+    }
+  end
+
+  defp handle_batch_context(overrides \\ []) do
+    [
+      bucket: "test-bucket",
+      partitions: 1,
+      compress: true,
+      format: :ndjson,
+      queue_ref: "projects/p/topics/t",
+      storage_mod: StorageMod,
+      queue_mod: QueueMod
+    ]
+    |> Keyword.merge(overrides)
+    |> Map.new()
+  end
 
   defp not_throttled! do
     Application.put_env(:logflare, :spool,
@@ -98,6 +146,86 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       # 5MB + 8MB = 13MB, over the locked-in 12MB budget (would NOT emit under
       # a freshly-rechecked 32MB budget) — proves the decision wasn't re-evaluated.
       assert {:emit, {_count, :pending}} = reducer.(message(8 * 1024 * 1024), acc)
+    end
+  end
+
+  describe "handle_batch/4" do
+    test "uploads and publishes on success, returning messages unchanged and emitting telemetry" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :put])
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :publish])
+
+      stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
+      stub(QueueMod, :publish, fn _ref, _body -> :ok end)
+
+      messages = [log_event_message()]
+      batch_info = %{size: 1, trigger: :size}
+
+      result = ProducerPipeline.handle_batch(:spool, messages, batch_info, handle_batch_context())
+
+      assert result == messages
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :put],
+                      %{count: 1, bytes: bytes}, %{format: :ndjson_gz, result: :ok}}
+
+      assert bytes > 0
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :publish],
+                      %{count: 1}, %{result: :ok}}
+    end
+
+    test "maps messages to failed and emits storage.put telemetry with result: :error on upload failure" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :put])
+
+      stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:error, :timeout} end)
+
+      messages = [log_event_message()]
+      batch_info = %{size: 1, trigger: :size}
+
+      [result_message] =
+        ProducerPipeline.handle_batch(:spool, messages, batch_info, handle_batch_context())
+
+      assert result_message.status == {:failed, :timeout}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :put], _,
+                      %{format: :ndjson_gz, result: :error}}
+    end
+
+    test "publish failure still emits queue.publish telemetry with result: :error" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :publish])
+
+      stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
+      stub(QueueMod, :publish, fn _ref, _body -> {:error, :unavailable} end)
+
+      messages = [log_event_message()]
+      batch_info = %{size: 1, trigger: :size}
+
+      ProducerPipeline.handle_batch(:spool, messages, batch_info, handle_batch_context())
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :publish],
+                      %{count: 1}, %{result: :error}}
+    end
+
+    for {format, compress, expected_tag} <- [
+          {:ndjson, false, :ndjson},
+          {:ndjson, true, :ndjson_gz},
+          {:etf, false, :etf},
+          {:etf, true, :etf_gz}
+        ] do
+      test "emits storage.put telemetry tagged #{expected_tag} for format=#{format} compress=#{compress}" do
+        TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :put])
+
+        stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
+        stub(QueueMod, :publish, fn _ref, _body -> :ok end)
+
+        messages = [log_event_message()]
+        batch_info = %{size: 1, trigger: :size}
+        context = handle_batch_context(format: unquote(format), compress: unquote(compress))
+
+        ProducerPipeline.handle_batch(:spool, messages, batch_info, context)
+
+        assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :put], _,
+                        %{format: unquote(expected_tag), result: :ok}}
+      end
     end
   end
 end

@@ -27,11 +27,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       :telemetry.attach(
         "dev-dashboard-write-#{pid}",
         [:logflare, :backends, :pipeline, :handle_batch],
-        fn _event, %{batch_size: size}, meta, {rate_ref, total_ref} ->
-          if Map.get(meta, :backend_type) == :spool_producer do
-            :atomics.add(rate_ref, 1, size)
-            :atomics.add(total_ref, 1, size)
-          end
+        fn _event, %{batch_size: size}, meta, refs ->
+          accumulate_batch(meta, size, :spool_producer, refs)
         end,
         {write_rate_atomic, write_total_atomic}
       )
@@ -39,11 +36,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       :telemetry.attach(
         "dev-dashboard-ch-#{pid}",
         [:logflare, :backends, :pipeline, :handle_batch],
-        fn _event, %{batch_size: size}, meta, {rate_ref, total_ref} ->
-          if Map.get(meta, :backend_type) == :clickhouse do
-            :atomics.add(rate_ref, 1, size)
-            :atomics.add(total_ref, 1, size)
-          end
+        fn _event, %{batch_size: size}, meta, refs ->
+          accumulate_batch(meta, size, :clickhouse, refs)
         end,
         {ch_rate_atomic, ch_total_atomic}
       )
@@ -51,11 +45,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       :telemetry.attach(
         "dev-dashboard-bq-#{pid}",
         [:logflare, :backends, :pipeline, :handle_batch],
-        fn _event, %{batch_size: size}, meta, {rate_ref, total_ref} ->
-          if Map.get(meta, :backend_type) == :bigquery do
-            :atomics.add(rate_ref, 1, size)
-            :atomics.add(total_ref, 1, size)
-          end
+        fn _event, %{batch_size: size}, meta, refs ->
+          accumulate_batch(meta, size, :bigquery, refs)
         end,
         {bq_rate_atomic, bq_total_atomic}
       )
@@ -144,6 +135,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       metrics
       |> Map.put(:t, label)
       |> Map.put(:ts, System.system_time(:millisecond))
+
     series = (socket.assigns.series ++ [point]) |> Enum.take(-@max_points)
 
     {:noreply,
@@ -285,27 +277,27 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     end
   end
 
-  defp gather_ch_metrics(ch_rate_atomic, ch_total_atomic, bq_rate_atomic, bq_total_atomic, prev_minor_gc, prev_words_reclaimed) do
+  defp gather_ch_metrics(
+         ch_rate_atomic,
+         ch_total_atomic,
+         bq_rate_atomic,
+         bq_total_atomic,
+         prev_minor_gc,
+         prev_words_reclaimed
+       ) do
     ch_batch_rate = :atomics.exchange(ch_rate_atomic, 1, 0)
     ch_total = :atomics.get(ch_total_atomic, 1)
     bq_batch_rate = :atomics.exchange(bq_rate_atomic, 1, 0)
     bq_total = :atomics.get(bq_total_atomic, 1)
 
-    sum_mem = fn pids ->
-      Enum.reduce(pids, 0, fn pid, acc ->
-        case Process.info(pid, :memory) do
-          {:memory, mem} -> acc + mem
-          nil -> acc
-        end
-      end)
-    end
-
-    ch_mem = sum_mem.(ch_pipeline_pids())
-    bq_mem = sum_mem.(bq_pipeline_pids())
+    ch_mem = sum_process_memory(ch_pipeline_pids())
+    bq_mem = sum_process_memory(bq_pipeline_pids())
 
     {total_minor_gc, total_words_reclaimed, _} = :erlang.statistics(:garbage_collection)
     gc_minor_rate = max(0, total_minor_gc - prev_minor_gc)
-    gc_reclaimed_mb = Float.round(max(0, total_words_reclaimed - prev_words_reclaimed) * 8 / 1_048_576, 1)
+
+    gc_reclaimed_mb =
+      Float.round(max(0, total_words_reclaimed - prev_words_reclaimed) * 8 / 1_048_576, 1)
 
     metrics = %{
       ch_batch_rate: ch_batch_rate,
@@ -354,6 +346,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       case Process.info(pid, :dictionary) do
         {:dictionary, dict} ->
           Enum.member?(Keyword.get(dict, :"$ancestors", []), ancestor)
+
         _ ->
           false
       end
@@ -362,6 +355,22 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
 
   defp ch_pipeline_pids, do: pipeline_pids(Logflare.Backends.ConsolidatedSup)
   defp bq_pipeline_pids, do: pipeline_pids(Logflare.Backends.SourcesSup)
+
+  defp sum_process_memory(pids) do
+    Enum.reduce(pids, 0, fn pid, acc ->
+      case Process.info(pid, :memory) do
+        {:memory, mem} -> acc + mem
+        nil -> acc
+      end
+    end)
+  end
+
+  defp accumulate_batch(meta, size, backend_type, {rate_ref, total_ref}) do
+    if Map.get(meta, :backend_type) == backend_type do
+      :atomics.add(rate_ref, 1, size)
+      :atomics.add(total_ref, 1, size)
+    end
+  end
 
   defp to_int(n) when is_integer(n), do: n
   defp to_int(_), do: 0

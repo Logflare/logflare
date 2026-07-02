@@ -157,19 +157,25 @@ start.green: __start__
 start.sb.bq: LOGFLARE_SUPABASE_MODE = true
 start.sb.bq: start.st.bq
 
-start.st.bq: ERL_NAME = st_
+# SPOOL_MODE (producer|consumer|both), SPOOL_PROVIDER (aws|gcp), and related
+# SPOOL_* vars pass straight through to the app via __start__ (see config/runtime.exs).
+# To run a producer + consumer pair side by side, override PORT/ERL_NAME/LOGFLARE_GRPC_PORT
+# so the two nodes don't collide, e.g.:
+#   SPOOL_MODE=producer make start.st.bq
+#   SPOOL_MODE=consumer PORT=4001 ERL_NAME=consumer LOGFLARE_GRPC_PORT=50052 make start.st.bq
+start.st.bq: ERL_NAME ?= st_
 start.st.bq: PORT ?= 4000
 start.st.bq: ENV_FILE = .single_tenant_bq.env
-start.st.bq: LOGFLARE_GRPC_PORT = 50051
+start.st.bq: LOGFLARE_GRPC_PORT ?= 50051
 start.st.bq: __start__
 
 start.sb.pg: LOGFLARE_SUPABASE_MODE = true
 start.sb.pg: start.st.pg
 
-start.st.pg: ERL_NAME = st_pg
+start.st.pg: ERL_NAME ?= st_pg
 start.st.pg: PORT ?= 4000
 start.st.pg: ENV_FILE = .single_tenant_pg.env
-start.st.pg: LOGFLARE_GRPC_PORT = 50051
+start.st.pg: LOGFLARE_GRPC_PORT ?= 50051
 start.st.pg: __start__
 
 observer:
@@ -182,58 +188,6 @@ monitor:
 monitor-spool: ERL_NAME ?= st_
 monitor-spool:
 	MONITOR_PIPELINE=spool iex --sname monitor --cookie ${ERL_COOKIE} --remsh ${ERL_NAME}-${ERL_COOKIE} --dot-iex scripts/monitor.iex.exs
-
-start.producer: ERL_NAME = producer
-start.producer: PORT = 4000
-start.producer: SPOOL_MODE = producer
-start.producer: ENV_FILE = .single_tenant_bq.env
-start.producer: LOGFLARE_GRPC_PORT = 50051
-start.producer: __start__
-
-start.consumer: ERL_NAME = consumer
-start.consumer: PORT = 4001
-start.consumer: SPOOL_MODE = consumer
-start.consumer: ENV_FILE = .single_tenant_bq.env
-start.consumer: LOGFLARE_GRPC_PORT = 50052
-start.consumer: __start__
-
-start.both: ERL_NAME = both
-start.both: PORT = 4000
-start.both: SPOOL_MODE = both
-start.both: ENV_FILE = .single_tenant_bq.env
-start.both: LOGFLARE_GRPC_PORT = 50051
-start.both: __start__
-
-start.gcp.producer: ERL_NAME = gcp_producer
-start.gcp.producer: PORT = 4000
-start.gcp.producer: SPOOL_MODE = producer
-start.gcp.producer: SPOOL_PROVIDER = gcp
-start.gcp.producer: SPOOL_BUCKET = logflare-spool
-start.gcp.producer: SPOOL_PUBSUB_TOPIC = projects/logflare/topics/logflare-spool
-start.gcp.producer: ENV_FILE = .single_tenant_bq.env
-start.gcp.producer: LOGFLARE_GRPC_PORT = 50051
-start.gcp.producer: __start__
-
-start.gcp.consumer: ERL_NAME = gcp_consumer
-start.gcp.consumer: PORT = 4001
-start.gcp.consumer: SPOOL_MODE = consumer
-start.gcp.consumer: SPOOL_PROVIDER = gcp
-start.gcp.consumer: SPOOL_BUCKET = logflare-spool
-start.gcp.consumer: SPOOL_QUEUE_NAME = projects/logflare/subscriptions/logflare-spool-sub
-start.gcp.consumer: ENV_FILE = .single_tenant_bq.env
-start.gcp.consumer: LOGFLARE_GRPC_PORT = 50052
-start.gcp.consumer: __start__
-
-start.gcp.both: ERL_NAME = st_
-start.gcp.both: PORT = 4000
-start.gcp.both: SPOOL_MODE = both
-start.gcp.both: SPOOL_PROVIDER = gcp
-start.gcp.both: SPOOL_BUCKET = logflare-spool
-start.gcp.both: SPOOL_PUBSUB_TOPIC = projects/logflare/topics/logflare-spool
-start.gcp.both: SPOOL_QUEUE_NAME = projects/logflare/subscriptions/logflare-spool-sub
-start.gcp.both: LOGFLARE_GRPC_PORT = 50051
-start.gcp.both: ENV_FILE = .single_tenant_bq.env
-start.gcp.both: __start__
 
 __start__:
 	@if [ ! -f ${ENV_FILE} ]; then \
@@ -249,29 +203,7 @@ migrate:
 stripe:
 	stripe listen --forward-to localhost:4000/webhooks/stripe
 
-# Creates the GCS bucket and PubSub topic/subscription in the local emulators.
-# Run this after `docker compose -f docker-compose.gcp.yml up` if resources are missing.
-setup.gcp:
-	@echo "Creating GCS bucket..."
-	@curl -sf -X POST "http://localhost:4443/storage/v1/b" \
-	  -H "Content-Type: application/json" \
-	  -d '{"name": "logflare-spool"}' > /dev/null && echo "  bucket created" || echo "  bucket already exists"
-	@mkdir -p tmp/fake-gcs/logflare-spool && touch tmp/fake-gcs/logflare-spool/.keep
-	@echo "Creating PubSub topic..."
-	@curl -sf -X PUT "http://localhost:8085/v1/projects/logflare/topics/logflare-spool" \
-	  -H "Content-Type: application/json" -d '{}' > /dev/null && echo "  topic created" || echo "  topic already exists"
-	@echo "Creating PubSub subscription..."
-	@curl -sf -X PUT "http://localhost:8085/v1/projects/logflare/subscriptions/logflare-spool-sub" \
-	  -H "Content-Type: application/json" \
-	  -d '{"topic": "projects/logflare/topics/logflare-spool"}' > /dev/null && echo "  subscription created" || echo "  subscription already exists"
-	@echo "GCP emulator setup complete."
-
-monitor.gcp:
-	@watch -n2 'echo "=== GCS spool files ===" && \
-	  curl -s "http://localhost:4443/storage/v1/b/logflare-spool/o" | \
-	  python3 -c "import sys,json; items=[i for i in json.load(sys.stdin).get(\"items\",[]) if i[\"name\"]!=\".keep\"]; print(f\"{len(items)} files, {sum(int(i[\"size\"]) for i in items)/1024/1024:.1f} MB total\")"'
-
-.PHONY: __start__ migrate stripe setup.gcp monitor.gcp start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink start.producer start.consumer start.both start.gcp.producer start.gcp.consumer start.gcp.both
+.PHONY: __start__ migrate stripe start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink
 
 # Encryption and decryption of secrets
 # Usage:

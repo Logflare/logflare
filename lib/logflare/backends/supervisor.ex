@@ -19,9 +19,14 @@ defmodule Logflare.Backends.Supervisor do
     spool_config = Application.get_env(:logflare, :spool, [])
     spool_provider = Keyword.get(spool_config, :provider, :aws)
 
-    producer_children = if Backends.spool_producer_mode?(), do: [Backends.Spool.ProducerSup], else: []
-    consumer_children = if Backends.spool_consumer_mode?(), do: [Backends.Spool.ConsumerSup], else: []
-    spool_goth_children = if spool_provider == :gcp, do: List.wrap(spool_goth_child_spec()), else: []
+    producer_children =
+      if Backends.spool_producer_mode?(), do: [Backends.Spool.ProducerSup], else: []
+
+    consumer_children =
+      if Backends.spool_consumer_mode?(), do: [Backends.Spool.ConsumerSup], else: []
+
+    spool_goth_children =
+      if spool_provider == :gcp, do: List.wrap(spool_goth_child_spec()), else: []
 
     # Shared by both Spool.ProducerSup (batch splitter early-flush decision)
     # and Spool.ConsumerPipeline.QueueProducer (fetch throttling) — started

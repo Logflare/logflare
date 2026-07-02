@@ -31,7 +31,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     Broadway.start_link(__MODULE__,
       name: name,
       producer: [
-        module: {QueueProducer, [queue_url: queue_url, bucket: bucket, storage_mod: storage_mod, queue_mod: queue_mod]},
+        module:
+          {QueueProducer,
+           [queue_url: queue_url, bucket: bucket, storage_mod: storage_mod, queue_mod: queue_mod]},
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [
@@ -59,6 +61,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   @impl Broadway.Acknowledger
   def ack(_ack_ref, _successful, failed) do
     if failed != [] do
+      :telemetry.execute(
+        [:logflare, :backends, :spool, :consumer, :messages_failed],
+        %{count: length(failed)},
+        %{}
+      )
+
       Logger.error("spool_consumer: #{length(failed)} messages failed during processing")
     end
 
@@ -77,22 +85,50 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     |> Enum.group_by(&record_source_id/1)
     |> Enum.each(fn
       {nil, lines} ->
-        Logger.warning("spool_consumer: #{length(lines)} events missing source_id, skipping")
+        emit_skipped_telemetry(:missing_source_id, length(lines))
+        Logger.debug("spool_consumer: #{length(lines)} events missing source_id, skipping")
 
       {source_id, lines} ->
-        case Sources.get(source_id) do
-          nil ->
-            Logger.warning("spool_consumer: unknown source_id=#{source_id}, skipping #{length(lines)} events")
-
-          source ->
-            case Backends.dispatch_from_spool(lines, source) do
-              {:ok, _} -> :ok
-              other -> Logger.error("spool_consumer: dispatch failed for source #{source_id}: #{inspect(other)}")
-            end
-        end
+        dispatch_group(source_id, lines)
     end)
 
     messages
+  end
+
+  defp dispatch_group(source_id, lines) do
+    case Sources.get(source_id) do
+      nil ->
+        emit_skipped_telemetry(:unknown_source_id, length(lines))
+
+        Logger.debug(
+          "spool_consumer: unknown source_id=#{source_id}, skipping #{length(lines)} events"
+        )
+
+      source ->
+        case Backends.dispatch_from_spool(lines, source) do
+          {:ok, _} ->
+            :ok
+
+          other ->
+            :telemetry.execute(
+              [:logflare, :backends, :spool, :consumer, :dispatch_error],
+              %{count: 1},
+              %{}
+            )
+
+            Logger.debug(
+              "spool_consumer: dispatch failed for source #{source_id}: #{inspect(other)}"
+            )
+        end
+    end
+  end
+
+  defp emit_skipped_telemetry(reason, count) do
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :consumer, :skipped],
+      %{count: count},
+      %{reason: reason}
+    )
   end
 
   defp resolve_queue_url!(queue_name, queue_mod) do

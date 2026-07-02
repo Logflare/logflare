@@ -19,7 +19,9 @@ defmodule Logflare.Backends.Spool.Storage.GCS do
       # Connection.new/1 returns a Tesla client with only the auth header; it does NOT
       # include the module-level BaseUrl plug from GoogleApi.Storage.V1.Connection.
       # We must build the absolute URL ourselves.
-      base_url = Application.get_env(:google_api_storage, :base_url, "https://storage.googleapis.com/")
+      base_url =
+        Application.get_env(:google_api_storage, :base_url, "https://storage.googleapis.com/")
+
       encoded_bucket = URI.encode(bucket, &URI.char_unreserved?/1)
       url = "#{String.trim_trailing(base_url, "/")}/upload/storage/v1/b/#{encoded_bucket}/o"
 

@@ -86,7 +86,11 @@ defmodule Logflare.Telemetry do
 
   defp maybe_put_commit(service, _commit_sha), do: service
 
-  defp metrics do
+  # Public (not private) so the metric definitions can be validated directly
+  # in tests — init/1 only calls this when OpenTelemetry is enabled, which
+  # isn't the case in dev/test, so there'd otherwise be no way to exercise it.
+  @doc false
+  def metrics do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
 
     cache_metrics =
@@ -305,12 +309,24 @@ defmodule Logflare.Telemetry do
         description: "Spool events parsed per downloaded file"
       ),
       sum("logflare.backends.spool.queue.ack.count",
-        tags: [:reason],
-        description: "Spool queue ack (delete) count by reason"
+        tags: [:reason, :result],
+        description:
+          "Spool queue ack (delete) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
       ),
       sum("logflare.backends.spool.queue.nack.count",
+        tags: [:reason, :result],
+        description:
+          "Spool queue nack (requeue) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
+      ),
+      sum("logflare.backends.spool.consumer.skipped.count",
         tags: [:reason],
-        description: "Spool queue nack (requeue) count by reason"
+        description: "Spool consumer: events skipped (missing/unknown source_id) by reason"
+      ),
+      sum("logflare.backends.spool.consumer.dispatch_error.count",
+        description: "Spool consumer: dispatch_from_spool returned an unexpected (non-ok) result"
+      ),
+      sum("logflare.backends.spool.consumer.messages_failed.count",
+        description: "Spool consumer: Broadway messages marked failed during processing"
       ),
       counter("thousand_island.acceptor.spawn_error",
         description: "Count of client connection spawn errors"

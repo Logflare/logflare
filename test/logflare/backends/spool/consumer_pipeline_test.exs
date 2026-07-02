@@ -6,13 +6,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
   alias Broadway.Message
   alias Logflare.Backends.Spool.ConsumerPipeline
+  alias Logflare.TestUtils
 
   setup :set_mimic_global
 
   # Build a Broadway.Message as the pipeline's transform/2 would produce it —
   # data is a parsed NDJSON line map, acknowledger is the pipeline no-op.
   defp line_message(source_id, event_id, extra_body \\ %{}) do
-    body = Map.merge(%{"id" => event_id, "timestamp" => System.system_time(:microsecond)}, extra_body)
+    body =
+      Map.merge(%{"id" => event_id, "timestamp" => System.system_time(:microsecond)}, extra_body)
+
     line = %{"source_id" => source_id, "body" => body, "id" => event_id, "event_type" => "log"}
     %Message{data: line, acknowledger: {ConsumerPipeline, :noop, nil}}
   end
@@ -92,7 +95,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       assert dispatched[s2.id] == [id2]
     end
 
-    test "skips events with an unknown source_id", %{source: _source} do
+    test "skips events with an unknown source_id, emitting skipped telemetry", %{source: _source} do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :skipped])
+
       messages = [line_message(999_999_999, Ecto.UUID.generate())]
 
       pid = self()
@@ -105,11 +110,20 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
 
       refute_receive {:dispatched, _, _}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :skipped],
+                      %{count: 1}, %{reason: :unknown_source_id}}
     end
 
-    test "skips events with a nil source_id", %{source: _source} do
+    test "skips events with a nil source_id, emitting skipped telemetry", %{source: _source} do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :skipped])
+
       message = %Message{
-        data: %{"source_id" => nil, "body" => %{"id" => Ecto.UUID.generate()}, "event_type" => "log"},
+        data: %{
+          "source_id" => nil,
+          "body" => %{"id" => Ecto.UUID.generate()},
+          "event_type" => "log"
+        },
         acknowledger: {ConsumerPipeline, :noop, nil}
       }
 
@@ -123,6 +137,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       ConsumerPipeline.handle_batch(:default, [message], %{}, %{})
 
       refute_receive {:dispatched, _, _}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :skipped],
+                      %{count: 1}, %{reason: :missing_source_id}}
     end
 
     test "returns all messages regardless of dispatch errors", %{source: source} do
@@ -135,6 +152,55 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       result = ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
 
       assert result == messages
+    end
+
+    test "returns all messages regardless of the shape of an unexpected dispatch result, emitting dispatch_error telemetry",
+         %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :dispatch_error])
+
+      messages = [line_message(source.id, Ecto.UUID.generate())]
+
+      # dispatch_from_spool/2's own @spec only promises {:ok, _} — this proves
+      # the consumer's `other ->` wildcard clause tolerates literally anything
+      # else, not just the {:error, reason} shape covered above.
+      stub(Logflare.Backends, :dispatch_from_spool, fn _params, _source -> :unexpected end)
+
+      result = ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
+
+      assert result == messages
+
+      assert_receive {:telemetry_event,
+                      [:logflare, :backends, :spool, :consumer, :dispatch_error], %{count: 1},
+                      %{}}
+    end
+  end
+
+  describe "ack/3" do
+    test "emits messages_failed telemetry when Broadway marks messages as failed" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :messages_failed])
+
+      failed = [
+        %Message{
+          data: %{},
+          acknowledger: {ConsumerPipeline, :noop, nil},
+          status: {:failed, :boom}
+        }
+      ]
+
+      assert ConsumerPipeline.ack(:ref, [], failed) == :ok
+
+      assert_receive {:telemetry_event,
+                      [:logflare, :backends, :spool, :consumer, :messages_failed], %{count: 1},
+                      %{}}
+    end
+
+    test "emits no telemetry when there are no failed messages" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :messages_failed])
+
+      assert ConsumerPipeline.ack(:ref, [%Message{data: %{}, acknowledger: nil}], []) == :ok
+
+      refute_receive {:telemetry_event,
+                      [:logflare, :backends, :spool, :consumer, :messages_failed], _, _}
     end
   end
 end

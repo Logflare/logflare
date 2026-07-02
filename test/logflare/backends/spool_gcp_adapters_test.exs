@@ -161,8 +161,9 @@ defmodule Logflare.Backends.SpoolGcpAdaptersTest do
     test "sets ackDeadlineSeconds to 0 to redeliver immediately" do
       subscription = "projects/logflare/subscriptions/logflare-spool-sub"
 
-      stub(PubSubApi, :pubsub_projects_subscriptions_modify_ack_deadline, fn _conn, sub,
-                                                                              [body: req] ->
+      stub(PubSubApi, :pubsub_projects_subscriptions_modify_ack_deadline, fn _conn,
+                                                                             sub,
+                                                                             [body: req] ->
         assert sub == subscription
         assert %ModifyAckDeadlineRequest{ackIds: ["ack-id-1"], ackDeadlineSeconds: 0} = req
         {:ok, %{}}

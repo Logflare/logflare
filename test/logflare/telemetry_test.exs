@@ -6,6 +6,44 @@ defmodule Logflare.TelemetryTest do
   alias Logflare.Telemetry
   alias Logflare.TestUtils
 
+  describe "metrics/0" do
+    test "returns only well-formed Telemetry.Metrics definitions" do
+      metrics = Telemetry.metrics()
+
+      assert is_list(metrics)
+      assert metrics != []
+
+      # Checked structurally (every Telemetry.Metrics.* struct has :name and
+      # :event_name) rather than against a hardcoded list of struct modules —
+      # this file's `alias Logflare.Telemetry` above shadows the bare
+      # `Telemetry` name, so a literal `Telemetry.Metrics.Counter` here would
+      # silently resolve to the nonexistent `Logflare.Telemetry.Metrics.Counter`
+      # instead of the real dependency's struct.
+      assert Enum.all?(metrics, fn metric ->
+               is_struct(metric) and
+                 to_string(metric.__struct__) =~ "Telemetry.Metrics." and
+                 is_list(metric.name) and
+                 is_list(metric.event_name)
+             end)
+    end
+
+    test "includes the spool telemetry metrics added for throttling/storage/queue observability" do
+      names = Telemetry.metrics() |> Enum.map(& &1.name)
+
+      for expected <- [
+            [:logflare, :backends, :spool, :throttled, :throttled],
+            [:logflare, :backends, :spool, :storage, :put, :count],
+            [:logflare, :backends, :spool, :storage, :get, :count],
+            [:logflare, :backends, :spool, :queue, :publish, :count],
+            [:logflare, :backends, :spool, :queue, :receive, :count],
+            [:logflare, :backends, :spool, :queue, :ack, :count],
+            [:logflare, :backends, :spool, :queue, :nack, :count]
+          ] do
+        assert expected in names, "expected #{inspect(expected)} to be a defined metric"
+      end
+    end
+  end
+
   describe "service_attributes/1 commit normalization" do
     test "trims surrounding whitespace from the commit" do
       assert %{commit: "abc123"} = Telemetry.service_attributes("  abc123\n")

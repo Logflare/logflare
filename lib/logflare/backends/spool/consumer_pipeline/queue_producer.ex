@@ -136,8 +136,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp buffered?(_), do: true
 
   defp maybe_ack_exhausted(%{current: %{lines: [], handle: handle}} = state) do
-    state.queue_mod.ack(state.queue_url, handle)
-    emit_ack_telemetry(:buffer_exhausted)
+    ack_and_notify(state.queue_mod, state.queue_url, handle, :buffer_exhausted)
     %{state | current: nil}
   end
 
@@ -156,11 +155,19 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # Prefetch landed but download failed — nack and fall through to empty.
   # handle may be nil if the prefetch task crashed before receiving a message.
   defp maybe_load_next(%{current: nil, prefetch: {:ready, {:error, handle, reason}}} = state) do
-    Logger.error("spool_consumer: prefetch failed: #{inspect(reason)}")
-
     if handle do
-      state.queue_mod.nack(state.queue_url, handle)
-      emit_nack_telemetry(:prefetch_failed)
+      # Routine, telemetry-covered failure (storage/network errors) — logging
+      # every occurrence at :error would spam production under sustained
+      # outages, so this is debug-only; the nack telemetry count is the
+      # production-facing signal.
+      Logger.debug("spool_consumer: prefetch failed: #{inspect(reason)}")
+      nack_and_notify(state.queue_mod, state.queue_url, handle, :prefetch_failed)
+    else
+      # No handle means the crash happened before a queue message was even
+      # retrieved — an unexpected internal error, not routine, worth a real log.
+      Logger.error(
+        "spool_consumer: prefetch crashed before receiving a message: #{inspect(reason)}"
+      )
     end
 
     %{state | prefetch: nil}
@@ -182,11 +189,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
         state
 
       {:error, handle, reason} ->
-        Logger.error("spool_consumer: fetch failed: #{inspect(reason)}")
-
         if handle do
-          state.queue_mod.nack(state.queue_url, handle)
-          emit_nack_telemetry(:fetch_failed)
+          Logger.debug("spool_consumer: fetch failed: #{inspect(reason)}")
+          nack_and_notify(state.queue_mod, state.queue_url, handle, :fetch_failed)
+        else
+          Logger.error(
+            "spool_consumer: fetch crashed before receiving a message: #{inspect(reason)}"
+          )
         end
 
         state
@@ -198,7 +207,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # Start a background Task to fetch the next file while we stream the current one.
   # Only when we have a current file and no prefetch already running.
   defp maybe_start_prefetch(%{prefetch: nil, current: %{}} = state) do
-    if not over_limit?() do
+    if over_limit?() do
+      state
+    else
       parent = self()
       queue_url = state.queue_url
       bucket = state.bucket
@@ -214,8 +225,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       end)
 
       %{state | prefetch: :running}
-    else
-      state
     end
   end
 
@@ -255,40 +264,63 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
     :telemetry.execute(
       [:logflare, :backends, :spool, :queue, :receive],
-      %{count: (if match?({:ok, _}, result), do: length(elem(result, 1)), else: 0)},
-      %{result: (if match?({:ok, _}, result), do: :ok, else: :error)}
+      %{count: if(match?({:ok, _}, result), do: length(elem(result, 1)), else: 0)},
+      %{result: if(match?({:ok, _}, result), do: :ok, else: :error)}
     )
 
     case result do
       {:ok, [%{id: handle, body: body}]} ->
-        case Jason.decode(body) do
-          {:ok, %{"file_key" => file_key}} when is_binary(file_key) ->
-            case download_and_parse(bucket, file_key, storage_mod) do
-              {:ok, lines} ->
-                {:ok, handle, lines}
-
-              {:error, %Tesla.Env{status: 404}} ->
-                Logger.warning("spool_consumer: file not found in storage, discarding stale queue entry: #{file_key}")
-                queue_mod.ack(queue_url, handle)
-                emit_ack_telemetry(:stale_file)
-                :empty
-
-              {:error, reason} ->
-                {:error, handle, reason}
-            end
-
-          _ ->
-            Logger.warning("spool_consumer: queue message has no file_key, discarding")
-            queue_mod.ack(queue_url, handle)
-            emit_ack_telemetry(:no_file_key)
-            :empty
-        end
+        handle_received_message(handle, body, bucket, queue_url, queue_mod, storage_mod)
 
       {:ok, []} ->
         :empty
 
       {:error, reason} ->
-        Logger.error("spool_consumer: queue receive failed: #{inspect(reason)}")
+        # Already covered by the [:queue, :receive] telemetry emitted above
+        # with result: :error — debug-only to avoid duplicating that signal
+        # as log spam under sustained queue issues.
+        Logger.debug("spool_consumer: queue receive failed: #{inspect(reason)}")
+        :empty
+    end
+  end
+
+  defp handle_received_message(handle, body, bucket, queue_url, queue_mod, storage_mod) do
+    case Jason.decode(body) do
+      {:ok, %{"file_key" => file_key}} when is_binary(file_key) ->
+        case download_and_parse(bucket, file_key, storage_mod) do
+          {:ok, lines} ->
+            {:ok, handle, lines}
+
+          {:error, %Tesla.Env{status: 404}} ->
+            # Already covered by the [:queue, :ack] telemetry (reason: :stale_file)
+            # below — debug-only so a batch of stale entries doesn't spam prod.
+            Logger.debug(
+              "spool_consumer: file not found in storage, discarding stale queue entry: #{file_key}"
+            )
+
+            ack_and_notify(queue_mod, queue_url, handle, :stale_file)
+            :empty
+
+          {:error, {:decode_failed, exception}} ->
+            # Unlike a transient storage error, corrupt/malformed spool content
+            # will never succeed on retry — nacking it would poison the queue
+            # with an infinite crash loop (see safe_fetch_next). Ack (drop) it
+            # instead, same as a stale file, but stay loud since this indicates
+            # real data corruption or a producer/consumer format mismatch.
+            Logger.error(
+              "spool_consumer: failed to decode spool file contents, discarding #{file_key}: #{Exception.format(:error, exception)}"
+            )
+
+            ack_and_notify(queue_mod, queue_url, handle, :decode_error)
+            :empty
+
+          {:error, reason} ->
+            {:error, handle, reason}
+        end
+
+      _ ->
+        Logger.debug("spool_consumer: queue message has no file_key, discarding")
+        ack_and_notify(queue_mod, queue_url, handle, :no_file_key)
         :empty
     end
   end
@@ -298,42 +330,65 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
     result =
       case download_result do
-        {:ok, raw} ->
-          content = if String.ends_with?(file_key, ".gz"), do: :zlib.gunzip(raw), else: raw
-          lines = parse_content(file_key, content)
-          {:ok, lines}
-
-        {:error, reason} ->
-          {:error, reason}
+        {:ok, raw} -> decode_content(file_key, raw)
+        {:error, reason} -> {:error, reason}
       end
 
     :telemetry.execute(
       [:logflare, :backends, :spool, :storage, :get],
       %{
         count: 1,
-        bytes: (if match?({:ok, _}, download_result), do: byte_size(elem(download_result, 1)), else: 0),
-        line_count: (if match?({:ok, _}, result), do: length(elem(result, 1)), else: 0)
+        bytes:
+          if(match?({:ok, _}, download_result), do: byte_size(elem(download_result, 1)), else: 0),
+        line_count: if(match?({:ok, _}, result), do: length(elem(result, 1)), else: 0)
       },
-      %{result: (if match?({:ok, _}, result), do: :ok, else: :error)}
+      %{result: if(match?({:ok, _}, result), do: :ok, else: :error)}
     )
 
     result
+  end
+
+  # Decompression and parsing are both capable of raising on truncated or
+  # otherwise corrupt content (:zlib.gunzip/1 and :erlang.binary_to_term/2
+  # both crash rather than returning an error tuple) — caught here, close to
+  # the queue handle, so the caller can ack (drop) the poison message instead
+  # of losing the handle to safe_fetch_next's outer rescue and retrying forever.
+  defp decode_content(file_key, raw) do
+    content = if String.ends_with?(file_key, ".gz"), do: :zlib.gunzip(raw), else: raw
+    parse_content(file_key, content)
+  rescue
+    e -> {:error, {:decode_failed, e}}
+  catch
+    kind, reason -> {:error, {:decode_failed, %RuntimeError{message: inspect({kind, reason})}}}
   end
 
   defp parse_content(file_key, content) do
     base = String.replace_suffix(file_key, ".gz", "")
 
     if String.ends_with?(base, ".etf") do
-      :erlang.binary_to_term(content, [:safe])
+      # No `:safe` — this content is produced by our own producer pipeline
+      # with a small, fixed set of atom keys/values (id, source_id, body,
+      # event_type, ingested_at, :log/:metric/:trace), never from untrusted
+      # external input. `:safe` would additionally require every one of those
+      # atoms to already exist in *this* node's atom table, which depends on
+      # incidental module-load order (e.g. a freshly booted consumer-only node
+      # that hasn't yet loaded `Logflare.LogEvent` won't have `:event_type`
+      # interned) and fails every file until something else happens to load it.
+      {:ok, :erlang.binary_to_term(content)}
     else
-      content
-      |> String.split("\n", trim: true)
-      |> Enum.flat_map(fn line ->
-        case Jason.decode(line) do
-          {:ok, map} -> [map]
-          {:error, _} -> []
-        end
-      end)
+      lines =
+        content
+        |> String.split("\n", trim: true)
+        |> Enum.flat_map(&decode_json_line/1)
+
+      {:ok, lines}
+    end
+  end
+
+  defp decode_json_line(line) do
+    case Jason.decode(line) do
+      {:ok, map} -> [map]
+      {:error, _} -> []
     end
   end
 
@@ -347,11 +402,36 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     MemoryMonitor.throttled?()
   end
 
-  defp emit_ack_telemetry(reason) do
-    :telemetry.execute([:logflare, :backends, :spool, :queue, :ack], %{count: 1}, %{reason: reason})
+  # result is the raw return of the queue_mod.ack/nack call — previously
+  # fire-and-forget, so a failure to actually delete/requeue the message with
+  # SQS/PubSub was silently dropped. Normalized to :ok | :error to keep
+  # cardinality low (no per-source or raw-reason tagging).
+  defp emit_ack_telemetry(reason, result) do
+    :telemetry.execute([:logflare, :backends, :spool, :queue, :ack], %{count: 1}, %{
+      reason: reason,
+      result: normalize_result(result)
+    })
   end
 
-  defp emit_nack_telemetry(reason) do
-    :telemetry.execute([:logflare, :backends, :spool, :queue, :nack], %{count: 1}, %{reason: reason})
+  defp emit_nack_telemetry(reason, result) do
+    :telemetry.execute([:logflare, :backends, :spool, :queue, :nack], %{count: 1}, %{
+      reason: reason,
+      result: normalize_result(result)
+    })
+  end
+
+  defp normalize_result(:ok), do: :ok
+  defp normalize_result(_), do: :error
+
+  defp ack_and_notify(queue_mod, queue_url, handle, reason) do
+    result = queue_mod.ack(queue_url, handle)
+    emit_ack_telemetry(reason, result)
+    result
+  end
+
+  defp nack_and_notify(queue_mod, queue_url, handle, reason) do
+    result = queue_mod.nack(queue_url, handle)
+    emit_nack_telemetry(reason, result)
+    result
   end
 end
