@@ -103,6 +103,29 @@ defmodule Logflare.Utils.GuardsTest do
     end
   end
 
+  describe "is_non_empty_list/1" do
+    test "passes for lists with at least one element" do
+      assert match?(x when is_non_empty_list(x), [1])
+      assert match?(x when is_non_empty_list(x), [1, 2, 3])
+      assert match?(x when is_non_empty_list(x), [nil])
+      assert match?(x when is_non_empty_list(x), foo: 1, bar: 2)
+    end
+
+    test "passes for improper lists" do
+      assert match?(x when is_non_empty_list(x), [1 | 2])
+    end
+
+    test "fails for the empty list" do
+      refute match?(x when is_non_empty_list(x), [])
+    end
+
+    test "fails for non-lists" do
+      for value <- ["list", :list, 1, nil, {1, 2}, %{}] do
+        refute match?(x when is_non_empty_list(x), value)
+      end
+    end
+  end
+
   describe "is_non_empty_map/1" do
     test "passes for maps with at least one key" do
       assert match?(x when is_non_empty_map(x), %{a: 1})

@@ -6,6 +6,8 @@ defmodule Logflare.OpenTelemetryTest do
 
   use ExUnitProperties
 
+  import Logflare.Utils.Guards
+
   alias Broadway.Message
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources.Source.BigQuery.Pipeline
@@ -51,7 +53,7 @@ defmodule Logflare.OpenTelemetryTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       spans = collect_spans()
-      assert is_list(spans) and spans != []
+      assert is_non_empty_list(spans)
 
       for span <- spans do
         assert span(name: "ingest." <> _) = span
@@ -89,7 +91,7 @@ defmodule Logflare.OpenTelemetryTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       spans = collect_spans()
-      assert is_list(spans) and spans != []
+      assert is_non_empty_list(spans)
 
       for span <- spans do
         assert span(name: "ingest." <> _) = span
