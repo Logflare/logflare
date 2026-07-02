@@ -167,7 +167,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
       {:ok, %Tesla.Env{status: status, body: resp_body}} when status in 400..499 ->
         Logger.warning(
-          "Client error when testing backend connection: #{status} #{inspect(resp_body)}",
+          "Client error when testing HTTP Webhook backend connection: #{status} #{inspect(resp_body)}",
           backend_id: backend_id,
           user_id: user_id
         )
@@ -176,7 +176,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
       {:ok, %Tesla.Env{status: status, body: resp_body}} when status in 500..599 ->
         Logger.warning(
-          "Server error when testing backend connection: #{status} #{inspect(resp_body)}",
+          "Server error when testing HTTP Webhook backend connection: #{status} #{inspect(resp_body)}",
           backend_id: backend_id,
           user_id: user_id
         )
@@ -185,7 +185,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
       {:ok, %Tesla.Env{status: status, body: resp_body}} ->
         Logger.warning(
-          "Unknown http error #{status} when testing backend connection: #{inspect(resp_body)}",
+          "Unknown http error #{status} when testing HTTP Webhook backend connection: #{inspect(resp_body)}",
           backend_id: backend_id,
           user_id: user_id
         )
@@ -193,7 +193,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         {:error, :http_unknown_error}
 
       {:error, reason} ->
-        Logger.warning("Request error when testing backend connection: #{inspect(reason)}",
+        Logger.warning(
+          "Request error when testing HTTP Webhook backend connection: #{inspect(reason)}",
           backend_id: backend_id,
           user_id: user_id
         )

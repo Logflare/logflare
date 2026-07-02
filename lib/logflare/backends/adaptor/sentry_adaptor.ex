@@ -64,13 +64,49 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
   end
 
   @impl Adaptor
-  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  @spec test_connection(Backend.t()) ::
+          :ok
+          | {:error,
+             :http_client_error | :http_server_error | :http_unknown_error | :unknown_error}
   def test_connection(%Backend{} = backend) do
     case HttpBased.Client.send_events(__MODULE__, [], backend) do
-      {:ok, %Tesla.Env{status: 200}} -> :ok
-      {:ok, %Tesla.Env{body: %{"detail" => detail}}} -> {:error, detail}
-      {:ok, env} -> {:error, "Unexpected response: #{env.status} #{inspect(env.body)}"}
-      {:error, reason} -> {:error, "Request error: #{inspect(reason)}"}
+      {:ok, %Tesla.Env{status: 200}} ->
+        :ok
+
+      {:ok, %Tesla.Env{status: status, body: resp_body}} when status in 400..499 ->
+        Logger.warning(
+          "Unexpected response when testing Sentry backend connection: #{env.status} #{inspect(env.body)}",
+          backend_id: backend.id,
+          user_id: backend.user_id
+        )
+
+        {:error, :http_client_error}
+
+      {:ok, %Tesla.Env{status: status, body: resp_body}} when status in 500..599 ->
+        Logger.warning(
+          "Server error when testing Sentry backend connection: #{status} #{inspect(resp_body)}",
+          backend_id: backend.id,
+          user_id: backend.user_id
+        )
+
+        {:error, :http_server_error}
+
+      {:ok, %Tesla.Env{status: status, body: resp_body}} ->
+        Logger.warning(
+          "Unknown http error #{status} when testing Sentry backend connection: #{inspect(resp_body)}",
+          backend_id: backend.id,
+          user_id: backend.user_id
+        )
+
+        {:error, :http_unknown_error}
+
+      {:error, reason} ->
+        Logger.warning("Request error when testing Sentry backend connection: #{inspect(reason)}",
+          backend_id: backend.id,
+          user_id: backend.user_id
+        )
+
+        {:error, :unknown_error}
     end
   end
 
