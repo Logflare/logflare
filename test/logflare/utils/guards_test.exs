@@ -5,24 +5,24 @@ defmodule Logflare.Utils.GuardsTest do
 
   doctest Logflare.Utils.Guards
 
-  describe "is_pos_number/1" do
+  describe "is_non_negative_number/1" do
     test "passes for zero and positive numbers (integers and floats)" do
-      assert match?(x when is_pos_number(x), 0)
-      assert match?(x when is_pos_number(x), 0.0)
-      assert match?(x when is_pos_number(x), 1)
-      assert match?(x when is_pos_number(x), 1.5)
-      assert match?(x when is_pos_number(x), 1_000_000_000)
+      assert match?(x when is_non_negative_number(x), 0)
+      assert match?(x when is_non_negative_number(x), 0.0)
+      assert match?(x when is_non_negative_number(x), 1)
+      assert match?(x when is_non_negative_number(x), 1.5)
+      assert match?(x when is_non_negative_number(x), 1_000_000_000)
     end
 
     test "fails for negative numbers" do
-      refute match?(x when is_pos_number(x), -1)
-      refute match?(x when is_pos_number(x), -0.1)
-      refute match?(x when is_pos_number(x), -1_000_000)
+      refute match?(x when is_non_negative_number(x), -1)
+      refute match?(x when is_non_negative_number(x), -0.1)
+      refute match?(x when is_non_negative_number(x), -1_000_000)
     end
 
     test "fails for non-numbers" do
       for value <- ["1", :one, nil, true, [], %{}] do
-        refute match?(x when is_pos_number(x), value)
+        refute match?(x when is_non_negative_number(x), value)
       end
     end
   end
