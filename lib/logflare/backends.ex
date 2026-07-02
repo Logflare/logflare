@@ -531,15 +531,10 @@ defmodule Logflare.Backends do
   @doc """
   Tests the connection for a given backend.
   """
-  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  @spec test_connection(Backend.t()) :: :ok | {:error, :not_implemented} | {:error, atom()}
   def test_connection(%Backend{} = backend) do
     adaptor = Adaptor.get_adaptor(backend)
-
-    if function_exported?(adaptor, :test_connection, 1) do
-      adaptor.test_connection(backend)
-    else
-      {:error, :not_implemented}
-    end
+    adaptor.test_connection(backend)
   end
 
   @doc """

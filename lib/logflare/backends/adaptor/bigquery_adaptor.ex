@@ -161,6 +161,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  def test_connection(_), do: {:error, :not_implemented}
+
+  @impl Logflare.Backends.Adaptor
   def ecto_to_sql(%Ecto.Query{} = query, _opts) do
     with {:ok, {pg_sql, pg_params}} <- SqlUtils.ecto_to_pg_sql(query) do
       bq_sql = pg_sql_to_bq_sql(pg_sql)

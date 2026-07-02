@@ -145,8 +145,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   `IncidentioAdaptor`) to share HTTP plumbing while choosing a payload shape
   the receiver will accept.
   """
-  @spec test_connection(Backend.t(), term()) :: :ok | {:error, term()}
-  def test_connection(%Backend{config: config}, body) do
+  @spec test_connection(Backend.t(), term()) ::
+          :ok
+          | {:error,
+             :http_client_error | :http_server_error | :http_unknown_error | :unknown_error}
+  def test_connection(%Backend{config: config, id: backend_id, user_id: user_id} = backend, body) do
     response =
       __MODULE__.Client.send(
         url: config.url,
@@ -160,11 +163,40 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       {:ok, %Tesla.Env{status: status}} when status in 200..299 ->
         :ok
 
+      {:ok, %Tesla.Env{status: status, body: resp_body}} when status in 400..499 ->
+        Logger.warning(
+          "Client error when testing backend connection: #{status} #{inspect(resp_body)}",
+          backend_id: backend_id,
+          user_id: user_id
+        )
+
+        {:error, :http_client_error}
+
+      {:ok, %Tesla.Env{status: status, body: resp_body}} when status in 500..599 ->
+        Logger.warning(
+          "Server error when testing backend connection: #{status} #{inspect(resp_body)}",
+          backend_id: backend_id,
+          user_id: user_id
+        )
+
+        {:error, :http_server_error}
+
       {:ok, %Tesla.Env{status: status, body: resp_body}} ->
-        {:error, "Unexpected response: #{status} #{inspect(resp_body)}"}
+        Logger.warning(
+          "Unknown http error #{status} when testing backend connection: #{inspect(resp_body)}",
+          backend_id: backend_id,
+          user_id: user_id
+        )
+
+        {:error, :http_unknown_error}
 
       {:error, reason} ->
-        {:error, "Request error: #{inspect(reason)}"}
+        Logger.warning("Request error when testing backend connection: #{inspect(reason)}",
+          backend_id: backend_id,
+          user_id: user_id
+        )
+
+        {:error, :unknown_error}
     end
   end
 
