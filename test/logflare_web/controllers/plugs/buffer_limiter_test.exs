@@ -29,9 +29,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     assert get_resp_header(conn, "retry-after") == ["3"]
   end
 
-  test "allows request when memory utilization is below 85%", %{conn: conn, source: source} do
+  test "allows request when memory utilization is below 80%", %{conn: conn, source: source} do
     SystemCache
-    |> stub(:memory_utilization, fn -> 0.84 end)
+    |> stub(:memory_utilization, fn -> 0.79 end)
 
     conn =
       conn
