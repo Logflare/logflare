@@ -1,0 +1,107 @@
+steps:
+  # 1. Spool bucket
+  - name: gcr.io/cloud-builders/gcloud
+    allowExitCodes: [1]
+    args:
+      - storage
+      - buckets
+      - create
+      - gs://logflare-spool
+      - --project=logflare-staging
+      - --location=us-central1
+
+  # 2. Auto-delete objects after 48h. GCS lifecycle "age" is whole-day
+  # granularity and is evaluated ~once/day, so actual deletion lands
+  # somewhere in the 48-72h range rather than exactly 48h — there's no finer
+  # native GCS mechanism than that.
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - storage
+      - buckets
+      - update
+      - gs://logflare-spool
+      - --lifecycle-file=cloudbuild/staging/gcs-lifecycle-spool.json
+
+  # 3. Dead-letter topic, and a subscription on it so dead-lettered messages
+  # are actually retained/inspectable instead of disappearing.
+  - name: gcr.io/cloud-builders/gcloud
+    allowExitCodes: [1]
+    args: [pubsub, topics, create, logflare-spool-dlq, --project=logflare-staging]
+
+  - name: gcr.io/cloud-builders/gcloud
+    allowExitCodes: [1]
+    args:
+      - pubsub
+      - subscriptions
+      - create
+      - logflare-spool-dlq-sub
+      - --topic=logflare-spool-dlq
+      - --project=logflare-staging
+
+  # Purge dead-lettered messages after 48h too, same as the bucket — a
+  # separate `update` step (like the bucket's lifecycle step) since `create`
+  # is a no-op once the subscription already exists and won't apply this.
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - pubsub
+      - subscriptions
+      - update
+      - logflare-spool-dlq-sub
+      - --project=logflare-staging
+      - --message-retention-duration=48h
+
+  # 4. Main topic
+  - name: gcr.io/cloud-builders/gcloud
+    allowExitCodes: [1]
+    args: [pubsub, topics, create, logflare-spool, --project=logflare-staging]
+
+  # 5. Main subscription — redrive then dead-letter, the equivalent of SQS's
+  # maxReceiveCount + redrive policy. 5 is the lowest value GCP allows for
+  # --max-delivery-attempts (valid range is 5-100) — 4 is rejected outright.
+  - name: gcr.io/cloud-builders/gcloud
+    allowExitCodes: [1]
+    args:
+      - pubsub
+      - subscriptions
+      - create
+      - logflare-spool-sub
+      - --topic=logflare-spool
+      - --project=logflare-staging
+      - --dead-letter-topic=logflare-spool-dlq
+      - --dead-letter-topic-project=logflare-staging
+      - --max-delivery-attempts=5
+
+  # Purge unacked messages after 48h regardless of delivery-attempt count —
+  # a backstop independent of the dead-letter policy, matching the bucket's
+  # 48h rule. Same create-then-update reasoning as the DLQ subscription above.
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - pubsub
+      - subscriptions
+      - update
+      - logflare-spool-sub
+      - --project=logflare-staging
+      - --message-retention-duration=48h
+
+  # 6. Grant Pub/Sub's service agent rights to publish dead-lettered messages
+  # and pull from the source subscription — required for dead-lettering to
+  # actually work (https://cloud.google.com/pubsub/docs/handling-failures).
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        PROJECT_NUMBER=$$(gcloud projects describe logflare-staging --format='value(projectNumber)')
+        PUBSUB_SA="service-$${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+        gcloud pubsub topics add-iam-policy-binding logflare-spool-dlq \
+          --project=logflare-staging \
+          --member="serviceAccount:$${PUBSUB_SA}" \
+          --role=roles/pubsub.publisher
+        gcloud pubsub subscriptions add-iam-policy-binding logflare-spool-sub \
+          --project=logflare-staging \
+          --member="serviceAccount:$${PUBSUB_SA}" \
+          --role=roles/pubsub.subscriber
+
+options:
+  dynamicSubstitutions: true
