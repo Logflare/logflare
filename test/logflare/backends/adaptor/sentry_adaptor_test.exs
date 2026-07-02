@@ -61,20 +61,19 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
 
     test "returns error on failure", ctx do
       error_responses = [
-        {:ok,
-         %Tesla.Env{status: 401, body: %{"detail" => "invalid auth"}}
-         |> Tesla.put_header("content-type", "application/json")},
-        {:ok,
-         %Tesla.Env{status: 403, body: %{"detail" => "project not found"}}
-         |> Tesla.put_header("content-type", "application/json")},
-        {:error, :nxdomain}
+        {{:ok,
+          %Tesla.Env{status: 401, body: %{"detail" => "invalid auth"}}
+          |> Tesla.put_header("content-type", "application/json")}, :http_client_error},
+        {{:ok,
+          %Tesla.Env{status: 403, body: %{"detail" => "project not found"}}
+          |> Tesla.put_header("content-type", "application/json")}, :http_client_error},
+        {{:error, :nxdomain}, :unknown_error}
       ]
 
-      for response <- error_responses do
+      for {response, expected_reason} <- error_responses do
         mock_adapter(fn _env -> response end)
 
-        assert {:error, reason} = @subject.test_connection(ctx.backend)
-        assert is_binary(reason)
+        assert {:error, ^expected_reason} = @subject.test_connection(ctx.backend)
       end
     end
   end
