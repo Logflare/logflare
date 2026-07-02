@@ -155,7 +155,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       {:ok, %QueryResult{rows: [%{"result" => 1}]}} ->
         :ok
 
-      {:error, %QueryError{kind: kind}} = error
+      {:error, %QueryError{kind: kind}}
       when kind in [:connection_error, :backend_error] ->
         {:error, kind}
 

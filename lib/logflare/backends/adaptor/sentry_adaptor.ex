@@ -23,6 +23,8 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
   alias Logflare.Backends.Adaptor.SentryAdaptor.DSN
   alias Logflare.Backends.Adaptor.SentryAdaptor.EnvelopeBuilder
 
+  require Logger
+
   @behaviour Adaptor
   @behaviour HttpBased.Client
 
@@ -75,7 +77,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
       {:ok, %Tesla.Env{status: status, body: resp_body}} when status in 400..499 ->
         Logger.warning(
-          "Unexpected response when testing Sentry backend connection: #{env.status} #{inspect(env.body)}",
+          "Unexpected response when testing Sentry backend connection: #{status} #{inspect(resp_body)}",
           backend_id: backend.id,
           user_id: backend.user_id
         )

@@ -2,6 +2,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.Common do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.HttpBased
 
+  require Logger
+
   @doc """
   A code for testing connection meant to be shared by all OTLP based adaptors.
 
@@ -22,8 +24,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.Common do
       {:ok, %Tesla.Env{status: status, body: resp_body}} when status in 400..499 ->
         Logger.warning(
           "Client error when testing OTLP backend connection: #{status} #{inspect(resp_body)}",
-          backend_id: backend_id,
-          user_id: user_id
+          backend_id: backend.id,
+          user_id: backend.user_id
         )
 
         {:error, :http_client_error}
@@ -31,8 +33,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.Common do
       {:ok, %Tesla.Env{status: status, body: resp_body}} when status in 500..599 ->
         Logger.warning(
           "Server error when testing OTLP backend connection: #{status} #{inspect(resp_body)}",
-          backend_id: backend_id,
-          user_id: user_id
+          backend_id: backend.id,
+          user_id: backend.user_id
         )
 
         {:error, :http_server_error}
@@ -40,16 +42,16 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.Common do
       {:ok, %Tesla.Env{status: status, body: resp_body}} ->
         Logger.warning(
           "Unknown http error #{status} when testing OTLP backend connection: #{inspect(resp_body)}",
-          backend_id: backend_id,
-          user_id: user_id
+          backend_id: backend.id,
+          user_id: backend.user_id
         )
 
         {:error, :http_unknown_error}
 
       {:error, reason} ->
         Logger.warning("Request error when testing OTLP backend connection: #{inspect(reason)}",
-          backend_id: backend_id,
-          user_id: user_id
+          backend_id: backend.id,
+          user_id: backend.user_id
         )
 
         {:error, :unknown_error}
