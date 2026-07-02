@@ -6,7 +6,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
 
-  @max_points 60
+  @max_points 1_800
   @tick_ms 1_000
   @pipeline Logflare.Backends.Spool.ProducerPipeline
 
@@ -139,7 +139,11 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       |> Map.merge(cpu_metrics)
 
     label = Time.utc_now() |> Time.truncate(:second) |> Time.to_string()
-    point = Map.put(metrics, :t, label)
+
+    point =
+      metrics
+      |> Map.put(:t, label)
+      |> Map.put(:ts, System.system_time(:millisecond))
     series = (socket.assigns.series ++ [point]) |> Enum.take(-@max_points)
 
     {:noreply,
