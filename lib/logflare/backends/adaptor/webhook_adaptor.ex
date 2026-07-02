@@ -24,6 +24,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   alias Logflare.Utils
   alias Logflare.Utils.SSRF
 
+  require Logger
+
   @behaviour Logflare.Backends.Adaptor
 
   # Sentinel value substituted for secret header values by redact_config/1.
@@ -149,7 +151,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           :ok
           | {:error,
              :http_client_error | :http_server_error | :http_unknown_error | :unknown_error}
-  def test_connection(%Backend{config: config, id: backend_id, user_id: user_id} = backend, body) do
+  def test_connection(%Backend{config: config, id: backend_id, user_id: user_id}, body) do
     response =
       __MODULE__.Client.send(
         url: config.url,
