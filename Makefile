@@ -368,14 +368,14 @@ deploy.prod.versioned:
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-f,_LOGFLARE_ALERTS_ENABLED=false \
-		--region=europe-west3 \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-f,_LOGFLARE_ALERTS_ENABLED=false,_MACHINE_TYPE=c2d-standard-32 \
+		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-g \
-		--region=europe-west3 \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-g,_LOGFLARE_ALERTS_ENABLED=false,_MACHINE_TYPE=c2d-standard-32 \
+		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 
 
