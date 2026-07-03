@@ -181,14 +181,6 @@ start.st.pg: __start__
 observer:
 	erl -sname observer -hidden -setcookie ${ERL_COOKIE} -run observer
 
-monitor: ERL_NAME ?= st_
-monitor:
-	MONITOR_SOURCE=${MONITOR_SOURCE} iex --sname monitor --cookie ${ERL_COOKIE} --remsh ${ERL_NAME}-${ERL_COOKIE} --dot-iex scripts/monitor.iex.exs
-
-monitor-spool: ERL_NAME ?= st_
-monitor-spool:
-	MONITOR_PIPELINE=spool iex --sname monitor --cookie ${ERL_COOKIE} --remsh ${ERL_NAME}-${ERL_COOKIE} --dot-iex scripts/monitor.iex.exs
-
 __start__:
 	@if [ ! -f ${ENV_FILE} ]; then \
 		touch ${ENV_FILE}; \
