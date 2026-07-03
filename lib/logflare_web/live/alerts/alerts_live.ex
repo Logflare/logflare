@@ -1,8 +1,6 @@
 defmodule LogflareWeb.AlertsLive do
   @moduledoc false
-
   use LogflareWeb, :live_view
-  use Phoenix.Component
 
   import Ecto.Query
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 2, time_ago: 1]

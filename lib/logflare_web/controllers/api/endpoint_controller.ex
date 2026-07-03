@@ -63,7 +63,6 @@ defmodule LogflareWeb.Api.EndpointController do
       |> put_status(201)
       |> json(query)
     else
-      nil -> {:error, :not_found}
       err -> err
     end
   end

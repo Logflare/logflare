@@ -1,8 +1,6 @@
 defmodule LogflareWeb.EndpointsLive do
   @moduledoc false
-
   use LogflareWeb, :live_view
-  use Phoenix.Component
 
   import Ecto.Query, only: [from: 2]
 

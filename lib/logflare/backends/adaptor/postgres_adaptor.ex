@@ -320,7 +320,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     state = %__MODULE__{
       config: backend.config,
       backend: backend,
-      backend_token: if(backend, do: backend.token, else: nil),
+      backend_token: backend.token,
       source_token: source.token,
       source: source,
       pipeline_name: Backends.via_source(source, Pipeline, backend.id)

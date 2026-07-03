@@ -315,10 +315,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
      ]}
   end
 
-  defp build_connection_opts(_backend) do
-    {:error, "Unable to build connection options"}
-  end
-
   @spec build_request_url(
           connection_opts :: Keyword.t(),
           table :: String.t(),

@@ -80,10 +80,8 @@ defmodule Logflare.Sql.DialectTranslation do
   @spec do_parameter_positions_mapping(query :: String.t(), params :: [String.t()]) :: %{
           pos_integer() => String.t()
         }
-  defp do_parameter_positions_mapping(_query, []), do: %{}
-
   defp do_parameter_positions_mapping(query, params)
-       when is_non_empty_binary(query) and is_list(params) do
+       when is_non_empty_binary(query) and is_non_empty_list(params) do
     str =
       params
       |> Enum.uniq()
