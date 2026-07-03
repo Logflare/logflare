@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   alias Logflare.Backends.Spool.MemoryMonitor
 
   @poll_interval 1_000
+  @throttle_interval 100
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(opts) do
@@ -39,7 +40,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       # this field should always return a valid remaining time (or `false`
       # only in the brief window between firing and this field being cleared);
       # a stuck non-nil poll_timer that read_timer reports as `false` is a bug.
-      poll_timer: nil
+      poll_timer: nil,
+      # source_ids already sent to MemoryMonitor.register_source/1 — sent
+      # once per producer lifetime, never again. A hot source can appear in
+      # every file this producer loads; without this we'd cast on every
+      # single one instead of exactly once.
+      registered_sources: MapSet.new()
     }
 
     # Immediate, not scheduled: no reason to wait @poll_interval for the very
@@ -64,7 +70,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
         emit_from_buffer(new_state)
 
       throttled ->
-        {:noreply, [], maybe_schedule_poll(new_state)}
+        {:noreply, [], maybe_schedule_poll(new_state, @throttle_interval)}
 
       true ->
         {:noreply, [], maybe_send_poll(new_state)}
@@ -76,7 +82,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     state = %{state | poll_timer: nil}
 
     if state.demand <= 0 or over_limit?() do
-      {:noreply, [], maybe_schedule_poll(state)}
+      {:noreply, [], maybe_schedule_poll(state, @poll_interval)}
     else
       new_state =
         state
@@ -97,7 +103,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
           true ->
             # Queue was empty
-            maybe_schedule_poll(new_state)
+            maybe_schedule_poll(new_state, @poll_interval)
         end
 
       emit_from_buffer(new_state)
@@ -119,10 +125,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     {:noreply, [], new_state}
   end
 
-  defp maybe_schedule_poll(%{poll_timer: ref} = state) when not is_nil(ref), do: state
+  defp maybe_schedule_poll(%{poll_timer: ref} = state, _interval) when not is_nil(ref), do: state
 
-  defp maybe_schedule_poll(state) do
-    %{state | poll_timer: Process.send_after(self(), :poll, @poll_interval)}
+  defp maybe_schedule_poll(state, interval) do
+    %{state | poll_timer: Process.send_after(self(), :poll, interval)}
   end
 
   defp maybe_send_poll(%{poll_timer: ref} = state) when not is_nil(ref), do: state
@@ -144,6 +150,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   # Prefetch landed — use it immediately with zero download wait
   defp maybe_load_next(%{current: nil, prefetch: {:ready, {:ok, handle, lines}}} = state) do
+    state = register_sources(state, lines)
     %{state | current: %{handle: handle, lines: lines}, prefetch: nil}
   end
 
@@ -183,6 +190,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp maybe_load_next(%{current: nil, prefetch: nil} = state) do
     case safe_fetch_next(state.queue_url, state.bucket, state.queue_mod, state.storage_mod) do
       {:ok, handle, lines} ->
+        state = register_sources(state, lines)
         %{state | current: %{handle: handle, lines: lines}}
 
       :empty ->
@@ -203,6 +211,31 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp maybe_load_next(state), do: state
+
+  # Lets MemoryMonitor know these sources are currently flowing through the
+  # spool consumer, so its refresh cycle checks their destination ingest
+  # buffers for backlog (see over_limit?/0). Only casts for sources this
+  # producer hasn't already sent — sent once per producer lifetime, never
+  # again, since MemoryMonitor keeps a registered source watched permanently.
+  defp register_sources(state, lines) do
+    to_register =
+      lines
+      |> Enum.map(&record_source_id/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.reject(&MapSet.member?(state.registered_sources, &1))
+
+    Enum.each(to_register, &MemoryMonitor.register_source/1)
+
+    registered_sources =
+      Enum.reduce(to_register, state.registered_sources, &MapSet.put(&2, &1))
+
+    %{state | registered_sources: registered_sources}
+  end
+
+  defp record_source_id(%{source_id: id}), do: id
+  defp record_source_id(%{"source_id" => id}), do: id
+  defp record_source_id(_), do: nil
 
   # Start a background Task to fetch the next file while we stream the current one.
   # Only when we have a current file and no prefetch already running.
@@ -398,8 +431,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # downloads/decodes actually landing in memory, so the spool self-throttles
   # before it can ever contribute to a global 429 for unrelated sources.
   # Shared with the spool producer's early-flush decision via MemoryMonitor.
+  #
+  # consumer_throttled?/0 covers a different failure mode: a destination
+  # source's own ingest buffer is backed up (e.g. downstream write pipeline
+  # can't keep up), regardless of node memory pressure. Since this already
+  # gates handle_info(:poll)/handle_demand/2 (see maybe_ack_exhausted/1,
+  # maybe_load_next/1, emit_from_buffer/1), the current file's queue message
+  # simply stops draining — and thus never gets acked — until the backlog
+  # clears, instead of piling more events into an already-overflowing queue.
   defp over_limit? do
-    MemoryMonitor.throttled?()
+    MemoryMonitor.throttled?() or MemoryMonitor.consumer_throttled?()
   end
 
   # result is the raw return of the queue_mod.ack/nack call — previously

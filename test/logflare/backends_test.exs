@@ -891,6 +891,56 @@ defmodule Logflare.BackendsTest do
       assert Backends.fetch_latest_timestamp(source) != 0
     end
 
+    test "any_ingest_queue_over_limit?/1 is false when no queues exist for the source", %{
+      source: source
+    } do
+      refute Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is true when the system default (nil) queue is over the limit",
+         %{source: source} do
+      table_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(table_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(table_key, [le])
+      end
+
+      assert Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is true for a backend that is not flagged default_ingest?",
+         %{source: source} do
+      user = Repo.get(User, source.user_id)
+      backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: false)
+      {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      table_key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(table_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(table_key, [le])
+      end
+
+      assert Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is false when queues exist but are under the limit", %{
+      source: source
+    } do
+      table_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(table_key)
+
+      for _ <- 1..100 do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(table_key, [le])
+      end
+
+      refute Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
     test "cache_estimated_buffer_lens/1 will cache all queue information", %{
       source: %{id: source_id} = source
     } do

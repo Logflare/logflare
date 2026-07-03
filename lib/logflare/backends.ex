@@ -1058,6 +1058,38 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Returns true if ANY of a source's ingest queues — the system default plus
+  every backend actually configured on it, regardless of default-ingest
+  flags — currently exceeds `max_buffer_queue_len/0`. Unlike
+  `cached_local_pending_buffer_full?/1` (scoped to just the "default ingest"
+  backend(s), for the HTTP 429 gate's specific question), this checks every
+  backend a source can dispatch to and reads live `IngestEventQueue` sizes
+  directly rather than a separately-cadenced cache — matching
+  `QueueJanitor`'s own `get_table_size/1`-based overflow check exactly, so it
+  can't miss a backend that isn't part of the "default ingest" set.
+  """
+  @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
+  def any_ingest_queue_over_limit?(source_id) do
+    backend_ids =
+      [nil | __MODULE__.Cache.list_backends(source_id: source_id) |> Enum.map(& &1.id)]
+
+    Enum.any?(backend_ids, &any_queue_over_limit_for_backend?(source_id, &1))
+  end
+
+  defp any_queue_over_limit_for_backend?(source_id, backend_id) do
+    {source_id, backend_id}
+    |> IngestEventQueue.list_queues()
+    |> Enum.any?(&queue_over_limit?/1)
+  end
+
+  defp queue_over_limit?(table_key) do
+    case IngestEventQueue.get_table_size(table_key) do
+      size when is_integer(size) -> size > max_buffer_queue_len()
+      _ -> false
+    end
+  end
+
+  @doc """
   Caches total buffer len. Includes ingested events that are awaiting cleanup.
   """
   @spec cache_local_buffer_lens(non_neg_integer(), non_neg_integer() | nil) ::

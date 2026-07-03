@@ -5,6 +5,7 @@ ExUnit.start()
 # Mimic mocks setup
 Mimic.copy(ExAws)
 Mimic.copy(Broadway)
+Mimic.copy(Logflare.Backends.Spool.MemoryMonitor)
 Mimic.copy(Logflare.Backends.Spool.Storage.GCS)
 Mimic.copy(Logflare.Backends.Spool.Queue.PubSub)
 Mimic.copy(Ch)

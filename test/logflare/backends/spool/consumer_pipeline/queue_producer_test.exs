@@ -221,6 +221,103 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     end
   end
 
+  describe "throttling (consumer backlog)" do
+    test "schedules a fallback poll instead of dropping the trigger when consumer_throttled" do
+      stub(MemoryMonitor, :consumer_throttled?, fn -> true end)
+      stub_queue([])
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      Process.sleep(50)
+
+      poll_timer = :sys.get_state(pid).state.poll_timer
+
+      refute is_nil(poll_timer)
+      assert Process.read_timer(poll_timer)
+    end
+
+    test "recovers automatically once consumer backlog clears, without any new demand arriving" do
+      stub(MemoryMonitor, :consumer_throttled?, fn -> true end)
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.ndjson")])
+      stub_storage(%{"0/a.ndjson" => ndjson_body([%{"id" => "e1"}])})
+
+      pid = start_producer()
+
+      # Subscribes once and sends its one-time demand — no further demand will
+      # ever be sent, so recovery must come entirely from the producer's own
+      # internal retry, not from an externally-triggered handle_demand call.
+      task = Task.async(fn -> GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1) end)
+
+      refute Task.yield(task, 200)
+
+      stub(MemoryMonitor, :consumer_throttled?, fn -> false end)
+
+      assert {:ok, [event]} = Task.yield(task, 2000)
+      assert event["id"] == "e1"
+    end
+  end
+
+  describe "source registration" do
+    test "registers each distinct source_id found in a loaded file with MemoryMonitor" do
+      test_pid = self()
+      stub(MemoryMonitor, :register_source, fn sid -> send(test_pid, {:registered, sid}) end)
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.ndjson")])
+
+      stub_storage(%{
+        "0/a.ndjson" =>
+          ndjson_body([
+            %{"id" => "e1", "source_id" => 1},
+            %{"id" => "e2", "source_id" => 2},
+            %{"id" => "e3", "source_id" => 1}
+          ])
+      })
+
+      pid = start_producer()
+
+      GenStage.stream([{pid, max_demand: 10}])
+      |> Enum.take(3)
+
+      assert_receive {:registered, 1}, 2000
+      assert_receive {:registered, 2}, 2000
+      refute_receive {:registered, 1}
+    end
+
+    test "never re-registers a source seen again across files, for the life of the producer" do
+      test_pid = self()
+      stub(MemoryMonitor, :register_source, fn sid -> send(test_pid, {:registered, sid}) end)
+
+      stub_ack_nack(self())
+
+      stub_queue([
+        queue_message("h1", "0/a.ndjson"),
+        queue_message("h2", "0/b.ndjson")
+      ])
+
+      stub_storage(%{
+        "0/a.ndjson" => ndjson_body([%{"id" => "e1", "source_id" => 1}]),
+        "0/b.ndjson" => ndjson_body([%{"id" => "e2", "source_id" => 1}])
+      })
+
+      pid = start_producer()
+
+      events =
+        GenStage.stream([{pid, max_demand: 10}])
+        |> Enum.take(2)
+
+      assert Enum.map(events, & &1["id"]) == ["e1", "e2"]
+
+      assert_receive {:registered, 1}, 2000
+      # Second file (0/b.ndjson) also carries source_id 1 — already sent once
+      # for this producer's lifetime, so no second cast should ever go out.
+      refute_receive {:registered, 1}
+    end
+  end
+
   describe "poll loop de-duplication" do
     test "queue polling frequency stays bounded regardless of the number of concurrently-demanding consumers" do
       test_pid = self()

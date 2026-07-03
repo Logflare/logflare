@@ -280,6 +280,10 @@ defmodule Logflare.Telemetry do
       last_value("logflare.backends.spool.throttled.ets_percent",
         description: "Spool: ETS memory usage ratio"
       ),
+      last_value("logflare.backends.spool.throttled.consumer_throttled",
+        description:
+          "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
+      ),
       sum("logflare.backends.spool.storage.put.count",
         tags: [:format, :result],
         description: "Spool storage writes (S3/GCS put) count by format/result"
