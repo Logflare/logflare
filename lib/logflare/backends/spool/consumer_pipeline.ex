@@ -37,7 +37,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [
-        default: [concurrency: concurrency, max_demand: 10]
+        default: [concurrency: concurrency, max_demand: 100]
       ],
       batchers: [
         default: [
