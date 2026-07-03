@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Spool.Storage.GCS do
   @behaviour Logflare.Backends.Spool.Storage
 
   alias GoogleApi.Storage.V1.Api.Objects
+  alias GoogleApi.Storage.V1.Connection
 
   @impl Logflare.Backends.Spool.Storage
   def put(bucket, key, body, opts) do
@@ -63,7 +64,7 @@ defmodule Logflare.Backends.Spool.Storage.GCS do
           end
       end
 
-    {:ok, GoogleApi.Storage.V1.Connection.new(token)}
+    {:ok, Connection.new(token)}
   catch
     {:goth_fetch_error, reason} -> {:error, reason}
   end

@@ -32,109 +32,92 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       # nil | :running | {:ready, fetch_result}
       # fetch_result = {:ok, handle, lines} | :empty | {:error, handle, reason}
       prefetch: nil,
-      # Process.send_after/3 timer ref for the one outstanding :poll trigger,
-      # or nil if none is pending. Deduplicates concurrent handle_demand calls
-      # (one per processor, see consumer_concurrency) so they can't each spawn
-      # their own poll chain. Delay-0 sends (maybe_send_poll) go through
-      # send_after too, purely to get a ref back — Process.read_timer/1 on
-      # this field should always return a valid remaining time (or `false`
-      # only in the brief window between firing and this field being cleared);
-      # a stuck non-nil poll_timer that read_timer reports as `false` is a bug.
       poll_timer: nil,
       # source_ids already sent to MemoryMonitor.register_source/1 — sent
-      # once per producer lifetime, never again. A hot source can appear in
-      # every file this producer loads; without this we'd cast on every
-      # single one instead of exactly once.
+      # once per producer lifetime, never again.
       registered_sources: MapSet.new()
     }
 
-    # Immediate, not scheduled: no reason to wait @poll_interval for the very
-    # first check.
-    {:producer, maybe_send_poll(state)}
+    {:producer, schedule_poll(state, 0)}
   end
 
-  # Serve from the existing in-memory buffer only — never blocks on IO.
-  # File loading happens in handle_info(:poll); prefetch runs concurrently in a Task.
-  # When demand arrives with no buffer, kick an immediate poll rather than
-  # waiting up to @poll_interval for the next tick. Under memory throttling we
-  # still must schedule a fallback poll — never silently drop the only trigger
-  # that would ever re-check state, or the producer freezes permanently even
-  # after memory drops back under the limit.
   @impl GenStage
   def handle_demand(demand, state) do
     new_state = %{state | demand: state.demand + demand}
     throttled = over_limit?()
 
-    cond do
+    {events, state} = cond do
       buffered?(new_state) and not throttled ->
-        emit_from_buffer(new_state)
+          emit_from_buffer(new_state)
 
       throttled ->
-        {:noreply, [], maybe_schedule_poll(new_state, @throttle_interval)}
+        {[], schedule_poll(new_state, @throttle_interval)}
 
       true ->
-        {:noreply, [], maybe_send_poll(new_state)}
+        {[], schedule_poll(new_state, 0)}
     end
+
+    {:noreply, events, state}
   end
 
+  # The sole place that actually loads/emits, and the sole owner of the
+  # periodic side of the poll loop: always reschedules itself at the end, on
+  # every branch, so the loop can never permanently stop even if neither
+  # handle_demand/2 nor :prefetch_result ever kicks it early.
   @impl GenStage
   def handle_info(:poll, state) do
-    state = %{state | poll_timer: nil}
+    idle? = state.demand <= 0 or over_limit?()
 
-    if state.demand <= 0 or over_limit?() do
-      {:noreply, [], maybe_schedule_poll(state, @poll_interval)}
-    else
-      new_state =
+    {events, new_state} =
+      if idle? do
+        {[], state}
+      else
         state
         |> maybe_ack_exhausted()
         |> maybe_load_next()
+        |> maybe_start_prefetch()
+        |> emit_from_buffer()
+      end
 
-      new_state = maybe_start_prefetch(new_state)
-
-      new_state =
-        cond do
-          new_state.current != nil ->
-            # Emitting — demand will drive the next poll when this file exhausts
-            new_state
-
-          new_state.prefetch == :running ->
-            # Prefetch download in flight; handle_info(:prefetch_result) will send :poll when ready
-            new_state
-
-          true ->
-            # Queue was empty
-            maybe_schedule_poll(new_state, @poll_interval)
-        end
-
-      emit_from_buffer(new_state)
-    end
+    {:noreply, events, schedule_poll(new_state, next_poll_delay())}
   end
 
+  # Records the result and, if demand is waiting with nothing buffered, kicks
+  # an immediate poll rather than waiting for the periodic loop. Unlike
+  # handle_demand/2, this is a real "something just became available" signal
+  # (the background prefetch Task just completed), not a guess — worth
+  # reacting to right away so a producer/consumer running at roughly matched
+  # rates doesn't pay a needless @poll_interval stall at every file boundary
+  # while the next file's prefetch has already landed.
   @impl GenStage
   def handle_info({:prefetch_result, result}, state) do
     new_state = %{state | prefetch: {:ready, result}}
 
-    # If demand is waiting and we have nothing buffered, kick a poll to load the prefetch now
-    new_state =
-      if state.demand > 0 and not buffered?(state) do
-        maybe_send_poll(new_state)
-      else
-        new_state
-      end
-
-    {:noreply, [], new_state}
+    if state.demand > 0 and not buffered?(state) do
+      {:noreply, [], schedule_poll(new_state, 0)}
+    else
+      {:noreply, [], new_state}
+    end
   end
 
-  defp maybe_schedule_poll(%{poll_timer: ref} = state, _interval) when not is_nil(ref), do: state
-
-  defp maybe_schedule_poll(state, interval) do
-    %{state | poll_timer: Process.send_after(self(), :poll, interval)}
+  # This is the periodic side only — the fast paths live in handle_demand/2
+  # and the :prefetch_result handler, which kick an immediate poll the
+  # moment there's real work to do. By the time we get here, emit_from_buffer
+  # has already run and always fully satisfies either the demand or the
+  # buffer (Enum.split can't leave both non-empty at once) — so there's
+  # nothing productive to retry immediately; recheck backpressure soon if
+  # we're over limit, otherwise back off so an idle or empty producer
+  # doesn't busy-loop or hammer the source queue.
+  defp next_poll_delay do
+    if over_limit?(), do: @throttle_interval, else: @poll_interval
   end
 
-  defp maybe_send_poll(%{poll_timer: ref} = state) when not is_nil(ref), do: state
-
-  defp maybe_send_poll(state) do
-    %{state | poll_timer: Process.send_after(self(), :poll, 0)}
+  # Sole function allowed to touch poll_timer / Process.send_after/cancel_timer
+  # for the :poll message. Cancels whatever's pending before setting the next
+  # one — defensive, since only init/1 and handle_info(:poll) ever call this.
+  defp schedule_poll(state, delay) do
+    if state.poll_timer, do: Process.cancel_timer(state.poll_timer)
+    %{state | poll_timer: Process.send_after(self(), :poll, delay)}
   end
 
   defp buffered?(%{current: nil}), do: false
@@ -163,10 +146,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # handle may be nil if the prefetch task crashed before receiving a message.
   defp maybe_load_next(%{current: nil, prefetch: {:ready, {:error, handle, reason}}} = state) do
     if handle do
-      # Routine, telemetry-covered failure (storage/network errors) — logging
-      # every occurrence at :error would spam production under sustained
-      # outages, so this is debug-only; the nack telemetry count is the
-      # production-facing signal.
       Logger.debug("spool_consumer: prefetch failed: #{inspect(reason)}")
       nack_and_notify(state.queue_mod, state.queue_url, handle, :prefetch_failed)
     else
@@ -263,9 +242,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   defp maybe_start_prefetch(state), do: state
 
-  defp emit_from_buffer(%{current: nil} = state), do: {:noreply, [], state}
-  defp emit_from_buffer(%{current: %{lines: []}} = state), do: {:noreply, [], state}
-  defp emit_from_buffer(%{demand: 0} = state), do: {:noreply, [], state}
+  defp emit_from_buffer(%{current: nil} = state), do: {[], state}
+  defp emit_from_buffer(%{current: %{lines: []}} = state), do: {[], state}
+  defp emit_from_buffer(%{demand: 0} = state), do: {[], state}
 
   defp emit_from_buffer(state) do
     {to_emit, remaining} = Enum.split(state.current.lines, state.demand)
@@ -276,7 +255,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
         current: %{state.current | lines: remaining}
     }
 
-    {:noreply, to_emit, new_state}
+    {to_emit, new_state}
   end
 
   # Wraps do_fetch_next so an unexpected exception always yields a normal
@@ -325,8 +304,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
             {:ok, handle, lines}
 
           {:error, %Tesla.Env{status: 404}} ->
-            # Already covered by the [:queue, :ack] telemetry (reason: :stale_file)
-            # below — debug-only so a batch of stale entries doesn't spam prod.
             Logger.debug(
               "spool_consumer: file not found in storage, discarding stale queue entry: #{file_key}"
             )
@@ -399,14 +376,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     base = String.replace_suffix(file_key, ".gz", "")
 
     if String.ends_with?(base, ".etf") do
-      # No `:safe` — this content is produced by our own producer pipeline
-      # with a small, fixed set of atom keys/values (id, source_id, body,
-      # event_type, ingested_at, :log/:metric/:trace), never from untrusted
-      # external input. `:safe` would additionally require every one of those
-      # atoms to already exist in *this* node's atom table, which depends on
-      # incidental module-load order (e.g. a freshly booted consumer-only node
-      # that hasn't yet loaded `Logflare.LogEvent` won't have `:event_type`
-      # interned) and fails every file until something else happens to load it.
       {:ok, :erlang.binary_to_term(content)}
     else
       lines =
@@ -443,10 +412,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     MemoryMonitor.throttled?() or MemoryMonitor.consumer_throttled?()
   end
 
-  # result is the raw return of the queue_mod.ack/nack call — previously
-  # fire-and-forget, so a failure to actually delete/requeue the message with
-  # SQS/PubSub was silently dropped. Normalized to :ok | :error to keep
-  # cardinality low (no per-source or raw-reason tagging).
+  # result is the raw return of the queue_mod.ack/nack call
   defp emit_ack_telemetry(reason, result) do
     :telemetry.execute([:logflare, :backends, :spool, :queue, :ack], %{count: 1}, %{
       reason: reason,

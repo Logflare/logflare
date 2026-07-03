@@ -493,7 +493,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
-                      %{reason: :stale_file, result: :error}}
+                      %{reason: :stale_file, result: :error}},
+                     2000
     end
 
     test "reports result: :error when the underlying queue nack call itself fails" do
@@ -507,7 +508,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
-                      %{count: 1}, %{reason: :fetch_failed, result: :error}}
+                      %{count: 1}, %{reason: :fetch_failed, result: :error}},
+                     2000
     end
   end
 

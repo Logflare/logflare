@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Spool.Queue.PubSub do
   @behaviour Logflare.Backends.Spool.Queue
 
   alias GoogleApi.PubSub.V1.Api.Projects
+  alias GoogleApi.PubSub.V1.Connection
   alias GoogleApi.PubSub.V1.Model.AcknowledgeRequest
   alias GoogleApi.PubSub.V1.Model.ModifyAckDeadlineRequest
   alias GoogleApi.PubSub.V1.Model.PublishRequest
@@ -90,7 +91,7 @@ defmodule Logflare.Backends.Spool.Queue.PubSub do
           end
       end
 
-    {:ok, GoogleApi.PubSub.V1.Connection.new(token)}
+    {:ok, Connection.new(token)}
   catch
     {:goth_fetch_error, reason} -> {:error, reason}
   end
