@@ -159,6 +159,23 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:lql_string]
   end
 
+  defmodule AlertApiSchema do
+    @properties %{
+      id: %Schema{type: :integer},
+      token: %Schema{type: :string},
+      name: %Schema{type: :string},
+      description: %Schema{type: :string},
+      language: %Schema{type: :string},
+      query: %Schema{type: :string},
+      cron: %Schema{type: :string},
+      slack_hook_url: %Schema{type: :string},
+      webhook_notification_url: %Schema{type: :string},
+      enabled: %Schema{type: :boolean}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query, :cron, :language]
+  end
+
   defmodule KeyValueApiSchema do
     @properties %{
       id: %Schema{type: :integer},
