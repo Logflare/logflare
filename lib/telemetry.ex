@@ -326,9 +326,6 @@ defmodule Logflare.Telemetry do
         tags: [:reason],
         description: "Spool consumer: events skipped (missing/unknown source_id) by reason"
       ),
-      sum("logflare.backends.spool.consumer.dispatch_error.count",
-        description: "Spool consumer: dispatch_from_spool returned an unexpected (non-ok) result"
-      ),
       sum("logflare.backends.spool.consumer.messages_failed.count",
         description: "Spool consumer: Broadway messages marked failed during processing"
       ),

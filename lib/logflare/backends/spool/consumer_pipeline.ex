@@ -105,21 +105,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         )
 
       source ->
-        case Backends.dispatch_from_spool(lines, source) do
-          {:ok, _} ->
-            :ok
-
-          other ->
-            :telemetry.execute(
-              [:logflare, :backends, :spool, :consumer, :dispatch_error],
-              %{count: 1},
-              %{}
-            )
-
-            Logger.debug(
-              "spool_consumer: dispatch failed for source #{source_id}: #{inspect(other)}"
-            )
-        end
+        {:ok, _} = Backends.dispatch_from_spool(lines, source)
+        :ok
     end
   end
 

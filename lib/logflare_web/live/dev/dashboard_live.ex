@@ -212,8 +212,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
 
   defp gather_metrics(write_rate_atomic, write_total_atomic, read_rate_atomic, read_total_atomic) do
     spool_key = {:spool_producer, nil}
-    ets_pending = to_int(IngestEventQueue.total_by_status(spool_key, :pending))
-    ets_processing = to_int(IngestEventQueue.total_by_status(spool_key, :processing))
+    ets_pending = IngestEventQueue.total_by_status(spool_key, :pending)
+    ets_processing = IngestEventQueue.total_by_status(spool_key, :processing)
 
     ets_bytes = :erlang.memory(:ets)
     proc_bytes = :erlang.memory(:processes)
@@ -371,9 +371,6 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       :atomics.add(total_ref, 1, size)
     end
   end
-
-  defp to_int(n) when is_integer(n), do: n
-  defp to_int(_), do: 0
 
   defp empty_metrics do
     %{

@@ -604,7 +604,7 @@ defmodule Logflare.Backends do
   Dispatches events from the spool consumer directly to backends, bypassing the spool producer path.
   Use this in the consumer pipeline to avoid re-routing events back to the spool in `:both` mode.
   """
-  @spec dispatch_from_spool([map()], Source.t()) :: {:ok, non_neg_integer()} | {:error, [term()]}
+  @spec dispatch_from_spool([map()], Source.t()) :: {:ok, non_neg_integer()}
   def dispatch_from_spool(spool_records, source) do
     ensure_source_sup_started(source)
     log_events = Enum.map(spool_records, &LogEvent.make_from_spool(&1, source))

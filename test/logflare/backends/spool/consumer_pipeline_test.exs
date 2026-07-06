@@ -141,38 +141,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :skipped],
                       %{count: 1}, %{reason: :missing_source_id}}
     end
-
-    test "returns all messages regardless of dispatch errors", %{source: source} do
-      messages = [line_message(source.id, Ecto.UUID.generate())]
-
-      stub(Logflare.Backends, :dispatch_from_spool, fn _params, _source ->
-        {:error, "downstream failure"}
-      end)
-
-      result = ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
-
-      assert result == messages
-    end
-
-    test "returns all messages regardless of the shape of an unexpected dispatch result, emitting dispatch_error telemetry",
-         %{source: source} do
-      TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :dispatch_error])
-
-      messages = [line_message(source.id, Ecto.UUID.generate())]
-
-      # dispatch_from_spool/2's own @spec only promises {:ok, _} — this proves
-      # the consumer's `other ->` wildcard clause tolerates literally anything
-      # else, not just the {:error, reason} shape covered above.
-      stub(Logflare.Backends, :dispatch_from_spool, fn _params, _source -> :unexpected end)
-
-      result = ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
-
-      assert result == messages
-
-      assert_receive {:telemetry_event,
-                      [:logflare, :backends, :spool, :consumer, :dispatch_error], %{count: 1},
-                      %{}}
-    end
   end
 
   describe "ack/3" do

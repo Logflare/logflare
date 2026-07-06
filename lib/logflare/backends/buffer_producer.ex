@@ -15,7 +15,7 @@ defmodule Logflare.Backends.BufferProducer do
   alias Logflare.LogEvent
   alias Logflare.Sources
 
-  @type state :: %{
+  @type standard_state :: %{
           consolidated: boolean(),
           id_passing: boolean(),
           demand: non_neg_integer(),
@@ -25,6 +25,20 @@ defmodule Logflare.Backends.BufferProducer do
           last_discard_log_dt: DateTime.t() | nil,
           interval: pos_integer()
         }
+
+  @type spool_producer_state :: %{
+          spool_producer: true,
+          consolidated: false,
+          id_passing: boolean(),
+          demand: non_neg_integer(),
+          source_id: nil,
+          source_token: nil,
+          backend_id: nil,
+          last_discard_log_dt: DateTime.t() | nil,
+          interval: pos_integer()
+        }
+
+  @type state :: standard_state() | spool_producer_state()
 
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
