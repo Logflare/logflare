@@ -62,12 +62,17 @@ defmodule LogflareWeb.OpenApiSchemas do
       token: %Schema{type: :string},
       name: %Schema{type: :string},
       query: %Schema{type: :string},
+      language: %Schema{type: :string},
       source_mapping: %Schema{type: :object, nullable: true},
       sandboxable: %Schema{type: :boolean, nullable: true},
       cache_duration_seconds: %Schema{type: :integer},
       proactive_requerying_seconds: %Schema{type: :integer},
       max_limit: %Schema{type: :integer},
-      enable_auth: %Schema{type: :boolean}
+      enable_auth: %Schema{type: :boolean},
+      redact_pii: %Schema{type: :boolean},
+      enable_dynamic_reservation: %Schema{type: :boolean},
+      labels: %Schema{type: :string, nullable: true},
+      backend_id: %Schema{type: :integer, nullable: true}
     }
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query]
   end
@@ -100,6 +105,7 @@ defmodule LogflareWeb.OpenApiSchemas do
     @properties %{
       name: %Schema{type: :string},
       description: %Schema{type: :string, nullable: true},
+      service_name: %Schema{type: :string, nullable: true},
       token: %Schema{type: :string},
       id: %Schema{type: :integer},
       favorite: %Schema{type: :boolean},
@@ -113,9 +119,13 @@ defmodule LogflareWeb.OpenApiSchemas do
       metrics: %Schema{type: :object},
       notifications: %Schema{type: :object, items: Notification},
       custom_event_message_keys: %Schema{type: :string},
-      default_ingest_backend_enabled?: %Schema{type: :boolean},
-      inserted_at: %Schema{type: :string, format: :"date-time"},
-      updated_at: %Schema{type: :string, format: :"date-time"}
+      backends: %Schema{type: :array, items: LogflareWeb.OpenApiSchemas.BackendApiSchema},
+      retention_days: %Schema{type: :integer, nullable: true},
+      transform_copy_fields: %Schema{type: :string, nullable: true},
+      transform_key_values: %Schema{type: :string, nullable: true},
+      transform_drop_fields: %Schema{type: :string, nullable: true},
+      bigquery_clustering_fields: %Schema{type: :string, nullable: true},
+      default_ingest_backend_enabled?: %Schema{type: :boolean}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name]
@@ -133,9 +143,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       token: %Schema{type: :string},
       lql_string: %Schema{type: :string},
       backend_id: %Schema{type: :integer},
-      source_id: %Schema{type: :integer},
-      inserted_at: %Schema{type: :string, format: :"date-time"},
-      updated_at: %Schema{type: :string, format: :"date-time"}
+      source_id: %Schema{type: :integer}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:lql_string]
@@ -156,6 +164,8 @@ defmodule LogflareWeb.OpenApiSchemas do
       name: %Schema{type: :string},
       id: %Schema{type: :integer},
       token: %Schema{type: :string},
+      type: %Schema{type: :string},
+      description: %Schema{type: :string, nullable: true},
       config: %Schema{type: :object},
       metadata: %Schema{type: :object},
       default_ingest?: %Schema{type: :boolean},
@@ -163,7 +173,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       updated_at: %Schema{type: :string, format: :"date-time"}
     }
 
-    use LogflareWeb.OpenApi, properties: @properties, required: [:name]
+    use LogflareWeb.OpenApi, properties: @properties, required: [:name, :type, :config]
   end
 
   defmodule BackendConnectionTest do
@@ -188,9 +198,16 @@ defmodule LogflareWeb.OpenApiSchemas do
       bigquery_project_id: %Schema{type: :string, nullable: true},
       bigquery_dataset_location: %Schema{type: :string, nullable: true},
       bigquery_dataset_id: %Schema{type: :string, nullable: true},
+      provider_uid: %Schema{type: :string},
+      bigquery_reservation_search: %Schema{type: :string, nullable: true},
+      bigquery_reservation_alerts: %Schema{type: :string, nullable: true},
+      bigquery_additional_projects: %Schema{type: :string, nullable: true},
       api_quota: %Schema{type: :integer},
       company: %Schema{type: :string, nullable: true},
-      token: %Schema{type: :string}
+      token: %Schema{type: :string},
+      metadata: %Schema{type: :object, nullable: true},
+      partner_upgraded: %Schema{type: :boolean},
+      system_monitoring: %Schema{type: :boolean}
     }
     use LogflareWeb.OpenApi,
       properties: @properties,
