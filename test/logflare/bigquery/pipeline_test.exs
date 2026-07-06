@@ -15,6 +15,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.User
 
   @pipeline_name :test_pipeline
@@ -107,7 +108,77 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-      assert [{_id, :ingested, _, _}] = :ets.lookup(tid, le.id)
+      assert [{_id, :ingested, _, _, _, _}] = :ets.lookup(tid, le.id)
+    end
+
+    test "handle_batch emits ingest telemetry with resolved labels when source has labels", %{
+      source: source
+    } do
+      source = insert(:source, user_id: source.user_id, labels: "lvl=m.level")
+      context = bq_context(source)
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source, metadata: %{"level" => "error"})
+      {messages, _tid} = setup_queue(source, [le])
+
+      test_pid = self()
+      handler = "test-ingest-labels-#{inspect(make_ref())}"
+
+      :telemetry.attach(
+        handler,
+        [:logflare, :backends, :ingest],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:ingest, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+
+      assert_receive {:ingest, %{ingested_bytes: bytes}, metadata}
+      assert bytes > 0
+      # labels resolved from the event body, no per-event ETS lookup in ack
+      assert metadata["lvl"] == "error"
+    end
+
+    test "handle_batch emits ingest telemetry with no labels when source has none", %{
+      source: source
+    } do
+      context = bq_context(source)
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, [le])
+
+      test_pid = self()
+      handler = "test-ingest-nolabels-#{inspect(make_ref())}"
+
+      :telemetry.attach(
+        handler,
+        [:logflare, :backends, :ingest],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:ingest, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+
+      source_id = source.id
+      assert_receive {:ingest, %{ingested_bytes: bytes}, %{"source_id" => ^source_id}}
+      assert bytes > 0
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
@@ -247,7 +318,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       log =
         capture_log([level: :warning], fn ->
-          Pipeline.stream_batch(context, [{build(:log_event, source: source), 0}])
+          Pipeline.stream_batch(context, [build(:log_event, source: source)])
         end)
 
       assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
@@ -285,7 +356,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       log =
         capture_log([level: :warning], fn ->
-          Pipeline.stream_batch(context, [{build(:log_event, source: source), 0}])
+          Pipeline.stream_batch(context, [build(:log_event, source: source)])
         end)
 
       assert log =~ "user audit: BigQuery backend auto-disconnect triggered"
@@ -452,6 +523,18 @@ defmodule Logflare.BigQuery.PipelineTest do
       {messages, tid}
     end
 
+    defp bq_context(source) do
+      %{
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: nil,
+        bigquery_project_id: nil,
+        bigquery_dataset_id: nil,
+        user_id: source.user_id,
+        system_source: false
+      }
+    end
+
     test "passes {id, tid, size} messages through with correct size", %{
       source: source,
       context: context,
@@ -564,6 +647,51 @@ defmodule Logflare.BigQuery.PipelineTest do
       end)
 
       Pipeline.handle_batch(:bq, messages, batch_info, context)
+    end
+  end
+
+  describe "process_data/3" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      [user: user, context: %{backend_id: nil}]
+    end
+
+    test "skips schema update when the passed source has lock_schema set", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: true)
+      le = build(:log_event, source: source)
+
+      # the lock decision must come from the threaded source, not a per-event re-fetch
+      reject(&Schema.update/3)
+
+      assert ^le = Pipeline.process_data(le, context, source)
+    end
+
+    test "runs schema update using the passed source when not locked", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      le = build(:log_event, source: source)
+      test_pid = self()
+
+      expect(Schema, :update, fn _via, ^le, ^source ->
+        send(test_pid, :schema_updated)
+        :ok
+      end)
+
+      assert ^le = Pipeline.process_data(le, context, source)
+      assert_received :schema_updated
+    end
+
+    test "does not crash when the passed source is nil", %{context: context} do
+      le = build(:log_event)
+      reject(&Schema.update/3)
+
+      assert ^le = Pipeline.process_data(le, context, nil)
     end
   end
 

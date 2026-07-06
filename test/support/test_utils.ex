@@ -148,10 +148,15 @@ defmodule Logflare.TestUtils do
   end)
   ```
   """
-  def gen_bq_error(err) do
+  def gen_bq_error(err, attrs \\ []) do
+    error =
+      attrs
+      |> Enum.into(%{}, fn {key, value} -> {to_string(key), value} end)
+      |> Map.put("message", err)
+
     %Tesla.Env{
       status: 400,
-      body: Jason.encode!(%{error: %{message: err}})
+      body: Jason.encode!(%{error: error})
     }
   end
 

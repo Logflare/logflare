@@ -226,6 +226,9 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_has("a[data-target='#sourceSchemaModal']", text: "schema")
       |> assert_has("div#sourceSchemaModal")
       |> assert_has("h5", text: "Source Schema")
+      |> assert_has("#source-schema-modal-table button[title='Copy markdown to clipboard']",
+        text: "Copy markdown"
+      )
       |> assert_has("kbd", text: "metadata.status")
     end
 

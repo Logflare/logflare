@@ -11,7 +11,7 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   alias Logflare.SystemCache
   alias LogflareWeb.Api.FallbackController
 
-  @memory_limit 0.85
+  @memory_limit 0.80
 
   @type opts :: any()
 

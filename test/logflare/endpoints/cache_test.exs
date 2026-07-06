@@ -1,6 +1,7 @@
 defmodule Logflare.Endpoints.CacheTest do
   use Logflare.DataCase
 
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
 
   describe "cache behavior" do
@@ -57,7 +58,12 @@ defmodule Logflare.Endpoints.CacheTest do
       {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
       assert Process.alive?(cache_pid)
 
-      assert {:error, %{"message" => :timeout}} = Endpoints.run_cached_query(endpoint)
+      assert {:error,
+              %QueryError{
+                kind: :connection_error,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                raw_error: :timeout
+              }} = Endpoints.run_cached_query(endpoint)
 
       refute Process.alive?(cache_pid)
     end
@@ -97,7 +103,12 @@ defmodule Logflare.Endpoints.CacheTest do
       {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
       assert Process.alive?(cache_pid)
 
-      assert {:error, %{"message" => "BQ Error"}} = Endpoints.run_cached_query(endpoint)
+      assert {:error,
+              %QueryError{
+                kind: :backend_error,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                raw_error: %{"message" => "BQ Error"}
+              }} = Endpoints.run_cached_query(endpoint)
 
       refute Process.alive?(cache_pid)
     end

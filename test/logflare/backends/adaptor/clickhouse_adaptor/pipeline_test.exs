@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
 
   # Arbitrary day bucket value — pipeline only passes it through telemetry/OTEL
@@ -157,14 +158,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, query_result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      [first_row] = query_result
-      assert %{"count" => 2} = first_row
+      assert {:ok, {[%{"count" => 2}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) as count FROM #{table_name}"
+               )
     end
 
     test "handles empty messages list", %{context: context} do
@@ -227,7 +225,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, query_result} =
+      {:ok, {query_result, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT event_message, timestamp FROM #{table_name} ORDER BY timestamp DESC"
@@ -277,13 +275,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, query_result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 3}] = query_result
+      assert {:ok, {[%{"count" => 3}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) as count FROM #{table_name}"
+               )
     end
 
     test "routes metric events to metrics table", %{
@@ -314,13 +310,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
-      {:ok, query_result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = query_result
+      assert {:ok, {[%{"count" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) as count FROM #{table_name}"
+               )
     end
 
     test "routes trace events to traces table", %{
@@ -350,13 +344,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
-      {:ok, query_result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = query_result
+      assert {:ok, {[%{"count" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) as count FROM #{table_name}"
+               )
     end
 
     test "inserts logs with all scalar fields readable via SELECT", %{
@@ -387,7 +379,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, [row]} =
+      {:ok, {[row], _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           """
@@ -451,7 +443,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
-      {:ok, [row]} =
+      {:ok, {[row], _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           """
@@ -507,7 +499,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
-      {:ok, [row]} =
+      {:ok, {[row], _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           """
@@ -590,7 +582,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           Pipeline.ack(:ack_ref, [], [failed_message])
         end)
 
-      assert log =~ "Dropping 1 ClickHouse events after #{max_retries} retries"
+      assert log =~ "Dropping 1 ClickHouse events: exhausted #{max_retries} retries"
       assert_receive {:deleted_batch, _backend_id, [deleted_event]}
       assert deleted_event.id == event.id
     end
@@ -719,7 +711,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert_receive {:requeued, [requeued_event]}
         assert requeued_event.retries == 1
         assert requeued_event.body["event_message"] == "Retriable"
-        assert log =~ "Dropping 1 ClickHouse events after #{max_retries} retries"
+        assert log =~ "Dropping 1 ClickHouse events: exhausted #{max_retries} retries"
       end
     end
   end
@@ -825,6 +817,149 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert_receive {:insert_opts, opts}
       assert Keyword.get(opts, :async) == false
+    end
+  end
+
+  describe "handle_batch/4 circuit breaker" do
+    test "does not consult the breaker before inserting (initial attempts are never gated)", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      test_pid = self()
+
+      Mimic.reject(CircuitBreaker, :check, 1)
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn _backend,
+                                                             _events,
+                                                             _event_type,
+                                                             _opts ->
+        send(test_pid, :inserted)
+        :ok
+      end)
+
+      log_event = build(:log_event, source: source, message: "Test message")
+
+      messages = [
+        %Message{data: log_event, acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}}
+      ]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      assert [%Message{status: :ok}] =
+               Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+
+      assert_received :inserted
+    end
+
+    test "records a failure when the insert fails", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      test_pid = self()
+      expected_backend_id = backend.id
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn _backend,
+                                                             _events,
+                                                             _event_type,
+                                                             _opts ->
+        {:error, "boom"}
+      end)
+
+      Mimic.expect(CircuitBreaker, :record_failure, fn %{id: id} ->
+        send(test_pid, {:recorded_failure, id})
+        :ok
+      end)
+
+      log_event = build(:log_event, source: source, message: "Test message")
+
+      messages = [
+        %Message{data: log_event, acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}}
+      ]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      assert [%Message{status: {:failed, "boom"}}] =
+               Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+
+      assert_received {:recorded_failure, ^expected_backend_id}
+    end
+  end
+
+  describe "ack/3 circuit breaker" do
+    test "sheds retriable messages instead of requeuing when the breaker is open", %{
+      source: source,
+      backend: backend
+    } do
+      Mimic.stub(CircuitBreaker, :check, fn _backend_id -> {:error, :circuit_open, 0} end)
+
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+
+      failed_message = %Message{
+        data: event,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "boom"}
+      }
+
+      test_pid = self()
+      expected_backend_id = backend.id
+
+      Mimic.expect(Logflare.Backends.IngestEventQueue, :delete_batch, fn {:consolidated, bid},
+                                                                         events ->
+        send(test_pid, {:deleted_batch, bid, events})
+        :ok
+      end)
+
+      Mimic.reject(Logflare.Backends.IngestEventQueue, :add_to_table, 2)
+
+      log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
+
+      assert_receive {:deleted_batch, ^expected_backend_id, [_event]}
+      assert log =~ "circuit breaker open"
+    end
+
+    test "requeues retriable messages when the breaker is closed", %{
+      source: source,
+      backend: backend
+    } do
+      Mimic.stub(CircuitBreaker, :check, fn _backend_id -> :ok end)
+
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+
+      failed_message = %Message{
+        data: event,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "boom"}
+      }
+
+      test_pid = self()
+
+      Mimic.expect(Logflare.Backends.IngestEventQueue, :delete_batch, fn {:consolidated, _bid},
+                                                                         _events ->
+        :ok
+      end)
+
+      Mimic.expect(Logflare.Backends.IngestEventQueue, :add_to_table, fn {:consolidated, _bid},
+                                                                         events ->
+        send(test_pid, {:requeued, events})
+        :ok
+      end)
+
+      Pipeline.ack(:ack_ref, [], [failed_message])
+
+      assert_receive {:requeued, [requeued_event]}
+      assert requeued_event.retries == 1
     end
   end
 end

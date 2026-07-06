@@ -56,6 +56,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
   # =============================================================================
 
   @spec uuid(Ecto.UUID.t() | String.t()) :: binary()
+  def uuid(
+        <<a::binary-size(8), ?-, b::binary-size(4), ?-, c::binary-size(4), ?-, d::binary-size(4),
+          ?-, e::binary-size(12)>> = uuid_string
+      ) do
+    case Base.decode16(<<a::binary, b::binary, c::binary, d::binary, e::binary>>, case: :mixed) do
+      {:ok, <<u1::64, u2::64>>} ->
+        <<u1::64-little, u2::64-little>>
+
+      _other ->
+        raise ArgumentError, "invalid UUID: #{inspect(uuid_string)}"
+    end
+  end
+
   def uuid(uuid_string) when is_non_empty_binary(uuid_string) do
     uuid_raw =
       uuid_string
@@ -358,24 +371,39 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
 
   def map(items, key_encoder, value_encoder)
       when is_map(items) and is_function(key_encoder, 1) and is_function(value_encoder, 1) do
-    pairs = Map.to_list(items)
-    encode_map_pairs(pairs, key_encoder, value_encoder)
+    :maps.fold(
+      fn k, v, acc -> [acc, key_encoder.(k), value_encoder.(v)] end,
+      [varint(map_size(items))],
+      items
+    )
   end
 
   def map(items, key_encoder, value_encoder)
       when is_list(items) and is_function(key_encoder, 1) and is_function(value_encoder, 1) do
-    encode_map_pairs(items, key_encoder, value_encoder)
-  end
-
-  defp encode_map_pairs(pairs, key_encoder, value_encoder) do
     [
-      varint(length(pairs))
-      | Enum.flat_map(pairs, fn {k, v} -> [key_encoder.(k), value_encoder.(v)] end)
+      varint(length(items))
+      | Enum.map(items, fn {k, v} -> [key_encoder.(k), value_encoder.(v)] end)
     ]
   end
 
   @spec map_string_string(map() | [{String.t(), String.t()}]) :: iodata()
-  def map_string_string(items), do: map(items, &string/1, &string/1)
+  def map_string_string(items) when is_map(items) do
+    :maps.fold(&fold_string_string/3, [varint(map_size(items))], items)
+  end
+
+  def map_string_string(items) when is_list(items) do
+    map(items, &string/1, &string/1)
+  end
+
+  @spec fold_string_string(String.t() | iodata(), String.t() | iodata(), iodata()) :: iodata()
+  defp fold_string_string(key, value, acc) when is_binary(key) and is_binary(value) do
+    [acc, varint(byte_size(key)), key, varint(byte_size(value)), value]
+  end
+
+  # Fallback for non-binary (iodata) keys/values -- preserves string/1 behavior.
+  defp fold_string_string(key, value, acc) do
+    [acc, string(key), string(value)]
+  end
 
   @spec map_string_uint64(map() | [{String.t(), non_neg_integer()}]) :: iodata()
   def map_string_uint64(items), do: map(items, &string/1, &uint64/1)

@@ -8,10 +8,13 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Users
   alias Logflare.Sources
   alias Logflare.Backends
+  alias Logflare.Backends.QueryError
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
 
   def source_and_user(_context) do
@@ -67,6 +70,60 @@ defmodule Logflare.Backends.UserMonitoringTest do
       end)
     end
 
+    test "query error logs are routed to user's system source when monitoring is on", %{
+      user: user,
+      source: source
+    } do
+      {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
+      system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
+
+      error = %QueryError{
+        kind: :backend_error,
+        raw_error: %{"message" => "raw query detail"},
+        backend: Logflare.Backends.Adaptor.BigQueryAdaptor
+      }
+
+      TestUtils.retry_assert(fn ->
+        assert capture_log(fn ->
+                 QueryError.log(error,
+                   user_id: user.id,
+                   source_token: source.token
+                 )
+               end) =~ "Backend query error"
+
+        assert Enum.any?(
+                 Backends.list_recent_logs(system_source),
+                 &query_error_log_event?/1
+               )
+      end)
+    end
+
+    test "invalid query errors are not routed to user's system source when monitoring is on", %{
+      user: user,
+      source: source
+    } do
+      {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
+      system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
+
+      error = %QueryError{
+        kind: :invalid_query,
+        raw_error: %{"message" => "raw user query detail"},
+        backend: Logflare.Backends.Adaptor.BigQueryAdaptor
+      }
+
+      assert capture_log(fn ->
+               QueryError.log(error,
+                 user_id: user.id,
+                 source_token: source.token
+               )
+             end) == ""
+
+      refute Enum.any?(
+               Backends.list_recent_logs(system_source),
+               &query_error_log_event?/1
+             )
+    end
+
     test "are not routed to user's system source when not monitoring", %{
       user: user,
       source: source
@@ -85,6 +142,17 @@ defmodule Logflare.Backends.UserMonitoringTest do
              )
     end
   end
+
+  defp query_error_log_event?(%{
+         body: %{
+           "event_message" => "Backend query error",
+           "metadata" => %{"error_kind" => "backend_error", "error_string" => error_string}
+         }
+       }) do
+    error_string =~ "raw query detail"
+  end
+
+  defp query_error_log_event?(_event), do: false
 
   describe "system monitoring labels" do
     setup :start_otel_exporter
@@ -361,6 +429,59 @@ defmodule Logflare.Backends.UserMonitoringTest do
                                 "endpoint_id" => ^endpoint_id,
                                 "user_id" => _,
                                 "endpoint_uuid" => _
+                              }
+                            ]
+                          }
+                        }
+                        | _
+                      ]},
+                     5_000
+    end
+
+    test "endpoints.query emits backend_id and backend_type in attributes" do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 _dataset_id,
+                                                 _table_name,
+                                                 opts ->
+        send(pid, {:insert_all, opts[:body].rows})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      user = insert(:user, system_monitoring: true)
+      source = insert(:source, user: user, system_source_type: :metrics)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, QueryResult.new([%{"result" => "1"}], %{total_bytes_processed: 100})}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          language: :ch_sql,
+          query: "SELECT 1 as result",
+          backend: backend
+        )
+
+      assert {:ok, _} = Endpoints.run_query(endpoint)
+      :timer.sleep(1000)
+
+      backend_id = backend.id
+
+      assert_receive {:insert_all,
+                      [
+                        %{
+                          json: %{
+                            "attributes" => [
+                              %{
+                                "backend_id" => ^backend_id,
+                                "backend_type" => "clickhouse"
                               }
                             ]
                           }

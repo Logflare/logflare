@@ -346,11 +346,26 @@ defmodule Logflare.Backends.IngestEventQueue do
   def add_to_table({sid_bid_pid, tid}, batch, _opts) when is_tuple(sid_bid_pid) do
     objects =
       for %{id: id} = event <- batch do
-        {id, :pending, event, :erlang.external_size(event.body)}
+        # New/requeued rows start unclaimed (claim counter 0, claimed_at 0); see claim_pending/3.
+        {id, :pending, event, :erlang.external_size(event.body), 0, 0}
       end
 
-    :ets.insert(tid, objects)
-    :ok
+    try do
+      :ets.insert(tid, objects)
+      :ok
+    rescue
+      ArgumentError ->
+        # The owning producer died and ETS reclaimed its table between tid
+        # resolution and this insert. Re-route to the supervisor-owned startup
+        # queue (where a clean producer exit also drains to) so the batch is not
+        # lost; give up only if the startup queue itself is gone.
+        emit_stale_ets_table_telemetry()
+
+        case sid_bid_pid do
+          {_, _, nil} -> {:error, :not_initialized}
+          _ -> add_to_table(put_elem(sid_bid_pid, 2, nil), batch)
+        end
+    end
   end
 
   def add_to_table({_, _, _} = sid_bid_pid, batch, _opts) do
@@ -399,7 +414,8 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     if tid != nil do
       for event <- events do
-        :ets.update_element(tid, event.id, {2, :ingested})
+        # Clear claimed_at on exit from :processing so it only carries a real stamp while in flight.
+        :ets.update_element(tid, event.id, [{2, :ingested}, {6, 0}])
       end
 
       {:ok, Enum.count(events)}
@@ -486,7 +502,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def total_pending({_sid, _bid, _pid} = sid_bid_pid) do
     ms =
       Ex2ms.fun do
-        {_event_id, :pending, _event, _size} -> true
+        {_event_id, :pending, _event, _size, _claim, _claimed_at} -> true
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -504,7 +520,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   def total_by_status({_, _} = sid_bid, status) do
     ms =
       Ex2ms.fun do
-        {_event_id, event_status, _event, _size} when event_status == ^status -> true
+        {_event_id, event_status, _event, _size, _claim, _claimed_at}
+        when event_status == ^status ->
+          true
       end
 
     traverse_queues(
@@ -528,7 +546,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def take_pending(sid_bid_pid, n) when is_integer(n) do
     ms =
       Ex2ms.fun do
-        {_event_id, :pending, event, _size} -> event
+        {_event_id, :pending, event, _size, _claim, _claimed_at} -> event
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -556,28 +574,48 @@ defmodule Logflare.Backends.IngestEventQueue do
   def take_pending_ids(sid_bid_pid, n) when is_integer(n) do
     ms =
       Ex2ms.fun do
-        {event_id, :pending, _event, size} -> {event_id, size}
+        {event_id, :pending, _event, size, _claim, _claimed_at} -> {event_id, size}
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
-         size when is_integer(size) <- :ets.info(tid, :size),
-         {taken_pairs, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      # Deduplicate first — ets.select with write_concurrency can return the same
-      # element more than once, which would create duplicate Broadway messages.
-      # Filter out events concurrently deleted between select and update_element.
-      # update_element returns false when the key no longer exists (e.g. janitor drop race).
+         {taken_pairs, _cont} <- :ets.select(tid, ms, n) do
+      # One monotonic read per batch (not per event); every row claimed in this batch shares
+      # the same claimed_at stamp, which is all the stale-recovery janitor needs.
+      claimed_at = System.monotonic_time(:millisecond)
+
+      # The claim counter's 0 -> 1 winner takes the event; a 2+ result (another consumer,
+      # or a write_concurrency duplicate row within this select) loses, so no dedup needed.
       confirmed =
-        taken_pairs
-        |> Enum.uniq_by(fn {id, _size} -> id end)
-        |> Enum.filter(fn {id, _size} ->
-          :ets.update_element(tid, id, {2, :processing})
-        end)
+        Enum.filter(taken_pairs, fn {id, _size} -> claim_pending(tid, id, claimed_at) end)
 
       {:ok, confirmed, tid}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, [], nil}
     end
+  end
+
+  # Claim invariant:
+  #   * every `:pending` row has `claim == 0` and `claimed_at == 0`
+  #   * `update_counter` is the atomic election; the `:processing` write is a separate step
+  #   * the winning claim stamps `claimed_at` with the batch's monotonic time so the
+  #     QueueJanitor can recover rows stuck in `:processing` past a staleness threshold
+  #   * any transition back to `:pending` must reset `claim` and `claimed_at` (add_to_table/3,
+  #     the QueueJanitor reset, and update_status/3 all do)
+  #   * id_passing and non-id_passing producers never share a pid-keyed queue, so the
+  #     claim path and the mark_ingested/pop path never touch the same rows
+  @spec claim_pending(:ets.tid(), term(), integer()) :: boolean()
+  defp claim_pending(tid, id, claimed_at) do
+    # Return update_element/3's result: it is false for a missing key, so a row deleted
+    # between the counter bump and the status write is rejected rather than claimed.
+    if :ets.update_counter(tid, id, {5, 1}) == 1 do
+      :ets.update_element(tid, id, [{2, :processing}, {6, claimed_at}])
+    else
+      false
+    end
+  rescue
+    # The row was deleted before the counter bump; update_counter raises on a missing key.
+    ArgumentError -> false
   end
 
   @doc """
@@ -594,7 +632,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending(sid_bid_pid, n) when is_integer(n) do
     select_ms =
       Ex2ms.fun do
-        {event_id, :pending, event, _size} -> {event_id, event}
+        {event_id, :pending, event, _size, _claim, _claimed_at} -> {event_id, event}
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -618,7 +656,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def fetch_events({_, _, _} = sid_bid_pid, n) do
     ms =
       Ex2ms.fun do
-        {_event_id, _, event, _size} -> event
+        {_event_id, _, event, _size, _claim, _claimed_at} -> event
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -669,43 +707,74 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   def truncate_table({:consolidated, _bid, _pid} = key, status, n)
       when status in [:all, :pending, :ingested],
-      do: do_truncate_table(key, status, n)
+      do: truncate_tid(get_tid(key), status, n)
 
   def truncate_table({sid, _bid, _pid} = key, status, n)
       when is_integer(sid) and status in [:all, :pending, :ingested],
-      do: do_truncate_table(key, status, n)
+      do: truncate_tid(get_tid(key), status, n)
 
-  defp do_truncate_table(key, :all, 0) do
-    with tid when tid != nil <- get_tid(key) do
-      :ets.delete_all_objects(tid)
-      :ok
-    else
-      nil -> {:error, :not_initialized}
-    end
+  @doc """
+  Truncates a queue by its already-resolved `tid`, tolerating a stale
+  (deleted) table.
+
+  This is the tid-based counterpart to `truncate_table/3`, which resolves the
+  tid via `get_tid/1` first. The owning producer can die and ETS can reclaim
+  its table between that resolution and the operations here; in that case the
+  ETS calls raise `ArgumentError` (or `:ets.info/2` returns `:undefined`).
+  Both are treated as a gone queue: `:stale_table` telemetry is emitted and
+  `{:error, :not_initialized}` is returned instead of crashing the caller.
+  """
+  @spec truncate_tid(:ets.tid() | nil, :all | :pending | :ingested, integer()) ::
+          :ok | {:error, :not_initialized}
+  def truncate_tid(nil, status, _n) when status in [:all, :pending, :ingested],
+    do: {:error, :not_initialized}
+
+  def truncate_tid(tid, :all, 0) do
+    :ets.delete_all_objects(tid)
+    :ok
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_initialized}
   end
 
-  defp do_truncate_table(key, status, n) do
+  def truncate_tid(tid, status, n) when status in [:all, :pending, :ingested] do
     ms =
       Ex2ms.fun do
-        {_event_id, _event_status, event, _size} = obj when ^status == :all -> obj
-        {_event_id, event_status, event, _size} = obj when event_status == ^status -> obj
+        {_event_id, _event_status, event, _size, _claim, _claimed_at} = obj
+        when ^status == :all ->
+          obj
+
+        {_event_id, event_status, event, _size, _claim, _claimed_at} = obj
+        when event_status == ^status ->
+          obj
       end
 
     del_ms =
       Ex2ms.fun do
-        {_event_id, _event_status, _event, _size} = _obj when ^status == :all -> true
-        {_event_id, event_status, _event, _size} = _obj when event_status == ^status -> true
+        {_event_id, _event_status, _event, _size, _claim, _claimed_at} = _obj
+        when ^status == :all ->
+          true
+
+        {_event_id, event_status, _event, _size, _claim, _claimed_at} = _obj
+        when event_status == ^status ->
+          true
       end
 
-    with tid when tid != nil <- get_tid(key),
-         size when is_integer(size) <- :ets.info(tid, :size) do
+    with size when is_integer(size) <- :ets.info(tid, :size) do
       to_insert = select_to_insert(tid, ms, size, n)
       :ets.select_delete(tid, del_ms)
       :ets.insert(tid, to_insert)
       :ok
     else
-      nil -> {:error, :not_initialized}
+      # :undefined from :ets.info/2 when the table was reclaimed before the
+      # size read.
+      _ -> {:error, :not_initialized}
     end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_initialized}
   end
 
   @doc """
@@ -718,7 +787,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   rescue
     ArgumentError ->
-      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+      emit_stale_ets_table_telemetry()
       :ok
   end
 
@@ -728,23 +797,33 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec update_status(:ets.tid(), term(), :pending | :processing | :ingested) :: :ok
   def update_status(tid, id, status) do
-    :ets.update_element(tid, id, {2, status})
+    # Keep claim/claimed_at consistent with the target status in the same atomic update:
+    #   * :pending — reset claim and claimed_at so the row is claimable and not seen as stale
+    #   * :processing — stamp claimed_at so stale recovery can age the row out
+    #   * :ingested — clear claimed_at; it only carries a real stamp while in flight
+    update =
+      case status do
+        :pending -> [{2, :pending}, {5, 0}, {6, 0}]
+        :processing -> [{2, :processing}, {6, System.monotonic_time(:millisecond)}]
+        :ingested -> [{2, :ingested}, {6, 0}]
+      end
+
+    :ets.update_element(tid, id, update)
     :ok
   rescue
     ArgumentError ->
-      :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
+      emit_stale_ets_table_telemetry()
       :ok
   end
 
   @doc """
   Returns the list of event IDs currently marked as `:processing` in a queue.
-  Used by QueueJanitor to detect stale in-flight events.
   """
   @spec list_processing_ids(table_key() | consolidated_table_key()) :: [term()]
   def list_processing_ids(key) do
     ms =
       Ex2ms.fun do
-        {id, :processing, _event, _size} -> id
+        {id, :processing, _event, _size, _claim, _claimed_at} -> id
       end
 
     with tid when tid != nil <- get_tid(key),
@@ -752,6 +831,77 @@ defmodule Logflare.Backends.IngestEventQueue do
       ids
     else
       _ -> []
+    end
+  end
+
+  @doc """
+  Returns up to `limit` IDs of `:processing` events claimed at or before `cutoff`.
+
+  `cutoff` is a `System.monotonic_time(:millisecond)` value; rows whose `claimed_at`
+  stamp is `<= cutoff` have been in flight longer than the staleness threshold. Status
+  is pinned to `:processing` in the match head, so `:pending`/`:ingested` rows (which
+  carry `claimed_at == 0`) are never returned regardless of the monotonic clock's sign.
+
+  `limit` bounds the IDs returned, not necessarily the rows scanned: the table is not
+  indexed by `claimed_at`, so ETS may walk further to find matching stale rows.
+
+  Used by QueueJanitor to detect stale in-flight events.
+  """
+  @spec list_stale_processing_ids(
+          table_key() | consolidated_table_key(),
+          integer(),
+          pos_integer()
+        ) ::
+          [term()]
+  def list_stale_processing_ids(key, cutoff, limit) do
+    ms =
+      Ex2ms.fun do
+        {id, :processing, _event, _size, _claim, claimed_at} when claimed_at <= ^cutoff -> id
+      end
+
+    with tid when tid != nil <- get_tid(key),
+         {ids, _cont} <- :ets.select(tid, ms, limit) do
+      ids
+    else
+      _ -> []
+    end
+  end
+
+  @doc """
+  Resets an exact stale `:processing` row back to `:pending` with `new_event`, clearing the
+  claim counter and `claimed_at`.
+
+  `expected` is the full row a caller previously observed via `:ets.lookup/2`. The match pins
+  every field, so a row that was acked, deleted, or re-claimed (carrying a newer `claimed_at`)
+  between observation and this call does not match and is left untouched. Returns `:reset` when
+  the row was replaced, `:skip` otherwise.
+  """
+  @spec reset_stale_event(:ets.tid(), tuple(), LogEvent.t()) :: :reset | :skip
+  def reset_stale_event(
+        tid,
+        {id, :processing, _event, size, _claim, _claimed_at} = expected,
+        new_event
+      ) do
+    case :ets.select_replace(tid, [
+           {expected, [], [{:const, {id, :pending, new_event, size, 0, 0}}]}
+         ]) do
+      1 -> :reset
+      0 -> :skip
+    end
+  end
+
+  @doc """
+  Deletes an exact stale `:processing` row.
+
+  `expected` is the full row a caller previously observed; the match pins every field (see
+  `reset_stale_event/3`), so a row changed between observation and this call is left untouched.
+  Returns `:drop` when the row was deleted, `:skip` otherwise.
+  """
+  @spec drop_stale_event(:ets.tid(), tuple()) :: :drop | :skip
+  def drop_stale_event(tid, {_id, :processing, _event, _size, _claim, _claimed_at} = expected) do
+    case :ets.select_delete(tid, [{expected, [], [true]}]) do
+      1 -> :drop
+      0 -> :skip
     end
   end
 
@@ -849,8 +999,11 @@ defmodule Logflare.Backends.IngestEventQueue do
     # chunk over table and drop
     ms =
       Ex2ms.fun do
-        {event_id, _status, _event, _size} = _obj when ^filter == :all -> event_id
-        {event_id, status, _event, _size} = _obj when status == ^filter -> event_id
+        {event_id, _status, _event, _size, _claim, _claimed_at} = _obj when ^filter == :all ->
+          event_id
+
+        {event_id, status, _event, _size, _claim, _claimed_at} = _obj when status == ^filter ->
+          event_id
       end
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
@@ -1020,5 +1173,10 @@ defmodule Logflare.Backends.IngestEventQueue do
         :ets.select(cont)
         |> select_traverse(func, acc)
     end
+  end
+
+  @spec emit_stale_ets_table_telemetry() :: :ok
+  defp emit_stale_ets_table_telemetry do
+    :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
   end
 end

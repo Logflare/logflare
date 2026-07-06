@@ -33,40 +33,51 @@ defmodule Logflare.Sources.Source.EmailNotificationServer do
     {:ok, current_inserts} = Counters.get_inserts(state.source_token)
     rate = current_inserts - state.inserts_since_boot
 
+    check_rate(state.notifications_every)
+
     if rate > 0 do
-      check_rate(state.notifications_every)
-
       source = Sources.Cache.get_by_id(state.source_token)
-      user = Users.Cache.get(source.user_id)
-
-      if source.notifications.user_email_notifications do
-        AccountEmail.source_notification(user, rate, source) |> Mailer.deliver()
-      end
-
-      stranger_emails = source.notifications.other_email_notifications
-
-      if stranger_emails do
-        other_emails = String.split(stranger_emails, ",")
-
-        for email <- other_emails do
-          AccountEmail.source_notification_for_others(String.trim(email), rate, source)
-          |> Mailer.deliver()
-        end
-      end
-
-      if source.notifications.team_user_ids_for_email do
-        send_email_notification(source, rate)
-      end
-
+      deliver_notifications(source, rate)
       {:noreply, %{state | inserts_since_boot: current_inserts}}
     else
-      check_rate(state.notifications_every)
       {:noreply, state}
     end
   end
 
   defp check_rate(notifications_every) do
     Process.send_after(self(), :check_rate, notifications_every)
+  end
+
+  defp deliver_notifications(source, rate) do
+    notify_user(source, rate)
+    notify_other_emails(source, rate)
+    notify_team_users(source, rate)
+  end
+
+  defp notify_user(source, rate) do
+    if source.notifications.user_email_notifications do
+      user = Users.Cache.get(source.user_id)
+      AccountEmail.source_notification(user, rate, source) |> Mailer.deliver()
+    end
+  end
+
+  defp notify_other_emails(source, rate) do
+    if stranger_emails = source.notifications.other_email_notifications do
+      stranger_emails
+      |> String.split(",")
+      |> Enum.each(fn email ->
+        email
+        |> String.trim()
+        |> AccountEmail.source_notification_for_others(rate, source)
+        |> Mailer.deliver()
+      end)
+    end
+  end
+
+  defp notify_team_users(source, rate) do
+    if source.notifications.team_user_ids_for_email do
+      send_email_notification(source, rate)
+    end
   end
 
   defp send_email_notification(source, rate) do

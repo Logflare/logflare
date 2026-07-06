@@ -21,6 +21,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Billing
   alias Logflare.BqRepo
@@ -42,7 +43,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @managed_service_account_partition_count 5
   @service_account_prefix "logflare-managed"
   @reservation_error_regex ~r/reservation/i
-  @search_reservation_query_timeout_ms 60_000
+  @search_query_timeout_ms 60_000
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
@@ -158,6 +159,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     Atom.to_string(source_token)
     |> String.replace("-", "_")
   end
+
+  @impl Logflare.Backends.Adaptor
+  def test_connection(_), do: {:error, :not_implemented}
 
   @impl Logflare.Backends.Adaptor
   def ecto_to_sql(%Ecto.Query{} = query, _opts) do
@@ -580,7 +584,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       dryRun: Keyword.get(opts, :dry_run, false),
       query_type: query_type,
       reservation: reservation
-    ] ++ query_timeout_opts(query_type, reservation)
+    ] ++ query_timeout_opts(query_type)
   end
 
   @spec resolve_reservation(
@@ -597,16 +601,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defp resolve_reservation(%User{}, _query_type, nil), do: nil
   defp resolve_reservation(%User{}, _query_type, override), do: override
 
-  @spec query_timeout_opts(query_type :: atom() | nil, reservation :: String.t() | nil) ::
-          Keyword.t()
-  defp query_timeout_opts(:search, reservation) when is_non_empty_binary(reservation) do
+  @spec query_timeout_opts(query_type :: atom() | nil) :: Keyword.t()
+  defp query_timeout_opts(:search) do
     [
-      jobTimeoutMs: @search_reservation_query_timeout_ms,
-      timeoutMs: @search_reservation_query_timeout_ms
+      jobTimeoutMs: @search_query_timeout_ms,
+      timeoutMs: @search_query_timeout_ms
     ]
   end
 
-  defp query_timeout_opts(_query_type, _reservation), do: []
+  defp query_timeout_opts(_query_type), do: []
 
   @spec execute_query_with_context(
           user_id :: integer(),
@@ -685,7 +688,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           query_opts :: Keyword.t()
         ) ::
           {:ok, QueryResult.t()}
-          | {:error, any()}
+          | {:error, QueryError.t()}
   defp execute_user_query(%User{} = user, project_id, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
     case BqRepo.query_with_sql_and_params(
@@ -704,18 +707,75 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
            bq_params: bq_params
          })}
 
-      {:error, %{body: body}} ->
-        decoded = Jason.decode!(body)["error"]
-        error = GenUtils.process_bq_errors(decoded, user.id)
-        maybe_warn_reservation_error(decoded, user, project_id, query_opts)
-        {:error, error}
+      {:error, error} ->
+        query_error =
+          error
+          |> to_query_error(user.id)
+          |> QueryError.log(
+            user_id: user.id,
+            bigquery_project_id: project_id
+          )
 
-      {:error, err} when is_atom(err) ->
-        {:error, GenUtils.process_bq_errors(err, user.id)}
+        maybe_warn_reservation_error(query_error, user, project_id, query_opts)
 
-      {:error, err} ->
-        {:error, err}
+        {:error, query_error}
     end
+  end
+
+  @spec to_query_error(Tesla.Env.t() | GenUtils.transport_error(), pos_integer()) ::
+          QueryError.t()
+  defp to_query_error(error, _user_id) when error in [:timeout, :closed, :emfile] do
+    %QueryError{
+      kind: :connection_error,
+      raw_error: error,
+      backend: __MODULE__
+    }
+  end
+
+  defp to_query_error(%{body: body}, user_id) when is_binary(body) do
+    with {:ok, %{"error" => raw_error}} <- Jason.decode(body),
+         %{"message" => _message} = processed_error <-
+           GenUtils.process_bq_errors(raw_error, user_id) do
+      processed_error
+      |> query_error_kind()
+      |> query_error(processed_error)
+    else
+      _error -> query_error(:backend_error, body)
+    end
+  end
+
+  defp to_query_error(%{body: body}, _user_id) do
+    query_error(:backend_error, body)
+  end
+
+  @spec query_error_kind(map()) :: QueryError.kind()
+  defp query_error_kind(%{"reason" => "billingTierLimitExceeded"}), do: :backend_error
+  defp query_error_kind(%{"reason" => "invalidQuery"}), do: :invalid_query
+
+  defp query_error_kind(%{"errors" => errors}) when is_list(errors) do
+    if Enum.any?(errors, &match?(%{"reason" => "invalidQuery"}, &1)) do
+      :invalid_query
+    else
+      :backend_error
+    end
+  end
+
+  defp query_error_kind(processed_error) do
+    with %{"message" => message} when is_binary(message) <- processed_error,
+         true <- String.starts_with?(message, ["Unrecognized name:", "Field name"]) do
+      :invalid_query
+    else
+      _ -> :backend_error
+    end
+  end
+
+  @spec query_error(QueryError.kind(), term()) :: QueryError.t()
+  defp query_error(kind, raw_error) do
+    %QueryError{
+      kind: kind,
+      raw_error: raw_error,
+      backend: __MODULE__
+    }
   end
 
   @spec pg_sql_to_bq_sql(sql :: String.t()) :: String.t()
@@ -741,19 +801,25 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @spec maybe_warn_reservation_error(
-          decoded :: any(),
+          error :: QueryError.t(),
           user :: User.t(),
           project_id :: String.t(),
           query_opts :: Keyword.t()
         ) :: :ok
-  defp maybe_warn_reservation_error(decoded, %User{} = user, project_id, query_opts) do
-    if reservation_error?(decoded) and not caller_logs_own_errors?(query_opts) do
+  defp maybe_warn_reservation_error(
+         %QueryError{raw_error: error},
+         %User{} = user,
+         project_id,
+         query_opts
+       ) do
+    with true <- reservation_error?(error),
+         false <- caller_logs_own_errors?(query_opts) do
       Logger.warning("Possible BigQuery reservation error",
         user_id: user.id,
         project_id: project_id,
         reservation: Keyword.get(query_opts, :reservation),
         query_type: Keyword.get(query_opts, :query_type),
-        bq_error_message: decoded["message"]
+        bq_error_message: error["message"]
       )
     end
 

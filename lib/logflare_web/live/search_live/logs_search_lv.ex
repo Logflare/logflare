@@ -9,6 +9,7 @@ defmodule LogflareWeb.Source.SearchLV do
   import LogflareWeb.ModalLiveHelpers
   import LogflareWeb.SearchLV.Utils
 
+  alias Logflare.Backends.QueryError
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Logs.SearchOperations
@@ -24,6 +25,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.User
   alias Logflare.Users
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
+  alias LogflareWeb.QueryErrorHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchLive.FormComponents
   alias LogflareWeb.SearchLive.SubheadComponents
@@ -675,7 +677,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:search_error, search_op}, %{assigns: %{source: source}} = socket) do
+  def handle_info({:search_error, search_op}, socket) do
     socket =
       case search_op.error do
         :halted ->
@@ -686,25 +688,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(chart_loading: false)
           |> put_halt_flash_message(search_op)
 
-        %Tesla.Env{status: 400} = err ->
-          Logger.error("Backend search error for source: #{source.token}",
-            error_string: inspect(err),
-            source_id: source.token
-          )
-
-          send(self(), :soft_pause)
-
-          socket
-          |> assign(loading: false)
-          |> assign(chart_loading: false)
-          |> put_flash_query_error(err)
-
         err ->
-          Logger.error("Backend search error for source: #{source.token}",
-            error_string: inspect(err),
-            source_id: source.token
-          )
-
           send(self(), :soft_pause)
 
           socket
@@ -1110,30 +1094,14 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  defp put_flash_query_error(socket, %Tesla.Env{status: 400} = response) do
-    case Jason.decode(response.body) do
-      {:ok, %{"error" => %{"message" => "Query exceeded limit for bytes billed:" <> rest}}} ->
-        [limit | _] = String.split(rest, ".")
+  defp put_flash_query_error(socket, response) do
+    message =
+      case response do
+        %QueryError{} = error -> QueryErrorHelpers.query_error_message(error)
+        _ -> QueryErrorHelpers.generic_query_error_message()
+      end
 
-        {size, units} = limit |> String.trim() |> String.to_integer() |> Utils.humanize_bytes()
-
-        socket
-        |> put_flash(
-          :error,
-          "Query halted: total bytes processed for this query is expected to be greater than #{round(size)} #{units}"
-        )
-
-      _ ->
-        put_flash_query_error(socket, nil)
-    end
-  end
-
-  defp put_flash_query_error(socket, _response) do
-    socket
-    |> put_flash(
-      :error,
-      "Backend error! Retry your query. Please contact support if this continues."
-    )
+    put_flash(socket, :error, "Query halted: " <> message)
   end
 
   defp put_halt_flash_message(socket, search_op) do

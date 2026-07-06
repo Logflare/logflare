@@ -117,7 +117,7 @@ defmodule Logflare.Sql.DialectTranslation do
     {k,
      %{
        v
-       | "name" => [%{"quote_style" => quote_style, "value" => table_name}]
+       | "name" => [AstUtils.build_identifier(table_name, quote_style)]
      }}
   end
 
@@ -173,13 +173,13 @@ defmodule Logflare.Sql.DialectTranslation do
            v
            | "args" => %{
                "List" => %{
-                 "args" => [%{"Unnamed" => %{"Expr" => %{"Wildcard" => nil}}}],
+                 "args" => [%{"Unnamed" => "Wildcard"}],
                  "clauses" => [],
                  "duplicate_treatment" => nil
                }
              },
              "filter" => bq_to_pg_convert_functions(filter),
-             "name" => [%{"quote_style" => nil, "value" => "count"}]
+             "name" => [AstUtils.build_identifier("count")]
          }}
 
       "timestamp_sub" ->
@@ -237,7 +237,7 @@ defmodule Logflare.Sql.DialectTranslation do
                  "duplicate_treatment" => nil
                }
              },
-             "name" => [%{"quote_style" => nil, "value" => "date_trunc"}]
+             "name" => [AstUtils.build_identifier("date_trunc")]
          }}
 
       _ ->
@@ -528,7 +528,7 @@ defmodule Logflare.Sql.DialectTranslation do
 
       # If no valid identifiers remain, this is an error case - use empty Identifier
       [] ->
-        {"Identifier", %{"quote_style" => nil, "value" => ""}}
+        {"Identifier", AstUtils.build_identifier("")}
     end
   end
 
@@ -574,7 +574,6 @@ defmodule Logflare.Sql.DialectTranslation do
     cte_table_names = extract_cte_aliases([ast])
     cte_tables_tree = get_in(ast, ["Query", "with", "cte_tables"])
 
-    # TOOD: refactor
     cte_aliases =
       for table <- cte_table_names, into: %{} do
         tree =
@@ -582,21 +581,9 @@ defmodule Logflare.Sql.DialectTranslation do
             get_in(tree, ["alias", "name", "value"]) == table
           end)
 
-        fields =
-          if tree != nil do
-            for field <- get_in(tree, ["query", "body", "Select", "projection"]) || [],
-                {expr, identifier} <- field,
-                expr in ["UnnamedExpr", "ExprWithAlias"] do
-              get_identifier_alias(identifier)
-            end
-          else
-            []
-          end
-
-        {table, fields}
+        {table, cte_projection_aliases(tree)}
       end
 
-    # TOOD: refactor
     cte_from_aliases =
       for table <- cte_table_names, into: %{} do
         tree =
@@ -604,18 +591,7 @@ defmodule Logflare.Sql.DialectTranslation do
             get_in(tree, ["alias", "name", "value"]) == table
           end)
 
-        aliases =
-          if tree != nil do
-            for from_tree <- get_in(tree, ["query", "body", "Select", "from"]),
-                table_name = get_in(from_tree, ["relation", "Table", "alias", "name", "value"]),
-                table_name != nil do
-              table_name
-            end
-          else
-            []
-          end
-
-        {table, aliases}
+        {table, cte_from_table_aliases(tree)}
       end
 
     ast
@@ -639,6 +615,26 @@ defmodule Logflare.Sql.DialectTranslation do
       ast ->
         ast
     end)
+  end
+
+  defp cte_projection_aliases(nil), do: []
+
+  defp cte_projection_aliases(tree) do
+    for field <- get_in(tree, ["query", "body", "Select", "projection"]) || [],
+        {expr, identifier} <- field,
+        expr in ["UnnamedExpr", "ExprWithAlias"] do
+      get_identifier_alias(identifier)
+    end
+  end
+
+  defp cte_from_table_aliases(nil), do: []
+
+  defp cte_from_table_aliases(tree) do
+    for from_tree <- get_in(tree, ["query", "body", "Select", "from"]) || [],
+        table_name = get_in(from_tree, ["relation", "Table", "alias", "name", "value"]),
+        table_name != nil do
+      table_name
+    end
   end
 
   defp extract_cte_aliases(ast) do
@@ -671,8 +667,8 @@ defmodule Logflare.Sql.DialectTranslation do
           "BinaryOp" => %{
             "left" => %{
               "CompoundIdentifier" => [
-                %{"quote_style" => nil, "value" => table},
-                %{"quote_style" => nil, "value" => "body"}
+                AstUtils.build_identifier(table),
+                AstUtils.build_identifier("body")
               ]
             },
             "op" => "LongArrow",
@@ -692,7 +688,7 @@ defmodule Logflare.Sql.DialectTranslation do
         "Nested" => %{
           "BinaryOp" => %{
             "left" => %{
-              "Identifier" => %{"quote_style" => nil, "value" => "body"}
+              "Identifier" => AstUtils.build_identifier("body")
             },
             "op" => "LongArrow",
             "right" => %{
@@ -715,8 +711,8 @@ defmodule Logflare.Sql.DialectTranslation do
         "BinaryOp" => %{
           "left" => %{
             "CompoundIdentifier" => [
-              %{"quote_style" => nil, "value" => table},
-              %{"quote_style" => nil, "value" => field}
+              AstUtils.build_identifier(table),
+              AstUtils.build_identifier(field)
             ]
           },
           "op" => select_json_operator(data, false),
@@ -736,7 +732,7 @@ defmodule Logflare.Sql.DialectTranslation do
     %{
       "Nested" => %{
         "BinaryOp" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "left" => %{"Identifier" => AstUtils.build_identifier(base)},
           "op" => select_json_operator(data, false),
           "right" => %{
             "Value" => %{"SingleQuotedString" => key}
@@ -758,7 +754,7 @@ defmodule Logflare.Sql.DialectTranslation do
     %{
       "Nested" => %{
         "BinaryOp" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "left" => %{"Identifier" => AstUtils.build_identifier(base)},
           "op" => select_json_operator(data, true),
           "right" => %{
             "Value" => %{"SingleQuotedString" => path}
@@ -779,7 +775,7 @@ defmodule Logflare.Sql.DialectTranslation do
         %{
           "Nested" => %{
             "BinaryOp" => %{
-              "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+              "left" => %{"Identifier" => AstUtils.build_identifier(base)},
               "op" => select_json_operator(data, false),
               "right" => %{
                 "Value" => %{"SingleQuotedString" => key}
@@ -795,7 +791,7 @@ defmodule Logflare.Sql.DialectTranslation do
         %{
           "Nested" => %{
             "BinaryOp" => %{
-              "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+              "left" => %{"Identifier" => AstUtils.build_identifier(base)},
               "op" => select_json_operator(data, true),
               "right" => %{
                 "Value" => %{"SingleQuotedString" => path}
@@ -814,7 +810,7 @@ defmodule Logflare.Sql.DialectTranslation do
     %{
       "Nested" => %{
         "BinaryOp" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "left" => %{"Identifier" => AstUtils.build_identifier(base)},
           "op" => select_json_operator(data, false),
           "right" => %{
             "Value" => %{"SingleQuotedString" => name}
@@ -1063,7 +1059,7 @@ defmodule Logflare.Sql.DialectTranslation do
     if normalized_identifier do
       {"ExprWithAlias",
        %{
-         "alias" => %{"quote_style" => nil, "value" => normalized_identifier},
+         "alias" => AstUtils.build_identifier(normalized_identifier),
          "expr" => traverse_convert_identifiers(identifier, data)
        }}
     else
@@ -1162,8 +1158,8 @@ defmodule Logflare.Sql.DialectTranslation do
                "BinaryOp" => %{
                  "left" => %{
                    "CompoundIdentifier" => [
-                     %{"quote_style" => nil, "value" => table_alias},
-                     %{"quote_style" => nil, "value" => cte_field}
+                     AstUtils.build_identifier(table_alias),
+                     AstUtils.build_identifier(cte_field)
                    ]
                  },
                  "op" => op,
@@ -1252,8 +1248,8 @@ defmodule Logflare.Sql.DialectTranslation do
            "BinaryOp" => %{
              "left" => %{
                "CompoundIdentifier" => [
-                 %{"quote_style" => nil, "value" => cte_name},
-                 %{"quote_style" => nil, "value" => field}
+                 AstUtils.build_identifier(cte_name),
+                 AstUtils.build_identifier(field)
                ]
              },
              "op" => select_json_operator(data, false),
@@ -1272,8 +1268,8 @@ defmodule Logflare.Sql.DialectTranslation do
            "BinaryOp" => %{
              "left" => %{
                "CompoundIdentifier" => [
-                 %{"quote_style" => nil, "value" => cte_name},
-                 %{"quote_style" => nil, "value" => field}
+                 AstUtils.build_identifier(cte_name),
+                 AstUtils.build_identifier(field)
                ]
              },
              "op" => select_json_operator(data, true),
@@ -1384,7 +1380,8 @@ defmodule Logflare.Sql.DialectTranslation do
               },
               "parameters" => "None",
               "filter" => nil,
-              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
+              "uses_odbc_syntax" => false,
+              "name" => [AstUtils.build_identifier("to_timestamp")],
               "null_treatment" => nil,
               "over" => nil,
               "within_group" => []
@@ -1430,7 +1427,8 @@ defmodule Logflare.Sql.DialectTranslation do
               },
               "parameters" => "None",
               "filter" => nil,
-              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
+              "uses_odbc_syntax" => false,
+              "name" => [AstUtils.build_identifier("to_timestamp")],
               "null_treatment" => nil,
               "over" => nil,
               "within_group" => []
@@ -1459,7 +1457,7 @@ defmodule Logflare.Sql.DialectTranslation do
         "expr" => expr,
         "data_type" => %{
           "Custom" => [
-            [%{"quote_style" => nil, "value" => "jsonb"}],
+            [AstUtils.build_identifier("jsonb")],
             []
           ]
         },
@@ -1475,7 +1473,7 @@ defmodule Logflare.Sql.DialectTranslation do
         "expr" => expr,
         "data_type" => %{
           "Custom" => [
-            [%{"quote_style" => nil, "value" => "jsonb"}],
+            [AstUtils.build_identifier("jsonb")],
             []
           ]
         },

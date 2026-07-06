@@ -8,6 +8,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.QueryError
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
@@ -429,7 +433,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       formatted_sql =
         """
-        SELECT
+        select
           t0.timestamp
         """
         |> String.trim()
@@ -463,9 +467,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       formatted_sql =
         """
-        SELECT
+        select
           (
-            CASE
+            case
         """
         |> String.trim()
 
@@ -1115,7 +1119,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
             %TFS{name: "deployment_time", type: "TIMESTAMP", mode: "NULLABLE"}
           ]
         }
-        |> then(&SchemaBuilder.build_table_schema(%{"testing" => "string"}, &1))
+        |> then(
+          &SchemaBuilder.build_table_schema(%{"query" => "string", "testing" => "string"}, &1)
+        )
 
       response_schema =
         %TS{
@@ -1123,9 +1129,17 @@ defmodule LogflareWeb.Source.SearchLVTest do
             %TFS{name: "deployment_time", type: "TIMESTAMP"}
           ]
         }
-        |> then(&SchemaBuilder.build_table_schema(%{"testing" => "string"}, &1))
+        |> then(
+          &SchemaBuilder.build_table_schema(%{"query" => "string", "testing" => "string"}, &1)
+        )
 
-      deployment_time = TestUtils.gen_bq_timestamp(~U[2026-04-27 04:22:46.765189Z])
+      respone_body = %{
+        "event_message" => "some modal message",
+        "testing" => "modal123",
+        "query" => "SELECT\\n1",
+        "deployment_time" => TestUtils.gen_bq_timestamp(~U[2026-04-27 04:22:46.765189Z]),
+        "id" => "some-uuid"
+      }
 
       {:ok, _user} =
         Logflare.Users.update_user_with_preferences(user, %{
@@ -1143,16 +1157,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # TODO: use expect, remove UDFs creation query
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-        {:ok,
-         TestUtils.gen_bq_response(
-           %{
-             "event_message" => "some modal message",
-             "testing" => "modal123",
-             "deployment_time" => deployment_time,
-             "id" => "some-uuid"
-           },
-           response_schema
-         )}
+        {:ok, TestUtils.gen_bq_response(respone_body, response_schema)}
       end)
 
       {:ok, view, _html} =
@@ -1174,16 +1179,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         query = opts[:body].query
         send(pid, {:query, query})
 
-        {:ok,
-         TestUtils.gen_bq_response(
-           %{
-             "event_message" => "some modal message",
-             "testing" => "modal123",
-             "deployment_time" => deployment_time,
-             "id" => "some-uuid"
-           },
-           response_schema
-         )}
+        {:ok, TestUtils.gen_bq_response(respone_body, response_schema)}
       end)
 
       TestUtils.retry_assert(fn ->
@@ -1195,9 +1191,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
       TestUtils.retry_assert(fn ->
         html = render(view)
 
+        assert html
+               |> Floki.parse_document!()
+               |> Floki.find("#metadata-raw-json-code")
+               |> Floki.text() =~ "SELECT\\\\n1"
+
         assert html =~ "Raw JSON"
         assert html =~ "modal123"
         assert html =~ "some modal message"
+        assert html =~ "SELECT\n1"
         assert html =~ "deployment_time"
         assert html =~ "1777263766765189"
         assert html =~ "2026-04-27 14:22:46"
@@ -1370,19 +1372,143 @@ defmodule LogflareWeb.Source.SearchLVTest do
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
 
-      error_response =
-        %{
-          error: %{
-            message:
-              "Query exceeded limit for bytes billed: 2000000000. 20004857600 or higher required."
-          }
-        }
-        |> Jason.encode!()
+      message =
+        "Query exceeded limit for bytes billed: 2000000000. 20004857600 or higher required."
 
-      send(view.pid, {:search_error, %{error: %Tesla.Env{status: 400, body: error_response}}})
+      send_query_error(
+        view,
+        backend: BigQueryAdaptor,
+        raw_error: %{
+          "message" => message,
+          "reason" => "billingTierLimitExceeded"
+        }
+      )
 
       assert render(view) =~
                "Query halted: total bytes processed for this query is expected to be greater than 2 GB"
+    end
+
+    test "shows user-facing error for backend missing field errors", %{
+      conn: conn,
+      source: source
+    } do
+      assert {:ok, view, _html} =
+               live_with_redirect(
+                 conn,
+                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
+               )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      message = "Unrecognized name: notthere at [1:8]"
+
+      send_query_error(
+        view,
+        backend: BigQueryAdaptor,
+        raw_error: %{"message" => message}
+      )
+
+      assert render(view) =~
+               "Query halted: Field &quot;notthere&quot; does not exist."
+    end
+
+    test "shows user-facing error for BigQuery nested missing field errors", %{
+      conn: conn,
+      source: source
+    } do
+      assert {:ok, view, _html} =
+               live_with_redirect(
+                 conn,
+                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
+               )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      message = "Field name nonexistent does not exist in STRUCT<level STRING> at [1:42]"
+
+      send_query_error(
+        view,
+        backend: BigQueryAdaptor,
+        raw_error: %{"message" => message}
+      )
+
+      assert render(view) =~
+               "Query halted: Field &quot;nonexistent&quot; does not exist."
+    end
+
+    test "shows user-facing error for ClickHouse missing field errors", %{
+      conn: conn,
+      source: source
+    } do
+      assert {:ok, view, _html} =
+               live_with_redirect(
+                 conn,
+                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
+               )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      message =
+        "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER) (version 26.2.19.43 (official build))\n"
+
+      send_query_error(
+        view,
+        backend: ClickHouseAdaptor,
+        raw_error: %Ch.Error{message: message}
+      )
+
+      assert render(view) =~
+               "Query halted: Field &quot;notthere&quot; does not exist."
+    end
+
+    test "shows user-facing error for Postgres missing field errors", %{
+      conn: conn,
+      source: source
+    } do
+      assert {:ok, view, _html} =
+               live_with_redirect(
+                 conn,
+                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
+               )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      send_query_error(
+        view,
+        backend: PostgresAdaptor,
+        raw_error: %Postgrex.Error{message: ~s|column "notthere" does not exist|}
+      )
+
+      assert render(view) =~
+               "Query halted: Field &quot;notthere&quot; does not exist."
+    end
+
+    test "shows generic backend error for unclassified query errors", %{
+      conn: conn,
+      source: source
+    } do
+      assert {:ok, view, _html} =
+               live_with_redirect(
+                 conn,
+                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
+               )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      send_query_error(
+        view,
+        backend: BigQueryAdaptor,
+        raw_error: %RuntimeError{message: "raw backend syntax error"},
+        description: nil
+      )
+
+      assert render(view) =~
+               "Backend error! Retry your query. Please contact support if this continues."
     end
 
     test "redirected for non-owner user", %{conn: conn, source: source} do
@@ -2281,6 +2407,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ source.name
       assert view |> has_element?(~s|a[href="/sources/#{source.id}?t=#{team_user.team_id}"]|)
     end
+  end
+
+  defp send_query_error(view, attrs) do
+    attrs = Keyword.put_new(attrs, :kind, :invalid_query)
+    error = struct!(QueryError, attrs)
+
+    send(view.pid, {:search_error, %{error: error}})
   end
 
   defp wait_for_search_completed(prev_completed_at, timeout \\ 2_000) do

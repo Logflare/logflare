@@ -134,7 +134,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolManager
   @impl true
   def handle_info({:DOWN, _ref, :process, pid, _reason}, %__MODULE__{pool_pid: pid} = state)
       when is_pid(pid) do
-    Logger.warning("ClickHouse native TCP pool died", backend_id: state.backend_id)
+    Logger.warning("ClickHouse native TCP pool died",
+      backend_id: state.backend_id,
+      host: backend_host(state.backend_id)
+    )
 
     {:noreply, %{state | pool_pid: nil}}
   end
@@ -147,6 +150,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolManager
   defp record_activity(%__MODULE__{} = state) do
     %{state | last_activity: System.system_time(:millisecond)}
   end
+
+  @spec backend_host(pos_integer()) :: String.t() | nil
+  defp backend_host(backend_id) do
+    case Backends.Cache.get_backend(backend_id) do
+      %Backend{} = backend -> config_host(backend)
+      _ -> nil
+    end
+  end
+
+  @spec config_host(Backend.t()) :: String.t() | nil
+  defp config_host(%Backend{config: %{url: url}}) when is_binary(url), do: URI.parse(url).host
+  defp config_host(_backend), do: nil
 
   @spec start_pool(__MODULE__.t()) :: {:ok, __MODULE__.t()} | {{:error, term()}, __MODULE__.t()}
   defp start_pool(%__MODULE__{backend_id: backend_id} = state) do
@@ -176,6 +191,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolManager
       {:error, reason} ->
         Logger.error("Failed to start ClickHouse native TCP pool",
           backend_id: backend_id,
+          host: config_host(backend),
           reason: reason
         )
 

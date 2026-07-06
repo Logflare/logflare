@@ -104,7 +104,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
 
       assert result == :ok
 
-      {:ok, rows} =
+      {:ok, {rows, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT id, name FROM pool_basic"
@@ -149,7 +149,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
 
       assert result == :ok
 
-      {:ok, rows} =
+      {:ok, {rows, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT id, name FROM pool_insert ORDER BY id"
@@ -277,7 +277,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
       # Verify schema cache is populated and persists across inserts
       assert SchemaCache.get(backend.id, cache_key) == [{"id", "UInt64"}, {"name", "String"}]
 
-      {:ok, rows} =
+      {:ok, {rows, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT id, name FROM pool_reuse ORDER BY id"
@@ -341,7 +341,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
 
       assert result == :ok
 
-      {:ok, rows} =
+      {:ok, {rows, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT id, name FROM pool_checkout_ping ORDER BY id"
@@ -395,7 +395,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolTest do
 
       assert Enum.all?(results, &(&1 == :ok))
 
-      {:ok, rows} =
+      {:ok, {rows, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT id, name FROM pool_concurrent ORDER BY id"

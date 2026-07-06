@@ -49,16 +49,14 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
         {:ok, %Tesla.Env{status: 401, body: "no auth"}}
       end)
 
-      assert {:error, reason} = @subject.test_connection(backend)
-      assert reason =~ "401"
+      assert {:error, :http_client_error} = @subject.test_connection(backend)
     end
 
     test "returns error on transport failure", %{backend: backend} do
       @client
       |> expect(:send, fn _req -> {:error, :nxdomain} end)
 
-      assert {:error, reason} = @subject.test_connection(backend)
-      assert reason =~ "nxdomain"
+      assert {:error, :unknown_error} = @subject.test_connection(backend)
     end
   end
 

@@ -80,6 +80,8 @@ config :logflare,
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
          single_tenant: Env.get_boolean("LOGFLARE_SINGLE_TENANT"),
          supabase_mode: Env.get_boolean("LOGFLARE_SUPABASE_MODE"),
+         unsafe_disable_ssrf_s3_endpoint_check:
+           Env.get_boolean("LOGFLARE_UNSAFE_DISABLE_SSRF_S3_ENDPOINT_CHECK"),
          public_access_token:
            System.get_env("LOGFLARE_PUBLIC_ACCESS_TOKEN") || System.get_env("LOGFLARE_API_KEY"),
          private_access_token: System.get_env("LOGFLARE_PRIVATE_ACCESS_TOKEN"),
