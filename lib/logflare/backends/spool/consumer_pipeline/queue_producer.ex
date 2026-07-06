@@ -46,16 +46,17 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     new_state = %{state | demand: state.demand + demand}
     throttled = over_limit?()
 
-    {events, state} = cond do
-      buffered?(new_state) and not throttled ->
+    {events, state} =
+      cond do
+        buffered?(new_state) and not throttled ->
           emit_from_buffer(new_state)
 
-      throttled ->
-        {[], schedule_poll(new_state, @throttle_interval)}
+        throttled ->
+          {[], schedule_poll(new_state, @throttle_interval)}
 
-      true ->
-        {[], schedule_poll(new_state, 0)}
-    end
+        true ->
+          {[], schedule_poll(new_state, 0)}
+      end
 
     {:noreply, events, state}
   end
