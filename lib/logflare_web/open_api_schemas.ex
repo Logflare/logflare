@@ -138,7 +138,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       updated_at: %Schema{type: :string, format: :"date-time"}
     }
 
-    use LogflareWeb.OpenApi, properties: @properties, required: [:name]
+    use LogflareWeb.OpenApi, properties: @properties, required: [:lql_string]
   end
 
   defmodule KeyValueApiSchema do
