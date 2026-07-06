@@ -20,7 +20,11 @@ defmodule LogflareWeb.Api.AlertController do
   )
 
   def index(%{assigns: %{user: user}} = conn, _params) do
-    alerts = Alerting.list_alert_queries_user_access(user)
+    alerts =
+      user
+      |> Alerting.list_alert_queries_user_access()
+      |> Enum.map(&Alerting.preload_alert_query/1)
+
     json(conn, alerts)
   end
 
@@ -35,7 +39,7 @@ defmodule LogflareWeb.Api.AlertController do
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
     with {:ok, alert} <- Alerting.fetch_alert_query_by_user_access(user, token: token) do
-      json(conn, alert)
+      json(conn, Alerting.preload_alert_query(alert))
     end
   end
 
@@ -52,7 +56,7 @@ defmodule LogflareWeb.Api.AlertController do
     with {:ok, alert} <- Alerting.create_alert_query(user, params) do
       conn
       |> put_status(201)
-      |> json(alert)
+      |> json(Alerting.preload_alert_query(alert))
     end
   end
 
@@ -78,7 +82,7 @@ defmodule LogflareWeb.Api.AlertController do
 
         %{method: "PUT"} ->
           put_status(conn, 200)
-          |> json(updated)
+          |> json(Alerting.preload_alert_query(updated))
       end
     end
   end

@@ -170,7 +170,8 @@ defmodule LogflareWeb.OpenApiSchemas do
       cron: %Schema{type: :string},
       slack_hook_url: %Schema{type: :string},
       webhook_notification_url: %Schema{type: :string},
-      enabled: %Schema{type: :boolean}
+      enabled: %Schema{type: :boolean},
+      backends: %Schema{type: :array, items: LogflareWeb.OpenApiSchemas.BackendApiSchema}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query, :cron, :language]

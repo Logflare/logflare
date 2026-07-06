@@ -84,18 +84,17 @@ defmodule LogflareWeb.Api.AlertControllerTest do
     } do
       alert = insert(:alert, user: user)
 
-      assert %{"token" => alert_token} =
+      assert %{"token" => alert_token, "backends" => [%{"id" => backend_id}]} =
                conn
                |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [backend.id]})
                |> json_response(200)
 
-      updated =
-        Logflare.Alerting.get_alert_query!(alert.id)
-        |> Logflare.Alerting.preload_alert_query()
-
-      assert alert_token == updated.token
-      assert [%{id: backend_id}] = updated.backends
       assert backend_id == backend.id
+
+      assert %{"backends" => [%{"id" => ^backend_id}]} =
+               conn
+               |> get(~p"/api/alerts/#{alert_token}")
+               |> json_response(200)
     end
 
     test "attacker cannot attach a victim's backend to their alert", %{
