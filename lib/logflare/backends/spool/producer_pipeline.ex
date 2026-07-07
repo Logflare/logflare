@@ -284,7 +284,8 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
                 source_id: log_event.source_id,
                 body: log_event.body,
                 event_type: log_event.event_type,
-                ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond)
+                ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond),
+                via_rule_id: log_event.via_rule_id
               }
             ]
 
@@ -362,7 +363,8 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       source_id: log_event.source_id,
       body: log_event.body,
       event_type: log_event.event_type,
-      ingested_at: log_event.ingested_at
+      ingested_at: log_event.ingested_at,
+      via_rule_id: log_event.via_rule_id
     })
   end
 

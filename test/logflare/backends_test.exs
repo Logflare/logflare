@@ -1896,30 +1896,42 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
-    test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on",
+    test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
       stub_add_to_table_observer(self())
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source)
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
       refute_receive {:add_to_table, {:spool_producer, nil}}
     end
 
-    test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling is true",
+    test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :disable)
       stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-      assert {:ok, 1} = Backends.ingest_logs(params, source)
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
       refute_receive {:add_to_table, {:spool_producer, nil}}
     end
 
-    test "dispatches to the spool producer only when both the global mode and source.enable_spooling are true",
+    test "dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "does not dispatch to the spool producer when allow_spooling is omitted, even if the global mode and source.enable_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
       stub_add_to_table_observer(self())
@@ -1928,7 +1940,21 @@ defmodule Logflare.BackendsTest do
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source)
 
-      assert_receive {:add_to_table, {:spool_producer, nil}}
+      refute_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      le = build(:log_event, source: source)
+      le = %{le | via_rule_id: 123}
+
+      assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
     end
   end
 end

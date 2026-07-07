@@ -584,13 +584,15 @@ defmodule Logflare.Backends do
           {:ok, count :: pos_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
           {:ok, count :: pos_integer()} | {:error, [term()]}
-  def ingest_logs(event_params, source, backend \\ nil) do
+  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
+          {:ok, count :: pos_integer()} | {:error, [term()]}
+  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
     ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
 
-    if spool_producer_mode?() and source.enable_spooling do
+    if spoolable?(log_events, source, allow_spooling) do
       dispatch_to_spool_producer(log_events)
     else
       maybe_broadcast_and_route(source, log_events)
@@ -598,6 +600,19 @@ defmodule Logflare.Backends do
     end
 
     if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+  end
+
+  # Requires an explicit opt-in (allow_spooling), not just global mode +
+  # source.enable_spooling: SourceRouter's re-entrant calls (routing an
+  # already-matched rule to its backend/sink) never pass allow_spooling, so
+  # they always land here as false regardless of source config. The
+  # via_rule_id check is defense-in-depth on top of that — even a caller that
+  # does pass allow_spooling: true should never spool an event that's
+  # already been routed once
+  @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
+  defp spoolable?(log_events, source, allow_spooling) do
+    allow_spooling and spool_producer_mode?() and source.enable_spooling and
+      Enum.all?(log_events, &(&1.via_rule_id == nil))
   end
 
   @doc """

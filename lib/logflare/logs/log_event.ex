@@ -61,7 +61,7 @@ defmodule Logflare.LogEvent do
           body: body,
           event_type: event_type,
           ingested_at: ingested_at_us
-        },
+        } = record,
         source
       )
       when is_integer(ingested_at_us) do
@@ -80,7 +80,8 @@ defmodule Logflare.LogEvent do
       valid: true,
       drop: false,
       day_bucket: day_bucket,
-      ingest_freshness: ingest_freshness
+      ingest_freshness: ingest_freshness,
+      via_rule_id: Map.get(record, :via_rule_id)
     }
   end
 
@@ -90,7 +91,7 @@ defmodule Logflare.LogEvent do
           "body" => body,
           "event_type" => event_type,
           "ingested_at" => ingested_at
-        },
+        } = record,
         source
       ) do
     {:ok, ingested_at_dt, _} = DateTime.from_iso8601(ingested_at)
@@ -108,7 +109,8 @@ defmodule Logflare.LogEvent do
       valid: true,
       drop: false,
       day_bucket: day_bucket,
-      ingest_freshness: ingest_freshness
+      ingest_freshness: ingest_freshness,
+      via_rule_id: Map.get(record, "via_rule_id")
     }
   end
 

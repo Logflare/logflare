@@ -42,7 +42,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
   # helpers, rather than hand-rolling or destructuring the ETS tuple
   # ourselves, means a row-shape change there shows up as a test failure
   # here instead of silently drifting out of sync.
-  defp log_event_message(body \\ %{"message" => "hello"}) do
+  defp log_event_message(body \\ %{"message" => "hello"}, via_rule_id \\ nil) do
     log_event = %LogEvent{
       id: Ecto.UUID.generate(),
       source_id: 1,
@@ -50,7 +50,8 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       event_type: :log,
       ingested_at: DateTime.utc_now(),
       valid: true,
-      drop: false
+      drop: false,
+      via_rule_id: via_rule_id
     }
 
     key = {:spool_producer, nil, self()}
@@ -234,6 +235,48 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
         assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :put], _,
                         %{format: unquote(expected_tag), result: :ok}}
       end
+    end
+  end
+
+  describe "handle_batch/4 via_rule_id preservation" do
+    test "ndjson output includes via_rule_id" do
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _bucket, _key, body, _opts ->
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      stub(QueueMod, :publish, fn _ref, _body -> :ok end)
+
+      messages = [log_event_message(%{"message" => "hello"}, 123)]
+      batch_info = %{size: 1, trigger: :size}
+      context = handle_batch_context(format: :ndjson, compress: false)
+
+      ProducerPipeline.handle_batch(:spool, messages, batch_info, context)
+
+      assert_receive {:put, body}
+      assert %{"via_rule_id" => 123} = Jason.decode!(String.trim(body))
+    end
+
+    test "etf output includes via_rule_id" do
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _bucket, _key, body, _opts ->
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      stub(QueueMod, :publish, fn _ref, _body -> :ok end)
+
+      messages = [log_event_message(%{"message" => "hello"}, 123)]
+      batch_info = %{size: 1, trigger: :size}
+      context = handle_batch_context(format: :etf, compress: false)
+
+      ProducerPipeline.handle_batch(:spool, messages, batch_info, context)
+
+      assert_receive {:put, body}
+      assert [%{via_rule_id: 123}] = :erlang.binary_to_term(body)
     end
   end
 end
