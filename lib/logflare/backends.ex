@@ -609,7 +609,6 @@ defmodule Logflare.Backends do
     ensure_source_sup_started(source)
     log_events = Enum.map(spool_records, &LogEvent.make_from_spool(&1, source))
     count = length(log_events)
-    increment_counters(source, count)
 
     :telemetry.execute(
       [:logflare, :backends, :spool_consumer, :dispatch],

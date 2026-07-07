@@ -792,6 +792,21 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Looks up a single event by id in a tid, returning its status, the event
+  itself, and its byte size — hiding the row's internal representation
+  (which also carries claim/claimed_at for the stale-processing recovery
+  mechanism; see queue_janitor.ex) from callers that just want the event.
+  """
+  @spec lookup_id(:ets.tid(), term()) ::
+          {term(), :pending | :processing | :ingested, LogEvent.t(), non_neg_integer()} | nil
+  def lookup_id(tid, id) do
+    case :ets.lookup(tid, id) do
+      [{^id, status, event, byte_size, _claim, _claimed_at}] -> {id, status, event, byte_size}
+      [] -> nil
+    end
+  end
+
+  @doc """
   Safely deletes a single event by id from a tid, ignoring stale (deleted) tables.
   Emits telemetry if the table no longer exists.
   """
@@ -962,9 +977,13 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Deletes multiple events from the table.
   """
-  @spec delete_batch(source_backend_pid() | queues_key() | consolidated_queues_key(), [
-          LogEvent.t()
-        ]) :: :ok
+  @spec delete_batch(
+          source_backend_pid()
+          | queues_key()
+          | consolidated_queues_key()
+          | spool_producer_queues_key(),
+          [LogEvent.t()]
+        ) :: :ok
   def delete_batch(_sid_bid, []), do: :ok
 
   def delete_batch({_, _} = sid_bid, events) when is_list(events) do

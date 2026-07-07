@@ -9,9 +9,11 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
   alias Broadway.Message
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Storage
   alias Logflare.Backends.Spool.Queue
+  alias Logflare.LogEvent
 
   @behaviour Broadway.Acknowledger
 
@@ -19,6 +21,8 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @default_batch_timeout 5_000
   @max_spool_file_size 32 * 1024 * 1024
   @early_flush_file_size 12 * 1024 * 1024
+  @default_max_retries 0
+  @spool_producer_key {:spool_producer, nil}
 
   @processor_concurrency 6
   @batcher_concurrency 4
@@ -77,11 +81,55 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
   @impl Broadway.Acknowledger
   def ack(_ref, successful, failed) do
-    for %{data: {id, tid, _size}} <- successful ++ failed do
-      :ets.delete(tid, id)
+    for %{data: {id, tid, _size}} <- successful do
+      IngestEventQueue.delete_id(tid, id)
     end
 
+    maybe_requeue_failed(failed)
+
     :ok
+  end
+
+  # Requeue failed spool writes for retry — same bounded-retry pattern as
+  # Source.BigQuery.Pipeline.maybe_requeue_failed/3: bump the event's own
+  # :retries count and re-mark it :pending so BufferProducer picks it up
+  # again, giving up (deleting) once max_retries is exhausted.
+  defp maybe_requeue_failed([]), do: :ok
+
+  defp maybe_requeue_failed(failed) do
+    max_retries = spool_max_retries()
+
+    to_requeue =
+      Enum.reduce(failed, [], fn %{data: {id, tid, _size}}, acc ->
+        case IngestEventQueue.lookup_id(tid, id) do
+          {_id, _status, %LogEvent{retries: retries} = le, _byte_size}
+          when retries < max_retries ->
+            [%LogEvent{le | retries: (retries || 0) + 1} | acc]
+
+          {_id, _status, _event, _byte_size} ->
+            IngestEventQueue.delete_id(tid, id)
+            acc
+
+          nil ->
+            acc
+        end
+      end)
+
+    requeue(to_requeue)
+  end
+
+  defp requeue([]), do: :ok
+
+  defp requeue(events) do
+    Logger.warning("spool_producer_pipeline: requeuing #{length(events)} failed events for retry")
+
+    IngestEventQueue.delete_batch(@spool_producer_key, events)
+    IngestEventQueue.add_to_table(@spool_producer_key, events)
+  end
+
+  defp spool_max_retries do
+    Application.get_env(:logflare, :spool, [])
+    |> Keyword.get(:max_retries, @default_max_retries)
   end
 
   @impl Broadway
@@ -206,9 +254,12 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   defp upload_plain(messages, bucket, file_key, storage_mod) do
     body =
       Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
-        case :ets.lookup(tid, id) do
-          [{^id, _status, log_event, _byte_size}] -> [encode_line(log_event), "\n"]
-          [] -> []
+        case IngestEventQueue.lookup_id(tid, id) do
+          {_id, _status, log_event, _byte_size} ->
+            [encode_line(log_event), "\n"]
+
+          nil ->
+            []
         end
       end)
       |> IO.iodata_to_binary()
@@ -225,8 +276,8 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   defp upload_etf(compress, messages, bucket, file_key, storage_mod) do
     records =
       Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
-        case :ets.lookup(tid, id) do
-          [{^id, _status, log_event, _byte_size}] ->
+        case IngestEventQueue.lookup_id(tid, id) do
+          {_id, _status, log_event, _byte_size} ->
             [
               %{
                 id: log_event.id,
@@ -237,7 +288,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
               }
             ]
 
-          [] ->
+          nil ->
             []
         end
       end)
@@ -270,11 +321,11 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
       chunks =
         Enum.flat_map(messages, fn %{data: {id, tid, _size}} ->
-          case :ets.lookup(tid, id) do
-            [{^id, _status, log_event, _byte_size}] ->
+          case IngestEventQueue.lookup_id(tid, id) do
+            {_id, _status, log_event, _byte_size} ->
               :zlib.deflate(z, [encode_line(log_event), "\n"], :none)
 
-            [] ->
+            nil ->
               []
           end
         end)

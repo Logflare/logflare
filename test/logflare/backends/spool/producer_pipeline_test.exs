@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
   import Mimic
 
   alias Broadway.Message
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.ProducerPipeline
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
@@ -32,10 +33,15 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
   defp message(size), do: %{data: {Ecto.UUID.generate(), :fake_tid, size}}
 
-  # Builds a real ETS-backed {id, tid, size} message, matching what
-  # BufferProducer's id_passing: true path actually hands to handle_batch/4 —
-  # unlike message/1 above, this is a real log event the upload functions can
-  # :ets.lookup/2 and serialize.
+  # Builds a real ETS-backed {id, tid, size} message via the same
+  # IngestEventQueue.upsert_tid/1 + add_to_table/2 path real ingestion uses,
+  # matching what BufferProducer's id_passing: true path actually hands to
+  # handle_batch/4 — unlike message/1 above, this is a real log event the
+  # upload functions can look up and serialize. Going through the real
+  # insertion (add_to_table/2) and lookup (IngestEventQueue.lookup_id/2)
+  # helpers, rather than hand-rolling or destructuring the ETS tuple
+  # ourselves, means a row-shape change there shows up as a test failure
+  # here instead of silently drifting out of sync.
   defp log_event_message(body \\ %{"message" => "hello"}) do
     log_event = %LogEvent{
       id: Ecto.UUID.generate(),
@@ -47,9 +53,11 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       drop: false
     }
 
-    byte_size = :erlang.external_size(log_event)
-    tid = :ets.new(:test_producer_pipeline_ets, [:set, :public])
-    :ets.insert(tid, {log_event.id, :pending, log_event, byte_size})
+    key = {:spool_producer, nil, self()}
+    {:ok, tid} = IngestEventQueue.upsert_tid(key)
+    :ok = IngestEventQueue.add_to_table(key, [log_event])
+
+    {_id, _status, _event, byte_size} = IngestEventQueue.lookup_id(tid, log_event.id)
 
     %Message{
       data: {log_event.id, tid, byte_size},
