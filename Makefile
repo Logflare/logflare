@@ -317,18 +317,6 @@ deploy.staging.versioned:
 		--region=us-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
-# One-off/idempotent: creates the spool GCS bucket + Pub/Sub topics/subscriptions
-# in staging. Not wired into CI or the regular deploy targets — run manually.
-provision.staging.spool:
-	@gcloud config set project logflare-staging
-	gcloud builds submit . \
-		--config=cloudbuild/staging/provision-spool.yaml \
-		--region=us-central1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-
-.PHONY: provision.staging.spool
-
-
 deploy.prod.versioned:
 	@gcloud config set project logflare-232118
 	@echo "Creating staging instance template and deploying..."
