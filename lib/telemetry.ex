@@ -296,6 +296,11 @@ defmodule Logflare.Telemetry do
         tags: [:result],
         description: "Spool queue publish (SQS send / PubSub publish) count"
       ),
+      sum("logflare.backends.spool.producer.batch.count",
+        tags: [:result, :stage],
+        description:
+          "Spool producer batches by end-to-end outcome (:ok, or :error tagged with which stage — :upload or :notify — failed)"
+      ),
       sum("logflare.backends.spool.queue.receive.count",
         tags: [:result],
         description: "Spool queue receive (SQS/PubSub) message count"

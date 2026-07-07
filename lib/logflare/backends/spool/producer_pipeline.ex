@@ -147,33 +147,50 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         storage_mod: storage_mod,
         queue_mod: queue_mod
       }) do
+    :telemetry.execute(
+      [:logflare, :backends, :pipeline, :handle_batch],
+      %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+      %{backend_type: :spool_producer}
+    )
+
     partition = :rand.uniform(partitions) - 1
     file_key = "#{partition}/#{generate_uuidv7()}.#{file_extension(format, compress)}"
-    result = do_upload(format, compress, messages, bucket, file_key, storage_mod)
 
-    case result do
-      {:ok, _} ->
-        :telemetry.execute(
-          [:logflare, :backends, :pipeline, :handle_batch],
-          %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
-          %{backend_type: :spool_producer}
-        )
+    with {:upload, {:ok, _}} <-
+           {:upload, do_upload(format, compress, messages, bucket, file_key, storage_mod)},
+         {:notify, :ok} <-
+           {:notify, notify_queue(queue_mod, queue_ref, file_key, batch_info.size)} do
+      emit_batch_result(:ok, nil, batch_info.size)
 
-        notify_queue(queue_mod, queue_ref, file_key, batch_info.size)
+      Logger.debug("spool_producer_pipeline: wrote #{batch_info.size} events to spool",
+        key: file_key
+      )
 
-        Logger.debug("spool_producer_pipeline: wrote #{batch_info.size} events to spool",
-          key: file_key
-        )
+      messages
+    else
+      {stage, {:error, reason}} ->
+        # On a :notify failure the file is already durably written at
+        # file_key — this only means nothing was told to go fetch it.
+        # Marking failed re-uploads the same events under a fresh key on
+        # retry (see maybe_requeue_failed/1) rather than leaving this batch
+        # stuck at a file nothing will ever be notified about; the orphaned
+        # file at the old key is cleaned up by the bucket's lifecycle policy.
+        emit_batch_result(:error, stage, batch_info.size)
 
-        messages
-
-      {:error, reason} ->
         Logger.error(
-          "spool_producer_pipeline: write failed key=#{file_key} error=#{inspect(reason)}"
+          "spool_producer_pipeline: #{stage} failed key=#{file_key} error=#{inspect(reason)}"
         )
 
         Enum.map(messages, &Message.failed(&1, reason))
     end
+  end
+
+  defp emit_batch_result(result, stage, batch_size) do
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :producer, :batch],
+      %{count: batch_size},
+      %{result: result, stage: stage}
+    )
   end
 
   # Throttle state is sampled once per batch (on the first message after a
@@ -388,6 +405,8 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         Logger.error(
           "spool_producer_pipeline: queue notify failed for #{file_key}: #{inspect(reason)}"
         )
+
+        {:error, reason}
     end
   end
 

@@ -162,6 +162,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
     test "uploads and publishes on success, returning messages unchanged and emitting telemetry" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :put])
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :publish])
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :producer, :batch])
 
       stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
       stub(QueueMod, :publish, fn _ref, _body -> :ok end)
@@ -180,10 +181,14 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :publish],
                       %{count: 1}, %{result: :ok}}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :producer, :batch],
+                      %{count: 1}, %{result: :ok, stage: nil}}
     end
 
     test "maps messages to failed and emits storage.put telemetry with result: :error on upload failure" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :put])
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :producer, :batch])
 
       stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:error, :timeout} end)
 
@@ -197,10 +202,14 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :put], _,
                       %{format: :ndjson_gz, result: :error}}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :producer, :batch],
+                      %{count: 1}, %{result: :error, stage: :upload}}
     end
 
     test "publish failure still emits queue.publish telemetry with result: :error" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :publish])
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :producer, :batch])
 
       stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
       stub(QueueMod, :publish, fn _ref, _body -> {:error, :unavailable} end)
@@ -212,6 +221,22 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :publish],
                       %{count: 1}, %{result: :error}}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :producer, :batch],
+                      %{count: 1}, %{result: :error, stage: :notify}}
+    end
+
+    test "publish failure marks messages as failed instead of acking them, even though the file uploaded successfully" do
+      stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
+      stub(QueueMod, :publish, fn _ref, _body -> {:error, :unavailable} end)
+
+      messages = [log_event_message()]
+      batch_info = %{size: 1, trigger: :size}
+
+      [result_message] =
+        ProducerPipeline.handle_batch(:spool, messages, batch_info, handle_batch_context())
+
+      assert result_message.status == {:failed, :unavailable}
     end
 
     for {format, compress, expected_tag} <- [
