@@ -25,6 +25,16 @@ defmodule Logflare.Logs.IngestTransformers do
   # digit rule is suppressed when a reserved prefix or dash has already added one.
   @spec to_bigquery_column_spec(term()) :: term()
   defp to_bigquery_column_spec(key) when is_binary(key) do
+    if bq_safe_key?(key) do
+      key
+    else
+      transform_bq_key(key)
+    end
+  end
+
+  defp to_bigquery_column_spec(key), do: key
+
+  defp transform_bq_key(key) do
     {body, dash?, non_alnum?} = walk_bq_key(key, <<>>, false, false)
     prefix? = bq_reserved_prefix?(key)
     digit? = not prefix? and not dash? and leading_digit?(key)
@@ -36,8 +46,6 @@ defmodule Logflare.Logs.IngestTransformers do
     |> prepend_underscores(underscores)
     |> enforce_field_length()
   end
-
-  defp to_bigquery_column_spec(key), do: key
 
   @compile {:inline, bool_int: 1}
   defp bool_int(true), do: 1
@@ -58,6 +66,23 @@ defmodule Logflare.Logs.IngestTransformers do
   defp bq_reserved_prefix?("_CHANGE_TYPE" <> _), do: true
   defp bq_reserved_prefix?("_CHANGE_TIMESTAMP" <> _), do: true
   defp bq_reserved_prefix?(_), do: false
+
+  defp bq_safe_key?(key) when byte_size(key) > @max_field_length, do: false
+  defp bq_safe_key?(<<>>), do: true
+  defp bq_safe_key?(<<b, _rest::binary>>) when b in ?0..?9, do: false
+
+  defp bq_safe_key?(<<?_, _rest::binary>> = key),
+    do: not bq_reserved_prefix?(key) and bq_safe_chars?(key)
+
+  defp bq_safe_key?(key), do: bq_safe_chars?(key)
+
+  defp bq_safe_chars?(<<>>), do: true
+
+  defp bq_safe_chars?(<<b, rest::binary>>)
+       when b in ?0..?9 or b in ?A..?Z or b in ?a..?z or b == ?_,
+       do: bq_safe_chars?(rest)
+
+  defp bq_safe_chars?(_), do: false
 
   defp leading_digit?(<<b, _::binary>>) when b in ?0..?9, do: true
   defp leading_digit?(_), do: false
