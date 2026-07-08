@@ -459,6 +459,36 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
+    test "can claim IDs with routing metadata without returning full events", %{
+      source: source,
+      sbp: sbp
+    } do
+      fresh =
+        build(:log_event, source: source)
+        |> Map.put(:event_type, :log)
+        |> Map.put(:day_bucket, 12_345)
+        |> Map.put(:ingest_freshness, :fresh)
+
+      stale =
+        build(:log_event, source: source)
+        |> Map.put(:event_type, :trace)
+        |> Map.put(:day_bucket, 54_321)
+        |> Map.put(:ingest_freshness, :stale)
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, [fresh, stale])
+
+      assert {:ok, metadata, tid} = IngestEventQueue.take_pending_ids_with_metadata(sbp, 2)
+      assert tid != nil
+
+      assert Enum.sort(metadata) ==
+               Enum.sort([
+                 {fresh.id, :erlang.external_size(fresh.body), :log, 12_345, :fresh},
+                 {stale.id, :erlang.external_size(stale.body), :trace, 54_321, :stale}
+               ])
+
+      assert IngestEventQueue.total_pending(sbp) == 0
+    end
+
     test "respects the requested count and leaves the remainder pending", %{
       source: source,
       sbp: sbp

@@ -116,9 +116,74 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert event_id == event.id
       assert backend_id == backend.id
     end
+
+    test "transforms metadata id-tuple into unrouted Broadway message with routing metadata", %{
+      backend: backend
+    } do
+      event = build(:log_event, message: "Test message")
+      tid = setup_processing_events([event])
+      opts = [backend_id: backend.id]
+
+      result =
+        Pipeline.transform(
+          {event.id, tid, 1000, event.event_type, event.day_bucket, event.ingest_freshness},
+          opts
+        )
+
+      assert %Message{
+               data: {event_id, ^tid, :log, day_bucket, :fresh},
+               batcher: nil,
+               batch_key: nil,
+               acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id}}
+             } = result
+
+      assert event_id == event.id
+      assert day_bucket == event.day_bucket
+      assert backend_id == backend.id
+    end
+
+    test "falls back to lookup routing when metadata tuple has invalid routing fields", %{
+      backend: backend
+    } do
+      event = build(:log_event, message: "Test message")
+      tid = setup_processing_events([event])
+
+      result =
+        Pipeline.transform(
+          {event.id, tid, 1000, nil, event.day_bucket, :fresh},
+          backend_id: backend.id
+        )
+
+      assert %Message{
+               data: {event_id, ^tid},
+               acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id}}
+             } = result
+
+      assert event_id == event.id
+      assert backend_id == backend.id
+    end
   end
 
   describe "handle_message/3" do
+    test "routes metadata messages without an ETS lookup", %{
+      context: context,
+      backend: backend
+    } do
+      event = build(:log_event)
+      tid = setup_processing_events([])
+
+      message = %Message{
+        data: {event.id, tid, event.event_type, event.day_bucket, event.ingest_freshness},
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+      }
+
+      result = Pipeline.handle_message(:default, message, context)
+
+      assert %Message{batcher: :ch_fresh, batch_key: {:log, day_bucket}} = result
+      assert result.data == {event.id, tid, :log, event.day_bucket}
+      assert day_bucket == event.day_bucket
+    end
+
     test "routes fresh log events to :ch_fresh batcher keyed by {event_type, day_bucket}", %{
       context: context,
       backend: backend
