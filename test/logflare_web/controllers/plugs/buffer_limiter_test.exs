@@ -88,7 +88,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     assert conn.halted == false
 
-    for _ <- 1..25_100 do
+    for _ <- 1..(round(Backends.max_buffer_queue_len() / 2) + 500) do
       le = build(:log_event)
       IngestEventQueue.add_to_table(table_key, [le])
       IngestEventQueue.add_to_table(other_table_key, [le])
