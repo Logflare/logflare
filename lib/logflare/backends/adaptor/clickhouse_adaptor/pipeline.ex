@@ -223,95 +223,158 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       }
     } do
       with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(event_type) do
-        z = :zlib.open()
-
-        try do
-          :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
-
-          {good, bad, chunks} =
-            Enum.reduce(messages, {[], [], []}, fn
-              %{data: {id, tid, ^event_type, _day_bucket}} = msg, {g, b, acc} ->
-                case IngestEventQueue.lookup_id(tid, id) do
-                  {^id, :processing, %LogEvent{} = event, _} ->
-                    mapped_body =
-                      event.body
-                      |> Mapper.map(compiled)
-                      |> Map.put("mapping_config_id", config_id)
-                      |> maybe_compute_duration(event_type)
-                      |> resolve_severity_number(event_type)
-
-                    row_chunk =
-                      :zlib.deflate(
-                        z,
-                        Ingester.encode_row(%{event | body: mapped_body}, event_type)
-                      )
-
-                    {[msg | g], b, [acc, row_chunk]}
-
-                  _ ->
-                    {g, [Message.failed(msg, :not_found) | b], acc}
-                end
-
-              msg, {g, b, acc} ->
-                {g, [Message.failed(msg, :not_found) | b], acc}
-            end)
-
-          miss_count = length(bad)
-
-          if miss_count > 0 do
-            Logger.warning(
-              "ClickHouse pipeline: #{miss_count} ETS misses in handle_batch, events lost",
-              backend_id: backend.id,
-              event_type: event_type
-            )
-          end
-
-          final_chunk = :zlib.deflate(z, "", :finish)
-          compressed = IO.iodata_to_binary([chunks, final_chunk])
-
-          case ClickHouseAdaptor.insert_log_events_compressed(
-                 backend,
-                 event_type,
-                 compressed,
-                 async: batcher_async?(batcher)
-               ) do
-            :ok ->
-              Enum.reverse(good) ++ Enum.reverse(bad)
-
-            {:error, reason} ->
-              CircuitBreaker.record_failure(backend)
-              Enum.map(Enum.reverse(good) ++ Enum.reverse(bad), &Message.failed(&1, reason))
-          end
-        after
-          :zlib.deflateEnd(z)
-          :zlib.close(z)
-        end
+        {good, bad, compressed} = stream_compress(messages, event_type, compiled, config_id)
+        emit_missing_ids_telemetry(bad, backend, event_type)
+        finalize_insert(backend, event_type, batcher, compressed, good, bad)
       else
-        {:error, reason} ->
-          Enum.map(messages, &Message.failed(&1, reason))
+        {:error, reason} -> Enum.map(messages, &Message.failed(&1, reason))
       end
+    end
+  end
+
+  # Streams each message's event through the mapper + RowBinary encoder directly into
+  # a gzip zlib stream, so the full batch is never materialized as a flat binary.
+  # Returns the messages that encoded successfully, the ones missing from ETS, and the
+  # finished compressed payload.
+  @spec stream_compress([Message.t()], TypeDetection.event_type(), reference(), String.t()) ::
+          {[Message.t()], [Message.t()], binary()}
+  defp stream_compress(messages, event_type, compiled, config_id) do
+    z = :zlib.open()
+
+    try do
+      :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
+
+      # good/bad end up reversed relative to `messages`; that's fine — Broadway
+      # partitions and re-reverses handle_batch/4's return by status internally,
+      # and neither the acknowledger nor ClickHouse cares about row order.
+      {good, bad, chunks} =
+        Enum.reduce(messages, {[], [], []}, fn message, acc ->
+          encode_message(z, event_type, compiled, config_id, message, acc)
+        end)
+
+      final_chunk = :zlib.deflate(z, "", :finish)
+      {good, bad, IO.iodata_to_binary([chunks, final_chunk])}
+    after
+      :zlib.deflateEnd(z)
+      :zlib.close(z)
+    end
+  end
+
+  @spec encode_message(
+          term(),
+          TypeDetection.event_type(),
+          reference(),
+          String.t(),
+          Message.t(),
+          {[Message.t()], [Message.t()], iodata()}
+        ) :: {[Message.t()], [Message.t()], iodata()}
+  defp encode_message(
+         z,
+         event_type,
+         compiled,
+         config_id,
+         %{data: {id, tid, msg_event_type, _day_bucket}} = message,
+         {good, bad, chunks}
+       )
+       when msg_event_type == event_type do
+    case IngestEventQueue.lookup_id(tid, id) do
+      {^id, :processing, %LogEvent{} = event, _} ->
+        mapped_body =
+          event.body
+          |> Mapper.map(compiled)
+          |> Map.put("mapping_config_id", config_id)
+          |> maybe_compute_duration(event_type)
+          |> resolve_severity_number(event_type)
+
+        row_chunk =
+          :zlib.deflate(z, Ingester.encode_row(%{event | body: mapped_body}, event_type))
+
+        {[message | good], bad, [chunks, row_chunk]}
+
+      _ ->
+        {good, [message | bad], chunks}
+    end
+  end
+
+  defp encode_message(_z, _event_type, _compiled, _config_id, message, {good, bad, chunks}) do
+    {good, [message | bad], chunks}
+  end
+
+  @spec emit_missing_ids_telemetry([Message.t()], Backend.t(), TypeDetection.event_type()) :: :ok
+  defp emit_missing_ids_telemetry([], _backend, _event_type), do: :ok
+
+  defp emit_missing_ids_telemetry(bad, backend, event_type) do
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :missing_ids],
+      %{count: length(bad)},
+      %{backend_id: backend.id, event_type: event_type}
+    )
+  end
+
+  @spec finalize_insert(
+          Backend.t(),
+          TypeDetection.event_type(),
+          atom(),
+          binary(),
+          [Message.t()],
+          [Message.t()]
+        ) :: [Message.t()]
+  defp finalize_insert(backend, event_type, batcher, compressed, good, bad) do
+    case ClickHouseAdaptor.insert_log_events_compressed(
+           backend,
+           event_type,
+           compressed,
+           async: batcher_async?(batcher)
+         ) do
+      :ok ->
+        # `bad` (rare, typically empty) goes on the left of `++` so the cons cells
+        # being rebuilt are its short list; `good` (up to the full batch size) is
+        # attached as-is on the right with no copying.
+        Enum.map(bad, &Message.failed(&1, :not_found)) ++ good
+
+      {:error, reason} ->
+        CircuitBreaker.record_failure(backend)
+        Enum.map(bad, &Message.failed(&1, reason)) ++ Enum.map(good, &Message.failed(&1, reason))
     end
   end
 
   @spec maybe_requeue_failed(backend_id :: pos_integer(), messages :: [Message.t()]) :: :ok
   defp maybe_requeue_failed(backend_id, messages) do
-    {retriable, exhausted} = Enum.split_with(messages, &retriable?/1)
+    {retriable, exhausted} =
+      messages
+      |> Enum.map(&fetch_for_retry/1)
+      |> Enum.split_with(&retriable_fetch?/1)
 
-    drop_failed(exhausted, backend_id, "exhausted #{@max_retries} retries")
+    drop_failed(
+      Enum.map(exhausted, &elem(&1, 0)),
+      backend_id,
+      "exhausted #{@max_retries} retries"
+    )
+
     requeue_or_shed(backend_id, retriable)
   end
 
-  @spec retriable?(Message.t()) :: boolean()
-  defp retriable?(%{data: {id, tid, _event_type, _day_bucket}}) do
+  # Single ETS lookup per failed message, reused for both the retriable/exhausted
+  # split and (for the retriable half) building the requeue payload — avoids
+  # looking the event up twice per message.
+  @spec fetch_for_retry(Message.t()) :: {Message.t(), LogEvent.t() | nil}
+  defp fetch_for_retry(%{data: {id, tid, _event_type, _day_bucket}} = message) do
     case IngestEventQueue.lookup_id(tid, id) do
-      {^id, _, %LogEvent{retries: retries}, _} -> (retries || 0) < @max_retries
-      _ -> false
+      {^id, _, %LogEvent{} = event, _} -> {message, event}
+      _ -> {message, nil}
     end
   end
 
-  defp retriable?(_message), do: false
+  defp fetch_for_retry(message), do: {message, nil}
 
-  @spec requeue_or_shed(backend_id :: pos_integer(), retriable :: [Message.t()]) :: :ok
+  @spec retriable_fetch?({Message.t(), LogEvent.t() | nil}) :: boolean()
+  defp retriable_fetch?({_message, nil}), do: false
+
+  defp retriable_fetch?({_message, %LogEvent{retries: retries}}),
+    do: (retries || 0) < @max_retries
+
+  @spec requeue_or_shed(backend_id :: pos_integer(), retriable :: [{Message.t(), LogEvent.t()}]) ::
+          :ok
   defp requeue_or_shed(_backend_id, []), do: :ok
 
   defp requeue_or_shed(backend_id, retriable) do
@@ -320,39 +383,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         requeue_retriable(backend_id, retriable)
 
       {:error, :circuit_open, _blocked_until} ->
-        drop_failed(retriable, backend_id, "circuit breaker open")
+        drop_failed(Enum.map(retriable, &elem(&1, 0)), backend_id, "circuit breaker open")
     end
   end
 
-  @spec requeue_retriable(backend_id :: pos_integer(), retriable :: [Message.t()]) :: :ok
+  @spec requeue_retriable(
+          backend_id :: pos_integer(),
+          retriable :: [{Message.t(), LogEvent.t()}]
+        ) :: :ok
   defp requeue_retriable(_backend_id, []), do: :ok
 
   defp requeue_retriable(backend_id, retriable) do
     key = {:consolidated, backend_id}
-    events_to_requeue = Enum.flat_map(retriable, &bump_retries/1)
 
-    if events_to_requeue != [] do
-      Logger.info(
-        "Requeuing #{length(events_to_requeue)} ClickHouse events for retry",
-        backend_id: backend_id
-      )
+    events_to_requeue =
+      Enum.map(retriable, fn {_message, %LogEvent{} = event} ->
+        %LogEvent{event | retries: (event.retries || 0) + 1}
+      end)
 
-      IngestEventQueue.delete_batch(key, events_to_requeue)
-      IngestEventQueue.add_to_table(key, events_to_requeue)
-    end
+    Logger.info(
+      "Requeuing #{length(events_to_requeue)} ClickHouse events for retry",
+      backend_id: backend_id
+    )
+
+    IngestEventQueue.delete_batch(key, events_to_requeue)
+    IngestEventQueue.add_to_table(key, events_to_requeue)
 
     :ok
   end
-
-  @spec bump_retries(Message.t()) :: [LogEvent.t()]
-  defp bump_retries(%{data: {id, tid, _event_type, _day_bucket}}) do
-    case IngestEventQueue.lookup_id(tid, id) do
-      {^id, _, %LogEvent{} = event, _} -> [%LogEvent{event | retries: (event.retries || 0) + 1}]
-      _ -> []
-    end
-  end
-
-  defp bump_retries(_message), do: []
 
   @spec drop_failed(
           messages :: [Message.t()],

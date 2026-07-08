@@ -70,6 +70,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     }
   end
 
+  # handle_batch/4 is not required to preserve input order (Broadway partitions and
+  # re-reverses its return by status internally), so compare message sets by id
+  # rather than list order.
+  defp assert_same_messages(result, expected) do
+    sort_key = fn %{data: data} -> elem(data, 0) end
+    assert Enum.sort_by(result, sort_key) == Enum.sort_by(expected, sort_key)
+  end
+
   describe "child_spec/1" do
     test "returns proper child specification" do
       spec = Pipeline.child_spec(:some_arg)
@@ -201,7 +209,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
-      assert result == messages
+      assert_same_messages(result, messages)
 
       Process.sleep(200)
 
@@ -270,7 +278,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       }
 
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
-      assert result == messages
+      assert_same_messages(result, messages)
 
       Process.sleep(200)
 
@@ -321,7 +329,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
-      assert result == messages
+      assert_same_messages(result, messages)
 
       Process.sleep(200)
 
@@ -355,7 +363,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
-      assert result == messages
+      assert_same_messages(result, messages)
 
       Process.sleep(200)
 
@@ -388,7 +396,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
-      assert result == messages
+      assert_same_messages(result, messages)
 
       Process.sleep(200)
 
@@ -424,7 +432,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       }
 
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
-      assert result == messages
+      assert_same_messages(result, messages)
 
       Process.sleep(200)
 
@@ -489,7 +497,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       }
 
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
-      assert result == messages
+      assert_same_messages(result, messages)
 
       Process.sleep(200)
 
@@ -546,7 +554,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       }
 
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
-      assert result == messages
+      assert_same_messages(result, messages)
 
       Process.sleep(200)
 
