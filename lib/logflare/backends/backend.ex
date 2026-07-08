@@ -24,6 +24,7 @@ defmodule Logflare.Backends.Backend do
     clickhouse: Adaptor.ClickHouseAdaptor,
     incidentio: Adaptor.IncidentioAdaptor,
     s3: Adaptor.S3Adaptor,
+    s3_tables: Adaptor.S3TablesAdaptor,
     axiom: Adaptor.AxiomAdaptor,
     otlp: Adaptor.OtlpAdaptor,
     last9: Adaptor.Last9Adaptor,

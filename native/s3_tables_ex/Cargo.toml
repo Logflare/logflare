@@ -1,0 +1,14 @@
+[package]
+name = "s3_tables_ex"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "s3_tables_ex"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.37.2"
+tokio = { version = "1.47", features = ["rt-multi-thread"] }
+iceberg = "=0.9.1"
+iceberg-catalog-s3tables = "=0.9.1"
