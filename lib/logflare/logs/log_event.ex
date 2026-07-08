@@ -6,8 +6,6 @@ defmodule Logflare.LogEvent do
   import Logflare.Utils.Guards,
     only: [is_non_empty_binary: 1, is_non_negative_integer: 1, is_pos_integer: 1]
 
-  import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
-
   alias __MODULE__, as: LE
   alias __MODULE__.DayBucket
   alias __MODULE__.TypeDetection
@@ -133,39 +131,21 @@ defmodule Logflare.LogEvent do
     event_type = TypeDetection.detect(params)
     mapped = mapper(params, event_type)
 
-    changeset =
-      %__MODULE__{}
-      |> cast(mapped, [:body, :valid])
-      |> validate_required([:body])
-
-    pipeline_error =
-      if changeset.valid?,
-        do: nil,
-        else: %LE.PipelineError{
-          stage: "changeset",
-          type: "validators",
-          message: stringify_changeset_errors(changeset)
-        }
-
-    body = changeset.changes.body
+    body = mapped["body"]
     day_bucket = DayBucket.from_microseconds(body["timestamp"])
 
-    le_map =
-      Map.merge(changeset.changes, %{
-        pipeline_error: pipeline_error,
-        source_id: source.id,
-        source_uuid: source.token,
-        source_name: source.name,
-        valid: changeset.valid?,
-        ingested_at: DateTime.utc_now(),
-        id: body["id"],
-        event_type: event_type,
-        timestamp_inferred: mapped["timestamp_inferred"],
-        day_bucket: day_bucket
-      })
-
-    Logflare.LogEvent
-    |> struct!(le_map)
+    %__MODULE__{
+      body: body,
+      source_id: source.id,
+      source_uuid: source.token,
+      source_name: source.name,
+      valid: true,
+      ingested_at: DateTime.utc_now(),
+      id: body["id"],
+      event_type: event_type,
+      timestamp_inferred: mapped["timestamp_inferred"],
+      day_bucket: day_bucket
+    }
     |> transform(source)
     |> validate(source)
   end
@@ -235,9 +215,7 @@ defmodule Logflare.LogEvent do
   end
 
   @spec transform(LE.t(), Source.t()) :: LE.t()
-  defp transform(%LE{valid: false} = le, _source), do: le
-
-  defp transform(%LE{valid: true} = le, %Source{} = source) do
+  defp transform(%LE{} = le, %Source{} = source) do
     with {:ok, le} <- bigquery_spec(le),
          {:ok, le} <- copy_fields(le, source),
          {:ok, le} <- kv_enrich(le, source),
