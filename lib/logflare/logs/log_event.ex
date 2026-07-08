@@ -129,7 +129,7 @@ defmodule Logflare.LogEvent do
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
   def make(params, %{source: source}, _opts \\ []) do
     event_type = TypeDetection.detect(params)
-    mapped = mapper(params, event_type)
+    mapped = mapper(params, event_type, :ingest)
 
     body = mapped["body"]
     day_bucket = DayBucket.from_microseconds(body["timestamp"])
@@ -150,8 +150,8 @@ defmodule Logflare.LogEvent do
     |> validate(source)
   end
 
-  @spec mapper(map(), TypeDetection.event_type()) :: %{String.t() => term}
-  defp mapper(params, event_type) do
+  @spec mapper(map(), TypeDetection.event_type(), :from_db | :ingest) :: %{String.t() => term}
+  defp mapper(params, event_type, mode \\ :from_db) do
     # TODO: deprecate and remove `message`
     event_message = params["message"] || params["event_message"]
     id = id(params)
@@ -172,7 +172,7 @@ defmodule Logflare.LogEvent do
 
     body =
       params
-      |> MetadataCleaner.deep_reject_nil_and_empty()
+      |> clean_body(mode)
       |> Map.merge(base_merge)
       |> case do
         %{"message" => m, "event_message" => em} = map when m == em ->
@@ -214,10 +214,15 @@ defmodule Logflare.LogEvent do
     end)
   end
 
+  @spec clean_body(map(), :from_db | :ingest) :: map()
+  defp clean_body(params, :from_db), do: MetadataCleaner.deep_reject_nil_and_empty(params)
+
+  defp clean_body(params, :ingest),
+    do: IngestTransformers.transform(params, :clean_to_bigquery_column_spec)
+
   @spec transform(LE.t(), Source.t()) :: LE.t()
   defp transform(%LE{} = le, %Source{} = source) do
-    with {:ok, le} <- bigquery_spec(le),
-         {:ok, le} <- copy_fields(le, source),
+    with {:ok, le} <- copy_fields(le, source),
          {:ok, le} <- kv_enrich(le, source),
          {:ok, le} <- drop_fields(le, source) do
       le
@@ -233,12 +238,6 @@ defmodule Logflare.LogEvent do
             }
         }
     end
-  end
-
-  @spec bigquery_spec(LE.t()) :: {:ok, LE.t()}
-  defp bigquery_spec(le) do
-    new_body = IngestTransformers.transform(le.body, :to_bigquery_column_spec)
-    {:ok, %{le | body: new_body}}
   end
 
   @spec copy_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
