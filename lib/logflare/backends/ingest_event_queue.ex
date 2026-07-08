@@ -514,11 +514,11 @@ defmodule Logflare.Backends.IngestEventQueue do
   Takes pending item IDs from a given table, marking them as `:processing` in-place.
 
   Returns `{:ok, ids, tid}` where `ids` is a list of event IDs and `tid` is the ETS
-  table reference. Intended for use with the BigQuery pipeline to reduce data copying
-  through Broadway stages — only pointers travel the pipeline; full events are fetched
-  from ETS at batch-insert time.
+  table reference. Intended for use with ID-passing pipeline variants (BigQuery,
+  ClickHouse) to reduce data copying through Broadway stages — only pointers travel
+  the pipeline; full events are fetched from ETS at batch-insert time.
   """
-  @spec take_pending_ids(source_backend_pid(), integer()) ::
+  @spec take_pending_ids(source_backend_pid() | consolidated_table_key(), integer()) ::
           {:ok, [{term(), non_neg_integer()}], :ets.tid() | nil} | {:error, :not_initialized}
   def take_pending_ids(_, 0), do: {:ok, [], nil}
 

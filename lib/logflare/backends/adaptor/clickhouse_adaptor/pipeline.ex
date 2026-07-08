@@ -391,8 +391,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           backend_id :: pos_integer(),
           retriable :: [{Message.t(), LogEvent.t()}]
         ) :: :ok
-  defp requeue_retriable(_backend_id, []), do: :ok
-
   defp requeue_retriable(backend_id, retriable) do
     key = {:consolidated, backend_id}
 
