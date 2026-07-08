@@ -14,7 +14,8 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
-  @max_queue_size 30_000
+  @max_queue_size 60_000
+  @consolidated_max_queue_size 600_000
 
   @type source_backend :: {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil}
   @type source_backend_pid ::
@@ -185,7 +186,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       if check_queue_size do
         fn
           {{:consolidated, _, nil}, _}, acc -> acc
-          {_obj, count}, acc when count >= @max_queue_size -> acc
+          {_obj, count}, acc when count >= @consolidated_max_queue_size -> acc
           {obj, _count}, acc -> [obj | acc]
         end
       else
@@ -739,6 +740,47 @@ defmodule Logflare.Backends.IngestEventQueue do
     ArgumentError ->
       emit_stale_ets_table_telemetry()
       :ok
+  end
+
+  @doc """
+  Looks up a single event by id in an ETS table.
+
+  Returns `{id, status, event, byte_size}` or `nil` if not found.
+  """
+  @spec lookup_id(:ets.tid(), term()) ::
+          {term(), :pending | :processing | :ingested, LogEvent.t(), non_neg_integer()} | nil
+  def lookup_id(tid, id) do
+    case :ets.lookup(tid, id) do
+      [{^id, status, event, size, _claim, _claimed_at}] -> {id, status, event, size}
+      _ -> nil
+    end
+  rescue
+    ArgumentError -> nil
+  end
+
+  @doc """
+  Resets all `:processing` events in a queue back to `:pending`.
+
+  Used on producer startup for the ID-passing pipeline variant to recover any events
+  that were left as `:processing` by a previous crash.
+  """
+  @spec reset_processing_to_pending(table_key() | consolidated_table_key()) :: :ok
+  def reset_processing_to_pending(sid_bid_pid) do
+    ms =
+      Ex2ms.fun do
+        {id, :processing, _event, _size, _claim, _claimed_at} -> id
+      end
+
+    with tid when tid != nil <- get_tid(sid_bid_pid),
+         {ids, _cont} <- :ets.select(tid, ms, 10_000) do
+      for id <- ids do
+        :ets.update_element(tid, id, [{2, :pending}, {5, 0}, {6, 0}])
+      end
+
+      :ok
+    else
+      _ -> :ok
+    end
   end
 
   @doc """

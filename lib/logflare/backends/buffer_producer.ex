@@ -79,10 +79,12 @@ defmodule Logflare.Backends.BufferProducer do
 
   @spec init_consolidated_state(pos_integer(), pos_integer(), keyword()) :: state()
   defp init_consolidated_state(backend_id, interval, opts) do
+    id_passing = Keyword.get(opts, :id_passing, false)
+
     state = %{
       consolidated: true,
       demand: 0,
-      id_passing: false,
+      id_passing: id_passing,
       source_id: nil,
       source_token: nil,
       backend_id: backend_id,
@@ -94,6 +96,11 @@ defmodule Logflare.Backends.BufferProducer do
     startup_table_key = {:consolidated, backend_id, nil}
     IngestEventQueue.upsert_tid(table_key)
     IngestEventQueue.move(startup_table_key, table_key)
+
+    if id_passing do
+      IngestEventQueue.reset_processing_to_pending(table_key)
+    end
+
     schedule(state, Keyword.get(opts, :scale, false))
 
     state
@@ -237,6 +244,16 @@ defmodule Logflare.Backends.BufferProducer do
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [
           LogEvent.t() | {term(), :ets.tid()}
         ]
+  defp do_fetch(%{consolidated: true, id_passing: true, backend_id: bid} = _state, n) do
+    key = {:consolidated, bid, self()}
+
+    case IngestEventQueue.take_pending_ids(key, n) do
+      {:error, :not_initialized} -> []
+      {:ok, [], _tid} -> []
+      {:ok, id_size_pairs, tid} -> Enum.map(id_size_pairs, fn {id, size} -> {id, tid, size} end)
+    end
+  end
+
   defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
     key = {:consolidated, bid, self()}
 

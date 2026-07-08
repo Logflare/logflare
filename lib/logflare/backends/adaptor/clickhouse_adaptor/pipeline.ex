@@ -10,7 +10,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   based on `LogEvent.ingest_freshness`, and batched by a composite key of
   `{event_type, day_bucket}` so each insert targets a single ClickHouse
   partition. Multiple sources are processed together in a single pipeline.
+
+  Uses ID-passing: the producer emits `{id, tid, size}` tuples and events
+  remain in ETS as `:processing` throughout. Each batcher fetches events
+  from ETS and streams them through zlib deflate to build a gzip-compressed
+  RowBinary payload without holding the full batch in process memory.
   """
+
+  @behaviour Broadway.Acknowledger
 
   import Logflare.Utils.Guards, only: [is_event_type: 1]
 
@@ -21,6 +28,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
@@ -65,7 +73,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       hibernate_after: 5_000,
       spawn_opt: [fullsweep_after: 100],
       producer: [
-        module: {BufferProducer, [backend_id: backend.id, consolidated: true]},
+        module: {BufferProducer, [backend_id: backend.id, consolidated: true, id_passing: true]},
         transformer: {__MODULE__, :transform, [backend_id: backend.id]},
         concurrency: @producer_concurrency
       ],
@@ -95,23 +103,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     {:via, module, {registry, new_identifier}}
   end
 
+  @spec transform(event :: {term(), :ets.tid(), non_neg_integer()}, opts :: keyword()) ::
+          Message.t()
+  def transform({id, tid, _size}, opts) do
+    %Message{
+      data: {id, tid},
+      acknowledger: {__MODULE__, :ack_id, %{backend_id: opts[:backend_id]}}
+    }
+  end
+
   @spec handle_message(processor_name :: atom(), message :: Message.t(), context :: map()) ::
           Message.t()
-  def handle_message(
-        _processor_name,
-        %Message{
-          data: %LogEvent{
-            event_type: event_type,
-            day_bucket: day_bucket,
-            ingest_freshness: ingest_freshness
-          }
-        } = message,
-        _context
-      )
-      when is_event_type(event_type) do
-    message
-    |> Message.put_batcher(ingest_freshness_to_batcher(ingest_freshness))
-    |> Message.put_batch_key({event_type, day_bucket})
+  def handle_message(_processor_name, %Message{data: {id, tid}} = message, _context) do
+    case IngestEventQueue.lookup_id(tid, id) do
+      {^id, :processing, %LogEvent{event_type: event_type, day_bucket: day_bucket} = event, _}
+      when is_event_type(event_type) ->
+        message
+        |> Message.put_data({id, tid, event_type, day_bucket})
+        |> Message.put_batcher(ingest_freshness_to_batcher(event.ingest_freshness))
+        |> Message.put_batch_key({event_type, day_bucket})
+
+      _ ->
+        Message.failed(message, :not_found)
+    end
   end
 
   @spec ingest_freshness_to_batcher(:fresh | :stale) :: :ch_fresh | :ch_stale
@@ -128,6 +142,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           batch_info :: Broadway.BatchInfo.t(),
           context :: map()
         ) :: [Message.t()]
+  def handle_batch(_batcher, [], _batch_info, _context), do: []
+
   def handle_batch(
         batcher,
         messages,
@@ -139,10 +155,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
     backend = Backends.Cache.get_backend(backend_id)
 
-    case insert_batch(backend, messages, event_type, batcher, batch_info, day_bucket) do
-      :ok -> messages
-      {:error, reason} -> Enum.map(messages, &Message.failed(&1, reason))
+    encode_and_insert(backend, messages, event_type, batcher, batch_info, day_bucket)
+  end
+
+  @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
+  def ack(_ack_ref, successful, failed) do
+    Enum.each(successful, fn %{data: {id, tid, _event_type, _day_bucket}} ->
+      IngestEventQueue.delete_id(tid, id)
+    end)
+
+    if failed != [] do
+      failed
+      |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} -> ack_data end)
+      |> Enum.each(fn {%{backend_id: backend_id}, messages} ->
+        maybe_requeue_failed(backend_id, messages)
+      end)
     end
+
+    :ok
+  rescue
+    e ->
+      Logger.warning(
+        "ClickHouse pipeline ack error (ETS table may have been recycled): #{inspect(e)}"
+      )
+
+      :ok
   end
 
   @spec emit_batch_telemetry(
@@ -166,15 +203,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     )
   end
 
-  @spec insert_batch(
+  @spec encode_and_insert(
           Backend.t(),
           [Message.t()],
           TypeDetection.event_type(),
           atom(),
           Broadway.BatchInfo.t(),
           integer()
-        ) :: :ok | {:error, term()}
-  defp insert_batch(backend, messages, event_type, batcher, batch_info, day_bucket) do
+        ) :: [Message.t()]
+  defp encode_and_insert(backend, messages, event_type, batcher, batch_info, day_bucket) do
     OpenTelemetry.Tracer.with_span :clickhouse_pipeline, %{
       attributes: %{
         backend_id: backend.id,
@@ -186,121 +223,157 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       }
     } do
       with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(event_type) do
-        events = map_events(messages, compiled, config_id, event_type)
-        insert_and_record(backend, events, event_type, batcher)
+        z = :zlib.open()
+
+        try do
+          :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
+
+          {good, bad, chunks} =
+            Enum.reduce(messages, {[], [], []}, fn
+              %{data: {id, tid, ^event_type, _day_bucket}} = msg, {g, b, acc} ->
+                case IngestEventQueue.lookup_id(tid, id) do
+                  {^id, :processing, %LogEvent{} = event, _} ->
+                    mapped_body =
+                      event.body
+                      |> Mapper.map(compiled)
+                      |> Map.put("mapping_config_id", config_id)
+                      |> maybe_compute_duration(event_type)
+                      |> resolve_severity_number(event_type)
+
+                    row_chunk =
+                      :zlib.deflate(
+                        z,
+                        Ingester.encode_row(%{event | body: mapped_body}, event_type)
+                      )
+
+                    {[msg | g], b, [acc, row_chunk]}
+
+                  _ ->
+                    {g, [Message.failed(msg, :not_found) | b], acc}
+                end
+
+              msg, {g, b, acc} ->
+                {g, [Message.failed(msg, :not_found) | b], acc}
+            end)
+
+          miss_count = length(bad)
+
+          if miss_count > 0 do
+            Logger.warning(
+              "ClickHouse pipeline: #{miss_count} ETS misses in handle_batch, events lost",
+              backend_id: backend.id,
+              event_type: event_type
+            )
+          end
+
+          final_chunk = :zlib.deflate(z, "", :finish)
+          compressed = IO.iodata_to_binary([chunks, final_chunk])
+
+          case ClickHouseAdaptor.insert_log_events_compressed(
+                 backend,
+                 event_type,
+                 compressed,
+                 async: batcher_async?(batcher)
+               ) do
+            :ok ->
+              Enum.reverse(good) ++ Enum.reverse(bad)
+
+            {:error, reason} ->
+              CircuitBreaker.record_failure(backend)
+              Enum.map(Enum.reverse(good) ++ Enum.reverse(bad), &Message.failed(&1, reason))
+          end
+        after
+          :zlib.deflateEnd(z)
+          :zlib.close(z)
+        end
+      else
+        {:error, reason} ->
+          Enum.map(messages, &Message.failed(&1, reason))
       end
     end
   end
 
-  @spec map_events([Message.t()], term(), term(), TypeDetection.event_type()) :: [LogEvent.t()]
-  defp map_events(messages, compiled, config_id, event_type) do
-    Enum.map(messages, fn %{data: %LogEvent{} = event} ->
-      mapped_body =
-        event.body
-        |> Mapper.map(compiled)
-        |> Map.put("mapping_config_id", config_id)
-        |> maybe_compute_duration(event_type)
-        |> resolve_severity_number(event_type)
+  @spec maybe_requeue_failed(backend_id :: pos_integer(), messages :: [Message.t()]) :: :ok
+  defp maybe_requeue_failed(backend_id, messages) do
+    {retriable, exhausted} = Enum.split_with(messages, &retriable?/1)
 
-      %{event | body: mapped_body}
-    end)
-  end
-
-  @spec insert_and_record(Backend.t(), [LogEvent.t()], TypeDetection.event_type(), atom()) ::
-          :ok | {:error, term()}
-  defp insert_and_record(backend, events, event_type, batcher) do
-    case ClickHouseAdaptor.insert_log_events(backend, events, event_type,
-           async: batcher_async?(batcher)
-         ) do
-      :ok ->
-        :ok
-
-      {:error, _reason} = error ->
-        CircuitBreaker.record_failure(backend)
-        error
-    end
-  end
-
-  @spec transform(event :: LogEvent.t(), opts :: keyword()) :: Message.t()
-  def transform(event, opts) do
-    %Message{
-      data: event,
-      acknowledger: {__MODULE__, :ack_id, %{backend_id: opts[:backend_id]}}
-    }
-  end
-
-  @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
-  def ack(_ack_ref, _successful, []), do: :ok
-
-  def ack(_ack_ref, _successful, failed) do
-    failed
-    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} -> ack_data end)
-    |> Enum.each(fn {%{backend_id: backend_id}, messages} ->
-      ack_backend_failures(backend_id, messages)
-    end)
-  end
-
-  @spec ack_backend_failures(backend_id :: pos_integer(), messages :: [Message.t()]) :: :ok
-  defp ack_backend_failures(backend_id, messages) do
-    {retriable, exhausted} =
-      Enum.split_with(messages, fn %{data: event} ->
-        (event.retries || 0) < @max_retries
-      end)
-
-    drop_messages(exhausted, backend_id, "exhausted #{@max_retries} retries")
+    drop_failed(exhausted, backend_id, "exhausted #{@max_retries} retries")
     requeue_or_shed(backend_id, retriable)
   end
 
-  @spec requeue_or_shed(backend_id :: pos_integer(), retriable :: [Message.t()]) :: :ok
-  defp requeue_or_shed(backend_id, retriable) do
-    case CircuitBreaker.check(backend_id) do
-      :ok ->
-        requeue_retriable_messages(retriable, backend_id)
-
-      {:error, :circuit_open, _blocked_until} ->
-        drop_messages(retriable, backend_id, "circuit breaker open")
+  @spec retriable?(Message.t()) :: boolean()
+  defp retriable?(%{data: {id, tid, _event_type, _day_bucket}}) do
+    case IngestEventQueue.lookup_id(tid, id) do
+      {^id, _, %LogEvent{retries: retries}, _} -> (retries || 0) < @max_retries
+      _ -> false
     end
   end
 
-  @spec drop_messages(
+  defp retriable?(_message), do: false
+
+  @spec requeue_or_shed(backend_id :: pos_integer(), retriable :: [Message.t()]) :: :ok
+  defp requeue_or_shed(_backend_id, []), do: :ok
+
+  defp requeue_or_shed(backend_id, retriable) do
+    case CircuitBreaker.check(backend_id) do
+      :ok ->
+        requeue_retriable(backend_id, retriable)
+
+      {:error, :circuit_open, _blocked_until} ->
+        drop_failed(retriable, backend_id, "circuit breaker open")
+    end
+  end
+
+  @spec requeue_retriable(backend_id :: pos_integer(), retriable :: [Message.t()]) :: :ok
+  defp requeue_retriable(_backend_id, []), do: :ok
+
+  defp requeue_retriable(backend_id, retriable) do
+    key = {:consolidated, backend_id}
+    events_to_requeue = Enum.flat_map(retriable, &bump_retries/1)
+
+    if events_to_requeue != [] do
+      Logger.info(
+        "Requeuing #{length(events_to_requeue)} ClickHouse events for retry",
+        backend_id: backend_id
+      )
+
+      IngestEventQueue.delete_batch(key, events_to_requeue)
+      IngestEventQueue.add_to_table(key, events_to_requeue)
+    end
+
+    :ok
+  end
+
+  @spec bump_retries(Message.t()) :: [LogEvent.t()]
+  defp bump_retries(%{data: {id, tid, _event_type, _day_bucket}}) do
+    case IngestEventQueue.lookup_id(tid, id) do
+      {^id, _, %LogEvent{} = event, _} -> [%LogEvent{event | retries: (event.retries || 0) + 1}]
+      _ -> []
+    end
+  end
+
+  defp bump_retries(_message), do: []
+
+  @spec drop_failed(
           messages :: [Message.t()],
           backend_id :: pos_integer(),
           reason :: String.t()
-        ) ::
-          :ok
-  defp drop_messages([], _backend_id, _reason), do: :ok
+        ) :: :ok
+  defp drop_failed([], _backend_id, _reason), do: :ok
 
-  defp drop_messages(messages, backend_id, reason) do
+  defp drop_failed(messages, backend_id, reason) do
     Logger.warning(
       "Dropping #{length(messages)} ClickHouse events: #{reason}",
       backend_id: backend_id
     )
 
-    events = Enum.map(messages, fn %{data: %LogEvent{} = event} -> event end)
-
-    try do
-      IngestEventQueue.delete_batch({:consolidated, backend_id}, events)
-    rescue
-      ArgumentError -> :ok
-    end
-  end
-
-  @spec requeue_retriable_messages(retriable :: [Message.t()], backend_id :: pos_integer()) :: :ok
-  defp requeue_retriable_messages([], _backend_id), do: :ok
-
-  defp requeue_retriable_messages(retriable, backend_id) do
-    events =
-      Enum.map(retriable, fn %{data: %LogEvent{} = event} ->
-        %LogEvent{event | retries: (event.retries || 0) + 1}
-      end)
-
-    Logger.info(
-      "Requeuing #{length(events)} ClickHouse events for retry",
-      backend_id: backend_id
-    )
-
-    IngestEventQueue.delete_batch({:consolidated, backend_id}, events)
-    IngestEventQueue.add_to_table({:consolidated, backend_id}, events)
+    Enum.each(messages, fn %{data: data} ->
+      case data do
+        {id, tid, _event_type, _day_bucket} -> IngestEventQueue.delete_id(tid, id)
+        {id, tid} -> IngestEventQueue.delete_id(tid, id)
+        _ -> :ok
+      end
+    end)
   end
 
   @spec maybe_compute_duration(map(), TypeDetection.event_type()) :: map()
