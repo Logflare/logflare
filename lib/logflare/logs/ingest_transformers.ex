@@ -7,6 +7,9 @@ defmodule Logflare.Logs.IngestTransformers do
 
   defguardp nil_or_empty(x) when x in [%{}, [], "", {}, nil]
 
+  defguardp bq_safe_byte?(byte)
+            when byte in ?0..?9 or byte in ?A..?Z or byte in ?a..?z or byte == ?_
+
   @spec transform(map, list(atom) | atom) :: map
   def transform(log_params, :clean_to_bigquery_column_spec) when is_map(log_params) do
     clean_and_to_bigquery_column_spec(log_params)
@@ -124,12 +127,14 @@ defmodule Logflare.Logs.IngestTransformers do
 
   defp bq_safe_key?(key), do: bq_safe_chars?(key)
 
-  defp bq_safe_chars?(<<>>), do: true
-
-  defp bq_safe_chars?(<<b, rest::binary>>)
-       when b in ?0..?9 or b in ?A..?Z or b in ?a..?z or b == ?_,
+  defp bq_safe_chars?(<<a, b, c, d, rest::binary>>)
+       when bq_safe_byte?(a) and bq_safe_byte?(b) and bq_safe_byte?(c) and bq_safe_byte?(d),
        do: bq_safe_chars?(rest)
 
+  defp bq_safe_chars?(<<b, rest::binary>>) when bq_safe_byte?(b),
+    do: bq_safe_chars?(rest)
+
+  defp bq_safe_chars?(<<>>), do: true
   defp bq_safe_chars?(_), do: false
 
   defp leading_digit?(<<b, _::binary>>) when b in ?0..?9, do: true
