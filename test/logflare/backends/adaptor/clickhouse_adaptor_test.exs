@@ -284,6 +284,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert changeset.valid?
     end
+
+    test "casts facade_url when provided" do
+      changeset = cast_and_validate_config(facade_url: "https://facade.internal:8123")
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :facade_url) == "https://facade.internal:8123"
+    end
+
+    test "facade_url defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :facade_url) == nil
+    end
+
+    test "rejects invalid facade_url format" do
+      changeset = cast_and_validate_config(facade_url: "invalid-url")
+
+      refute changeset.valid?
+      assert {:facade_url, _} = hd(changeset.errors)
+    end
+
+    test "accepts valid http facade_url" do
+      changeset = cast_and_validate_config(facade_url: "http://facade.internal:8123")
+
+      assert changeset.valid?
+    end
   end
 
   defp cast_and_validate_config(attrs \\ []) do
@@ -363,6 +390,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "passes when facade_url ping succeeds" do
+      {_source, backend} = setup_clickhouse_test(config: %{facade_url: "http://localhost:8123"})
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when facade_url is unreachable" do
+      {_source, backend} = setup_clickhouse_test(config: %{facade_url: "http://localhost:19999"})
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:error, :facade_unreachable} = ClickHouseAdaptor.test_connection(backend)
     end
   end
 

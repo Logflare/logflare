@@ -252,6 +252,13 @@
               Separate endpoint for read queries, for example: <code>https://read-warehouse.clickhouse.cloud:8443</code>
             </small>
           </div>
+          <div class="form-group">
+            {label(f_config, :facade_url, "Ingest Facade URL (Optional)")}
+            {text_input(f_config, :facade_url, class: "form-control")}
+            <small class="form-text text-muted">
+              Optional ingest facade endpoint used to proxy inserts, for example: <code>https://facade.internal:8123</code>.
+            </small>
+          </div>
         <% "incidentio" -> %>
           <div class="form-group">
             {label(f_config, :api_token, "API Token")}

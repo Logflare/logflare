@@ -298,12 +298,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @spec build_connection_opts(Backend.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
   defp build_connection_opts(%Backend{config: config}) do
     %{
-      url: url,
-      port: port,
       database: database,
       username: username,
       password: password
     } = config
+
+    {url, port} = resolve_ingest_url(config)
 
     {:ok,
      [
@@ -317,6 +317,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   defp build_connection_opts(_backend) do
     {:error, "Unable to build connection options"}
+  end
+
+  @spec resolve_ingest_url(map()) :: {String.t(), pos_integer()}
+  defp resolve_ingest_url(%{facade_url: facade_url}) when is_non_empty_binary(facade_url) do
+    {facade_url, facade_port(URI.parse(facade_url))}
+  end
+
+  defp resolve_ingest_url(%{url: url, port: port}), do: {url, port}
+
+  @spec facade_port(URI.t()) :: pos_integer()
+  defp facade_port(%URI{authority: authority, scheme: scheme}) do
+    case authority && Regex.run(~r/:(\d+)$/, authority) do
+      [_, port] -> String.to_integer(port)
+      _ -> default_port(scheme || "http")
+    end
   end
 
   @spec build_request_url(
