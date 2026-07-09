@@ -125,8 +125,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     }
   end
 
-  def transform({id, tid, _size, _event_type, _day_bucket, _freshness}, opts) do
-    transform({id, tid, 0}, opts)
+  def transform({id, tid, size, _event_type, _day_bucket, _freshness}, opts) do
+    transform({id, tid, size}, opts)
   end
 
   def transform({id, tid, _size}, opts) do

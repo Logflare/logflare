@@ -489,6 +489,37 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
+    test "take_pending_ids_with_metadata/2 returns empty without claiming when count is 0", %{
+      source: source,
+      sbp: sbp
+    } do
+      assert :ok = IngestEventQueue.add_to_table(sbp, [build(:log_event, source: source)])
+
+      assert {:ok, [], nil} = IngestEventQueue.take_pending_ids_with_metadata(sbp, 0)
+      assert IngestEventQueue.total_pending(sbp) == 1
+    end
+
+    test "take_pending_ids_with_metadata/2 returns :not_initialized for an unknown table" do
+      assert {:error, :not_initialized} =
+               IngestEventQueue.take_pending_ids_with_metadata({-1, -1, self()}, 5)
+    end
+
+    test "take_pending_ids_with_metadata/2 claims rows with nil routing fields and returns nils",
+         %{source: source, sbp: sbp} do
+      event =
+        build(:log_event, source: source)
+        |> Map.put(:event_type, nil)
+        |> Map.put(:day_bucket, nil)
+        |> Map.put(:ingest_freshness, nil)
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+
+      assert {:ok, [metadata], tid} = IngestEventQueue.take_pending_ids_with_metadata(sbp, 1)
+      assert tid != nil
+      assert metadata == {event.id, :erlang.external_size(event.body), nil, nil, nil}
+      assert IngestEventQueue.total_pending(sbp) == 0
+    end
+
     test "respects the requested count and leaves the remainder pending", %{
       source: source,
       sbp: sbp

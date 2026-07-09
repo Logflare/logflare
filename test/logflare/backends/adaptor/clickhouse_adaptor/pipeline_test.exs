@@ -184,6 +184,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert day_bucket == event.day_bucket
     end
 
+    test "routes stale metadata messages to :ch_stale without an ETS lookup", %{
+      context: context,
+      backend: backend
+    } do
+      event = build(:log_event) |> Map.put(:ingest_freshness, :stale)
+      tid = setup_processing_events([])
+
+      message = %Message{
+        data: {event.id, tid, event.event_type, event.day_bucket, :stale},
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+      }
+
+      result = Pipeline.handle_message(:default, message, context)
+
+      assert %Message{batcher: :ch_stale, batch_key: {:log, day_bucket}} = result
+      assert result.data == {event.id, tid, :log, event.day_bucket}
+      assert day_bucket == event.day_bucket
+    end
+
     test "routes fresh log events to :ch_fresh batcher keyed by {event_type, day_bucket}", %{
       context: context,
       backend: backend
