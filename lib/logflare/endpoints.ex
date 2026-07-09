@@ -286,15 +286,18 @@ defmodule Logflare.Endpoints do
   @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) :: :ok
   defp maybe_kill_endpoint_caches(endpoint, changes) do
     if should_kill_caches?(changes) do
-      for pid <- Resolver.list_caches(endpoint) do
-        Utils.Tasks.async(fn ->
-          ResultsCache.invalidate(pid)
-        end)
-      end
+      endpoint
+      |> Resolver.list_caches()
+      |> Enum.map(&invalidate_cache_async/1)
       |> Task.await_many(30_000)
     end
 
     :ok
+  end
+
+  @spec invalidate_cache_async(pid()) :: Task.t()
+  defp invalidate_cache_async(pid) do
+    Utils.Tasks.async(fn -> ResultsCache.invalidate(pid) end)
   end
 
   @spec get_endpoint_query_version(integer(), integer()) :: Version.t() | nil
