@@ -321,14 +321,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   @spec resolve_ingest_url(map()) :: {String.t(), pos_integer()}
   defp resolve_ingest_url(%{facade_url: facade_url}) when is_non_empty_binary(facade_url) do
-    {facade_url, facade_port(URI.parse(facade_url))}
+    {facade_url, facade_port(facade_url)}
   end
 
   defp resolve_ingest_url(%{url: url, port: port}), do: {url, port}
 
-  @spec facade_port(URI.t()) :: pos_integer()
-  defp facade_port(%URI{authority: authority, scheme: scheme}) do
-    case authority && Regex.run(~r/:(\d+)$/, authority) do
+  @spec facade_port(String.t()) :: pos_integer()
+  defp facade_port(facade_url) do
+    %URI{scheme: scheme} = URI.parse(facade_url)
+
+    case Regex.run(~r{://(?:[^/?#@]*@)?[^/?#:]+:(\d+)}, facade_url) do
       [_, port] -> String.to_integer(port)
       _ -> default_port(scheme || "http")
     end
