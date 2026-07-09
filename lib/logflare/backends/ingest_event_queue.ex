@@ -582,7 +582,10 @@ defmodule Logflare.Backends.IngestEventQueue do
   ClickHouse) to reduce data copying through Broadway stages — only pointers travel
   the pipeline; full events are fetched from ETS at batch-insert time.
   """
-  @spec take_pending_ids(source_backend_pid() | spool_producer_table_key() | consolidated_table_key(), integer()) ::
+  @spec take_pending_ids(
+          source_backend_pid() | spool_producer_table_key() | consolidated_table_key(),
+          integer()
+        ) ::
           {:ok, [{term(), non_neg_integer()}], :ets.tid() | nil} | {:error, :not_initialized}
   def take_pending_ids(_, 0), do: {:ok, [], nil}
 
