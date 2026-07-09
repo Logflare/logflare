@@ -86,7 +86,11 @@ defmodule Logflare.Telemetry do
 
   defp maybe_put_commit(service, _commit_sha), do: service
 
-  defp metrics do
+  # Public (not private) so the metric definitions can be validated directly
+  # in tests — init/1 only calls this when OpenTelemetry is enabled, which
+  # isn't the case in dev/test, so there'd otherwise be no way to exercise it.
+  @doc false
+  def metrics do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
 
     cache_metrics =
@@ -266,6 +270,69 @@ defmodule Logflare.Telemetry do
         tags: [:backend_type],
         unit: {:native, :millisecond},
         description: "Ingest dispatch latency by backend type"
+      ),
+      last_value("logflare.backends.spool.throttled.throttled",
+        description: "Spool memory-pressure throttle state (1=throttled, 0=not)"
+      ),
+      last_value("logflare.backends.spool.throttled.total_percent",
+        description: "Spool: total memory usage ratio"
+      ),
+      last_value("logflare.backends.spool.throttled.ets_percent",
+        description: "Spool: ETS memory usage ratio"
+      ),
+      last_value("logflare.backends.spool.throttled.consumer_throttled",
+        description:
+          "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
+      ),
+      sum("logflare.backends.spool.storage.put.count",
+        tags: [:format, :result],
+        description: "Spool storage writes (S3/GCS put) count by format/result"
+      ),
+      sum("logflare.backends.spool.storage.put.bytes",
+        tags: [:format, :result],
+        description: "Spool storage writes: bytes by format/result"
+      ),
+      sum("logflare.backends.spool.queue.publish.count",
+        tags: [:result],
+        description: "Spool queue publish (SQS send / PubSub publish) count"
+      ),
+      sum("logflare.backends.spool.producer.batch.count",
+        tags: [:result, :stage],
+        description:
+          "Spool producer batches by end-to-end outcome (:ok, or :error tagged with which stage — :upload or :notify — failed)"
+      ),
+      sum("logflare.backends.spool.queue.receive.count",
+        tags: [:result],
+        description: "Spool queue receive (SQS/PubSub) message count"
+      ),
+      sum("logflare.backends.spool.storage.get.count",
+        tags: [:result],
+        description: "Spool storage downloads (S3/GCS get) count by result"
+      ),
+      sum("logflare.backends.spool.storage.get.bytes",
+        tags: [:result],
+        description: "Spool storage downloads: bytes by result"
+      ),
+      sum("logflare.backends.spool.storage.get.line_count",
+        tags: [:result],
+        description: "Spool events parsed per downloaded file"
+      ),
+      sum("logflare.backends.spool.queue.ack.count",
+        tags: [:reason, :result],
+        description:
+          "Spool queue ack (delete) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
+      ),
+      sum("logflare.backends.spool.queue.nack.count",
+        tags: [:reason, :result],
+        description:
+          "Spool queue nack (requeue) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
+      ),
+      sum("logflare.backends.spool.consumer.skipped.count",
+        tags: [:reason],
+        description: "Spool consumer: events skipped (missing/unknown source_id) by reason"
+      ),
+      sum("logflare.backends.spool.consumer.messages_failed.count",
+        description: "Spool consumer: Broadway messages marked failed during processing"
       ),
       counter("thousand_island.acceptor.spawn_error",
         description: "Count of client connection spawn errors"

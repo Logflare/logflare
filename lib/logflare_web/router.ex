@@ -599,6 +599,7 @@ defmodule LogflareWeb.Router do
       pipe_through([:browser])
 
       forward("/mailbox", Plug.Swoosh.MailboxPreview, base_path: "/dev/mailbox")
+      live("/dashboard", LogflareWeb.Live.Dev.DashboardLive)
     end
   end
 

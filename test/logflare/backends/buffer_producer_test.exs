@@ -254,6 +254,46 @@ defmodule Logflare.Backends.BufferProducerTest do
       assert IngestEventQueue.total_pending(consolidated_key) == 0
     end
 
+    test "pulls only IDs and routing metadata in consolidated id-passing metadata mode", %{
+      source: source,
+      backend: backend
+    } do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      buffer_producer_pid =
+        start_supervised!(
+          {BufferProducer,
+           backend_id: backend.id,
+           consolidated: true,
+           id_passing: true,
+           id_passing_metadata: true,
+           interval: 100}
+        )
+
+      consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
+      :timer.sleep(150)
+
+      le =
+        build(:log_event, source: source)
+        |> Map.put(:event_type, :trace)
+        |> Map.put(:day_bucket, 123_456)
+        |> Map.put(:ingest_freshness, :stale)
+
+      :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
+
+      [item] =
+        GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+        |> Enum.take(1)
+
+      assert {event_id, tid, size, :trace, 123_456, :stale} = item
+      assert event_id == le.id
+      assert size == :erlang.external_size(le.body)
+
+      assert {^event_id, :processing, ^le, ^size} = IngestEventQueue.lookup_id(tid, event_id)
+      assert IngestEventQueue.total_pending(consolidated_key) == 0
+    end
+
     test "format_discarded logs backend_id for consolidated mode", %{backend: backend} do
       startup_key = {:consolidated, backend.id, nil}
       IngestEventQueue.upsert_tid(startup_key)
@@ -276,6 +316,105 @@ defmodule Logflare.Backends.BufferProducerTest do
         end)
 
       assert captured =~ "Consolidated GenStage producer has discarded"
+    end
+  end
+
+  describe "spool producer mode" do
+    setup do
+      on_exit(fn ->
+        IngestEventQueue.delete_queue({:spool_producer, nil, nil})
+      end)
+
+      :ok
+    end
+
+    test "pulls events as {id, tid, size} pointers, marking them :processing (id_passing is always true)" do
+      startup_key = {:spool_producer, nil, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      buffer_producer_pid =
+        start_supervised!({BufferProducer, spool_producer: true, interval: 100})
+
+      spool_key = {:spool_producer, nil, buffer_producer_pid}
+      :timer.sleep(150)
+
+      le = build(:log_event)
+      :ok = IngestEventQueue.add_to_table(spool_key, [le])
+
+      tid = IngestEventQueue.get_tid(spool_key)
+
+      [{id, ^tid, size}] =
+        GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+        |> Enum.take(1)
+
+      assert id == le.id
+      assert is_integer(size) and size > 0
+      assert IngestEventQueue.total_pending(spool_key) == 0
+      # event still in ETS, marked as :processing — spool producer relies on
+      # its own pipeline's ack/3 to :ets.delete once uploaded, not this producer.
+      assert IngestEventQueue.get_table_size(spool_key) == 1
+      assert IngestEventQueue.list_processing_ids(spool_key) == [le.id]
+    end
+
+    test "pulls events from the spool startup queue" do
+      startup_key = {:spool_producer, nil, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      le = build(:log_event)
+      :ok = IngestEventQueue.add_to_table(startup_key, [le])
+
+      buffer_producer_pid =
+        start_supervised!({BufferProducer, spool_producer: true, interval: 100})
+
+      spool_key = {:spool_producer, nil, buffer_producer_pid}
+
+      [{id, _tid, _size}] =
+        GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+        |> Enum.take(1)
+
+      assert id == le.id
+      assert IngestEventQueue.total_pending(spool_key) == 0
+    end
+
+    test "moves events back to the startup queue on termination" do
+      startup_key = {:spool_producer, nil, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      buffer_producer_pid =
+        start_supervised!({BufferProducer, spool_producer: true, interval: 100})
+
+      spool_key = {:spool_producer, nil, buffer_producer_pid}
+      :timer.sleep(150)
+
+      le = build(:log_event)
+      :ok = IngestEventQueue.add_to_table(spool_key, [le])
+
+      Process.exit(buffer_producer_pid, :normal)
+      :timer.sleep(200)
+
+      assert IngestEventQueue.total_pending(startup_key) == 1
+      assert IngestEventQueue.total_pending(spool_key) == 0
+    end
+
+    test "format_discarded logs a spool-specific message" do
+      startup_key = {:spool_producer, nil, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      pid =
+        start_supervised!({BufferProducer, spool_producer: true, interval: 100, buffer_size: 10})
+
+      le = build(:log_event)
+      items = List.duplicate(le, 100)
+
+      captured =
+        capture_log(fn ->
+          send(pid, {:add_to_buffer, items})
+          :timer.sleep(100)
+          send(pid, {:add_to_buffer, items})
+          :timer.sleep(100)
+        end)
+
+      assert captured =~ "Spool producer GenStage has discarded"
     end
   end
 end

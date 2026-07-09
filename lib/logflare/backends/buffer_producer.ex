@@ -15,9 +15,10 @@ defmodule Logflare.Backends.BufferProducer do
   alias Logflare.LogEvent
   alias Logflare.Sources
 
-  @type state :: %{
+  @type standard_state :: %{
           consolidated: boolean(),
           id_passing: boolean(),
+          id_passing_metadata: boolean(),
           demand: non_neg_integer(),
           source_id: pos_integer() | nil,
           source_token: atom() | nil,
@@ -25,6 +26,20 @@ defmodule Logflare.Backends.BufferProducer do
           last_discard_log_dt: DateTime.t() | nil,
           interval: pos_integer()
         }
+
+  @type spool_producer_state :: %{
+          spool_producer: true,
+          consolidated: false,
+          id_passing: boolean(),
+          demand: non_neg_integer(),
+          source_id: nil,
+          source_token: nil,
+          backend_id: nil,
+          last_discard_log_dt: DateTime.t() | nil,
+          interval: pos_integer()
+        }
+
+  @type state :: standard_state() | spool_producer_state()
 
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
@@ -39,18 +54,42 @@ defmodule Logflare.Backends.BufferProducer do
   def init(opts) do
     Process.flag(:trap_exit, true)
 
+    spool_producer? = Keyword.get(opts, :spool_producer, false)
     consolidated? = Keyword.get(opts, :consolidated, false)
     backend_id = opts[:backend_id]
     interval = Keyword.get(opts, :interval, @default_interval)
 
     state =
-      if consolidated? do
-        init_consolidated_state(backend_id, interval, opts)
-      else
-        init_standard_state(opts, interval)
+      cond do
+        spool_producer? -> init_spool_producer_state(interval)
+        consolidated? -> init_consolidated_state(backend_id, interval, opts)
+        true -> init_standard_state(opts, interval)
       end
 
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
+  end
+
+  @spec init_spool_producer_state(pos_integer()) :: state()
+  defp init_spool_producer_state(interval) do
+    state = %{
+      spool_producer: true,
+      consolidated: false,
+      id_passing: true,
+      demand: 0,
+      source_id: nil,
+      source_token: nil,
+      backend_id: nil,
+      last_discard_log_dt: nil,
+      interval: interval
+    }
+
+    table_key = {:spool_producer, nil, self()}
+    startup_table_key = {:spool_producer, nil, nil}
+    IngestEventQueue.upsert_tid(table_key)
+    IngestEventQueue.move(startup_table_key, table_key)
+    schedule(state, false)
+
+    state
   end
 
   @spec init_standard_state(keyword(), pos_integer()) :: state()
@@ -60,6 +99,7 @@ defmodule Logflare.Backends.BufferProducer do
     state = %{
       consolidated: false,
       id_passing: Keyword.get(opts, :id_passing, false),
+      id_passing_metadata: Keyword.get(opts, :id_passing_metadata, false),
       demand: 0,
       source_id: opts[:source_id],
       source_token: source.token,
@@ -79,10 +119,14 @@ defmodule Logflare.Backends.BufferProducer do
 
   @spec init_consolidated_state(pos_integer(), pos_integer(), keyword()) :: state()
   defp init_consolidated_state(backend_id, interval, opts) do
+    id_passing = Keyword.get(opts, :id_passing, false)
+    id_passing_metadata = Keyword.get(opts, :id_passing_metadata, false)
+
     state = %{
       consolidated: true,
       demand: 0,
-      id_passing: false,
+      id_passing: id_passing,
+      id_passing_metadata: id_passing_metadata,
       source_id: nil,
       source_token: nil,
       backend_id: backend_id,
@@ -94,12 +138,23 @@ defmodule Logflare.Backends.BufferProducer do
     startup_table_key = {:consolidated, backend_id, nil}
     IngestEventQueue.upsert_tid(table_key)
     IngestEventQueue.move(startup_table_key, table_key)
+
+    if id_passing do
+      IngestEventQueue.reset_processing_to_pending(table_key)
+    end
+
     schedule(state, Keyword.get(opts, :scale, false))
 
     state
   end
 
   @impl GenStage
+  def format_discarded(discarded, %{spool_producer: true} = state) do
+    maybe_log_discarded(state, fn ->
+      Logger.warning("Spool producer GenStage has discarded #{discarded} events from buffer")
+    end)
+  end
+
   def format_discarded(discarded, %{consolidated: true} = state) do
     maybe_log_discarded(state, fn ->
       Logger.warning(
@@ -158,6 +213,13 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @impl GenStage
+  def handle_info({:EXIT, _caller_pid, _reason}, %{spool_producer: true} = state) do
+    table_key = {:spool_producer, nil, self()}
+    startup_table_key = {:spool_producer, nil, nil}
+    IngestEventQueue.move(table_key, startup_table_key)
+    {:noreply, [], state}
+  end
+
   def handle_info({:EXIT, _caller_pid, _reason}, %{consolidated: true} = state) do
     table_key = {:consolidated, state.backend_id, self()}
     startup_table_key = {:consolidated, state.backend_id, nil}
@@ -175,12 +237,26 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @impl GenStage
+  def terminate(_reason, %{spool_producer: true} = state) do
+    table_key = {:spool_producer, nil, self()}
+    startup_table_key = {:spool_producer, nil, nil}
+    IngestEventQueue.move(table_key, startup_table_key)
+    state
+  end
+
+  def terminate(_reason, state), do: state
+
+  @impl GenStage
   def handle_demand(demand, state) do
     {items, state} = resolve_demand(state, demand)
     {:noreply, items, state}
   end
 
   @spec schedule(state :: state(), scale? :: boolean()) :: reference()
+  defp schedule(%{spool_producer: true} = state, _scale?) do
+    Process.send_after(self(), :scheduled_resolve, state.interval)
+  end
+
   defp schedule(%{consolidated: true} = state, _scale?) do
     Process.send_after(self(), :scheduled_resolve, state.interval)
   end
@@ -235,12 +311,61 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [
-          LogEvent.t() | {term(), :ets.tid()}
+          LogEvent.t()
+          | {term(), :ets.tid(), non_neg_integer()}
+          | {term(), :ets.tid(), non_neg_integer(), LogEvent.TypeDetection.event_type(),
+             integer(), :fresh | :stale}
         ]
+  defp do_fetch(
+         %{consolidated: true, id_passing: true, id_passing_metadata: true, backend_id: bid},
+         n
+       ) do
+    key = {:consolidated, bid, self()}
+
+    case IngestEventQueue.take_pending_ids_with_metadata(key, n) do
+      {:error, :not_initialized} ->
+        []
+
+      {:ok, [], _tid} ->
+        []
+
+      {:ok, metadata, tid} ->
+        Enum.map(metadata, fn {id, size, event_type, day_bucket, freshness} ->
+          {id, tid, size, event_type, day_bucket, freshness}
+        end)
+    end
+  end
+
+  defp do_fetch(%{consolidated: true, id_passing: true, backend_id: bid} = _state, n) do
+    key = {:consolidated, bid, self()}
+
+    case IngestEventQueue.take_pending_ids(key, n) do
+      {:error, :not_initialized} -> []
+      {:ok, [], _tid} -> []
+      {:ok, id_size_pairs, tid} -> Enum.map(id_size_pairs, fn {id, size} -> {id, tid, size} end)
+    end
+  end
+
   defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
     key = {:consolidated, bid, self()}
 
     do_pop_key(key, n)
+  end
+
+  defp do_fetch(%{spool_producer: true} = _state, n) do
+    key = {:spool_producer, nil, self()}
+
+    case IngestEventQueue.take_pending_ids(key, n) do
+      {:error, :not_initialized} ->
+        Logger.warning("IngestEventQueue not initialized for spool_producer")
+        []
+
+      {:ok, [], _tid} ->
+        []
+
+      {:ok, id_size_pairs, tid} ->
+        Enum.map(id_size_pairs, fn {id, size} -> {id, tid, size} end)
+    end
   end
 
   defp do_fetch(
@@ -258,7 +383,7 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @spec do_take_key(key :: table_key(), count :: non_neg_integer(), id_passing :: boolean()) ::
-          [LogEvent.t()] | [{term(), :ets.tid()}]
+          [LogEvent.t()] | [{term(), :ets.tid(), non_neg_integer()}]
   defp do_take_key({sid, bid, _pid} = key, n, true) do
     case IngestEventQueue.take_pending_ids(key, n) do
       {:error, :not_initialized} ->

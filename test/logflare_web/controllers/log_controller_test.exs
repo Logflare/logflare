@@ -137,7 +137,10 @@ defmodule LogflareWeb.LogControllerTest do
         source: source,
         user: user
       } do
-        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source ->
+        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch,
+                                                       _source,
+                                                       _backend,
+                                                       _allow_spooling ->
           {:error, ["Type error! Field `value` has an unexpected type."]}
         end)
 

@@ -42,6 +42,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
              :description,
              :name,
              :query,
+             :language,
              :source_mapping,
              :sandboxable,
              :cache_duration_seconds,
@@ -50,7 +51,8 @@ defmodule Logflare.Endpoints.EndpointQuery do
              :enable_auth,
              :labels,
              :redact_pii,
-             :enable_dynamic_reservation
+             :enable_dynamic_reservation,
+             :backend_id
            ]}
   typed_schema "endpoint_queries" do
     field(:token, Ecto.UUID, autogenerate: true)
