@@ -318,6 +318,38 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert result == []
     end
 
+    test "does not insert to ClickHouse when every routed row is missing from ETS", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      event1 = build(:log_event, source: source, message: "gone 1")
+      event2 = build(:log_event, source: source, message: "gone 2")
+
+      # Empty ETS table: rows were routed via the metadata fast path but deleted
+      # (e.g. by the janitor) before batch time, so encode_message finds nothing.
+      tid = setup_processing_events([])
+
+      messages = [
+        batch_message(event1, tid, backend.id),
+        batch_message(event2, tid, backend.id)
+      ]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 2,
+        trigger: :flush
+      }
+
+      Mimic.reject(ClickHouseAdaptor, :insert_log_events_compressed, 4)
+
+      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+
+      assert length(result) == 2
+      assert Enum.all?(result, &match?(%Message{status: {:failed, :not_found}}, &1))
+    end
+
     test "handles log events with different field types", %{
       context: context,
       source: source,

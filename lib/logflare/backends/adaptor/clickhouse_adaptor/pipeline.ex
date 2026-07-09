@@ -370,6 +370,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           [Message.t()],
           [Message.t()]
         ) :: [Message.t()]
+  defp finalize_insert(_backend, _event_type, _batcher, _compressed, [] = _good, bad) do
+    # No rows encoded (every event was missing from ETS by batch time), so the
+    # compressed payload carries zero RowBinary rows. Skip the empty ClickHouse
+    # insert and fail the missing messages, mirroring Ingester.insert/5's empty guard.
+    Enum.map(bad, &Message.failed(&1, :not_found))
+  end
+
   defp finalize_insert(backend, event_type, batcher, compressed, good, bad) do
     case ClickHouseAdaptor.insert_log_events_compressed(
            backend,
