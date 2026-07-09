@@ -38,7 +38,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @stale_batch_size 60_000
   @stale_batch_timeout 12_000
   @stale_batcher_concurrency 2
-  @max_retries 2
+  @max_retries 1
 
   @doc false
   @spec max_retries() :: non_neg_integer()
