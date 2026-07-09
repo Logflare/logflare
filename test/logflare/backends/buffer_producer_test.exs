@@ -254,6 +254,46 @@ defmodule Logflare.Backends.BufferProducerTest do
       assert IngestEventQueue.total_pending(consolidated_key) == 0
     end
 
+    test "pulls only IDs and routing metadata in consolidated id-passing metadata mode", %{
+      source: source,
+      backend: backend
+    } do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      buffer_producer_pid =
+        start_supervised!(
+          {BufferProducer,
+           backend_id: backend.id,
+           consolidated: true,
+           id_passing: true,
+           id_passing_metadata: true,
+           interval: 100}
+        )
+
+      consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
+      :timer.sleep(150)
+
+      le =
+        build(:log_event, source: source)
+        |> Map.put(:event_type, :trace)
+        |> Map.put(:day_bucket, 123_456)
+        |> Map.put(:ingest_freshness, :stale)
+
+      :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
+
+      [item] =
+        GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+        |> Enum.take(1)
+
+      assert {event_id, tid, size, :trace, 123_456, :stale} = item
+      assert event_id == le.id
+      assert size == :erlang.external_size(le.body)
+
+      assert {^event_id, :processing, ^le, ^size} = IngestEventQueue.lookup_id(tid, event_id)
+      assert IngestEventQueue.total_pending(consolidated_key) == 0
+    end
+
     test "format_discarded logs backend_id for consolidated mode", %{backend: backend} do
       startup_key = {:consolidated, backend.id, nil}
       IngestEventQueue.upsert_tid(startup_key)

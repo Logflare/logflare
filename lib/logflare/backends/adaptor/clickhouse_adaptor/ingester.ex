@@ -139,19 +139,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   @doc false
+  @spec encode_mapping_config_id(String.t()) :: iodata()
+  def encode_mapping_config_id(config_id), do: RowBinaryEncoder.uuid(config_id)
+
+  @doc false
   @spec encode_row(LogEvent.t(), TypeDetection.event_type()) :: iodata()
   def encode_row(%LogEvent{body: body} = event, event_type) when is_event_type(event_type) do
-    encode_row(event, event_type, RowBinaryEncoder.uuid(body["mapping_config_id"]))
+    encode_row(event, event_type, encode_mapping_config_id(body["mapping_config_id"]))
   end
 
+  @doc false
   @spec encode_row(LogEvent.t(), TypeDetection.event_type(), iodata()) :: iodata()
-  defp encode_row(%LogEvent{} = event, :log, mapping_config_id),
+  def encode_row(%LogEvent{} = event, :log, mapping_config_id),
     do: encode_log_row(event, mapping_config_id)
 
-  defp encode_row(%LogEvent{} = event, :metric, mapping_config_id),
+  def encode_row(%LogEvent{} = event, :metric, mapping_config_id),
     do: encode_metric_row(event, mapping_config_id)
 
-  defp encode_row(%LogEvent{} = event, :trace, mapping_config_id),
+  def encode_row(%LogEvent{} = event, :trace, mapping_config_id),
     do: encode_trace_row(event, mapping_config_id)
 
   @doc false

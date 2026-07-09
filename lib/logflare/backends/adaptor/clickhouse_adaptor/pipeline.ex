@@ -11,8 +11,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   `{event_type, day_bucket}` so each insert targets a single ClickHouse
   partition. Multiple sources are processed together in a single pipeline.
 
-  Uses ID-passing: the producer emits `{id, tid, size}` tuples and events
-  remain in ETS as `:processing` throughout. Each batcher fetches events
+  Uses ID-passing: the producer emits IDs plus small routing metadata while
+  events remain in ETS as `:processing` throughout. Each batcher fetches events
   from ETS and streams them through zlib deflate to build a gzip-compressed
   RowBinary payload without holding the full batch in process memory.
   """
@@ -73,7 +73,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       hibernate_after: 5_000,
       spawn_opt: [fullsweep_after: 100],
       producer: [
-        module: {BufferProducer, [backend_id: backend.id, consolidated: true, id_passing: true]},
+        module:
+          {BufferProducer,
+           [
+             backend_id: backend.id,
+             consolidated: true,
+             id_passing: true,
+             id_passing_metadata: true
+           ]},
         transformer: {__MODULE__, :transform, [backend_id: backend.id]},
         concurrency: @producer_concurrency
       ],
@@ -103,8 +110,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     {:via, module, {registry, new_identifier}}
   end
 
-  @spec transform(event :: {term(), :ets.tid(), non_neg_integer()}, opts :: keyword()) ::
-          Message.t()
+  @spec transform(
+          event ::
+            {term(), :ets.tid(), non_neg_integer()}
+            | {term(), :ets.tid(), non_neg_integer(), TypeDetection.event_type(), integer(),
+               :fresh | :stale},
+          opts :: keyword()
+        ) :: Message.t()
+  def transform({id, tid, _size, event_type, day_bucket, freshness}, opts)
+      when is_event_type(event_type) and freshness in [:fresh, :stale] do
+    %Message{
+      data: {id, tid, event_type, day_bucket, freshness},
+      acknowledger: {__MODULE__, :ack_id, %{backend_id: opts[:backend_id]}}
+    }
+  end
+
+  def transform({id, tid, size, _event_type, _day_bucket, _freshness}, opts) do
+    transform({id, tid, size}, opts)
+  end
+
   def transform({id, tid, _size}, opts) do
     %Message{
       data: {id, tid},
@@ -114,6 +138,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @spec handle_message(processor_name :: atom(), message :: Message.t(), context :: map()) ::
           Message.t()
+  def handle_message(
+        _processor_name,
+        %Message{data: {id, tid, event_type, day_bucket, freshness}} = message,
+        _context
+      )
+      when is_event_type(event_type) and freshness in [:fresh, :stale] do
+    message
+    |> Message.put_data({id, tid, event_type, day_bucket})
+    |> Message.put_batcher(ingest_freshness_to_batcher(freshness))
+    |> Message.put_batch_key({event_type, day_bucket})
+  end
+
   def handle_message(_processor_name, %Message{data: {id, tid}} = message, _context) do
     case IngestEventQueue.lookup_id(tid, id) do
       {^id, :processing, %LogEvent{event_type: event_type, day_bucket: day_bucket} = event, _}
@@ -247,9 +283,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       # good/bad end up reversed relative to `messages`; that's fine — Broadway
       # partitions and re-reverses handle_batch/4's return by status internally,
       # and neither the acknowledger nor ClickHouse cares about row order.
+      mapping_config_id = Ingester.encode_mapping_config_id(config_id)
+
       {good, bad, chunks} =
         Enum.reduce(messages, {[], [], []}, fn message, acc ->
-          encode_message(z, event_type, compiled, config_id, message, acc)
+          encode_message(z, event_type, compiled, config_id, mapping_config_id, message, acc)
         end)
 
       final_chunk = :zlib.deflate(z, "", :finish)
@@ -265,6 +303,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           TypeDetection.event_type(),
           reference(),
           String.t(),
+          iodata(),
           Message.t(),
           {[Message.t()], [Message.t()], iodata()}
         ) :: {[Message.t()], [Message.t()], iodata()}
@@ -273,6 +312,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          event_type,
          compiled,
          config_id,
+         mapping_config_id,
          %{data: {id, tid, msg_event_type, _day_bucket}} = message,
          {good, bad, chunks}
        )
@@ -287,7 +327,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           |> resolve_severity_number(event_type)
 
         row_chunk =
-          :zlib.deflate(z, Ingester.encode_row(%{event | body: mapped_body}, event_type))
+          :zlib.deflate(
+            z,
+            Ingester.encode_row(%{event | body: mapped_body}, event_type, mapping_config_id)
+          )
 
         {[message | good], bad, [chunks, row_chunk]}
 
@@ -296,7 +339,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
-  defp encode_message(_z, _event_type, _compiled, _config_id, message, {good, bad, chunks}) do
+  defp encode_message(
+         _z,
+         _event_type,
+         _compiled,
+         _config_id,
+         _mapping_config_id,
+         message,
+         {good, bad, chunks}
+       ) do
     {good, [message | bad], chunks}
   end
 
@@ -319,6 +370,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           [Message.t()],
           [Message.t()]
         ) :: [Message.t()]
+  defp finalize_insert(_backend, _event_type, _batcher, _compressed, [] = _good, bad) do
+    # No rows encoded (every event was missing from ETS by batch time), so the
+    # compressed payload carries zero RowBinary rows. Skip the empty ClickHouse
+    # insert and fail the missing messages, mirroring Ingester.insert/5's empty guard.
+    Enum.map(bad, &Message.failed(&1, :not_found))
+  end
+
   defp finalize_insert(backend, event_type, batcher, compressed, good, bad) do
     case ClickHouseAdaptor.insert_log_events_compressed(
            backend,
