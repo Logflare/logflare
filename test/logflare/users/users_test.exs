@@ -2,7 +2,6 @@ defmodule Logflare.UsersTest do
   use Logflare.DataCase, async: true
   use ExUnitProperties
 
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Mailer
   alias Logflare.Sources
   alias Logflare.User
@@ -50,6 +49,10 @@ defmodule Logflare.UsersTest do
     alert = insert(:alert, user: user)
     source = insert(:source, user: user)
     endpoint = insert(:endpoint, user: user)
+
+    stub(BigQueryAdaptor, :update_iam_policy, fn ->
+      Mimic.call_original(BigQueryAdaptor, :update_iam_policy, [])
+    end)
 
     expect(
       GoogleApi.CloudResourceManager.V1.Api.Projects,
@@ -323,8 +326,6 @@ defmodule Logflare.UsersTest do
 
   defp expect_post_insert_user_side_effects do
     expect(Mailer, :deliver, fn _email -> {:ok, %{}} end)
-    expect(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
-    expect(BigQueryAdaptor, :patch_dataset_access, fn _user -> {:ok, :patch_attempted} end)
 
     :ok
   end

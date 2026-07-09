@@ -3,6 +3,7 @@ defmodule LogflareWeb.UserControllerTest do
 
   import ExUnit.CaptureLog
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Users
 
   setup do
@@ -160,6 +161,10 @@ defmodule LogflareWeb.UserControllerTest do
     end
 
     test "succeeds", %{conn: conn} do
+      stub(BigQueryAdaptor, :update_iam_policy, fn ->
+        Mimic.call_original(BigQueryAdaptor, :update_iam_policy, [])
+      end)
+
       expect(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
         :cloudresourcemanager_projects_set_iam_policy,
@@ -276,6 +281,10 @@ defmodule LogflareWeb.UserControllerTest do
     end
 
     test "logs when user account is deleted", %{conn: conn, user: user} do
+      stub(BigQueryAdaptor, :update_iam_policy, fn ->
+        Mimic.call_original(BigQueryAdaptor, :update_iam_policy, [])
+      end)
+
       expect(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
         :cloudresourcemanager_projects_set_iam_policy,
@@ -349,6 +358,10 @@ defmodule LogflareWeb.UserControllerTest do
     end
 
     test "bug: should be able to delete a partner-provisioned account", %{conn: conn} do
+      stub(BigQueryAdaptor, :update_iam_policy, fn ->
+        Mimic.call_original(BigQueryAdaptor, :update_iam_policy, [])
+      end)
+
       expect(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
         :cloudresourcemanager_projects_set_iam_policy,

@@ -78,6 +78,10 @@ defmodule Logflare.PartnerTest do
 
   describe "delete_user/2" do
     test "deletes user and removes association with partner" do
+      stub(BigQueryAdaptor, :update_iam_policy, fn ->
+        Mimic.call_original(BigQueryAdaptor, :update_iam_policy, [])
+      end)
+
       expect(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
         :cloudresourcemanager_projects_set_iam_policy,

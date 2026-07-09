@@ -500,6 +500,11 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
     test "update_iam_policy/0" do
       pid = self()
+
+      stub(BigQueryAdaptor, :update_iam_policy, fn ->
+        Mimic.call_original(BigQueryAdaptor, :update_iam_policy, [])
+      end)
+
       # Mock IAM API calls for listing existing service accounts
       expect(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
         _conn, "projects/" <> _project_id, _opts ->
@@ -567,6 +572,11 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
     test "update_iam_policy/0 should not update iam policy with service accounts" do
       pid = self()
+
+      stub(BigQueryAdaptor, :update_iam_policy, fn ->
+        Mimic.call_original(BigQueryAdaptor, :update_iam_policy, [])
+      end)
+
       reject(&GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list/3)
       reject(&GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create/3)
 
