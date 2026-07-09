@@ -584,14 +584,56 @@ defmodule Logflare.Backends do
           {:ok, count :: pos_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
           {:ok, count :: pos_integer()} | {:error, [term()]}
-  def ingest_logs(event_params, source, backend \\ nil) do
+  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
+          {:ok, count :: pos_integer()} | {:error, [term()]}
+  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
     ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
-    maybe_broadcast_and_route(source, log_events)
-    dispatch_to_backends(source, backend, log_events)
+
+    if spoolable?(log_events, source, allow_spooling) do
+      dispatch_to_spool_producer(log_events)
+    else
+      maybe_broadcast_and_route(source, log_events)
+      dispatch_to_backends(source, backend, log_events)
+    end
+
     if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+  end
+
+  # Requires an explicit opt-in (allow_spooling), not just global mode +
+  # source.enable_spooling: SourceRouter's re-entrant calls (routing an
+  # already-matched rule to its backend/sink) never pass allow_spooling, so
+  # they always land here as false regardless of source config. The
+  # via_rule_id check is defense-in-depth on top of that — even a caller that
+  # does pass allow_spooling: true should never spool an event that's
+  # already been routed once
+  @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
+  defp spoolable?(log_events, source, allow_spooling) do
+    allow_spooling and spool_producer_mode?() and source.enable_spooling and
+      Enum.all?(log_events, &(&1.via_rule_id == nil))
+  end
+
+  @doc """
+  Dispatches events from the spool consumer directly to backends, bypassing the spool producer path.
+  Use this in the consumer pipeline to avoid re-routing events back to the spool in `:both` mode.
+  """
+  @spec dispatch_from_spool([map()], Source.t()) :: {:ok, non_neg_integer()}
+  def dispatch_from_spool(spool_records, source) do
+    ensure_source_sup_started(source)
+    log_events = Enum.map(spool_records, &LogEvent.make_from_spool(&1, source))
+    count = length(log_events)
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool_consumer, :dispatch],
+      %{count: count},
+      %{}
+    )
+
+    maybe_broadcast_and_route(source, log_events)
+    dispatch_to_backends(source, nil, log_events)
+    {:ok, count}
   end
 
   defp split_valid_events(source, event_params) do
@@ -674,6 +716,19 @@ defmodule Logflare.Backends do
     Sources.Counters.increment(source.token, count)
     SystemMetrics.AllLogsLogged.increment(:total_logs_logged, count)
     :ok
+  end
+
+  @spec spool_producer_mode?() :: boolean()
+  def spool_producer_mode?, do: spool_mode() in [:producer, :both]
+
+  @spec spool_consumer_mode?() :: boolean()
+  def spool_consumer_mode?, do: spool_mode() in [:consumer, :both]
+
+  defp spool_mode,
+    do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
+
+  defp dispatch_to_spool_producer(log_events) do
+    IngestEventQueue.add_to_table({:spool_producer, nil}, log_events)
   end
 
   defp maybe_broadcast_and_route(source, log_events) do
@@ -1008,6 +1063,38 @@ defmodule Logflare.Backends do
 
       _ ->
         false
+    end
+  end
+
+  @doc """
+  Returns true if ANY of a source's ingest queues — the system default plus
+  every backend actually configured on it, regardless of default-ingest
+  flags — currently exceeds `max_buffer_queue_len/0`. Unlike
+  `cached_local_pending_buffer_full?/1` (scoped to just the "default ingest"
+  backend(s), for the HTTP 429 gate's specific question), this checks every
+  backend a source can dispatch to and reads live `IngestEventQueue` sizes
+  directly rather than a separately-cadenced cache — matching
+  `QueueJanitor`'s own `get_table_size/1`-based overflow check exactly, so it
+  can't miss a backend that isn't part of the "default ingest" set.
+  """
+  @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
+  def any_ingest_queue_over_limit?(source_id) do
+    backend_ids =
+      [nil | __MODULE__.Cache.list_backends(source_id: source_id) |> Enum.map(& &1.id)]
+
+    Enum.any?(backend_ids, &any_queue_over_limit_for_backend?(source_id, &1))
+  end
+
+  defp any_queue_over_limit_for_backend?(source_id, backend_id) do
+    {source_id, backend_id}
+    |> IngestEventQueue.list_queues()
+    |> Enum.any?(&queue_over_limit?/1)
+  end
+
+  defp queue_over_limit?(table_key) do
+    case IngestEventQueue.get_table_size(table_key) do
+      size when is_integer(size) -> size > max_buffer_queue_len()
+      _ -> false
     end
   end
 
