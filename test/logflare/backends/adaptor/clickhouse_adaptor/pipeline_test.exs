@@ -132,8 +132,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert %Message{
                data: {event_id, ^tid, :log, day_bucket, :fresh},
-               batcher: nil,
-               batch_key: nil,
+               batcher: :default,
+               batch_key: :default,
                acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id}}
              } = result
 
