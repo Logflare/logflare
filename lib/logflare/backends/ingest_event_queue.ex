@@ -800,6 +800,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   itself, and its byte size — hiding the row's internal representation
   (which also carries claim/claimed_at for the stale-processing recovery
   mechanism; see queue_janitor.ex) from callers that just want the event.
+
+  Ignores stale (deleted) tables, returning `nil`. Emits telemetry if the
+  table no longer exists.
   """
   @spec lookup_id(:ets.tid(), term()) ::
           {term(), :pending | :processing | :ingested, LogEvent.t(), non_neg_integer()} | nil
@@ -808,6 +811,10 @@ defmodule Logflare.Backends.IngestEventQueue do
       [{^id, status, event, byte_size, _claim, _claimed_at}] -> {id, status, event, byte_size}
       [] -> nil
     end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      nil
   end
 
   @doc """
@@ -822,22 +829,6 @@ defmodule Logflare.Backends.IngestEventQueue do
     ArgumentError ->
       emit_stale_ets_table_telemetry()
       :ok
-  end
-
-  @doc """
-  Looks up a single event by id in an ETS table.
-
-  Returns `{id, status, event, byte_size}` or `nil` if not found.
-  """
-  @spec lookup_id(:ets.tid(), term()) ::
-          {term(), :pending | :processing | :ingested, LogEvent.t(), non_neg_integer()} | nil
-  def lookup_id(tid, id) do
-    case :ets.lookup(tid, id) do
-      [{^id, status, event, size, _claim, _claimed_at}] -> {id, status, event, size}
-      _ -> nil
-    end
-  rescue
-    ArgumentError -> nil
   end
 
   @doc """
