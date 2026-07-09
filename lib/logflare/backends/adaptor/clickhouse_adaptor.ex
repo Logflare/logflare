@@ -585,6 +585,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
+  @doc """
+  Inserts a pre-gzipped RowBinary payload into the appropriate type-specific ingest table.
+
+  Bypasses encoding and compression. Intended for streaming-zlib pipelines.
+  """
+  @spec insert_log_events_compressed(
+          Backend.t(),
+          TypeDetection.event_type(),
+          compressed :: binary(),
+          opts :: keyword()
+        ) :: :ok | {:error, term()}
+  def insert_log_events_compressed(%Backend{} = backend, event_type, compressed, opts \\ [])
+      when is_event_type(event_type) and is_binary(compressed) do
+    Logger.metadata(backend_id: backend.id)
+    table_name = clickhouse_ingest_table_name(backend, event_type)
+    insert_opts = build_insert_opts(opts)
+
+    case Ingester.insert_compressed(backend, table_name, event_type, compressed, insert_opts) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("ClickHouse http insert error.",
+          host: config_host(backend),
+          error_string: inspect(reason)
+        )
+
+        {:error, reason}
+    end
+  end
+
   @spec build_insert_opts(keyword()) :: keyword()
   defp build_insert_opts(opts) do
     if Keyword.get(opts, :async, false), do: async_insert_opts(), else: []

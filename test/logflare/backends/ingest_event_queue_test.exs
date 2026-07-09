@@ -55,7 +55,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     test "list_pending_counts/1 returns list of counts", %{source: source, backend: backend} do
       key = {source.id, backend.id, self()}
       IngestEventQueue.upsert_tid(key)
-      le = build(:log_event)
+      le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(key, [le])
       assert [{_, 1}] = IngestEventQueue.list_pending_counts({source.id, backend.id})
 
@@ -74,14 +74,14 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
 
     test "list_counts/1 returns list of counts", %{
-      source: %{id: source_id},
+      source: %{id: source_id} = source,
       backend: %{id: backend_id}
     } do
       pid = self()
       key = {source_id, backend_id, pid}
       assert {:ok, _tid} = IngestEventQueue.upsert_tid(key)
 
-      le = build(:log_event)
+      le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(key, [le])
       IngestEventQueue.mark_ingested(key, [le])
 
@@ -99,7 +99,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
 
     test "add_to_table/2 falls back to the startup queue when a producer table died mid-dispatch",
-         %{source: %{id: source_id}, backend: %{id: backend_id}} do
+         %{source: %{id: source_id} = source, backend: %{id: backend_id}} do
       pid = self()
       producer_key = {source_id, backend_id, pid}
       startup_key = {source_id, backend_id, nil}
@@ -112,14 +112,14 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # window: get_tid would otherwise filter the dead table out first.
       :ets.delete(producer_tid)
 
-      le = build(:log_event)
+      le = build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table({producer_key, producer_tid}, [le])
 
       assert IngestEventQueue.total_pending(startup_key) == 1
     end
 
     test "add_to_table/3 does not recurse when the startup queue table is stale", %{
-      source: %{id: source_id},
+      source: %{id: source_id} = source,
       backend: %{id: backend_id}
     } do
       startup_key = {source_id, backend_id, nil}
@@ -129,11 +129,14 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # Drive the insert clause directly with the stale startup-queue tid; the
       # fallback must bottom out instead of looping on {_, _, nil}.
       assert {:error, :not_initialized} =
-               IngestEventQueue.add_to_table({startup_key, startup_tid}, [build(:log_event)])
+               IngestEventQueue.add_to_table(
+                 {startup_key, startup_tid},
+                 [build(:log_event, source: source)]
+               )
     end
 
     test "queues_pending_size/1 returns counts across all queues", %{
-      source: %{id: source_id},
+      source: %{id: source_id} = source,
       backend: %{id: backend_id}
     } do
       pid = self()
@@ -141,11 +144,17 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid({source_id, backend_id, nil})
       IngestEventQueue.upsert_tid({source_id, nil, nil})
 
-      IngestEventQueue.add_to_table({source_id, backend_id, nil}, [build(:log_event)])
-      IngestEventQueue.add_to_table({source_id, backend_id, self()}, [build(:log_event)])
+      IngestEventQueue.add_to_table({source_id, backend_id, nil}, [
+        build(:log_event, source: source)
+      ])
+
+      IngestEventQueue.add_to_table({source_id, backend_id, self()}, [
+        build(:log_event, source: source)
+      ])
+
       assert IngestEventQueue.queues_pending_size({source_id, backend_id}) == 2
 
-      IngestEventQueue.add_to_table({source_id, nil, nil}, [build(:log_event)])
+      IngestEventQueue.add_to_table({source_id, nil, nil}, [build(:log_event, source: source)])
       assert IngestEventQueue.queues_pending_size({source_id, nil}) == 1
     end
   end
@@ -153,7 +162,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   describe "consolidated keys" do
     setup do
       user = insert(:user)
-      [backend: insert(:backend, user: user)]
+      [source: insert(:source, user: user), backend: insert(:backend, user: user)]
     end
 
     test "consolidated_key?/1 returns true for consolidated queue keys" do
@@ -196,49 +205,65 @@ defmodule Logflare.Backends.IngestEventQueueTest do
              end)
     end
 
-    test "list_pending_counts/1 returns counts for consolidated queues", %{backend: backend} do
+    test "list_pending_counts/1 returns counts for consolidated queues", %{
+      source: source,
+      backend: backend
+    } do
       key = {:consolidated, backend.id, self()}
       IngestEventQueue.upsert_tid(key)
-      le = build(:log_event)
+      le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(key, [le])
 
       assert [{^key, 1}] = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
     end
 
-    test "add_to_table/2 works with consolidated queue key", %{backend: backend} do
+    test "add_to_table/2 works with consolidated queue key", %{
+      source: source,
+      backend: backend
+    } do
       key = {:consolidated, backend.id, self()}
       IngestEventQueue.upsert_tid(key)
-      le = build(:log_event)
+      le = build(:log_event, source: source)
 
       assert :ok = IngestEventQueue.add_to_table(key, [le])
       assert {:ok, [^le]} = IngestEventQueue.take_pending(key, 1)
     end
 
-    test "add_to_table/2 distributes to startup queue when no active queues", %{backend: backend} do
+    test "add_to_table/2 distributes to startup queue when no active queues", %{
+      source: source,
+      backend: backend
+    } do
       startup_key = {:consolidated, backend.id, nil}
       IngestEventQueue.upsert_tid(startup_key)
-      le = build(:log_event)
+      le = build(:log_event, source: source)
 
       assert :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, [le])
       assert IngestEventQueue.total_pending(startup_key) == 1
     end
 
-    test "queues_pending_size/1 returns total for consolidated queues", %{backend: backend} do
+    test "queues_pending_size/1 returns total for consolidated queues", %{
+      source: source,
+      backend: backend
+    } do
       key1 = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.34>")}
       key2 = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.35>")}
       IngestEventQueue.upsert_tid(key1)
       IngestEventQueue.upsert_tid(key2)
 
-      IngestEventQueue.add_to_table(key1, [build(:log_event)])
-      IngestEventQueue.add_to_table(key2, [build(:log_event), build(:log_event)])
+      IngestEventQueue.add_to_table(key1, [build(:log_event, source: source)])
+
+      IngestEventQueue.add_to_table(key2, [
+        build(:log_event, source: source),
+        build(:log_event, source: source)
+      ])
 
       assert IngestEventQueue.queues_pending_size({:consolidated, backend.id}) == 3
     end
 
-    test "delete_queue/1 works with consolidated keys", %{backend: backend} do
+    test "delete_queue/1 works with consolidated keys", %{source: source, backend: backend} do
       key = {:consolidated, backend.id, self()}
       IngestEventQueue.upsert_tid(key)
-      IngestEventQueue.add_to_table(key, [build(:log_event)])
+      IngestEventQueue.add_to_table(key, [build(:log_event, source: source)])
 
       assert :ok = IngestEventQueue.delete_queue(key)
       assert is_nil(IngestEventQueue.get_tid(key))
@@ -279,13 +304,14 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   describe "with a queue" do
     setup do
       user = insert(:user)
-      sbp = {insert(:source, user: user).id, insert(:backend, user: user).id, self()}
+      source = insert(:source, user: user)
+      sbp = {source.id, insert(:backend, user: user).id, self()}
       IngestEventQueue.upsert_tid(sbp)
-      [source_backend_pid: sbp]
+      [source: source, source_backend_pid: sbp]
     end
 
-    test "object lifecycle", %{source_backend_pid: sbp} do
-      le = build(:log_event)
+    test "object lifecycle", %{source: source, source_backend_pid: sbp} do
+      le = build(:log_event, source: source)
       # insert to table
       assert :ok = IngestEventQueue.add_to_table(sbp, [le])
       assert IngestEventQueue.get_table_size(sbp) == 1
@@ -302,8 +328,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
-    test "drop n items from a queue", %{source_backend_pid: sbp} do
-      batch = for _ <- 1..500, do: build(:log_event)
+    test "drop n items from a queue", %{source: source, source_backend_pid: sbp} do
+      batch = for _ <- 1..500, do: build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, batch)
       assert {:ok, 2} = IngestEventQueue.drop(sbp, :all, 2)
       assert IngestEventQueue.get_table_size(sbp) == 498
@@ -311,10 +337,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(sbp) == 498
     end
 
-    test "truncate all events in a queue", %{source_backend_pid: sbp} do
+    test "truncate all events in a queue", %{source: source, source_backend_pid: sbp} do
       batch =
         for _ <- 1..500 do
-          build(:log_event)
+          build(:log_event, source: source)
         end
 
       # add as pending
@@ -325,10 +351,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(sbp) == 0
     end
 
-    test "truncate ingested events in a queue", %{source_backend_pid: sbp} do
+    test "truncate ingested events in a queue", %{source: source, source_backend_pid: sbp} do
       batch =
         for _ <- 1..500 do
-          build(:log_event)
+          build(:log_event, source: source)
         end
 
       # add as pending
@@ -341,10 +367,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(sbp) == 0
     end
 
-    test "truncate pending events in a queue", %{source_backend_pid: sbp} do
+    test "truncate pending events in a queue", %{source: source, source_backend_pid: sbp} do
       batch =
         for _ <- 1..500 do
-          build(:log_event)
+          build(:log_event, source: source)
         end
 
       # add as pending
@@ -411,15 +437,17 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   describe "take_pending_ids/2" do
     setup do
       user = insert(:user)
-      sbp = {insert(:source, user: user).id, insert(:backend, user: user).id, self()}
+      source = insert(:source, user: user)
+      sbp = {source.id, insert(:backend, user: user).id, self()}
       IngestEventQueue.upsert_tid(sbp)
-      [sbp: sbp]
+      [source: source, sbp: sbp]
     end
 
     test "claims pending events, marking them :processing and returning {id, size} pairs", %{
+      source: source,
       sbp: sbp
     } do
-      events = for _ <- 1..5, do: build(:log_event)
+      events = for _ <- 1..5, do: build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
 
       assert {:ok, pairs, tid} = IngestEventQueue.take_pending_ids(sbp, 5)
@@ -431,8 +459,72 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
-    test "respects the requested count and leaves the remainder pending", %{sbp: sbp} do
-      events = for _ <- 1..10, do: build(:log_event)
+    test "can claim IDs with routing metadata without returning full events", %{
+      source: source,
+      sbp: sbp
+    } do
+      fresh =
+        build(:log_event, source: source)
+        |> Map.put(:event_type, :log)
+        |> Map.put(:day_bucket, 12_345)
+        |> Map.put(:ingest_freshness, :fresh)
+
+      stale =
+        build(:log_event, source: source)
+        |> Map.put(:event_type, :trace)
+        |> Map.put(:day_bucket, 54_321)
+        |> Map.put(:ingest_freshness, :stale)
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, [fresh, stale])
+
+      assert {:ok, metadata, tid} = IngestEventQueue.take_pending_ids_with_metadata(sbp, 2)
+      assert tid != nil
+
+      assert Enum.sort(metadata) ==
+               Enum.sort([
+                 {fresh.id, :erlang.external_size(fresh.body), :log, 12_345, :fresh},
+                 {stale.id, :erlang.external_size(stale.body), :trace, 54_321, :stale}
+               ])
+
+      assert IngestEventQueue.total_pending(sbp) == 0
+    end
+
+    test "take_pending_ids_with_metadata/2 returns empty without claiming when count is 0", %{
+      source: source,
+      sbp: sbp
+    } do
+      assert :ok = IngestEventQueue.add_to_table(sbp, [build(:log_event, source: source)])
+
+      assert {:ok, [], nil} = IngestEventQueue.take_pending_ids_with_metadata(sbp, 0)
+      assert IngestEventQueue.total_pending(sbp) == 1
+    end
+
+    test "take_pending_ids_with_metadata/2 returns :not_initialized for an unknown table" do
+      assert {:error, :not_initialized} =
+               IngestEventQueue.take_pending_ids_with_metadata({-1, -1, self()}, 5)
+    end
+
+    test "take_pending_ids_with_metadata/2 claims rows with nil routing fields and returns nils",
+         %{source: source, sbp: sbp} do
+      event =
+        build(:log_event, source: source)
+        |> Map.put(:event_type, nil)
+        |> Map.put(:day_bucket, nil)
+        |> Map.put(:ingest_freshness, nil)
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+
+      assert {:ok, [metadata], tid} = IngestEventQueue.take_pending_ids_with_metadata(sbp, 1)
+      assert tid != nil
+      assert metadata == {event.id, :erlang.external_size(event.body), nil, nil, nil}
+      assert IngestEventQueue.total_pending(sbp) == 0
+    end
+
+    test "respects the requested count and leaves the remainder pending", %{
+      source: source,
+      sbp: sbp
+    } do
+      events = for _ <- 1..10, do: build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
 
       assert {:ok, pairs, _tid} = IngestEventQueue.take_pending_ids(sbp, 4)
@@ -440,8 +532,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 6
     end
 
-    test "does not re-claim events already taken across sequential calls", %{sbp: sbp} do
-      events = for _ <- 1..10, do: build(:log_event)
+    test "does not re-claim events already taken across sequential calls", %{
+      source: source,
+      sbp: sbp
+    } do
+      events = for _ <- 1..10, do: build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
 
       assert {:ok, first, _} = IngestEventQueue.take_pending_ids(sbp, 4)
@@ -456,9 +551,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
 
     test "re-claims an event after it is re-added to the queue (claim counter resets)", %{
+      source: source,
       sbp: sbp
     } do
-      [event] = events = [build(:log_event)]
+      [event] = events = [build(:log_event, source: source)]
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
       event_id = event.id
 
@@ -477,9 +573,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     # unconditional update_element) actually hit the race window and fail, rather than
     # slip through. Tagged :race so it can be isolated, but it is safe to run by default.
     @tag :race
-    test "concurrent claims on the same queue never claim an event twice", %{sbp: sbp} do
+    test "concurrent claims on the same queue never claim an event twice", %{
+      source: source,
+      sbp: sbp
+    } do
       count = 1_000
-      events = for _ <- 1..count, do: build(:log_event)
+      events = for _ <- 1..count, do: build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
 
       claimed =
@@ -559,12 +658,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(available_queue)
 
       max_size = IngestEventQueue.max_queue_size()
-      full_batch = build_list(max_size, :log_event)
+      full_batch = build_list(max_size, :log_event, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
       assert IngestEventQueue.get_table_size(full_queue) == max_size
 
-      new_events = build_list(10, :log_event)
+      new_events = build_list(10, :log_event, source: source)
 
       :ok =
         IngestEventQueue.add_to_table({source.id, backend.id}, new_events, check_queue_size: true)
@@ -647,11 +746,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   describe "`add_to_table/3` distribution with consolidated queues_key" do
     setup do
       user = insert(:user)
+      source = insert(:source, user: user)
       backend = insert(:backend, user: user)
-      [backend: backend]
+      [source: source, backend: backend]
     end
 
     test "distributes events to active consolidated queues, skipping startup queue", %{
+      source: source,
       backend: backend
     } do
       startup_key = {:consolidated, backend.id, nil}
@@ -664,7 +765,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(active_key1)
       IngestEventQueue.upsert_tid(active_key2)
 
-      events = build_list(200, :log_event)
+      events = build_list(200, :log_event, source: source)
       :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, events, chunk_size: 50)
 
       startup_size = IngestEventQueue.get_table_size(startup_key)
@@ -678,18 +779,20 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
 
     test "falls back to startup queue when no active consolidated queues exist", %{
+      source: source,
       backend: backend
     } do
       startup_key = {:consolidated, backend.id, nil}
       IngestEventQueue.upsert_tid(startup_key)
 
-      events = build_list(5, :log_event)
+      events = build_list(5, :log_event, source: source)
       :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, events)
 
       assert IngestEventQueue.get_table_size(startup_key) == 5
     end
 
     test "skips consolidated queues at max capacity when `check_queue_size` is true", %{
+      source: source,
       backend: backend
     } do
       pid1 = :erlang.list_to_pid(~c"<0.100.1>")
@@ -701,12 +804,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(available_queue)
 
       max_size = IngestEventQueue.max_queue_size()
-      full_batch = build_list(max_size, :log_event)
+      full_batch = build_list(max_size, :log_event, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
       assert IngestEventQueue.get_table_size(full_queue) == max_size
 
-      new_events = build_list(10, :log_event)
+      new_events = build_list(10, :log_event, source: source)
 
       :ok =
         IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events,
@@ -746,8 +849,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       [key: key, source: source, backend: backend]
     end
 
-    test "returns events and removes them from the queue", %{key: key} do
-      events = for _ <- 1..5, do: build(:log_event)
+    test "returns events and removes them from the queue", %{key: key, source: source} do
+      events = for _ <- 1..5, do: build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(key, events)
 
       assert IngestEventQueue.get_table_size(key) == 5
@@ -768,8 +871,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert {:error, :not_initialized} = IngestEventQueue.pop_pending({999, 999, self()}, 5)
     end
 
-    test "returns all events when requesting more than available", %{key: key} do
-      events = for _ <- 1..3, do: build(:log_event)
+    test "returns all events when requesting more than available", %{
+      key: key,
+      source: source
+    } do
+      events = for _ <- 1..3, do: build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(key, events)
 
       assert {:ok, popped} = IngestEventQueue.pop_pending(key, 10)
@@ -777,9 +883,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(key) == 0
     end
 
-    test "only pops pending events, not ingested", %{key: key} do
-      pending_events = for _ <- 1..3, do: build(:log_event)
-      ingested_events = for _ <- 1..2, do: build(:log_event)
+    test "only pops pending events, not ingested", %{key: key, source: source} do
+      pending_events = for _ <- 1..3, do: build(:log_event, source: source)
+      ingested_events = for _ <- 1..2, do: build(:log_event, source: source)
 
       :ok = IngestEventQueue.add_to_table(key, pending_events ++ ingested_events)
       {:ok, _} = IngestEventQueue.mark_ingested(key, ingested_events)
@@ -794,11 +900,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(key) == 0
     end
 
-    test "works with consolidated keys", %{backend: backend} do
+    test "works with consolidated keys", %{source: source, backend: backend} do
       consolidated_key = {:consolidated, backend.id, self()}
       IngestEventQueue.upsert_tid(consolidated_key)
 
-      events = for _ <- 1..5, do: build(:log_event)
+      events = for _ <- 1..5, do: build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(consolidated_key, events)
 
       assert {:ok, popped} = IngestEventQueue.pop_pending(consolidated_key, 3)
@@ -806,8 +912,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(consolidated_key) == 2
     end
 
-    test "pop_pending with 0 returns empty list", %{key: key} do
-      events = for _ <- 1..5, do: build(:log_event)
+    test "pop_pending with 0 returns empty list", %{key: key, source: source} do
+      events = for _ <- 1..5, do: build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(key, events)
 
       assert {:ok, []} = IngestEventQueue.pop_pending(key, 0)
@@ -1531,9 +1637,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
           # end
         },
         inputs: %{
-          "50k" => for(_ <- 1..50_000, do: build(:log_event)),
-          "10k" => for(_ <- 1..10_000, do: build(:log_event)),
-          "1k" => for(_ <- 1..1_000, do: build(:log_event))
+          "50k" => for(_ <- 1..50_000, do: build(:log_event, source: source)),
+          "10k" => for(_ <- 1..10_000, do: build(:log_event, source: source)),
+          "1k" => for(_ <- 1..1_000, do: build(:log_event, source: source))
         },
         # insert the batch
         before_scenario: fn input ->
@@ -1580,10 +1686,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
           # end,
         },
         inputs: %{
-          "1k" => for(_ <- 1..1_000, do: build(:log_event)),
-          "500" => for(_ <- 1..500, do: build(:log_event)),
-          "100" => for(_ <- 1..100, do: build(:log_event)),
-          "10" => for(_ <- 1..10, do: build(:log_event))
+          "1k" => for(_ <- 1..1_000, do: build(:log_event, source: source)),
+          "500" => for(_ <- 1..500, do: build(:log_event, source: source)),
+          "100" => for(_ <- 1..100, do: build(:log_event, source: source)),
+          "10" => for(_ <- 1..10, do: build(:log_event, source: source))
         },
         # insert the batch
         before_scenario: fn input ->
@@ -1626,9 +1732,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
           end
         },
         inputs: %{
-          "50k" => for(_ <- 1..50_000, do: build(:log_event)),
-          "10k" => for(_ <- 1..10_000, do: build(:log_event)),
-          "1k" => for(_ <- 1..1_000, do: build(:log_event))
+          "50k" => for(_ <- 1..50_000, do: build(:log_event, source: source)),
+          "10k" => for(_ <- 1..10_000, do: build(:log_event, source: source)),
+          "1k" => for(_ <- 1..1_000, do: build(:log_event, source: source))
         },
         # insert the batch
         before_scenario: fn input ->
@@ -1682,9 +1788,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
           # end
         },
         inputs: %{
-          "50k" => for(_ <- 1..50_000, do: build(:log_event)),
-          "10k" => for(_ <- 1..10_000, do: build(:log_event)),
-          "1k" => for(_ <- 1..1_000, do: build(:log_event))
+          "50k" => for(_ <- 1..50_000, do: build(:log_event, source: source)),
+          "10k" => for(_ <- 1..10_000, do: build(:log_event, source: source)),
+          "1k" => for(_ <- 1..1_000, do: build(:log_event, source: source))
         },
         # insert the batch
         before_scenario: fn input ->
