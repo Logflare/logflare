@@ -35,7 +35,16 @@ defmodule Logflare.Sources.Source do
              :transform_key_values,
              :transform_drop_fields,
              :bigquery_clustering_fields,
-             :default_ingest_backend_enabled?
+             :default_ingest_backend_enabled?,
+             :notifications_every,
+             :lock_schema,
+             :validate_schema,
+             :drop_lql_string,
+             :default_search_lql,
+             :suggested_keys,
+             :disable_tailing,
+             :bq_storage_write_api,
+             :labels
            ]}
 
   defmodule Metrics do
