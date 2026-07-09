@@ -771,15 +771,16 @@ defmodule Logflare.Backends.IngestEventQueue do
         {id, :processing, _event, _size, _claim, _claimed_at} -> id
       end
 
-    with tid when tid != nil <- get_tid(sid_bid_pid),
-         {ids, _cont} <- :ets.select(tid, ms, 10_000) do
-      for id <- ids do
-        :ets.update_element(tid, id, [{2, :pending}, {5, 0}, {6, 0}])
-      end
+    case get_tid(sid_bid_pid) do
+      nil ->
+        :ok
 
-      :ok
-    else
-      _ -> :ok
+      tid ->
+        for id <- :ets.select(tid, ms) do
+          :ets.update_element(tid, id, [{2, :pending}, {5, 0}, {6, 0}])
+        end
+
+        :ok
     end
   end
 
@@ -818,11 +819,9 @@ defmodule Logflare.Backends.IngestEventQueue do
         {id, :processing, _event, _size, _claim, _claimed_at} -> id
       end
 
-    with tid when tid != nil <- get_tid(key),
-         {ids, _cont} <- :ets.select(tid, ms, 10_000) do
-      ids
-    else
-      _ -> []
+    case get_tid(key) do
+      nil -> []
+      tid -> :ets.select(tid, ms)
     end
   end
 
