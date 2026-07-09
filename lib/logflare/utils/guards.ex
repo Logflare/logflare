@@ -8,7 +8,7 @@ defmodule Logflare.Utils.Guards do
   @doc """
   Guard that indicates if the value provided is a number and greater than or equal to 0.
   """
-  defguard is_pos_number(num) when is_number(num) and num >= 0
+  defguard is_non_negative_number(num) when is_number(num) and num >= 0
 
   @doc """
   Guard that indicates if the value provided is an integer and greater than or equal to 0.
