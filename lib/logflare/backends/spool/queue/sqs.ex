@@ -31,10 +31,21 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
 
   @impl Logflare.Backends.Spool.Queue
   def ack(queue_url, handle) do
-    # ElasticMQ returns 200 with an empty body for DeleteMessage, which the XML
-    # parser raises on. A 200 means the delete landed — ignore parse errors.
-    request(ExAws.SQS.delete_message(queue_url, handle))
-    :ok
+    case request(ExAws.SQS.delete_message(queue_url, handle)) do
+      {:ok, _} ->
+        :ok
+
+      {:error, {:fatal, {:expected_element_start_tag, _, _, _}}} ->
+        # ElasticMQ returns 200 with an empty body for DeleteMessage. Our XML
+        # parser can't parse an empty document and exits with exactly this
+        # reason even though the delete itself landed (200 status) — only
+        # this specific shape is treated as success; any other parse
+        # failure or {:error, reason} from the request itself is real.
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @impl Logflare.Backends.Spool.Queue
@@ -57,5 +68,12 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
     ExAws.request(operation)
   rescue
     e -> {:error, Exception.message(e)}
+  catch
+    # A response body our XML parser can't handle (e.g. ElasticMQ's empty
+    # 200 body for DeleteMessage) exits the process rather than raising —
+    # xmerl reports malformed/empty XML via :exit, not an exception. Catch
+    # it here so callers get a normal {:error, reason} to pattern-match on
+    # instead of crashing.
+    :exit, reason -> {:error, reason}
   end
 end

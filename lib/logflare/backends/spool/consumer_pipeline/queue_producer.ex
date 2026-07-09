@@ -304,7 +304,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
           {:ok, lines} ->
             {:ok, handle, lines}
 
-          {:error, %Tesla.Env{status: 404}} ->
+          {:error, :not_found} ->
             Logger.debug(
               "spool_consumer: file not found in storage, discarding stale queue entry: #{file_key}"
             )

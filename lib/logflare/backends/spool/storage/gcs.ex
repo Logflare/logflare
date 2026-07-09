@@ -45,6 +45,7 @@ defmodule Logflare.Backends.Spool.Storage.GCS do
     with {:ok, conn} <- build_conn() do
       case Objects.storage_objects_get(conn, bucket, key, alt: "media") do
         {:ok, %Tesla.Env{body: body}} -> {:ok, body}
+        {:error, %Tesla.Env{status: 404}} -> {:error, :not_found}
         {:error, reason} -> {:error, reason}
       end
     end

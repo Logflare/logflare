@@ -101,7 +101,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         {:ok, :raise} -> raise "boom: #{key}"
         {:ok, {:error, _reason} = error} -> error
         {:ok, body} -> {:ok, body}
-        :error -> {:error, %Tesla.Env{status: 404}}
+        :error -> {:error, :not_found}
       end
     end)
   end
@@ -414,7 +414,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/missing.ndjson")])
-      # stub_storage/1 returns a 404 Tesla.Env for any file_key not in the map.
+      # stub_storage/1 returns {:error, :not_found} for any file_key not in the map.
       stub_storage(%{})
 
       pid = start_producer()

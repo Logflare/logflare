@@ -19,6 +19,7 @@ defmodule Logflare.Backends.Spool.Storage.S3 do
   def get(bucket, key) do
     case ExAws.S3.get_object(bucket, key) |> ExAws.request() do
       {:ok, %{body: raw}} -> {:ok, raw}
+      {:error, {:http_error, 404, _}} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   rescue
