@@ -342,7 +342,7 @@ defmodule LogflareWeb.BillingController do
 
   defp billing_account_has_subscription?(billing_account) do
     if subscriptions = billing_account.stripe_subscriptions["data"] do
-      Enum.count(subscriptions) > 0
+      not Enum.empty?(subscriptions)
     else
       false
     end
