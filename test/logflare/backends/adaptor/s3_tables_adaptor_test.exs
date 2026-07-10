@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.S3TablesAdaptor
+  alias Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchema
 
   doctest S3TablesAdaptor
 
@@ -69,6 +70,49 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
     test "invalid credentials" do
       assert {:error, err} = S3TablesAdaptor.Native.init_catalog(@valid_config)
       assert err =~ "invalid"
+    end
+  end
+
+  describe "Native module (integration)" do
+    @describetag :integration
+
+    setup do
+      table_bucket_arn = System.get_env("LOGFLARE_S3_TABLES_TEST_BUCKET_ARN")
+      namespace = System.get_env("LOGFLARE_S3_TABLES_TEST_NAMESPACE")
+      access_key_id = System.get_env("AWS_ACCESS_KEY_ID")
+      secret_access_key = System.get_env("AWS_SECRET_ACCESS_KEY")
+
+      config =
+        if table_bucket_arn && namespace && access_key_id && secret_access_key do
+          %{
+            table_bucket_arn: table_bucket_arn,
+            namespace: namespace,
+            access_key_id: access_key_id,
+            secret_access_key: secret_access_key
+          }
+        end
+
+      %{config: config}
+    end
+
+    test "ensure_table/3 creates each OTEL table idempotently and table_columns/2 reflects the schema",
+         %{config: config} do
+      if config do
+        assert {:ok, catalog} = S3TablesAdaptor.Native.init_catalog(config)
+
+        for event_type <- IcebergSchema.event_types() do
+          table_name = IcebergSchema.table_name(event_type)
+          fields = IcebergSchema.fields(event_type)
+
+          assert {:ok, _status} = S3TablesAdaptor.Native.ensure_table(catalog, table_name, fields)
+
+          assert {:ok, :already_exists} =
+                   S3TablesAdaptor.Native.ensure_table(catalog, table_name, fields)
+
+          assert {:ok, columns} = S3TablesAdaptor.Native.table_columns(catalog, table_name)
+          assert columns == Enum.map(fields, & &1.name)
+        end
+      end
     end
   end
 end

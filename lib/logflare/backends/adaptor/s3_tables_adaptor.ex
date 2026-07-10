@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor do
 
   use Supervisor
 
+  alias __MODULE__.CatalogManager
   alias __MODULE__.Native
   alias __MODULE__.Pipeline
   alias Ecto.Changeset
@@ -125,9 +126,14 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor do
       batch_timeout: config.batch_timeout
     ]
 
-    children = [
-      Pipeline.child_spec(pipeline_args)
-    ]
+    children =
+      if(Application.get_env(:logflare, :env) != :test,
+        do: [CatalogManager.child_spec({source, backend})],
+        else: []
+      ) ++
+        [
+          Pipeline.child_spec(pipeline_args)
+        ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
