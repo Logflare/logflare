@@ -554,6 +554,39 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert is_integer(size) and size > 0
     end
 
+    test "emits handle_batch telemetry with batch_trigger in metadata (not measurements)", %{
+      source: source,
+      context: context,
+      batch_info: batch_info
+    } do
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le = build(:log_event, source: source)
+      {[message], _tid} = setup_queue(source, [le])
+
+      ref = make_ref()
+
+      :telemetry.attach(
+        "test-handle-batch-#{inspect(ref)}",
+        [:logflare, :backends, :pipeline, :handle_batch],
+        fn _event, measurements, metadata, pid ->
+          send(pid, {:handle_batch, measurements, metadata})
+        end,
+        self()
+      )
+
+      Pipeline.handle_batch(:bq, [message], batch_info, context)
+
+      assert_receive {:handle_batch, measurements, metadata}
+      assert measurements == %{batch_size: batch_info.size}
+      assert metadata.batch_trigger == batch_info.trigger
+      assert metadata.backend_type == :bigquery
+
+      :telemetry.detach("test-handle-batch-#{inspect(ref)}")
+    end
+
     test "excludes missing IDs and emits telemetry", %{
       source: source,
       context: context,

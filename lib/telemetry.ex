@@ -206,6 +206,12 @@ defmodule Logflare.Telemetry do
         tags: [:backend_type],
         description: "Sum of batch sizes for broadway pipeline by backend type"
       ),
+      counter("logflare.backends.pipeline.handle_batch.batch_trigger",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        tags: [:backend_type, :batch_trigger],
+        description:
+          "Count of broadway pipeline batches by backend type and flush trigger (:size | :timeout). A high :timeout share means batches flush before reaching batch_size"
+      ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
       sum("logflare.logs.ingest_logs.drop_lql",
         event_name: [:logflare, :logs, :ingest_logs, :drop_lql],
@@ -363,7 +369,16 @@ defmodule Logflare.Telemetry do
       ),
       sum("logflare.ingest_event_queue.missing_ids.count",
         event_name: [:logflare, :ingest_event_queue, :missing_ids],
+        tags: [:backend_id, :event_type],
+        tag_values: &missing_ids_tag_values/1,
         description: "Count of event IDs not found in ETS during handle_batch fetch"
+      ),
+      distribution("logflare.ingest_event_queue.missing_ids.count",
+        event_name: [:logflare, :ingest_event_queue, :missing_ids],
+        tags: [:backend_id, :event_type],
+        tag_values: &missing_ids_tag_values/1,
+        reporter_options: batch_size_reporter_opts(),
+        description: "Distribution of missing-ID counts per handle_batch fetch"
       ),
       sum("logflare.ingest_event_queue.stale_processing.reset",
         event_name: [:logflare, :ingest_event_queue, :stale_processing],
@@ -566,5 +581,16 @@ defmodule Logflare.Telemetry do
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]
+  end
+
+  # The :missing_ids event is emitted by both the ClickHouse pipeline (backend_id + event_type
+  # metadata) and the BigQuery pipeline (source_id metadata only), so normalize both tags to a
+  # value that is always present regardless of emitter.
+  @spec missing_ids_tag_values(map()) :: %{backend_id: term(), event_type: term()}
+  defp missing_ids_tag_values(metadata) do
+    %{
+      backend_id: Map.get(metadata, :backend_id, :unknown),
+      event_type: Map.get(metadata, :event_type, :unknown)
+    }
   end
 end

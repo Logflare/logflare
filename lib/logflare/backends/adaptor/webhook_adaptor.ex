@@ -305,9 +305,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     def handle_batch(:http, messages, batch_info, context) do
       :telemetry.execute(
         [:logflare, :backends, :pipeline, :handle_batch],
-        %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+        %{batch_size: batch_info.size},
         %{
-          backend_type: :webhook
+          backend_type: :webhook,
+          batch_trigger: batch_info.trigger
         }
       )
 

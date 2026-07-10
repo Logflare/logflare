@@ -228,13 +228,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   defp emit_batch_telemetry(batch_info, backend_id, event_type, batcher, day_bucket) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
-      %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+      %{batch_size: batch_info.size},
       %{
         backend_type: :clickhouse,
         backend_id: backend_id,
         event_type: event_type,
         batcher: batcher,
-        day_bucket: day_bucket
+        day_bucket: day_bucket,
+        batch_trigger: batch_info.trigger
       }
     )
   end

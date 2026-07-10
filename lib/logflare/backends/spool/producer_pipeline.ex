@@ -149,8 +149,8 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       }) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
-      %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
-      %{backend_type: :spool_producer}
+      %{batch_size: batch_info.size},
+      %{backend_type: :spool_producer, batch_trigger: batch_info.trigger}
     )
 
     partition = :rand.uniform(partitions) - 1
