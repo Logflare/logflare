@@ -187,7 +187,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         %{backend_id: backend_id}
       )
       when batcher in [:ch_fresh, :ch_stale] and is_event_type(event_type) do
-
     emit_batch_telemetry(batch_info, backend_id, event_type, batcher, day_bucket)
 
     backend = Backends.Cache.get_backend(backend_id)
