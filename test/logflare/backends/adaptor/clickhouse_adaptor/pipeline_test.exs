@@ -1071,9 +1071,89 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert_received {:recorded_failure, ^expected_backend_id}
     end
+
+    test "trips the circuit breaker immediately on a TOO_MANY_PARTS (252) failure", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      test_pid = self()
+      expected_backend_id = backend.id
+
+      too_many_parts_error =
+        "HTTP 500: Code: 252. DB::Exception: Too many parts (600 with average size of 1.00 MiB) in table."
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                        _event_type,
+                                                                        _compressed,
+                                                                        _opts ->
+        {:error, too_many_parts_error}
+      end)
+
+      # A 252 must trip immediately, not accumulate toward the failure-count threshold.
+      Mimic.reject(CircuitBreaker, :record_failure, 1)
+
+      Mimic.expect(CircuitBreaker, :trip, fn %{id: id} ->
+        send(test_pid, {:tripped, id})
+        :ok
+      end)
+
+      log_event = build(:log_event, source: source, message: "Test message")
+      gen_tid = setup_generation_events([log_event])
+      messages = [batch_message(log_event, gen_tid, backend.id)]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      assert [%Message{status: {:failed, ^too_many_parts_error}}] =
+               Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+
+      assert_received {:tripped, ^expected_backend_id}
+    end
   end
 
   describe "ack/3 circuit breaker" do
+    test "sheds a TOO_MANY_PARTS failure on its first acknowledgement", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      too_many_parts_error = "HTTP 500: Code: 252. DB::Exception: Too many parts in table."
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                        _event_type,
+                                                                        _compressed,
+                                                                        _opts ->
+        {:error, too_many_parts_error}
+      end)
+
+      Mimic.reject(CircuitBreaker, :record_failure, 1)
+      Mimic.reject(IngestEventQueue, :add_to_table, 2)
+
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+      gen_tid = setup_generation_events([event])
+      messages = [batch_message(event, gen_tid, backend.id)]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch_fresh,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      assert [failed_message = %Message{status: {:failed, ^too_many_parts_error}}] =
+               Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+
+      log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
+
+      assert log =~ "circuit breaker open"
+      assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+    end
+
     test "sheds retriable messages instead of requeuing when the breaker is open", %{
       source: source,
       backend: backend

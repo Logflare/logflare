@@ -413,8 +413,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         Enum.map(bad, &Message.failed(&1, :not_found)) ++ good
 
       {:error, reason} ->
-        CircuitBreaker.record_failure(backend)
+        record_insert_failure(backend, reason)
         Enum.map(bad, &Message.failed(&1, reason)) ++ Enum.map(good, &Message.failed(&1, reason))
+    end
+  end
+
+  @spec record_insert_failure(Backend.t(), term()) :: :ok
+  defp record_insert_failure(backend, reason) do
+    if Ingester.too_many_parts?(reason) do
+      CircuitBreaker.trip(backend)
+    else
+      CircuitBreaker.record_failure(backend)
     end
   end
 
