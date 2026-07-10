@@ -48,6 +48,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @stale_batcher_concurrency 2
   @max_retries 1
 
+  # ClickHouse error 252 (TOO_MANY_PARTS): a partition holds more active parts than
+  # `parts_to_throw_insert`. Retrying inserts in this state creates yet more parts and
+  # worsens it, so it trips the circuit breaker immediately rather than accumulating
+  # toward the failure-count threshold. The marker matches the code embedded in the
+  # HTTP error body built by Ingester.do_insert/5.
+  @too_many_parts_marker "Code: 252"
+
   @doc false
   @spec max_retries() :: non_neg_integer()
   def max_retries, do: @max_retries
@@ -391,10 +398,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         Enum.map(bad, &Message.failed(&1, :not_found)) ++ good
 
       {:error, reason} ->
-        CircuitBreaker.record_failure(backend)
+        record_insert_failure(backend, reason)
         Enum.map(bad, &Message.failed(&1, reason)) ++ Enum.map(good, &Message.failed(&1, reason))
     end
   end
+
+  @spec record_insert_failure(Backend.t(), term()) :: :ok
+  defp record_insert_failure(backend, reason) do
+    if too_many_parts?(reason) do
+      CircuitBreaker.trip(backend)
+    else
+      CircuitBreaker.record_failure(backend)
+    end
+  end
+
+  @spec too_many_parts?(term()) :: boolean()
+  defp too_many_parts?(reason) when is_binary(reason),
+    do: String.contains?(reason, @too_many_parts_marker)
+
+  defp too_many_parts?(_reason), do: false
 
   @spec maybe_requeue_failed(backend_id :: pos_integer(), messages :: [Message.t()]) :: :ok
   defp maybe_requeue_failed(backend_id, messages) do
