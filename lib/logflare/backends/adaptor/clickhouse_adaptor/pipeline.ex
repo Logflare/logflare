@@ -40,6 +40,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @producer_concurrency 1
   @processor_concurrency 6
+  @processor_min_demand 100
+  @processor_max_demand 1_000
   @fresh_batch_size 60_000
   @fresh_batch_timeout 5_000
   @fresh_batcher_concurrency 4
@@ -85,7 +87,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         concurrency: @producer_concurrency
       ],
       processors: [
-        default: [concurrency: @processor_concurrency, min_demand: 100, max_demand: 1000]
+        default: [
+          concurrency: @processor_concurrency,
+          min_demand: @processor_min_demand,
+          max_demand: @processor_max_demand
+        ]
       ],
       batchers: [
         ch_fresh: [
