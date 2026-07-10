@@ -150,7 +150,7 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.6"},
 
       # Concurrency and pipelines
-      {:broadway, github: "Logflare/broadway", branch: "fix/batcher-fullsweep-after"},
+      {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
 
       # Test
