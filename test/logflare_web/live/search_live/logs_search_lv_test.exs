@@ -1851,10 +1851,26 @@ defmodule LogflareWeb.Source.SearchLVTest do
     } do
       now = DateTime.utc_now()
       today_start = DateTime.new!(DateTime.to_date(now), ~T[00:00:00], "Etc/UTC")
-      yesterday_start = DateTime.add(today_start, -1, :day)
       one_second_ago = DateTime.add(now, -1, :second)
       included_for_today = Enum.max([one_second_ago, today_start], DateTime)
       seconds_since_today_start = DateTime.diff(now, today_start, :second)
+
+      # "yesterday" can span up to ~48h ago, but ingestion drops events older
+      # than Backends.max_event_age_us/0. Pick a timestamp that is both within
+      # yesterday and inside the staleness window: the midpoint of their overlap.
+      # Clamp the lower bound to yesterday's start so the midpoint stays within
+      # yesterday even when the staleness window exceeds 24h.
+      yesterday_start = DateTime.add(today_start, -1, :day)
+      yesterday_end = DateTime.add(today_start, -1, :second)
+      stale_boundary = DateTime.add(now, -Backends.max_event_age_us(), :microsecond)
+      overlap_start = Enum.max([stale_boundary, yesterday_start], DateTime)
+
+      included_for_yesterday =
+        DateTime.add(
+          overlap_start,
+          div(DateTime.diff(yesterday_end, overlap_start, :second), 2),
+          :second
+        )
 
       today_chart_period =
         cond do
@@ -1867,7 +1883,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {"t:last@5m", :second, {DateTime.add(now, -1, :minute), DateTime.add(now, 30, :second)}},
         {"t:this@day", today_chart_period,
          {included_for_today, DateTime.add(today_start, -1, :minute)}},
-        {"t:yesterday", :hour, {DateTime.add(yesterday_start, 12, :hour), now}}
+        {"t:yesterday", :hour, {included_for_yesterday, now}}
       ]
 
       Enum.each(cases, fn {querystring, chart_period, {included_timestamp, excluded_timestamp}} ->
