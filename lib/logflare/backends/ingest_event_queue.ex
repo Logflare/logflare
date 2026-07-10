@@ -250,8 +250,9 @@ defmodule Logflare.Backends.IngestEventQueue do
       end
 
     if no_get_tid do
-      with all = [_ | _] <- list_counts_with_tids(key),
+      with all = [_ | _] <- list_counts_with_tids(key)
            available_queues = [_ | _] <- Enum.reduce(all, [], reducer) do
+
         Logflare.Utils.chunked_round_robin(
           batch,
           available_queues,
@@ -496,6 +497,7 @@ defmodule Logflare.Backends.IngestEventQueue do
         is_integer(size) do
       {table_key, size}
     end
+    |> Enum.sort_by(&elem(&1, 1), :desc)
   end
 
   @doc """
