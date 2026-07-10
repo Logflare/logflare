@@ -496,6 +496,7 @@ defmodule Logflare.Backends.IngestEventQueue do
         is_integer(size) do
       {table_key, size}
     end
+    |> Enum.sort_by(&elem(&1, 1), :desc)
   end
 
   @doc """
