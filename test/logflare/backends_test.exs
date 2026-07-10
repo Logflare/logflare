@@ -1711,11 +1711,11 @@ defmodule Logflare.BackendsTest do
       {:ok, source: source}
     end
 
-    test "drops events older than 72 hours", %{source: source} do
+    test "drops events older than 24 hours", %{source: source} do
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
 
       now_us = System.system_time(:microsecond)
-      old_timestamp = now_us - 73 * 3_600 * 1_000_000
+      old_timestamp = now_us - 25 * 3_600 * 1_000_000
 
       params = [%{"message" => "old event", "timestamp" => old_timestamp}]
 
@@ -1762,9 +1762,9 @@ defmodule Logflare.BackendsTest do
 
       params = [
         %{"message" => "valid now", "timestamp" => now_us},
-        %{"message" => "too old", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "too old", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
         %{"message" => "too future", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
-        %{"message" => "valid past", "timestamp" => now_us - 24 * 3_600 * 1_000_000}
+        %{"message" => "valid past", "timestamp" => now_us - 23 * 3_600 * 1_000_000}
       ]
 
       assert {:ok, 2} = Backends.ingest_logs(params, source)
@@ -1775,7 +1775,7 @@ defmodule Logflare.BackendsTest do
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_future])
 
       now_us = System.system_time(:microsecond)
-      old_timestamp = now_us - 73 * 3_600 * 1_000_000
+      old_timestamp = now_us - 25 * 3_600 * 1_000_000
       future_timestamp = now_us + 2 * 3_600 * 1_000_000
 
       params = [
@@ -1800,9 +1800,9 @@ defmodule Logflare.BackendsTest do
       refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future], _, _}
     end
 
-    test "accepts events at exact boundary (72 hours ago)", %{source: source} do
+    test "accepts events at exact boundary (24 hours ago)", %{source: source} do
       now_us = System.system_time(:microsecond)
-      boundary_timestamp = now_us - (71 * 3_600 + 59 * 60) * 1_000_000
+      boundary_timestamp = now_us - (23 * 3_600 + 59 * 60) * 1_000_000
 
       params = [%{"message" => "boundary event", "timestamp" => boundary_timestamp}]
 
@@ -1822,7 +1822,7 @@ defmodule Logflare.BackendsTest do
       now_us = System.system_time(:microsecond)
 
       params = [
-        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "old event 1", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
         %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
         %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
       ]
@@ -1847,7 +1847,7 @@ defmodule Logflare.BackendsTest do
           assert {:ok, 1} = Backends.ingest_logs(params, source)
         end)
 
-      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-72h, +1h] window"
+      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-24h, +1h] window"
     end
 
     test "does not log when no events are filtered", %{source: source} do
