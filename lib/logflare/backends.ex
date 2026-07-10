@@ -46,6 +46,21 @@ defmodule Logflare.Backends do
   def max_buffer_queue_len, do: @max_pending_buffer_len_per_queue
 
   @doc """
+  Returns the maximum age, in microseconds, of an event that will be accepted at
+  ingestion. Events older than this are dropped as stale.
+  """
+  @spec max_event_age_us() :: non_neg_integer()
+  def max_event_age_us, do: @max_event_age_us
+
+  @doc """
+  Returns the maximum time, in microseconds, that an event's timestamp may be in
+  the future and still be accepted at ingestion. Events further ahead than this
+  are dropped.
+  """
+  @spec max_future_event_us() :: non_neg_integer()
+  def max_future_event_us, do: @max_future_event_us
+
+  @doc """
   Lists `Backend`s for a given source.
   """
   @spec list_backends(keyword()) :: [Backend.t()]
