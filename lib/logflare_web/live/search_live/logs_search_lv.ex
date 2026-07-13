@@ -92,6 +92,7 @@ defmodule LogflareWeb.Source.SearchLV do
       tailing_initial?: true,
       tailing_timer: nil,
       tailing?: tailing?,
+      resume_tailing_after_context?: false,
       # search states
       search_op: nil,
       search_op_error: nil,
@@ -245,6 +246,9 @@ defmodule LogflareWeb.Source.SearchLV do
         search_op_error: @search_op_error,
         team_user: @team_user,
         team: @team,
+        lql: @querystring,
+        querystring: @querystring,
+        search_timezone: @search_timezone,
         close: @modal.body[:close],
         return_to: @modal.body.return_to
       )}
@@ -258,16 +262,7 @@ defmodule LogflareWeb.Source.SearchLV do
     <div class="container source-logs-search-container console-text">
       <div id="logs-list-container">
         <LogEventComponents.empty_result_list :if={not @loading} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
-        <LogEventComponents.results_list
-          search_op={@search_op}
-          search_op_log_events={@search_op_log_events}
-          last_query_completed_at={@last_query_completed_at}
-          search_timezone={@search_timezone}
-          loading={@loading}
-          tailing?={@tailing?}
-          querystring={@querystring}
-          source_schema_flat_map={@source_schema_flat_map}
-        />
+        <LogEventComponents.results_list search_op={@search_op} search_op_log_events={@search_op_log_events} last_query_completed_at={@last_query_completed_at} search_timezone={@search_timezone} loading={@loading} source_schema_flat_map={@source_schema_flat_map} />
       </div>
       <div>
         {live_react_component(
@@ -415,6 +410,28 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event("soft_pause" = ev, _, %{assigns: %{uri_params: _params}} = socket) do
     soft_pause(ev, socket)
+  end
+
+  def handle_event("open_event_context", _, socket) do
+    resume_tailing? = socket.assigns.tailing?
+
+    socket =
+      socket
+      |> assign(:resume_tailing_after_context?, resume_tailing?)
+      |> pause_tailing()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("close_event_context", _, socket) do
+    socket =
+      if socket.assigns.resume_tailing_after_context? do
+        resume_tailing(socket)
+      else
+        socket
+      end
+
+    {:noreply, assign(socket, :resume_tailing_after_context?, false)}
   end
 
   def handle_event("hard_play" = ev, _, socket) do
@@ -993,17 +1010,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, error_socket(socket, "Tailing is disabled for this source")}
   end
 
-  defp soft_play(_ev, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = _source} = prev_assigns
-
-    kickoff_queries(stoken, socket.assigns)
-
-    socket =
-      socket
-      |> assign(:tailing?, true)
-
-    {:noreply, socket}
-  end
+  defp soft_play(_ev, socket), do: {:noreply, resume_tailing(socket)}
 
   defp soft_pause(
          _ev,
@@ -1012,15 +1019,20 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp soft_pause(_ev, %{assigns: %{source: _source, executor_pid: executor_pid}} = socket) do
+  defp soft_pause(_ev, socket), do: {:noreply, pause_tailing(socket)}
+
+  defp pause_tailing(%{assigns: %{tailing?: false}} = socket), do: socket
+
+  defp pause_tailing(%{assigns: %{executor_pid: executor_pid}} = socket) do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(executor_pid)
 
-    socket =
-      socket
-      |> assign(:tailing?, false)
+    assign(socket, :tailing?, false)
+  end
 
-    {:noreply, socket}
+  defp resume_tailing(socket) do
+    kickoff_queries(socket.assigns.source.token, socket.assigns)
+    assign(socket, :tailing?, true)
   end
 
   defp hard_play(
