@@ -86,6 +86,50 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
+  describe "new_event_page/3" do
+    test "creates an initial page request for a tailing search" do
+      so = %SO{
+        chart_data_shape_id: nil,
+        querystring: "",
+        partition_by: :timestamp,
+        tailing?: true
+      }
+
+      assert {:ok, %{event_page_request: request}} =
+               SearchOperations.new_event_page(so, :initial, nil)
+
+      assert request == %{intent: :initial, boundary: nil, cursor: nil}
+    end
+
+    test "returns an invalid request error for an invalid page request", %{user: user} do
+      source = insert(:source, user: user, bq_table_id: "test_table")
+
+      so = %SO{
+        source: source,
+        querystring: "",
+        chart_data_shape_id: nil,
+        tailing?: false,
+        partition_by: :timestamp,
+        type: :events,
+        chart_rules: [%ChartRule{period: :minute}],
+        lql_ts_filters: []
+      }
+
+      assert {:error, :invalid_request} = SearchOperations.new_event_page(so, :previous, nil)
+    end
+
+    test "returns a tailing error for tailing searches" do
+      so = %SO{
+        chart_data_shape_id: nil,
+        querystring: "",
+        partition_by: :timestamp,
+        tailing?: true
+      }
+
+      assert {:error, :tailing} = SearchOperations.new_event_page(so, :previous, nil)
+    end
+  end
+
   describe "chart aggregation query generation" do
     setup %{user: user} do
       source = insert(:source, user: user, bq_table_id: "test_table")
@@ -282,11 +326,12 @@ defmodule Logflare.Logs.SearchOperationsTest do
     test "apply_query_defaults/1 uses the postgres table name", %{so: so} do
       so = SearchOperations.apply_query_defaults(so)
 
-      {:ok, {sql, _params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
+      {:ok, {sql, params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
 
       assert sql =~ ~s|FROM "#{PostgresAdaptor.table_name(so.source)}"|
       assert sql =~ ~s|ORDER BY l0."timestamp" DESC|
-      assert sql =~ ~s|LIMIT 100|
+      assert sql =~ ~s|LIMIT $1|
+      assert params == [SearchOperations.fetch_limit()]
     end
 
     test "apply_select_rules/1 uses postgres dialect defaults", %{so: so} do
@@ -316,7 +361,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
       {:ok, {sql, params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
 
       assert sql =~ ~s|l0."event_message"|
-      assert params == ["error"]
+      assert params == ["error", SearchOperations.fetch_limit()]
     end
   end
 

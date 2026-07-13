@@ -9,6 +9,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   alias Logflare.DateTimeUtils
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Logs.SearchOperation
   alias Logflare.Lql
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.FilterRule
@@ -20,24 +21,36 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   @log_levels ~W(debug info warning error alert critical notice emergency)
   @default_empty_event_message "(empty event message)"
 
-  attr :search_op_log_events, :map, default: nil
+  attr :search_op_log_events, SearchOperation, default: nil
   attr :search_op_log_aggregates, :map, default: nil
   attr :log_events, :any, default: []
-  attr :last_query_completed_at, :any, default: nil
   attr :loading, :boolean, required: true
+  attr :tailing?, :boolean, default: false
+
+  attr :pagination_buttons, :map,
+    default: %{
+      previous: %{state: :hidden, cursor: nil},
+      next: %{state: :hidden, cursor: nil}
+    }
+
   attr :search_timezone, :string, required: true
-  attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
   attr :source_schema_flat_map, :map, default: %{}
-  attr :search_op, Logflare.Logs.SearchOperation
 
   def results_list(assigns) do
-    assigns = assign(assigns, :select_fields, build_select_fields(assigns.search_op))
+    lql_rules =
+      if assigns.search_op_log_events, do: assigns.search_op_log_events.lql_rules, else: []
+
+    assigns =
+      assigns
+      |> assign(:select_fields, build_select_fields(lql_rules))
+      |> assign(:earlier_result_dt, first_date_with_results(assigns.search_op_log_aggregates))
 
     ~H"""
-    <div :if={@search_op_log_events} id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} phx-hook="SourceLogsSearchList" class="mt-4">
+    <div :if={@search_op_log_events} id="source-logs-search-list" data-tailing={if(@tailing?, do: "true", else: "false")} phx-hook="SourceLogsSearchList" class="mt-4 tw-relative">
+      <.load_more_button id="load-more-events-top" intent="previous" state={@pagination_buttons.previous.state} cursor={@pagination_buttons.previous.cursor} />
       <ul id="logs-list" phx-update="stream" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
-        <.empty_result_list :if={not @loading} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
-        <.log_event :for={{dom_id, log} <- @log_events} id={dom_id} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)} source_schema_flat_map={@source_schema_flat_map}>
+        <.empty_result_list search_op_log_events={@search_op_log_events} earlier_result_dt={@earlier_result_dt} loading={@loading} />
+        <.log_event :for={{dom_id, log} <- @log_events} id={dom_id} data-event-id={event_id(log)} data-event-timestamp={log.body["timestamp"]} timezone={@search_timezone} log_event={log} select_fields={@select_fields} source_schema_flat_map={@source_schema_flat_map}>
           {log.body["event_message"]}
           <:actions phx-no-format>
           <div class="group-has-[.log-event-selected-field]:tw-ml-[13rem] group-has-[.log-event-selected-field]:tw-pb-1.5 tw-inline-block">
@@ -69,7 +82,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                    phx-click={
                      JS.dispatch("logflare:copy-to-clipboard",
                        detail: %{
-                         text: formatted_for_clipboard(log, @search_op)
+                         text: formatted_for_clipboard(log, @search_op_log_events)
                        }
                      )
                    }
@@ -77,11 +90,31 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                    data-placement="top"
                    title="Copy to clipboard"
                  >copy</.link>
-                <.log_event_permalink log_event_id={log.id} timestamp={log.body["timestamp"]} source={@search_op.source} lql={lql_with_recommended_fields(@search_op.lql_rules, log, @search_op.source)} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
+                <.log_event_permalink log_event_id={log.id} timestamp={log.body["timestamp"]} source={@search_op_log_events.source} lql={lql_with_recommended_fields(@search_op_log_events.lql_rules, log, @search_op_log_events.source)} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
                 </div>
                </:actions>
         </.log_event>
       </ul>
+      <.load_more_button id="load-more-events-bottom" intent="next" state={@pagination_buttons.next.state} cursor={@pagination_buttons.next.cursor} />
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :intent, :string, values: ~w(previous next), required: true
+  attr :state, :atom, values: ~w(hidden ready disabled)a, required: true
+  attr :cursor, :map, default: nil
+
+  def load_more_button(assigns) do
+    ~H"""
+    <div class={["tw-justify-center", if(@state == :hidden, do: "tw-hidden", else: "tw-flex")]}>
+      <button id={@id} type="button" class="tw-group btn btn-outline-secondary btn-sm tw-text-xs" phx-click="load_events" phx-value-intent={@intent} phx-value-cursor-id={@cursor && @cursor.id} phx-value-cursor-timestamp={@cursor && @cursor.timestamp} disabled={@state != :ready}>
+        <span class="tw-relative tw-whitespace-nowrap tw-w-20 tw-flex tw-justify-center">
+          <i class="spinner-border spinner-border-sm text-info tw-mr-1 tw-hidden group-[.phx-click-loading]:tw-inline" aria-hidden="true"></i>
+          <span class="group-[.phx-click-loading]:tw-hidden">Load more</span>
+          <span class="tw-hidden group-[.phx-click-loading]:tw-inline">Loading</span>
+        </span>
+      </button>
     </div>
     """
   end
@@ -124,8 +157,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   def formatted_for_clipboard(log, search_op) do
     select_fields =
-      search_op
-      |> build_select_fields()
+      build_select_fields(search_op.lql_rules)
       |> Enum.map(fn %{display: display, key: key} ->
         value = get_field_value(log.body, key)
         separator = if String.length(value) > 64, do: "\n", else: " "
@@ -241,7 +273,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   defp format_field_value(value) when is_map(value), do: Jason.encode!(value)
   defp format_field_value(value), do: inspect(value)
 
-  defp build_select_fields(%{lql_rules: lql_rules}) do
+  defp build_select_fields(lql_rules) when is_list(lql_rules) do
     lql_rules
     |> Lql.Rules.get_select_rules()
     |> Enum.map(fn
@@ -266,19 +298,13 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     end
   end
 
-  attr :search_op_log_aggregates, :map, default: nil
   attr :search_op_log_events, :map, default: nil
+  attr :earlier_result_dt, :any, default: nil
+  attr :loading, :boolean, default: false
 
   def empty_result_list(assigns) do
-    assigns =
-      assigns
-      |> assign(
-        :earlier_result_dt,
-        first_date_with_results(assigns.search_op_log_aggregates)
-      )
-
     ~H"""
-    <div class="tw-mt-4 tw-px-4 tw-py-3 tw-text-center tw-font-sans tw-only:block hidden" id="empty-results-list">
+    <li id="empty-search-results" class={["tw-mt-4 tw-px-4 tw-py-3 tw-text-center tw-font-sans only:tw-block hidden", if(@loading, do: "tw-hidden", else: nil)]}>
       <h2 class="tw-text-lg tw-font-semibold tw-text-gray-400">
         No events matching your query
       </h2>
@@ -293,9 +319,11 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
           <i class="fas fa-search"></i><span class="fas-in-button hide-on-mobile">Extend search</span>
         </.link>
       </div>
-    </div>
+    </li>
     """
   end
+
+  defp event_id(%Logflare.LogEvent{id: id, body: body}), do: id || body["id"]
 
   def extended_search_lql(datetime) do
     new_rule =

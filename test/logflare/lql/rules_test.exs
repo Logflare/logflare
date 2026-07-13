@@ -565,6 +565,85 @@ defmodule Logflare.Lql.RulesTest do
     end
   end
 
+  describe "extend_timestamp_range/3" do
+    test "replaces a cross-month timestamp range and changes only the previous edge" do
+      timestamp_filter = %FilterRule{
+        path: "timestamp",
+        operator: :range,
+        values: [~N[2026-01-31 00:00:00], ~N[2026-02-01 00:00:00]]
+      }
+
+      extra_timestamp_filter = %FilterRule{
+        path: "timestamp",
+        operator: :<,
+        value: ~N[2026-01-31 12:00:00]
+      }
+
+      message_filter = %FilterRule{path: "event_message", operator: :=, value: "error"}
+      chart_rule = %ChartRule{aggregate: :count, path: "timestamp", period: :minute}
+      select_rule = %SelectRule{path: "metadata.request_id", wildcard: false}
+
+      lql_rules = [
+        timestamp_filter,
+        message_filter,
+        chart_rule,
+        extra_timestamp_filter,
+        select_rule
+      ]
+
+      result =
+        Rules.extend_timestamp_range(
+          lql_rules,
+          :previous,
+          ~N[2026-01-30 12:00:00.000000]
+        )
+
+      assert Rules.get_timestamp_filters(result) == [
+               %FilterRule{
+                 path: "timestamp",
+                 operator: :range,
+                 values: [~N[2026-01-30 12:00:00.000000], ~N[2026-01-31 12:00:00]],
+                 modifiers: %{}
+               }
+             ]
+
+      assert Rules.get_metadata_and_message_filters(result) == [message_filter]
+      assert Rules.get_chart_rule(result) == chart_rule
+      assert Rules.get_select_rules(result) == [select_rule]
+    end
+
+    test "materializes a cross-month shorthand and changes only the next edge" do
+      shorthand_filter = %FilterRule{
+        path: "timestamp",
+        operator: :range,
+        values: [~U[2026-01-31 00:00:00Z], ~U[2026-02-01 00:00:00Z]],
+        shorthand: "this@day"
+      }
+
+      metadata_filter = %FilterRule{path: "metadata.level", operator: :=, value: "info"}
+      chart_rule = %ChartRule{aggregate: :count, path: "timestamp", period: :hour}
+
+      result =
+        Rules.extend_timestamp_range(
+          [shorthand_filter, metadata_filter, chart_rule],
+          :next,
+          ~N[2026-02-02 00:00:00]
+        )
+
+      assert Rules.get_timestamp_filters(result) == [
+               %FilterRule{
+                 path: "timestamp",
+                 operator: :range,
+                 values: [~N[2026-01-31 00:00:00], ~N[2026-02-02 00:00:00]],
+                 modifiers: %{}
+               }
+             ]
+
+      assert Rules.get_metadata_and_message_filters(result) == [metadata_filter]
+      assert Rules.get_chart_rule(result) == chart_rule
+    end
+  end
+
   describe "jump_timestamp/2" do
     test "creates new timestamp range by jumping forwards" do
       timestamp_filter = %FilterRule{

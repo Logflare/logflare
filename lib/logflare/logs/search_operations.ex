@@ -12,6 +12,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.DateTimeUtils
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Logs.EventPage
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Logs.SearchOperations.Helpers, as: SearchOperationHelpers
   alias Logflare.Logs.SearchUtils
@@ -46,6 +47,44 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec max_chart_ticks :: integer()
   def max_chart_ticks, do: @default_max_n_chart_ticks
+
+  @spec default_limit :: pos_integer()
+  def default_limit, do: @default_limit
+
+  @spec fetch_limit :: pos_integer()
+  def fetch_limit, do: @default_limit + 1
+
+  @spec new_event_page(map() | SO.t(), EventPage.intent(), EventPage.cursor() | nil) ::
+          {:ok, SO.t()} | {:error, :invalid_request | :tailing}
+  def new_event_page(%SO{} = so, :initial, nil) do
+    {:ok, %{so | event_page_request: %{intent: :initial, boundary: nil, cursor: nil}}}
+  end
+
+  def new_event_page(%SO{tailing?: false} = so, intent, cursor) do
+    corrected_so = apply_local_timestamp_correction(so)
+
+    bounds =
+      SearchOperationHelpers.bounded_timestamp_range(
+        corrected_so.lql_ts_filters,
+        chart_period(corrected_so)
+      )
+
+    boundary = EventPage.boundary(intent, bounds)
+
+    if EventPage.valid_request?(intent, cursor, boundary) do
+      {:ok, %{so | event_page_request: %{intent: intent, boundary: boundary, cursor: cursor}}}
+    else
+      {:error, :invalid_request}
+    end
+  end
+
+  def new_event_page(%SO{}, _intent, _cursor), do: {:error, :tailing}
+
+  def new_event_page(params, intent, cursor) when is_map(params) do
+    params
+    |> SO.new()
+    |> new_event_page(intent, cursor)
+  end
 
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
@@ -122,13 +161,65 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_query_defaults(SO.t()) :: SO.t()
   def apply_query_defaults(%SO{} = so) do
+    direction =
+      case so.event_page_request do
+        %{intent: intent} -> EventPage.direction(intent)
+        nil -> :previous
+      end
+
     query =
       from(table_name(so))
       |> select(%{})
-      |> order_by([t], desc: t.timestamp)
-      |> limit(@default_limit)
+      |> order_events(direction)
+      |> limit(^fetch_limit())
 
     %{so | query: query}
+  end
+
+  defp order_events(query, :previous),
+    do: order_by(query, [t], desc: t.timestamp, desc: t.id)
+
+  defp order_events(query, :next), do: order_by(query, [t], asc: t.timestamp, asc: t.id)
+
+  @spec apply_cursor(SO.t()) :: SO.t()
+  def apply_cursor(
+        %SO{event_page_request: %{intent: intent, cursor: %{timestamp: timestamp, id: id}}} = so
+      ) do
+    timestamp = normalize_event_timestamp(so.backend_type, timestamp)
+    direction = EventPage.direction(intent)
+
+    %{so | query: where(so.query, ^cursor_condition(direction, timestamp, id))}
+  end
+
+  def apply_cursor(%SO{} = so), do: so
+
+  defp normalize_event_timestamp(:postgres, timestamp) when is_integer(timestamp),
+    do: DateTime.from_unix!(timestamp, :microsecond)
+
+  defp normalize_event_timestamp(_backend_type, timestamp), do: timestamp
+
+  defp cursor_condition(:previous, timestamp, id) when is_integer(timestamp) do
+    dynamic(
+      [t],
+      t.timestamp < fragment("TIMESTAMP_MICROS(?)", ^timestamp) or
+        (t.timestamp == fragment("TIMESTAMP_MICROS(?)", ^timestamp) and t.id <= ^id)
+    )
+  end
+
+  defp cursor_condition(:next, timestamp, id) when is_integer(timestamp) do
+    dynamic(
+      [t],
+      t.timestamp > fragment("TIMESTAMP_MICROS(?)", ^timestamp) or
+        (t.timestamp == fragment("TIMESTAMP_MICROS(?)", ^timestamp) and t.id > ^id)
+    )
+  end
+
+  defp cursor_condition(:previous, timestamp, id) do
+    dynamic([t], t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id <= ^id))
+  end
+
+  defp cursor_condition(:next, timestamp, id) do
+    dynamic([t], t.timestamp > ^timestamp or (t.timestamp == ^timestamp and t.id > ^id))
   end
 
   @spec apply_halt_conditions(SO.t()) :: SO.t()
@@ -239,6 +330,15 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | rows: rows}
   end
 
+  def apply_timestamp_filter_rules(
+        %SO{
+          type: :events,
+          event_page_request: %{intent: intent}
+        } = so
+      )
+      when intent in [:previous, :next],
+      do: apply_event_page_boundary(so)
+
   def apply_timestamp_filter_rules(%SO{backend_type: :postgres, type: :events} = so) do
     %{so | query: apply_postgres_event_timestamp_filter_rules(so)}
   end
@@ -341,6 +441,82 @@ defmodule Logflare.Logs.SearchOperations do
 
     %{so | query: q}
   end
+
+  defp apply_event_page_boundary(
+         %SO{
+           event_page_request: %{intent: intent, boundary: nil, cursor: %{timestamp: timestamp}}
+         } = so
+       ) do
+    direction = EventPage.direction(intent)
+    timestamp = normalize_event_timestamp(so.backend_type, timestamp)
+
+    %{so | query: apply_event_page_partition_filter(so.query, so, direction, timestamp)}
+  end
+
+  defp apply_event_page_boundary(%SO{event_page_request: %{boundary: nil}} = so), do: so
+
+  defp apply_event_page_boundary(
+         %SO{
+           event_page_request: %{intent: intent, boundary: boundary, cursor: %{}},
+           query: query
+         } = so
+       ) do
+    boundary = normalize_event_timestamp(so.backend_type, boundary)
+    direction = EventPage.direction(intent)
+    %{so | query: apply_event_page_partition_filter(query, so, direction, boundary)}
+  end
+
+  defp apply_event_page_boundary(
+         %SO{event_page_request: %{intent: intent, boundary: boundary}} = so
+       ) do
+    boundary = normalize_event_timestamp(so.backend_type, boundary)
+    direction = EventPage.direction(intent)
+    query = where(so.query, ^boundary_condition(direction, boundary))
+
+    %{so | query: apply_event_page_partition_filter(query, so, direction, boundary)}
+  end
+
+  defp boundary_condition(:previous, boundary) when is_integer(boundary),
+    do: dynamic([t], t.timestamp < fragment("TIMESTAMP_MICROS(?)", ^boundary))
+
+  defp boundary_condition(:next, boundary) when is_integer(boundary),
+    do: dynamic([t], t.timestamp > fragment("TIMESTAMP_MICROS(?)", ^boundary))
+
+  defp boundary_condition(:previous, boundary), do: dynamic([t], t.timestamp < ^boundary)
+  defp boundary_condition(:next, boundary), do: dynamic([t], t.timestamp > ^boundary)
+
+  defp apply_event_page_partition_filter(query, %SO{backend_type: :postgres}, _, _), do: query
+
+  defp apply_event_page_partition_filter(
+         query,
+         %SO{partition_by: :timestamp},
+         direction,
+         boundary
+       ) do
+    date = boundary |> event_boundary_datetime() |> DateTime.to_date()
+
+    case direction do
+      :previous -> where(query, [t], fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^date)
+      :next -> where(query, [t], fragment("EXTRACT(DATE FROM ?)", t.timestamp) >= ^date)
+    end
+  end
+
+  defp apply_event_page_partition_filter(query, %SO{partition_by: :pseudo}, direction, boundary) do
+    date = boundary |> event_boundary_datetime() |> DateTime.to_date()
+
+    case direction do
+      :previous -> where(query, partition_date() <= ^date or in_streaming_buffer())
+      :next -> where(query, partition_date() >= ^date or in_streaming_buffer())
+    end
+  end
+
+  defp event_boundary_datetime(timestamp) when is_integer(timestamp),
+    do: DateTime.from_unix!(timestamp, :microsecond)
+
+  defp event_boundary_datetime(%DateTime{} = timestamp), do: timestamp
+
+  defp event_boundary_datetime(%NaiveDateTime{} = timestamp),
+    do: DateTime.from_naive!(timestamp, "Etc/UTC")
 
   defp apply_bq_aggregate_timestamp_filters(query, so, filters, chart_period) do
     period = to_bq_interval_token(chart_period)
