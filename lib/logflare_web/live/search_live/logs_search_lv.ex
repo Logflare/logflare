@@ -11,6 +11,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   alias Logflare.Backends.QueryError
   alias Logflare.Billing
+  alias Logflare.Logs.SearchOperation
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Logs.SearchOperations
   alias Logflare.Logs.SearchUtils
@@ -89,6 +90,10 @@ defmodule LogflareWeb.Source.SearchLV do
       # loading states
       loading: true,
       chart_loading: true,
+      event_page_loading: nil,
+      event_page_cursors: %{previous: nil, next: nil},
+      next_events_exhausted?: false,
+      range_extension_patch: nil,
       # tailing states
       tailing_initial?: true,
       tailing_timer: nil,
@@ -155,6 +160,37 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, push_patch(socket, to: path, replace: true)}
   end
 
+  def handle_params(
+        %{"querystring" => qs} = params,
+        uri,
+        %{
+          assigns: %{
+            range_extension_patch: %{
+              querystring: expected_querystring,
+              rows: rows,
+              direction: direction
+            }
+          }
+        } = socket
+      )
+      when is_binary(expected_querystring) do
+    if qs == expected_querystring do
+      {:noreply,
+       socket
+       |> put_event_page(rows, direction)
+       |> assign(:event_page_loading, nil)
+       |> assign(:range_extension_patch, nil)
+       |> assign(uri: URI.parse(uri), uri_params: params, querystring: qs)}
+    else
+      socket =
+        socket
+        |> assign(:event_page_loading, nil)
+        |> assign(:range_extension_patch, nil)
+
+      handle_params(params, uri, socket)
+    end
+  end
+
   def handle_params(%{"querystring" => qs} = params, uri, socket) do
     source = socket.assigns.source
 
@@ -188,6 +224,7 @@ defmodule LogflareWeb.Source.SearchLV do
           socket
           |> assign(:loading, true)
           |> assign(:chart_loading, true)
+          |> reset_event_pagination()
           |> assign(:tailing_initial?, true)
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
@@ -262,6 +299,10 @@ defmodule LogflareWeb.Source.SearchLV do
           last_query_completed_at={@last_query_completed_at}
           search_timezone={@search_timezone}
           loading={@loading}
+          pagination_available?={bounded_event_pagination?(@tailing?, @lql_rules)}
+          unbounded_pagination?={unbounded_event_pagination?(@tailing?, @lql_rules)}
+          event_page_loading={@event_page_loading}
+          next_events_exhausted?={@next_events_exhausted?}
           source_schema_flat_map={@source_schema_flat_map}
         />
       </div>
@@ -342,9 +383,6 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> assign(:search_timezone, tz)
-      |> assign(:search_op_log_events, nil)
-      |> assign(:search_op_log_aggregates, nil)
-      |> stream(:log_events, [], reset: true)
       |> assign_new_search_with_qs(
         %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
         SourceSchemas.source_schema_flatmap_or_default(socket.assigns.source)
@@ -374,6 +412,31 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:noreply, socket}
   end
+
+  def handle_event(
+        "load_events",
+        %{"intent" => intent},
+        %{assigns: %{loading: false, event_page_loading: nil, tailing?: false}} = socket
+      ) do
+    with {:ok, intent} <- event_page_intent(intent),
+         {:ok, cursor} <- event_page_cursor(socket.assigns, intent),
+         :ok <- event_page_available(socket.assigns, intent),
+         :ok <-
+           SearchQueryExecutor.query_page(
+             socket.assigns.executor_pid,
+             socket.assigns,
+             intent,
+             cursor
+           ) do
+      maybe_cancel_tailing_timer(socket)
+
+      {:noreply, assign(socket, :event_page_loading, intent)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("load_events", _params, socket), do: {:noreply, socket}
 
   def handle_event(direction, _, socket) when direction in ["backwards", "forwards"] do
     rules = socket.assigns.lql_rules
@@ -618,12 +681,115 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:lql_rules, lql_rules)
       |> assign(:loading, true)
       |> assign(:chart_loading, true)
+      |> reset_event_pagination()
       |> clear_flash()
       |> push_patch_with_params(%{querystring: qs, tailing?: socket.assigns.tailing?})
     else
       socket
     end
   end
+
+  defp reset_event_pagination(socket) do
+    socket
+    |> assign(:event_page_loading, nil)
+    |> assign(:event_page_cursors, %{previous: nil, next: nil})
+    |> assign(:range_extension_patch, nil)
+    |> assign(:next_events_exhausted?, false)
+  end
+
+  defp event_page_intent("within_range"), do: {:ok, :within_range}
+  defp event_page_intent("extend_previous"), do: {:ok, :extend_previous}
+  defp event_page_intent("extend_next"), do: {:ok, :extend_next}
+  defp event_page_intent(_intent), do: :error
+
+  @spec event_page_cursor(map(), SearchOperation.event_page_intent()) ::
+          {:ok, SearchOperation.event_cursor() | nil}
+  defp event_page_cursor(%{event_page_cursors: cursors}, :extend_next),
+    do: {:ok, cursors.next}
+
+  defp event_page_cursor(%{event_page_cursors: cursors}, intent)
+       when intent in [:within_range, :extend_previous],
+       do: {:ok, cursors.previous}
+
+  defp event_page_available(
+         %{search_op_log_events: %{has_more_events?: true}},
+         :within_range
+       ),
+       do: :ok
+
+  defp event_page_available(
+         %{search_op_log_events: %{has_more_events?: false}},
+         :extend_previous
+       ),
+       do: :ok
+
+  defp event_page_available(
+         %{
+           tailing?: tailing?,
+           lql_rules: rules,
+           search_op_log_events: %{has_more_events?: true}
+         },
+         :extend_previous
+       ) do
+    if unbounded_event_pagination?(tailing?, rules), do: :ok, else: :error
+  end
+
+  defp event_page_available(%{next_events_exhausted?: false}, :extend_next), do: :ok
+  defp event_page_available(_assigns, _intent), do: :error
+
+  defp bounded_event_pagination?(true, _rules), do: false
+
+  defp bounded_event_pagination?(false, rules) do
+    rules
+    |> Rules.get_timestamp_filters()
+    |> bounded_timestamp_filters?()
+  end
+
+  defp unbounded_event_pagination?(true, _rules), do: false
+
+  defp unbounded_event_pagination?(false, rules),
+    do: not bounded_event_pagination?(false, rules)
+
+  defp bounded_timestamp_filters?(filters) do
+    Enum.any?(filters, &(&1.operator == :range and length(&1.values || []) == 2)) or
+      (Enum.any?(filters, &(&1.operator in [:>, :>=])) and
+         Enum.any?(filters, &(&1.operator in [:<, :<=])))
+  end
+
+  defp put_event_page(socket, rows, :previous) do
+    socket
+    |> stream(:log_events, rows, at: -1)
+    |> put_event_page_cursor(:previous, List.last(rows))
+  end
+
+  defp put_event_page(socket, rows, :next) do
+    socket
+    |> stream(:log_events, Enum.reverse(rows), at: 0)
+    |> put_event_page_cursor(:next, List.first(rows))
+  end
+
+  @spec put_event_page_cursor(
+          Phoenix.LiveView.Socket.t(),
+          SearchOperation.event_page_direction(),
+          Logflare.LogEvent.t() | nil
+        ) :: Phoenix.LiveView.Socket.t()
+  defp put_event_page_cursor(socket, _direction, nil), do: socket
+
+  defp put_event_page_cursor(socket, direction, event) do
+    cursors = Map.put(socket.assigns.event_page_cursors, direction, event_cursor(event))
+    assign(socket, :event_page_cursors, cursors)
+  end
+
+  @spec event_cursor(Logflare.LogEvent.t() | nil) :: SearchOperation.event_cursor() | nil
+  defp event_cursor(nil), do: nil
+
+  defp event_cursor(%{id: id, body: body}) do
+    %{id: id || body["id"], timestamp: body["timestamp"]}
+  end
+
+  defp put_search_events(socket, [])
+       when socket.assigns.tailing? and not socket.assigns.tailing_initial?,
+       do: socket
 
   defp put_search_events(socket, rows)
        when socket.assigns.tailing? and not socket.assigns.tailing_initial? do
@@ -634,7 +800,91 @@ defmodule LogflareWeb.Source.SearchLV do
     end)
   end
 
-  defp put_search_events(socket, rows), do: stream(socket, :log_events, rows, reset: true)
+  defp put_search_events(socket, rows) do
+    socket
+    |> stream(:log_events, rows, reset: true)
+    |> assign(:event_page_cursors, %{
+      previous: rows |> List.last() |> event_cursor(),
+      next: rows |> List.first() |> event_cursor()
+    })
+  end
+
+  defp event_search_metadata(events_op, has_more_events? \\ nil) do
+    has_more_events? =
+      if is_nil(has_more_events?), do: events_op.has_more_events?, else: has_more_events?
+
+    %{events_op | rows: [], has_more_events?: has_more_events?}
+  end
+
+  defp apply_event_page_result(socket, events_op, direction) do
+    has_more_events? =
+      case direction do
+        :previous -> events_op.has_more_events?
+        :next -> socket.assigns.search_op_log_events.has_more_events?
+      end
+
+    events_metadata = event_search_metadata(events_op, has_more_events?)
+
+    socket
+    |> put_event_page(events_op.rows, direction)
+    |> assign(:search_op, events_metadata)
+    |> assign(:search_op_error, nil)
+    |> assign(:search_op_log_events, events_metadata)
+    |> assign(:event_page_loading, nil)
+    |> assign(:last_query_completed_at, DateTime.utc_now())
+  end
+
+  defp apply_range_extension_result(socket, events_op) do
+    %{request: request, cursor: cursor, has_more?: has_more?} = events_op.event_page_result
+    direction = SearchOperation.event_page_direction(request.intent)
+    has_more_events? = socket.assigns.search_op_log_events.has_more_events?
+    events_metadata = event_search_metadata(events_op, has_more_events?)
+
+    socket =
+      socket
+      |> assign(:search_op, events_metadata)
+      |> assign(:search_op_error, nil)
+      |> assign(:search_op_log_events, events_metadata)
+      |> assign(:last_query_completed_at, DateTime.utc_now())
+      |> put_extension_state(direction, not has_more?)
+
+    if is_nil(cursor) do
+      socket
+      |> put_event_page(events_op.rows, direction)
+      |> assign(:event_page_loading, nil)
+    else
+      lql_rules =
+        socket.assigns.lql_rules
+        |> Rules.extend_timestamp_range(
+          direction,
+          cursor.timestamp,
+          socket.assigns.search_timezone
+        )
+        |> maybe_adjust_chart_period()
+
+      querystring = Lql.encode!(lql_rules)
+
+      socket =
+        socket
+        |> assign(:lql_rules, lql_rules)
+        |> assign(:querystring, querystring)
+        |> assign(:chart_loading, true)
+        |> assign(:range_extension_patch, %{
+          querystring: querystring,
+          rows: events_op.rows,
+          direction: direction
+        })
+
+      SearchQueryExecutor.query_agg(socket.assigns.executor_pid, socket.assigns)
+
+      push_patch_with_params(socket, %{querystring: querystring, tailing?: false})
+    end
+  end
+
+  defp put_extension_state(socket, :previous, _exhausted?), do: socket
+
+  defp put_extension_state(socket, :next, exhausted?),
+    do: assign(socket, :next_events_exhausted?, exhausted?)
 
   def handle_info(:soft_pause = ev, socket) do
     soft_pause(ev, socket)
@@ -677,18 +927,64 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:search_result, %{events: events_op} = search_result}, socket) do
+  def handle_info(
+        {:search_result,
+         %{events: %{event_page_result: %{request: %{intent: :within_range}}} = events_op}},
+        %{assigns: %{event_page_loading: :within_range}} = socket
+      ) do
+    {:noreply, apply_event_page_result(socket, events_op, :previous)}
+  end
+
+  def handle_info(
+        {:search_result,
+         %{
+           events:
+             %{
+               event_page_result: %{
+                 request: %{intent: intent, boundary: nil}
+               }
+             } = events_op
+         }},
+        %{assigns: %{event_page_loading: intent}} = socket
+      )
+      when intent in [:extend_previous, :extend_next] do
+    direction = SearchOperation.event_page_direction(intent)
+    {:noreply, apply_event_page_result(socket, events_op, direction)}
+  end
+
+  def handle_info(
+        {:search_result,
+         %{events: %{event_page_result: %{request: %{intent: intent}}} = events_op}},
+        %{assigns: %{event_page_loading: intent}} = socket
+      )
+      when intent in [:extend_previous, :extend_next] do
+    {:noreply, apply_range_extension_result(socket, events_op)}
+  end
+
+  def handle_info(
+        {:search_result, %{events: %{event_page_result: %{}}}},
+        socket
+      ),
+      do: {:noreply, socket}
+
+  def handle_info(
+        {:search_result, %{events: %{event_page_result: nil} = events_op} = search_result},
+        socket
+      ) do
     tailing_timer =
       if socket.assigns.tailing? do
         Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
       end
 
+    events_metadata = event_search_metadata(events_op)
+
     socket =
       socket
+      |> reset_event_pagination()
       |> put_search_events(events_op.rows)
-      |> assign(:search_op, events_op)
+      |> assign(:search_op, events_metadata)
       |> assign(:search_op_error, nil)
-      |> assign(:search_op_log_events, search_result.events)
+      |> assign(:search_op_log_events, events_metadata)
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
@@ -705,6 +1001,13 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  def handle_info(
+        {:search_error, %{event_page_request: %{intent: intent}}},
+        %{assigns: %{event_page_loading: active_intent}} = socket
+      )
+      when intent != active_intent,
+      do: {:noreply, socket}
+
   def handle_info({:search_error, search_op}, socket) do
     socket =
       case search_op.error do
@@ -714,6 +1017,7 @@ defmodule LogflareWeb.Source.SearchLV do
           socket
           |> assign(loading: false)
           |> assign(chart_loading: false)
+          |> assign(event_page_loading: nil)
           |> put_halt_flash_message(search_op)
 
         err ->
@@ -722,6 +1026,7 @@ defmodule LogflareWeb.Source.SearchLV do
           socket
           |> assign(loading: false)
           |> assign(chart_loading: false)
+          |> assign(event_page_loading: nil)
           |> put_flash_query_error(err)
       end
 
@@ -730,7 +1035,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_info(:schedule_tail_search, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      SearchQueryExecutor.query(assigns.executor_pid, search_params(assigns))
+      SearchQueryExecutor.query(assigns.executor_pid, assigns)
     end
 
     {:noreply, socket}
@@ -738,7 +1043,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_info(:schedule_tail_agg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      SearchQueryExecutor.query_agg(assigns.executor_pid, search_params(assigns))
+      SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
     end
 
     {:noreply, socket}
@@ -767,6 +1072,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
         socket
         |> assign(:loading, true)
+        |> reset_event_pagination()
         |> assign(:tailing_initial?, true)
         |> clear_flash()
         |> assign(:lql_rules, lql_rules)
@@ -880,22 +1186,9 @@ defmodule LogflareWeb.Source.SearchLV do
     Logger.debug("Kicking off queries for #{source_token}", source_id: source_token)
 
     if assigns do
-      params = search_params(assigns)
-      SearchQueryExecutor.query(assigns.executor_pid, params)
-      SearchQueryExecutor.query_agg(assigns.executor_pid, params)
+      SearchQueryExecutor.query(assigns.executor_pid, assigns)
+      SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
     end
-  end
-
-  @spec search_params(map()) :: map()
-  defp search_params(assigns) do
-    Map.take(assigns, [
-      :source,
-      :querystring,
-      :tailing?,
-      :tailing_initial?,
-      :lql_rules,
-      :search_timezone
-    ])
   end
 
   @doc """
@@ -1000,6 +1293,7 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(:tailing?, false)
     |> assign(:loading, false)
     |> assign(:chart_loading, false)
+    |> assign(:event_page_loading, nil)
     |> put_flash(:error, error)
   end
 
@@ -1031,12 +1325,17 @@ defmodule LogflareWeb.Source.SearchLV do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(executor_pid)
 
-    assign(socket, :tailing?, false)
+    socket
+    |> assign(:tailing?, false)
+    |> reset_event_pagination()
   end
 
   defp resume_tailing(socket) do
     kickoff_queries(socket.assigns.source.token, socket.assigns)
-    assign(socket, :tailing?, true)
+
+    socket
+    |> assign(:tailing?, true)
+    |> reset_event_pagination()
   end
 
   defp hard_play(
@@ -1054,6 +1353,7 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> assign(:tailing?, true)
+      |> reset_event_pagination()
       |> push_patch_with_params(%{
         querystring: prev_assigns.querystring,
         tailing?: true

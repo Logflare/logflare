@@ -25,19 +25,43 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :log_events, :any, default: []
   attr :last_query_completed_at, :any, default: nil
   attr :loading, :boolean, required: true
+  attr :pagination_available?, :boolean, default: false
+  attr :unbounded_pagination?, :boolean, default: false
+  attr :event_page_loading, :atom, default: nil
+  attr :next_events_exhausted?, :boolean, default: false
   attr :search_timezone, :string, required: true
   attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
   attr :source_schema_flat_map, :map, default: %{}
   attr :search_op, Logflare.Logs.SearchOperation
 
   def results_list(assigns) do
-    assigns = assign(assigns, :select_fields, build_select_fields(assigns.search_op))
+    assigns =
+      assigns
+      |> assign(:select_fields, build_select_fields(assigns.search_op))
+      |> assign(:event_page_loading?, not is_nil(assigns.event_page_loading))
+      |> assign(
+        :top_pagination_available?,
+        assigns.pagination_available? or
+          (assigns.unbounded_pagination? and
+             match?(%{has_more_events?: true}, assigns.search_op_log_events))
+      )
 
     ~H"""
-    <div :if={@search_op_log_events} id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} phx-hook="SourceLogsSearchList" class="mt-4">
+    <div :if={@search_op_log_events} id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} data-active-page-intent={@event_page_loading} phx-hook="SourceLogsSearchList" class="mt-4 tw-relative">
+      <.load_more_button
+        :if={@top_pagination_available?}
+        id="load-more-events-top"
+        intent={if(@pagination_available? and @search_op_log_events.has_more_events?, do: "within_range", else: "extend_previous")}
+        load_enabled={not @loading and is_nil(@event_page_loading)}
+        click={
+          JS.dispatch("logflare:before-log-prepend", to: "#source-logs-search-list")
+          |> JS.push("load_events")
+        }
+        class="tw-my-2"
+      />
       <ul id="logs-list" phx-update="stream" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
         <.empty_result_list :if={not @loading} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
-        <.log_event :for={{dom_id, log} <- @log_events} id={dom_id} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)} source_schema_flat_map={@source_schema_flat_map}>
+        <.log_event :for={{dom_id, log} <- @log_events} id={dom_id} data-event-id={event_id(log)} data-event-timestamp={log.body["timestamp"]} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)} source_schema_flat_map={@source_schema_flat_map}>
           {log.body["event_message"]}
           <:actions phx-no-format>
           <div class="group-has-[.log-event-selected-field]:tw-ml-[13rem] group-has-[.log-event-selected-field]:tw-pb-1.5 tw-inline-block">
@@ -82,6 +106,24 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                </:actions>
         </.log_event>
       </ul>
+      <.load_more_button :if={@pagination_available? or @unbounded_pagination?} id="load-more-events-bottom" intent="extend_next" load_enabled={not @loading and is_nil(@event_page_loading) and not @next_events_exhausted?} disabled={@loading or @event_page_loading? or @next_events_exhausted?} />
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :intent, :string, values: ~w(within_range extend_previous extend_next), required: true
+  attr :class, :any, default: nil
+  attr :load_enabled, :boolean, required: true
+  attr :disabled, :boolean, default: false
+  attr :click, :any, default: "load_events"
+
+  def load_more_button(assigns) do
+    ~H"""
+    <div class="tw-flex tw-justify-center">
+      <button id={@id} type="button" class={["btn btn-outline-secondary btn-sm tw-text-xs -tw-mt-2", @class]} phx-click={@load_enabled && @click} phx-value-intent={@intent} disabled={@disabled}>
+        Load more
+      </button>
     </div>
     """
   end
@@ -278,7 +320,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       )
 
     ~H"""
-    <div class="tw-mt-4 tw-px-4 tw-py-3 tw-text-center tw-font-sans tw-only:block hidden" id="empty-results-list">
+    <div :if={@search_op_log_events} id="empty-search-results" class="tw-mt-4 tw-px-4 tw-py-3 tw-text-center tw-font-sans tw-only:block hidden">
       <h2 class="tw-text-lg tw-font-semibold tw-text-gray-400">
         No events matching your query
       </h2>
@@ -296,6 +338,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     </div>
     """
   end
+
+  defp event_id(%Logflare.LogEvent{id: id, body: body}), do: id || body["id"]
 
   def extended_search_lql(datetime) do
     new_rule =

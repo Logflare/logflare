@@ -16,6 +16,8 @@ defmodule Logflare.Lql.Rules do
 
   @type lql_rule :: ChartRule.t() | FilterRule.t() | FromRule.t() | SelectRule.t()
   @type lql_rules :: [lql_rule()]
+  @type timestamp_extension_direction :: :previous | :next
+  @type timestamp_value :: integer() | Date.t() | DateTime.t() | NaiveDateTime.t()
 
   # =============================================================================
   # Rule Type Extraction
@@ -277,6 +279,50 @@ defmodule Logflare.Lql.Rules do
   end
 
   @doc """
+  Replaces timestamp filters with an absolute range extended to an event timestamp.
+
+  The previous direction replaces the lower edge, while the next direction
+  replaces the upper edge. All other rules are preserved.
+  """
+  @spec extend_timestamp_range(
+          lql_rules(),
+          timestamp_extension_direction(),
+          timestamp_value(),
+          Calendar.time_zone()
+        ) :: lql_rules()
+  def extend_timestamp_range(lql_rules, direction, event_timestamp, timezone \\ "Etc/UTC")
+      when is_list(lql_rules) and direction in [:previous, :next] and is_binary(timezone) do
+    timestamp_values =
+      lql_rules
+      |> get_timestamp_filters()
+      |> Enum.flat_map(&timestamp_values/1)
+      |> Enum.map(&normalize_timestamp/1)
+
+    case timestamp_values do
+      [] ->
+        lql_rules
+
+      timestamp_values ->
+        event_timestamp = normalize_timestamp(event_timestamp, timezone)
+
+        values =
+          case direction do
+            :previous -> [event_timestamp, Enum.max(timestamp_values)]
+            :next -> [Enum.min(timestamp_values), event_timestamp]
+          end
+
+        timestamp_rule =
+          FilterRule.build(
+            path: "timestamp",
+            operator: :range,
+            values: values
+          )
+
+        update_timestamp_rules(lql_rules, [timestamp_rule])
+    end
+  end
+
+  @doc """
   Creates new timestamp filters by jumping forward or backward in time.
 
   Takes existing timestamp filters, calculates the time difference, and creates
@@ -298,6 +344,40 @@ defmodule Logflare.Lql.Rules do
   def timestamp_filter_rule_is_shorthand?(%FilterRule{} = filter_rule) do
     FilterRule.shorthand_timestamp?(filter_rule)
   end
+
+  defp timestamp_values(%FilterRule{value: value, values: values}) do
+    [value | List.wrap(values)]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp normalize_timestamp(timestamp) when is_integer(timestamp) do
+    timestamp
+    |> DateTime.from_unix!(:microsecond)
+    |> DateTime.to_naive()
+  end
+
+  defp normalize_timestamp(%DateTime{} = timestamp) do
+    timestamp
+    |> DateTime.shift_zone!("Etc/UTC")
+    |> DateTime.to_naive()
+  end
+
+  defp normalize_timestamp(%NaiveDateTime{} = timestamp), do: timestamp
+  defp normalize_timestamp(%Date{} = timestamp), do: NaiveDateTime.new!(timestamp, ~T[00:00:00])
+
+  defp normalize_timestamp(timestamp, timezone) when is_integer(timestamp) do
+    timestamp
+    |> DateTime.from_unix!(:microsecond)
+    |> normalize_timestamp(timezone)
+  end
+
+  defp normalize_timestamp(%DateTime{} = timestamp, timezone) do
+    timestamp
+    |> DateTime.shift_zone!(timezone)
+    |> DateTime.to_naive()
+  end
+
+  defp normalize_timestamp(timestamp, _timezone), do: normalize_timestamp(timestamp)
 
   # =============================================================================
   # LQL Parser Warnings
