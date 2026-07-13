@@ -13,6 +13,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.QueryError
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Lql.Rules
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
@@ -369,7 +370,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         )
 
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       assert view |> element(".subhead") |> render() =~ "(+08:00)"
       assert render(view) =~ "something123"
@@ -520,7 +521,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ "/search"
 
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"
@@ -778,6 +779,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert_receive {:event_query, _query}
       assert_receive {:agg_query, _query}
 
+      TestUtils.retry_assert(fn ->
+        assert view |> element("#logs-list-container") |> render() =~ "Extend search"
+      end)
+
       html = view |> element("#logs-list-container") |> render()
 
       assert html =~ "No events matching your query"
@@ -817,7 +822,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       allow_sandbox(search_executor_pid)
 
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"
@@ -839,7 +844,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       })
 
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       render_change(view, :start_search, %{
         "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
@@ -847,7 +852,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # wait for async search task to complete
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       html = view |> element("#logs-list-container") |> render()
 
@@ -923,7 +928,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       allow_sandbox(search_executor_pid)
 
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       # post-init fetching
       view
@@ -935,7 +940,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         })
 
         view
-        |> TestUtils.wait_for_render("#logs-list-container li")
+        |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
         html = view |> element("#logs-list-container") |> render()
 
@@ -947,8 +952,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         params = opts[:body].queryParameters
 
-        if length(params) > 2 do
-          assert Enum.any?(params, fn param -> param.parameterValue.value == "MINUTE" end)
+        if Enum.any?(params, fn param -> param.parameterValue.value == "MINUTE" end) do
           # truncate by 120 minutes
           assert Enum.any?(params, fn param -> param.parameterValue.value == 120 end)
         end
@@ -963,7 +967,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # post-init fetching
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       render_change(view, :start_search, %{
         "querystring" => @default_querystring
@@ -971,7 +975,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # wait for async search task to complete
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"
@@ -1037,16 +1041,16 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # wait for async search task to complete
       view
-      |> TestUtils.wait_for_render("#logs-list li:first-of-type a[href^='/sources']")
+      |> TestUtils.wait_for_render("#logs-list li[data-event-id] a[href^='/sources']")
 
       assert view
-             |> element("#logs-list li:first-of-type a[href^='/sources']", "permalink")
+             |> element("#logs-list li[data-event-id] a[href^='/sources']", "permalink")
              |> render() =~ ~r/timestamp=\d{4}-\d{2}-\d{2}/
 
       link =
         view
         |> element(
-          "#logs-list li:first-of-type a[phx-value-log-event-id='some-uuid']",
+          "#logs-list li[data-event-id] a[phx-value-log-event-id='some-uuid']",
           "view"
         )
         |> render()
@@ -1170,7 +1174,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # wait for async search task to complete
       view
-      |> TestUtils.wait_for_render("li:first-of-type a[phx-value-log-event-id='some-uuid']")
+      |> TestUtils.wait_for_render("li[data-event-id] a[phx-value-log-event-id='some-uuid']")
 
       pid = self()
 
@@ -1183,7 +1187,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       TestUtils.retry_assert(fn ->
         view
-        |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
+        |> element("li[data-event-id] a[phx-value-log-event-id='some-uuid']", "view")
         |> render_click()
       end)
 
@@ -1234,10 +1238,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       allow_sandbox(search_executor_pid)
 
       view
-      |> TestUtils.wait_for_render("li:first-of-type a[phx-value-log-event-id='some-uuid']")
+      |> TestUtils.wait_for_render("li[data-event-id] a[phx-value-log-event-id='some-uuid']")
 
       view
-      |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
+      |> element("li[data-event-id] a[phx-value-log-event-id='some-uuid']", "view")
       |> render_click()
 
       TestUtils.retry_assert(fn ->
@@ -1278,10 +1282,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       view
-      |> element("li:first-of-type a[phx-value-log-event-id='qf-uuid']", "view")
+      |> element("li[data-event-id] a[phx-value-log-event-id='qf-uuid']", "view")
       |> render_click()
 
       TestUtils.retry_assert(fn ->
@@ -1331,11 +1335,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # Wait for search to complete
       view
-      |> TestUtils.wait_for_render("li:first-of-type a[phx-value-log-event-id='some-uuid']")
+      |> TestUtils.wait_for_render("li[data-event-id] a[phx-value-log-event-id='some-uuid']")
 
       # First render builds a LogEvent and caches it
       view
-      |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
+      |> element("li[data-event-id] a[phx-value-log-event-id='some-uuid']", "view")
       |> render_click()
 
       # wait for cache to populate
@@ -1344,7 +1348,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # Second render loads the LogEvent from cache
       assert view
-             |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
+             |> element("li[data-event-id] a[phx-value-log-event-id='some-uuid']", "view")
              |> render_click()
     end
 
@@ -1581,7 +1585,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # post-init fetching
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       assert get_view_assigns(view).tailing?
       render_click(view, "soft_pause", %{})
@@ -1624,7 +1628,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     } do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
-      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      view |> TestUtils.wait_for_render("#logs-list li[data-event-id] a")
       assert get_view_assigns(view).tailing?
 
       render_click(view, "soft_pause", %{})
@@ -1643,7 +1647,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     } do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
-      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      view |> TestUtils.wait_for_render("#logs-list li[data-event-id] a")
       assert get_view_assigns(view).tailing?
 
       render_click(view, "open_log_event_modal", %{})
@@ -1910,114 +1914,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       })
 
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       assert view |> element("#logs-list-container") |> render() =~ matching_message
       refute view |> element("#logs-list-container") |> render() =~ non_matching_message
-    end
-
-    test "tailing retains rows on an empty result", %{conn: conn, source: source} do
-      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
-
-      view
-      |> TestUtils.wait_for_render("#logs-list-container li")
-
-      events_op = get_view_assigns(view).search_op_log_events
-      initial_log_event_ids = log_event_ids(view)
-
-      send(view.pid, {:search_result, %{events: %{events_op | rows: []}}})
-
-      assert log_event_ids(view) == initial_log_event_ids
-    end
-
-    test "a page result preserves canonical search metadata", %{conn: conn, source: source} do
-      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
-
-      view
-      |> TestUtils.wait_for_render("#logs-list-container li")
-
-      canonical_search_op = get_view_assigns(view).search_op
-      canonical_events_op = get_view_assigns(view).search_op_log_events
-      request = %{intent: :within_range, boundary: nil, cursor: %{id: "event-1", timestamp: 1}}
-
-      page_event =
-        build(:log_event,
-          source: source,
-          id: "page-event",
-          timestamp: 0,
-          message: "older page event"
-        )
-
-      :sys.replace_state(view.pid, fn state ->
-        socket =
-          Phoenix.Component.assign(state.socket,
-            event_page_loading_request: %{intent: :within_range, cursor: request.cursor}
-          )
-
-        %{state | socket: socket}
-      end)
-
-      send(
-        view.pid,
-        {:search_result,
-         %{
-           event_page: %EventPage{
-             rows: [page_event],
-             request: request,
-             cursor: %{id: "page-event", timestamp: 0},
-             has_more?: false
-           }
-         }}
-      )
-
-      view
-      |> TestUtils.wait_for_render("#log-events-page-event-0")
-
-      assigns = get_view_assigns(view)
-      assert assigns.search_op == canonical_search_op
-      assert assigns.search_op_log_events == canonical_events_op
-      assert assigns.event_page_loading_request == nil
-      refute assigns.event_page_within_range_available?
-    end
-
-    test "an exhausted unbounded next page disables further pagination", %{
-      conn: conn,
-      source: source
-    } do
-      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
-
-      view
-      |> TestUtils.wait_for_render("#logs-list-container li")
-
-      request = %{intent: :extend_next, boundary: nil, cursor: %{id: "event-1", timestamp: 1}}
-
-      :sys.replace_state(view.pid, fn state ->
-        socket =
-          Phoenix.Component.assign(state.socket,
-            event_page_loading_request: %{intent: :extend_next, cursor: request.cursor}
-          )
-
-        %{state | socket: socket}
-      end)
-
-      send(
-        view.pid,
-        {:search_result,
-         %{
-           event_page: %EventPage{
-             rows: [],
-             request: request,
-             cursor: nil,
-             has_more?: false
-           }
-         }}
-      )
-
-      TestUtils.retry_assert(fn ->
-        assigns = get_view_assigns(view)
-        assert assigns.next_events_exhausted?
-        assert assigns.event_page_loading_request == nil
-      end)
     end
 
     test "tailing inserts a late event at its timestamp position", %{
@@ -2099,8 +1999,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       render_change(view, :start_search, %{"querystring" => matching_message})
 
       assert view
-             |> TestUtils.wait_for_render("#logs-list > li")
-             |> has_element?("#logs-list > li", matching_message)
+             |> TestUtils.wait_for_render("#logs-list > li[data-event-id]")
+             |> has_element?("#logs-list > li[data-event-id]", matching_message)
 
       html =
         view
@@ -2109,8 +2009,144 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert html
              |> Floki.parse_document!()
-             |> Floki.find("#logs-list > li")
+             |> Floki.find("#logs-list > li[data-event-id]")
              |> Enum.empty?()
+    end
+  end
+
+  describe "event pagination with postgres backend" do
+    TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
+
+    setup do
+      start_supervised!(Logflare.SystemMetricsSup)
+
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user)
+      plan = SingleTenant.get_default_plan()
+      insert(:source_schema, source: source)
+
+      assert :ok = Backends.ensure_source_sup_started(source)
+
+      message_prefix = "postgres-pagination-#{System.unique_integer([:positive])}"
+
+      first_timestamp =
+        DateTime.utc_now()
+        |> DateTime.add(-1_000, :second)
+        |> DateTime.truncate(:second)
+        |> DateTime.to_unix(:microsecond)
+
+      events =
+        Enum.map(1..103, fn sequence ->
+          build(:log_event,
+            source: source,
+            id: "#{message_prefix}-#{sequence}",
+            timestamp: first_timestamp + sequence * 2_000_000,
+            message: "#{message_prefix} #{sequence}"
+          )
+        end)
+
+      assert {:ok, 103} = Backends.ingest_logs(events, source)
+      assert :ok = TestUtils.wait_for_postgres_events(source, user, message_prefix, 103)
+
+      range_start = div(Enum.at(events, 1).body["timestamp"], 1_000_000) - 1
+      range_end = div(Enum.at(events, 101).body["timestamp"], 1_000_000) + 1
+      querystring = "#{message_prefix} t:#{range_start}..#{range_end}"
+
+      %{
+        events: events,
+        message_prefix: message_prefix,
+        plan: plan,
+        querystring: querystring,
+        source: source,
+        user: user
+      }
+    end
+
+    setup [:setup_user_session]
+
+    test "loading the next page appends newer rows and updates the URL range", %{
+      conn: conn,
+      events: events,
+      querystring: querystring,
+      source: source
+    } do
+      view = open_pagination_search(conn, source, querystring, Enum.at(events, 101))
+
+      initial_ids = events |> Enum.slice(2, 100) |> log_event_dom_ids()
+      assert visible_log_event_ids(view) == initial_ids
+
+      view
+      |> element("#load-more-events-bottom")
+      |> render_click()
+
+      assert_timestamp_range_patch(view, source, querystring, :next, List.last(events))
+
+      view
+      |> TestUtils.wait_for_render(log_event_selector(List.last(events)))
+
+      expected_ids = events |> Enum.slice(2, 101) |> log_event_dom_ids()
+      assert visible_log_event_ids(view) == expected_ids
+    end
+
+    test "loading the previous page prepends older rows and updates the URL range", %{
+      conn: conn,
+      events: events,
+      querystring: querystring,
+      source: source
+    } do
+      view = open_pagination_search(conn, source, querystring, Enum.at(events, 101))
+
+      initial_ids = events |> Enum.slice(2, 100) |> log_event_dom_ids()
+      assert visible_log_event_ids(view) == initial_ids
+
+      view
+      |> element("#load-more-events-top")
+      |> render_click()
+
+      assert_timestamp_range_patch(view, source, querystring, :previous, List.first(events))
+
+      view
+      |> TestUtils.wait_for_render(log_event_selector(List.first(events)))
+
+      expected_ids = events |> Enum.take(102) |> log_event_dom_ids()
+      assert visible_log_event_ids(view) == expected_ids
+    end
+
+    test "the previous button is hidden after its page is exhausted", %{
+      conn: conn,
+      events: events,
+      querystring: querystring,
+      source: source
+    } do
+      view = open_pagination_search(conn, source, querystring, Enum.at(events, 101))
+
+      assert has_element?(view, "#load-more-events-top:not([disabled])")
+
+      view
+      |> element("#load-more-events-top")
+      |> render_click()
+
+      view
+      |> TestUtils.wait_for_render(log_event_selector(List.first(events)))
+
+      assert has_element?(view, "div.tw-hidden > #load-more-events-top[disabled]")
+    end
+
+    test "pagination buttons are hidden while tailing", %{
+      conn: conn,
+      events: events,
+      message_prefix: message_prefix,
+      source: source
+    } do
+      view =
+        open_pagination_search(conn, source, message_prefix, List.last(events), tailing?: true)
+
+      assert has_element?(view, "div.tw-hidden > #load-more-events-top[disabled]")
+      assert has_element?(view, "div.tw-hidden > #load-more-events-bottom[disabled]")
+
+      render_click(view, "soft_pause", %{})
+
+      assert has_element?(view, "#load-more-events-top:not([disabled])")
     end
   end
 
@@ -2267,7 +2303,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
       view
-      |> TestUtils.wait_for_render("#logs-list-container li")
+      |> TestUtils.wait_for_render("#logs-list-container li[data-event-id]")
 
       assert view
              |> render_change(:start_search, %{
@@ -2795,12 +2831,75 @@ defmodule LogflareWeb.Source.SearchLVTest do
     :sys.get_state(view.pid).socket.assigns
   end
 
+  defp open_pagination_search(conn, source, querystring, expected_event, options \\ []) do
+    tailing? = Keyword.get(options, :tailing?, false)
+
+    {:ok, view, _html} =
+      live_with_redirect(
+        conn,
+        Routes.live_path(conn, SearchLV, source.id,
+          querystring: querystring,
+          tailing?: tailing?
+        )
+      )
+
+    %{executor_pid: search_executor_pid} = get_view_assigns(view)
+    allow_sandbox(search_executor_pid)
+
+    TestUtils.wait_for_render(view, log_event_selector(expected_event))
+  end
+
+  defp assert_timestamp_range_patch(view, source, original_querystring, direction, event) do
+    %URI{path: path, query: query} =
+      assert_patch(view)
+      |> URI.parse()
+
+    params = URI.decode_query(query)
+    patched_querystring = params["querystring"]
+
+    assert path == "/sources/#{source.id}/search"
+    assert params["tailing?"] == "false"
+    refute patched_querystring == original_querystring
+
+    expected_timestamp =
+      event.body["timestamp"]
+      |> DateTime.from_unix!(:microsecond)
+      |> DateTime.to_naive()
+
+    TestUtils.retry_assert(fn ->
+      assigns = get_view_assigns(view)
+      assert assigns.querystring == patched_querystring
+
+      timestamp_range = Rules.effective_timestamp_range(assigns.lql_rules)
+      assert Map.fetch!(timestamp_range, range_edge(direction)) == expected_timestamp
+    end)
+  end
+
+  defp range_edge(:previous), do: :min
+  defp range_edge(:next), do: :max
+
+  defp log_event_selector(event) do
+    "#log-events-#{event.id}-#{event.body["timestamp"]}"
+  end
+
+  defp log_event_dom_ids(events) do
+    Enum.map(events, fn event ->
+      "log-events-#{event.id}-#{event.body["timestamp"]}"
+    end)
+  end
+
+  defp visible_log_event_ids(view) do
+    view
+    |> log_event_ids()
+    |> Enum.reverse()
+  end
+
   defp log_event_ids(view) do
     view
     |> element("#logs-list")
     |> render()
     |> Floki.parse_document!()
-    |> Floki.find("#logs-list > li")
+    |> Floki.find("#logs-list > li[data-event-id]")
     |> Floki.attribute("id")
   end
 

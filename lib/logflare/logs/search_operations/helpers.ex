@@ -4,7 +4,9 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
   alias Logflare.Logs.SearchOperations
   alias Logflare.Lql.Rules.FilterRule, as: FR
 
-  @type minmax :: %{min: DateTime.t(), max: DateTime.t(), message: nil | String.t()}
+  @type timestamp :: DateTime.t() | NaiveDateTime.t()
+  @type minmax :: %{min: timestamp(), max: timestamp(), message: nil | String.t()}
+  @type bounds :: %{min: timestamp(), max: timestamp()}
   @default_open_interval_length 1_000
 
   @spec get_min_max_filter_timestamps([FR.t()], atom()) :: minmax()
@@ -39,6 +41,31 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
       |> min_max_timestamps()
 
     %{min: min, max: max, message: nil}
+  end
+
+  @spec bounded_timestamp_filters?([FR.t()]) :: boolean()
+  def bounded_timestamp_filters?(filters) do
+    has_closed_range? =
+      Enum.any?(filters, fn
+        %{operator: :range, values: [_, _]} -> true
+        _ -> false
+      end)
+
+    has_lower_bound? = Enum.any?(filters, &(&1.operator in [:>, :>=]))
+    has_upper_bound? = Enum.any?(filters, &(&1.operator in [:<, :<=]))
+
+    has_closed_range? or (has_lower_bound? and has_upper_bound?)
+  end
+
+  @spec bounded_timestamp_range([FR.t()], SearchOperations.chart_period()) :: bounds() | nil
+  def bounded_timestamp_range(filters, chart_period) do
+    if bounded_timestamp_filters?(filters) do
+      filters
+      |> get_min_max_filter_timestamps(chart_period)
+      |> Map.take([:min, :max])
+    else
+      nil
+    end
   end
 
   def default_min_max_for_tailing_chart_period(period) when is_atom(period) do
