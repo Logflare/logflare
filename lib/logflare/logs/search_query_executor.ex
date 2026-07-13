@@ -127,23 +127,11 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
     rows = Enum.map(events_so.rows, &LogEvent.make_from_db(&1, %{source: params.source}))
 
-    old_rows = if params.search_op_log_events, do: params.search_op_log_events.rows, else: []
-
-    # prevents removal of log events loaded
-    # during initial tailing query
-    log_events =
-      old_rows
-      |> Enum.reject(& &1.is_from_stale_query)
-      |> Enum.concat(rows)
-      |> Enum.uniq_by(&{&1.body, &1.id})
-      |> Enum.sort_by(& &1.body["timestamp"], &>=/2)
-      |> Enum.take(100)
-
     send(
       state.caller,
       {:search_result,
        %{
-         events: %{events_so | rows: log_events}
+         events: %{events_so | rows: rows}
        }}
     )
 

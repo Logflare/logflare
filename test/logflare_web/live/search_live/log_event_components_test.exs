@@ -13,6 +13,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
 
   @default_attrs %{
     search_op_log_events: nil,
+    log_events: [],
     last_query_completed_at: nil,
     loading: false,
     search_timezone: "Etc/UTC",
@@ -62,7 +63,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
           | search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            search_op_log_events: search_op_log_events
+            search_op_log_events: search_op_log_events,
+            log_events: stream_entries(search_op_log_events.rows)
         })
 
       assert html =~ "Log message 1"
@@ -77,7 +79,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
             search_op_log_events: %{rows: []}
         })
 
-      assert html =~ ~r|id="logs-list" class="(.*)blurred"|
+      assert html =~ ~r|id="logs-list".*class="(.*)blurred"|
     end
 
     test "renders empty state when no log events", %{source: source, lql_rules: lql_rules} do
@@ -114,7 +116,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
           | search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            search_op_log_events: search_op_log_events
+            search_op_log_events: search_op_log_events,
+            log_events: stream_entries(search_op_log_events.rows)
         })
 
       assert html =~ "(empty event message)"
@@ -150,7 +153,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
           | search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            search_op_log_events: search_op_log_events
+            search_op_log_events: search_op_log_events,
+            log_events: stream_entries(search_op_log_events.rows)
         })
 
       assert html =~ "Normal log message"
@@ -305,5 +309,11 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
 
              """
     end
+  end
+
+  defp stream_entries(log_events) do
+    log_events
+    |> Enum.with_index()
+    |> Enum.map(fn {log_event, index} -> {"log-events-#{index}", log_event} end)
   end
 end

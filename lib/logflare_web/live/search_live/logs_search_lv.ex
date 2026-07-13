@@ -35,6 +35,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   require Logger
 
+  @log_event_stream_limit 5_000
   @tail_search_interval 1000
   @user_idle_interval :timer.minutes(2)
 
@@ -107,6 +108,8 @@ defmodule LogflareWeb.Source.SearchLV do
       saved_searches: saved_searches(source),
       force_query: Map.get(params, "force", "false") == "true"
     )
+    |> stream_configure(:log_events, dom_id: &log_event_dom_id/1)
+    |> stream(:log_events, [])
     |> maybe_assign_user_timezone(team_user, user)
   end
 
@@ -181,15 +184,6 @@ defmodule LogflareWeb.Source.SearchLV do
            {:ok, socket} <- check_suggested_keys(lql_rules, source, socket) do
         qs = Lql.encode!(lql_rules)
 
-        search_op_log_events =
-          if socket.assigns.search_op_log_events do
-            rows = socket.assigns.search_op_log_events.rows
-            events = Enum.map(rows, &Map.put(&1, :is_from_stale_query, true))
-            Map.put(socket.assigns.search_op_log_events, :rows, events)
-          else
-            socket.assigns.search_op_log_events
-          end
-
         socket =
           socket
           |> assign(:loading, true)
@@ -197,7 +191,6 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:tailing_initial?, true)
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
-          |> assign(:search_op_log_events, search_op_log_events)
 
         if connected?(socket) do
           kickoff_queries(source.token, socket.assigns)
@@ -261,8 +254,16 @@ defmodule LogflareWeb.Source.SearchLV do
     </.subheader>
     <div class="container source-logs-search-container console-text">
       <div id="logs-list-container">
-        <LogEventComponents.empty_result_list :if={not @loading} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
-        <LogEventComponents.results_list search_op={@search_op} search_op_log_events={@search_op_log_events} last_query_completed_at={@last_query_completed_at} search_timezone={@search_timezone} loading={@loading} source_schema_flat_map={@source_schema_flat_map} />
+        <LogEventComponents.results_list
+          search_op={@search_op}
+          search_op_log_events={@search_op_log_events}
+          search_op_log_aggregates={@search_op_log_aggregates}
+          log_events={@streams.log_events}
+          last_query_completed_at={@last_query_completed_at}
+          search_timezone={@search_timezone}
+          loading={@loading}
+          source_schema_flat_map={@source_schema_flat_map}
+        />
       </div>
       <div>
         {live_react_component(
@@ -341,6 +342,9 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> assign(:search_timezone, tz)
+      |> assign(:search_op_log_events, nil)
+      |> assign(:search_op_log_aggregates, nil)
+      |> stream(:log_events, [], reset: true)
       |> assign_new_search_with_qs(
         %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
         SourceSchemas.source_schema_flatmap_or_default(socket.assigns.source)
@@ -621,6 +625,17 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
+  defp put_search_events(socket, rows)
+       when socket.assigns.tailing? and not socket.assigns.tailing_initial? do
+    rows
+    |> Enum.with_index()
+    |> Enum.reduce(socket, fn {row, index}, socket ->
+      stream_insert(socket, :log_events, row, at: index, limit: @log_event_stream_limit)
+    end)
+  end
+
+  defp put_search_events(socket, rows), do: stream(socket, :log_events, rows, reset: true)
+
   def handle_info(:soft_pause = ev, socket) do
     soft_pause(ev, socket)
   end
@@ -670,6 +685,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
+      |> put_search_events(events_op.rows)
       |> assign(:search_op, events_op)
       |> assign(:search_op_error, nil)
       |> assign(:search_op_log_events, search_result.events)
@@ -679,16 +695,11 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:last_query_completed_at, DateTime.utc_now())
 
     socket =
-      cond do
-        match?({:warning, _}, search_result.events.status) ->
-          {:warning, message} = search_result.events.status
-          put_flash(socket, :info, message)
-
-        msg = warning_message(socket.assigns, search_result) ->
-          put_flash(socket, :warning, msg)
-
-        true ->
-          socket
+      if match?({:warning, _}, search_result.events.status) do
+        {:warning, message} = search_result.events.status
+        put_flash(socket, :info, message)
+      else
+        socket
       end
 
     {:noreply, socket}
@@ -719,7 +730,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_info(:schedule_tail_search, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      SearchQueryExecutor.query(assigns.executor_pid, assigns)
+      SearchQueryExecutor.query(assigns.executor_pid, search_params(assigns))
     end
 
     {:noreply, socket}
@@ -727,7 +738,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_info(:schedule_tail_agg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
+      SearchQueryExecutor.query_agg(assigns.executor_pid, search_params(assigns))
     end
 
     {:noreply, socket}
@@ -844,26 +855,6 @@ defmodule LogflareWeb.Source.SearchLV do
     push_patch(socket, to: path, replace: false)
   end
 
-  defp warning_message(assigns, search_op) do
-    tailing? = assigns.tailing?
-    querystring = assigns.querystring
-    log_events_empty? = Enum.empty?(search_op.events.rows)
-
-    cond do
-      log_events_empty? and not tailing? ->
-        "No log events matching your search query."
-
-      log_events_empty? and tailing? ->
-        "No log events matching your search query."
-
-      querystring == "" and log_events_empty? and tailing? ->
-        "No log events ingested during last 24 hours. Try searching over a longer time period, and clicking the bar chart to drill down."
-
-      true ->
-        nil
-    end
-  end
-
   defp adjust_timestamp_rules(timestamp_rules, search_timezone) do
     case Timex.Timezone.get(search_timezone) do
       {:error, _} -> timestamp_rules
@@ -889,9 +880,22 @@ defmodule LogflareWeb.Source.SearchLV do
     Logger.debug("Kicking off queries for #{source_token}", source_id: source_token)
 
     if assigns do
-      SearchQueryExecutor.query(assigns.executor_pid, assigns)
-      SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
+      params = search_params(assigns)
+      SearchQueryExecutor.query(assigns.executor_pid, params)
+      SearchQueryExecutor.query_agg(assigns.executor_pid, params)
     end
+  end
+
+  @spec search_params(map()) :: map()
+  defp search_params(assigns) do
+    Map.take(assigns, [
+      :source,
+      :querystring,
+      :tailing?,
+      :tailing_initial?,
+      :lql_rules,
+      :search_timezone
+    ])
   end
 
   @doc """
@@ -1144,6 +1148,11 @@ defmodule LogflareWeb.Source.SearchLV do
       to: %{uri | query: URI.encode_query(params)},
       class: "tw-block tw-pt-3"
     )
+  end
+
+  @spec log_event_dom_id(Logflare.LogEvent.t()) :: String.t()
+  defp log_event_dom_id(%Logflare.LogEvent{id: id, body: %{"timestamp" => timestamp}}) do
+    "log-events-#{id}-#{timestamp}"
   end
 
   @spec querystring_or_default(String.t(), Logflare.Sources.Source.t()) :: String.t()
