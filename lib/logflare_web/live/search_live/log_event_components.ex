@@ -24,8 +24,6 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :last_query_completed_at, :any, default: nil
   attr :loading, :boolean, required: true
   attr :search_timezone, :string, required: true
-  attr :tailing?, :boolean, required: true
-  attr :querystring, :string, required: true
   attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
   attr :source_schema_flat_map, :map, default: %{}
   attr :search_op, Logflare.Logs.SearchOperation
@@ -47,24 +45,18 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                    title="Log Event"
                    phx-value-log-event-id={log.id}
                    phx-value-log-event-timestamp={log.body["timestamp"]}
-                   phx-value-lql={@querystring}
-                   phx-value-tailing?={@tailing?}
-                   phx-value-tz={@search_timezone}
                  >
                    <span>view</span>
                  </.modal_link>
                  <.modal_link
                    component={LogflareWeb.SearchLive.EventContextComponent}
-                   click={JS.push("soft_pause")}
-                   close={if(@tailing?, do: JS.push("soft_play", target: "#source-logs-search-control") |> JS.push("close"), else: nil)}
+                   click={JS.push("open_event_context")}
+                   close={JS.push("close_event_context", target: "#source-logs-search-control") |> JS.push("close")}
                    class="tw-text-[0.65rem]"
                    modal_id={:log_event_context_viewer}
                    title="View Event Context"
                    phx-value-log-event-id={log.id}
-                   phx-value-source-id={@search_op.source.id}
                    phx-value-log-event-timestamp={log.body["timestamp"]}
-                   phx-value-timezone={@search_timezone}
-                   phx-value-querystring={@querystring}
                  >
                    <span>context</span>
                  </.modal_link>
