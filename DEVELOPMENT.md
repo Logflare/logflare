@@ -48,12 +48,12 @@ make start.pink
 
 ```bash
 # start local databases
-docker-compose up -d db clickhouse
+docker-compose up -d db clickhouse telegraf
 
 # install dependencies
 make setup
 
-# start in single tenant postgres backend
+# start in single tenant postgres backend (logflare_dev)
 make start.st.pg
 
 # run tests
@@ -93,16 +93,16 @@ Use any of the variations, which will start logflare in single-tenant mode:
 
 ```bash
 # to build locally with bq backend
-docker compose up db logflare
+docker compose up db logflare telegraf
 
 # to build locally with pg backend
-docker compose -f docker-compose.yml -f docker-compose.pg.yml up db logflare
+docker compose -f docker-compose.yml -f docker-compose.pg.yml up db logflare telegraf
 
 # to run latest image locally with bq backend
-docker compose -f docker-compose.yml -f docker-compose.latest.yml up db logflare
+docker compose -f docker-compose.yml -f docker-compose.latest.yml up db logflare telegraf
 
 # to run latest image locally with pg backend
-docker compose -f docker-compose.yml -f docker-compose.latest.yml -f docker-compose.pg.yml up db logflare
+docker compose -f docker-compose.yml -f docker-compose.latest.yml -f docker-compose.pg.yml up db logflare telegraf
 ```
 
 ### Developing Logflare alongside Supabase CLI
@@ -202,6 +202,21 @@ for schema updating.
 
 For example, do `Logger.error("Some error", error_string: inspect(params))`
 
+## Troubleshooting
+
+### Many `mix test` tests failing
+
+`mix test` only creates/migrates the test DB; it does not clear existing data.
+If your `logflare_test` db was left in an intermediate state, it's possible that old state will cause tests to fail.
+The fix is to reset the test database.
+
+```bash
+# reset
+mise exec -- env MIX_ENV=test mix ecto.reset
+
+# run tests again
+mise exec -- mix test
+```
 
 ## Deprecations
 

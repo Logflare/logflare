@@ -124,9 +124,9 @@ setup.node:
 	@echo ""
 
 reset:
-	docker compose down
 	MIX_ENV=dev mix ecto.reset
 	MIX_ENV=test mix ecto.reset
+	docker compose down
 	rm -rf _build .elixir_ls deps assets/node_modules
 
 .PHONY: setup setup.node reset check-version-manager check-tools
