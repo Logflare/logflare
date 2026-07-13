@@ -21,6 +21,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   @default_empty_event_message "(empty event message)"
 
   attr :search_op_log_events, :map, default: nil
+  attr :search_op_log_aggregates, :map, default: nil
+  attr :log_events, :any, default: []
   attr :last_query_completed_at, :any, default: nil
   attr :loading, :boolean, required: true
   attr :search_timezone, :string, required: true
@@ -33,8 +35,9 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
     ~H"""
     <div :if={@search_op_log_events} id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} phx-hook="SourceLogsSearchList" class="mt-4">
-      <ul id="logs-list" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
-        <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)} source_schema_flat_map={@source_schema_flat_map}>
+      <ul id="logs-list" phx-update="stream" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
+        <.empty_result_list :if={not @loading} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
+        <.log_event :for={{dom_id, log} <- @log_events} id={dom_id} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)} source_schema_flat_map={@source_schema_flat_map}>
           {log.body["event_message"]}
           <:actions phx-no-format>
           <div class="group-has-[.log-event-selected-field]:tw-ml-[13rem] group-has-[.log-event-selected-field]:tw-pb-1.5 tw-inline-block">
@@ -275,7 +278,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       )
 
     ~H"""
-    <div :if={show_empty_results?(@search_op_log_events)} class="tw-mt-4 tw-px-4 tw-py-3 tw-text-center tw-font-sans">
+    <div class="tw-mt-4 tw-px-4 tw-py-3 tw-text-center tw-font-sans tw-only:block hidden" id="empty-results-list">
       <h2 class="tw-text-lg tw-font-semibold tw-text-gray-400">
         No events matching your query
       </h2>
@@ -293,11 +296,6 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     </div>
     """
   end
-
-  defp show_empty_results?(%{rows: rows})
-       when is_list(rows), do: Enum.empty?(rows)
-
-  defp show_empty_results?(_), do: false
 
   def extended_search_lql(datetime) do
     new_rule =
