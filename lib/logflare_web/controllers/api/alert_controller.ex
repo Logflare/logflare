@@ -5,10 +5,14 @@ defmodule LogflareWeb.Api.AlertController do
   alias Logflare.Alerting
   alias Logflare.Backends
   alias LogflareWeb.OpenApi.Accepted
+  alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApi.UnprocessableEntity
+  alias LogflareWeb.OpenApiSchemas.AlertApiCreateParams
   alias LogflareWeb.OpenApiSchemas.AlertApiSchema
+  alias LogflareWeb.OpenApiSchemas.AlertApiUpdateParams
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -45,15 +49,18 @@ defmodule LogflareWeb.Api.AlertController do
 
   operation(:create,
     summary: "Create alert",
-    request_body: AlertApiSchema.params(),
+    request_body: AlertApiCreateParams.params(),
     responses: %{
       201 => Created.response(AlertApiSchema),
-      404 => NotFound.response()
+      400 => BadRequest.response(),
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 
   def create(%{assigns: %{user: user}} = conn, params) do
-    with {:ok, alert} <- Alerting.create_alert_query(user, params) do
+    with {:ok, attrs} <- verify_backends_owner(params, user),
+         {:ok, alert} <- Alerting.create_alert_query(user, attrs) do
       conn
       |> put_status(201)
       |> json(Alerting.preload_alert_query(alert))
@@ -63,11 +70,13 @@ defmodule LogflareWeb.Api.AlertController do
   operation(:update,
     summary: "Update alert",
     parameters: [token: [in: :path, description: "Alert UUID", type: :string]],
-    request_body: AlertApiSchema.params(),
+    request_body: AlertApiUpdateParams.params(),
     responses: %{
       204 => Accepted.response(),
       200 => Accepted.response(AlertApiSchema),
-      404 => NotFound.response()
+      400 => BadRequest.response(),
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 
@@ -78,7 +87,9 @@ defmodule LogflareWeb.Api.AlertController do
       conn
       |> case do
         %{method: "PATCH"} ->
-          send_resp(conn, 204, "")
+          conn
+          |> put_status(204)
+          |> text("")
 
         %{method: "PUT"} ->
           put_status(conn, 200)
@@ -87,29 +98,43 @@ defmodule LogflareWeb.Api.AlertController do
     end
   end
 
+  defp verify_backends_owner(%{"backends" => _}, _user) do
+    {:error, "backends is read-only; use backend_ids"}
+  end
+
+  defp verify_backends_owner(%{"backend_ids" => ids}, _user) when not is_list(ids) do
+    {:error, "backend_ids must be an array"}
+  end
+
   defp verify_backends_owner(%{"backend_ids" => ids} = params, user) do
-    ids
-    |> Enum.reduce_while({:ok, []}, fn id, {:ok, acc} ->
-      case Backends.fetch_backend_by(id: id, user_id: user.id) do
-        {:ok, backend} -> {:cont, {:ok, [backend | acc]}}
-        {:error, :not_found} -> {:halt, {:error, :not_found}}
-      end
-    end)
-    |> case do
-      {:ok, backends} ->
-        attrs =
-          params
-          |> Map.delete("backend_ids")
-          |> Map.put("backends", Enum.reverse(backends))
+    with :ok <- validate_backend_ids(ids),
+         {:ok, backends} <- fetch_backends(Enum.uniq(ids), user) do
+      attrs =
+        params
+        |> Map.delete("backend_ids")
+        |> Map.put("backends", backends)
 
-        {:ok, attrs}
-
-      error ->
-        error
+      {:ok, attrs}
     end
   end
 
   defp verify_backends_owner(params, _user), do: {:ok, params}
+
+  defp validate_backend_ids(ids) do
+    if Enum.all?(ids, &(is_integer(&1) and &1 > 0)),
+      do: :ok,
+      else: {:error, "backend_ids must contain positive integers"}
+  end
+
+  defp fetch_backends(ids, user), do: fetch_backends(ids, user, [])
+
+  defp fetch_backends([], _user, acc), do: {:ok, Enum.reverse(acc)}
+
+  defp fetch_backends([id | ids], user, acc) do
+    with {:ok, backend} <- Backends.fetch_backend_by(id: id, user_id: user.id) do
+      fetch_backends(ids, user, [backend | acc])
+    end
+  end
 
   operation(:delete,
     summary: "Delete alert",
@@ -124,7 +149,8 @@ defmodule LogflareWeb.Api.AlertController do
     with {:ok, alert} <- Alerting.fetch_alert_query_by_user_access(user, token: token),
          {:ok, _} <- Alerting.delete_alert_query(alert) do
       conn
-      |> send_resp(204, [])
+      |> put_status(204)
+      |> text("")
       |> halt()
     end
   end
