@@ -7,28 +7,38 @@ defmodule LogflareWeb.OpenApiTest do
   alias OpenApiSpex.Response
   alias OpenApiSpex.Schema
 
+  @bad_request_error_schema %Schema{
+    oneOf: [
+      %Schema{type: :string},
+      %Schema{type: :object}
+    ]
+  }
+  @not_found_error_schema %Schema{type: :string}
+
   test "Management API 400 errors are documented as JSON" do
-    QueryController.open_api_operation(:parse)
-    |> Map.fetch!(:responses)
-    |> Map.fetch!(400)
-    |> assert_json_error_response("BadRequestResponse")
+    for action <- [:parse, :query] do
+      QueryController.open_api_operation(action)
+      |> Map.fetch!(:responses)
+      |> Map.fetch!(400)
+      |> assert_json_error_response("BadRequestResponse", @bad_request_error_schema)
+    end
   end
 
   test "Management API 404 errors are documented as JSON" do
     TeamController.open_api_operation(:show)
     |> Map.fetch!(:responses)
     |> Map.fetch!(404)
-    |> assert_json_error_response("NotFoundResponse")
+    |> assert_json_error_response("NotFoundResponse", @not_found_error_schema)
   end
 
-  defp assert_json_error_response(response, schema_title) do
+  defp assert_json_error_response(response, schema_title, error_schema) do
     assert %Response{
              content: %{
                "application/json" => %MediaType{
                  schema: %Schema{
                    title: ^schema_title,
                    type: :object,
-                   properties: %{error: %Schema{type: :string}},
+                   properties: %{error: ^error_schema},
                    required: [:error]
                  }
                }

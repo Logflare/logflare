@@ -112,7 +112,10 @@ defmodule LogflareWeb.Api.QueryController do
         required: false
       ]
     ],
-    responses: %{200 => List.response(QueryResult)}
+    responses: %{
+      200 => List.response(QueryResult),
+      400 => BadRequest.response()
+    }
   )
 
   def query(%{assigns: %{user: user}} = conn, params) do

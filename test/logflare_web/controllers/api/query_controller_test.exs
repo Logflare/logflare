@@ -12,11 +12,20 @@ defmodule LogflareWeb.Api.QueryControllerTest do
     {:ok, user: user}
   end
 
-  test "no query param provided", %{conn: conn, user: user} do
-    conn
-    |> add_access_token(user, ~w(private))
-    |> get(~p"/api/query")
-    |> json_response(400)
+  test "no query param provided returns a JSON 400 error", %{conn: conn, user: user} do
+    conn =
+      conn
+      |> add_access_token(user, ~w(private))
+      |> get(~p"/api/query")
+
+    assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
+
+    assert %{error: message} =
+             conn
+             |> json_response(400)
+             |> assert_schema("BadRequestResponse")
+
+    assert message =~ "No query params provided"
   end
 
   describe "validate/2" do

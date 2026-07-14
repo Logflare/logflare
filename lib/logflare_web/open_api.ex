@@ -86,7 +86,14 @@ defmodule LogflareWeb.OpenApi do
       %Schema{
         title: "BadRequestResponse",
         type: :object,
-        properties: %{error: %Schema{type: :string}},
+        properties: %{
+          error: %Schema{
+            oneOf: [
+              %Schema{type: :string},
+              %Schema{type: :object}
+            ]
+          }
+        },
         required: [:error]
       }
     end
