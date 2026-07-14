@@ -38,13 +38,19 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       assert %{"result" => %{"parameters" => []}} = json_response(conn, 200)
     end
 
-    test "invalid valid sql query returns 200 ok", %{conn: conn, user: user} do
+    test "invalid sql query returns a JSON 400 error", %{conn: conn, user: user} do
       conn =
         conn
         |> add_access_token(user, ~w(private))
         |> get(~p"/api/query/parse?#{[bq_sql: ~s|update something SET test = 'something'|]}")
 
-      assert %{"error" => err} = json_response(conn, 400)
+      assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
+
+      assert %{error: err} =
+               conn
+               |> json_response(400)
+               |> assert_schema("BadRequestResponse")
+
       assert err =~ "SELECT"
     end
   end
