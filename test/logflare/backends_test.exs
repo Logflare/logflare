@@ -447,6 +447,31 @@ defmodule Logflare.BackendsTest do
       refute forbidden_backend_id in backend_ids
     end
 
+    test "list_backends_by_user_access/2 filters team backends with sources or rules", %{
+      user: user
+    } do
+      team_user = insert(:team_user, email: user.email)
+      owner = team_user.team.user
+      source = insert(:source, user: owner)
+
+      backend_with_source = insert(:backend, user: owner, sources: [source])
+      backend_with_rule = insert(:backend, user: owner)
+      backend_with_both = insert(:backend, user: owner, sources: [source])
+      backend_without_sources_or_rules = insert(:backend, user: owner)
+      insert(:rule, source: source, backend: backend_with_rule, lql_string: "testing")
+      insert(:rule, source: source, backend: backend_with_both, lql_string: "testing")
+
+      backend_ids =
+        Backends.list_backends_by_user_access(user, has_sources_or_rules: true)
+        |> Enum.map(& &1.id)
+
+      assert backend_with_source.id in backend_ids
+      assert backend_with_rule.id in backend_ids
+      assert backend_with_both.id in backend_ids
+      assert Enum.count(backend_ids, &(&1 == backend_with_both.id)) == 1
+      refute backend_without_sources_or_rules.id in backend_ids
+    end
+
     test "get_backend_by_user_access/2" do
       owner = insert(:user)
       team_user = insert(:team_user, email: owner.email)

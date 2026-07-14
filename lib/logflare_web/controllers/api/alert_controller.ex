@@ -131,8 +131,9 @@ defmodule LogflareWeb.Api.AlertController do
   defp fetch_backends([], _user, acc), do: {:ok, Enum.reverse(acc)}
 
   defp fetch_backends([id | ids], user, acc) do
-    with {:ok, backend} <- Backends.fetch_backend_by(id: id, user_id: user.id) do
-      fetch_backends(ids, user, [backend | acc])
+    case Backends.get_backend_by_user_access(user, id) do
+      nil -> {:error, :not_found}
+      backend -> fetch_backends(ids, user, [backend | acc])
     end
   end
 

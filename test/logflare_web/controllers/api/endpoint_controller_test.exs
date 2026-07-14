@@ -31,6 +31,57 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
     end
   end
 
+  describe "team access" do
+    test "team member can manage team-owned endpoints and attach a team-owned backend", %{
+      conn: conn
+    } do
+      member = insert(:user, endpoints_beta: true)
+      team_user = insert(:team_user, email: member.email)
+      owner = team_user.team.user
+      managed_endpoint = insert(:endpoint, user: owner, name: "initial")
+      deleted_endpoint = insert(:endpoint, user: owner)
+      unrelated_endpoint = insert(:endpoint)
+      backend = insert(:backend, user: owner)
+      conn = add_access_token(conn, member, "private")
+
+      response =
+        conn
+        |> get(~p"/api/endpoints")
+        |> json_response(200)
+
+      assert MapSet.new(Enum.map(response, & &1["token"])) ==
+               MapSet.new([managed_endpoint.token, deleted_endpoint.token])
+
+      assert %{"token" => managed_token} =
+               conn
+               |> get(~p"/api/endpoints/#{managed_endpoint.token}")
+               |> json_response(200)
+
+      assert managed_token == managed_endpoint.token
+
+      assert conn
+             |> get(~p"/api/endpoints/#{unrelated_endpoint.token}")
+             |> response(404)
+
+      assert conn
+             |> patch(~p"/api/endpoints/#{managed_endpoint.token}", %{name: "updated"})
+             |> text_response(204) == ""
+
+      assert conn
+             |> patch(~p"/api/endpoints/#{managed_endpoint.token}", %{backend_id: backend.id})
+             |> text_response(204) == ""
+
+      assert %{backend_id: backend_id, name: "updated"} =
+               Endpoints.get_endpoint_query(managed_endpoint.id)
+
+      assert backend_id == backend.id
+
+      assert conn
+             |> delete(~p"/api/endpoints/#{deleted_endpoint.token}")
+             |> text_response(204) == ""
+    end
+  end
+
   describe "show/2" do
     test "returns single endpoint query for given user", %{
       conn: conn,
