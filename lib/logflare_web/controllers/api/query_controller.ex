@@ -10,7 +10,6 @@ defmodule LogflareWeb.Api.QueryController do
   alias Logflare.Sql
   alias Logflare.User
   alias LogflareWeb.OpenApi.BadRequest
-  alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.One
   alias LogflareWeb.OpenApi.Unauthorized
   alias LogflareWeb.OpenApiSchemas.QueryParseResult
