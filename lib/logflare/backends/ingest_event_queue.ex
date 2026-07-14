@@ -3,19 +3,33 @@ defmodule Logflare.Backends.IngestEventQueue do
   GenServer will manage the ETS buffer mapping and own that table.
 
   :ets-backed buffer uses an :ets mapping pattern to fan out multiple :ets tables.
+
+  Every queue uses the same storage model: a small per-pipeline "pointer" table (this
+  module's main tables, one per `{sid,bid,pid}` / `{:consolidated,bid,pid}` /
+  `{:spool_producer,nil,pid}`) holding lightweight pointer rows, plus a shared,
+  generationally-rotated event store per `queues_key` holding the actual `LogEvent`
+  bodies (see `current_generation_tid/1`, `new_generation/1`,
+  `Logflare.Backends.IngestEventQueue.GenerationJanitor`). `add_to_table/3` always
+  writes both; which read function a caller uses decides whether it gets back
+  lightweight pointers (`take_pending_pointers/2` — ID-passing pipelines: ClickHouse,
+  BigQuery, spool) or fully-resolved `LogEvent` structs (`take_pending/2`,
+  `pop_pending/2` — every other adaptor).
   """
   use GenServer
 
   alias Logflare.Sources.Source
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.LogEvent
 
   require Ex2ms
 
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
+  @ets_generations :ingest_event_queue_generations
+  @ets_recent_events :ingest_event_queue_recent_events
   @max_queue_size 60_000
-  @consolidated_max_queue_size 600_000
+  @consolidated_max_queue_size 60_000
 
   @type source_backend :: {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil}
   @type source_backend_pid ::
@@ -57,8 +71,212 @@ defmodule Logflare.Backends.IngestEventQueue do
       {:decentralized_counters, false}
     ])
 
+    :ets.new(@ets_generations, [
+      :public,
+      :named_table,
+      :bag,
+      {:write_concurrency, :auto},
+      {:read_concurrency, true},
+      {:decentralized_counters, false}
+    ])
+
+    :ets.new(@ets_recent_events, [
+      :public,
+      :named_table,
+      :ordered_set,
+      {:write_concurrency, :auto},
+      {:read_concurrency, true},
+      {:decentralized_counters, false}
+    ])
+
     {:ok, %{}}
   end
+
+  # --- Generation store ---
+  #
+  # One shared event-data table per queues_key, rotated over time. "Current" is
+  # published via :persistent_term (mirroring elixir-otel-metric-exporter's MetricStore)
+  # so the hot insert path (add_to_table/3) never touches the GenServer or does an ETS
+  # lookup to find it — only creating a *new* generation does.
+
+  @doc """
+  Returns the current generation's tid for `queues_key`, creating one if none exists yet.
+  """
+  @spec current_generation_tid(
+          queues_key()
+          | consolidated_queues_key()
+          | spool_producer_queues_key()
+        ) :: :ets.tid()
+  def current_generation_tid(queues_key) do
+    case :persistent_term.get(generation_key(queues_key), nil) do
+      nil -> new_generation(queues_key)
+      tid -> tid
+    end
+  end
+
+  defp generation_key(queues_key), do: {__MODULE__, :current_generation, queues_key}
+
+  @doc """
+  Creates a new generation table for `queues_key` and makes it current.
+
+  Used by `current_generation_tid/1` when none exists yet, and by `GenerationJanitor` to
+  rotate in a fresh generation on its schedule. Routed through this module's own
+  GenServer rather than calling `:ets.new/2` directly from the caller: an ETS table dies
+  with its owning process, and the usual caller (`add_to_table/3`, via
+  `current_generation_tid/1`) can run from a short-lived process (e.g. an ingest
+  request) — the generation table needs a stable owner that outlives any single caller.
+  """
+  @spec new_generation(queues_key() | consolidated_queues_key() | spool_producer_queues_key()) ::
+          :ets.tid()
+  def new_generation(queues_key) do
+    GenServer.call(__MODULE__, {:new_generation, queues_key})
+  end
+
+  @impl GenServer
+  def handle_call({:new_generation, queues_key}, _from, state) do
+    tid =
+      :ets.new(@ets_table, [
+        :public,
+        :set,
+        {:decentralized_counters, false},
+        {:write_concurrency, :auto},
+        {:read_concurrency, true}
+      ])
+
+    :ets.insert(@ets_generations, {queues_key, tid, System.monotonic_time(:millisecond)})
+    :persistent_term.put(generation_key(queues_key), tid)
+    {:reply, tid, state}
+  end
+
+  @doc """
+  Lists every live generation (`{tid, created_at}`) for `queues_key`.
+  """
+  @spec list_generations(queues_key() | consolidated_queues_key() | spool_producer_queues_key()) ::
+          [{:ets.tid(), integer()}]
+  def list_generations(queues_key) do
+    :ets.lookup(@ets_generations, queues_key)
+    |> Enum.map(fn {_queues_key, tid, created_at} -> {tid, created_at} end)
+  end
+
+  @doc """
+  Lists every distinct `queues_key` that currently has at least one live generation.
+
+  Used by `GenerationJanitor` (a single global sweep, mirroring `MapperJanitor`'s
+  precedent) to discover which queues need rotating/evicting without needing to know
+  about specific backends or adaptors — the generations table itself is the source of
+  truth for "what's currently using the generation store".
+  """
+  @spec list_generation_queues_keys() :: [
+          queues_key() | consolidated_queues_key() | spool_producer_queues_key()
+        ]
+  def list_generation_queues_keys do
+    :ets.foldl(
+      fn {queues_key, _tid, _created_at}, acc -> MapSet.put(acc, queues_key) end,
+      MapSet.new(),
+      @ets_generations
+    )
+    |> MapSet.to_list()
+  end
+
+  @doc """
+  Drops a generation: deletes its whole underlying table in one O(1) `:ets.delete/1` (not
+  a per-row scan) and removes its bookkeeping row.
+
+  Any pointer still referencing this generation's `tid` will simply miss on its next
+  lookup (see `lookup_event/2`) — the same "not found" handling already used for any
+  other lookup miss. This is the deliberate, bounded-loss cleanup mechanism for
+  abandoned claims.
+  """
+  @spec drop_generation(
+          queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
+          :ets.tid()
+        ) :: :ok
+  def drop_generation(queues_key, tid) do
+    :ets.delete(tid)
+    ms = [{{queues_key, tid, :_}, [], [true]}]
+    :ets.select_delete(@ets_generations, ms)
+    :ok
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      :ok
+  end
+
+  @doc """
+  Looks up a single event directly in a generation table.
+
+  `tid` here is a generation's tid (e.g. a claimed `LogEventPointer.tid`) — a direct
+  `:ets.lookup/2`, no separate id-to-table resolution needed. Returns `nil` on a miss,
+  including when the generation has already been dropped by rotation (see
+  `drop_generation/2`) — callers should treat that the same as any other lookup miss,
+  not as an error.
+  """
+  @spec lookup_event(:ets.tid(), term()) :: LogEvent.t() | nil
+  def lookup_event(tid, id) do
+    case :ets.lookup(tid, id) do
+      [{^id, event}] -> event
+      [] -> nil
+    end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      nil
+  end
+
+  # --- recent-events cache ---
+  #
+  # Ack (id-passing pipelines: ClickHouse, BigQuery) deletes an event's row from the
+  # generation store as soon as it's successfully processed — see moduledoc — so
+  # nothing would otherwise remain for a "recent logs" read (list_recent_logs_local et
+  # al, via fetch_events/2) to find moments later. This is a small, short-lived,
+  # age-bounded cache of just-acked events those callers also read from. Bounded by
+  # age (see sweep_recent_events/1, called from GenerationJanitor's tick), not by an
+  # explicit per-key cap.
+
+  @doc """
+  Records a successfully-processed event into the recent-events cache for `queues_key`.
+  """
+  @spec record_recent_event(
+          queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
+          LogEvent.t()
+        ) :: :ok
+  def record_recent_event(queues_key, %LogEvent{} = event) do
+    now = System.monotonic_time(:millisecond)
+    key = {queues_key, now, System.unique_integer([:monotonic])}
+    :ets.insert(@ets_recent_events, {key, event})
+    :ok
+  end
+
+  @doc """
+  Lists up to `n` recently-processed events for `queues_key` from the recent-events
+  cache, most-recently-recorded first.
+  """
+  @spec list_recent_events(
+          queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
+          integer()
+        ) :: [LogEvent.t()]
+  def list_recent_events(queues_key, n) do
+    ms = [{{{queues_key, :"$1", :"$2"}, :"$3"}, [], [:"$3"]}]
+
+    case :ets.select_reverse(@ets_recent_events, ms, n) do
+      {events, _cont} -> events
+      :"$end_of_table" -> []
+    end
+  end
+
+  @doc """
+  Drops recent-events cache rows older than `max_age_ms`, across every `queues_key` in
+  one pass. Called from `GenerationJanitor`'s periodic tick.
+  """
+  @spec sweep_recent_events(non_neg_integer()) :: :ok
+  def sweep_recent_events(max_age_ms) do
+    cutoff = System.monotonic_time(:millisecond) - max_age_ms
+    ms = [{{{:_, :"$1", :_}, :_}, [{:<, :"$1", cutoff}], [true]}]
+    :ets.select_delete(@ets_recent_events, ms)
+    :ok
+  end
+
+  # --- pointer table mapper ---
 
   @doc """
   Retrieves a private tid of a given source-backend combination or consolidated queue.
@@ -91,48 +309,20 @@ defmodule Logflare.Backends.IngestEventQueue do
   @spec upsert_tid(table_key() | consolidated_table_key() | spool_producer_table_key()) ::
           {:ok, :ets.tid()} | {:error, :already_exists, :ets.tid()}
   def upsert_tid({:consolidated, bid, pid} = key) when is_integer(bid) and is_pid_or_nil(pid) do
-    case get_tid(key) do
-      nil ->
-        tid =
-          :ets.new(@ets_table, [
-            :public,
-            :set,
-            {:decentralized_counters, false},
-            {:write_concurrency, :auto},
-            {:read_concurrency, true}
-          ])
-
-        :ets.insert(@ets_table_mapper, {{:consolidated, bid}, pid, tid})
-        {:ok, tid}
-
-      tid ->
-        {:error, :already_exists, tid}
-    end
+    do_upsert_tid(key, {:consolidated, bid}, pid)
   end
 
   def upsert_tid({:spool_producer, nil, pid} = key) when is_pid_or_nil(pid) do
-    case get_tid(key) do
-      nil ->
-        tid =
-          :ets.new(@ets_table, [
-            :public,
-            :set,
-            {:decentralized_counters, false},
-            {:write_concurrency, :auto},
-            {:read_concurrency, true}
-          ])
-
-        :ets.insert(@ets_table_mapper, {{:spool_producer, nil}, pid, tid})
-        {:ok, tid}
-
-      tid ->
-        {:error, :already_exists, tid}
-    end
+    do_upsert_tid(key, {:spool_producer, nil}, pid)
   end
 
   def upsert_tid({sid, bid, pid} = sid_bid_pid)
       when is_integer(sid) and (is_integer(bid) or is_nil(bid)) and is_pid_or_nil(pid) do
-    case get_tid(sid_bid_pid) do
+    do_upsert_tid(sid_bid_pid, {sid, bid}, pid)
+  end
+
+  defp do_upsert_tid(key, mapper_key, pid) do
+    case get_tid(key) do
       nil ->
         tid =
           :ets.new(@ets_table, [
@@ -143,7 +333,7 @@ defmodule Logflare.Backends.IngestEventQueue do
             {:read_concurrency, true}
           ])
 
-        :ets.insert(@ets_table_mapper, {{sid, bid}, pid, tid})
+        :ets.insert(@ets_table_mapper, {mapper_key, pid, tid})
         {:ok, tid}
 
       tid ->
@@ -190,7 +380,10 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Adds a record to a given source-backend's table queue.
 
-  The record will be marked as :pending.
+  Always writes via the pointer + generation-store model (see moduledoc) — the full
+  event body goes into the current generation for `queues_key`, and a lightweight
+  pointer row goes into whichever pipeline's table the round-robin distribution below
+  picks.
   """
   @spec add_to_table(
           source_backend_pid()
@@ -348,14 +541,39 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   def add_to_table({sid_bid_pid, tid}, batch, _opts) when is_tuple(sid_bid_pid) do
+    insert_pointer_batch(sid_bid_pid, tid, batch)
+  end
+
+  def add_to_table({_, _, _} = sid_bid_pid, batch, _opts) do
+    get_tid(sid_bid_pid)
+    |> case do
+      nil ->
+        {:error, :not_initialized}
+
+      tid ->
+        add_to_table({sid_bid_pid, tid}, batch)
+    end
+  end
+
+  # Writes each event's full body into its current generation's table first, then the
+  # lightweight pointer row into `queue_tid` (the target pipeline's own table) — in that
+  # order, so a crash mid-batch can only leave an inert orphaned event (cleaned up by
+  # generation rotation), never a pointer with no backing data. Pointer row shape:
+  # {event_id, generation_tid, size, retries, event_type, day_bucket, ingest_freshness}.
+  defp insert_pointer_batch(sid_bid_pid, queue_tid, batch) do
+    queues_key = pointer_queues_key(sid_bid_pid)
+    gen_tid = current_generation_tid(queues_key)
+
     objects =
       for %{id: id} = event <- batch do
-        # New/requeued rows start unclaimed (claim counter 0, claimed_at 0); see claim_pending/3.
-        {id, :pending, event, :erlang.external_size(event.body), 0, 0}
+        :ets.insert(gen_tid, {id, event})
+
+        {id, gen_tid, :erlang.external_size(event.body), event.retries || 0, event.event_type,
+         event.day_bucket, event.ingest_freshness}
       end
 
     try do
-      :ets.insert(tid, objects)
+      :ets.insert(queue_tid, objects)
       :ok
     rescue
       ArgumentError ->
@@ -372,16 +590,11 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  def add_to_table({_, _, _} = sid_bid_pid, batch, _opts) do
-    get_tid(sid_bid_pid)
-    |> case do
-      nil ->
-        {:error, :not_initialized}
-
-      tid ->
-        add_to_table({sid_bid_pid, tid}, batch)
-    end
-  end
+  @spec pointer_queues_key(consolidated_table_key() | table_key() | spool_producer_table_key()) ::
+          consolidated_queues_key() | queues_key() | spool_producer_queues_key()
+  defp pointer_queues_key({:consolidated, bid, _pid}), do: {:consolidated, bid}
+  defp pointer_queues_key({:spool_producer, nil, _pid}), do: {:spool_producer, nil}
+  defp pointer_queues_key({sid, bid, _pid}), do: {sid, bid}
 
   defp add_to_target_table(chunk, target), do: add_to_table(target, chunk)
 
@@ -409,22 +622,20 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Marks records as ingested
+  Marks records as ingested — deletes the pointer row outright. There's no `:ingested`
+  status to write (pointer rows have no status field); the underlying event in the
+  generation store is left alone either way, reclaimed only by generation rotation.
   """
   @spec mark_ingested(source_backend_pid(), [LogEvent.t()]) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
   def mark_ingested(sid_bid_pid, events) do
-    tid = get_tid(sid_bid_pid)
+    case get_tid(sid_bid_pid) do
+      nil ->
+        {:error, :not_initialized}
 
-    if tid != nil do
-      for event <- events do
-        # Clear claimed_at on exit from :processing so it only carries a real stamp while in flight.
-        :ets.update_element(tid, event.id, [{2, :ingested}, {6, 0}])
-      end
-
-      {:ok, Enum.count(events)}
-    else
-      {:error, :not_initialized}
+      tid ->
+        for event <- events, do: :ets.delete(tid, event.id)
+        {:ok, Enum.count(events)}
     end
   end
 
@@ -500,7 +711,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Counts pending items from a given table
+  Counts pending items from a given table. Pointer rows are pending by construction
+  (claiming one deletes it — see `take_pending_pointers/2`), so this is just the
+  table's size — O(1), no scan.
   """
   @spec total_pending(source_backend()) :: integer()
   @spec total_pending(source_backend_pid()) :: integer() | {:error, :not_initialized}
@@ -512,195 +725,63 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   def total_pending({_sid, _bid, _pid} = sid_bid_pid) do
-    ms =
-      Ex2ms.fun do
-        {_event_id, :pending, _event, _size, _claim, _claimed_at} -> true
-      end
-
-    with tid when tid != nil <- get_tid(sid_bid_pid),
-         num when is_integer(num) <- :ets.select_count(tid, ms) do
-      num
-    else
+    case get_tid(sid_bid_pid) do
       nil -> {:error, :not_initialized}
+      tid -> table_size(tid)
+    end
+  end
+
+  defp table_size(tid) do
+    case :ets.info(tid, :size) do
+      n when is_integer(n) -> n
+      _ -> 0
     end
   end
 
   @doc """
-  Returns the total count of events with a given status across all queues for a source-backend.
+  Returns the total count of events with a given status across all queues for a
+  source-backend. Pointer rows have no status field — everything present is `:pending`
+  by construction, so `:processing`/`:ingested` are always 0.
   """
   @spec total_by_status(
           queues_key() | spool_producer_queues_key(),
           :pending | :processing | :ingested
         ) ::
           non_neg_integer()
-  def total_by_status({_, _} = sid_bid, status) do
-    ms =
-      Ex2ms.fun do
-        {_event_id, event_status, _event, _size, _claim, _claimed_at}
-        when event_status == ^status ->
-          true
-      end
+  def total_by_status(_key, status) when status in [:processing, :ingested], do: 0
 
+  def total_by_status({_, _} = sid_bid, :pending) do
     traverse_queues(
       sid_bid,
       fn objs, acc ->
-        Enum.reduce(objs, acc, fn {_sid_bid_pid, tid}, c ->
-          c + :ets.select_count(tid, ms)
-        end)
+        Enum.reduce(objs, acc, fn {_sid_bid_pid, tid}, c -> c + table_size(tid) end)
       end,
       0
     )
   end
 
   @doc """
-  Takes pending items from a given table
+  Takes pending items from a given table, resolved to full `LogEvent`s. Read-only — does
+  not claim/mark/remove anything; the caller decides what to do with what's returned
+  (e.g. `mark_ingested/2`). Intended for non-ID-passing adaptors — ID-passing pipelines
+  should use `take_pending_pointers/2` instead to avoid copying full events through
+  Broadway.
   """
   @spec take_pending(source_backend_pid(), integer()) ::
           {:ok, [LogEvent.t()]} | {:error, :not_initialized}
   def take_pending(_, 0), do: {:ok, []}
 
   def take_pending(sid_bid_pid, n) when is_integer(n) do
-    ms =
-      Ex2ms.fun do
-        {_event_id, :pending, event, _size, _claim, _claimed_at} -> event
-      end
+    ms = [{{:"$1", :"$2", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2"}}]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          size when is_integer(size) <- :ets.info(tid, :size),
-         {taken, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      {:ok, taken}
-    else
-      nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, []}
-    end
-  end
-
-  @doc """
-  Takes pending item IDs from a given table, marking them as `:processing` in-place.
-
-  Returns `{:ok, ids, tid}` where `ids` is a list of event IDs and `tid` is the ETS
-  table reference. Intended for use with ID-passing pipeline variants (BigQuery,
-  ClickHouse) to reduce data copying through Broadway stages — only pointers travel
-  the pipeline; full events are fetched from ETS at batch-insert time.
-  """
-  @spec take_pending_ids(
-          source_backend_pid() | spool_producer_table_key() | consolidated_table_key(),
-          integer()
-        ) ::
-          {:ok, [{term(), non_neg_integer()}], :ets.tid() | nil} | {:error, :not_initialized}
-  def take_pending_ids(_, 0), do: {:ok, [], nil}
-
-  def take_pending_ids(sid_bid_pid, n) when is_integer(n) do
-    ms =
-      Ex2ms.fun do
-        {event_id, :pending, _event, size, _claim, _claimed_at} -> {event_id, size}
-      end
-
-    take_pending_selected(sid_bid_pid, n, ms, fn {id, _size} -> id end)
-  end
-
-  @doc """
-  Takes pending item IDs plus small routing metadata, marking rows as `:processing`.
-
-  This is the ClickHouse ID-passing variant: it keeps full events in ETS for memory
-  savings, but returns the fields required to route Broadway messages without a
-  separate ETS lookup in `handle_message/3`.
-  """
-  @spec take_pending_ids_with_metadata(source_backend_pid() | consolidated_table_key(), integer()) ::
-          {:ok,
-           [
-             {term(), non_neg_integer(), LogEvent.TypeDetection.event_type(), integer(),
-              :fresh | :stale}
-           ], :ets.tid() | nil}
-          | {:error, :not_initialized}
-  def take_pending_ids_with_metadata(_, 0), do: {:ok, [], nil}
-
-  def take_pending_ids_with_metadata(sid_bid_pid, n) when is_integer(n) do
-    ms = [
-      {
-        {:"$1", :pending,
-         %{
-           __struct__: LogEvent,
-           event_type: :"$3",
-           day_bucket: :"$4",
-           ingest_freshness: :"$5"
-         }, :"$2", :_, :_},
-        [],
-        [{{:"$1", :"$2", :"$3", :"$4", :"$5"}}]
-      }
-    ]
-
-    take_pending_selected(sid_bid_pid, n, ms, fn {id, _size, _event_type, _day_bucket, _freshness} ->
-      id
-    end)
-  end
-
-  defp take_pending_selected(sid_bid_pid, n, ms, id_fun) do
-    with tid when tid != nil <- get_tid(sid_bid_pid),
-         {selected, _cont} <- :ets.select(tid, ms, n) do
-      # One monotonic read per batch (not per event); every row claimed in this batch shares
-      # the same claimed_at stamp, which is all the stale-recovery janitor needs.
-      claimed_at = System.monotonic_time(:millisecond)
-
-      # The claim counter's 0 -> 1 winner takes the event; a 2+ result (another consumer,
-      # or a write_concurrency duplicate row within this select) loses, so no dedup needed.
-      confirmed = Enum.filter(selected, &claim_pending(tid, id_fun.(&1), claimed_at))
-
-      {:ok, confirmed, tid}
-    else
-      nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, [], nil}
-    end
-  end
-
-  # Claim invariant:
-  #   * every `:pending` row has `claim == 0` and `claimed_at == 0`
-  #   * `update_counter` is the atomic election; the `:processing` write is a separate step
-  #   * the winning claim stamps `claimed_at` with the batch's monotonic time so the
-  #     QueueJanitor can recover rows stuck in `:processing` past a staleness threshold
-  #   * any transition back to `:pending` must reset `claim` and `claimed_at` (add_to_table/3,
-  #     the QueueJanitor reset, and update_status/3 all do)
-  #   * id_passing and non-id_passing producers never share a pid-keyed queue, so the
-  #     claim path and the mark_ingested/pop path never touch the same rows
-  @spec claim_pending(:ets.tid(), term(), integer()) :: boolean()
-  defp claim_pending(tid, id, claimed_at) do
-    # Return update_element/3's result: it is false for a missing key, so a row deleted
-    # between the counter bump and the status write is rejected rather than claimed.
-    if :ets.update_counter(tid, id, {5, 1}) == 1 do
-      :ets.update_element(tid, id, [{2, :processing}, {6, claimed_at}])
-    else
-      false
-    end
-  rescue
-    # The row was deleted before the counter bump; update_counter raises on a missing key.
-    ArgumentError -> false
-  end
-
-  @doc """
-  Pops pending events from a given table, removing them atomically.
-
-  Unlike `take_pending/2`, this function removes the events from the queue
-  immediately rather than leaving them with a `:pending` status.
-  Use this for consolidated queues where events should be re-added on failure.
-  """
-  @spec pop_pending(table_key() | consolidated_table_key(), integer()) ::
-          {:ok, [LogEvent.t()]} | {:error, :not_initialized}
-  def pop_pending(_, 0), do: {:ok, []}
-
-  def pop_pending(sid_bid_pid, n) when is_integer(n) do
-    select_ms =
-      Ex2ms.fun do
-        {event_id, :pending, event, _size, _claim, _claimed_at} -> {event_id, event}
-      end
-
-    with tid when tid != nil <- get_tid(sid_bid_pid),
-         size when is_integer(size) <- :ets.info(tid, :size),
-         {selected, _cont} <- :ets.select(tid, select_ms, min(n, max(size, 1))) do
+         {selected, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
       events =
-        for {event_id, event} <- selected do
-          :ets.delete(tid, event_id)
-          event
-        end
+        for {id, gen_tid} <- selected,
+            event = lookup_event(gen_tid, id),
+            not is_nil(event),
+            do: event
 
       {:ok, events}
     else
@@ -709,46 +790,172 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  @spec fetch_events(source_backend_pid(), integer()) ::
+  @doc """
+  Takes up to `n` pending pointers from a table, claiming each by removing its row
+  outright — an atomic `:ets.take/2` per candidate, so a candidate raced away by another
+  claimer between the select and the take simply comes back empty and is filtered out.
+
+  Returns `LogEventPointer` structs: intended for ID-passing pipeline variants
+  (ClickHouse, BigQuery, spool producer) to avoid copying full events through Broadway —
+  the full event is resolved lazily via `lookup_event/2` (using the pointer's `tid`) only
+  when actually needed, e.g. at batch-insert time.
+  """
+  @spec take_pending_pointers(
+          source_backend_pid() | spool_producer_table_key() | consolidated_table_key(),
+          integer()
+        ) ::
+          {:ok, [LogEventPointer.t()], :ets.tid() | nil} | {:error, :not_initialized}
+  def take_pending_pointers(_, 0), do: {:ok, [], nil}
+
+  def take_pending_pointers(sid_bid_pid, n) when is_integer(n) do
+    ms = [
+      {{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}, [],
+       [{{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}}]}
+    ]
+
+    with tid when tid != nil <- get_tid(sid_bid_pid),
+         {selected, _cont} <- :ets.select(tid, ms, n) do
+      confirmed =
+        selected
+        |> Enum.filter(fn {id, _, _, _, _, _, _} -> :ets.take(tid, id) != [] end)
+        |> Enum.map(fn {id, gen_tid, size, retries, event_type, day_bucket, freshness} ->
+          %LogEventPointer{
+            id: id,
+            tid: gen_tid,
+            queue_tid: tid,
+            size: size,
+            retries: retries,
+            event_type: event_type,
+            day_bucket: day_bucket,
+            ingest_freshness: freshness
+          }
+        end)
+
+      {:ok, confirmed, tid}
+    else
+      nil -> {:error, :not_initialized}
+      :"$end_of_table" -> {:ok, [], nil}
+    end
+  end
+
+  @doc """
+  Re-inserts a previously-claimed pointer directly into the queue it was claimed from
+  (`pointer.queue_tid`) — no round-robin redistribution, since that producer just proved
+  itself alive by claiming this in the first place. Bump `pointer.retries` before
+  calling this if the caller is retrying after a failure.
+
+  If `queue_tid` has since gone stale (its owning producer died), the retry is dropped —
+  same stale-table telemetry/rescue pattern used everywhere else in this module.
+  """
+  @spec reinsert_pointer(LogEventPointer.t()) :: :ok
+  def reinsert_pointer(%LogEventPointer{} = pointer) do
+    row =
+      {pointer.id, pointer.tid, pointer.size, pointer.retries, pointer.event_type,
+       pointer.day_bucket, pointer.ingest_freshness}
+
+    :ets.insert(pointer.queue_tid, row)
+    :ok
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      :ok
+  end
+
+  @doc """
+  Pops pending events from a given table, resolved to full `LogEvent`s, removing both
+  the pointer and its underlying event immediately — unlike the claim-then-ack flow
+  `take_pending_pointers/2` uses, nothing is left for generation rotation to reclaim
+  later. Use this for consolidated queues where events should be re-added on failure.
+  """
+  @spec pop_pending(table_key() | consolidated_table_key(), integer()) ::
           {:ok, [LogEvent.t()]} | {:error, :not_initialized}
-  def fetch_events({_, _, _} = sid_bid_pid, n) do
-    ms =
-      Ex2ms.fun do
-        {_event_id, _, event, _size, _claim, _claimed_at} -> event
-      end
+  def pop_pending(_, 0), do: {:ok, []}
+
+  def pop_pending(sid_bid_pid, n) when is_integer(n) do
+    ms = [{{:"$1", :"$2", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2"}}]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          size when is_integer(size) <- :ets.info(tid, :size),
          {selected, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      {:ok, selected}
+      events =
+        selected
+        |> Enum.map(fn {id, gen_tid} ->
+          :ets.delete(tid, id)
+
+          case :ets.take(gen_tid, id) do
+            [{^id, event}] -> event
+            [] -> nil
+          end
+        end)
+        |> Enum.reject(&is_nil/1)
+
+      {:ok, events}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, []}
     end
   end
 
-  def fetch_events(sid_bid, n) when is_integer(n) do
-    events =
-      traverse_queues(
-        sid_bid,
-        fn objs, acc ->
-          items =
-            for {sid_bid_pid, _tid} <- objs do
-              fetch_events_or_empty(sid_bid_pid, n)
-            end
-            |> List.flatten()
+  @doc """
+  Fetches up to `n` recent events, resolved to full `LogEvent`s. Read-only, doesn't
+  claim anything.
 
-          items ++ acc
-        end,
-        []
-      )
+  Given a specific pipeline's table key (3-tuple), reads only that pipeline's currently
+  pending pointers.
+
+  Given a `{sid, bid}`/consolidated queues_key (2-tuple), reads the shared generation
+  store directly instead of iterating per-pid pointer tables — the store isn't per-pid,
+  so iterating per-pid would return duplicates, and would miss anything already claimed
+  (a claimed pointer is gone, but the event is still in the generation store until
+  rotation reclaims it) — plus the recent-events cache (see `record_recent_event/2`),
+  since a successfully-acked event's row is deleted from the generation store
+  immediately rather than waiting for rotation. This is what a recent-logs display
+  should use.
+  """
+  @spec fetch_events(source_backend_pid(), integer()) ::
+          {:ok, [LogEvent.t()]} | {:error, :not_initialized}
+  def fetch_events({_, _, _} = sid_bid_pid, n) do
+    ms = [{{:"$1", :"$2", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2"}}]}]
+
+    with tid when tid != nil <- get_tid(sid_bid_pid),
+         size when is_integer(size) <- :ets.info(tid, :size),
+         {selected, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
+      events =
+        for {id, gen_tid} <- selected,
+            event = lookup_event(gen_tid, id),
+            not is_nil(event),
+            do: event
+
+      {:ok, events}
+    else
+      nil -> {:error, :not_initialized}
+      :"$end_of_table" -> {:ok, []}
+    end
+  end
+
+  @spec fetch_events(queues_key() | consolidated_queues_key(), integer()) ::
+          {:ok, [LogEvent.t()]}
+  def fetch_events(sid_bid, n) when is_integer(n) do
+    pending =
+      sid_bid
+      |> list_generations()
+      |> Enum.flat_map(fn {tid, _created_at} -> select_generation_events(tid, n) end)
+
+    events =
+      (pending ++ list_recent_events(sid_bid, n))
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.take(n)
 
     {:ok, events}
   end
 
-  defp fetch_events_or_empty(sid_bid_pid, n) do
-    case fetch_events(sid_bid_pid, n) do
-      {:ok, events} -> events
+  defp select_generation_events(tid, n) do
+    ms = [{{:_, :"$1"}, [], [:"$1"]}]
+
+    with size when is_integer(size) <- :ets.info(tid, :size),
+         {events, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
+      events
+    else
       _ -> []
     end
   end
@@ -772,22 +979,39 @@ defmodule Logflare.Backends.IngestEventQueue do
       do: truncate_tid(get_tid(key), status, n)
 
   @doc """
-  Truncates a queue by its already-resolved `tid`, tolerating a stale
-  (deleted) table.
+  Truncates a queue by its already-resolved `tid`, tolerating a stale (deleted) table.
 
-  This is the tid-based counterpart to `truncate_table/3`, which resolves the
-  tid via `get_tid/1` first. The owning producer can die and ETS can reclaim
-  its table between that resolution and the operations here; in that case the
-  ETS calls raise `ArgumentError` (or `:ets.info/2` returns `:undefined`).
-  Both are treated as a gone queue: `:stale_table` telemetry is emitted and
-  `{:error, :not_initialized}` is returned instead of crashing the caller.
+  Pointer rows have no status field: `:ingested` is always a no-op (nothing is ever
+  marked ingested on a pointer — see `mark_ingested/2`, which deletes outright instead),
+  but still checks the table is live so a stale `tid` reports `{:error, :not_initialized}`
+  like every other clause here rather than silently succeeding. `:pending`/`:all`
+  truncate the table down to at most `n` rows kept (whichever `:ets.select/3` happens to
+  return first, not necessarily oldest-first).
+
+  This is the tid-based counterpart to `truncate_table/3`, which resolves the tid via
+  `get_tid/1` first. The owning producer can die and ETS can reclaim its table between
+  that resolution and the operations here; in that case the ETS calls raise
+  `ArgumentError` (or `:ets.info/2` returns `:undefined`). Both are treated as a gone
+  queue: `:stale_table` telemetry is emitted and `{:error, :not_initialized}` is returned
+  instead of crashing the caller.
   """
   @spec truncate_tid(:ets.tid() | nil, :all | :pending | :ingested, integer()) ::
           :ok | {:error, :not_initialized}
   def truncate_tid(nil, status, _n) when status in [:all, :pending, :ingested],
     do: {:error, :not_initialized}
 
-  def truncate_tid(tid, :all, 0) do
+  def truncate_tid(tid, :ingested, _n) do
+    case :ets.info(tid, :size) do
+      n when is_integer(n) -> :ok
+      _ -> {:error, :not_initialized}
+    end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_initialized}
+  end
+
+  def truncate_tid(tid, status, 0) when status in [:all, :pending] do
     :ets.delete_all_objects(tid)
     :ok
   rescue
@@ -796,33 +1020,13 @@ defmodule Logflare.Backends.IngestEventQueue do
       {:error, :not_initialized}
   end
 
-  def truncate_tid(tid, status, n) when status in [:all, :pending, :ingested] do
-    ms =
-      Ex2ms.fun do
-        {_event_id, _event_status, event, _size, _claim, _claimed_at} = obj
-        when ^status == :all ->
-          obj
-
-        {_event_id, event_status, event, _size, _claim, _claimed_at} = obj
-        when event_status == ^status ->
-          obj
-      end
-
-    del_ms =
-      Ex2ms.fun do
-        {_event_id, _event_status, _event, _size, _claim, _claimed_at} = _obj
-        when ^status == :all ->
-          true
-
-        {_event_id, event_status, _event, _size, _claim, _claimed_at} = _obj
-        when event_status == ^status ->
-          true
-      end
+  def truncate_tid(tid, status, n) when status in [:all, :pending] do
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$_"]}]
 
     with size when is_integer(size) <- :ets.info(tid, :size) do
-      to_insert = select_to_insert(tid, ms, size, n)
-      :ets.select_delete(tid, del_ms)
-      :ets.insert(tid, to_insert)
+      to_keep = select_to_insert(tid, ms, size, n)
+      :ets.delete_all_objects(tid)
+      :ets.insert(tid, to_keep)
       :ok
     else
       # :undefined from :ets.info/2 when the table was reclaimed before the
@@ -836,30 +1040,11 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Looks up a single event by id in a tid, returning its status, the event
-  itself, and its byte size — hiding the row's internal representation
-  (which also carries claim/claimed_at for the stale-processing recovery
-  mechanism; see queue_janitor.ex) from callers that just want the event.
-
-  Ignores stale (deleted) tables, returning `nil`. Emits telemetry if the
-  table no longer exists.
-  """
-  @spec lookup_id(:ets.tid(), term()) ::
-          {term(), :pending | :processing | :ingested, LogEvent.t(), non_neg_integer()} | nil
-  def lookup_id(tid, id) do
-    case :ets.lookup(tid, id) do
-      [{^id, status, event, byte_size, _claim, _claimed_at}] -> {id, status, event, byte_size}
-      [] -> nil
-    end
-  rescue
-    ArgumentError ->
-      emit_stale_ets_table_telemetry()
-      nil
-  end
-
-  @doc """
-  Safely deletes a single event by id from a tid, ignoring stale (deleted) tables.
+  Safely deletes a single pointer row by id from a tid, ignoring stale (deleted) tables.
   Emits telemetry if the table no longer exists.
+
+  Never touches the underlying event in the generation store — that's reclaimed only by
+  generation rotation (see `drop_generation/2`).
   """
   @spec delete_id(:ets.tid(), term()) :: :ok
   def delete_id(tid, id) do
@@ -869,144 +1054,6 @@ defmodule Logflare.Backends.IngestEventQueue do
     ArgumentError ->
       emit_stale_ets_table_telemetry()
       :ok
-  end
-
-  @doc """
-  Resets all `:processing` events in a queue back to `:pending`.
-
-  Used on producer startup for the ID-passing pipeline variant to recover any events
-  that were left as `:processing` by a previous crash.
-  """
-  @spec reset_processing_to_pending(table_key() | consolidated_table_key()) :: :ok
-  def reset_processing_to_pending(sid_bid_pid) do
-    ms =
-      Ex2ms.fun do
-        {id, :processing, _event, _size, _claim, _claimed_at} -> id
-      end
-
-    case get_tid(sid_bid_pid) do
-      nil ->
-        :ok
-
-      tid ->
-        for id <- :ets.select(tid, ms) do
-          :ets.update_element(tid, id, [{2, :pending}, {5, 0}, {6, 0}])
-        end
-
-        :ok
-    end
-  end
-
-  @doc """
-  Safely updates the status of a single event in a tid, ignoring stale (deleted) tables.
-  Emits telemetry if the table no longer exists.
-  """
-  @spec update_status(:ets.tid(), term(), :pending | :processing | :ingested) :: :ok
-  def update_status(tid, id, status) do
-    # Keep claim/claimed_at consistent with the target status in the same atomic update:
-    #   * :pending — reset claim and claimed_at so the row is claimable and not seen as stale
-    #   * :processing — stamp claimed_at so stale recovery can age the row out
-    #   * :ingested — clear claimed_at; it only carries a real stamp while in flight
-    update =
-      case status do
-        :pending -> [{2, :pending}, {5, 0}, {6, 0}]
-        :processing -> [{2, :processing}, {6, System.monotonic_time(:millisecond)}]
-        :ingested -> [{2, :ingested}, {6, 0}]
-      end
-
-    :ets.update_element(tid, id, update)
-    :ok
-  rescue
-    ArgumentError ->
-      emit_stale_ets_table_telemetry()
-      :ok
-  end
-
-  @doc """
-  Returns the list of event IDs currently marked as `:processing` in a queue.
-  """
-  @spec list_processing_ids(table_key() | consolidated_table_key()) :: [term()]
-  def list_processing_ids(key) do
-    ms =
-      Ex2ms.fun do
-        {id, :processing, _event, _size, _claim, _claimed_at} -> id
-      end
-
-    case get_tid(key) do
-      nil -> []
-      tid -> :ets.select(tid, ms)
-    end
-  end
-
-  @doc """
-  Returns up to `limit` IDs of `:processing` events claimed at or before `cutoff`.
-
-  `cutoff` is a `System.monotonic_time(:millisecond)` value; rows whose `claimed_at`
-  stamp is `<= cutoff` have been in flight longer than the staleness threshold. Status
-  is pinned to `:processing` in the match head, so `:pending`/`:ingested` rows (which
-  carry `claimed_at == 0`) are never returned regardless of the monotonic clock's sign.
-
-  `limit` bounds the IDs returned, not necessarily the rows scanned: the table is not
-  indexed by `claimed_at`, so ETS may walk further to find matching stale rows.
-
-  Used by QueueJanitor to detect stale in-flight events.
-  """
-  @spec list_stale_processing_ids(
-          table_key() | consolidated_table_key(),
-          integer(),
-          pos_integer()
-        ) ::
-          [term()]
-  def list_stale_processing_ids(key, cutoff, limit) do
-    ms =
-      Ex2ms.fun do
-        {id, :processing, _event, _size, _claim, claimed_at} when claimed_at <= ^cutoff -> id
-      end
-
-    with tid when tid != nil <- get_tid(key),
-         {ids, _cont} <- :ets.select(tid, ms, limit) do
-      ids
-    else
-      _ -> []
-    end
-  end
-
-  @doc """
-  Resets an exact stale `:processing` row back to `:pending` with `new_event`, clearing the
-  claim counter and `claimed_at`.
-
-  `expected` is the full row a caller previously observed via `:ets.lookup/2`. The match pins
-  every field, so a row that was acked, deleted, or re-claimed (carrying a newer `claimed_at`)
-  between observation and this call does not match and is left untouched. Returns `:reset` when
-  the row was replaced, `:skip` otherwise.
-  """
-  @spec reset_stale_event(:ets.tid(), tuple(), LogEvent.t()) :: :reset | :skip
-  def reset_stale_event(
-        tid,
-        {id, :processing, _event, size, _claim, _claimed_at} = expected,
-        new_event
-      ) do
-    case :ets.select_replace(tid, [
-           {expected, [], [{:const, {id, :pending, new_event, size, 0, 0}}]}
-         ]) do
-      1 -> :reset
-      0 -> :skip
-    end
-  end
-
-  @doc """
-  Deletes an exact stale `:processing` row.
-
-  `expected` is the full row a caller previously observed; the match pins every field (see
-  `reset_stale_event/3`), so a row changed between observation and this call is left untouched.
-  Returns `:drop` when the row was deleted, `:skip` otherwise.
-  """
-  @spec drop_stale_event(:ets.tid(), tuple()) :: :drop | :skip
-  def drop_stale_event(tid, {_id, :processing, _event, _size, _claim, _claimed_at} = expected) do
-    case :ets.select_delete(tid, [{expected, [], [true]}]) do
-      1 -> :drop
-      0 -> :skip
-    end
   end
 
   defp select_to_insert(_tid, _ms, _size, 0), do: []
@@ -1076,7 +1123,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Drop events from the ingest event table.
+  Drop events from the ingest event table. Pointer rows have no status — everything
+  present is pending by construction, so `:ingested` never matches anything, and
+  `:pending`/`:all` both just drop up to `n` rows.
   """
   @spec drop(source_backend_pid(), :all | :pending | :ingested, non_neg_integer()) :: :ok
 
@@ -1102,24 +1151,15 @@ defmodule Logflare.Backends.IngestEventQueue do
           non_neg_integer()
         ) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
-  def drop({_, _, _} = sid_bid_pid, filter, n)
-      when is_integer(n) and filter in [:pending, :all, :ingested] do
-    # chunk over table and drop
-    ms =
-      Ex2ms.fun do
-        {event_id, _status, _event, _size, _claim, _claimed_at} = _obj when ^filter == :all ->
-          event_id
+  def drop({_, _, _}, :ingested, _n), do: {:ok, 0}
 
-        {event_id, status, _event, _size, _claim, _claimed_at} = _obj when status == ^filter ->
-          event_id
-      end
+  def drop({_, _, _} = sid_bid_pid, filter, n)
+      when is_integer(n) and filter in [:pending, :all] do
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {taken, _cont} <- :ets.select(tid, ms, n) do
-      for key <- taken do
-        :ets.delete(tid, key)
-      end
-
+      for key <- taken, do: :ets.delete(tid, key)
       {:ok, Enum.count(taken)}
     else
       nil -> {:error, :not_initialized}

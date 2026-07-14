@@ -3,6 +3,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.LogEvent
   alias Logflare.PubSubRates.Cache, as: PubSubRatesCache
 
@@ -32,8 +33,8 @@ defmodule Logflare.Backends.BufferProducerTest do
 
     assert id == le.id
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # marked as :ingested
-    assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+    # mark_ingested/2 deletes the pointer row outright
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
   end
 
   test "pops events when ingestion rate high" do
@@ -92,7 +93,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
   end
 
-  test "marks events as :processing (not :ingested) when id_passing is true" do
+  test "returns LogEventPointer structs when id_passing is true" do
     user = insert(:user)
     source = insert(:source, user: user)
 
@@ -107,16 +108,16 @@ defmodule Logflare.Backends.BufferProducerTest do
 
     tid = IngestEventQueue.get_tid(sid_bid_pid)
 
-    [{id, ^tid, size}] =
+    [%LogEventPointer{id: id, queue_tid: ^tid, size: size}] =
       GenStage.stream([{buffer_producer_pid, max_demand: 1}])
       |> Enum.take(1)
 
     assert id == le.id
     assert is_integer(size) and size > 0
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # event still in ETS, marked as :processing
-    assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
-    assert IngestEventQueue.list_processing_ids(sid_bid_pid) == [le.id]
+    # id-passing queues claim via :ets.take/2 — the pointer row is gone immediately,
+    # not marked :processing in place.
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
   end
 
   test "pulls events from startup queue" do
@@ -137,8 +138,8 @@ defmodule Logflare.Backends.BufferProducerTest do
     |> Enum.take(1)
 
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # marked ingested
-    assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+    # mark_ingested/2 deletes the pointer row outright
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
   end
 
   test "BufferProducer when discarding will display source name" do
@@ -254,21 +255,18 @@ defmodule Logflare.Backends.BufferProducerTest do
       assert IngestEventQueue.total_pending(consolidated_key) == 0
     end
 
-    test "pulls only IDs and routing metadata in consolidated id-passing metadata mode", %{
-      source: source,
-      backend: backend
-    } do
+    test "pulls LogEventPointer structs carrying routing metadata in consolidated id-passing mode",
+         %{
+           source: source,
+           backend: backend
+         } do
       startup_key = {:consolidated, backend.id, nil}
       IngestEventQueue.upsert_tid(startup_key)
 
       buffer_producer_pid =
         start_supervised!(
           {BufferProducer,
-           backend_id: backend.id,
-           consolidated: true,
-           id_passing: true,
-           id_passing_metadata: true,
-           interval: 100}
+           backend_id: backend.id, consolidated: true, id_passing: true, interval: 100}
         )
 
       consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
@@ -282,15 +280,26 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
 
-      [item] =
+      [pointer] =
         GenStage.stream([{buffer_producer_pid, max_demand: 1}])
         |> Enum.take(1)
 
-      assert {event_id, tid, size, :trace, 123_456, :stale} = item
+      assert %LogEventPointer{
+               id: event_id,
+               size: size,
+               event_type: :trace,
+               day_bucket: 123_456,
+               ingest_freshness: :stale,
+               retries: 0
+             } = pointer
+
       assert event_id == le.id
       assert size == :erlang.external_size(le.body)
 
-      assert {^event_id, :processing, ^le, ^size} = IngestEventQueue.lookup_id(tid, event_id)
+      # The claimed pointer row is already deleted (take_pending_pointers/2 claims via
+      # :ets.take/2), so the full event is resolved lazily via the pointer's own tid.
+      assert IngestEventQueue.lookup_event(pointer.tid, event_id) == le
+
       assert IngestEventQueue.total_pending(consolidated_key) == 0
     end
 
@@ -328,7 +337,7 @@ defmodule Logflare.Backends.BufferProducerTest do
       :ok
     end
 
-    test "pulls events as {id, tid, size} pointers, marking them :processing (id_passing is always true)" do
+    test "pulls events as LogEventPointer structs (id_passing is always true)" do
       startup_key = {:spool_producer, nil, nil}
       IngestEventQueue.upsert_tid(startup_key)
 
@@ -343,17 +352,17 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       tid = IngestEventQueue.get_tid(spool_key)
 
-      [{id, ^tid, size}] =
+      [%LogEventPointer{id: id, queue_tid: ^tid, size: size}] =
         GenStage.stream([{buffer_producer_pid, max_demand: 1}])
         |> Enum.take(1)
 
       assert id == le.id
       assert is_integer(size) and size > 0
       assert IngestEventQueue.total_pending(spool_key) == 0
-      # event still in ETS, marked as :processing — spool producer relies on
-      # its own pipeline's ack/3 to :ets.delete once uploaded, not this producer.
-      assert IngestEventQueue.get_table_size(spool_key) == 1
-      assert IngestEventQueue.list_processing_ids(spool_key) == [le.id]
+      # Claiming deletes the pointer row outright — the spool pipeline's ack/3 has
+      # nothing left to clean up on the happy path; the underlying event just sits in
+      # the generation store until rotation reclaims it.
+      assert IngestEventQueue.get_table_size(spool_key) == 0
     end
 
     test "pulls events from the spool startup queue" do
@@ -368,7 +377,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       spool_key = {:spool_producer, nil, buffer_producer_pid}
 
-      [{id, _tid, _size}] =
+      [%LogEventPointer{id: id}] =
         GenStage.stream([{buffer_producer_pid, max_demand: 1}])
         |> Enum.take(1)
 

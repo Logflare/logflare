@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
   alias Broadway.Message
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.ProducerPipeline
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
@@ -31,17 +32,28 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
     :ok
   end
 
-  defp message(size), do: %{data: {Ecto.UUID.generate(), :fake_tid, size}}
+  defp message(size) do
+    %{
+      data: %LogEventPointer{
+        id: Ecto.UUID.generate(),
+        tid: :fake_tid,
+        queue_tid: :fake_tid,
+        size: size,
+        retries: 0,
+        event_type: :log,
+        day_bucket: 0,
+        ingest_freshness: :fresh
+      }
+    }
+  end
 
-  # Builds a real ETS-backed {id, tid, size} message via the same
-  # IngestEventQueue.upsert_tid/1 + add_to_table/2 path real ingestion uses,
-  # matching what BufferProducer's id_passing: true path actually hands to
-  # handle_batch/4 — unlike message/1 above, this is a real log event the
-  # upload functions can look up and serialize. Going through the real
-  # insertion (add_to_table/2) and lookup (IngestEventQueue.lookup_id/2)
-  # helpers, rather than hand-rolling or destructuring the ETS tuple
-  # ourselves, means a row-shape change there shows up as a test failure
-  # here instead of silently drifting out of sync.
+  # Builds a real ETS-backed LogEventPointer message via the same
+  # IngestEventQueue.upsert_tid/1 + add_to_table/2 + take_pending_pointers/2 path real
+  # ingestion uses — matching what BufferProducer's spool_producer path actually hands
+  # to handle_batch/4. Unlike message/1 above, this is a real log event the upload
+  # functions can look up and serialize. Going through the real insertion and claim
+  # helpers, rather than hand-rolling a pointer ourselves, means a row-shape change
+  # there shows up as a test failure here instead of silently drifting out of sync.
   defp log_event_message(body \\ %{"message" => "hello"}, via_rule_id \\ nil) do
     log_event = %LogEvent{
       id: Ecto.UUID.generate(),
@@ -55,13 +67,13 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
     }
 
     key = {:spool_producer, nil, self()}
-    {:ok, tid} = IngestEventQueue.upsert_tid(key)
+    {:ok, _tid} = IngestEventQueue.upsert_tid(key)
     :ok = IngestEventQueue.add_to_table(key, [log_event])
 
-    {_id, _status, _event, byte_size} = IngestEventQueue.lookup_id(tid, log_event.id)
+    {:ok, [pointer], _queue_tid} = IngestEventQueue.take_pending_pointers(key, 1)
 
     %Message{
-      data: {log_event.id, tid, byte_size},
+      data: pointer,
       acknowledger: {ProducerPipeline, :no_ack_ref, :ack_data}
     }
   end

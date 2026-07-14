@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue.LogEventPointer
 
   # Arbitrary day bucket value — pipeline only passes it through telemetry/OTEL
   # attributes, so these tests assert tuple shape, not the value itself.
@@ -39,33 +40,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     ]
   end
 
-  # Creates a temporary ETS table with events inserted as :processing.
-  # Returns the tid. Callers should NOT clean up the table — it is owned by
-  # the test process and reclaimed when the test exits.
-  defp setup_processing_events(events) do
-    tid = :ets.new(:test_pipeline_queue, [:set, :public])
-    claimed_at = System.monotonic_time(:millisecond)
-
-    for event <- events do
-      :ets.insert(tid, {event.id, :processing, event, 1000, 1, claimed_at})
-    end
-
+  # Creates a temporary ETS table playing the role of a generation store, with events
+  # inserted as {id, event} rows (see IngestEventQueue.lookup_event/2). Returns the tid.
+  # Callers should NOT clean up the table — it is owned by the test process and
+  # reclaimed when the test exits.
+  defp setup_generation_events(events) do
+    tid = :ets.new(:test_pipeline_generation, [:set, :public])
+    for event <- events, do: :ets.insert(tid, {event.id, event})
     tid
   end
 
-  # Builds a message in the id-passing format expected by handle_message/3.
-  defp id_message(event, tid, backend_id) do
-    %Message{
-      data: {event.id, tid},
-      acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id}}
+  # Builds a LogEventPointer for `event`, resolvable via `gen_tid` (see
+  # setup_generation_events/1). `queue_tid` defaults to a fresh, otherwise-unused table
+  # since most tests only care about claim/retry behavior driven off other fields.
+  defp pointer_for(event, gen_tid, queue_tid \\ nil) do
+    %LogEventPointer{
+      id: event.id,
+      tid: gen_tid,
+      queue_tid: queue_tid || :ets.new(:test_pipeline_queue, [:set, :public]),
+      size: :erlang.external_size(event.body),
+      retries: event.retries || 0,
+      event_type: event.event_type,
+      day_bucket: event.day_bucket,
+      ingest_freshness: event.ingest_freshness
     }
   end
 
   # Builds a message in the format produced by handle_message/3, for use in
   # handle_batch/4 and ack/3 tests.
-  defp batch_message(event, tid, backend_id) do
+  defp batch_message(event, gen_tid, backend_id, queue_tid \\ nil) do
     %Message{
-      data: {event.id, tid, event.event_type, event.day_bucket},
+      data: pointer_for(event, gen_tid, queue_tid),
       acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id}}
     }
   end
@@ -74,7 +79,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   # re-reverses its return by status internally), so compare message sets by id
   # rather than list order.
   defp assert_same_messages(result, expected) do
-    sort_key = fn %{data: data} -> elem(data, 0) end
+    sort_key = fn %{data: %LogEventPointer{id: id}} -> id end
     assert Enum.sort_by(result, sort_key) == Enum.sort_by(expected, sort_key)
   end
 
@@ -99,129 +104,55 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   end
 
   describe "transform/2" do
-    test "transforms id-tuple into Broadway message with correct acknowledger", %{
+    test "wraps the pointer unchanged as message data, with correct acknowledger", %{
       backend: backend
     } do
       event = build(:log_event, message: "Test message")
-      tid = setup_processing_events([event])
+      gen_tid = setup_generation_events([event])
+      pointer = pointer_for(event, gen_tid)
       opts = [backend_id: backend.id]
 
-      result = Pipeline.transform({event.id, tid, 1000}, opts)
+      result = Pipeline.transform(pointer, opts)
 
       assert %Message{
-               data: {event_id, ^tid},
+               data: ^pointer,
                acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id}}
              } = result
 
-      assert event_id == event.id
-      assert backend_id == backend.id
-    end
-
-    test "transforms metadata id-tuple into unrouted Broadway message with routing metadata", %{
-      backend: backend
-    } do
-      event = build(:log_event, message: "Test message")
-      tid = setup_processing_events([event])
-      opts = [backend_id: backend.id]
-
-      result =
-        Pipeline.transform(
-          {event.id, tid, 1000, event.event_type, event.day_bucket, event.ingest_freshness},
-          opts
-        )
-
-      assert %Message{
-               data: {event_id, ^tid, :log, day_bucket, :fresh},
-               batcher: :default,
-               batch_key: :default,
-               acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id}}
-             } = result
-
-      assert event_id == event.id
-      assert day_bucket == event.day_bucket
-      assert backend_id == backend.id
-    end
-
-    test "falls back to lookup routing when metadata tuple has invalid routing fields", %{
-      backend: backend
-    } do
-      event = build(:log_event, message: "Test message")
-      tid = setup_processing_events([event])
-
-      result =
-        Pipeline.transform(
-          {event.id, tid, 1000, nil, event.day_bucket, :fresh},
-          backend_id: backend.id
-        )
-
-      assert %Message{
-               data: {event_id, ^tid},
-               acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id}}
-             } = result
-
-      assert event_id == event.id
       assert backend_id == backend.id
     end
   end
 
   describe "handle_message/3" do
-    test "routes metadata messages without an ETS lookup", %{
-      context: context,
-      backend: backend
-    } do
-      event = build(:log_event)
-      tid = setup_processing_events([])
-
-      message = %Message{
-        data: {event.id, tid, event.event_type, event.day_bucket, event.ingest_freshness},
-        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
-      }
-
-      result = Pipeline.handle_message(:default, message, context)
-
-      assert %Message{batcher: :ch_fresh, batch_key: {:log, day_bucket}} = result
-      assert result.data == {event.id, tid, :log, event.day_bucket}
-      assert day_bucket == event.day_bucket
-    end
-
-    test "routes stale metadata messages to :ch_stale without an ETS lookup", %{
-      context: context,
-      backend: backend
-    } do
-      event = build(:log_event) |> Map.put(:ingest_freshness, :stale)
-      tid = setup_processing_events([])
-
-      message = %Message{
-        data: {event.id, tid, event.event_type, event.day_bucket, :stale},
-        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
-      }
-
-      result = Pipeline.handle_message(:default, message, context)
-
-      assert %Message{batcher: :ch_stale, batch_key: {:log, day_bucket}} = result
-      assert result.data == {event.id, tid, :log, event.day_bucket}
-      assert day_bucket == event.day_bucket
-    end
-
     test "routes fresh log events to :ch_fresh batcher keyed by {event_type, day_bucket}", %{
       context: context,
       backend: backend
     } do
       event = build(:log_event)
-      tid = setup_processing_events([event])
-      message = id_message(event, tid, backend.id)
+      gen_tid = setup_generation_events([event])
+      pointer = pointer_for(event, gen_tid)
+
+      message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+      }
 
       result = Pipeline.handle_message(:default, message, context)
 
       assert %Message{batcher: :ch_fresh, batch_key: {:log, day_bucket}} = result
+      assert result.data == pointer
       assert day_bucket == event.day_bucket
-      assert result.data == {event.id, tid, :log, event.day_bucket}
     end
 
     test "keys metric events by `{:metric, day_bucket}`", %{context: context, backend: backend} do
       event = build(:log_event) |> Map.put(:event_type, :metric)
-      tid = setup_processing_events([event])
-      message = id_message(event, tid, backend.id)
+      gen_tid = setup_generation_events([event])
+      pointer = pointer_for(event, gen_tid)
+
+      message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+      }
 
       result = Pipeline.handle_message(:default, message, context)
 
@@ -230,8 +161,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
     test "keys trace events by `{:trace, day_bucket}`", %{context: context, backend: backend} do
       event = build(:log_event) |> Map.put(:event_type, :trace)
-      tid = setup_processing_events([event])
-      message = id_message(event, tid, backend.id)
+      gen_tid = setup_generation_events([event])
+      pointer = pointer_for(event, gen_tid)
+
+      message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+      }
 
       result = Pipeline.handle_message(:default, message, context)
 
@@ -240,8 +176,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
     test "routes stale events to :ch_stale batcher", %{context: context, backend: backend} do
       event = build(:log_event) |> Map.put(:ingest_freshness, :stale)
-      tid = setup_processing_events([event])
-      message = id_message(event, tid, backend.id)
+      gen_tid = setup_generation_events([event])
+      pointer = pointer_for(event, gen_tid)
+
+      message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+      }
 
       result = Pipeline.handle_message(:default, message, context)
 
@@ -250,18 +191,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
     test "fails message when event_type is nil", %{context: context, backend: backend} do
       event = build(:log_event) |> Map.put(:event_type, nil)
-      tid = setup_processing_events([event])
-      message = id_message(event, tid, backend.id)
+      gen_tid = setup_generation_events([event])
+      pointer = pointer_for(event, gen_tid)
 
-      result = Pipeline.handle_message(:default, message, context)
-
-      assert %Message{status: {:failed, :not_found}} = result
-    end
-
-    test "fails message when event is not found in ETS", %{context: context, backend: backend} do
-      event = build(:log_event)
-      tid = setup_processing_events([])
-      message = id_message(event, tid, backend.id)
+      message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+      }
 
       result = Pipeline.handle_message(:default, message, context)
 
@@ -270,18 +206,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   end
 
   describe "handle_batch/4" do
-    test "extracts events from ETS and inserts into ClickHouse", %{
+    test "extracts events from the generation store and inserts into ClickHouse", %{
       context: context,
       source: source,
       backend: backend
     } do
       log_event1 = build(:log_event, source: source, message: "Test message 1")
       log_event2 = build(:log_event, source: source, message: "Test message 2")
-      tid = setup_processing_events([log_event1, log_event2])
+      gen_tid = setup_generation_events([log_event1, log_event2])
 
       messages = [
-        batch_message(log_event1, tid, backend.id),
-        batch_message(log_event2, tid, backend.id)
+        batch_message(log_event1, gen_tid, backend.id),
+        batch_message(log_event2, gen_tid, backend.id)
       ]
 
       batch_info = %Broadway.BatchInfo{
@@ -318,21 +254,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert result == []
     end
 
-    test "does not insert to ClickHouse when every routed row is missing from ETS", %{
-      context: context,
-      source: source,
-      backend: backend
-    } do
+    test "does not insert to ClickHouse when every routed row is missing from the generation store",
+         %{
+           context: context,
+           source: source,
+           backend: backend
+         } do
       event1 = build(:log_event, source: source, message: "gone 1")
       event2 = build(:log_event, source: source, message: "gone 2")
 
-      # Empty ETS table: rows were routed via the metadata fast path but deleted
-      # (e.g. by the janitor) before batch time, so encode_message finds nothing.
-      tid = setup_processing_events([])
+      # Empty generation table: rows were claimed via take_pending_pointers/2 but their
+      # generation rotated out (or was otherwise dropped) before batch time, so
+      # encode_message finds nothing.
+      gen_tid = setup_generation_events([])
 
       messages = [
-        batch_message(event1, tid, backend.id),
-        batch_message(event2, tid, backend.id)
+        batch_message(event1, gen_tid, backend.id),
+        batch_message(event2, gen_tid, backend.id)
       ]
 
       batch_info = %Broadway.BatchInfo{
@@ -379,11 +317,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           }
         )
 
-      tid = setup_processing_events([log_event1, log_event2])
+      gen_tid = setup_generation_events([log_event1, log_event2])
 
       messages = [
-        batch_message(log_event1, tid, backend.id),
-        batch_message(log_event2, tid, backend.id)
+        batch_message(log_event1, gen_tid, backend.id),
+        batch_message(log_event2, gen_tid, backend.id)
       ]
 
       batch_info = %Broadway.BatchInfo{
@@ -428,12 +366,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       event1 = build(:log_event, source: source, message: "Source 1 message")
       event2 = build(:log_event, source: source2, message: "Source 2 message")
       event3 = build(:log_event, source: source, message: "Source 1 message 2")
-      tid = setup_processing_events([event1, event2, event3])
+      gen_tid = setup_generation_events([event1, event2, event3])
 
       messages = [
-        batch_message(event1, tid, backend.id),
-        batch_message(event2, tid, backend.id),
-        batch_message(event3, tid, backend.id)
+        batch_message(event1, gen_tid, backend.id),
+        batch_message(event2, gen_tid, backend.id),
+        batch_message(event3, gen_tid, backend.id)
       ]
 
       batch_info = %Broadway.BatchInfo{
@@ -467,8 +405,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         build(:log_event, source: source, message: "Metric event")
         |> Map.put(:event_type, :metric)
 
-      tid = setup_processing_events([event])
-      messages = [batch_message(event, tid, backend.id)]
+      gen_tid = setup_generation_events([event])
+      messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
         batcher: :ch_fresh,
@@ -500,8 +438,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       event =
         build(:log_event, source: source, message: "Trace event") |> Map.put(:event_type, :trace)
 
-      tid = setup_processing_events([event])
-      messages = [batch_message(event, tid, backend.id)]
+      gen_tid = setup_generation_events([event])
+      messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
         batcher: :ch_fresh,
@@ -537,8 +475,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           metadata: %{"level" => "error", "region" => "us-east-1"}
         )
 
-      tid = setup_processing_events([event])
-      messages = [batch_message(event, tid, backend.id)]
+      gen_tid = setup_generation_events([event])
+      messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
         batcher: :ch_fresh,
@@ -602,8 +540,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         )
         |> Map.put(:event_type, :metric)
 
-      tid = setup_processing_events([event])
-      messages = [batch_message(event, tid, backend.id)]
+      gen_tid = setup_generation_events([event])
+      messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
         batcher: :ch_fresh,
@@ -659,8 +597,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         )
         |> Map.put(:event_type, :trace)
 
-      tid = setup_processing_events([event])
-      messages = [batch_message(event, tid, backend.id)]
+      gen_tid = setup_generation_events([event])
+      messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
         batcher: :ch_fresh,
@@ -712,26 +650,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert Pipeline.ack(:ack_ref, [], []) == :ok
     end
 
-    test "deletes successful messages from ETS", %{backend: backend} do
+    test "deletes the event from the generation store for successful messages, recording it into the recent-events cache",
+         %{
+           backend: backend
+         } do
       event = build(:log_event, message: "Test")
-      tid = setup_processing_events([event])
-      message = batch_message(event, tid, backend.id)
+      gen_tid = setup_generation_events([event])
+      message = batch_message(event, gen_tid, backend.id)
 
-      Pipeline.ack(:ack_ref, [message], [])
+      assert :ok = Pipeline.ack(:ack_ref, [message], [])
 
-      assert :ets.lookup(tid, event.id) == []
+      # ack actively deletes the event row — it does not wait for GenerationJanitor's
+      # rotation, which is only a failsafe for abandoned claims
+      assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+      # ...but a "recent logs" read still has something to find in the meantime
+      assert IngestEventQueue.list_recent_events({:consolidated, backend.id}, 10) == [event]
     end
 
-    test "drops messages that have exceeded max retries and deletes from ETS", %{
-      source: source,
-      backend: backend
-    } do
+    test "drops messages that have exceeded max retries, deleting them from the generation store",
+         %{
+           source: source,
+           backend: backend
+         } do
       max_retries = Pipeline.max_retries()
       event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, max_retries)
-      tid = setup_processing_events([event])
+      gen_tid = setup_generation_events([event])
 
       failed_message = %Message{
-        data: {event.id, tid, event.event_type, event.day_bucket},
+        data: pointer_for(event, gen_tid),
         acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
         status: {:failed, "connection error"}
       }
@@ -742,43 +689,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         end)
 
       assert log =~ "Dropping 1 ClickHouse events: exhausted #{max_retries} retries"
-      assert :ets.lookup(tid, event.id) == []
+      assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
     end
   end
 
   if Pipeline.max_retries() > 0 do
     describe "ack/3 retry behavior" do
-      test "re-queues failed messages when `LogEvent` retries are under limit", %{
+      test "re-queues failed messages when the pointer's retries are under limit", %{
         source: source,
         backend: backend
       } do
         event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
-        tid = setup_processing_events([event])
+        gen_tid = setup_generation_events([event])
 
         failed_message = %Message{
-          data: {event.id, tid, event.event_type, event.day_bucket},
+          data: pointer_for(event, gen_tid),
           acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
           status: {:failed, "connection error"}
         }
 
         test_pid = self()
-        expected_backend_id = backend.id
 
-        Mimic.expect(IngestEventQueue, :delete_batch, fn {:consolidated, bid}, events ->
-          send(test_pid, {:deleted_batch, bid, events})
-          :ok
-        end)
-
-        Mimic.expect(IngestEventQueue, :add_to_table, fn {:consolidated, bid}, events ->
-          send(test_pid, {:requeued, bid, events})
+        Mimic.expect(IngestEventQueue, :reinsert_pointer, fn requeued_pointer ->
+          send(test_pid, {:requeued, requeued_pointer})
           :ok
         end)
 
         Pipeline.ack(:ack_ref, [], [failed_message])
 
-        assert_receive {:deleted_batch, ^expected_backend_id, [_deleted_event]}
-        assert_receive {:requeued, ^expected_backend_id, [requeued_event]}
-        assert requeued_event.retries == 1
+        assert_receive {:requeued, requeued_pointer}
+        assert requeued_pointer.id == event.id
+        assert requeued_pointer.retries == 1
       end
 
       test "increments retry count on each re-queue", %{
@@ -791,29 +732,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         event =
           build(:log_event, source: source, message: "Test") |> Map.put(:retries, initial_retries)
 
-        tid = setup_processing_events([event])
+        gen_tid = setup_generation_events([event])
 
         failed_message = %Message{
-          data: {event.id, tid, event.event_type, event.day_bucket},
+          data: pointer_for(event, gen_tid),
           acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
           status: {:failed, "connection error"}
         }
 
         test_pid = self()
 
-        Mimic.expect(IngestEventQueue, :delete_batch, fn {:consolidated, _bid}, _events ->
-          :ok
-        end)
-
-        Mimic.expect(IngestEventQueue, :add_to_table, fn {:consolidated, _bid}, events ->
-          send(test_pid, {:requeued, events})
+        Mimic.expect(IngestEventQueue, :reinsert_pointer, fn requeued_pointer ->
+          send(test_pid, {:requeued, requeued_pointer})
           :ok
         end)
 
         Pipeline.ack(:ack_ref, [], [failed_message])
 
-        assert_receive {:requeued, [requeued_event]}
-        assert requeued_event.retries == initial_retries + 1
+        assert_receive {:requeued, requeued_pointer}
+        assert requeued_pointer.retries == initial_retries + 1
       end
 
       test "handles mixed retriable and exhausted messages", %{
@@ -829,18 +766,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           build(:log_event, source: source, message: "Exhausted")
           |> Map.put(:retries, max_retries)
 
-        tid = setup_processing_events([retriable_event, exhausted_event])
+        gen_tid = setup_generation_events([retriable_event, exhausted_event])
 
         failed_messages = [
           %Message{
-            data:
-              {retriable_event.id, tid, retriable_event.event_type, retriable_event.day_bucket},
+            data: pointer_for(retriable_event, gen_tid),
             acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
             status: {:failed, "error"}
           },
           %Message{
-            data:
-              {exhausted_event.id, tid, exhausted_event.event_type, exhausted_event.day_bucket},
+            data: pointer_for(exhausted_event, gen_tid),
             acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
             status: {:failed, "error"}
           }
@@ -848,13 +783,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
         test_pid = self()
 
-        Mimic.expect(IngestEventQueue, :delete_batch, fn {:consolidated, _bid}, events ->
-          send(test_pid, {:deleted_batch, Enum.map(events, & &1.id)})
-          :ok
-        end)
-
-        Mimic.expect(IngestEventQueue, :add_to_table, fn {:consolidated, _bid}, events ->
-          send(test_pid, {:requeued, events})
+        Mimic.expect(IngestEventQueue, :reinsert_pointer, fn requeued_pointer ->
+          send(test_pid, {:requeued, requeued_pointer})
           :ok
         end)
 
@@ -865,15 +795,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
         assert log =~ "Dropping 1 ClickHouse events: exhausted #{max_retries} retries"
 
-        assert_receive {:deleted_batch, [requeued_id]}
-        assert requeued_id == retriable_event.id
+        assert_receive {:requeued, requeued_pointer}
+        assert requeued_pointer.id == retriable_event.id
+        assert requeued_pointer.retries == 1
 
-        assert_receive {:requeued, [requeued_event]}
-        assert requeued_event.retries == 1
-        assert requeued_event.body["event_message"] == "Retriable"
-
-        # Exhausted event is deleted directly from ETS, not via delete_batch/add_to_table
-        assert :ets.lookup(tid, exhausted_event.id) == []
+        # exhausted event's event row is deleted from the generation store
+        assert IngestEventQueue.lookup_event(gen_tid, exhausted_event.id) == nil
+        # retriable event's event row is untouched — only its pointer is reinserted
+        assert IngestEventQueue.lookup_event(gen_tid, retriable_event.id) == retriable_event
       end
     end
   end
@@ -885,8 +814,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       backend: backend
     } do
       log_event = build(:log_event, source: source, message: "Test message")
-      tid = setup_processing_events([log_event])
-      messages = [batch_message(log_event, tid, backend.id)]
+      gen_tid = setup_generation_events([log_event])
+      messages = [batch_message(log_event, gen_tid, backend.id)]
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
@@ -911,8 +840,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   describe "handle_batch/4 async routing" do
     setup %{source: source, backend: backend} do
       log_event = build(:log_event, source: source, message: "Test message")
-      tid = setup_processing_events([log_event])
-      messages = [batch_message(log_event, tid, backend.id)]
+      gen_tid = setup_generation_events([log_event])
+      messages = [batch_message(log_event, gen_tid, backend.id)]
       [messages: messages]
     end
 
@@ -990,8 +919,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       end)
 
       log_event = build(:log_event, source: source, message: "Test message")
-      tid = setup_processing_events([log_event])
-      messages = [batch_message(log_event, tid, backend.id)]
+      gen_tid = setup_generation_events([log_event])
+      messages = [batch_message(log_event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
         batcher: :ch_fresh,
@@ -1027,8 +956,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       end)
 
       log_event = build(:log_event, source: source, message: "Test message")
-      tid = setup_processing_events([log_event])
-      messages = [batch_message(log_event, tid, backend.id)]
+      gen_tid = setup_generation_events([log_event])
+      messages = [batch_message(log_event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
         batcher: :ch_fresh,
@@ -1050,12 +979,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       backend: backend
     } do
       Mimic.stub(CircuitBreaker, :check, fn _backend_id -> {:error, :circuit_open, 0} end)
+      Mimic.reject(IngestEventQueue, :reinsert_pointer, 1)
 
       event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
-      tid = setup_processing_events([event])
+      gen_tid = setup_generation_events([event])
 
       failed_message = %Message{
-        data: {event.id, tid, event.event_type, event.day_bucket},
+        data: pointer_for(event, gen_tid),
         acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
         status: {:failed, "boom"}
       }
@@ -1063,7 +993,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
 
       assert log =~ "circuit breaker open"
-      assert :ets.lookup(tid, event.id) == []
+      assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
     end
 
     test "requeues retriable messages when the breaker is closed", %{
@@ -1073,29 +1003,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       Mimic.stub(CircuitBreaker, :check, fn _backend_id -> :ok end)
 
       event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
-      tid = setup_processing_events([event])
+      gen_tid = setup_generation_events([event])
 
       failed_message = %Message{
-        data: {event.id, tid, event.event_type, event.day_bucket},
+        data: pointer_for(event, gen_tid),
         acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
         status: {:failed, "boom"}
       }
 
       test_pid = self()
 
-      Mimic.expect(IngestEventQueue, :delete_batch, fn {:consolidated, _bid}, _events ->
-        :ok
-      end)
-
-      Mimic.expect(IngestEventQueue, :add_to_table, fn {:consolidated, _bid}, events ->
-        send(test_pid, {:requeued, events})
+      Mimic.expect(IngestEventQueue, :reinsert_pointer, fn requeued_pointer ->
+        send(test_pid, {:requeued, requeued_pointer})
         :ok
       end)
 
       Pipeline.ack(:ack_ref, [], [failed_message])
 
-      assert_receive {:requeued, [requeued_event]}
-      assert requeued_event.retries == 1
+      assert_receive {:requeued, requeued_pointer}
+      assert requeued_pointer.retries == 1
     end
   end
 end

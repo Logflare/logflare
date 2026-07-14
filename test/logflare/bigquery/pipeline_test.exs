@@ -11,6 +11,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.LogEvent
   alias Logflare.Repo
@@ -31,84 +32,110 @@ defmodule Logflare.BigQuery.PipelineTest do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event)
-      # Add event to ETS and mark as :processing (simulating it was taken by the producer)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      tid = IngestEventQueue.get_tid(sid_bid_pid)
-      IngestEventQueue.mark_ingested(sid_bid_pid, [le])
+
+      # simulate the producer claiming the event
+      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
 
       ref = {sid_bid_pid, %{max_retries: 1}}
-      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
+      message = Pipeline.transform(pointer, ref: ref)
       {mod, ref, _data} = message.acknowledger
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+      assert IngestEventQueue.total_pending(sid_bid_pid) == 0
 
       mod.ack(ref, [], [message])
-      # Event is deleted then re-added as pending with incremented retries
+      # pointer is reinserted directly into the queue it was claimed from, with
+      # incremented retries
       assert IngestEventQueue.total_pending(sid_bid_pid) == 1
 
-      {:ok, [m]} = IngestEventQueue.pop_pending(sid_bid_pid, 1)
-
-      assert m.retries == 1
+      {:ok, [requeued], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+      assert requeued.retries == 1
     end
 
     test "ack will not requeue failed events that have exhausted retries", %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
-      le = build(:log_event) |> Map.put(:retries, 1)
-      # Add event to ETS and mark as :processing (simulating it was taken by the producer)
+      le = build(:log_event)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      tid = IngestEventQueue.get_tid(sid_bid_pid)
-      IngestEventQueue.mark_ingested(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+      pointer = %{pointer | retries: 1}
 
       ref = {sid_bid_pid, %{max_retries: 1}}
-      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
+      message = Pipeline.transform(pointer, ref: ref)
       {mod, ref, _data} = message.acknowledger
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
 
       mod.ack(ref, [], [message])
 
-      # Event is NOT requeued (retries == max_retries); deleted from ETS
+      # Event is NOT requeued (retries == max_retries); its event row is deleted
+      # from the generation store since nothing will ever ack it
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
     end
 
-    test "ack deletes events directly when avg > 100", %{source: source} do
+    test "ack deletes the event from the generation store on success, recording it into the recent-events cache",
+         %{source: source} do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      mod.ack(ref, [message], [])
+
+      # ack actively deletes the event row — it does not wait for
+      # GenerationJanitor's rotation, which is only a failsafe for abandoned claims
+      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
+
+      # ...but a "recent logs" read still has something to find in the meantime
+      assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == [le]
+    end
+
+    test "ack skips the recent-events cache when the ingest rate is high, but still deletes",
+         %{source: source} do
       stub(Logflare.Sources, :get_source_metrics_for_ingest, fn _ -> %{avg: 200} end)
 
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      tid = IngestEventQueue.get_tid(sid_bid_pid)
-      :ets.update_element(tid, le.id, {2, :processing})
+
+      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
 
       ref = {sid_bid_pid, %{max_retries: 0}}
-      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
+      message = Pipeline.transform(pointer, ref: ref)
       {mod, ref, _} = message.acknowledger
 
       mod.ack(ref, [message], [])
 
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
+      assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == []
     end
 
-    test "ack marks events as :ingested when avg <= 100", %{source: source} do
-      stub(Logflare.Sources, :get_source_metrics_for_ingest, fn _ -> %{avg: 50} end)
-
+    test "ack skips the recent-events cache (but still deletes) when the source no longer resolves",
+         %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      tid = IngestEventQueue.get_tid(sid_bid_pid)
-      :ets.update_element(tid, le.id, {2, :processing})
 
-      ref = {sid_bid_pid, %{max_retries: 0}}
-      message = Pipeline.transform({le.id, tid, 0}, ref: ref)
+      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+
+      deleted_source_id = source.id
+      Logflare.Repo.delete!(source)
+
+      ref = {{deleted_source_id, nil, nil}, %{max_retries: 0}}
+      message = Pipeline.transform(pointer, ref: ref)
       {mod, ref, _} = message.acknowledger
 
       mod.ack(ref, [message], [])
 
-      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
-      assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-      assert [{_id, :ingested, _, _, _, _}] = :ets.lookup(tid, le.id)
+      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
+      assert IngestEventQueue.list_recent_events({deleted_source_id, nil}, 10) == []
     end
 
     test "handle_batch emits ingest telemetry with resolved labels when source has labels", %{
@@ -513,11 +540,11 @@ defmodule Logflare.BigQuery.PipelineTest do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       IngestEventQueue.add_to_table(sid_bid_pid, events)
-      {:ok, id_size_pairs, tid} = IngestEventQueue.take_pending_ids(sid_bid_pid, length(events))
+      {:ok, pointers, tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, length(events))
 
       messages =
-        Enum.map(id_size_pairs, fn {id, size} ->
-          %Message{data: {id, tid, size}, acknowledger: {Pipeline, :ack_id, :ack_data}}
+        Enum.map(pointers, fn pointer ->
+          %Message{data: pointer, acknowledger: {Pipeline, :ack_id, :ack_data}}
         end)
 
       {messages, tid}
@@ -535,7 +562,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       }
     end
 
-    test "passes {id, tid, size} messages through with correct size", %{
+    test "passes the pointer through unchanged, with correct size", %{
       source: source,
       context: context,
       batch_info: batch_info
@@ -545,11 +572,13 @@ defmodule Logflare.BigQuery.PipelineTest do
       end)
 
       le = build(:log_event, source: source)
-      {[message], tid} = setup_queue(source, [le])
+      {[message], _queue_tid} = setup_queue(source, [le])
+      pointer = message.data
 
       [result] = Pipeline.handle_batch(:bq, [message], batch_info, context)
 
-      assert {id, ^tid, size} = result.data
+      assert result.data == pointer
+      assert %LogEventPointer{id: id, size: size} = pointer
       assert id == le.id
       assert is_integer(size) and size > 0
     end
@@ -564,10 +593,11 @@ defmodule Logflare.BigQuery.PipelineTest do
       end)
 
       le = build(:log_event, source: source)
-      {[message], tid} = setup_queue(source, [le])
+      {[message], _queue_tid} = setup_queue(source, [le])
+      pointer = message.data
 
-      # Delete event from ETS so ID cannot be resolved
-      :ets.delete(tid, le.id)
+      # Delete the event from the generation store so the id cannot be resolved
+      :ets.delete(pointer.tid, le.id)
 
       ref = make_ref()
 
@@ -582,7 +612,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       # Missing message is returned as failed (not dropped) so Broadway can ack it
       assert {:failed, "missing from ETS"} = result_msg.status
-      assert {_id, _tid, 0} = result_msg.data
+      assert result_msg.data == pointer
       assert_receive {:missing, 1}
 
       :telemetry.detach("test-missing-#{inspect(ref)}")

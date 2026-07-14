@@ -15,6 +15,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Mailer
   alias Logflare.Sources
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.BufferProducer
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.Supervisor
@@ -123,23 +124,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   def ack({queue, config}, successful, failed) do
     {sid, bid, _pipeline_ref} = queue
 
+    finalize_acked_events({sid, bid}, successful)
     maybe_requeue_failed({sid, bid}, failed, config)
-
-    # Per-event ingest telemetry is emitted in handle_batch/4, where the full
-    # LogEvent is already in hand — ack only needs each event's id to finalize
-    # queue state, so it never re-fetches the event from ETS.
-    case Sources.Cache.get_by_id(sid) do
-      nil ->
-        Logger.warning("Source not found for ack!", source_id: sid)
-
-        for %{data: {id, tid, _size}} <- successful do
-          IngestEventQueue.delete_id(tid, id)
-        end
-
-      source ->
-        metrics = Sources.get_source_metrics_for_ingest(source.token)
-        finalize_acked_events(successful, metrics)
-    end
 
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :ack],
@@ -150,21 +136,42 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :ok
   end
 
-  # avg ingest rate above threshold: drop from the queue rather than mark :ingested
-  # to shed load; below threshold: keep the event and finalize its status.
-  @spec finalize_acked_events([Message.t()], map()) :: :ok
-  defp finalize_acked_events(successful, %{avg: avg}) when avg > 100 do
-    for %{data: {id, tid, _size}} <- successful,
-        do: IngestEventQueue.delete_id(tid, id)
+  # The pointer was already removed from its queue at claim time
+  # (take_pending_pointers/2 claims via :ets.take/2); ack still has to delete the event
+  # row from the generation store itself — GenerationJanitor's rotation is a failsafe
+  # for abandoned claims, not the primary cleanup path.
+  #
+  # Backfilling the recent-events cache (see IngestEventQueue.record_recent_event/2)
+  # needs a lookup_event/2 read per event first, so it's skipped once the ingest rate is
+  # high enough that "recent logs" freshness matters less than avoiding the extra read —
+  # mirroring the pre-redesign avg-based finalize_acked_events split.
+  @spec finalize_acked_events(IngestEventQueue.queues_key(), [Message.t()]) :: :ok
+  defp finalize_acked_events(_queues_key, []), do: :ok
 
-    :ok
+  defp finalize_acked_events({sid, _bid} = queues_key, successful) do
+    record? = should_record_recent?(sid)
+
+    Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
+      if record? do
+        case IngestEventQueue.lookup_event(pointer.tid, pointer.id) do
+          nil -> :ok
+          event -> IngestEventQueue.record_recent_event(queues_key, event)
+        end
+      end
+
+      IngestEventQueue.delete_id(pointer.tid, pointer.id)
+    end)
   end
 
-  defp finalize_acked_events(successful, _metrics) do
-    for %{data: {id, tid, _size}} <- successful,
-        do: IngestEventQueue.update_status(tid, id, :ingested)
-
-    :ok
+  # No source to resolve (e.g. it was deleted mid-flight) means no ingest rate to check
+  # and no source-scoped "recent logs" reader to serve — skip the cache instead of
+  # guessing at a default rate.
+  @spec should_record_recent?(pos_integer()) :: boolean()
+  defp should_record_recent?(sid) do
+    case Sources.Cache.get_by_id(sid) do
+      nil -> false
+      source -> Sources.get_source_metrics_for_ingest(source).avg <= 100
+    end
   end
 
   @impl Broadway
@@ -190,7 +197,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         _message, {1, _len} ->
           {:emit, {@max_batch_size, @max_batch_length}}
 
-        %{data: {_id, _tid, size}}, {count, len} ->
+        message, {count, len} ->
+          size = message_size(message)
+
           if len - size <= 0 do
             {:emit, {@max_batch_size, @max_batch_length}}
           else
@@ -199,6 +208,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       end
     }
   end
+
+  defp message_size(%{data: %LogEventPointer{size: size}}), do: size
 
   @impl Broadway
   def handle_batch(:bq, messages, batch_info, context) do
@@ -264,13 +275,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       emit_ingest_telemetry(context, source, triples)
 
       succeeded = Enum.map(triples, fn {msg, _le, _size} -> msg end)
-
-      failed_missing =
-        Enum.map(missing, fn %{data: {id, tid, _size}} = msg ->
-          msg
-          |> Message.update_data(fn _ -> {id, tid, 0} end)
-          |> Message.failed("missing from ETS")
-        end)
+      failed_missing = Enum.map(missing, &Message.failed(&1, "missing from ETS"))
 
       case failed_missing do
         [] -> succeeded
@@ -285,16 +290,19 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   defp fetch_events_from_messages(messages, context, source) do
-    Enum.reduce(messages, {[], []}, fn
-      %{data: {id, tid, size}} = message, {out, missing} ->
-        case IngestEventQueue.lookup_id(tid, id) do
-          {_id, _status, log_event, _byte_size} ->
-            {[{message, process_data(log_event, context, source), size} | out], missing}
+    Enum.reduce(messages, {[], []}, fn message, {out, missing} ->
+      case {lookup_message_event(message), message_size(message)} do
+        {nil, _size} ->
+          {out, [message | missing]}
 
-          nil ->
-            {out, [message | missing]}
-        end
+        {log_event, size} ->
+          {[{message, process_data(log_event, context, source), size} | out], missing}
+      end
     end)
+  end
+
+  defp lookup_message_event(%{data: %LogEventPointer{tid: tid, id: id}}) do
+    IngestEventQueue.lookup_event(tid, id)
   end
 
   # Single pass collecting log events + batch metrics. Separate accumulator args (rather
@@ -524,41 +532,44 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     end
   end
 
-  # Requeue failed events if the number of previous retries is less than @max_retries
-  defp maybe_requeue_failed(_, [], _), do: :ok
+  # Requeue failed events if the number of previous retries is less than max_retries.
+  # Every failed message's pointer was already removed from its queue at claim time —
+  # retriable ones are written back directly into the queue they were claimed from (see
+  # IngestEventQueue.reinsert_pointer/1); exhausted/undroppable ones still need their
+  # event row deleted from the generation store, since nothing will ever ack them.
+  defp maybe_requeue_failed(_sid_bid, [], _config), do: :ok
 
-  defp maybe_requeue_failed(_, failed, %{max_retries: 0}) do
-    for %{data: {id, tid, _size}} <- failed, do: IngestEventQueue.delete_id(tid, id)
-    :ok
+  defp maybe_requeue_failed(_sid_bid, failed, %{max_retries: 0}) do
+    pointers = Enum.map(failed, fn %{data: %LogEventPointer{} = pointer} -> pointer end)
+    drop_pointers(pointers, "retries disabled")
   end
 
-  defp maybe_requeue_failed({_sid, _bid} = sid_bid, failed, %{max_retries: max_retries}) do
-    to_requeue =
-      Enum.reduce(failed, [], fn %{data: {id, tid, _size}}, acc ->
-        case IngestEventQueue.lookup_id(tid, id) do
-          {_id, _status, %LE{retries: retries} = le, _byte_size}
-          when retries < max_retries ->
-            [%LE{le | retries: (retries || 0) + 1} | acc]
+  defp maybe_requeue_failed(_sid_bid, failed, %{max_retries: max_retries}) do
+    {retriable, exhausted} =
+      failed
+      |> Enum.map(fn %{data: %LogEventPointer{} = pointer} -> pointer end)
+      |> Enum.split_with(&(&1.retries < max_retries))
 
-          {_id, _status, _event, _byte_size} ->
-            IngestEventQueue.delete_id(tid, id)
-            acc
-
-          nil ->
-            acc
-        end
-      end)
-
-    requeue(sid_bid, to_requeue)
+    drop_pointers(exhausted, "exhausted #{max_retries} retries")
+    requeue_retriable(retriable)
   end
 
-  defp requeue(_, []), do: :ok
+  defp requeue_retriable([]), do: :ok
 
-  defp requeue(sid_bid, events) do
-    Logger.info("Requeuing #{length(events)} BigQuery events for retry")
+  defp requeue_retriable(retriable) do
+    Logger.info("Requeuing #{length(retriable)} BigQuery events for retry")
 
-    IngestEventQueue.delete_batch(sid_bid, events)
-    IngestEventQueue.add_to_table(sid_bid, events)
+    Enum.each(retriable, fn pointer ->
+      IngestEventQueue.reinsert_pointer(%{pointer | retries: pointer.retries + 1})
+    end)
+  end
+
+  defp drop_pointers([], _reason), do: :ok
+
+  defp drop_pointers(pointers, reason) do
+    Logger.warning("Dropping #{length(pointers)} BigQuery events: #{reason}")
+
+    Enum.each(pointers, fn pointer -> IngestEventQueue.delete_id(pointer.tid, pointer.id) end)
   end
 
   # Emit per-event ingest telemetry from handle_batch, where the full LogEvent is

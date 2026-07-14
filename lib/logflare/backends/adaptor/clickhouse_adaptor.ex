@@ -616,6 +616,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
+    IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+
     children =
       if(Application.get_env(:logflare, :env) != :test,
         do: [Provisioner.child_spec(backend)],
