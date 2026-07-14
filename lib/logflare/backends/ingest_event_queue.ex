@@ -28,7 +28,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_table :source_ingest_events
   @ets_generations :ingest_event_queue_generations
   @ets_recent_events :ingest_event_queue_recent_events
-  @max_queue_size 60_000
+  @max_queue_size 30_000
   @consolidated_max_queue_size 60_000
 
   @type source_backend :: {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil}

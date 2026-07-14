@@ -28,7 +28,7 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
 
   alias Logflare.Backends.IngestEventQueue
 
-  @default_interval :timer.seconds(30)
+  @default_interval :timer.seconds(60)
   @default_max_age_ms :timer.minutes(2)
 
   @spec start_link(keyword()) :: GenServer.on_start()
