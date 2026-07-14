@@ -102,10 +102,16 @@ defmodule LogflareWeb.OpenApi do
   end
 
   defmodule Unauthorized do
-    require OpenApiSpex
-    OpenApiSpex.schema(%{})
+    def schema do
+      %Schema{
+        title: "UnauthorizedResponse",
+        type: :object,
+        properties: %{error: %Schema{type: :string}},
+        required: [:error]
+      }
+    end
 
-    def response, do: {"Unauthorized", "text/plain", __MODULE__}
+    def response, do: {"Unauthorized", "application/json", schema()}
   end
 
   defmodule ServerError do

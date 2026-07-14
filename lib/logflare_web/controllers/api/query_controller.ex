@@ -12,6 +12,7 @@ defmodule LogflareWeb.Api.QueryController do
   alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.One
+  alias LogflareWeb.OpenApi.Unauthorized
   alias LogflareWeb.OpenApiSchemas.QueryParseResult
   alias LogflareWeb.OpenApiSchemas.QueryResult
 
@@ -46,7 +47,8 @@ defmodule LogflareWeb.Api.QueryController do
     ],
     responses: %{
       200 => One.response(QueryParseResult),
-      400 => BadRequest.response()
+      400 => BadRequest.response(),
+      401 => Unauthorized.response()
     }
   )
 
@@ -113,8 +115,9 @@ defmodule LogflareWeb.Api.QueryController do
       ]
     ],
     responses: %{
-      200 => List.response(QueryResult),
-      400 => BadRequest.response()
+      200 => One.response(QueryResult),
+      400 => BadRequest.response(),
+      401 => Unauthorized.response()
     }
   )
 

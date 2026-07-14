@@ -73,11 +73,15 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         {:ok, TestUtils.gen_bq_response([%{"my_time" => "123"}])}
       end)
 
-      response =
+      conn =
         conn
         |> add_access_token(user, ~w(private))
         |> get(~p"/api/query?#{[bq_sql: ~s|select current_datetime() as 'my_time'|]}")
-        |> json_response(200)
+
+      assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
+
+      response = json_response(conn, 200)
+      assert_schema(response, "QueryResult")
 
       assert %{"result" => [%{"my_time" => "123"}]} = response
 
@@ -88,6 +92,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         |> get(~p"/api/query?#{[sql: ~s|select current_datetime() as 'my_time'|]}")
         |> json_response(200)
 
+      assert_schema(response, "QueryResult")
       assert %{"result" => [%{"my_time" => "123"}]} = response
     end
 
