@@ -79,13 +79,19 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     } do
       invalid_user = insert(:user)
 
+      conn =
+        conn
+        |> add_access_token(invalid_user, "private")
+        |> get(~p"/api/teams/#{main_team.token}")
+
+      assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
+
       conn
-      |> add_access_token(invalid_user, "private")
-      |> get(~p"/api/teams/#{main_team.token}")
       |> json_response(404)
       |> assert_schema("NotFoundResponse")
 
       conn
+      |> recycle()
       |> add_access_token(invalid_user, "private")
       |> get(~p"/api/teams/#{non_owner_team.token}")
       |> json_response(404)

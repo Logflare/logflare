@@ -44,13 +44,7 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule QueryResult do
     @properties %{
-      result: %Schema{type: :object},
-      errors: %Schema{
-        oneOf: [
-          %Schema{type: :object},
-          %Schema{type: :string}
-        ]
-      }
+      result: %Schema{type: :array, items: %Schema{type: :object}}
     }
     use LogflareWeb.OpenApi, properties: @properties, required: [:result]
   end
