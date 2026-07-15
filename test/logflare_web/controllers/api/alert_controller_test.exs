@@ -384,20 +384,27 @@ defmodule LogflareWeb.Api.AlertControllerTest do
              |> text_response(204) == ""
     end
 
-    test "team member cannot yet attach a team-owned backend", %{conn: conn} do
+    test "team member can attach a team-owned backend", %{conn: conn} do
       member = insert(:user)
       team_user = insert(:team_user, email: member.email)
       owner = team_user.team.user
       alert = insert(:alert, user: owner)
       backend = insert(:backend, user: owner)
+      unrelated_backend = insert(:backend)
+      conn = add_access_token(conn, member, "private")
 
       response =
         conn
-        |> add_access_token(member, "private")
         |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [backend.id]})
-        |> json_response(404)
+        |> json_response(200)
 
-      assert_schema(response, "NotFoundResponse")
+      assert %{"backends" => [%{"id" => backend_id}]} = response
+      assert backend_id == backend.id
+
+      assert %{"error" => "Not Found"} =
+               conn
+               |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [unrelated_backend.id]})
+               |> json_response(404)
     end
 
     test "show alert with bad user", %{conn: conn, user: user} do
