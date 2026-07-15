@@ -267,9 +267,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       else
         batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_streaming_insert)
 
-        OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
-          stream_batch(context, log_events)
-        end
+        # OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
+        #   stream_batch(context, log_events)
+        # end
       end
 
       emit_ingest_telemetry(context, source, triples)

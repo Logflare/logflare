@@ -44,9 +44,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @processor_concurrency 6
   @processor_min_demand 100
   @processor_max_demand 1_000
-  @fresh_batch_size 60_000
+  @fresh_batch_size 10_000
   @fresh_batch_timeout 5_000
-  @fresh_batcher_concurrency 4
+  @fresh_batcher_concurrency 1
   @stale_batch_size 60_000
   @stale_batch_timeout 12_000
   @stale_batcher_concurrency 2
@@ -170,6 +170,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
     backend = Backends.Cache.get_backend(backend_id)
 
+    Process.sleep(20000)
     encode_and_insert(backend, messages, event_type, batcher, batch_info, day_bucket)
   end
 

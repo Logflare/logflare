@@ -101,6 +101,13 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @doc """
   Returns the current generation's tid for `queues_key`, creating one if none exists yet.
+
+  The nil-check here is only a fast-path optimization to skip the GenServer call in the
+  common case — it is NOT what prevents duplicate generations under concurrent
+  first-time callers (many ingest requests can all observe `nil` here before any of
+  them has created one). That's instead enforced by `{:ensure_generation, _}` re-checking
+  `:persistent_term` from inside the serialized `handle_call` before creating a table, so
+  only the first caller actually creates one and the rest just read it back.
   """
   @spec current_generation_tid(
           queues_key()
@@ -109,7 +116,7 @@ defmodule Logflare.Backends.IngestEventQueue do
         ) :: :ets.tid()
   def current_generation_tid(queues_key) do
     case :persistent_term.get(generation_key(queues_key), nil) do
-      nil -> new_generation(queues_key)
+      nil -> GenServer.call(__MODULE__, {:ensure_generation, queues_key})
       tid -> tid
     end
   end
@@ -117,14 +124,14 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp generation_key(queues_key), do: {__MODULE__, :current_generation, queues_key}
 
   @doc """
-  Creates a new generation table for `queues_key` and makes it current.
+  Unconditionally creates a new generation table for `queues_key` and makes it current,
+  even if one already exists.
 
-  Used by `current_generation_tid/1` when none exists yet, and by `GenerationJanitor` to
-  rotate in a fresh generation on its schedule. Routed through this module's own
-  GenServer rather than calling `:ets.new/2` directly from the caller: an ETS table dies
-  with its owning process, and the usual caller (`add_to_table/3`, via
-  `current_generation_tid/1`) can run from a short-lived process (e.g. an ingest
-  request) — the generation table needs a stable owner that outlives any single caller.
+  Used by `GenerationJanitor` to rotate in a fresh generation on its schedule — NOT by
+  `current_generation_tid/1` (see `{:ensure_generation, _}` there instead), since calling
+  this unconditionally from every first-time caller of a lazily-created generation would
+  race: concurrent callers would each create their own table before any of them observes
+  the others' `:persistent_term.put/2`.
   """
   @spec new_generation(queues_key() | consolidated_queues_key() | spool_producer_queues_key()) ::
           :ets.tid()
@@ -134,6 +141,21 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @impl GenServer
   def handle_call({:new_generation, queues_key}, _from, state) do
+    {:reply, create_generation(queues_key), state}
+  end
+
+  @impl GenServer
+  def handle_call({:ensure_generation, queues_key}, _from, state) do
+    tid =
+      case :persistent_term.get(generation_key(queues_key), nil) do
+        nil -> create_generation(queues_key)
+        existing_tid -> existing_tid
+      end
+
+    {:reply, tid, state}
+  end
+
+  defp create_generation(queues_key) do
     tid =
       :ets.new(@ets_table, [
         :public,
@@ -145,7 +167,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     :ets.insert(@ets_generations, {queues_key, tid, System.monotonic_time(:millisecond)})
     :persistent_term.put(generation_key(queues_key), tid)
-    {:reply, tid, state}
+    tid
   end
 
   @doc """
@@ -416,6 +438,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       )
     else
       _ ->
+        dbg("Sending to startup")
         add_to_table(startup_queue, batch)
     end
 

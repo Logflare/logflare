@@ -616,7 +616,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
+    # create the startup queue and its generation, before any producer/traffic exists
+    # for this queues_key — avoids racing concurrent first-time inserts against each
+    # other to lazily create the generation (see IngestEventQueue.current_generation_tid/1)
     IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+    IngestEventQueue.current_generation_tid({:consolidated, backend.id})
 
     children =
       if(Application.get_env(:logflare, :env) != :test,
