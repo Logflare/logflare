@@ -95,19 +95,21 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
       %{config: config}
     end
 
-    test "ensure_table/3 creates each OTEL table idempotently and table_columns/2 reflects the schema",
+    test "ensure_table/4 creates each OTEL table idempotently and table_columns/2 reflects the schema",
          %{config: config} do
       if config do
         assert {:ok, catalog} = S3TablesAdaptor.Native.init_catalog(config)
+        properties = IcebergSchema.table_properties()
 
         for event_type <- IcebergSchema.event_types() do
           table_name = IcebergSchema.table_name(event_type)
           fields = IcebergSchema.fields(event_type)
 
-          assert {:ok, _status} = S3TablesAdaptor.Native.ensure_table(catalog, table_name, fields)
+          assert {:ok, _status} =
+                   S3TablesAdaptor.Native.ensure_table(catalog, table_name, fields, properties)
 
           assert {:ok, :already_exists} =
-                   S3TablesAdaptor.Native.ensure_table(catalog, table_name, fields)
+                   S3TablesAdaptor.Native.ensure_table(catalog, table_name, fields, properties)
 
           assert {:ok, columns} = S3TablesAdaptor.Native.table_columns(catalog, table_name)
           assert columns == Enum.map(fields, & &1.name)

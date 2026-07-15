@@ -4,124 +4,123 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchema do
   tables (`otel_logs`, `otel_metrics`, `otel_traces`) so that ingestion supports
   ClickHouse's current OTEL format.
 
-  Field lists here are kept in lockstep with
-  `Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates.columns_for_type/1`
-  (see the drift-guard test in `iceberg_schema_test.exs`) and passed to the
-  `s3_tables_ex` NIF to build the actual Iceberg schema.
-
   ClickHouse `Nested` columns (e.g. `events.timestamp`, `exemplars.value`,
   `links.attributes`) are kept as flat, dotted column names for 1:1 parity —
   this is legal in Iceberg, but query engines that treat `.` as a struct-path
   separator require the identifier to be quoted, e.g. DuckDB needs
-  `"events.timestamp"` (unquoted, DuckDB's binder parses the dot as
-  table/struct access and errors). Athena/Spark are pickier about this; a
-  `list<struct>` remodel would be schema-breaking and is deferred.
+  `"events.timestamp"`.
+
+  Only `id` and `timestamp` are required. Each table is stamped with a
+  `logflare.schema-version` property (see `table_properties/0`) so future
+  provisioning runs can detect schema drift and drive migrations.
   """
 
   alias Logflare.LogEvent.TypeDetection
+
+  @schema_version "1"
 
   @type field :: %{name: String.t(), type: String.t(), required: boolean()}
 
   @log_fields [
     %{name: "id", type: "string", required: true},
-    %{name: "source_uuid", type: "string", required: true},
-    %{name: "source_name", type: "string", required: true},
-    %{name: "project", type: "string", required: true},
-    %{name: "trace_id", type: "string", required: true},
-    %{name: "span_id", type: "string", required: true},
-    %{name: "trace_flags", type: "int", required: true},
-    %{name: "severity_text", type: "string", required: true},
-    %{name: "severity_number", type: "int", required: true},
-    %{name: "service_name", type: "string", required: true},
-    %{name: "event_message", type: "string", required: true},
-    %{name: "scope_name", type: "string", required: true},
-    %{name: "scope_version", type: "string", required: true},
-    %{name: "scope_schema_url", type: "string", required: true},
-    %{name: "resource_schema_url", type: "string", required: true},
-    %{name: "resource_attributes", type: "map<string,string>", required: true},
-    %{name: "scope_attributes", type: "map<string,string>", required: true},
-    %{name: "log_attributes", type: "map<string,string>", required: true},
-    %{name: "mapping_config_id", type: "string", required: true},
+    %{name: "source_uuid", type: "string", required: false},
+    %{name: "source_name", type: "string", required: false},
+    %{name: "project", type: "string", required: false},
+    %{name: "trace_id", type: "string", required: false},
+    %{name: "span_id", type: "string", required: false},
+    %{name: "trace_flags", type: "int", required: false},
+    %{name: "severity_text", type: "string", required: false},
+    %{name: "severity_number", type: "int", required: false},
+    %{name: "service_name", type: "string", required: false},
+    %{name: "event_message", type: "string", required: false},
+    %{name: "scope_name", type: "string", required: false},
+    %{name: "scope_version", type: "string", required: false},
+    %{name: "scope_schema_url", type: "string", required: false},
+    %{name: "resource_schema_url", type: "string", required: false},
+    %{name: "resource_attributes", type: "map<string,string>", required: false},
+    %{name: "scope_attributes", type: "map<string,string>", required: false},
+    %{name: "log_attributes", type: "map<string,string>", required: false},
+    %{name: "mapping_config_id", type: "string", required: false},
     %{name: "ingested_at", type: "timestamptz", required: false},
     %{name: "timestamp", type: "timestamptz", required: true}
   ]
 
   @metric_fields [
     %{name: "id", type: "string", required: true},
-    %{name: "source_uuid", type: "string", required: true},
-    %{name: "source_name", type: "string", required: true},
-    %{name: "project", type: "string", required: true},
+    %{name: "source_uuid", type: "string", required: false},
+    %{name: "source_name", type: "string", required: false},
+    %{name: "project", type: "string", required: false},
     %{name: "time_unix", type: "timestamptz", required: false},
     %{name: "start_time_unix", type: "timestamptz", required: false},
-    %{name: "metric_name", type: "string", required: true},
-    %{name: "metric_description", type: "string", required: true},
-    %{name: "metric_unit", type: "string", required: true},
-    %{name: "metric_type", type: "string", required: true},
-    %{name: "service_name", type: "string", required: true},
-    %{name: "event_message", type: "string", required: true},
-    %{name: "scope_name", type: "string", required: true},
-    %{name: "scope_version", type: "string", required: true},
-    %{name: "scope_schema_url", type: "string", required: true},
-    %{name: "resource_schema_url", type: "string", required: true},
-    %{name: "resource_attributes", type: "map<string,string>", required: true},
-    %{name: "scope_attributes", type: "map<string,string>", required: true},
-    %{name: "attributes", type: "map<string,string>", required: true},
-    %{name: "aggregation_temporality", type: "string", required: true},
-    %{name: "is_monotonic", type: "boolean", required: true},
-    %{name: "flags", type: "int", required: true},
-    %{name: "value", type: "double", required: true},
-    %{name: "count", type: "long", required: true},
-    %{name: "sum", type: "double", required: true},
-    %{name: "min", type: "double", required: true},
-    %{name: "max", type: "double", required: true},
-    %{name: "scale", type: "int", required: true},
-    %{name: "zero_count", type: "long", required: true},
-    %{name: "positive_offset", type: "int", required: true},
-    %{name: "negative_offset", type: "int", required: true},
-    %{name: "bucket_counts", type: "list<long>", required: true},
-    %{name: "explicit_bounds", type: "list<double>", required: true},
-    %{name: "positive_bucket_counts", type: "list<long>", required: true},
-    %{name: "negative_bucket_counts", type: "list<long>", required: true},
-    %{name: "quantile_values", type: "list<double>", required: true},
-    %{name: "quantiles", type: "list<double>", required: true},
-    %{name: "exemplars.filtered_attributes", type: "list<map<string,string>>", required: true},
-    %{name: "exemplars.time_unix", type: "list<timestamptz>", required: true},
-    %{name: "exemplars.value", type: "list<double>", required: true},
-    %{name: "exemplars.span_id", type: "list<string>", required: true},
-    %{name: "exemplars.trace_id", type: "list<string>", required: true},
-    %{name: "mapping_config_id", type: "string", required: true},
+    %{name: "metric_name", type: "string", required: false},
+    %{name: "metric_description", type: "string", required: false},
+    %{name: "metric_unit", type: "string", required: false},
+    %{name: "metric_type", type: "string", required: false},
+    %{name: "service_name", type: "string", required: false},
+    %{name: "event_message", type: "string", required: false},
+    %{name: "scope_name", type: "string", required: false},
+    %{name: "scope_version", type: "string", required: false},
+    %{name: "scope_schema_url", type: "string", required: false},
+    %{name: "resource_schema_url", type: "string", required: false},
+    %{name: "resource_attributes", type: "map<string,string>", required: false},
+    %{name: "scope_attributes", type: "map<string,string>", required: false},
+    %{name: "attributes", type: "map<string,string>", required: false},
+    %{name: "aggregation_temporality", type: "string", required: false},
+    %{name: "is_monotonic", type: "boolean", required: false},
+    %{name: "flags", type: "int", required: false},
+    %{name: "value", type: "double", required: false},
+    %{name: "count", type: "long", required: false},
+    %{name: "sum", type: "double", required: false},
+    %{name: "min", type: "double", required: false},
+    %{name: "max", type: "double", required: false},
+    %{name: "scale", type: "int", required: false},
+    %{name: "zero_count", type: "long", required: false},
+    %{name: "positive_offset", type: "int", required: false},
+    %{name: "negative_offset", type: "int", required: false},
+    %{name: "bucket_counts", type: "list<long>", required: false},
+    %{name: "explicit_bounds", type: "list<double>", required: false},
+    %{name: "positive_bucket_counts", type: "list<long>", required: false},
+    %{name: "negative_bucket_counts", type: "list<long>", required: false},
+    %{name: "quantile_values", type: "list<double>", required: false},
+    %{name: "quantiles", type: "list<double>", required: false},
+    %{name: "exemplars.filtered_attributes", type: "list<map<string,string>>", required: false},
+    %{name: "exemplars.time_unix", type: "list<timestamptz>", required: false},
+    %{name: "exemplars.value", type: "list<double>", required: false},
+    %{name: "exemplars.span_id", type: "list<string>", required: false},
+    %{name: "exemplars.trace_id", type: "list<string>", required: false},
+    %{name: "mapping_config_id", type: "string", required: false},
     %{name: "ingested_at", type: "timestamptz", required: false},
     %{name: "timestamp", type: "timestamptz", required: true}
   ]
 
   @trace_fields [
     %{name: "id", type: "string", required: true},
-    %{name: "source_uuid", type: "string", required: true},
-    %{name: "source_name", type: "string", required: true},
-    %{name: "project", type: "string", required: true},
-    %{name: "trace_id", type: "string", required: true},
-    %{name: "span_id", type: "string", required: true},
-    %{name: "parent_span_id", type: "string", required: true},
-    %{name: "trace_state", type: "string", required: true},
-    %{name: "span_name", type: "string", required: true},
-    %{name: "span_kind", type: "string", required: true},
-    %{name: "service_name", type: "string", required: true},
-    %{name: "event_message", type: "string", required: true},
-    %{name: "duration", type: "long", required: true},
-    %{name: "status_code", type: "string", required: true},
-    %{name: "status_message", type: "string", required: true},
-    %{name: "scope_name", type: "string", required: true},
-    %{name: "scope_version", type: "string", required: true},
-    %{name: "resource_attributes", type: "map<string,string>", required: true},
-    %{name: "span_attributes", type: "map<string,string>", required: true},
-    %{name: "events.timestamp", type: "list<timestamptz>", required: true},
-    %{name: "events.name", type: "list<string>", required: true},
-    %{name: "events.attributes", type: "list<map<string,string>>", required: true},
-    %{name: "links.trace_id", type: "list<string>", required: true},
-    %{name: "links.span_id", type: "list<string>", required: true},
-    %{name: "links.trace_state", type: "list<string>", required: true},
-    %{name: "links.attributes", type: "list<map<string,string>>", required: true},
-    %{name: "mapping_config_id", type: "string", required: true},
+    %{name: "source_uuid", type: "string", required: false},
+    %{name: "source_name", type: "string", required: false},
+    %{name: "project", type: "string", required: false},
+    %{name: "trace_id", type: "string", required: false},
+    %{name: "span_id", type: "string", required: false},
+    %{name: "parent_span_id", type: "string", required: false},
+    %{name: "trace_state", type: "string", required: false},
+    %{name: "span_name", type: "string", required: false},
+    %{name: "span_kind", type: "string", required: false},
+    %{name: "service_name", type: "string", required: false},
+    %{name: "event_message", type: "string", required: false},
+    %{name: "duration", type: "long", required: false},
+    %{name: "status_code", type: "string", required: false},
+    %{name: "status_message", type: "string", required: false},
+    %{name: "scope_name", type: "string", required: false},
+    %{name: "scope_version", type: "string", required: false},
+    %{name: "resource_attributes", type: "map<string,string>", required: false},
+    %{name: "span_attributes", type: "map<string,string>", required: false},
+    %{name: "events.timestamp", type: "list<timestamptz>", required: false},
+    %{name: "events.name", type: "list<string>", required: false},
+    %{name: "events.attributes", type: "list<map<string,string>>", required: false},
+    %{name: "links.trace_id", type: "list<string>", required: false},
+    %{name: "links.span_id", type: "list<string>", required: false},
+    %{name: "links.trace_state", type: "list<string>", required: false},
+    %{name: "links.attributes", type: "list<map<string,string>>", required: false},
+    %{name: "mapping_config_id", type: "string", required: false},
     %{name: "ingested_at", type: "timestamptz", required: false},
     %{name: "timestamp", type: "timestamptz", required: true}
   ]
@@ -147,4 +146,10 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchema do
   def fields(:log), do: @log_fields
   def fields(:metric), do: @metric_fields
   def fields(:trace), do: @trace_fields
+
+  @doc """
+  Returns the Iceberg table properties stamped on every table at creation.
+  """
+  @spec table_properties() :: %{String.t() => String.t()}
+  def table_properties, do: %{"logflare.schema-version" => @schema_version}
 end

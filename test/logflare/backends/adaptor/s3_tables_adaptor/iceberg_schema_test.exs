@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchemaTest do
     list<long> list<double> list<string> list<timestamptz> list<map<string,string>>
   )
 
-  @optional_field_names ~w(ingested_at time_unix start_time_unix)
+  @required_field_names ~w(id timestamp)
 
   describe "fields/1" do
     test "matches ClickHouse's columns_for_type/1 names and order for every event type" do
@@ -40,14 +40,21 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchemaTest do
       end
     end
 
-    test "only ingested_at, time_unix, and start_time_unix are optional" do
+    test "only id and timestamp are required; all other columns are optional" do
       for event_type <- IcebergSchema.event_types(), field <- IcebergSchema.fields(event_type) do
-        if field.name in @optional_field_names do
-          refute field.required
-        else
+        if field.name in @required_field_names do
           assert field.required
+        else
+          refute field.required
         end
       end
+    end
+  end
+
+  describe "table_properties/0" do
+    test "stamps a schema version" do
+      assert %{"logflare.schema-version" => version} = IcebergSchema.table_properties()
+      assert version =~ ~r/^\d+$/
     end
   end
 

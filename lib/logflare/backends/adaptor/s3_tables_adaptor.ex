@@ -2,8 +2,9 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor do
   @moduledoc """
   Backend adaptor that writes batches of logs to AWS S3 Tables (Apache Iceberg).
 
-  This is scaffolding: ingestion is not yet implemented. The pipeline drains
-  batches without writing them.
+  Runs consolidated: one adaptor tree per backend across all sources (see
+  `Logflare.Backends.ConsolidatedSup`). Ingestion is not yet implemented — the
+  pipeline drains batches without writing them.
   """
 
   use Supervisor
@@ -15,12 +16,8 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
-  alias Logflare.Sources.Source
 
   @behaviour Adaptor
-
-  @type source_backend_tuple :: {Source.t(), Backend.t()}
-  @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
 
   @min_batch_timeout 1_000
   @max_batch_timeout 5_000
@@ -33,11 +30,14 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor do
     }
   end
 
+  @impl Adaptor
+  def consolidated_ingest?, do: true
+
   @doc false
   @impl Adaptor
-  @spec start_link(source_backend_tuple()) :: Supervisor.on_start()
-  def start_link({%Source{}, %Backend{}} = args) do
-    Supervisor.start_link(__MODULE__, args, name: adaptor_via(args))
+  @spec start_link(Backend.t()) :: Supervisor.on_start()
+  def start_link(%Backend{} = backend) do
+    Supervisor.start_link(__MODULE__, backend, name: Backends.via_backend(backend, __MODULE__))
   end
 
   @doc false
@@ -94,41 +94,20 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor do
   @impl Adaptor
   def supports_default_ingest?, do: true
 
-  @doc """
-  Generates a via tuple based on a `Source` and `Backend` pair for this adaptor instance.
-
-  See `Backends.via_source/3` for more details.
-  """
-  @spec adaptor_via(source_backend_tuple()) :: via_tuple()
-  def adaptor_via({%Source{} = source, %Backend{} = backend}) do
-    Backends.via_source(source, __MODULE__, backend)
-  end
-
-  @doc """
-  Generates a unique Broadway pipeline via tuple based on a `Source` and `Backend` pair.
-
-  See `Backends.via_source/3` for more details.
-  """
-  @spec pipeline_via(source_backend_tuple()) :: via_tuple()
-  def pipeline_via({%Source{} = source, %Backend{} = backend}) do
-    Backends.via_source(source, Pipeline, backend)
-  end
-
   @doc false
   @impl Supervisor
-  def init({%Source{} = source, %Backend{} = backend}) do
+  def init(%Backend{} = backend) do
     config = Adaptor.get_backend_config(backend)
 
     pipeline_args = [
-      pipeline_name: pipeline_via({source, backend}),
-      source_id: source.id,
-      backend_id: backend.id,
+      name: Backends.via_backend(backend, Pipeline),
+      backend: backend,
       batch_timeout: config.batch_timeout
     ]
 
     children =
       if(Application.get_env(:logflare, :env) != :test,
-        do: [CatalogManager.child_spec({source, backend})],
+        do: [CatalogManager.child_spec(backend)],
         else: []
       ) ++
         [

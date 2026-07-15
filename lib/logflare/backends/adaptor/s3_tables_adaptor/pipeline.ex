@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Pipeline do
   @moduledoc """
-  Pipeline for `S3TablesAdaptor`.
+  Broadway pipeline for `S3TablesAdaptor`, consuming the consolidated
+  per-backend queue (all sources of a backend share one pipeline).
 
   Scaffolding only: batches are drained without being written to S3 Tables.
   """
@@ -27,18 +28,17 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Pipeline do
   @spec start_link(Keyword.t()) ::
           {:ok, pid()} | :ignore | {:error, {:already_started, pid()} | term()}
   def start_link(args) when is_list(args) do
-    with pipeline_name <- Keyword.fetch!(args, :pipeline_name),
-         source_id <- Keyword.fetch!(args, :source_id),
-         backend_id <- Keyword.fetch!(args, :backend_id),
+    with {name, args} <- Keyword.pop(args, :name),
+         backend <- Keyword.fetch!(args, :backend),
          batch_timeout <- Keyword.fetch!(args, :batch_timeout) do
       Broadway.start_link(__MODULE__,
-        name: pipeline_name,
+        name: name,
         hibernate_after: 5_000,
         spawn_opt: [
           fullsweep_after: 10
         ],
         producer: [
-          module: {BufferProducer, [source_id: source_id, backend_id: backend_id]},
+          module: {BufferProducer, [backend_id: backend.id, consolidated: true]},
           transformer: {__MODULE__, :transform, []},
           concurrency: @producer_concurrency
         ],
@@ -53,7 +53,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Pipeline do
             batch_timeout: batch_timeout
           ]
         ],
-        context: %{source_id: source_id, backend_id: backend_id}
+        context: %{backend_id: backend.id}
       )
     end
   end
