@@ -66,15 +66,12 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
     assert %{secret_access_key: "REDACTED"} = S3TablesAdaptor.redact_config(config)
   end
 
-  describe "Native module" do
+  describe "Native module (integration)" do
+    @describetag :integration
     test "invalid credentials" do
       assert {:error, err} = S3TablesAdaptor.Native.init_catalog(@valid_config)
       assert err =~ "invalid"
     end
-  end
-
-  describe "Native module (integration)" do
-    @describetag :integration
 
     setup do
       table_bucket_arn = System.get_env("LOGFLARE_S3_TABLES_TEST_BUCKET_ARN")
