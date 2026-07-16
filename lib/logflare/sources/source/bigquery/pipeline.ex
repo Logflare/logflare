@@ -136,8 +136,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :ok
   end
 
-  # cache events in the recent records table if the source is ingest rate is low.
-  # otherwise delete the event completly from the generations table.
+  # Always deletes the generation-store row. If the source's ingest rate is low, also
+  # keeps an independent copy in the recent-events cache first, so "recent logs" reads
+  # (list_recent_logs_local/2, Sources.source_idle?/1) still see it long after the row
+  # itself — and its generation — is gone.
   @spec finalize_acked_events(IngestEventQueue.queues_key(), [Message.t()]) :: :ok
   defp finalize_acked_events(_queues_key, []), do: :ok
 
@@ -145,12 +147,16 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     record? = bid == nil and should_record_recent?(sid)
 
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
-      if record? do
-        IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
-      else
-        IngestEventQueue.delete_id(pointer.tid, pointer.id)
-      end
+      if record?, do: record_recent_copy(queues_key, pointer)
+      IngestEventQueue.delete_id(pointer.tid, pointer.id)
     end)
+  end
+
+  defp record_recent_copy(queues_key, %LogEventPointer{} = pointer) do
+    case IngestEventQueue.lookup_event(pointer.tid, pointer.id) do
+      nil -> :ok
+      event -> IngestEventQueue.record_recent_event(queues_key, event)
+    end
   end
 
   # No source to resolve (e.g. it was deleted mid-flight) means no ingest rate to check

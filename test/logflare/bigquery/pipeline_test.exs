@@ -110,7 +110,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
     end
 
-    test "ack defers deletion and records a pointer into the recent-events cache instead",
+    test "ack deletes the generation-store row immediately but records an independent copy into the recent-events cache",
          %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
@@ -125,10 +125,10 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       mod.ack(ref, [message], [])
 
-      # deletion is deferred to whenever the recent-events pointer is evicted (see
-      # IngestEventQueue.truncate_recent/2, sweep_recent_events/1) — the row is still
-      # there for a "recent logs" read to resolve in the meantime
-      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == le
+      # the generation-store row is gone immediately — the recent-events cache holds
+      # an independent copy instead, so it stays visible even after the originating
+      # generation is later rotated out and dropped by GenerationJanitor
+      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
       assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == [le]
     end
 

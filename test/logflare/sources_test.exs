@@ -414,7 +414,8 @@ defmodule Logflare.SourcesTest do
       {:ok, [pointer], _tid} =
         Backends.IngestEventQueue.pop_pending_pointers({source.id, nil, nil}, 1)
 
-      Backends.IngestEventQueue.record_recent_pointer({source.id, nil}, pointer.id, pointer.tid)
+      Backends.IngestEventQueue.record_recent_event({source.id, nil}, old_event)
+      Backends.IngestEventQueue.delete_id(pointer.tid, pointer.id)
 
       TestUtils.retry_assert(fn ->
         assert Backends.source_sup_started?(source)
@@ -454,7 +455,8 @@ defmodule Logflare.SourcesTest do
       {:ok, [pointer], _tid} =
         Backends.IngestEventQueue.pop_pending_pointers({source.id, nil, nil}, 1)
 
-      Backends.IngestEventQueue.record_recent_pointer({source.id, nil}, pointer.id, pointer.tid)
+      Backends.IngestEventQueue.record_recent_event({source.id, nil}, event)
+      Backends.IngestEventQueue.delete_id(pointer.tid, pointer.id)
 
       TestUtils.retry_assert(fn ->
         assert [_event] = Backends.list_recent_logs_local(source, 1)

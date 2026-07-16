@@ -274,14 +274,21 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   # --- recent-events cache ---
   #
-  # BigQuery's ack (the only real caller — see finalize_acked_events/2) already holds a
-  # claimed pointer with the generation-store row still present, and can choose between
-  # deleting it now or deferring that deletion by recording just a pointer here instead
-  # (record_recent_pointer/3 — a cheap {id, tid} reference, no event copy). A deferred
-  # row stays fully resolvable via the ordinary generation-store scan (fetch_events/2)
-  # for as long as it isn't evicted — this cache exists only so QueueJanitor/
-  # GenerationJanitor know which ids still owe a delete_id/2 once they do evict it (see
-  # truncate_recent/2, sweep_recent_events/1), not as a separate read path of its own.
+  # BigQuery's ack (the only real caller — see finalize_acked_events/2) always deletes
+  # an acked pointer's generation-store row immediately, then separately records a full
+  # copy of the event here (record_recent_event/2) when the source's ingest rate is low
+  # enough to want "recent logs" visibility. Deliberately a copy, not a pointer:
+  # generations are dropped by GenerationJanitor purely by age, with no regard for
+  # whether some row inside is still referenced elsewhere, so a pointer-based cache
+  # can't outlive its own generation — see the PR discussion this replaced
+  # (github.com/Logflare/logflare/pull/3690#discussion_r3597505520). A copy has no such
+  # dependency, so GenerationJanitor purges this cache on its own, independent (and much
+  # longer) schedule — see recent_events_max_age_ms there, which needs to comfortably
+  # cover Sources.source_idle?/1's 5-minute has_recent_logs_within?/2 dependency.
+  #
+  # fetch_events/2 merges this cache into its generation-store scan, so
+  # list_recent_logs_local/2 sees a source's recently-acked events long after their
+  # originating generation is gone, not just its still-pending/claimed ones.
   #
   # ClickHouse's ack deliberately never writes here: list_recent_logs_local/2
   # short-circuits to [] for any consolidated backend without reading this cache at
@@ -289,36 +296,32 @@ defmodule Logflare.Backends.IngestEventQueue do
   # event), so recording would be a pure, unbounded, unread cost. BufferProducer's
   # do_pop_key (non-id-passing adaptors) doesn't need this either — it claims via
   # pop_pending/2, which atomically deletes the generation-store row as part of
-  # claiming, and none of those adaptors need deferred "recent logs" visibility.
+  # claiming, and none of those adaptors need "recent logs" visibility.
 
   @doc """
-  Records a pointer into the recent-events cache for `queues_key`, deferring deletion
-  of the referenced generation-store row to whenever this pointer is evicted (see
-  `truncate_recent/2`, `sweep_recent_events/1`) instead of deleting it immediately.
+  Records a copy of `event` into the recent-events cache for `queues_key`, independent
+  of the generation store — it stays visible via `list_recent_events/2` (and therefore
+  `fetch_events/2`) even after its originating generation has long since rotated out
+  and been dropped.
 
-  Use this when the caller already has the generation-store row claimed but not yet
-  deleted (BigQuery's ack, via `pop_pending_pointers/2`) and can choose between deleting
-  it now or keeping it around a bit longer for a "recent logs" read.
+  Use this after the caller has already deleted the event's generation-store row
+  (BigQuery's ack, via `pop_pending_pointers/2` + `delete_id/2`) but still wants it to
+  remain visible for a "recent logs" read.
   """
-  @spec record_recent_pointer(
+  @spec record_recent_event(
           queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
-          term(),
-          :ets.tid()
+          LogEvent.t()
         ) :: :ok
-  def record_recent_pointer(queues_key, id, gen_tid) do
+  def record_recent_event(queues_key, %LogEvent{} = event) do
     now = System.monotonic_time(:millisecond)
     key = {queues_key, now, System.unique_integer([:monotonic])}
-    :ets.insert(@ets_recent_events, {key, {id, gen_tid}})
+    :ets.insert(@ets_recent_events, {key, event})
     :ok
   end
 
   @doc """
-  Lists up to `n` recently-processed events for `queues_key` from the recent-events
-  cache, most-recently-recorded first.
-
-  Each pointer is resolved via `lookup_event/2` and dropped if the generation has
-  already rotated out from under it (the same "not found" handling as any other
-  lookup miss) — so this can return fewer than `n` even when that many rows exist.
+  Lists up to `n` recently-recorded event copies for `queues_key`, most-recently-recorded
+  first.
   """
   @spec list_recent_events(
           queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
@@ -328,67 +331,47 @@ defmodule Logflare.Backends.IngestEventQueue do
     ms = [{{{queues_key, :"$1", :"$2"}, :"$3"}, [], [:"$3"]}]
 
     case :ets.select_reverse(@ets_recent_events, ms, n) do
-      {values, _cont} ->
-        values
-        |> Enum.map(fn {id, gen_tid} -> lookup_event(gen_tid, id) end)
-        |> Enum.reject(&is_nil/1)
-
-      :"$end_of_table" ->
-        []
+      {values, _cont} -> values
+      :"$end_of_table" -> []
     end
   end
 
   @doc """
   Drops recent-events cache rows older than `max_age_ms`, across every `queues_key` in
-  one pass, deleting each dropped pointer row's referenced generation-store event too.
-  Called from `GenerationJanitor`'s periodic tick.
+  one pass. Called from `GenerationJanitor`'s periodic tick, on its own
+  `recent_events_max_age_ms` schedule — independent of generation eviction's
+  `max_age_ms`, since these rows no longer reference the generation store at all.
   """
   @spec sweep_recent_events(non_neg_integer()) :: :ok
   def sweep_recent_events(max_age_ms) do
     cutoff = System.monotonic_time(:millisecond) - max_age_ms
 
-    ms = [
-      {{{:"$1", :"$2", :"$3"}, :"$4"}, [{:<, :"$2", cutoff}], [{{:"$1", :"$2", :"$3", :"$4"}}]}
-    ]
-
-    @ets_recent_events
-    |> :ets.select(ms)
-    |> Enum.each(fn {queues_key, ts, uniq, pointer} ->
-      :ets.delete(@ets_recent_events, {queues_key, ts, uniq})
-      delete_recent_pointer(pointer)
-    end)
+    ms = [{{{:_, :"$1", :_}, :_}, [{:<, :"$1", cutoff}], [true]}]
+    :ets.select_delete(@ets_recent_events, ms)
 
     :ok
   end
 
   @doc """
   Trims the recent-events cache for a single `queues_key` down to at most `n` rows,
-  keeping the most-recently-recorded ones and deleting each evicted pointer row's
-  referenced generation-store event too. The count-bounded counterpart to
+  keeping the most-recently-recorded ones. The count-bounded counterpart to
   `sweep_recent_events/1`'s age bound — this is what `QueueJanitor` calls per queue on
-  its own schedule, taking over the job the old `:ingested`-status pointer truncate used
-  to (ineffectually) attempt back when a pointer could be marked ingested and left in
-  place instead of deleted outright.
+  its own schedule.
   """
   @spec truncate_recent(
           queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
           non_neg_integer()
         ) :: :ok
   def truncate_recent(queues_key, n) do
-    ms = [{{{queues_key, :"$1", :"$2"}, :"$3"}, [], [{{:"$1", :"$2", :"$3"}}]}]
+    ms = [{{{queues_key, :"$1", :"$2"}, :_}, [], [{{:"$1", :"$2"}}]}]
 
     @ets_recent_events
     |> :ets.select_reverse(ms)
     |> Enum.drop(n)
-    |> Enum.each(fn {ts, uniq, pointer} ->
-      :ets.delete(@ets_recent_events, {queues_key, ts, uniq})
-      delete_recent_pointer(pointer)
-    end)
+    |> Enum.each(fn {ts, uniq} -> :ets.delete(@ets_recent_events, {queues_key, ts, uniq}) end)
 
     :ok
   end
-
-  defp delete_recent_pointer({id, gen_tid}), do: delete_id(gen_tid, id)
 
   # --- pointer table mapper ---
 
@@ -1002,28 +985,26 @@ defmodule Logflare.Backends.IngestEventQueue do
   Fetches up to `n` recent events for a `{sid, bid}`/consolidated queues_key, resolved
   to full `LogEvent`s. Read-only, doesn't claim anything.
 
-  Reads the shared generation store directly, rather than iterating per-pid pointer
-  tables — the store isn't per-pid, so iterating per-pid would return duplicates, and
-  would miss anything already claimed: a claimed pointer is gone, but the event is
-  still in the generation store until rotation reclaims it. This alone is also enough
-  to surface events BigQuery's ack has deferred deletion for (see
-  `record_recent_pointer/3`) — a deferred row is deliberately left in place in the
-  generation store, so it's already visible to this same scan without needing to also
-  read the recent-events cache separately; that cache exists purely so
-  QueueJanitor/GenerationJanitor know which ids still owe a `delete_id/2` once evicted,
-  not as its own read path.
+  Merges two sources: the shared generation store directly (rather than iterating
+  per-pid pointer tables — the store isn't per-pid, so that would return duplicates,
+  and would miss anything already claimed: a claimed pointer is gone, but the event is
+  still in the generation store until rotation reclaims it), and the recent-events
+  cache (`list_recent_events/2` — BigQuery's ack keeps a copy here for events it's
+  already deleted from the generation store, so they'd otherwise be invisible once
+  acked; see `record_recent_event/2`). An event only ever lives in one of the two at a
+  time, so no de-duplication is needed.
 
   This is what `list_recent_logs_local/2` uses.
   """
   @spec fetch_events(queues_key() | consolidated_queues_key(), integer()) ::
           {:ok, [LogEvent.t()]}
   def fetch_events(sid_bid, n) when is_integer(n) do
-    recent =
+    from_generations =
       sid_bid
       |> list_generations()
       |> Enum.flat_map(fn {tid, _created_at} -> select_generation_events(tid, n) end)
 
-    {:ok, recent}
+    {:ok, from_generations ++ list_recent_events(sid_bid, n)}
   end
 
   defp select_generation_events(tid, n) do

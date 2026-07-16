@@ -350,16 +350,17 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 5)
       assert IngestEventQueue.total_pending(sbp) == 0
 
-      # deferring deletion via a recent-events pointer (BigQuery's ack pattern) keeps
-      # the event resolvable a bit longer instead of deleting it immediately
-      IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
+      # recording an independent copy (BigQuery's ack pattern) keeps the event
+      # visible via the recent-events cache without depending on the generation
+      # store at all
+      IngestEventQueue.record_recent_event(queues_key, le)
       assert IngestEventQueue.list_recent_events(queues_key, 10) == [le]
 
       # truncate_recent/2 bounds it per queue, same job QueueJanitor does on a
-      # schedule, and also deletes the now-evicted pointer's underlying event
+      # schedule — it only ever evicts the cache row, never the generation store
       assert :ok = IngestEventQueue.truncate_recent(queues_key, 0)
       assert IngestEventQueue.list_recent_events(queues_key, 10) == []
-      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == nil
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == le
     end
 
     test "drop n items from a queue", %{source: source, source_backend_pid: sbp} do
@@ -1234,11 +1235,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       events = for _ <- 1..5, do: build(:log_event, source: source)
       IngestEventQueue.add_to_table(consolidated_key, events)
-      {:ok, pointers, _tid} = IngestEventQueue.pop_pending_pointers(consolidated_key, 5)
+      {:ok, _pointers, _tid} = IngestEventQueue.pop_pending_pointers(consolidated_key, 5)
       queues_key = {:consolidated, backend.id}
 
-      Enum.each(pointers, fn pointer ->
-        IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
+      Enum.each(events, fn event ->
+        IngestEventQueue.record_recent_event(queues_key, event)
       end)
 
       # pop_pending_pointers/2 deletes the pointer row outright (there's no lingering
@@ -1359,32 +1360,27 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   end
 
   describe "recent-events cache" do
-    # Records a real event into `key`'s table and defers its deletion via a
-    # recent-events pointer (BigQuery ack's pattern) so tests below can exercise
-    # list_recent_events/2, sweep_recent_events/1, truncate_recent/2 against a real,
-    # resolvable pointer instead of a bare LogEvent (the cache only ever stores
-    # pointers now — see record_recent_pointer/3).
-    defp seed_recent_pointer(queues_key) do
-      key = Tuple.insert_at(queues_key, tuple_size(queues_key), self())
-      IngestEventQueue.upsert_tid(key)
+    # Records a bare LogEvent copy for `queues_key` (BigQuery ack's pattern) so tests
+    # below can exercise list_recent_events/2, sweep_recent_events/1, truncate_recent/2
+    # against a real event — the cache only ever stores independent copies now, no
+    # generation-store dependency (see record_recent_event/2).
+    defp seed_recent_event(queues_key) do
       le = build(:log_event)
-      IngestEventQueue.add_to_table(key, [le])
-      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
-      IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
+      IngestEventQueue.record_recent_event(queues_key, le)
       le
     end
 
-    test "record_recent_pointer/3 + list_recent_events/2 round-trip, most recent first" do
+    test "record_recent_event/2 + list_recent_events/2 round-trip, most recent first" do
       queues_key = {:consolidated, System.unique_integer([:positive])}
-      le1 = seed_recent_pointer(queues_key)
-      le2 = seed_recent_pointer(queues_key)
+      le1 = seed_recent_event(queues_key)
+      le2 = seed_recent_event(queues_key)
 
       assert IngestEventQueue.list_recent_events(queues_key, 10) == [le2, le1]
     end
 
     test "list_recent_events/2 respects the requested count" do
       queues_key = {:consolidated, System.unique_integer([:positive])}
-      for _ <- 1..5, do: seed_recent_pointer(queues_key)
+      for _ <- 1..5, do: seed_recent_event(queues_key)
 
       assert length(IngestEventQueue.list_recent_events(queues_key, 2)) == 2
     end
@@ -1392,8 +1388,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     test "list_recent_events/2 only returns events for the given queues_key" do
       key1 = {:consolidated, System.unique_integer([:positive])}
       key2 = {:consolidated, System.unique_integer([:positive])}
-      le1 = seed_recent_pointer(key1)
-      le2 = seed_recent_pointer(key2)
+      le1 = seed_recent_event(key1)
+      le2 = seed_recent_event(key2)
 
       assert IngestEventQueue.list_recent_events(key1, 10) == [le1]
       assert IngestEventQueue.list_recent_events(key2, 10) == [le2]
@@ -1401,7 +1397,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     test "sweep_recent_events/1 drops rows older than max_age_ms" do
       queues_key = {:consolidated, System.unique_integer([:positive])}
-      seed_recent_pointer(queues_key)
+      seed_recent_event(queues_key)
 
       :timer.sleep(20)
 
@@ -1411,13 +1407,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     test "sweep_recent_events/1 keeps rows younger than max_age_ms" do
       queues_key = {:consolidated, System.unique_integer([:positive])}
-      le = seed_recent_pointer(queues_key)
+      le = seed_recent_event(queues_key)
 
       assert :ok = IngestEventQueue.sweep_recent_events(:timer.minutes(5))
       assert IngestEventQueue.list_recent_events(queues_key, 10) == [le]
     end
 
-    test "record_recent_pointer/3 + list_recent_events/2 resolves the pointer to its event" do
+    test "recorded events remain visible after their originating generation is dropped" do
       key = {:consolidated, System.unique_integer([:positive]), self()}
       queues_key = {:consolidated, elem(key, 1)}
       IngestEventQueue.upsert_tid(key)
@@ -1425,51 +1421,25 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.add_to_table(key, [le])
 
       {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
+      IngestEventQueue.record_recent_event(queues_key, le)
+      IngestEventQueue.delete_id(pointer.tid, pointer.id)
 
-      assert :ok = IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
-      # the generation-store row is deliberately still there, deletion deferred
-      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == le
+      assert [{gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
+      :ok = IngestEventQueue.drop_generation(queues_key, gen_tid)
+
+      # the generation-store row is long gone, but the independent copy survives —
+      # this is the exact case github.com/Logflare/logflare/pull/3690#discussion_r3597505520
+      # flagged against the old pointer-based cache
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == nil
       assert IngestEventQueue.list_recent_events(queues_key, 10) == [le]
     end
 
-    test "list_recent_events/2 drops a pointer whose generation-store row is already gone" do
+    test "truncate_recent/2 evicts only the cache row, not any generation-store data" do
       queues_key = {:consolidated, System.unique_integer([:positive])}
-      gen_tid = :ets.new(:fake_generation, [:set, :public])
-
-      assert :ok = IngestEventQueue.record_recent_pointer(queues_key, "missing-id", gen_tid)
-      assert IngestEventQueue.list_recent_events(queues_key, 10) == []
-    end
-
-    test "truncate_recent/2 deletes an evicted pointer's referenced generation-store event too" do
-      key = {:consolidated, System.unique_integer([:positive]), self()}
-      queues_key = {:consolidated, elem(key, 1)}
-      IngestEventQueue.upsert_tid(key)
-      le = build(:log_event)
-      IngestEventQueue.add_to_table(key, [le])
-
-      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
-      IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
+      seed_recent_event(queues_key)
 
       assert :ok = IngestEventQueue.truncate_recent(queues_key, 0)
       assert IngestEventQueue.list_recent_events(queues_key, 10) == []
-      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == nil
-    end
-
-    test "sweep_recent_events/1 deletes an evicted pointer's referenced generation-store event too" do
-      key = {:consolidated, System.unique_integer([:positive]), self()}
-      queues_key = {:consolidated, elem(key, 1)}
-      IngestEventQueue.upsert_tid(key)
-      le = build(:log_event)
-      IngestEventQueue.add_to_table(key, [le])
-
-      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
-      IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
-
-      :timer.sleep(20)
-
-      assert :ok = IngestEventQueue.sweep_recent_events(10)
-      assert IngestEventQueue.list_recent_events(queues_key, 10) == []
-      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == nil
     end
   end
 
@@ -1524,7 +1494,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
 
     test "do_rotate/1 is a no-op for a queues_key with no generations" do
-      assert :ok = GenerationJanitor.do_rotate(%{interval: 50, max_age_ms: 10})
+      assert :ok =
+               GenerationJanitor.do_rotate(%{
+                 interval: 50,
+                 max_age_ms: 10,
+                 recent_events_max_age_ms: 10
+               })
     end
   end
 

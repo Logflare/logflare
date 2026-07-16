@@ -19,8 +19,13 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   `max_age_ms` to `2 * max_age_ms` old.
 
   Each tick also sweeps the recent-events cache (see
-  `IngestEventQueue.record_recent_pointer/3`, `sweep_recent_events/1`) down to the same
-  `max_age_ms`.
+  `IngestEventQueue.record_recent_event/2`, `sweep_recent_events/1`) down to
+  `recent_events_max_age_ms` — a separate, much longer age bound than `max_age_ms`.
+  That cache stores independent event copies now, not generation-store pointers (see
+  its moduledoc section), so its retention is no longer coupled to generation
+  eviction at all; it needs to instead comfortably outlast
+  `Sources.source_idle?/1`'s 5-minute `has_recent_logs_within?/2` dependency, or a
+  quiet source could get shut down before that window elapses.
 
   See `do_rotate/2` for a scoped, single-key variant used by tests that don't want the
   full global sweep's cost or blast radius.
@@ -33,6 +38,7 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
 
   @default_interval :timer.seconds(60)
   @default_max_age_ms :timer.minutes(2)
+  @default_recent_events_max_age_ms :timer.minutes(10)
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -43,7 +49,9 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   def init(opts) do
     state = %{
       interval: Keyword.get(opts, :interval, @default_interval),
-      max_age_ms: Keyword.get(opts, :max_age_ms, @default_max_age_ms)
+      max_age_ms: Keyword.get(opts, :max_age_ms, @default_max_age_ms),
+      recent_events_max_age_ms:
+        Keyword.get(opts, :recent_events_max_age_ms, @default_recent_events_max_age_ms)
     }
 
     schedule(state)
@@ -62,7 +70,7 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   @spec do_rotate(map()) :: :ok
   def do_rotate(state) do
     do_rotate(state, IngestEventQueue.list_generation_queues_keys())
-    IngestEventQueue.sweep_recent_events(state.max_age_ms)
+    IngestEventQueue.sweep_recent_events(state.recent_events_max_age_ms)
     :ok
   end
 
