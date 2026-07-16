@@ -957,20 +957,22 @@ defmodule Logflare.Backends.IngestEventQueue do
          {selected, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
       events =
         selected
-        |> Enum.map(fn {id, gen_tid} ->
-          :ets.delete(tid, id)
-
-          case :ets.take(gen_tid, id) do
-            [{^id, event}] -> event
-            [] -> nil
-          end
-        end)
+        |> Enum.map(&resolve_and_delete_pending(tid, &1))
         |> Enum.reject(&is_nil/1)
 
       {:ok, events}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, []}
+    end
+  end
+
+  defp resolve_and_delete_pending(tid, {id, gen_tid}) do
+    :ets.delete(tid, id)
+
+    case :ets.take(gen_tid, id) do
+      [{^id, event}] -> event
+      [] -> nil
     end
   end
 
