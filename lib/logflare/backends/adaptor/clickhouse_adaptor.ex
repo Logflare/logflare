@@ -670,15 +670,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
     sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
 
-    any_above_threshold? = Enum.any?(lens_no_startup_values, &(&1 >= @scaling_threshold))
+    # Averaged rather than "any single queue over threshold": round-robin's own
+    # load-based weighting (see IngestEventQueue.weight_by_load/1) already keeps a
+    # single clogged pipeline from staying that way for long, so gating scale-up on
+    # one outlier just adds pipelines the fleet doesn't actually need — spreading the
+    # same total inflow thinner and shrinking every pipeline's average ClickHouse batch
+    # size, which is the whole thing this function is meant to avoid.
+    avg_len =
+      case lens_no_startup_values do
+        [] -> 0
+        values -> Enum.sum(values) / length(values)
+      end
+
+    fleet_above_threshold? = avg_len >= @scaling_threshold
 
     cond do
       # Scale up if startup queue has events (pipeline not yet ready)
       startup_size > 0 ->
         state.pipeline_count + 1
 
-      # Scale up if any queue exceeds threshold
-      any_above_threshold? and len > 0 ->
+      # Scale up only if the fleet is loaded on average, not just one outlier
+      fleet_above_threshold? and len > 0 ->
         state.pipeline_count + 1
 
       # Faster decrease when queues are low

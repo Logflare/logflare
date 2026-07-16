@@ -30,6 +30,13 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_recent_events :ingest_event_queue_recent_events
   @max_queue_size 30_000
   @consolidated_max_queue_size 60_000
+  # How many round-robin slots the currently-emptiest eligible queue gets per cycle,
+  # relative to the currently-most-loaded eligible queue's one slot — see
+  # weight_by_load/1. Self-normalizing against the fleet's own current spread rather
+  # than any fixed threshold, so a single clogged queue gets proportionally less new
+  # traffic without ever being fully excluded (excluding it entirely risks dumping
+  # bursts into the startup queue with no guaranteed prompt drain — see add_to_table/3).
+  @max_queue_weight 5
 
   @type source_backend :: {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil}
   @type source_backend_pid ::
@@ -45,6 +52,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   defguardp is_pid_or_nil(value) when is_pid(value) or is_nil(value)
 
   def max_queue_size, do: @max_queue_size
+  def max_consolidated_queue_size, do: @consolidated_max_queue_size
 
   @doc """
   Returns true if the key is a consolidated queue key.
@@ -540,26 +548,25 @@ defmodule Logflare.Backends.IngestEventQueue do
     check_queue_size = Keyword.get(opts, :check_queue_size, true)
     startup_queue = {:consolidated, bid, nil}
 
-    reducer =
+    filter_fn =
       if check_queue_size do
         fn
-          {{:consolidated, _, nil}, _}, acc -> acc
-          {_obj, count}, acc when count >= @consolidated_max_queue_size -> acc
-          {obj, _count}, acc -> [obj | acc]
+          {{:consolidated, _, nil}, _} -> false
+          {_obj, count} -> count < @consolidated_max_queue_size
         end
       else
         fn
-          {{:consolidated, _, nil}, _}, acc -> acc
-          {obj, _count}, acc -> [obj | acc]
+          {{:consolidated, _, nil}, _} -> false
+          _ -> true
         end
       end
 
     if no_get_tid do
       with all = [_ | _] <- list_counts_with_tids(key),
-           available_queues = [_ | _] <- Enum.reduce(all, [], reducer) do
+           eligible = [_ | _] <- Enum.filter(all, filter_fn) do
         Logflare.Utils.chunked_round_robin(
           batch,
-          available_queues,
+          weight_by_load(eligible, 100),
           chunk_size,
           &add_to_target_table/2
         )
@@ -599,26 +606,25 @@ defmodule Logflare.Backends.IngestEventQueue do
     check_queue_size = Keyword.get(opts, :check_queue_size, true)
     startup_queue = {sid, bid, nil}
 
-    reducer =
+    filter_fn =
       if check_queue_size do
         fn
-          {{_, _, nil}, _}, acc -> acc
-          {_obj, count}, acc when count >= @max_queue_size -> acc
-          {obj, _count}, acc -> [obj | acc]
+          {{_, _, nil}, _} -> false
+          {_obj, count} -> count < @max_queue_size
         end
       else
         fn
-          {{_, _, nil}, _}, acc -> acc
-          {obj, _count}, acc -> [obj | acc]
+          {{_, _, nil}, _} -> false
+          _ -> true
         end
       end
 
     if no_get_tid do
       with all = [_ | _] <- list_counts_with_tids(sid_bid),
-           available_queues = [_ | _] <- Enum.reduce(all, [], reducer) do
+           eligible = [_ | _] <- Enum.filter(all, filter_fn) do
         Logflare.Utils.chunked_round_robin(
           batch,
-          available_queues,
+          weight_by_load(eligible, @max_queue_size),
           chunk_size,
           &add_to_target_table/2
         )
@@ -709,6 +715,38 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp pointer_queues_key({sid, bid, _pid}), do: {sid, bid}
 
   defp add_to_target_table(chunk, target), do: add_to_table(target, chunk)
+
+  # Expands `entries` (already filtered down to eligible, non-startup, non-hard-capped
+  # queues) into a weighted target list for chunked_round_robin/4 — a queue appears
+  # more than once per cycle to get more than one chunk_size-sized share. Weight is
+  # relative to the CURRENT spread between the least- and most-loaded eligible queue,
+  # not any fixed threshold: the most-loaded one always gets exactly 1 slot (still a
+  # real, actively-consumed target — never zero, unlike fully excluding it, which would
+  # risk dumping a burst into the startup queue with no guaranteed prompt drain), while
+  # the least-loaded one gets up to @max_queue_weight slots.
+  #
+  # `noise_floor` normalizing against the spread alone would amplify a merely-noisy difference
+  # (e.g. 990 vs. 1010) up to the full weight range just as readily as a genuinely
+  # clogged queue, needlessly skewing distribution when the fleet is actually balanced.
+  # Below 5% of max_size, treat the fleet as balanced and round-robin plainly.
+  @spec weight_by_load([{term(), non_neg_integer()}], non_neg_integer()) :: [term()]
+  defp weight_by_load(entries, noise_floor) do
+    counts = Enum.map(entries, &elem(&1, 1))
+    max_count = Enum.max(counts)
+    min_count = Enum.min(counts)
+    spread = max_count - min_count
+
+    if spread <= noise_floor do
+      Enum.map(entries, &elem(&1, 0))
+    else
+      entries
+      |> Enum.sort_by(&elem(&1, 1), :asc)
+      |> Enum.flat_map(fn {obj, count} ->
+        weight = 1 + round((max_count - count) / spread * (@max_queue_weight - 1))
+        List.duplicate(obj, weight)
+      end)
+    end
+  end
 
   @doc """
   Moves an entire queue from an origin to a target.
