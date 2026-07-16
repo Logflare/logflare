@@ -252,6 +252,30 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Drops every live generation for `queues_key` outright — not just aged ones — and
+  clears its "current generation" entry, so a later revival creates a fresh table
+  instead of returning a stale, already-dropped tid.
+
+  Use this only once nothing references `queues_key` anymore (see
+  `GenerationJanitor`, gated on `list_queues/1` returning `[]`) — this is what lets a
+  queues_key whose owning source/backend supervisor has since died stop retaining
+  ETS tables and bookkeeping entries forever (see
+  github.com/Logflare/logflare/pull/3690#discussion_r3597179919). Any event still
+  sitting in a pruned generation was already unclaimable: its pointer table died
+  with the same owner, so there's nothing left anywhere that could still claim it.
+  """
+  @spec prune_generations(queues_key() | consolidated_queues_key() | spool_producer_queues_key()) ::
+          :ok
+  def prune_generations(queues_key) do
+    for {tid, _created_at} <- list_generations(queues_key) do
+      drop_generation(queues_key, tid)
+    end
+
+    :ets.delete(@ets_current_generation, queues_key)
+    :ok
+  end
+
+  @doc """
   Looks up a single event directly in a generation table.
 
   `tid` here is a generation's tid (e.g. a claimed `LogEventPointer.tid`) — a direct
@@ -1253,8 +1277,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Select queues by source-backend combination or consolidated queue.
   """
-  @spec list_queues(queues_key() | consolidated_queues_key()) ::
-          [table_key() | consolidated_table_key()]
+  @spec list_queues(queues_key() | consolidated_queues_key() | spool_producer_queues_key()) ::
+          [table_key() | consolidated_table_key() | spool_producer_table_key()]
   def list_queues({:consolidated, bid}) when is_integer(bid) do
     ms =
       Ex2ms.fun do

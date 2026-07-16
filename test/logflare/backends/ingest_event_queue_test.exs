@@ -1493,6 +1493,59 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert [_ | _] = IngestEventQueue.list_generations(queues_key)
     end
 
+    test "prunes a queues_key with no live queue instead of rotating a fresh generation" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      queues_key = {source.id, backend.id}
+
+      # Simulate a producer that has since died: its owned :ets table is reclaimed
+      # by the VM on exit (upsert_tid/add_to_table must run inside the owner
+      # process itself, same as BufferProducer's real pattern, for that to apply),
+      # but the stale mapping entry only disappears from list_queues/1 once
+      # MapperJanitor's own cleanup (delete_stale_mappings/0) catches up — same
+      # signal QueueJanitor already relies on.
+      le = build(:log_event, source: source)
+      test_pid = self()
+
+      owner =
+        spawn(fn ->
+          table_key = {source.id, backend.id, self()}
+          {:ok, _tid} = IngestEventQueue.upsert_tid(table_key)
+          :ok = IngestEventQueue.add_to_table(table_key, [le])
+          send(test_pid, :ready)
+          Process.sleep(:infinity)
+        end)
+
+      owner_ref = Process.monitor(owner)
+      assert_receive :ready
+
+      assert [{_gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
+      assert IngestEventQueue.list_queues(queues_key) != []
+
+      # Wait for the owner to be fully gone (not just Process.exit/2's async signal)
+      # before relying on its :ets table having been reclaimed.
+      Process.exit(owner, :kill)
+      assert_receive {:DOWN, ^owner_ref, :process, ^owner, :killed}
+      IngestEventQueue.delete_stale_mappings()
+      assert IngestEventQueue.list_queues(queues_key) == []
+
+      event = [:logflare, :ingest_event_queue, :generation_janitor, :prune]
+      ref = :telemetry_test.attach_event_handlers(self(), [event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      :ok = GenerationJanitor.do_rotate(%{max_age_ms: :timer.minutes(2)}, [queues_key])
+
+      # pruned outright, not just aged out — nothing left references this key
+      assert_receive {^event, ^ref, %{generations: 1}, %{queues_key: ^queues_key}}
+      assert IngestEventQueue.list_generations(queues_key) == []
+
+      # a later revival creates a genuinely fresh generation rather than resolving
+      # a stale, already-dropped tid left behind in the "current generation" entry
+      assert new_tid = IngestEventQueue.current_generation_tid(queues_key)
+      assert :ets.info(new_tid, :name) != :undefined
+    end
+
     test "do_rotate/1 is a no-op for a queues_key with no generations" do
       assert :ok =
                GenerationJanitor.do_rotate(%{

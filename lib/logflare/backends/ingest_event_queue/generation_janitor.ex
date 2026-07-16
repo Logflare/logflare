@@ -6,10 +6,20 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   backend: each tick, it discovers every `queues_key` that currently has a live
   generation (see `IngestEventQueue.list_generation_queues_keys/0` — the generations
   table itself is the source of truth, so this needs no knowledge of specific backends
-  or adaptors), rotates in a fresh "current" generation for each, and drops any
-  generation older than `max_age_ms` via a whole-table `:ets.delete/1` (see
-  `IngestEventQueue.drop_generation/2`) — O(1) regardless of how much was left in it,
-  unlike a per-row staleness scan.
+  or adaptors). For a key that still has a live queue (`IngestEventQueue.list_queues/1`
+  — a registered producer or startup queue), rotates in a fresh "current" generation
+  and drops any generation older than `max_age_ms` via a whole-table `:ets.delete/1`
+  (see `IngestEventQueue.drop_generation/2`) — O(1) regardless of how much was left in
+  it, unlike a per-row staleness scan.
+
+  For a key with no live queue left at all (its owning source/backend supervisor has
+  since died — deleted source/backend, or a rules-forwarding backend that's been
+  removed), no fresh generation is rotated in; instead every remaining generation for
+  it is dropped outright and its "current generation" entry is cleared (see
+  `IngestEventQueue.prune_generations/1`). Without this, a queues_key that's ever had a
+  single generation would never leave `list_generation_queues_keys/0` again — nothing
+  else owns these ETS tables, so stopping the supervisor doesn't reclaim them (see
+  github.com/Logflare/logflare/pull/3690#discussion_r3597179919).
 
   This is the bounded-loss cleanup mechanism for abandoned claims: a claim whose owner
   crashed before ack leaves its event unreferenced in the generation store (see
@@ -85,6 +95,10 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   time (the generation store is a shared, never-reset-between-tests singleton), and
   touching — and potentially evicting — generations that belong to other, unrelated
   tests' sources/backends.
+
+  Each key is checked against `IngestEventQueue.list_queues/1` first: a key with no
+  live producer or startup queue left gets pruned (see
+  `IngestEventQueue.prune_generations/1`) instead of rotated.
   """
   @spec do_rotate(map(), [
           IngestEventQueue.queues_key()
@@ -92,17 +106,25 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
           | IngestEventQueue.spool_producer_queues_key()
         ]) :: :ok
   def do_rotate(state, queues_keys) do
-    # One call carrying every key, not one call per key — rotating an entire fleet of
-    # queues shouldn't mean that many sequential round-trips to the same serialized
-    # GenServer (see IngestEventQueue.new_generations/1).
-    IngestEventQueue.new_generations(queues_keys)
+    {live, dead} = Enum.split_with(queues_keys, &has_live_queue?/1)
 
-    for queues_key <- queues_keys do
+    # One call carrying every live key, not one call per key — rotating an entire
+    # fleet of queues shouldn't mean that many sequential round-trips to the same
+    # serialized GenServer (see IngestEventQueue.new_generations/1).
+    IngestEventQueue.new_generations(live)
+
+    for queues_key <- live do
       drop_aged_generations(queues_key, state)
+    end
+
+    for queues_key <- dead do
+      prune(queues_key)
     end
 
     :ok
   end
+
+  defp has_live_queue?(queues_key), do: IngestEventQueue.list_queues(queues_key) != []
 
   defp drop_aged_generations(queues_key, state) do
     cutoff = System.monotonic_time(:millisecond) - state.max_age_ms
@@ -122,6 +144,16 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
     end
   end
 
+  defp prune(queues_key) do
+    dropped_count = queues_key |> IngestEventQueue.list_generations() |> length()
+
+    IngestEventQueue.prune_generations(queues_key)
+
+    if dropped_count > 0 do
+      emit_prune_telemetry(queues_key, dropped_count)
+    end
+  end
+
   defp table_size(tid) do
     case :ets.info(tid, :size) do
       n when is_integer(n) -> n
@@ -133,6 +165,14 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
     :telemetry.execute(
       [:logflare, :ingest_event_queue, :generation_janitor, :drop],
       %{generations: dropped_count, events: dropped_size},
+      %{queues_key: queues_key}
+    )
+  end
+
+  defp emit_prune_telemetry(queues_key, dropped_count) do
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :generation_janitor, :prune],
+      %{generations: dropped_count},
       %{queues_key: queues_key}
     )
   end
