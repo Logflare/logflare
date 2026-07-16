@@ -317,7 +317,7 @@ defmodule Logflare.Backends.BufferProducer do
   defp do_fetch(%{consolidated: true, id_passing: true, backend_id: bid}, n) do
     own_key = {:consolidated, bid, self()}
     startup_key = {:consolidated, bid, nil}
-    fetch_pointers_own_first(own_key, startup_key, n)
+    fetch_own_first(own_key, startup_key, n, &fetch_pointers/2)
   end
 
   defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
@@ -329,7 +329,7 @@ defmodule Logflare.Backends.BufferProducer do
   defp do_fetch(%{spool_producer: true} = _state, n) do
     own_key = {:spool_producer, nil, self()}
     startup_key = {:spool_producer, nil, nil}
-    fetch_pointers_own_first(own_key, startup_key, n)
+    fetch_own_first(own_key, startup_key, n, &fetch_pointers/2)
   end
 
   defp do_fetch(
@@ -340,7 +340,7 @@ defmodule Logflare.Backends.BufferProducer do
     startup_key = {sid, bid, nil}
 
     if id_passing do
-      fetch_pointers_own_first(own_key, startup_key, n)
+      fetch_own_first(own_key, startup_key, n, &fetch_pointers/2)
     else
       fetch_own_first(own_key, startup_key, n, &do_pop_key/2)
     end
@@ -364,10 +364,6 @@ defmodule Logflare.Backends.BufferProducer do
     else
       own_events
     end
-  end
-
-  defp fetch_pointers_own_first(own_key, startup_key, n) do
-    fetch_own_first(own_key, startup_key, n, &fetch_pointers/2)
   end
 
   defp fetch_pointers(key, n) do
@@ -401,22 +397,9 @@ defmodule Logflare.Backends.BufferProducer do
         []
 
       {:ok, events} ->
-        record? = should_record_recent?(sid)
-
         Enum.map(events, fn %LogEvent{} = e ->
-          if record?, do: IngestEventQueue.record_recent_event({sid, bid}, e)
           %{e | is_popped: true}
         end)
     end
   end
-
-  @spec should_record_recent?(pos_integer() | atom()) :: boolean()
-  defp should_record_recent?(sid) when is_integer(sid) do
-    case Sources.Cache.get_by_id(sid) do
-      nil -> false
-      source -> Sources.get_source_metrics_for_ingest(source).avg <= 100
-    end
-  end
-
-  defp should_record_recent?(_non_integer_sid), do: false
 end

@@ -336,9 +336,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     test "drop n items from a queue", %{source: source, source_backend_pid: sbp} do
       batch = for _ <- 1..500, do: build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, batch)
-      assert {:ok, 2} = IngestEventQueue.drop(sbp, :all, 2)
-      assert IngestEventQueue.get_table_size(sbp) == 498
-      assert {:ok, 0} = IngestEventQueue.drop(sbp, :ingested, 2)
+      assert {:ok, 2} = IngestEventQueue.drop_pending(sbp, 2)
       assert IngestEventQueue.get_table_size(sbp) == 498
     end
 

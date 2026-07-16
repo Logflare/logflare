@@ -105,7 +105,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
     if is_integer(size) and size > state.max and pid != nil do
       to_drop = round(state.purge_ratio * size)
-      IngestEventQueue.drop(table_key, :pending, to_drop)
+      IngestEventQueue.drop_pending(table_key, to_drop)
 
       log_msg =
         case queue_type do

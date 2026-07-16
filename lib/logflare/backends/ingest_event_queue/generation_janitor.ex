@@ -100,11 +100,6 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
       %{generations: dropped_count, events: dropped_size},
       %{queues_key: queues_key}
     )
-
-    Logger.warning(
-      "GenerationJanitor: dropped #{dropped_count} generation(s) (#{dropped_size} event(s)) for #{inspect(queues_key)}",
-      queues_key: inspect(queues_key)
-    )
   end
 
   defp schedule(state) do

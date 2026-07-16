@@ -979,17 +979,12 @@ defmodule Logflare.Backends.IngestEventQueue do
   @spec fetch_events(queues_key() | consolidated_queues_key(), integer()) ::
           {:ok, [LogEvent.t()]}
   def fetch_events(sid_bid, n) when is_integer(n) do
-    pending =
+    recent =
       sid_bid
       |> list_generations()
       |> Enum.flat_map(fn {tid, _created_at} -> select_generation_events(tid, n) end)
 
-    events =
-      (pending ++ list_recent_events(sid_bid, n))
-      |> Enum.uniq_by(& &1.id)
-      |> Enum.take(n)
-
-    {:ok, events}
+    {:ok, recent}
   end
 
   defp select_generation_events(tid, n) do
@@ -1151,19 +1146,18 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Drop events from the ingest event table. Pointer rows have no status — everything
-  present is pending by construction, so `:ingested` never matches anything, and
-  `:pending`/`:all` both just drop up to `n` rows.
+  Drops up to `n` pending pointer rows from the ingest event table. Pointer rows have
+  no status field — everything present is pending by construction, so there's nothing
+  else to filter by.
   """
-  @spec drop(source_backend_pid(), :all | :pending | :ingested, non_neg_integer()) :: :ok
+  @spec drop_pending(source_backend_pid(), non_neg_integer()) :: :ok
 
-  def drop({_, _} = sid_bid, filter, n)
-      when is_integer(n) and filter in [:pending, :all, :ingested] do
+  def drop_pending({_, _} = sid_bid, n) when is_integer(n) do
     traverse_queues(sid_bid, fn objs, acc ->
       num =
         for {sid_bid_pid, _tid} <- objs, reduce: 0 do
           acc ->
-            {:ok, num} = drop(sid_bid_pid, filter, n)
+            {:ok, num} = drop_pending(sid_bid_pid, n)
             acc + num
         end
 
@@ -1173,16 +1167,9 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  @spec drop(
-          source_backend_pid() | consolidated_table_key(),
-          :all | :pending | :ingested,
-          non_neg_integer()
-        ) ::
+  @spec drop_pending(source_backend_pid() | consolidated_table_key(), non_neg_integer()) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
-  def drop({_, _, _}, :ingested, _n), do: {:ok, 0}
-
-  def drop({_, _, _} = sid_bid_pid, filter, n)
-      when is_integer(n) and filter in [:pending, :all] do
+  def drop_pending({_, _, _} = sid_bid_pid, n) when is_integer(n) do
     ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
