@@ -53,11 +53,9 @@ defmodule Logflare.Logs.RejectedLogEvents do
 
   @spec get_by_source(Source.t()) :: list(LE.t())
   def get_by_source(%Source{token: token}) do
-    get!(token)
-    |> case do
-      %{log_events: events} -> events
-      other -> other
-    end
+    token
+    |> get!()
+    |> Map.fetch!(:log_events)
   end
 
   def count(%Source{} = s) do

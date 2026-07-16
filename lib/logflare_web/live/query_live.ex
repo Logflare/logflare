@@ -1,8 +1,6 @@
 defmodule LogflareWeb.QueryLive do
   @moduledoc false
-
   use LogflareWeb, :live_view
-  use Phoenix.Component
 
   alias Logflare.Alerting
   alias Logflare.Backends
@@ -220,8 +218,7 @@ defmodule LogflareWeb.QueryLive do
 
     next_backend_id = backend_id_from_form(socket)
 
-    if query_string != nil and
-         (query_string != prev_query_string or next_backend_id != prev_backend_id) do
+    if query_string != prev_query_string or next_backend_id != prev_backend_id do
       send(self(), :parse_query)
     end
 

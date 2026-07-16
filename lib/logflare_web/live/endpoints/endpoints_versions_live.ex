@@ -1,7 +1,6 @@
 defmodule LogflareWeb.EndpointsVersionsLive do
   @moduledoc false
   use LogflareWeb, :live_view
-  use Phoenix.Component
 
   import Ecto.Query
   import LogflareWeb.Utils, only: [time_ago: 1]

@@ -85,7 +85,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             source_token: source.token,
             bq_storage_write_api: source.bq_storage_write_api,
             source_id: source.id,
-            backend_id: Map.get(backend || %{}, :id),
+            backend_id: Map.get(backend, :id),
             user_id: source.user_id,
             system_source: source.system_source
           }

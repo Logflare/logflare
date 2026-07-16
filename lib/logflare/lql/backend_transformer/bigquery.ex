@@ -65,7 +65,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
       end
 
     case normalized_rules do
-      [] -> query
       [%{wildcard: true}] -> query
       rules -> build_combined_select(query, rules)
     end

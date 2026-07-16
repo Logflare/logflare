@@ -40,11 +40,6 @@ defmodule Logflare.Sources.Source.Supervisor do
       {:error, :already_started} ->
         :noop
 
-      {:error, _} = err ->
-        Logger.error(
-          "Source.Supervisor -  Failed to start SourceSup: #{source_token}, #{inspect(err)}"
-        )
-
       _ ->
         :noop
     end
@@ -78,13 +73,6 @@ defmodule Logflare.Sources.Source.Supervisor do
         :noop
 
       {:error, :already_started} ->
-        :noop
-
-      {:error, _reason} = err ->
-        Logger.error(
-          "Failed to start SourceSup when attempting restart: #{source_token} , #{inspect(err)} "
-        )
-
         :noop
     end
 

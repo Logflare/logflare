@@ -116,14 +116,14 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   defp build_log_record_fields({"span_id", id}) when is_binary(id), do: [span_id: id]
   defp build_log_record_fields(_unmatched), do: []
 
+  # TODO: distinguish from string
   defp make_value(v) when is_binary(v), do: %AnyValue{value: {:string_value, v}}
+  # defp make_value(v) when is_binary(v), do: %AnyValue{value: {:bytes_value, v}}
   defp make_value(v) when is_boolean(v), do: %AnyValue{value: {:bool_value, v}}
   defp make_value(v) when is_integer(v), do: %AnyValue{value: {:int_value, v}}
   defp make_value(v) when is_float(v), do: %AnyValue{value: {:double_value, v}}
   defp make_value(v) when is_list(v), do: %AnyValue{value: {:array_value, make_array(v)}}
   defp make_value(v) when is_map(v), do: %AnyValue{value: {:kvlist_value, make_key_value_list(v)}}
-  # TODO: distinguish from string
-  defp make_value(v) when is_binary(v), do: %AnyValue{value: {:bytes_value, v}}
 
   defp make_key_value({k, v}), do: %KeyValue{key: to_string(k), value: make_value(v)}
 

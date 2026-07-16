@@ -67,15 +67,11 @@ defmodule Logflare.Google.BigQuery do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
 
-    %{user_id: user_id, bigquery_project_id: project_id, bigquery_dataset_id: dataset_id} =
+    %{user_id: _user_id, bigquery_project_id: project_id, bigquery_dataset_id: dataset_id} =
       GenUtils.get_bq_user_info(source_id)
 
     conn
-    |> Api.Tables.bigquery_tables_delete(
-      project_id,
-      dataset_id || Integer.to_string(user_id) <> GCPConfig.dataset_id_append(),
-      table_name
-    )
+    |> Api.Tables.bigquery_tables_delete(project_id, dataset_id, table_name)
     |> GenUtils.maybe_parse_google_api_result()
   end
 
@@ -186,14 +182,8 @@ defmodule Logflare.Google.BigQuery do
       bigquery_dataset_id: dataset_id
     } = GenUtils.get_bq_user_info(source_id)
 
-    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> GCPConfig.dataset_id_append()
-
     conn
-    |> Api.Tables.bigquery_tables_get(
-      project_id,
-      dataset_id,
-      table_name
-    )
+    |> Api.Tables.bigquery_tables_get(project_id, dataset_id, table_name)
     |> GenUtils.maybe_parse_google_api_result()
   end
 
