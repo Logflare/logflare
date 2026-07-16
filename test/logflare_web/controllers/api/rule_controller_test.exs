@@ -73,6 +73,21 @@ defmodule LogflareWeb.Api.RuleControllerTest do
                |> json_response(201)
     end
 
+    test "returns 422 when a single rule is invalid", %{
+      conn: conn,
+      backend: backend,
+      source: source
+    } do
+      assert %{"errors" => %{"lql_string" => _}} =
+               conn
+               |> post(~p"/api/rules", %{
+                 source_id: source.id,
+                 backend_id: backend.id,
+                 lql_string: ""
+               })
+               |> json_response(422)
+    end
+
     test "create rule with bad user", %{conn: conn, backend: backend, source: source} do
       user = insert(:user)
 
@@ -117,6 +132,19 @@ defmodule LogflareWeb.Api.RuleControllerTest do
                conn
                |> get(~p"/api/rules/#{rule_token}")
                |> json_response(200)
+    end
+
+    test "returns 422 when updating a rule with an invalid LQL expression", %{
+      conn: conn,
+      backend: backend,
+      source: source
+    } do
+      rule = insert(:rule, lql_string: "initial", source: source, backend: backend)
+
+      assert %{"errors" => %{"lql_string" => _}} =
+               conn
+               |> put(~p"/api/rules/#{rule.token}", %{lql_string: ""})
+               |> json_response(422)
     end
 
     test "attacker cannot repoint their rule to a victim's source or backend", %{

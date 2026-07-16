@@ -9,6 +9,7 @@ defmodule LogflareWeb.Api.BackendController do
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApi.UnprocessableEntity
+  alias LogflareWeb.OpenApiSchemas.BackendApiParams
   alias LogflareWeb.OpenApiSchemas.BackendApiSchema
 
   action_fallback(LogflareWeb.Api.FallbackController)
@@ -45,7 +46,7 @@ defmodule LogflareWeb.Api.BackendController do
 
   operation(:create,
     summary: "Create backend",
-    request_body: BackendApiSchema.params(),
+    request_body: BackendApiParams.params(),
     responses: %{
       201 => Created.response(BackendApiSchema),
       404 => NotFound.response(),
@@ -64,7 +65,7 @@ defmodule LogflareWeb.Api.BackendController do
   operation(:update,
     summary: "Update backend",
     parameters: [token: [in: :path, description: "Backend Token", type: :string]],
-    request_body: BackendApiSchema.params(),
+    request_body: BackendApiParams.params(),
     responses: %{
       204 => Accepted.response(),
       200 => Accepted.response(BackendApiSchema),
