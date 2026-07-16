@@ -175,14 +175,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
   def ack(_ack_ref, successful, failed) do
-    # The pointer was already removed from queue_tid at claim time
-    # (pop_pending_pointers/2 claims via :ets.take/2); ack still has to delete the
-    # event row from the generation store itself — GenerationJanitor's rotation is a
-    # failsafe for abandoned claims, not the primary cleanup path. Never recorded into
-    # the recent-events cache: list_recent_logs_local/2 short-circuits to [] for any
-    # consolidated backend without ever reading it (filtering by source in a
-    # consolidated queue would require scanning every event), so writing here would
-    # just be an unbounded, unread cost per event.
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
       IngestEventQueue.delete_id(pointer.tid, pointer.id)
     end)
@@ -401,9 +393,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
-  # Reinserts each pointer directly into the queue it was claimed from (see
-  # IngestEventQueue.reinsert_pointer/1) — no round-robin redistribution, since that
-  # producer just proved itself alive by claiming this in the first place.
   @spec requeue_retriable(backend_id :: pos_integer(), retriable :: [LogEventPointer.t()]) :: :ok
   defp requeue_retriable(backend_id, retriable) do
     Logger.info(

@@ -136,21 +136,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :ok
   end
 
-  # The pointer was already removed from its queue at claim time
-  # (pop_pending_pointers/2 claims via :ets.take/2), but the generation-store row itself
-  # is still there — a genuine choice point: either delete it now, or defer that
-  # deletion by recording just a pointer into the recent-events cache (no read,
-  # no copy — see IngestEventQueue.record_recent_pointer/3) so a "recent logs" read has
-  # something to resolve for a while longer. GenerationJanitor's rotation is a failsafe
-  # for abandoned claims either way, not the primary cleanup path.
-  #
-  # Deferring is skipped once the ingest rate is high enough that "recent logs"
-  # freshness matters less than the extra row this would leave sitting in the
-  # generation store — mirroring the pre-redesign avg-based finalize_acked_events split.
-  # Also skipped whenever bid isn't nil (an explicit, non-default BigQuery backend): the
-  # only reader, Backends.list_recent_logs_local/2, hardcodes {source_id, nil}
-  # regardless of which backend it's asked about, so recording under any other bid would
-  # never be read back.
+  # cache events in the recent records table if the source is ingest rate is low.
+  # otherwise delete the event completly from the generations table.
   @spec finalize_acked_events(IngestEventQueue.queues_key(), [Message.t()]) :: :ok
   defp finalize_acked_events(_queues_key, []), do: :ok
 
