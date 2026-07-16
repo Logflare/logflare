@@ -447,6 +447,135 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "read cluster routing" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      [source: source, backend: backend]
+    end
+
+    test "routes to the labeled pool for a configured read cluster", %{backend: backend} do
+      assert {:ok, {[%{"test" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                 read_cluster: "api"
+               )
+
+      assert ConnectionManager.pool_active?(backend, "api")
+      refute ConnectionManager.pool_active?(backend, "dashboard_logs")
+      refute ConnectionManager.pool_active?(backend)
+    end
+
+    test "routes an unknown read cluster to the default and warns", %{backend: backend} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, {[%{"test" => 1}], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                     read_cluster: "nope"
+                   )
+        end)
+
+      assert log =~ "read cluster not configured"
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+      refute ConnectionManager.pool_active?(backend, "api")
+    end
+
+    test "routes an absent read cluster to the default", %{backend: backend} do
+      assert {:ok, {[%{"test" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+  end
+
+  describe "read cluster routing without configured clusters" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} = setup_clickhouse_test()
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      [source: source, backend: backend]
+    end
+
+    test "warns and uses the legacy pool when a label is requested", %{backend: backend} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, {[%{"test" => 1}], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                     read_cluster: "api"
+                   )
+        end)
+
+      assert log =~ "read cluster not configured"
+      assert ConnectionManager.pool_active?(backend)
+      refute ConnectionManager.pool_active?(backend, "api")
+    end
+  end
+
+  describe "read cluster unhealthy fallback" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "falls back to the default cluster when the requested cluster is unhealthy" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api" => "http://localhost:19999",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, {[%{"test" => 1}], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                     read_cluster: "api"
+                   )
+        end)
+
+      assert log =~ "read cluster unhealthy"
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+
+    test "does not fall back when the unhealthy cluster is already the default" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{"dashboard_logs" => "http://localhost:19999"},
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      assert {:error, %QueryError{}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                 read_cluster: "dashboard_logs"
+               )
+    end
+  end
+
   describe "test_connection/1 with dual cluster config" do
     setup do
       insert(:plan, name: "Free")

@@ -97,26 +97,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     execute_query(backend, {query_string, []}, opts)
   end
 
-  def execute_query(%Backend{} = backend, {query_string, params}, _opts)
-      when is_non_empty_binary(query_string) and is_list(params) do
-    case execute_ch_query(backend, query_string, params) do
+  def execute_query(%Backend{} = backend, {query_string, params}, opts)
+      when is_non_empty_binary(query_string) and is_list(params) and is_list(opts) do
+    case execute_ch_query(backend, query_string, params, opts) do
       {:ok, {rows, bytes}} -> {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
       error -> error
     end
   end
 
-  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, _opts)
-      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
-    execute_query_with_params(backend, query_string, declared_params, input_params)
+  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, opts)
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    execute_query_with_params(backend, query_string, declared_params, input_params, opts)
   end
 
   def execute_query(
         %Backend{} = backend,
         {query_string, declared_params, input_params, _endpoint_query},
-        _opts
+        opts
       )
-      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
-    execute_query_with_params(backend, query_string, declared_params, input_params)
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    execute_query_with_params(backend, query_string, declared_params, input_params, opts)
   end
 
   def execute_query(%Backend{} = backend, %Ecto.Query{} = query, opts) when is_list(opts) do
@@ -310,6 +312,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
+  @spec default_read_cluster_label(Backend.t()) :: String.t() | nil
+  defp default_read_cluster_label(%Backend{config: config}) do
+    urls = Map.get(config, :read_only_urls) || %{}
+    default_read_cluster_label(config, urls)
+  end
+
   @spec default_read_cluster_label(map(), map()) :: String.t() | nil
   defp default_read_cluster_label(config, urls) do
     default = Map.get(config, :default_read_cluster)
@@ -381,21 +389,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
-    with :ok <- ensure_query_connection_manager_started(backend) do
-      pool_via = connection_pool_via(backend)
+    requested = Keyword.get(opts, :read_cluster)
+    label = resolve_read_cluster_label(backend, requested)
+
+    warn_on_unconfigured_read_cluster(backend, requested, label)
+
+    case do_ch_query_on_label(backend, statement, params, label) do
+      {:error, %QueryError{kind: :connection_error}} = error ->
+        maybe_retry_on_default_cluster(backend, statement, params, label, error)
+
+      result ->
+        result
+    end
+  end
+
+  @spec do_ch_query_on_label(Backend.t(), iodata(), term(), String.t() | nil) ::
+          {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
+  defp do_ch_query_on_label(%Backend{} = backend, statement, params, label) do
+    with :ok <- ensure_query_connection_manager_started(backend, label) do
+      pool_via = connection_pool_via(backend, label)
 
       timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
 
       backend_id = backend.id
       log_fun = fn entry -> log_slow_checkout(entry, backend_id) end
 
-      opts =
-        opts
-        |> Keyword.put(:decode, false)
-        |> Keyword.put(:timeout, timeout)
-        |> Keyword.put(:log, log_fun)
+      ch_opts = [decode: false, timeout: timeout, log: log_fun]
 
-      case Ch.query(pool_via, statement, params, opts) do
+      case Ch.query(pool_via, statement, params, ch_opts) do
         {:ok, %Ch.Result{} = result} ->
           rows = decode_ch_result(result)
           bytes = parse_summary_read_bytes(result.headers)
@@ -412,6 +433,45 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
              host: read_host(backend)
            )}
       end
+    end
+  end
+
+  @spec warn_on_unconfigured_read_cluster(Backend.t(), String.t() | nil, String.t() | nil) :: :ok
+  defp warn_on_unconfigured_read_cluster(%Backend{} = backend, requested, label)
+       when is_non_empty_binary(requested) and requested != label do
+    Logger.warning(
+      "ClickHouse read cluster not configured, falling back to resolved read cluster",
+      backend_id: backend.id,
+      requested_read_cluster: requested,
+      resolved_read_cluster: label
+    )
+
+    :ok
+  end
+
+  defp warn_on_unconfigured_read_cluster(_backend, _requested, _label), do: :ok
+
+  @spec maybe_retry_on_default_cluster(
+          Backend.t(),
+          iodata(),
+          term(),
+          String.t() | nil,
+          {:error, term()}
+        ) :: {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
+  defp maybe_retry_on_default_cluster(%Backend{} = backend, statement, params, label, error) do
+    default = default_read_cluster_label(backend)
+
+    if is_non_empty_binary(default) and default != label do
+      Logger.warning(
+        "ClickHouse read cluster unhealthy, falling back to default read cluster",
+        backend_id: backend.id,
+        read_cluster: label,
+        default_read_cluster: default
+      )
+
+      do_ch_query_on_label(backend, statement, params, default)
+    else
+      error
     end
   end
 
@@ -881,19 +941,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           Backend.t(),
           query_string :: String.t(),
           declared_params :: [String.t()],
-          input_params :: map()
+          input_params :: map(),
+          opts :: Keyword.t()
         ) ::
           {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_params(
          %Backend{} = backend,
          query_string,
          declared_params,
-         input_params
+         input_params,
+         opts
        ) do
     converted_query = convert_query_params(query_string, declared_params)
     ch_params = Map.take(input_params, declared_params)
 
-    case execute_ch_query(backend, converted_query, ch_params) do
+    case execute_ch_query(backend, converted_query, ch_params, opts) do
       {:ok, {rows, bytes}} -> {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
       error -> error
     end
@@ -914,28 +976,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end)
   end
 
-  @spec ensure_query_connection_manager_started(Backend.t()) :: :ok | {:error, term()}
-  defp ensure_query_connection_manager_started(%Backend{id: backend_id} = backend) do
-    via = Backends.via_backend(backend, ConnectionManager)
+  @spec ensure_query_connection_manager_started(Backend.t(), String.t() | nil) ::
+          :ok | {:error, term()}
+  defp ensure_query_connection_manager_started(%Backend{id: backend_id} = backend, label) do
+    via = Backends.via_backend(backend, ConnectionManager, label)
 
     via
     |> GenServer.whereis()
-    |> maybe_start_query_connection_manager(backend_id)
+    |> maybe_start_query_connection_manager(backend_id, label)
     |> case do
-      :ok -> ensure_pool_and_notify(backend)
+      :ok -> ensure_pool_and_notify(backend, label)
       error -> error
     end
   end
 
-  @spec maybe_start_query_connection_manager(pid() | nil, pos_integer()) :: :ok | {:error, term()}
-  defp maybe_start_query_connection_manager(nil, backend_id) when is_integer(backend_id) do
+  @spec maybe_start_query_connection_manager(pid() | nil, pos_integer(), String.t() | nil) ::
+          :ok | {:error, term()}
+  defp maybe_start_query_connection_manager(nil, backend_id, label) when is_integer(backend_id) do
     backend = Backends.Cache.get_backend(backend_id)
 
-    with child_spec <- ConnectionManager.child_spec(backend),
+    with child_spec <- ConnectionManager.child_spec(backend, label),
          {:ok, _pid} <- QueryConnectionSup.start_connection_manager(child_spec) do
       Logger.info(
         "Started query ConnectionManager for ClickHouse backend",
-        backend_id: backend.id
+        backend_id: backend.id,
+        read_cluster: label
       )
 
       :ok
@@ -947,6 +1012,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         Logger.warning(
           "Failed to start query ConnectionManager for backend",
           backend_id: backend_id,
+          read_cluster: label,
           reason: reason
         )
 
@@ -954,12 +1020,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  defp maybe_start_query_connection_manager(_pid, _backend_id), do: :ok
+  defp maybe_start_query_connection_manager(_pid, _backend_id, _label), do: :ok
 
-  @spec ensure_pool_and_notify(Backend.t()) :: :ok
-  defp ensure_pool_and_notify(%Backend{} = backend) do
-    ConnectionManager.ensure_pool_started(backend)
-    ConnectionManager.notify_activity(backend)
+  @spec ensure_pool_and_notify(Backend.t(), String.t() | nil) :: :ok
+  defp ensure_pool_and_notify(%Backend{} = backend, label) do
+    ConnectionManager.ensure_pool_started(backend, label)
+    ConnectionManager.notify_activity(backend, label)
     :ok
   end
 end
