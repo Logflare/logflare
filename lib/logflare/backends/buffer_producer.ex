@@ -44,7 +44,6 @@ defmodule Logflare.Backends.BufferProducer do
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
   @default_interval 1_000
-  @max_avg_before_pop 100
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
@@ -304,87 +303,90 @@ defmodule Logflare.Backends.BufferProducer do
     {events, %{state | demand: new_demand}}
   end
 
+  # Every producer services its own queue first — a producer that's over
+  # max_queue_size (the reason anything lands in startup at all) needs to clear its
+  # own dedicated backlog to become round-robin-eligible again, and splitting its
+  # attention with the shared startup queue instead only delays that. The shared
+  # startup queue is only pulled from to top off whatever demand the producer's own
+  # queue couldn't satisfy — a brand-new producer's own queue is empty anyway, so it
+  # falls through to startup immediately regardless; an already-loaded producer just
+  # keeps grinding its own queue down instead of competing for the shared one.
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [
           LogEvent.t() | LogEventPointer.t()
         ]
   defp do_fetch(%{consolidated: true, id_passing: true, backend_id: bid}, n) do
-    key = {:consolidated, bid, self()}
+    own_key = {:consolidated, bid, self()}
+    startup_key = {:consolidated, bid, nil}
+    fetch_pointers_own_first(own_key, startup_key, n)
+  end
 
-    case IngestEventQueue.take_pending_pointers(key, n) do
+  defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
+    own_key = {:consolidated, bid, self()}
+    startup_key = {:consolidated, bid, nil}
+    fetch_own_first(own_key, startup_key, n, &do_pop_key/2)
+  end
+
+  defp do_fetch(%{spool_producer: true} = _state, n) do
+    own_key = {:spool_producer, nil, self()}
+    startup_key = {:spool_producer, nil, nil}
+    fetch_pointers_own_first(own_key, startup_key, n)
+  end
+
+  defp do_fetch(
+         %{source_id: sid, backend_id: bid, id_passing: id_passing} = _state,
+         n
+       ) do
+    own_key = {sid, bid, self()}
+    startup_key = {sid, bid, nil}
+
+    if id_passing do
+      fetch_pointers_own_first(own_key, startup_key, n)
+    else
+      fetch_own_first(own_key, startup_key, n, &do_pop_key/2)
+    end
+  end
+
+  # The startup key can be claimed from by more than one live producer at once, so
+  # every fetch function passed here must resolve via an atomic claim primitive
+  # (:ets.take-gated) — see do_pop_key/2 and fetch_pointers/2, the only two in use.
+  @spec fetch_own_first(
+          own_key :: table_key(),
+          startup_key :: table_key(),
+          n :: non_neg_integer(),
+          fetch_fn :: (table_key(), non_neg_integer() -> [term()])
+        ) :: [term()]
+  defp fetch_own_first(own_key, startup_key, n, fetch_fn) do
+    own_events = fetch_fn.(own_key, n)
+    remaining = n - length(own_events)
+
+    if remaining > 0 do
+      own_events ++ fetch_fn.(startup_key, remaining)
+    else
+      own_events
+    end
+  end
+
+  defp fetch_pointers_own_first(own_key, startup_key, n) do
+    fetch_own_first(own_key, startup_key, n, &fetch_pointers/2)
+  end
+
+  defp fetch_pointers(key, n) do
+    case IngestEventQueue.pop_pending_pointers(key, n) do
       {:error, :not_initialized} -> []
       {:ok, pointers, _tid} -> pointers
     end
   end
 
-  defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
-    key = {:consolidated, bid, self()}
-
-    do_pop_key(key, n)
-  end
-
-  defp do_fetch(%{spool_producer: true} = _state, n) do
-    key = {:spool_producer, nil, self()}
-
-    case IngestEventQueue.take_pending_pointers(key, n) do
-      {:error, :not_initialized} ->
-        Logger.warning("IngestEventQueue not initialized for spool_producer")
-        []
-
-      {:ok, pointers, _tid} ->
-        pointers
-    end
-  end
-
-  defp do_fetch(
-         %{source_id: sid, backend_id: bid, source_token: source_token, id_passing: id_passing} =
-           _state,
-         n
-       ) do
-    key = {sid, bid, self()}
-
-    Sources.get_source_metrics_for_ingest(source_token)
-    |> case do
-      %{avg: avg} when avg > @max_avg_before_pop and not id_passing -> do_pop_key(key, n)
-      _ -> do_take_key(key, n, id_passing)
-    end
-  end
-
-  @spec do_take_key(key :: table_key(), count :: non_neg_integer(), id_passing :: boolean()) ::
-          [LogEvent.t()] | [LogEventPointer.t()]
-  defp do_take_key({sid, bid, _pid} = key, n, true) do
-    case IngestEventQueue.take_pending_pointers(key, n) do
-      {:error, :not_initialized} ->
-        warn_not_initialized(sid, bid)
-        []
-
-      {:ok, pointers, _tid} ->
-        pointers
-    end
-  end
-
-  defp do_take_key({sid, bid, _pid} = key, n, false) do
-    case IngestEventQueue.take_pending(key, n) do
-      {:error, :not_initialized} ->
-        warn_not_initialized(sid, bid)
-        []
-
-      {:ok, []} ->
-        []
-
-      {:ok, events} ->
-        {:ok, _} = IngestEventQueue.mark_ingested(key, events)
-
-        events
-    end
-  end
-
-  defp warn_not_initialized(sid, bid) do
-    Logger.warning(
-      "IngestEventQueue not initialized, could not fetch events. source_id: #{sid}",
-      backend_id: bid
-    )
-  end
-
+  # Only fetch primitive for non-id-passing producers now — pop_pending atomically
+  # resolves both the pointer row and the generation-store event in one step, so it's
+  # safe against the startup key's multiple concurrent readers (see
+  # fetch_own_first/4). Recording into the recent-events cache here (since
+  # none of the non-id-passing adaptors — webhook, syslog, http_based, postgres, s3 —
+  # implement real ack/retry logic today, this is the only place left that can) is
+  # gated the same way Source.BigQuery.Pipeline's own should_record_recent?/1 gates its
+  # ack-time recording: skip it once the ingest rate is high enough that the extra
+  # lookup isn't worth it. Never recorded for consolidated queues, which have no single
+  # source to resolve metrics for.
   @spec do_pop_key(key :: table_key(), count :: non_neg_integer()) :: [
           LogEvent.t()
         ]
@@ -399,8 +401,22 @@ defmodule Logflare.Backends.BufferProducer do
         []
 
       {:ok, events} ->
-        events
-        |> Enum.map(fn %LogEvent{} = e -> %{e | is_popped: true} end)
+        record? = should_record_recent?(sid)
+
+        Enum.map(events, fn %LogEvent{} = e ->
+          if record?, do: IngestEventQueue.record_recent_event({sid, bid}, e)
+          %{e | is_popped: true}
+        end)
     end
   end
+
+  @spec should_record_recent?(pos_integer() | atom()) :: boolean()
+  defp should_record_recent?(sid) when is_integer(sid) do
+    case Sources.Cache.get_by_id(sid) do
+      nil -> false
+      source -> Sources.get_source_metrics_for_ingest(source).avg <= 100
+    end
+  end
+
+  defp should_record_recent?(_non_integer_sid), do: false
 end

@@ -65,12 +65,6 @@ Benchee.run(
     end,
     "truncate all 0" => fn _ ->
       IngestEventQueue.truncate_table(key2, :all, 0)
-    end,
-    "truncate ingested 100" => fn _ ->
-      IngestEventQueue.truncate_table(key2, :ingested, 100)
-    end,
-    "truncate ingested 0" => fn _ ->
-      IngestEventQueue.truncate_table(key2, :ingested, 0)
     end
   },
   before_each: fn input ->
@@ -79,8 +73,6 @@ Benchee.run(
 
     # IngestEventQueue.add_to_table(key1, input)
     IngestEventQueue.add_to_table(key2, input)
-    {_pending, ingested} = Enum.split(input, round(length(input) / 2))
-    IngestEventQueue.mark_ingested(key2, ingested)
 
     input
   end,

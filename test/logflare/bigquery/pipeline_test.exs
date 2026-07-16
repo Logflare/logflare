@@ -35,7 +35,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
       # simulate the producer claiming the event
-      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
 
       ref = {sid_bid_pid, %{max_retries: 1}}
       message = Pipeline.transform(pointer, ref: ref)
@@ -47,7 +47,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       # incremented retries
       assert IngestEventQueue.total_pending(sid_bid_pid) == 1
 
-      {:ok, [requeued], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+      {:ok, [requeued], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
       assert requeued.retries == 1
     end
 
@@ -57,7 +57,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       le = build(:log_event)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
-      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
       pointer = %{pointer | retries: 1}
 
       ref = {sid_bid_pid, %{max_retries: 1}}
@@ -72,14 +72,14 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
     end
 
-    test "ack deletes the event from the generation store on success, recording it into the recent-events cache",
+    test "ack defers deletion and records a pointer into the recent-events cache instead",
          %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
-      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
 
       ref = {sid_bid_pid, %{max_retries: 0}}
       message = Pipeline.transform(pointer, ref: ref)
@@ -87,11 +87,10 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       mod.ack(ref, [message], [])
 
-      # ack actively deletes the event row — it does not wait for
-      # GenerationJanitor's rotation, which is only a failsafe for abandoned claims
-      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
-
-      # ...but a "recent logs" read still has something to find in the meantime
+      # deletion is deferred to whenever the recent-events pointer is evicted (see
+      # IngestEventQueue.truncate_recent/2, sweep_recent_events/1) — the row is still
+      # there for a "recent logs" read to resolve in the meantime
+      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == le
       assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == [le]
     end
 
@@ -104,7 +103,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
-      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
 
       ref = {sid_bid_pid, %{max_retries: 0}}
       message = Pipeline.transform(pointer, ref: ref)
@@ -123,7 +122,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
-      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
 
       deleted_source_id = source.id
       Logflare.Repo.delete!(source)
@@ -136,6 +135,30 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
       assert IngestEventQueue.list_recent_events({deleted_source_id, nil}, 10) == []
+    end
+
+    test "ack skips the recent-events cache (but still deletes) for an explicit, non-default backend",
+         %{source: source} do
+      backend = insert(:backend, user_id: source.user_id, type: :bigquery)
+      sid_bid_pid = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      mod.ack(ref, [message], [])
+
+      # ack still deletes the generation-store row as normal — only the recent-events
+      # write is skipped, since list_recent_logs_local/2 hardcodes {source_id, nil} and
+      # would never read a row recorded under this explicit backend_id anyway
+      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
+      assert IngestEventQueue.list_recent_events({source.id, backend.id}, 10) == []
+      assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == []
     end
 
     test "handle_batch emits ingest telemetry with resolved labels when source has labels", %{
@@ -540,7 +563,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       IngestEventQueue.add_to_table(sid_bid_pid, events)
-      {:ok, pointers, tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, length(events))
+      {:ok, pointers, tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, length(events))
 
       messages =
         Enum.map(pointers, fn pointer ->

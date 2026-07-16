@@ -1,7 +1,7 @@
 defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
   @moduledoc """
   A lightweight pointer to a claimed event, returned by
-  `Logflare.Backends.IngestEventQueue.take_pending_pointers/2`.
+  `Logflare.Backends.IngestEventQueue.pop_pending_pointers/2`.
 
   `tid` is the generation table the actual `LogEvent` body lives in — resolving it is a
   direct `:ets.lookup(tid, id)`, no separate id-to-table lookup needed. `queue_tid` is

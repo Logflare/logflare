@@ -13,7 +13,7 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
 
   This is the bounded-loss cleanup mechanism for abandoned claims: a claim whose owner
   crashed before ack leaves its event unreferenced in the generation store (see
-  `IngestEventQueue.take_pending_pointers/2` — claiming deletes the pointer row outright,
+  `IngestEventQueue.pop_pending_pointers/2` — claiming deletes the pointer row outright,
   so there's nothing left to detect "abandoned"). Nothing here retries an abandoned
   claim; it just eventually disappears with its generation, bounded to roughly
   `max_age_ms` to `2 * max_age_ms` old.

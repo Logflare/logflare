@@ -263,7 +263,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       event1 = build(:log_event, source: source, message: "gone 1")
       event2 = build(:log_event, source: source, message: "gone 2")
 
-      # Empty generation table: rows were claimed via take_pending_pointers/2 but their
+      # Empty generation table: rows were claimed via pop_pending_pointers/2 but their
       # generation rotated out (or was otherwise dropped) before batch time, so
       # encode_message finds nothing.
       gen_tid = setup_generation_events([])
@@ -650,7 +650,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert Pipeline.ack(:ack_ref, [], []) == :ok
     end
 
-    test "deletes the event from the generation store for successful messages, recording it into the recent-events cache",
+    test "deletes the event from the generation store for successful messages, without recording it into the recent-events cache",
          %{
            backend: backend
          } do
@@ -664,8 +664,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       # rotation, which is only a failsafe for abandoned claims
       assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
 
-      # ...but a "recent logs" read still has something to find in the meantime
-      assert IngestEventQueue.list_recent_events({:consolidated, backend.id}, 10) == [event]
+      # never recorded: list_recent_logs_local/2 short-circuits to [] for any
+      # consolidated backend without ever reading this cache, so writing here would
+      # just be an unbounded, unread cost per event
+      assert IngestEventQueue.list_recent_events({:consolidated, backend.id}, 10) == []
     end
 
     test "drops messages that have exceeded max retries, deleting them from the generation store",

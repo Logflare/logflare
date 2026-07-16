@@ -48,7 +48,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
   end
 
   # Builds a real ETS-backed LogEventPointer message via the same
-  # IngestEventQueue.upsert_tid/1 + add_to_table/2 + take_pending_pointers/2 path real
+  # IngestEventQueue.upsert_tid/1 + add_to_table/2 + pop_pending_pointers/2 path real
   # ingestion uses — matching what BufferProducer's spool_producer path actually hands
   # to handle_batch/4. Unlike message/1 above, this is a real log event the upload
   # functions can look up and serialize. Going through the real insertion and claim
@@ -70,7 +70,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
     {:ok, _tid} = IngestEventQueue.upsert_tid(key)
     :ok = IngestEventQueue.add_to_table(key, [log_event])
 
-    {:ok, [pointer], _queue_tid} = IngestEventQueue.take_pending_pointers(key, 1)
+    {:ok, [pointer], _queue_tid} = IngestEventQueue.pop_pending_pointers(key, 1)
 
     %Message{
       data: pointer,

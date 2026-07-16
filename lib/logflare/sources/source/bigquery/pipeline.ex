@@ -137,29 +137,32 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   # The pointer was already removed from its queue at claim time
-  # (take_pending_pointers/2 claims via :ets.take/2); ack still has to delete the event
-  # row from the generation store itself — GenerationJanitor's rotation is a failsafe
-  # for abandoned claims, not the primary cleanup path.
+  # (pop_pending_pointers/2 claims via :ets.take/2), but the generation-store row itself
+  # is still there — a genuine choice point: either delete it now, or defer that
+  # deletion by recording just a pointer into the recent-events cache (no read,
+  # no copy — see IngestEventQueue.record_recent_pointer/3) so a "recent logs" read has
+  # something to resolve for a while longer. GenerationJanitor's rotation is a failsafe
+  # for abandoned claims either way, not the primary cleanup path.
   #
-  # Backfilling the recent-events cache (see IngestEventQueue.record_recent_event/2)
-  # needs a lookup_event/2 read per event first, so it's skipped once the ingest rate is
-  # high enough that "recent logs" freshness matters less than avoiding the extra read —
-  # mirroring the pre-redesign avg-based finalize_acked_events split.
+  # Deferring is skipped once the ingest rate is high enough that "recent logs"
+  # freshness matters less than the extra row this would leave sitting in the
+  # generation store — mirroring the pre-redesign avg-based finalize_acked_events split.
+  # Also skipped whenever bid isn't nil (an explicit, non-default BigQuery backend): the
+  # only reader, Backends.list_recent_logs_local/2, hardcodes {source_id, nil}
+  # regardless of which backend it's asked about, so recording under any other bid would
+  # never be read back.
   @spec finalize_acked_events(IngestEventQueue.queues_key(), [Message.t()]) :: :ok
   defp finalize_acked_events(_queues_key, []), do: :ok
 
-  defp finalize_acked_events({sid, _bid} = queues_key, successful) do
-    record? = should_record_recent?(sid)
+  defp finalize_acked_events({sid, bid} = queues_key, successful) do
+    record? = bid == nil and should_record_recent?(sid)
 
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
       if record? do
-        case IngestEventQueue.lookup_event(pointer.tid, pointer.id) do
-          nil -> :ok
-          event -> IngestEventQueue.record_recent_event(queues_key, event)
-        end
+        IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
+      else
+        IngestEventQueue.delete_id(pointer.tid, pointer.id)
       end
-
-      IngestEventQueue.delete_id(pointer.tid, pointer.id)
     end)
   end
 
@@ -267,9 +270,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       else
         batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_streaming_insert)
 
-        # OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
-        #   stream_batch(context, log_events)
-        # end
+        OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
+          stream_batch(context, log_events)
+        end
       end
 
       emit_ingest_telemetry(context, source, triples)

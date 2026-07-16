@@ -13,7 +13,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   Recovery of abandoned in-flight claims (a producer crashed between claiming a pointer
   and acking it) is not this module's job — pointer rows have no in-place "processing"
   state to find stale (claiming one deletes it outright, see
-  `Logflare.Backends.IngestEventQueue.take_pending_pointers/2`). That's bounded instead
+  `Logflare.Backends.IngestEventQueue.pop_pending_pointers/2`). That's bounded instead
   by `Logflare.Backends.IngestEventQueue.GenerationJanitor` dropping whole generations
   on a schedule.
   """
@@ -72,7 +72,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   def do_drop(%{consolidated?: true, consolidated_key: consolidated_key} = state, metrics) do
     for {:consolidated, _bid, pid} = table_key <- IngestEventQueue.list_queues(consolidated_key) do
       truncate_all? = metrics.avg > 100
-      drop_queue(state, table_key, pid, truncate_all?, :consolidated)
+      drop_queue(state, table_key, consolidated_key, pid, truncate_all?, :consolidated)
     end
   end
 
@@ -81,7 +81,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
     for {_sid, bid, pid} = table_key <- IngestEventQueue.list_queues(sid_bid) do
       truncate_all? = metrics.avg > 100 or bid != nil
-      drop_queue(state, table_key, pid, truncate_all?, :source)
+      drop_queue(state, table_key, sid_bid, pid, truncate_all?, :source)
     end
   end
 
@@ -89,15 +89,16 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
           map(),
           {pos_integer(), pos_integer() | nil, pid() | nil}
           | {:consolidated, pos_integer(), pid() | nil},
+          IngestEventQueue.queues_key() | IngestEventQueue.consolidated_queues_key(),
           pid() | nil,
           boolean(),
           :consolidated | :source
         ) :: :ok | nil
-  defp drop_queue(state, table_key, pid, truncate_all?, queue_type) do
+  defp drop_queue(state, table_key, queues_key, pid, truncate_all?, queue_type) do
     if truncate_all? do
-      IngestEventQueue.truncate_table(table_key, :ingested, 0)
+      IngestEventQueue.truncate_recent(queues_key, 0)
     else
-      IngestEventQueue.truncate_table(table_key, :ingested, state.remainder)
+      IngestEventQueue.truncate_recent(queues_key, state.remainder)
     end
 
     size = IngestEventQueue.get_table_size(table_key)

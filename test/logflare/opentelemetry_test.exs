@@ -35,7 +35,7 @@ defmodule Logflare.OpenTelemetryTest do
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
 
       messages = [%Message{data: pointer, acknowledger: {Pipeline, :ack_id, :ack_data}}]
       batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
@@ -73,7 +73,7 @@ defmodule Logflare.OpenTelemetryTest do
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])
-      {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sid_bid_pid, 1)
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
 
       messages = [%Message{data: pointer, acknowledger: {Pipeline, :ack_id, :ack_data}}]
       batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}

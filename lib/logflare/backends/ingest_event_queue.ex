@@ -11,9 +11,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   bodies (see `current_generation_tid/1`, `new_generation/1`,
   `Logflare.Backends.IngestEventQueue.GenerationJanitor`). `add_to_table/3` always
   writes both; which read function a caller uses decides whether it gets back
-  lightweight pointers (`take_pending_pointers/2` — ID-passing pipelines: ClickHouse,
-  BigQuery, spool) or fully-resolved `LogEvent` structs (`take_pending/2`,
-  `pop_pending/2` — every other adaptor).
+  lightweight pointers (`pop_pending_pointers/2` — ID-passing pipelines: ClickHouse,
+  BigQuery, spool) or fully-resolved `LogEvent` structs (`pop_pending/2` — every other
+  adaptor).
   """
   use GenServer
 
@@ -247,31 +247,77 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   # --- recent-events cache ---
   #
-  # Ack (id-passing pipelines: ClickHouse, BigQuery) deletes an event's row from the
-  # generation store as soon as it's successfully processed — see moduledoc — so
-  # nothing would otherwise remain for a "recent logs" read (list_recent_logs_local et
-  # al, via fetch_events/2) to find moments later. This is a small, short-lived,
-  # age-bounded cache of just-acked events those callers also read from. Bounded by
-  # age (see sweep_recent_events/1, called from GenerationJanitor's tick), not by an
-  # explicit per-key cap.
+  # Every pipeline that claims a pointer (BigQuery's ack, BufferProducer's do_pop_key
+  # for non-id-passing adaptors) deletes the event's row from the generation store as
+  # soon as it's processed — see moduledoc — so nothing would otherwise remain for a
+  # "recent logs" read (list_recent_logs_local et al) to find moments later. This is a
+  # small, short-lived cache those callers read from instead. Bounded two ways: age
+  # (sweep_recent_events/1, called from GenerationJanitor's periodic tick) and an
+  # explicit per-key row count (truncate_recent/2, called from QueueJanitor).
+  #
+  # Two row shapes are stored, since only one caller has a real deferred-deletion
+  # choice point: BigQuery's ack already holds a claimed pointer with the
+  # generation-store row still present (record_recent_pointer/3 — a cheap {id, tid}
+  # reference, deletion of the underlying row deferred to whenever this pointer is
+  # evicted). BufferProducer's do_pop_key claims via pop_pending/2, which atomically
+  # deletes the generation-store row as part of claiming — there's no row left to defer
+  # deleting, so it copies the full event instead (record_recent_event/2). Eviction
+  # (truncate_recent/2, sweep_recent_events/1) resolves which cleanup a given row still
+  # owes: a pointer row needs its generation-store row deleted too; an event row was
+  # already fully cleaned up at record time.
+  #
+  # ClickHouse's ack deliberately never writes here: list_recent_logs_local/2
+  # short-circuits to [] for any consolidated backend without reading this cache at
+  # all (filtering by source in a consolidated queue would require scanning every
+  # event), so recording would be a pure, unbounded, unread cost.
 
   @doc """
   Records a successfully-processed event into the recent-events cache for `queues_key`.
+
+  Use this when the generation-store row is already gone by the time of the call (e.g.
+  BufferProducer's do_pop_key, which claims via pop_pending/2). See
+  `record_recent_pointer/3` for the deferred-deletion alternative.
   """
   @spec record_recent_event(
           queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
           LogEvent.t()
         ) :: :ok
   def record_recent_event(queues_key, %LogEvent{} = event) do
+    insert_recent(queues_key, event)
+  end
+
+  @doc """
+  Records a pointer into the recent-events cache for `queues_key`, deferring deletion
+  of the referenced generation-store row to whenever this pointer is evicted (see
+  `truncate_recent/2`, `sweep_recent_events/1`) instead of copying the event body.
+
+  Use this when the caller already has the generation-store row claimed but not yet
+  deleted (BigQuery's ack, via `pop_pending_pointers/2`) and can choose between deleting
+  it now or keeping it around a bit longer for a "recent logs" read.
+  """
+  @spec record_recent_pointer(
+          queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
+          term(),
+          :ets.tid()
+        ) :: :ok
+  def record_recent_pointer(queues_key, id, gen_tid) do
+    insert_recent(queues_key, {id, gen_tid})
+  end
+
+  defp insert_recent(queues_key, value) do
     now = System.monotonic_time(:millisecond)
     key = {queues_key, now, System.unique_integer([:monotonic])}
-    :ets.insert(@ets_recent_events, {key, event})
+    :ets.insert(@ets_recent_events, {key, value})
     :ok
   end
 
   @doc """
   Lists up to `n` recently-processed events for `queues_key` from the recent-events
   cache, most-recently-recorded first.
+
+  Pointer rows are resolved via `lookup_event/2` and dropped if the generation has
+  already rotated out from under them (the same "not found" handling as any other
+  lookup miss) — so this can return fewer than `n` even when that many rows exist.
   """
   @spec list_recent_events(
           queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
@@ -281,22 +327,66 @@ defmodule Logflare.Backends.IngestEventQueue do
     ms = [{{{queues_key, :"$1", :"$2"}, :"$3"}, [], [:"$3"]}]
 
     case :ets.select_reverse(@ets_recent_events, ms, n) do
-      {events, _cont} -> events
+      {values, _cont} -> values |> Enum.map(&resolve_recent/1) |> Enum.reject(&is_nil/1)
       :"$end_of_table" -> []
     end
   end
 
+  defp resolve_recent(%LogEvent{} = event), do: event
+  defp resolve_recent({id, gen_tid}), do: lookup_event(gen_tid, id)
+
   @doc """
   Drops recent-events cache rows older than `max_age_ms`, across every `queues_key` in
-  one pass. Called from `GenerationJanitor`'s periodic tick.
+  one pass, deleting each dropped pointer row's referenced generation-store event too.
+  Called from `GenerationJanitor`'s periodic tick.
   """
   @spec sweep_recent_events(non_neg_integer()) :: :ok
   def sweep_recent_events(max_age_ms) do
     cutoff = System.monotonic_time(:millisecond) - max_age_ms
-    ms = [{{{:_, :"$1", :_}, :_}, [{:<, :"$1", cutoff}], [true]}]
-    :ets.select_delete(@ets_recent_events, ms)
+
+    ms = [
+      {{{:"$1", :"$2", :"$3"}, :"$4"}, [{:<, :"$2", cutoff}], [{{:"$1", :"$2", :"$3", :"$4"}}]}
+    ]
+
+    @ets_recent_events
+    |> :ets.select(ms)
+    |> Enum.each(fn {queues_key, ts, uniq, value} ->
+      :ets.delete(@ets_recent_events, {queues_key, ts, uniq})
+      maybe_delete_generation_row(value)
+    end)
+
     :ok
   end
+
+  @doc """
+  Trims the recent-events cache for a single `queues_key` down to at most `n` rows,
+  keeping the most-recently-recorded ones and deleting each evicted pointer row's
+  referenced generation-store event too. The count-bounded counterpart to
+  `sweep_recent_events/1`'s age bound — this is what `QueueJanitor` calls per queue on
+  its own schedule, taking over the job the old `:ingested`-status pointer truncate used
+  to (ineffectually) attempt back when a pointer could be marked ingested and left in
+  place instead of deleted outright.
+  """
+  @spec truncate_recent(
+          queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
+          non_neg_integer()
+        ) :: :ok
+  def truncate_recent(queues_key, n) do
+    ms = [{{{queues_key, :"$1", :"$2"}, :"$3"}, [], [{{:"$1", :"$2", :"$3"}}]}]
+
+    @ets_recent_events
+    |> :ets.select_reverse(ms)
+    |> Enum.drop(n)
+    |> Enum.each(fn {ts, uniq, value} ->
+      :ets.delete(@ets_recent_events, {queues_key, ts, uniq})
+      maybe_delete_generation_row(value)
+    end)
+
+    :ok
+  end
+
+  defp maybe_delete_generation_row(%LogEvent{}), do: :ok
+  defp maybe_delete_generation_row({id, gen_tid}), do: delete_id(gen_tid, id)
 
   # --- pointer table mapper ---
 
@@ -438,7 +528,6 @@ defmodule Logflare.Backends.IngestEventQueue do
       )
     else
       _ ->
-        dbg("Sending to startup")
         add_to_table(startup_queue, batch)
     end
 
@@ -645,24 +734,6 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Marks records as ingested — deletes the pointer row outright. There's no `:ingested`
-  status to write (pointer rows have no status field); the underlying event in the
-  generation store is left alone either way, reclaimed only by generation rotation.
-  """
-  @spec mark_ingested(source_backend_pid(), [LogEvent.t()]) ::
-          {:ok, non_neg_integer()} | {:error, :not_initialized}
-  def mark_ingested(sid_bid_pid, events) do
-    case get_tid(sid_bid_pid) do
-      nil ->
-        {:error, :not_initialized}
-
-      tid ->
-        for event <- events, do: :ets.delete(tid, event.id)
-        {:ok, Enum.count(events)}
-    end
-  end
-
-  @doc """
   Deletes the queue associated with the given source-backend-pid.
   """
   @spec delete_queue(source_backend_pid()) :: :ok | {:error, :not_initialized}
@@ -735,7 +806,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @doc """
   Counts pending items from a given table. Pointer rows are pending by construction
-  (claiming one deletes it — see `take_pending_pointers/2`), so this is just the
+  (claiming one deletes it — see `pop_pending_pointers/2`), so this is just the
   table's size — O(1), no scan.
   """
   @spec total_pending(source_backend()) :: integer()
@@ -784,36 +855,6 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Takes pending items from a given table, resolved to full `LogEvent`s. Read-only — does
-  not claim/mark/remove anything; the caller decides what to do with what's returned
-  (e.g. `mark_ingested/2`). Intended for non-ID-passing adaptors — ID-passing pipelines
-  should use `take_pending_pointers/2` instead to avoid copying full events through
-  Broadway.
-  """
-  @spec take_pending(source_backend_pid(), integer()) ::
-          {:ok, [LogEvent.t()]} | {:error, :not_initialized}
-  def take_pending(_, 0), do: {:ok, []}
-
-  def take_pending(sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :"$2", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2"}}]}]
-
-    with tid when tid != nil <- get_tid(sid_bid_pid),
-         size when is_integer(size) <- :ets.info(tid, :size),
-         {selected, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      events =
-        for {id, gen_tid} <- selected,
-            event = lookup_event(gen_tid, id),
-            not is_nil(event),
-            do: event
-
-      {:ok, events}
-    else
-      nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, []}
-    end
-  end
-
-  @doc """
   Takes up to `n` pending pointers from a table, claiming each by removing its row
   outright — an atomic `:ets.take/2` per candidate, so a candidate raced away by another
   claimer between the select and the take simply comes back empty and is filtered out.
@@ -823,14 +864,14 @@ defmodule Logflare.Backends.IngestEventQueue do
   the full event is resolved lazily via `lookup_event/2` (using the pointer's `tid`) only
   when actually needed, e.g. at batch-insert time.
   """
-  @spec take_pending_pointers(
+  @spec pop_pending_pointers(
           source_backend_pid() | spool_producer_table_key() | consolidated_table_key(),
           integer()
         ) ::
           {:ok, [LogEventPointer.t()], :ets.tid() | nil} | {:error, :not_initialized}
-  def take_pending_pointers(_, 0), do: {:ok, [], nil}
+  def pop_pending_pointers(_, 0), do: {:ok, [], nil}
 
-  def take_pending_pointers(sid_bid_pid, n) when is_integer(n) do
+  def pop_pending_pointers(sid_bid_pid, n) when is_integer(n) do
     ms = [
       {{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}, [],
        [{{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}}]}
@@ -887,7 +928,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Pops pending events from a given table, resolved to full `LogEvent`s, removing both
   the pointer and its underlying event immediately — unlike the claim-then-ack flow
-  `take_pending_pointers/2` uses, nothing is left for generation rotation to reclaim
+  `pop_pending_pointers/2` uses, nothing is left for generation rotation to reclaim
   later. Use this for consolidated queues where events should be re-added on failure.
   """
   @spec pop_pending(table_key() | consolidated_table_key(), integer()) ::
@@ -920,42 +961,21 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Fetches up to `n` recent events, resolved to full `LogEvent`s. Read-only, doesn't
-  claim anything.
+  Fetches up to `n` recent events for a `{sid, bid}`/consolidated queues_key, resolved
+  to full `LogEvent`s. Read-only, doesn't claim anything.
 
-  Given a specific pipeline's table key (3-tuple), reads only that pipeline's currently
-  pending pointers.
+  Reads the shared generation store directly (rather than iterating per-pid pointer
+  tables — the store isn't per-pid, so iterating per-pid would return duplicates, and
+  would miss anything already claimed: a claimed pointer is gone, but the event is
+  still in the generation store until rotation reclaims it) plus the recent-events
+  cache (see `record_recent_event/2`), since a successfully-processed event's row is
+  deleted from the generation store immediately rather than waiting for rotation.
 
-  Given a `{sid, bid}`/consolidated queues_key (2-tuple), reads the shared generation
-  store directly instead of iterating per-pid pointer tables — the store isn't per-pid,
-  so iterating per-pid would return duplicates, and would miss anything already claimed
-  (a claimed pointer is gone, but the event is still in the generation store until
-  rotation reclaims it) — plus the recent-events cache (see `record_recent_event/2`),
-  since a successfully-acked event's row is deleted from the generation store
-  immediately rather than waiting for rotation. This is what a recent-logs display
-  should use.
+  This is what `list_recent_logs_local/2` uses — not every source's pipeline populates
+  the recent-events cache promptly (or at all) once an event is claimed, so the
+  generation-store scan is what keeps "recent logs" showing freshly-ingested events in
+  the meantime.
   """
-  @spec fetch_events(source_backend_pid(), integer()) ::
-          {:ok, [LogEvent.t()]} | {:error, :not_initialized}
-  def fetch_events({_, _, _} = sid_bid_pid, n) do
-    ms = [{{:"$1", :"$2", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2"}}]}]
-
-    with tid when tid != nil <- get_tid(sid_bid_pid),
-         size when is_integer(size) <- :ets.info(tid, :size),
-         {selected, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      events =
-        for {id, gen_tid} <- selected,
-            event = lookup_event(gen_tid, id),
-            not is_nil(event),
-            do: event
-
-      {:ok, events}
-    else
-      nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, []}
-    end
-  end
-
   @spec fetch_events(queues_key() | consolidated_queues_key(), integer()) ::
           {:ok, [LogEvent.t()]}
   def fetch_events(sid_bid, n) when is_integer(n) do
@@ -988,28 +1008,24 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec truncate_table(
           source_backend_pid() | consolidated_table_key(),
-          :all | :pending | :ingested,
+          :all | :pending,
           integer()
         ) ::
           :ok | {:error, :not_initialized}
 
   def truncate_table({:consolidated, _bid, _pid} = key, status, n)
-      when status in [:all, :pending, :ingested],
+      when status in [:all, :pending],
       do: truncate_tid(get_tid(key), status, n)
 
   def truncate_table({sid, _bid, _pid} = key, status, n)
-      when is_integer(sid) and status in [:all, :pending, :ingested],
+      when is_integer(sid) and status in [:all, :pending],
       do: truncate_tid(get_tid(key), status, n)
 
   @doc """
   Truncates a queue by its already-resolved `tid`, tolerating a stale (deleted) table.
 
-  Pointer rows have no status field: `:ingested` is always a no-op (nothing is ever
-  marked ingested on a pointer — see `mark_ingested/2`, which deletes outright instead),
-  but still checks the table is live so a stale `tid` reports `{:error, :not_initialized}`
-  like every other clause here rather than silently succeeding. `:pending`/`:all`
-  truncate the table down to at most `n` rows kept (whichever `:ets.select/3` happens to
-  return first, not necessarily oldest-first).
+  Truncates the table down to at most `n` rows kept (whichever `:ets.select/3` happens
+  to return first, not necessarily oldest-first).
 
   This is the tid-based counterpart to `truncate_table/3`, which resolves the tid via
   `get_tid/1` first. The owning producer can die and ETS can reclaim its table between
@@ -1018,21 +1034,10 @@ defmodule Logflare.Backends.IngestEventQueue do
   queue: `:stale_table` telemetry is emitted and `{:error, :not_initialized}` is returned
   instead of crashing the caller.
   """
-  @spec truncate_tid(:ets.tid() | nil, :all | :pending | :ingested, integer()) ::
+  @spec truncate_tid(:ets.tid() | nil, :all | :pending, integer()) ::
           :ok | {:error, :not_initialized}
-  def truncate_tid(nil, status, _n) when status in [:all, :pending, :ingested],
+  def truncate_tid(nil, status, _n) when status in [:all, :pending],
     do: {:error, :not_initialized}
-
-  def truncate_tid(tid, :ingested, _n) do
-    case :ets.info(tid, :size) do
-      n when is_integer(n) -> :ok
-      _ -> {:error, :not_initialized}
-    end
-  rescue
-    ArgumentError ->
-      emit_stale_ets_table_telemetry()
-      {:error, :not_initialized}
-  end
 
   def truncate_tid(tid, status, 0) when status in [:all, :pending] do
     :ets.delete_all_objects(tid)

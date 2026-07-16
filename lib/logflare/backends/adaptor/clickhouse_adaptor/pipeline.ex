@@ -44,9 +44,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @processor_concurrency 6
   @processor_min_demand 100
   @processor_max_demand 1_000
-  @fresh_batch_size 10_000
+  @fresh_batch_size 60_000
   @fresh_batch_timeout 5_000
-  @fresh_batcher_concurrency 1
+  @fresh_batcher_concurrency 4
   @stale_batch_size 60_000
   @stale_batch_timeout 12_000
   @stale_batcher_concurrency 2
@@ -170,28 +170,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
     backend = Backends.Cache.get_backend(backend_id)
 
-    Process.sleep(20000)
     encode_and_insert(backend, messages, event_type, batcher, batch_info, day_bucket)
   end
 
   @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
   def ack(_ack_ref, successful, failed) do
     # The pointer was already removed from queue_tid at claim time
-    # (take_pending_pointers/2 claims via :ets.take/2); ack still has to delete the
+    # (pop_pending_pointers/2 claims via :ets.take/2); ack still has to delete the
     # event row from the generation store itself — GenerationJanitor's rotation is a
-    # failsafe for abandoned claims, not the primary cleanup path. The event is copied
-    # into the recent-events cache first so a "recent logs" read isn't left with
-    # nothing the instant an event is successfully processed (see
-    # IngestEventQueue.record_recent_event/2).
-    Enum.each(successful, fn %{
-                               data: %LogEventPointer{} = pointer,
-                               acknowledger: {_, _, %{backend_id: backend_id}}
-                             } ->
-      case IngestEventQueue.lookup_event(pointer.tid, pointer.id) do
-        nil -> :ok
-        event -> IngestEventQueue.record_recent_event({:consolidated, backend_id}, event)
-      end
-
+    # failsafe for abandoned claims, not the primary cleanup path. Never recorded into
+    # the recent-events cache: list_recent_logs_local/2 short-circuits to [] for any
+    # consolidated backend without ever reading it (filtering by source in a
+    # consolidated queue would require scanning every event), so writing here would
+    # just be an unbounded, unread cost per event.
+    Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
       IngestEventQueue.delete_id(pointer.tid, pointer.id)
     end)
 

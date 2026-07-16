@@ -410,7 +410,8 @@ defmodule Logflare.SourcesTest do
       ten_minutes_ago = DateTime.utc_now() |> DateTime.add(-10 * 60, :second)
       old_event = build(:log_event, source: source, ingested_at: ten_minutes_ago)
       Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [old_event])
-      Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [old_event])
+      {:ok, [^old_event]} = Backends.IngestEventQueue.pop_pending({source.id, nil, nil}, 1)
+      Backends.IngestEventQueue.record_recent_event({source.id, nil}, old_event)
 
       TestUtils.retry_assert(fn ->
         assert Backends.source_sup_started?(source)
@@ -446,7 +447,8 @@ defmodule Logflare.SourcesTest do
     test "does NOT shut down sources with recent logs within 5 minutes", %{source: source} do
       event = build(:log_event, source: source, ingested_at: DateTime.utc_now())
       Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [event])
-      Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [event])
+      {:ok, [^event]} = Backends.IngestEventQueue.pop_pending({source.id, nil, nil}, 1)
+      Backends.IngestEventQueue.record_recent_event({source.id, nil}, event)
 
       TestUtils.retry_assert(fn ->
         assert [_event] = Backends.list_recent_logs_local(source, 1)

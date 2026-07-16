@@ -81,7 +81,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @impl Broadway.Acknowledger
   def ack(_ref, successful, failed) do
     # The pointer was already removed from its queue at claim time
-    # (take_pending_pointers/2 claims via :ets.take/2); ack still has to delete the
+    # (pop_pending_pointers/2 claims via :ets.take/2); ack still has to delete the
     # event row from the generation store itself — GenerationJanitor's rotation is a
     # failsafe for abandoned claims, not the primary cleanup path.
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->

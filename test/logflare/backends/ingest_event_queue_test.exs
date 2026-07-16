@@ -60,7 +60,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.add_to_table(key, [le])
       assert [{_, 1}] = IngestEventQueue.list_pending_counts({source.id, backend.id})
 
-      IngestEventQueue.mark_ingested(key, [le])
+      {:ok, [^le]} = IngestEventQueue.pop_pending(key, 1)
       assert [{_, 0}] = IngestEventQueue.list_pending_counts({source.id, backend.id})
     end
 
@@ -226,7 +226,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       le = build(:log_event, source: source)
 
       assert :ok = IngestEventQueue.add_to_table(key, [le])
-      assert {:ok, [^le]} = IngestEventQueue.take_pending(key, 1)
+      assert {:ok, [^le]} = IngestEventQueue.pop_pending(key, 1)
     end
 
     test "add_to_table/2 distributes to startup queue when no active queues", %{
@@ -312,20 +312,25 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     test "object lifecycle", %{source: source, source_backend_pid: sbp} do
       le = build(:log_event, source: source)
+      queues_key = Tuple.delete_at(sbp, 2)
+
       # insert to table
       assert :ok = IngestEventQueue.add_to_table(sbp, [le])
       assert IngestEventQueue.get_table_size(sbp) == 1
-      # can take pending items
-      assert {:ok, [_]} = IngestEventQueue.take_pending(sbp, 5)
-      assert IngestEventQueue.total_pending(sbp) == 1
-      # set to ingested
-      assert {:ok, 1} = IngestEventQueue.mark_ingested(sbp, [le])
+
+      # pop_pending/2 claims and removes it in one step (no lingering :ingested
+      # status — pointer rows have none)
+      assert {:ok, [^le]} = IngestEventQueue.pop_pending(sbp, 5)
       assert IngestEventQueue.total_pending(sbp) == 0
-      # truncate to n items
-      assert :ok = IngestEventQueue.truncate_table(sbp, :ingested, 1)
-      assert IngestEventQueue.get_table_size(sbp) == 0
-      assert :ok = IngestEventQueue.truncate_table(sbp, :ingested, 0)
-      assert IngestEventQueue.total_pending(sbp) == 0
+
+      # the recent-events cache is what now stands in for "still briefly visible
+      # after processing" — see BufferProducer.do_pop_key/2
+      IngestEventQueue.record_recent_event(queues_key, le)
+      assert IngestEventQueue.list_recent_events(queues_key, 10) == [le]
+
+      # truncate_recent/2 bounds it per queue, same job QueueJanitor does on a schedule
+      assert :ok = IngestEventQueue.truncate_recent(queues_key, 0)
+      assert IngestEventQueue.list_recent_events(queues_key, 10) == []
     end
 
     test "drop n items from a queue", %{source: source, source_backend_pid: sbp} do
@@ -349,22 +354,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(sbp) == 50
       assert :ok = IngestEventQueue.truncate_table(sbp, :all, 0)
       assert IngestEventQueue.get_table_size(sbp) == 0
-    end
-
-    test "truncate :ingested is a no-op (pointer rows have no status)", %{
-      source: source,
-      source_backend_pid: sbp
-    } do
-      batch =
-        for _ <- 1..500 do
-          build(:log_event, source: source)
-        end
-
-      # add as pending
-      assert :ok = IngestEventQueue.add_to_table(sbp, batch)
-      assert :ok = IngestEventQueue.truncate_table(sbp, :ingested, 50)
-      assert IngestEventQueue.get_table_size(sbp) == 500
-      assert IngestEventQueue.total_pending(sbp) == 500
     end
 
     test "truncate pending events in a queue", %{source: source, source_backend_pid: sbp} do
@@ -418,7 +407,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     test "size-bounded truncate tolerates the reclaimed table", %{stale_tid: stale_tid} do
       assert {:error, :not_initialized} = IngestEventQueue.truncate_tid(stale_tid, :all, 50)
       assert {:error, :not_initialized} = IngestEventQueue.truncate_tid(stale_tid, :pending, 100)
-      assert {:error, :not_initialized} = IngestEventQueue.truncate_tid(stale_tid, :ingested, 0)
     end
 
     test "truncate_table/3 returns :not_initialized when the queue table is gone" do
@@ -434,7 +422,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-  describe "take_pending_pointers/2" do
+  describe "pop_pending_pointers/2" do
     setup do
       user = insert(:user)
       source = insert(:source, user: user)
@@ -450,7 +438,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       events = for _ <- 1..5, do: build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
 
-      assert {:ok, pointers, tid} = IngestEventQueue.take_pending_pointers(sbp, 5)
+      assert {:ok, pointers, tid} = IngestEventQueue.pop_pending_pointers(sbp, 5)
       assert tid != nil
       assert length(pointers) == 5
       assert Enum.all?(pointers, &match?(%LogEventPointer{}, &1))
@@ -458,6 +446,18 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       taken_ids = for %LogEventPointer{id: id} <- pointers, do: id
       assert Enum.sort(taken_ids) == Enum.sort(for e <- events, do: e.id)
       assert IngestEventQueue.total_pending(sbp) == 0
+    end
+
+    test "works with consolidated keys", %{source: source} do
+      backend = insert(:backend, user: insert(:user))
+      key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(key)
+      le = build(:log_event, source: source)
+
+      assert :ok = IngestEventQueue.add_to_table(key, [le])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
+      assert pointer.id == le.id
+      assert IngestEventQueue.total_pending(key) == 0
     end
 
     test "pointers carry routing metadata and can resolve the full event via lookup_event/2",
@@ -476,7 +476,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert :ok = IngestEventQueue.add_to_table(sbp, [fresh, stale])
 
-      assert {:ok, pointers, tid} = IngestEventQueue.take_pending_pointers(sbp, 2)
+      assert {:ok, pointers, tid} = IngestEventQueue.pop_pending_pointers(sbp, 2)
       assert tid != nil
 
       by_id = Map.new(pointers, &{&1.id, &1})
@@ -502,13 +502,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     } do
       assert :ok = IngestEventQueue.add_to_table(sbp, [build(:log_event, source: source)])
 
-      assert {:ok, [], nil} = IngestEventQueue.take_pending_pointers(sbp, 0)
+      assert {:ok, [], nil} = IngestEventQueue.pop_pending_pointers(sbp, 0)
       assert IngestEventQueue.total_pending(sbp) == 1
     end
 
     test "returns :not_initialized for an unknown table" do
       assert {:error, :not_initialized} =
-               IngestEventQueue.take_pending_pointers({-1, -1, self()}, 5)
+               IngestEventQueue.pop_pending_pointers({-1, -1, self()}, 5)
     end
 
     test "claims rows with nil routing fields and returns nils on the pointer", %{
@@ -523,7 +523,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert :ok = IngestEventQueue.add_to_table(sbp, [event])
 
-      assert {:ok, [pointer], tid} = IngestEventQueue.take_pending_pointers(sbp, 1)
+      assert {:ok, [pointer], tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
       assert tid != nil
       assert pointer.id == event.id
       assert pointer.size == :erlang.external_size(event.body)
@@ -540,7 +540,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       events = for _ <- 1..10, do: build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
 
-      assert {:ok, pointers, _tid} = IngestEventQueue.take_pending_pointers(sbp, 4)
+      assert {:ok, pointers, _tid} = IngestEventQueue.pop_pending_pointers(sbp, 4)
       assert length(pointers) == 4
       assert IngestEventQueue.total_pending(sbp) == 6
     end
@@ -552,8 +552,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       events = for _ <- 1..10, do: build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
 
-      assert {:ok, first, _} = IngestEventQueue.take_pending_pointers(sbp, 4)
-      assert {:ok, second, _} = IngestEventQueue.take_pending_pointers(sbp, 10)
+      assert {:ok, first, _} = IngestEventQueue.pop_pending_pointers(sbp, 4)
+      assert {:ok, second, _} = IngestEventQueue.pop_pending_pointers(sbp, 10)
 
       first_ids = MapSet.new(first, & &1.id)
       second_ids = MapSet.new(second, & &1.id)
@@ -572,15 +572,15 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       event_id = event.id
 
       assert {:ok, [%LogEventPointer{id: ^event_id}], _tid} =
-               IngestEventQueue.take_pending_pointers(sbp, 1)
+               IngestEventQueue.pop_pending_pointers(sbp, 1)
 
-      assert {:ok, [], _} = IngestEventQueue.take_pending_pointers(sbp, 1)
+      assert {:ok, [], _} = IngestEventQueue.pop_pending_pointers(sbp, 1)
 
       # re-adding (e.g. the BigQuery/ClickHouse requeue path) makes it claimable again
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
 
       assert {:ok, [%LogEventPointer{id: ^event_id}], _tid} =
-               IngestEventQueue.take_pending_pointers(sbp, 1)
+               IngestEventQueue.pop_pending_pointers(sbp, 1)
     end
 
     # Regression guard for the atomic claim. For correct code this passes
@@ -601,7 +601,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       claimed =
         for _ <- 1..8 do
           Task.async(fn ->
-            {:ok, pointers, _tid} = IngestEventQueue.take_pending_pointers(sbp, count)
+            {:ok, pointers, _tid} = IngestEventQueue.pop_pending_pointers(sbp, count)
             for %LogEventPointer{id: id} <- pointers, do: id
           end)
         end
@@ -630,13 +630,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       le = build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, [le])
 
-      assert {:ok, [pointer], _tid} = IngestEventQueue.take_pending_pointers(sbp, 1)
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
       assert IngestEventQueue.total_pending(sbp) == 0
 
       assert :ok = IngestEventQueue.reinsert_pointer(%{pointer | retries: pointer.retries + 1})
       assert IngestEventQueue.total_pending(sbp) == 1
 
-      assert {:ok, [reclaimed], _tid} = IngestEventQueue.take_pending_pointers(sbp, 1)
+      assert {:ok, [reclaimed], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
       assert reclaimed.id == le.id
       assert reclaimed.retries == 1
     end
@@ -946,23 +946,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(key) == 0
     end
 
-    test "only pops pending events, not ingested", %{key: key, source: source} do
-      pending_events = for _ <- 1..3, do: build(:log_event, source: source)
-      ingested_events = for _ <- 1..2, do: build(:log_event, source: source)
-
-      :ok = IngestEventQueue.add_to_table(key, pending_events ++ ingested_events)
-      {:ok, _} = IngestEventQueue.mark_ingested(key, ingested_events)
-
-      assert IngestEventQueue.get_table_size(key) == 3
-      assert IngestEventQueue.total_pending(key) == 3
-
-      assert {:ok, popped} = IngestEventQueue.pop_pending(key, 10)
-      assert length(popped) == 3
-
-      assert IngestEventQueue.get_table_size(key) == 0
-      assert IngestEventQueue.total_pending(key) == 0
-    end
-
     test "works with consolidated keys", %{source: source, backend: backend} do
       consolidated_key = {:consolidated, backend.id, self()}
       IngestEventQueue.upsert_tid(consolidated_key)
@@ -981,6 +964,37 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert {:ok, []} = IngestEventQueue.pop_pending(key, 0)
       assert IngestEventQueue.get_table_size(key) == 5
+    end
+
+    # Regression guard for concurrent access to a shared queue (e.g. BufferProducer's
+    # startup-queue prioritization, where more than one live producer reads the same
+    # table). The candidate :ets.select/3 is not atomic, but the resolution that
+    # actually hands back an event — :ets.take/2 on the generation store — is: a
+    # duplicate-selected id resolves to a real event for exactly one racer and nil
+    # (filtered out) for every other. Tagged :race so it can be isolated, but it is
+    # safe to run by default.
+    @tag :race
+    test "concurrent claims on the same queue never pop an event twice", %{
+      key: key,
+      source: source
+    } do
+      count = 1_000
+      events = for _ <- 1..count, do: build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(key, events)
+
+      claimed =
+        for _ <- 1..8 do
+          Task.async(fn ->
+            {:ok, popped} = IngestEventQueue.pop_pending(key, count)
+            Enum.map(popped, & &1.id)
+          end)
+        end
+        |> Task.await_many(10_000)
+        |> List.flatten()
+
+      assert length(claimed) == length(Enum.uniq(claimed))
+      assert length(claimed) == count
+      assert IngestEventQueue.get_table_size(key) == 0
     end
   end
 
@@ -1055,11 +1069,15 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       events = for _ <- 1..5, do: build(:log_event, source: source)
       IngestEventQueue.add_to_table(consolidated_key, events)
-      {:ok, _} = IngestEventQueue.mark_ingested(consolidated_key, events)
+      {:ok, popped} = IngestEventQueue.pop_pending(consolidated_key, 5)
+      queues_key = {:consolidated, backend.id}
+      Enum.each(popped, &IngestEventQueue.record_recent_event(queues_key, &1))
 
-      # mark_ingested/2 deletes the pointer row outright (there's no lingering
-      # :ingested status for the janitor to purge later).
+      # pop_pending/2 deletes the pointer row outright (there's no lingering
+      # :ingested status for the janitor to purge later) — the recent-events cache
+      # is what QueueJanitor now bounds instead, via truncate_recent/2.
       assert IngestEventQueue.get_table_size(consolidated_key) == 0
+      assert length(IngestEventQueue.list_recent_events(queues_key, 10)) == 5
 
       start_supervised!(
         {QueueJanitor,
@@ -1068,11 +1086,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
          interval: 50,
          remainder: 0,
          consolidated: true,
-         consolidated_key: {:consolidated, backend.id}}
+         consolidated_key: queues_key}
       )
 
       :timer.sleep(550)
       assert IngestEventQueue.get_table_size(consolidated_key) == 0
+      assert IngestEventQueue.list_recent_events(queues_key, 10) == []
     end
 
     test "uses larger max threshold for consolidated queues" do
@@ -1223,6 +1242,70 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert :ok = IngestEventQueue.sweep_recent_events(:timer.minutes(5))
       assert IngestEventQueue.list_recent_events(queues_key, 10) == [le]
     end
+
+    test "record_recent_pointer/3 + list_recent_events/2 resolves the pointer to its event" do
+      key = {:consolidated, System.unique_integer([:positive]), self()}
+      queues_key = {:consolidated, elem(key, 1)}
+      IngestEventQueue.upsert_tid(key)
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(key, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
+
+      assert :ok = IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
+      # the generation-store row is deliberately still there, deletion deferred
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == le
+      assert IngestEventQueue.list_recent_events(queues_key, 10) == [le]
+    end
+
+    test "list_recent_events/2 drops a pointer whose generation-store row is already gone" do
+      queues_key = {:consolidated, System.unique_integer([:positive])}
+      gen_tid = :ets.new(:fake_generation, [:set, :public])
+
+      assert :ok = IngestEventQueue.record_recent_pointer(queues_key, "missing-id", gen_tid)
+      assert IngestEventQueue.list_recent_events(queues_key, 10) == []
+    end
+
+    test "truncate_recent/2 deletes an evicted pointer's referenced generation-store event too" do
+      key = {:consolidated, System.unique_integer([:positive]), self()}
+      queues_key = {:consolidated, elem(key, 1)}
+      IngestEventQueue.upsert_tid(key)
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(key, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
+      IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
+
+      assert :ok = IngestEventQueue.truncate_recent(queues_key, 0)
+      assert IngestEventQueue.list_recent_events(queues_key, 10) == []
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == nil
+    end
+
+    test "sweep_recent_events/1 deletes an evicted pointer's referenced generation-store event too" do
+      key = {:consolidated, System.unique_integer([:positive]), self()}
+      queues_key = {:consolidated, elem(key, 1)}
+      IngestEventQueue.upsert_tid(key)
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(key, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
+      IngestEventQueue.record_recent_pointer(queues_key, pointer.id, pointer.tid)
+
+      :timer.sleep(20)
+
+      assert :ok = IngestEventQueue.sweep_recent_events(10)
+      assert IngestEventQueue.list_recent_events(queues_key, 10) == []
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == nil
+    end
+
+    test "truncate_recent/2 does not touch the generation store for plain event rows" do
+      queues_key = {:consolidated, System.unique_integer([:positive])}
+      le = build(:log_event)
+      IngestEventQueue.record_recent_event(queues_key, le)
+
+      assert :ok = IngestEventQueue.truncate_recent(queues_key, 0)
+      assert IngestEventQueue.list_recent_events(queues_key, 10) == []
+    end
   end
 
   describe "GenerationJanitor" do
@@ -1252,7 +1335,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # claiming the still-present pointer now resolves to a dead generation — the same
       # "not found" outcome as any other lookup miss, not a crash
       assert {:ok, [%LogEventPointer{id: claimed_id, tid: claimed_tid}], _tid} =
-               IngestEventQueue.take_pending_pointers(consolidated_key, 1)
+               IngestEventQueue.pop_pending_pointers(consolidated_key, 1)
 
       assert claimed_id == le.id
       assert claimed_tid == gen_tid
@@ -1301,46 +1384,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
           :ets.delete_all_objects(tid)
           IngestEventQueue.add_to_table(sbp, input)
           {input, 500}
-        end,
-        time: 3,
-        warmup: 1,
-        memory_time: 3,
-        reduction_time: 3,
-        print: [configuration: false],
-        # use extended_statistics to view units of work done
-        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
-      )
-    end
-
-    @tag :benchmark
-    @tag timeout: :infinity
-    @tag :skip
-    # benchmark results:
-    # using update_element to update the element inplace is hands down superior
-    # uses >30-60x less memory, effect increases as with higher batch sizes
-    # >8-10.5x more ips, consistent across all batch sizes
-    # reductions are the same across all 3.
-    test "mark_ingested" do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, user: user)
-      pid = self()
-      {:ok, tid} = IngestEventQueue.upsert_tid({source.id, backend.id, pid})
-      sbp = {source.id, backend.id}
-
-      Benchee.run(
-        %{},
-        inputs: %{
-          "1k" => for(_ <- 1..1_000, do: build(:log_event, source: source)),
-          "500" => for(_ <- 1..500, do: build(:log_event, source: source)),
-          "100" => for(_ <- 1..100, do: build(:log_event, source: source)),
-          "10" => for(_ <- 1..10, do: build(:log_event, source: source))
-        },
-        # insert the batch
-        before_scenario: fn input ->
-          :ets.delete_all_objects(tid)
-          IngestEventQueue.add_to_table(sbp, input)
-          {input, nil}
         end,
         time: 3,
         warmup: 1,

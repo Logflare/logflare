@@ -33,11 +33,14 @@ defmodule Logflare.Backends.BufferProducerTest do
 
     assert id == le.id
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # mark_ingested/2 deletes the pointer row outright
+    # pop_pending/2 deletes the pointer row outright
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
+    # do_pop_key/2 backfills the recent-events cache for every non-id-passing pop,
+    # regardless of ingestion rate — see BufferProducer.do_pop_key/2
+    assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == [le]
   end
 
-  test "pops events when ingestion rate high" do
+  test "pops events regardless of configured ingestion rate" do
     user = insert(:user)
     source = insert(:source, user: user)
 
@@ -67,7 +70,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     |> Enum.take(1)
 
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # popped during ingest
+    # popped regardless — no more avg-based take/pop branching
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
   end
 
@@ -138,7 +141,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     |> Enum.take(1)
 
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-    # mark_ingested/2 deletes the pointer row outright
+    # pop_pending/2 deletes the pointer row outright
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
   end
 
@@ -171,6 +174,111 @@ defmodule Logflare.Backends.BufferProducerTest do
 
     Regex.scan(regex, string)
     |> length()
+  end
+
+  describe "startup queue" do
+    test "drains the producer's own queue before the shared startup queue" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      # producers unconditionally copy everything sitting in startup into their own
+      # queue at init — created (but left empty) before init so that copy is a no-op,
+      # letting this test add both events afterward to keep them apart
+      startup_key = {source.id, nil, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      buffer_producer_pid =
+        start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+
+      sid_bid_pid = {source.id, nil, buffer_producer_pid}
+      :timer.sleep(100)
+
+      own_event = build(:log_event, source: source)
+      :ok = IngestEventQueue.add_to_table(sid_bid_pid, [own_event])
+
+      startup_event = build(:log_event, source: source)
+      :ok = IngestEventQueue.add_to_table(startup_key, [startup_event])
+
+      [%LogEvent{id: id}] =
+        GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+        |> Enum.take(1)
+
+      assert id == own_event.id
+      assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+      # the startup-queue event is left untouched until the producer's own queue is
+      # drained — startup is only pulled from to top off unmet demand
+      assert IngestEventQueue.total_pending(startup_key) == 1
+    end
+
+    test "falls back to the shared startup queue once the producer's own queue is exhausted" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      startup_key = {source.id, nil, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      buffer_producer_pid =
+        start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+
+      sid_bid_pid = {source.id, nil, buffer_producer_pid}
+      :timer.sleep(100)
+
+      own_event = build(:log_event, source: source)
+      :ok = IngestEventQueue.add_to_table(sid_bid_pid, [own_event])
+
+      startup_event = build(:log_event, source: source)
+      :ok = IngestEventQueue.add_to_table(startup_key, [startup_event])
+
+      [first, second] =
+        GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+        |> Enum.take(2)
+
+      assert Enum.map([first, second], & &1.id) |> Enum.sort() ==
+               Enum.sort([own_event.id, startup_event.id])
+
+      assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+      assert IngestEventQueue.total_pending(startup_key) == 0
+    end
+
+    test "two live producers draining the same shared startup queue never claim the same pointer" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      startup_key = {source.id, nil, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      # start both producers against an empty startup table first — otherwise
+      # whichever producer's init-time copy-everything-from-startup runs first would
+      # vacuum both events into its own queue before the second producer ever starts
+      producer_a =
+        start_supervised!(
+          {BufferProducer, backend_id: nil, source_id: source.id, id_passing: true},
+          id: :producer_a
+        )
+
+      producer_b =
+        start_supervised!(
+          {BufferProducer, backend_id: nil, source_id: source.id, id_passing: true},
+          id: :producer_b
+        )
+
+      :timer.sleep(100)
+
+      events = [build(:log_event, source: source), build(:log_event, source: source)]
+      :ok = IngestEventQueue.add_to_table(startup_key, events)
+
+      task_a =
+        Task.async(fn -> GenStage.stream([{producer_a, max_demand: 1}]) |> Enum.take(1) end)
+
+      task_b =
+        Task.async(fn -> GenStage.stream([{producer_b, max_demand: 1}]) |> Enum.take(1) end)
+
+      [%LogEventPointer{id: id_a}] = Task.await(task_a, 2_000)
+      [%LogEventPointer{id: id_b}] = Task.await(task_b, 2_000)
+
+      assert id_a != id_b
+      assert Enum.sort([id_a, id_b]) == Enum.sort(Enum.map(events, & &1.id))
+    end
   end
 
   describe "consolidated mode" do
@@ -296,7 +404,7 @@ defmodule Logflare.Backends.BufferProducerTest do
       assert event_id == le.id
       assert size == :erlang.external_size(le.body)
 
-      # The claimed pointer row is already deleted (take_pending_pointers/2 claims via
+      # The claimed pointer row is already deleted (pop_pending_pointers/2 claims via
       # :ets.take/2), so the full event is resolved lazily via the pointer's own tid.
       assert IngestEventQueue.lookup_event(pointer.tid, event_id) == le
 
