@@ -102,6 +102,23 @@ defmodule Logflare.Alerting do
     |> Repo.one()
   end
 
+  @doc """
+  Fetches a single alert query by arbitrary conditions, scoped to the
+  alert queries the user has team access to.
+  """
+  @spec fetch_alert_query_by_user_access(User.t() | TeamUser.t(), keyword()) ::
+          {:ok, AlertQuery.t()} | {:error, :not_found}
+  def fetch_alert_query_by_user_access(user_or_team_user, kw) when is_list(kw) do
+    AlertQuery
+    |> Teams.filter_by_user_access(user_or_team_user)
+    |> where([alert_query], ^kw)
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      alert_query -> {:ok, alert_query}
+    end
+  end
+
   def preload_alert_query(alert) do
     alert
     |> Repo.preload([:user, :backends])
@@ -123,10 +140,13 @@ defmodule Logflare.Alerting do
 
   """
   def create_alert_query(%User{} = user, attrs \\ %{}) do
+    backends = Map.get(attrs, :backends) || Map.get(attrs, "backends")
+
     user
     |> Ecto.build_assoc(:alert_queries)
     |> Repo.preload(:user)
     |> AlertQuery.changeset(attrs)
+    |> put_backends(backends)
     |> Repo.insert()
   end
 
@@ -143,20 +163,20 @@ defmodule Logflare.Alerting do
 
   """
   def update_alert_query(%AlertQuery{} = alert_query, attrs) do
-    backends_modified = if backends = Map.get(attrs, :backends), do: true, else: false
+    backends = Map.get(attrs, :backends) || Map.get(attrs, "backends")
 
     alert_query
     |> preload_alert_query()
     |> AlertQuery.changeset(attrs)
-    |> then(fn
-      changeset when backends_modified == true ->
-        Ecto.Changeset.put_assoc(changeset, :backends, backends)
-
-      changeset ->
-        changeset
-    end)
+    |> put_backends(backends)
     |> Repo.update()
     |> handle_schedule_change(alert_query)
+  end
+
+  defp put_backends(changeset, nil), do: changeset
+
+  defp put_backends(changeset, backends) do
+    Ecto.Changeset.put_assoc(changeset, :backends, backends)
   end
 
   defp handle_schedule_change({:ok, %AlertQuery{} = updated} = result, previous) do

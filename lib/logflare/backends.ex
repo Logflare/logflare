@@ -65,8 +65,14 @@ defmodule Logflare.Backends do
   """
   @spec list_backends(keyword()) :: [Backend.t()]
   def list_backends(filters) when is_list(filters) do
-    filters
-    |> Enum.reduce(from(b in Backend), fn
+    Backend
+    |> filter_backends(filters)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  defp filter_backends(query, filters) do
+    Enum.reduce(filters, query, fn
       {:types, types}, q when is_list(types) ->
         where(q, [b], b.type in ^types)
 
@@ -109,15 +115,16 @@ defmodule Logflare.Backends do
         q
         |> join(:left, [b], sb in "sources_backends", on: sb.backend_id == b.id)
         |> join(:left, [b], r in Rule, on: r.backend_id == b.id)
-        |> where([b, sb, r], not is_nil(sb.backend_id) or not is_nil(r.backend_id))
-        |> distinct([b], b.id)
+        |> where([b, ..., sb, r], not is_nil(sb.backend_id) or not is_nil(r.backend_id))
+        |> distinct_backends()
 
       _, q ->
         q
     end)
-    |> Repo.all()
-    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
+
+  defp distinct_backends(%Ecto.Query{distinct: nil} = query), do: distinct(query, [b], b.id)
+  defp distinct_backends(query), do: query
 
   @doc """
   Lists `Backend`s by user
@@ -132,24 +139,29 @@ defmodule Logflare.Backends do
   @doc """
   Lists all backends a user has access to, including where the user is a team member.
   """
-  @spec list_backends_by_user_access(User.t()) :: [Backend.t()]
-  def list_backends_by_user_access(%User{} = user) do
+  @spec list_backends_by_user_access(User.t(), keyword()) :: [Backend.t()]
+  def list_backends_by_user_access(%User{} = user, filters \\ []) when is_list(filters) do
     Backend
     |> Teams.filter_by_user_access(user)
+    |> filter_backends(filters)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
 
   @doc """
-  Gets a backend by id that the user has access to.
+  Gets a backend that the user has access to.
   Returns the backend if the user owns it or is a team member, otherwise returns nil.
   """
-  @spec get_backend_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+  @spec get_backend_by_user_access(User.t() | TeamUser.t(), integer() | String.t() | keyword()) ::
           Backend.t() | nil
   def get_backend_by_user_access(user_or_team_user, id) when is_integer(id) or is_binary(id) do
+    get_backend_by_user_access(user_or_team_user, id: id)
+  end
+
+  def get_backend_by_user_access(user_or_team_user, filters) when is_list(filters) do
     Backend
     |> Teams.filter_by_user_access(user_or_team_user)
-    |> where([backend], backend.id == ^id)
+    |> where([backend], ^filters)
     |> Repo.one()
     |> typecast_config_string_map_to_atom_map()
   end

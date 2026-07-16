@@ -44,13 +44,7 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule QueryResult do
     @properties %{
-      result: %Schema{type: :object},
-      errors: %Schema{
-        oneOf: [
-          %Schema{type: :object},
-          %Schema{type: :string}
-        ]
-      }
+      result: %Schema{type: :array, items: %Schema{type: :object}}
     }
     use LogflareWeb.OpenApi, properties: @properties, required: [:result]
   end
@@ -157,6 +151,64 @@ defmodule LogflareWeb.OpenApiSchemas do
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:lql_string]
+  end
+
+  defmodule AlertApiCreateParams do
+    @properties %{
+      name: %Schema{type: :string},
+      description: %Schema{type: :string, nullable: true},
+      language: %Schema{type: :string},
+      query: %Schema{type: :string},
+      cron: %Schema{type: :string},
+      slack_hook_url: %Schema{type: :string, nullable: true},
+      webhook_notification_url: %Schema{type: :string, nullable: true},
+      enabled: %Schema{type: :boolean},
+      backend_ids: %Schema{
+        type: :array,
+        items: %Schema{type: :integer, minimum: 1},
+        description: "Complete replacement set of attached backend IDs"
+      }
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query, :cron]
+  end
+
+  defmodule AlertApiUpdateParams do
+    @properties %{
+      name: %Schema{type: :string},
+      description: %Schema{type: :string, nullable: true},
+      language: %Schema{type: :string},
+      query: %Schema{type: :string},
+      cron: %Schema{type: :string},
+      slack_hook_url: %Schema{type: :string, nullable: true},
+      webhook_notification_url: %Schema{type: :string, nullable: true},
+      enabled: %Schema{type: :boolean},
+      backend_ids: %Schema{
+        type: :array,
+        items: %Schema{type: :integer, minimum: 1},
+        description: "Complete replacement set of attached backend IDs"
+      }
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule AlertApiSchema do
+    @properties %{
+      id: %Schema{type: :integer},
+      token: %Schema{type: :string},
+      name: %Schema{type: :string},
+      description: %Schema{type: :string, nullable: true},
+      language: %Schema{type: :string},
+      query: %Schema{type: :string},
+      cron: %Schema{type: :string},
+      slack_hook_url: %Schema{type: :string, nullable: true},
+      webhook_notification_url: %Schema{type: :string, nullable: true},
+      enabled: %Schema{type: :boolean},
+      backends: %Schema{type: :array, items: LogflareWeb.OpenApiSchemas.BackendApiSchema}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query, :cron, :language]
   end
 
   defmodule KeyValueApiSchema do
@@ -352,10 +404,10 @@ defmodule LogflareWeb.OpenApiSchemas do
           LogflareWeb.OpenApiSchemas.SyslogConfigSchema
         ]
       },
-      metadata: %Schema{type: :object},
+      metadata: %Schema{type: :object, nullable: true},
       default_ingest?: %Schema{type: :boolean},
-      inserted_at: %Schema{type: :string, format: :"date-time"},
-      updated_at: %Schema{type: :string, format: :"date-time"}
+      inserted_at: %Schema{type: :string},
+      updated_at: %Schema{type: :string}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :type, :config]

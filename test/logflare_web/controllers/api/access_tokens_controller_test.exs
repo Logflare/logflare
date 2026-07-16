@@ -105,10 +105,17 @@ defmodule LogflareWeb.Api.AccessTokensTest do
     end
 
     test "must use private token", %{conn: conn, user: user} do
-      conn
-      |> add_access_token(user, "public")
-      |> post(~p"/api/access-tokens")
-      |> json_response(401)
+      conn =
+        conn
+        |> add_access_token(user, "public")
+        |> post(~p"/api/access-tokens")
+
+      assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
+
+      assert %{error: "Unauthorized"} =
+               conn
+               |> json_response(401)
+               |> assert_schema("UnauthorizedResponse")
     end
   end
 

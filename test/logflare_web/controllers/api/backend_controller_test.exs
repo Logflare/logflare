@@ -21,6 +21,31 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                |> json_response(200)
     end
 
+    test "includes team-owned backends", %{conn: conn} do
+      member = insert(:user)
+      team_user = insert(:team_user, email: member.email)
+      backend = insert(:backend, user: team_user.team.user)
+      unrelated_backend = insert(:backend)
+
+      response =
+        conn
+        |> add_access_token(member, "private")
+        |> get(~p"/api/backends")
+        |> json_response(200)
+
+      backend_ids = MapSet.new(Enum.map(response, & &1["id"]))
+      assert backend.id in backend_ids
+      refute unrelated_backend.id in backend_ids
+
+      assert %{"id" => backend_id} =
+               conn
+               |> add_access_token(member, "private")
+               |> get(~p"/api/backends/#{backend.token}")
+               |> json_response(200)
+
+      assert backend_id == backend.id
+    end
+
     test "can filter on metadata column", %{conn: conn, user: user} do
       insert(:backend, user: user)
       backend = insert(:backend, user: user, metadata: %{my: "field", data: true})
@@ -329,6 +354,17 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       |> response(404)
     end
 
+    test "team member cannot update a team-owned backend", %{conn: conn} do
+      member = insert(:user)
+      team_user = insert(:team_user, email: member.email)
+      backend = insert(:backend, user: team_user.team.user)
+
+      assert conn
+             |> add_access_token(member, "private")
+             |> patch("/api/backends/#{backend.token}", %{name: "updated"})
+             |> response(404)
+    end
+
     test "cannot transfer backend ownership via user_id param", %{conn: conn, user: user} do
       backend = insert(:backend, user: user)
       victim = insert(:user)
@@ -449,6 +485,17 @@ defmodule LogflareWeb.Api.BackendControllerTest do
              |> delete("/api/backends/#{backend.token}")
              |> response(404)
     end
+
+    test "team member cannot delete a team-owned backend", %{conn: conn} do
+      member = insert(:user)
+      team_user = insert(:team_user, email: member.email)
+      backend = insert(:backend, user: team_user.team.user)
+
+      assert conn
+             |> add_access_token(member, "private")
+             |> delete("/api/backends/#{backend.token}")
+             |> response(404)
+    end
   end
 
   describe "test_connection/2" do
@@ -495,6 +542,17 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       |> add_access_token(user, "private")
       |> post("/api/backends/#{backend.token}/test")
       |> response(404)
+    end
+
+    test "team member cannot test a team-owned backend connection", %{conn: conn} do
+      member = insert(:user)
+      team_user = insert(:team_user, email: member.email)
+      backend = insert(:backend, user: team_user.team.user)
+
+      assert conn
+             |> add_access_token(member, "private")
+             |> post("/api/backends/#{backend.token}/test")
+             |> response(404)
     end
   end
 end
