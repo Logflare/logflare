@@ -43,8 +43,10 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
 
       mod.ack(ref, [], [message])
-      # pointer is reinserted directly into the queue it was claimed from, with
-      # incremented retries
+      # event is looked up, deleted from the generation it failed in, and re-added
+      # via add_to_table/3 (fresh generation, fresh round-robin pick) with
+      # incremented retries — the only registered queue here is its own, so it lands
+      # right back in the same table
       assert IngestEventQueue.total_pending(sid_bid_pid) == 1
 
       {:ok, [requeued], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)

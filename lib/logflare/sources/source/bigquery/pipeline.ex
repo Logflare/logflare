@@ -523,10 +523,17 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   # Requeue failed events if the number of previous retries is less than max_retries.
-  # Every failed message's pointer was already removed from its queue at claim time —
-  # retriable ones are written back directly into the queue they were claimed from (see
-  # IngestEventQueue.reinsert_pointer/1); exhausted/undroppable ones still need their
-  # event row deleted from the generation store, since nothing will ever ack them.
+  # Every failed message's pointer was already removed from its queue at claim time.
+  # Retriable ones are looked up, deleted from the generation store they're currently
+  # in, and re-added via add_to_table/3 — a fresh copy in the *current* generation
+  # (giving the retry a full new rotation window instead of whatever's left of the
+  # generation it happened to land in originally) and a fresh round-robin pick (so a
+  # struggling/backed-up pipeline isn't guaranteed to just keep re-feeding itself).
+  # Deleting the old copy immediately, rather than leaving it for GenerationJanitor's
+  # rotation to eventually reclaim, matters at scale — a single failed batch can be
+  # tens of thousands of events, and that's not memory worth sitting on for minutes.
+  # Exhausted/undroppable ones still need their event row deleted, since nothing will
+  # ever ack them.
   defp maybe_requeue_failed(_sid_bid, [], _config), do: :ok
 
   defp maybe_requeue_failed(_sid_bid, failed, %{max_retries: 0}) do
@@ -534,24 +541,32 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     drop_pointers(pointers, "retries disabled")
   end
 
-  defp maybe_requeue_failed(_sid_bid, failed, %{max_retries: max_retries}) do
+  defp maybe_requeue_failed(sid_bid, failed, %{max_retries: max_retries}) do
     {retriable, exhausted} =
       failed
       |> Enum.map(fn %{data: %LogEventPointer{} = pointer} -> pointer end)
       |> Enum.split_with(&(&1.retries < max_retries))
 
     drop_pointers(exhausted, "exhausted #{max_retries} retries")
-    requeue_retriable(retriable)
+    requeue_retriable(sid_bid, retriable)
   end
 
-  defp requeue_retriable([]), do: :ok
+  defp requeue_retriable(_sid_bid, []), do: :ok
 
-  defp requeue_retriable(retriable) do
+  defp requeue_retriable(sid_bid, retriable) do
     Logger.info("Requeuing #{length(retriable)} BigQuery events for retry")
 
-    Enum.each(retriable, fn pointer ->
-      IngestEventQueue.reinsert_pointer(%{pointer | retries: pointer.retries + 1})
-    end)
+    events =
+      for pointer <- retriable,
+          event = IngestEventQueue.lookup_event(pointer.tid, pointer.id),
+          not is_nil(event) do
+        IngestEventQueue.delete_id(pointer.tid, pointer.id)
+        %{event | retries: pointer.retries + 1}
+      end
+
+    if events != [], do: IngestEventQueue.add_to_table(sid_bid, events)
+
+    :ok
   end
 
   defp drop_pointers([], _reason), do: :ok

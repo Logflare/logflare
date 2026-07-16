@@ -710,18 +710,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           status: {:failed, "connection error"}
         }
 
-        test_pid = self()
-
-        Mimic.expect(IngestEventQueue, :reinsert_pointer, fn requeued_pointer ->
-          send(test_pid, {:requeued, requeued_pointer})
-          :ok
-        end)
-
         Pipeline.ack(:ack_ref, [], [failed_message])
 
-        assert_receive {:requeued, requeued_pointer}
-        assert requeued_pointer.id == event.id
-        assert requeued_pointer.retries == 1
+        # old copy deleted from the generation it failed in ...
+        assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+        # ... and re-added to the current generation with incremented retries
+        current_gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend.id})
+        assert %{retries: 1} = IngestEventQueue.lookup_event(current_gen_tid, event.id)
       end
 
       test "increments retry count on each re-queue", %{
@@ -742,17 +738,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           status: {:failed, "connection error"}
         }
 
-        test_pid = self()
-
-        Mimic.expect(IngestEventQueue, :reinsert_pointer, fn requeued_pointer ->
-          send(test_pid, {:requeued, requeued_pointer})
-          :ok
-        end)
-
         Pipeline.ack(:ack_ref, [], [failed_message])
 
-        assert_receive {:requeued, requeued_pointer}
-        assert requeued_pointer.retries == initial_retries + 1
+        current_gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend.id})
+
+        assert %{retries: ^initial_retries} = event
+        assert %{retries: retries} = IngestEventQueue.lookup_event(current_gen_tid, event.id)
+        assert retries == initial_retries + 1
       end
 
       test "handles mixed retriable and exhausted messages", %{
@@ -783,13 +775,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           }
         ]
 
-        test_pid = self()
-
-        Mimic.expect(IngestEventQueue, :reinsert_pointer, fn requeued_pointer ->
-          send(test_pid, {:requeued, requeued_pointer})
-          :ok
-        end)
-
         log =
           capture_log(fn ->
             Pipeline.ack(:ack_ref, [], failed_messages)
@@ -797,14 +782,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
         assert log =~ "Dropping 1 ClickHouse events: exhausted #{max_retries} retries"
 
-        assert_receive {:requeued, requeued_pointer}
-        assert requeued_pointer.id == retriable_event.id
-        assert requeued_pointer.retries == 1
-
-        # exhausted event's event row is deleted from the generation store
+        # exhausted event's event row is deleted from the generation store, never re-added
         assert IngestEventQueue.lookup_event(gen_tid, exhausted_event.id) == nil
-        # retriable event's event row is untouched — only its pointer is reinserted
-        assert IngestEventQueue.lookup_event(gen_tid, retriable_event.id) == retriable_event
+
+        current_gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend.id})
+        assert IngestEventQueue.lookup_event(current_gen_tid, exhausted_event.id) == nil
+
+        # retriable event's old copy is deleted too, but re-added to the current
+        # generation with incremented retries
+        assert IngestEventQueue.lookup_event(gen_tid, retriable_event.id) == nil
+        assert %{retries: 1} = IngestEventQueue.lookup_event(current_gen_tid, retriable_event.id)
       end
     end
   end
@@ -981,7 +968,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       backend: backend
     } do
       Mimic.stub(CircuitBreaker, :check, fn _backend_id -> {:error, :circuit_open, 0} end)
-      Mimic.reject(IngestEventQueue, :reinsert_pointer, 1)
+      Mimic.reject(IngestEventQueue, :add_to_table, 2)
 
       event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
       gen_tid = setup_generation_events([event])
@@ -1013,17 +1000,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         status: {:failed, "boom"}
       }
 
-      test_pid = self()
-
-      Mimic.expect(IngestEventQueue, :reinsert_pointer, fn requeued_pointer ->
-        send(test_pid, {:requeued, requeued_pointer})
-        :ok
-      end)
-
       Pipeline.ack(:ack_ref, [], [failed_message])
 
-      assert_receive {:requeued, requeued_pointer}
-      assert requeued_pointer.retries == 1
+      assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+      current_gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend.id})
+      assert %{retries: 1} = IngestEventQueue.lookup_event(current_gen_tid, event.id)
     end
   end
 end

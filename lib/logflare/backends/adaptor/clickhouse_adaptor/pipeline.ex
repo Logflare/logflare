@@ -393,6 +393,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
+  # Looks up each pointer's event, deletes it from the generation store it's
+  # currently in, and re-adds it via add_to_table/3 — a fresh copy in the *current*
+  # generation (giving the retry a full new rotation window) and a fresh round-robin
+  # pick (so a struggling/backed-up pipeline isn't guaranteed to just keep re-feeding
+  # itself). Deleting the old copy immediately, rather than leaving it for
+  # GenerationJanitor's rotation to eventually reclaim, matters here specifically: a
+  # single failed batch can be @fresh_batch_size/@stale_batch_size (tens of thousands
+  # of events), and that's not memory worth sitting on for minutes.
   @spec requeue_retriable(backend_id :: pos_integer(), retriable :: [LogEventPointer.t()]) :: :ok
   defp requeue_retriable(backend_id, retriable) do
     Logger.info(
@@ -400,9 +408,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       backend_id: backend_id
     )
 
-    Enum.each(retriable, fn pointer ->
-      IngestEventQueue.reinsert_pointer(%{pointer | retries: pointer.retries + 1})
-    end)
+    events =
+      for pointer <- retriable,
+          event = IngestEventQueue.lookup_event(pointer.tid, pointer.id),
+          not is_nil(event) do
+        IngestEventQueue.delete_id(pointer.tid, pointer.id)
+        %{event | retries: pointer.retries + 1}
+      end
+
+    if events != [], do: IngestEventQueue.add_to_table({:consolidated, backend_id}, events)
+
+    :ok
   end
 
   @spec drop_failed(
