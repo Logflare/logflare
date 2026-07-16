@@ -685,22 +685,16 @@ defmodule Logflare.Backends.IngestEventQueue do
          event.day_bucket, event.ingest_freshness}
       end
 
-    try do
-      :ets.insert(queue_tid, objects)
-      :ok
-    rescue
-      ArgumentError ->
-        # The owning producer died and ETS reclaimed its table between tid
-        # resolution and this insert. Re-route to the supervisor-owned startup
-        # queue (where a clean producer exit also drains to) so the batch is not
-        # lost; give up only if the startup queue itself is gone.
-        emit_stale_ets_table_telemetry()
+    :ets.insert(queue_tid, objects)
+    :ok
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
 
-        case sid_bid_pid do
-          {_, _, nil} -> {:error, :not_initialized}
-          _ -> add_to_table(put_elem(sid_bid_pid, 2, nil), batch)
-        end
-    end
+      case sid_bid_pid do
+        {_, _, nil} -> {:error, :not_initialized}
+        _ -> add_to_table(put_elem(sid_bid_pid, 2, nil), batch)
+      end
   end
 
   @spec pointer_queues_key(consolidated_table_key() | table_key() | spool_producer_table_key()) ::
@@ -993,6 +987,15 @@ defmodule Logflare.Backends.IngestEventQueue do
       [{^id, event}] -> event
       [] -> nil
     end
+  rescue
+    ArgumentError ->
+      # The pointer's generation was already dropped by GenerationJanitor — expiry
+      # deliberately leaves pending pointers behind rather than scanning to clean them
+      # up, so a pointer can outlive its own generation. Same "not found" handling as
+      # lookup_event/2's stale-generation case: the caller (pop_pending/2) already
+      # rejects nil results, so this is skipped rather than crashing the producer.
+      emit_stale_ets_table_telemetry()
+      nil
   end
 
   @doc """

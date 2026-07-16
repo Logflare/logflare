@@ -21,6 +21,9 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   Each tick also sweeps the recent-events cache (see
   `IngestEventQueue.record_recent_pointer/3`, `sweep_recent_events/1`) down to the same
   `max_age_ms`.
+
+  See `do_rotate/2` for a scoped, single-key variant used by tests that don't want the
+  full global sweep's cost or blast radius.
   """
   use GenServer
 
@@ -58,8 +61,29 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   # Exposed for testing/benchmarking, same convention as QueueJanitor.do_drop/2.
   @spec do_rotate(map()) :: :ok
   def do_rotate(state) do
-    queues_keys = IngestEventQueue.list_generation_queues_keys()
+    do_rotate(state, IngestEventQueue.list_generation_queues_keys())
+    IngestEventQueue.sweep_recent_events(state.max_age_ms)
+    :ok
+  end
 
+  @doc """
+  Rotates and evicts only the given `queues_keys`, ignoring everything else
+  currently live in the generation store — unlike `do_rotate/1`'s full global sweep.
+
+  For production use this is never what you want (it's what `do_rotate/1` builds on
+  top of); it exists so a test can drive rotation for a single, known key
+  deterministically, without either of `do_rotate/1`'s two global side effects: cost
+  that scales with however many *other* queues happen to be live process-wide at the
+  time (the generation store is a shared, never-reset-between-tests singleton), and
+  touching — and potentially evicting — generations that belong to other, unrelated
+  tests' sources/backends.
+  """
+  @spec do_rotate(map(), [
+          IngestEventQueue.queues_key()
+          | IngestEventQueue.consolidated_queues_key()
+          | IngestEventQueue.spool_producer_queues_key()
+        ]) :: :ok
+  def do_rotate(state, queues_keys) do
     # One call carrying every key, not one call per key — rotating an entire fleet of
     # queues shouldn't mean that many sequential round-trips to the same serialized
     # GenServer (see IngestEventQueue.new_generations/1).
@@ -68,8 +92,6 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
     for queues_key <- queues_keys do
       drop_aged_generations(queues_key, state)
     end
-
-    IngestEventQueue.sweep_recent_events(state.max_age_ms)
 
     :ok
   end

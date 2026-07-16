@@ -119,6 +119,32 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(startup_key) == 1
     end
 
+    test "add_to_table/2 does not raise when the current generation was dropped before an insert",
+         %{source: %{id: source_id} = source, backend: %{id: backend_id}} do
+      pid = self()
+      producer_key = {source_id, backend_id, pid}
+      startup_key = {source_id, backend_id, nil}
+      queues_key = {source_id, backend_id}
+
+      assert {:ok, _} = IngestEventQueue.upsert_tid(producer_key)
+      assert {:ok, _} = IngestEventQueue.upsert_tid(startup_key)
+
+      # Simulate GenerationJanitor dropping the current generation out from under a
+      # writer that already resolved it — reproduces the race a reviewer flagged on
+      # insert_pointer_batch/3: :ets.insert/2 into a dropped table used to raise
+      # ArgumentError uncaught to the ingestion caller. Without rotating in a
+      # replacement, both this attempt and its startup-queue retry hit the same dead
+      # generation — this asserts the failure degrades to a controlled error instead
+      # of crashing, not that the event is recovered (a real rotation always creates
+      # the next generation before dropping the old one, so a live replacement is
+      # normally available by the time of any retry).
+      gen_tid = IngestEventQueue.current_generation_tid(queues_key)
+      :ok = IngestEventQueue.drop_generation(queues_key, gen_tid)
+
+      le = build(:log_event, source: source)
+      assert {:error, :not_initialized} = IngestEventQueue.add_to_table(producer_key, [le])
+    end
+
     test "add_to_table/3 does not recurse when the startup queue table is stale", %{
       source: %{id: source_id} = source,
       backend: %{id: backend_id}
@@ -1115,6 +1141,26 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert length(claimed) == count
       assert IngestEventQueue.get_table_size(key) == 0
     end
+
+    test "skips a pointer whose generation was already dropped instead of crashing", %{
+      key: key,
+      source: source
+    } do
+      le = build(:log_event, source: source)
+      :ok = IngestEventQueue.add_to_table(key, [le])
+
+      queues_key = Tuple.delete_at(key, 2)
+      [{gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
+
+      # simulate GenerationJanitor dropping this generation before the pointer that
+      # still references it gets claimed — expiry deliberately leaves pending
+      # pointers behind rather than scanning to clean them up (see moduledoc), so
+      # this is a real, if rare, race, not a hypothetical
+      :ok = IngestEventQueue.drop_generation(queues_key, gen_tid)
+
+      assert {:ok, []} = IngestEventQueue.pop_pending(key, 1)
+      assert IngestEventQueue.total_pending(key) == 0
+    end
   end
 
   test "BufferCacheWorker caches buffer lengths every n seconds" do
@@ -1444,24 +1490,24 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert [{gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
       assert :ets.info(gen_tid, :size) == 1
 
-      # GenerationJanitor does a GLOBAL sweep (list_generation_queues_keys/0) every
-      # tick, batching every discovered key into one new_generations/1 call and then
-      # checking each for staleness — and IngestEventQueue's generation table is a
-      # singleton shared across the whole test suite run, never reset between tests.
-      # Under a full suite run (even just this file, since tests here run
-      # sequentially) this set can easily reach several hundred entries by the time
-      # this test runs, so a single tick's batch can take meaningfully longer than it
-      # does in isolation. max_age_ms needs real margin above that, or a generation
-      # can look "aged" and get dropped within the very same tick that created it —
-      # 10ms was fine when creation and its own staleness check happened back-to-back
-      # per key, but not once hundreds of other keys' work can land in between.
-      start_supervised!({GenerationJanitor, interval: 50, max_age_ms: 1_000})
+      # Drive rotation directly and deterministically via do_rotate/2, scoped to just
+      # this test's own queues_key — instead of starting a real, live-ticking
+      # GenerationJanitor and polling for it to eventually catch up. That would mean
+      # racing this test's own wall-clock timing against do_rotate/1's *global* sweep
+      # (IngestEventQueue's generation store is a singleton shared across the whole
+      # test suite run, never reset between tests, so that sweep's cost scales with
+      # however much unrelated stuff has piled up elsewhere by the time this test
+      # runs) — and it would touch, and could evict, other tests' generations too,
+      # since do_rotate/1 has no concept of "which test owns this key". Sleeping past
+      # max_age_ms first, then calling do_rotate/2 exactly once, makes "is it old
+      # enough to drop yet" fully within this test's own control — no race, and
+      # nothing outside `queues_key` is ever touched.
+      Process.sleep(20)
+      :ok = GenerationJanitor.do_rotate(%{max_age_ms: 10}, [queues_key])
 
-      TestUtils.retry_assert(fn ->
-        # the dropped generation's table is gone outright (O(1) whole-table delete,
-        # not a per-row scan)
-        assert :ets.info(gen_tid, :name) == :undefined
-      end)
+      # the dropped generation's table is gone outright (O(1) whole-table delete, not
+      # a per-row scan)
+      assert :ets.info(gen_tid, :name) == :undefined
 
       # claiming the still-present pointer now resolves to a dead generation — the same
       # "not found" outcome as any other lookup miss, not a crash
@@ -1472,10 +1518,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert claimed_tid == gen_tid
       assert IngestEventQueue.lookup_event(claimed_tid, le.id) == nil
 
-      # rotation keeps producing fresh generations for a queues_key with live traffic
-      TestUtils.retry_assert(fn ->
-        assert [_ | _] = IngestEventQueue.list_generations(queues_key)
-      end)
+      # rotation keeps producing fresh generations for a queues_key with live traffic —
+      # do_rotate/2 already created this synchronously above, so no polling needed
+      assert [_ | _] = IngestEventQueue.list_generations(queues_key)
     end
 
     test "do_rotate/1 is a no-op for a queues_key with no generations" do
