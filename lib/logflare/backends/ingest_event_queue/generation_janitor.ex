@@ -58,8 +58,15 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   # Exposed for testing/benchmarking, same convention as QueueJanitor.do_drop/2.
   @spec do_rotate(map()) :: :ok
   def do_rotate(state) do
-    for queues_key <- IngestEventQueue.list_generation_queues_keys() do
-      rotate_queue(queues_key, state)
+    queues_keys = IngestEventQueue.list_generation_queues_keys()
+
+    # One call carrying every key, not one call per key — rotating an entire fleet of
+    # queues shouldn't mean that many sequential round-trips to the same serialized
+    # GenServer (see IngestEventQueue.new_generations/1).
+    IngestEventQueue.new_generations(queues_keys)
+
+    for queues_key <- queues_keys do
+      drop_aged_generations(queues_key, state)
     end
 
     IngestEventQueue.sweep_recent_events(state.max_age_ms)
@@ -67,9 +74,7 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
     :ok
   end
 
-  defp rotate_queue(queues_key, state) do
-    IngestEventQueue.new_generation(queues_key)
-
+  defp drop_aged_generations(queues_key, state) do
     cutoff = System.monotonic_time(:millisecond) - state.max_age_ms
 
     {dropped_count, dropped_size} =

@@ -8,7 +8,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   module's main tables, one per `{sid,bid,pid}` / `{:consolidated,bid,pid}` /
   `{:spool_producer,nil,pid}`) holding lightweight pointer rows, plus a shared,
   generationally-rotated event store per `queues_key` holding the actual `LogEvent`
-  bodies (see `current_generation_tid/1`, `new_generation/1`,
+  bodies (see `current_generation_tid/1`, `new_generations/1`,
   `Logflare.Backends.IngestEventQueue.GenerationJanitor`). `add_to_table/3` always
   writes both; which read function a caller uses decides whether it gets back
   lightweight pointers (`pop_pending_pointers/2` — ID-passing pipelines: ClickHouse,
@@ -27,6 +27,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
   @ets_generations :ingest_event_queue_generations
+  @ets_current_generation :ingest_event_queue_current_generation
   @ets_recent_events :ingest_event_queue_recent_events
   @max_queue_size 30_000
   @consolidated_max_queue_size 60_000
@@ -88,6 +89,15 @@ defmodule Logflare.Backends.IngestEventQueue do
       {:decentralized_counters, false}
     ])
 
+    :ets.new(@ets_current_generation, [
+      :public,
+      :named_table,
+      :set,
+      {:write_concurrency, :auto},
+      {:read_concurrency, true},
+      {:decentralized_counters, false}
+    ])
+
     :ets.new(@ets_recent_events, [
       :public,
       :named_table,
@@ -103,19 +113,26 @@ defmodule Logflare.Backends.IngestEventQueue do
   # --- Generation store ---
   #
   # One shared event-data table per queues_key, rotated over time. "Current" is
-  # published via :persistent_term (mirroring elixir-otel-metric-exporter's MetricStore)
-  # so the hot insert path (add_to_table/3) never touches the GenServer or does an ETS
-  # lookup to find it — only creating a *new* generation does.
+  # published in @ets_current_generation (a plain ETS :set, read_concurrency: true)
+  # so the hot insert path (add_to_table/3) never touches the GenServer to find it —
+  # only creating a *new* generation does. Deliberately not :persistent_term: that
+  # would make this read essentially free, but every :persistent_term.put/2 triggers a
+  # full VM-wide GC sweep, and GenerationJanitor rewrites every live queues_key's
+  # current generation on every tick, forever — at production scale (many thousands of
+  # queues_keys) that's thousands of global sweeps back-to-back, every tick, which
+  # would dwarf whatever the read-side savings bought. An ETS lookup here is still O(1)
+  # and more than fast enough for this path.
 
   @doc """
   Returns the current generation's tid for `queues_key`, creating one if none exists yet.
 
-  The nil-check here is only a fast-path optimization to skip the GenServer call in the
-  common case — it is NOT what prevents duplicate generations under concurrent
-  first-time callers (many ingest requests can all observe `nil` here before any of
-  them has created one). That's instead enforced by `{:ensure_generation, _}` re-checking
-  `:persistent_term` from inside the serialized `handle_call` before creating a table, so
-  only the first caller actually creates one and the rest just read it back.
+  The lookup-miss check here is only a fast-path optimization to skip the GenServer
+  call in the common case — it is NOT what prevents duplicate generations under
+  concurrent first-time callers (many ingest requests can all observe a miss here
+  before any of them has created one). That's instead enforced by
+  `{:ensure_generation, _}` re-checking `@ets_current_generation` from inside the
+  serialized `handle_call` before creating a table, so only the first caller actually
+  creates one and the rest just read it back.
   """
   @spec current_generation_tid(
           queues_key()
@@ -123,41 +140,43 @@ defmodule Logflare.Backends.IngestEventQueue do
           | spool_producer_queues_key()
         ) :: :ets.tid()
   def current_generation_tid(queues_key) do
-    case :persistent_term.get(generation_key(queues_key), nil) do
-      nil -> GenServer.call(__MODULE__, {:ensure_generation, queues_key})
-      tid -> tid
+    case :ets.lookup(@ets_current_generation, queues_key) do
+      [{^queues_key, tid}] -> tid
+      [] -> GenServer.call(__MODULE__, {:ensure_generation, queues_key})
     end
   end
 
-  defp generation_key(queues_key), do: {__MODULE__, :current_generation, queues_key}
-
   @doc """
-  Unconditionally creates a new generation table for `queues_key` and makes it current,
-  even if one already exists.
+  Unconditionally creates a new generation table for each of `queues_keys` and makes
+  each one current, even if one already exists — in a single GenServer call rather
+  than one call per key, so rotating an entire fleet of queues doesn't mean that many
+  sequential round-trips to the same serialized GenServer.
 
-  Used by `GenerationJanitor` to rotate in a fresh generation on its schedule — NOT by
-  `current_generation_tid/1` (see `{:ensure_generation, _}` there instead), since calling
-  this unconditionally from every first-time caller of a lazily-created generation would
-  race: concurrent callers would each create their own table before any of them observes
-  the others' `:persistent_term.put/2`.
+  Used by `GenerationJanitor` to rotate in fresh generations on its schedule — NOT by
+  `current_generation_tid/1` (see `{:ensure_generation, _}` there instead), since
+  calling this unconditionally from every first-time caller of a lazily-created
+  generation would race: concurrent callers would each create their own table before
+  any of them observes the others' write.
   """
-  @spec new_generation(queues_key() | consolidated_queues_key() | spool_producer_queues_key()) ::
-          :ets.tid()
-  def new_generation(queues_key) do
-    GenServer.call(__MODULE__, {:new_generation, queues_key})
+  @spec new_generations([
+          queues_key() | consolidated_queues_key() | spool_producer_queues_key()
+        ]) :: :ok
+  def new_generations(queues_keys) do
+    GenServer.call(__MODULE__, {:new_generations, queues_keys})
   end
 
   @impl GenServer
-  def handle_call({:new_generation, queues_key}, _from, state) do
-    {:reply, create_generation(queues_key), state}
+  def handle_call({:new_generations, queues_keys}, _from, state) do
+    for queues_key <- queues_keys, do: create_generation(queues_key)
+    {:reply, :ok, state}
   end
 
   @impl GenServer
   def handle_call({:ensure_generation, queues_key}, _from, state) do
     tid =
-      case :persistent_term.get(generation_key(queues_key), nil) do
-        nil -> create_generation(queues_key)
-        existing_tid -> existing_tid
+      case :ets.lookup(@ets_current_generation, queues_key) do
+        [{^queues_key, existing_tid}] -> existing_tid
+        [] -> create_generation(queues_key)
       end
 
     {:reply, tid, state}
@@ -174,7 +193,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       ])
 
     :ets.insert(@ets_generations, {queues_key, tid, System.monotonic_time(:millisecond)})
-    :persistent_term.put(generation_key(queues_key), tid)
+    :ets.insert(@ets_current_generation, {queues_key, tid})
     tid
   end
 

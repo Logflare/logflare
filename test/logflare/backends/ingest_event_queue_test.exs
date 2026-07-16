@@ -1444,12 +1444,24 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert [{gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
       assert :ets.info(gen_tid, :size) == 1
 
-      start_supervised!({GenerationJanitor, interval: 50, max_age_ms: 10})
-      :timer.sleep(300)
+      # GenerationJanitor does a GLOBAL sweep (list_generation_queues_keys/0) every
+      # tick, batching every discovered key into one new_generations/1 call and then
+      # checking each for staleness — and IngestEventQueue's generation table is a
+      # singleton shared across the whole test suite run, never reset between tests.
+      # Under a full suite run (even just this file, since tests here run
+      # sequentially) this set can easily reach several hundred entries by the time
+      # this test runs, so a single tick's batch can take meaningfully longer than it
+      # does in isolation. max_age_ms needs real margin above that, or a generation
+      # can look "aged" and get dropped within the very same tick that created it —
+      # 10ms was fine when creation and its own staleness check happened back-to-back
+      # per key, but not once hundreds of other keys' work can land in between.
+      start_supervised!({GenerationJanitor, interval: 50, max_age_ms: 1_000})
 
-      # the dropped generation's table is gone outright (O(1) whole-table delete, not a
-      # per-row scan)
-      assert :ets.info(gen_tid, :name) == :undefined
+      TestUtils.retry_assert(fn ->
+        # the dropped generation's table is gone outright (O(1) whole-table delete,
+        # not a per-row scan)
+        assert :ets.info(gen_tid, :name) == :undefined
+      end)
 
       # claiming the still-present pointer now resolves to a dead generation — the same
       # "not found" outcome as any other lookup miss, not a crash
@@ -1461,7 +1473,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.lookup_event(claimed_tid, le.id) == nil
 
       # rotation keeps producing fresh generations for a queues_key with live traffic
-      assert [_ | _] = IngestEventQueue.list_generations(queues_key)
+      TestUtils.retry_assert(fn ->
+        assert [_ | _] = IngestEventQueue.list_generations(queues_key)
+      end)
     end
 
     test "do_rotate/1 is a no-op for a queues_key with no generations" do
