@@ -43,6 +43,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @ch_slow_pool_checkout_ms 1_000
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
+  defdelegate connection_pool_via(arg, label), to: ConnectionManager
 
   @doc false
   def child_spec(arg) do

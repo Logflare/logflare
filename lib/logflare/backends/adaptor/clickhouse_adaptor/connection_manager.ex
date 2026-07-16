@@ -32,6 +32,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   typedstruct do
     field :backend_id, pos_integer(), enforce: true
+    field :label, String.t() | nil, default: nil
     field :pool_pid, pid() | nil, default: nil
     field :last_activity, integer() | nil, default: nil
     field :resolve_timer_ref, reference() | nil, default: nil
@@ -40,27 +41,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   @doc """
   Starts a ClickHouse connection manager process for query operations.
+
+  A `nil` label manages the legacy single read pool; a non-`nil` label manages the
+  read pool for that specific read cluster.
   """
-  @spec start_link(Backend.t()) :: GenServer.on_start()
-  def start_link(%Backend{id: backend_id} = backend) do
-    GenServer.start_link(__MODULE__, backend_id, name: connection_manager_via(backend))
+  @spec start_link(Backend.t(), String.t() | nil) :: GenServer.on_start()
+  def start_link(%Backend{id: backend_id} = backend, label \\ nil) do
+    GenServer.start_link(__MODULE__, {backend_id, label},
+      name: connection_manager_via(backend, label)
+    )
   end
 
   @doc false
-  @spec child_spec(Backend.t()) :: Supervisor.child_spec()
-  def child_spec(%Backend{} = backend) do
+  @spec child_spec(Backend.t(), String.t() | nil) :: Supervisor.child_spec()
+  def child_spec(%Backend{} = backend, label \\ nil) do
     %{
-      id: {__MODULE__, backend.id},
-      start: {__MODULE__, :start_link, [backend]}
+      id: {__MODULE__, backend.id, label},
+      start: {__MODULE__, :start_link, [backend, label]}
     }
   end
 
   @doc """
-  Generates a unique ClickHouse connection pool via tuple based on a `Backend`.
+  Generates a unique ClickHouse connection pool via tuple based on a `Backend` and
+  an optional read-cluster label.
   """
-  @spec connection_pool_via(Backend.t()) :: tuple()
-  def connection_pool_via(%Backend{} = backend) do
-    Backends.via_backend(backend, CHReadPool)
+  @spec connection_pool_via(Backend.t(), String.t() | nil) :: tuple()
+  def connection_pool_via(%Backend{} = backend, label \\ nil) do
+    Backends.via_backend(backend, CHReadPool, label)
   end
 
   @doc """
@@ -68,10 +75,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   This resets the inactivity timer for connections.
   """
-  @spec notify_activity(Backend.t()) :: :ok
-  def notify_activity(%Backend{} = backend) do
+  @spec notify_activity(Backend.t(), String.t() | nil) :: :ok
+  def notify_activity(%Backend{} = backend, label \\ nil) do
     backend
-    |> connection_manager_via()
+    |> connection_manager_via(label)
     |> GenServer.cast(:update_activity)
   end
 
@@ -80,19 +87,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   This will start the connection pool if it's not already running and notifies the manager of activity.
   """
-  @spec ensure_pool_started(Backend.t()) :: :ok | {:error, term()}
-  def ensure_pool_started(%Backend{} = backend) do
+  @spec ensure_pool_started(Backend.t(), String.t() | nil) :: :ok | {:error, term()}
+  def ensure_pool_started(%Backend{} = backend, label \\ nil) do
     backend
-    |> connection_manager_via()
+    |> connection_manager_via(label)
     |> GenServer.call(:ensure_pool)
   end
 
   @doc """
   Checks if a connection pool is currently active or not.
   """
-  @spec pool_active?(Backend.t()) :: boolean()
-  def pool_active?(%Backend{} = backend) do
-    conn_mgr = connection_manager_via(backend)
+  @spec pool_active?(Backend.t(), String.t() | nil) :: boolean()
+  def pool_active?(%Backend{} = backend, label \\ nil) do
+    conn_mgr = connection_manager_via(backend, label)
 
     try do
       GenServer.call(conn_mgr, :pool_active)
@@ -111,14 +118,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   Useful as a manual tool after scaling up a ClickHouse service.
   """
   @spec recycle_pool(Backend.t() | pid()) :: :ok | {:error, :no_pool}
-  def recycle_pool(%Backend{} = backend) do
-    backend
-    |> connection_manager_via()
-    |> GenServer.call(:recycle_pool)
-  end
+  def recycle_pool(%Backend{} = backend), do: recycle_pool(backend, nil)
 
   def recycle_pool(manager_pid) when is_pid(manager_pid) do
     GenServer.call(manager_pid, :recycle_pool)
+  end
+
+  @spec recycle_pool(Backend.t(), String.t() | nil) :: :ok | {:error, :no_pool}
+  def recycle_pool(%Backend{} = backend, label) do
+    backend
+    |> connection_manager_via(label)
+    |> GenServer.call(:recycle_pool)
   end
 
   @doc """
@@ -131,43 +141,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   when the pool starts.
   """
   @spec refresh_pool(Backend.t() | pid()) :: :ok
-  def refresh_pool(%Backend{} = backend) do
-    backend
-    |> connection_manager_via()
-    |> GenServer.call(:refresh_pool)
-  end
+  def refresh_pool(%Backend{} = backend), do: refresh_pool(backend, nil)
 
   def refresh_pool(manager_pid) when is_pid(manager_pid) do
     GenServer.call(manager_pid, :refresh_pool)
   end
 
+  @spec refresh_pool(Backend.t(), String.t() | nil) :: :ok
+  def refresh_pool(%Backend{} = backend, label) do
+    backend
+    |> connection_manager_via(label)
+    |> GenServer.call(:refresh_pool)
+  end
+
   @doc """
   Gets the last activity timestamp for the connection manager.
   """
-  @spec get_last_activity(Backend.t()) :: integer() | nil
-  def get_last_activity(%Backend{} = backend) do
+  @spec get_last_activity(Backend.t(), String.t() | nil) :: integer() | nil
+  def get_last_activity(%Backend{} = backend, label \\ nil) do
     backend
-    |> connection_manager_via()
+    |> connection_manager_via(label)
     |> GenServer.call(:get_last_activity)
   end
 
   @doc """
   Sets the last activity timestamp.
   """
-  @spec set_last_activity(Backend.t(), integer() | nil) :: :ok
-  def set_last_activity(%Backend{} = backend, timestamp) do
+  @spec set_last_activity(Backend.t(), integer() | nil, String.t() | nil) :: :ok
+  def set_last_activity(%Backend{} = backend, timestamp, label \\ nil) do
     backend
-    |> connection_manager_via()
+    |> connection_manager_via(label)
     |> GenServer.cast({:set_last_activity, timestamp})
   end
 
   @doc """
   Returns the PID of the active connection pool, or `nil` if no pool is running.
   """
-  @spec get_pool_pid(Backend.t()) :: pid() | nil
-  def get_pool_pid(%Backend{} = backend) do
+  @spec get_pool_pid(Backend.t(), String.t() | nil) :: pid() | nil
+  def get_pool_pid(%Backend{} = backend, label \\ nil) do
     backend
-    |> connection_manager_via()
+    |> connection_manager_via(label)
     |> GenServer.call(:get_pool_pid)
   end
 
@@ -175,19 +188,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   Returns the timestamp at which the active pool's connections are next scheduled
   to be recycled, or `nil` if no pool is running.
   """
-  @spec get_next_recycle_at(Backend.t()) :: integer() | nil
-  def get_next_recycle_at(%Backend{} = backend) do
+  @spec get_next_recycle_at(Backend.t(), String.t() | nil) :: integer() | nil
+  def get_next_recycle_at(%Backend{} = backend, label \\ nil) do
     backend
-    |> connection_manager_via()
+    |> connection_manager_via(label)
     |> GenServer.call(:get_next_recycle_at)
   end
 
   @impl true
-  def init(backend_id) do
+  def init({backend_id, label}) do
     resolve_timer_ref = resolve_timer_send_after()
 
     initial_state = %__MODULE__{
       backend_id: backend_id,
+      label: label,
       resolve_timer_ref: resolve_timer_ref
     }
 
@@ -296,7 +310,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       when is_pid(pid) do
     Logger.warning("ClickHouse connection pool died",
       backend_id: state.backend_id,
-      host: connection_host(state.backend_id)
+      host: connection_host(state.backend_id, state.label)
     )
 
     {:noreply, %{state | pool_pid: nil, next_recycle_at: nil}}
@@ -312,10 +326,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @spec start_pool(__MODULE__.t()) :: {:ok, __MODULE__.t()} | {:error, any()}
-  defp start_pool(%__MODULE__{backend_id: backend_id} = state) do
+  defp start_pool(%__MODULE__{backend_id: backend_id, label: label} = state) do
     backend = Backends.Cache.get_backend(backend_id)
 
-    with {:ok, ch_opts} <- build_ch_opts(backend),
+    with {:ok, ch_opts} <- build_ch_opts(backend, label),
          {:ok, pid} <- Ch.start_link(ch_opts) do
       Process.monitor(pid)
 
@@ -334,7 +348,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         Logger.error(
           "Failed to start ClickHouse connection pool",
           backend_id: backend_id,
-          host: host_from_backend(backend),
+          host: host_from_backend(backend, label),
           reason: reason
         )
 
@@ -426,10 +440,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     Application.get_env(:logflare, __MODULE__)[:recycle_spread] || @recycle_spread
   end
 
-  @spec build_ch_opts(Backend.t() | nil) :: {:ok, Keyword.t()} | {:error, term()}
-  defp build_ch_opts(nil), do: {:error, :backend_not_found}
+  @spec build_ch_opts(Backend.t() | nil, String.t() | nil) ::
+          {:ok, Keyword.t()} | {:error, term()}
+  defp build_ch_opts(nil, _label), do: {:error, :backend_not_found}
 
-  defp build_ch_opts(%Backend{} = backend) do
+  defp build_ch_opts(%Backend{} = backend, label) do
     config = backend.config
 
     default_pool_size =
@@ -441,10 +456,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       |> div(2)
       |> max(default_pool_size)
 
-    url = read_url(config)
+    url = read_url(config, label)
 
     with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
-      pool_via = connection_pool_via(backend)
+      pool_via = connection_pool_via(backend, label)
       port = get_read_port(config, url_port)
 
       ch_opts = [
@@ -466,7 +481,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @spec read_url(map(), String.t() | nil) :: String.t() | nil
-  defp read_url(config, label \\ nil) do
+  defp read_url(config, label) do
     urls = Map.get(config, :read_only_urls) || %{}
     default = Map.get(config, :default_read_cluster)
 
@@ -489,22 +504,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
   end
 
-  @spec connection_host(pos_integer()) :: String.t() | nil
-  defp connection_host(backend_id) do
+  @spec connection_host(pos_integer(), String.t() | nil) :: String.t() | nil
+  defp connection_host(backend_id, label) do
     backend_id
     |> Backends.Cache.get_backend()
-    |> host_from_backend()
+    |> host_from_backend(label)
   end
 
-  @spec host_from_backend(Backend.t() | nil) :: String.t() | nil
-  defp host_from_backend(%Backend{config: config}) do
-    case extract_url_components(read_url(config)) do
+  @spec host_from_backend(Backend.t() | nil, String.t() | nil) :: String.t() | nil
+  defp host_from_backend(%Backend{config: config}, label) do
+    case extract_url_components(read_url(config, label)) do
       {:ok, {_scheme, hostname, _port}} -> hostname
       _ -> nil
     end
   end
 
-  defp host_from_backend(_backend), do: nil
+  defp host_from_backend(_backend, _label), do: nil
 
   @spec extract_url_components(String.t()) ::
           {:ok, {String.t(), String.t(), non_neg_integer() | nil}} | {:error, String.t()}
@@ -530,9 +545,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   defp get_config_port(%{port: port}) when is_pos_integer(port), do: port
   defp get_config_port(%{port: port}) when is_non_empty_binary(port), do: String.to_integer(port)
 
-  @spec connection_manager_via(Backend.t()) :: tuple()
-  defp connection_manager_via(%Backend{} = backend) do
-    Backends.via_backend(backend, __MODULE__)
+  @spec connection_manager_via(Backend.t(), String.t() | nil) :: tuple()
+  defp connection_manager_via(%Backend{} = backend, label) do
+    Backends.via_backend(backend, __MODULE__, label)
   end
 
   defp resolve_timer_send_after do
