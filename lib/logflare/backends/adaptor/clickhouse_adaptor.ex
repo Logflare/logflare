@@ -139,6 +139,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        port: :integer,
        pool_size: :integer,
        read_only_url: :string,
+       read_only_urls: {:map, :string},
+       default_read_cluster: :string,
        insert_protocol: :string,
        native_port: :integer,
        native_pool_size: :integer
@@ -151,6 +153,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :port,
       :pool_size,
       :read_only_url,
+      :read_only_urls,
+      :default_read_cluster,
       :insert_protocol,
       :native_port,
       :native_pool_size
@@ -169,6 +173,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> validate_read_only_url()
+    |> validate_read_only_urls()
+    |> validate_default_read_cluster()
     |> validate_user_pass()
     |> validate_inclusion(:insert_protocol, ["http", "native"])
     |> validate_number(:pool_size,
@@ -285,6 +291,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   def clickhouse_cloud_url?(_url), do: false
+
+  @doc """
+  Resolves a read cluster label
+  """
+  @spec resolve_read_cluster_label(Backend.t() | map(), String.t() | nil) :: String.t() | nil
+  def resolve_read_cluster_label(%Backend{config: config}, read_cluster),
+    do: resolve_read_cluster_label(config, read_cluster)
+
+  def resolve_read_cluster_label(config, read_cluster) when is_map(config) do
+    urls = Map.get(config, :read_only_urls) || %{}
+
+    if is_non_empty_binary(read_cluster) and Map.has_key?(urls, read_cluster) do
+      read_cluster
+    else
+      default_read_cluster_label(config, urls)
+    end
+  end
+
+  @spec default_read_cluster_label(map(), map()) :: String.t() | nil
+  defp default_read_cluster_label(config, urls) do
+    default = Map.get(config, :default_read_cluster)
+    if is_non_empty_binary(default) and Map.has_key?(urls, default), do: default, else: nil
+  end
 
   @spec config_host(Backend.t()) :: String.t() | nil
   defp config_host(%Backend{config: %{url: url}}), do: url_host(url)
@@ -707,6 +736,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     case Changeset.get_field(changeset, :read_only_url) do
       nil -> changeset
       _url -> Changeset.validate_format(changeset, :read_only_url, ~r/https?\:\/\/.+/)
+    end
+  end
+
+  @spec validate_read_only_urls(Changeset.t()) :: Changeset.t()
+  defp validate_read_only_urls(changeset) do
+    changeset
+    |> Changeset.get_field(:read_only_urls)
+    |> case do
+      urls when is_map(urls) -> Enum.reduce(urls, changeset, &validate_read_only_url_entry/2)
+      _ -> changeset
+    end
+  end
+
+  @spec validate_read_only_url_entry({String.t(), term()}, Changeset.t()) :: Changeset.t()
+  defp validate_read_only_url_entry({label, url}, changeset) do
+    if is_non_empty_binary(url) and Regex.match?(~r/https?\:\/\/.+/, url) do
+      changeset
+    else
+      Changeset.add_error(changeset, :read_only_urls, "invalid URL for read cluster \"#{label}\"")
+    end
+  end
+
+  @spec validate_default_read_cluster(Changeset.t()) :: Changeset.t()
+  defp validate_default_read_cluster(changeset) do
+    case Changeset.get_field(changeset, :default_read_cluster) do
+      label when is_non_empty_binary(label) ->
+        urls = Changeset.get_field(changeset, :read_only_urls) || %{}
+
+        if Map.has_key?(urls, label) do
+          changeset
+        else
+          Changeset.add_error(
+            changeset,
+            :default_read_cluster,
+            "must be a key of read_only_urls"
+          )
+        end
+
+      _ ->
+        changeset
     end
   end
 

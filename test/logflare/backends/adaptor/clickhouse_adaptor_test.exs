@@ -284,6 +284,62 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert changeset.valid?
     end
+
+    test "casts read_only_urls map when provided" do
+      urls = %{
+        "dashboard_logs" => "http://logs-read.local:8123",
+        "dashboard_metrics" => "http://metrics-read.local:8123"
+      }
+
+      changeset = cast_and_validate_config(read_only_urls: urls)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == urls
+    end
+
+    test "read_only_urls defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == nil
+    end
+
+    test "rejects a malformed URL in read_only_urls" do
+      changeset =
+        cast_and_validate_config(read_only_urls: %{"dashboard_logs" => "not-a-url"})
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :read_only_urls)
+    end
+
+    test "casts default_read_cluster when it names a configured label" do
+      changeset =
+        cast_and_validate_config(
+          read_only_urls: %{"dashboard_logs" => "http://logs-read.local:8123"},
+          default_read_cluster: "dashboard_logs"
+        )
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :default_read_cluster) == "dashboard_logs"
+    end
+
+    test "rejects default_read_cluster that is not a configured label" do
+      changeset =
+        cast_and_validate_config(
+          read_only_urls: %{"dashboard_logs" => "http://logs-read.local:8123"},
+          default_read_cluster: "api"
+        )
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :default_read_cluster)
+    end
+
+    test "rejects default_read_cluster when no read_only_urls configured" do
+      changeset = cast_and_validate_config(default_read_cluster: "dashboard_logs")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :default_read_cluster)
+    end
   end
 
   defp cast_and_validate_config(attrs \\ []) do
@@ -333,6 +389,62 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
     read_only_url = Map.get(config, :read_only_url)
     if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
+  end
+
+  describe "resolve_read_cluster_label/2" do
+    setup do
+      config = %{
+        url: "http://ingest.local:8123",
+        read_only_url: "http://legacy-read.local:8123",
+        read_only_urls: %{
+          "dashboard_metrics" => "http://metrics-read.local:8123",
+          "dashboard_logs" => "http://logs-read.local:8123",
+          "api" => "http://api-read.local:8123",
+          "mcp" => "http://mcp-read.local:8123"
+        },
+        default_read_cluster: "dashboard_logs"
+      }
+
+      %{config: config}
+    end
+
+    test "returns the requested label when it is a configured key", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "api") == "api"
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "mcp") == "mcp"
+    end
+
+    test "falls back to default_read_cluster for an unknown label", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "does_not_exist") ==
+               "dashboard_logs"
+    end
+
+    test "falls back to default_read_cluster for an absent label", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, nil) == "dashboard_logs"
+    end
+
+    test "returns nil (legacy path) when no labels are configured" do
+      config = %{url: "http://ingest.local:8123", read_only_url: "http://legacy.local:8123"}
+
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "api") == nil
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, nil) == nil
+    end
+
+    test "returns nil when a label is requested but no default and no match", %{config: config} do
+      config = Map.delete(config, :default_read_cluster)
+
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "unmapped") == nil
+    end
+
+    test "prefers the requested label over the default", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "dashboard_metrics") ==
+               "dashboard_metrics"
+    end
+
+    test "accepts a Backend struct", %{config: config} do
+      backend = %Backend{config: config}
+
+      assert ClickHouseAdaptor.resolve_read_cluster_label(backend, "api") == "api"
+    end
   end
 
   describe "test_connection/1 with dual cluster config" do

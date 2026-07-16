@@ -465,8 +465,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     end
   end
 
-  @spec read_url(map()) :: String.t() | nil
-  defp read_url(config) do
+  @spec read_url(map(), String.t() | nil) :: String.t() | nil
+  defp read_url(config, label \\ nil) do
+    urls = Map.get(config, :read_only_urls) || %{}
+    default = Map.get(config, :default_read_cluster)
+
+    labeled_url(urls, label) || labeled_url(urls, default) || legacy_read_url(config)
+  end
+
+  @spec labeled_url(map(), String.t() | nil) :: String.t() | nil
+  defp labeled_url(urls, label) when is_map(urls) and is_non_empty_binary(label) do
+    case Map.get(urls, label) do
+      url when is_non_empty_binary(url) -> url
+      _ -> nil
+    end
+  end
+
+  defp labeled_url(_urls, _label), do: nil
+
+  @spec legacy_read_url(map()) :: String.t() | nil
+  defp legacy_read_url(config) do
     read_only_url = Map.get(config, :read_only_url)
     if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
   end
