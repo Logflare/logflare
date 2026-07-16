@@ -650,8 +650,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   # produce fewer, larger batches for ClickHouse efficiency
+  #
+  # Exposed (not private) so it can be unit tested directly, same convention as
+  # Backends.handle_resolve_count/3 (BigQuery's counterpart).
+  @doc false
   @spec resolve_pipeline_count(map(), [{term(), non_neg_integer()}]) :: non_neg_integer()
-  defp resolve_pipeline_count(state, lens) do
+  def resolve_pipeline_count(state, lens) do
     startup_size =
       Enum.find_value(lens, 0, fn
         {{:consolidated, _bid, nil}, val} -> val
@@ -671,7 +675,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
 
     # Averaged rather than "any single queue over threshold": round-robin's own
-    # load-based weighting (see IngestEventQueue.weight_by_load/1) already keeps a
+    # load-based weighting (see IngestEventQueue.weight_by_load/2) already keeps a
     # single clogged pipeline from staying that way for long, so gating scale-up on
     # one outlier just adds pipelines the fleet doesn't actually need — spreading the
     # same total inflow thinner and shrinking every pipeline's average ClickHouse batch

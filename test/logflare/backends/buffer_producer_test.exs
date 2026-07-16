@@ -35,9 +35,10 @@ defmodule Logflare.Backends.BufferProducerTest do
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     # pop_pending/2 deletes the pointer row outright
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
-    # do_pop_key/2 backfills the recent-events cache for every non-id-passing pop,
-    # regardless of ingestion rate — see BufferProducer.do_pop_key/2
-    assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == [le]
+    # do_pop_key/2 doesn't record into the recent-events cache — only BigQuery's ack
+    # needs deferred "recent logs" visibility, and pop_pending has already deleted the
+    # generation-store row as part of claiming anyway
+    assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == []
   end
 
   test "pops events regardless of configured ingestion rate" do

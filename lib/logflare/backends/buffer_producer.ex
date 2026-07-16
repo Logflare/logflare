@@ -375,14 +375,12 @@ defmodule Logflare.Backends.BufferProducer do
 
   # Only fetch primitive for non-id-passing producers now — pop_pending atomically
   # resolves both the pointer row and the generation-store event in one step, so it's
-  # safe against the startup key's multiple concurrent readers (see
-  # fetch_own_first/4). Recording into the recent-events cache here (since
-  # none of the non-id-passing adaptors — webhook, syslog, http_based, postgres, s3 —
-  # implement real ack/retry logic today, this is the only place left that can) is
-  # gated the same way Source.BigQuery.Pipeline's own should_record_recent?/1 gates its
-  # ack-time recording: skip it once the ingest rate is high enough that the extra
-  # lookup isn't worth it. Never recorded for consolidated queues, which have no single
-  # source to resolve metrics for.
+  # safe against the startup key's multiple concurrent readers (see fetch_own_first/4).
+  # Doesn't record into the recent-events cache: none of the non-id-passing adaptors
+  # (webhook, syslog, http_based, postgres, s3) need deferred "recent logs" visibility
+  # the way BigQuery's ack does, and pop_pending has already deleted the
+  # generation-store row as part of claiming anyway, so there'd be nothing left to defer
+  # deleting even if they did.
   @spec do_pop_key(key :: table_key(), count :: non_neg_integer()) :: [
           LogEvent.t()
         ]

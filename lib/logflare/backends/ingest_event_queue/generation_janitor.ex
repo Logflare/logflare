@@ -19,7 +19,7 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   `max_age_ms` to `2 * max_age_ms` old.
 
   Each tick also sweeps the recent-events cache (see
-  `IngestEventQueue.record_recent_event/2`, `sweep_recent_events/1`) down to the same
+  `IngestEventQueue.record_recent_pointer/3`, `sweep_recent_events/1`) down to the same
   `max_age_ms`.
   """
   use GenServer

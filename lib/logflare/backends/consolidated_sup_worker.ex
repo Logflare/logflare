@@ -25,10 +25,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorker do
   @impl GenServer
   def init(opts) do
     state = %{interval: Keyword.get(opts, :interval, @default_interval)}
-    # TEMP: check immediately on boot instead of waiting out the first interval, so
-    # consolidated pipelines are up right away while testing locally.
-    send(self(), :check)
-    # Process.send_after(self(), :check, state.interval)
+    Process.send_after(self(), :check, state.interval)
     {:ok, state}
   end
 
