@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.IngestEventQueueTest do
   use Logflare.DataCase
 
+  alias Logflare.LogEvent
   alias Logflare.PubSubRates
   alias Logflare.Backends.IngestEventQueue.BufferCacheWorker
   alias Logflare.Backends.IngestEventQueue.QueueJanitor
@@ -336,8 +337,28 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     test "drop n items from a queue", %{source: source, source_backend_pid: sbp} do
       batch = for _ <- 1..500, do: build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, batch)
+
+      queues_key = Tuple.delete_at(sbp, 2)
+      gen_tid = IngestEventQueue.current_generation_tid(queues_key)
+      pointer_tid = IngestEventQueue.get_tid(sbp)
+      ids_before = pointer_tid |> :ets.tab2list() |> Enum.map(&elem(&1, 0)) |> MapSet.new()
+
       assert {:ok, 2} = IngestEventQueue.drop_pending(sbp, 2)
       assert IngestEventQueue.get_table_size(sbp) == 498
+
+      ids_after = pointer_tid |> :ets.tab2list() |> Enum.map(&elem(&1, 0)) |> MapSet.new()
+      dropped_ids = MapSet.difference(ids_before, ids_after)
+      assert MapSet.size(dropped_ids) == 2
+
+      # load-shedding must free the actual event body too, not just the pointer row —
+      # otherwise the memory it's meant to relieve sits until GenerationJanitor's next
+      # rotation instead of being freed immediately
+      for id <- dropped_ids do
+        assert IngestEventQueue.lookup_event(gen_tid, id) == nil
+      end
+
+      remaining_id = ids_after |> MapSet.to_list() |> hd()
+      assert %LogEvent{} = IngestEventQueue.lookup_event(gen_tid, remaining_id)
     end
 
     test "truncate all events in a queue", %{source: source, source_backend_pid: sbp} do
@@ -803,87 +824,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert size1 + size2 == 10
     end
 
-    test "weights round-robin toward the less-loaded queue once the spread exceeds the noise floor",
-         %{source: source, backend: backend} do
-      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
-      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
-      loaded_queue = {source.id, backend.id, pid1}
-      empty_queue = {source.id, backend.id, pid2}
-
-      IngestEventQueue.upsert_tid(loaded_queue)
-      IngestEventQueue.upsert_tid(empty_queue)
-
-      # pre-load one queue well past the noise floor (max_queue_size / 20) so
-      # weight_by_load/2 kicks in instead of falling back to plain round-robin
-      :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(20_000, :log_event))
-
-      new_events = build_list(6_000, :log_event)
-      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, new_events, chunk_size: 50)
-
-      loaded_added = IngestEventQueue.get_table_size(loaded_queue) - 20_000
-      empty_added = IngestEventQueue.get_table_size(empty_queue)
-
-      assert loaded_added + empty_added == 6_000
-      # weight is 1 for the most-loaded eligible queue and up to 5 for the least-loaded
-      # (@max_queue_weight) — with a 20k/0 spread here, the empty queue should get
-      # roughly 5x the loaded queue's share, never a plain 50/50 split
-      assert empty_added > loaded_added * 3
-    end
-
-    test "falls back to plain round-robin when the spread is within the noise floor", %{
-      source: source,
-      backend: backend
-    } do
-      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
-      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
-      queue1 = {source.id, backend.id, pid1}
-      queue2 = {source.id, backend.id, pid2}
-
-      IngestEventQueue.upsert_tid(queue1)
-      IngestEventQueue.upsert_tid(queue2)
-
-      # a 10-event difference is far below the noise floor (max_queue_size / 20 == 1_500)
-      :ok = IngestEventQueue.add_to_table(queue1, build_list(1_000, :log_event))
-      :ok = IngestEventQueue.add_to_table(queue2, build_list(1_010, :log_event))
-
-      new_events = build_list(200, :log_event)
-      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, new_events, chunk_size: 50)
-
-      added1 = IngestEventQueue.get_table_size(queue1) - 1_000
-      added2 = IngestEventQueue.get_table_size(queue2) - 1_010
-
-      assert added1 == 100
-      assert added2 == 100
-    end
-
-    test "never fully excludes a queue that is loaded but still under the hard cap", %{
-      source: source,
-      backend: backend
-    } do
-      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
-      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
-      loaded_queue = {source.id, backend.id, pid1}
-      empty_queue = {source.id, backend.id, pid2}
-
-      IngestEventQueue.upsert_tid(loaded_queue)
-      IngestEventQueue.upsert_tid(empty_queue)
-
-      # one below the hard cutoff — still eligible, just heavily de-weighted
-      :ok =
-        IngestEventQueue.add_to_table(
-          loaded_queue,
-          build_list(IngestEventQueue.max_queue_size() - 1, :log_event)
-        )
-
-      new_events = build_list(6_000, :log_event)
-      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, new_events, chunk_size: 50)
-
-      loaded_added =
-        IngestEventQueue.get_table_size(loaded_queue) - (IngestEventQueue.max_queue_size() - 1)
-
-      assert loaded_added > 0
-    end
-
     test "routes an entire incoming batch to the startup queue when every queue is at the hard cap",
          %{source: source, backend: backend} do
       startup_key = {source.id, backend.id, nil}
@@ -899,9 +839,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
           queue
         end
 
-      # every existing queue is at the hard cap — weight_by_load/2 never runs, since
-      # there's nothing eligible left for it to weight between; the whole new batch
-      # falls through to the startup queue instead, same as before this change
+      # every existing queue is at the hard cap — nothing eligible remains, so the
+      # whole new batch falls through to the startup queue instead
       new_events = build_list(10_000, :log_event)
       :ok = IngestEventQueue.add_to_table({source.id, backend.id}, new_events)
 
@@ -1015,8 +954,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(loaded_queue)
       IngestEventQueue.upsert_tid(empty_queue)
 
-      # pre-load one queue well past the noise floor (consolidated_max_queue_size / 20)
-      # so weight_by_load/2 kicks in instead of falling back to plain round-robin
+      # pre-load one queue well past the noise floor (chunk_size, 100 here) so
+      # weight_by_load/2 kicks in instead of falling back to plain round-robin
       :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(40_000, :log_event))
 
       new_events = build_list(6_000, :log_event)
@@ -1041,8 +980,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(queue1)
       IngestEventQueue.upsert_tid(queue2)
 
-      # a 10-event difference is far below the noise floor
-      # (consolidated_max_queue_size / 20 == 3_000)
+      # a 10-event difference is far below the noise floor (chunk_size, 100 here)
       :ok = IngestEventQueue.add_to_table(queue1, build_list(1_000, :log_event))
       :ok = IngestEventQueue.add_to_table(queue2, build_list(1_010, :log_event))
 

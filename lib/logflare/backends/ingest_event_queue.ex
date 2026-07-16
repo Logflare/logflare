@@ -606,25 +606,26 @@ defmodule Logflare.Backends.IngestEventQueue do
     check_queue_size = Keyword.get(opts, :check_queue_size, true)
     startup_queue = {sid, bid, nil}
 
-    filter_fn =
+    reducer =
       if check_queue_size do
         fn
-          {{_, _, nil}, _} -> false
-          {_obj, count} -> count < @max_queue_size
+          {{_, _, nil}, _}, acc -> acc
+          {_obj, count}, acc when count >= @max_queue_size -> acc
+          {obj, _count}, acc -> [obj | acc]
         end
       else
         fn
-          {{_, _, nil}, _} -> false
-          _ -> true
+          {{_, _, nil}, _}, acc -> acc
+          {obj, _count}, acc -> [obj | acc]
         end
       end
 
     if no_get_tid do
       with all = [_ | _] <- list_counts_with_tids(sid_bid),
-           eligible = [_ | _] <- Enum.filter(all, filter_fn) do
+           available_queues = [_ | _] <- Enum.reduce(all, [], reducer) do
         Logflare.Utils.chunked_round_robin(
           batch,
-          weight_by_load(eligible, @max_queue_size),
+          available_queues,
           chunk_size,
           &add_to_target_table/2
         )
@@ -725,10 +726,10 @@ defmodule Logflare.Backends.IngestEventQueue do
   # risk dumping a burst into the startup queue with no guaranteed prompt drain), while
   # the least-loaded one gets up to @max_queue_weight slots.
   #
-  # `noise_floor` normalizing against the spread alone would amplify a merely-noisy difference
-  # (e.g. 990 vs. 1010) up to the full weight range just as readily as a genuinely
-  # clogged queue, needlessly skewing distribution when the fleet is actually balanced.
-  # Below 5% of max_size, treat the fleet as balanced and round-robin plainly.
+  # `noise_floor` is an absolute row count below which the fleet is treated as
+  # balanced and round-robin stays plain: normalizing against the spread alone would
+  # amplify a merely-noisy difference (e.g. 990 vs. 1010) up to the full weight range
+  # just as readily as a genuinely clogged queue.
   @spec weight_by_load([{term(), non_neg_integer()}], non_neg_integer()) :: [term()]
   defp weight_by_load(entries, noise_floor) do
     counts = Enum.map(entries, &elem(&1, 1))
@@ -1184,9 +1185,16 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Drops up to `n` pending pointer rows from the ingest event table. Pointer rows have
-  no status field — everything present is pending by construction, so there's nothing
-  else to filter by.
+  Drops up to `n` pending pointer rows from the ingest event table, deleting each
+  dropped pointer's underlying generation-store event too. Pointer rows have no status
+  field — everything present is pending by construction, so there's nothing else to
+  filter by.
+
+  This is QueueJanitor's load-shedding path for a runaway buffer — deleting only the
+  pointer row and leaving the event body behind in the generation store would miss the
+  point: the memory it's meant to relieve wouldn't actually be freed until
+  GenerationJanitor's next rotation (bounded by max_age_ms, up to a couple of minutes),
+  not immediately as this is meant to do.
   """
   @spec drop_pending(source_backend_pid(), non_neg_integer()) :: :ok
 
@@ -1208,11 +1216,15 @@ defmodule Logflare.Backends.IngestEventQueue do
   @spec drop_pending(source_backend_pid() | consolidated_table_key(), non_neg_integer()) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
   def drop_pending({_, _, _} = sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
+    ms = [{{:"$1", :"$2", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2"}}]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {taken, _cont} <- :ets.select(tid, ms, n) do
-      for key <- taken, do: :ets.delete(tid, key)
+      for {id, gen_tid} <- taken do
+        :ets.delete(tid, id)
+        delete_id(gen_tid, id)
+      end
+
       {:ok, Enum.count(taken)}
     else
       nil -> {:error, :not_initialized}
