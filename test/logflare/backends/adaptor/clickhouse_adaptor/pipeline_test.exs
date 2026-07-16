@@ -793,6 +793,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert IngestEventQueue.lookup_event(gen_tid, retriable_event.id) == nil
         assert %{retries: 1} = IngestEventQueue.lookup_event(current_gen_tid, retriable_event.id)
       end
+
+      test "emits telemetry and logs a warning when a retriable event's generation is already gone",
+           %{source: source, backend: backend} do
+        event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+        gen_tid = setup_generation_events([event])
+
+        # simulate GenerationJanitor dropping the generation before the retry's own
+        # lookup — same race covered for pop_pending/2, but here on the requeue path
+        :ets.delete(gen_tid)
+
+        failed_message = %Message{
+          data: pointer_for(event, gen_tid),
+          acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+          status: {:failed, "connection error"}
+        }
+
+        telemetry_event = [:logflare, :ingest_event_queue, :requeue_lookup_miss]
+        ref = :telemetry_test.attach_event_handlers(self(), [telemetry_event])
+        on_exit(fn -> :telemetry.detach(ref) end)
+
+        log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
+
+        assert log =~ "Dropped 1 ClickHouse event(s) during retry requeue"
+        assert_receive {^telemetry_event, ^ref, %{count: 1}, %{backend_id: backend_id}}
+        assert backend_id == backend.id
+
+        # nothing landed in the current generation — the event was already gone at
+        # lookup time
+        current_gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend.id})
+        assert IngestEventQueue.lookup_event(current_gen_tid, event.id) == nil
+      end
     end
   end
 

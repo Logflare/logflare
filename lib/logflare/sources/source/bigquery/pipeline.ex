@@ -553,9 +553,33 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         %{event | retries: pointer.retries + 1}
       end
 
+    emit_requeue_lookup_miss_telemetry(sid_bid, length(retriable) - length(events))
+
     if events != [], do: IngestEventQueue.add_to_table(sid_bid, events)
 
     :ok
+  end
+
+  # A miss here means the pointer's generation was already dropped by
+  # GenerationJanitor before the retry could look it up — the event is silently
+  # lost rather than requeued. Bounded and rare in practice, but worth surfacing
+  # since it's otherwise invisible.
+  @spec emit_requeue_lookup_miss_telemetry({pos_integer(), pos_integer()}, non_neg_integer()) ::
+          :ok
+  defp emit_requeue_lookup_miss_telemetry(_sid_bid, 0), do: :ok
+
+  defp emit_requeue_lookup_miss_telemetry({sid, bid}, missing_count) do
+    Logger.warning(
+      "Dropped #{missing_count} BigQuery event(s) during retry requeue: pointer's generation was already gone by lookup time",
+      source_id: sid,
+      backend_id: bid
+    )
+
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :requeue_lookup_miss],
+      %{count: missing_count},
+      %{source_id: sid, backend_id: bid}
+    )
   end
 
   defp drop_pointers([], _reason), do: :ok

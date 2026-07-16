@@ -408,9 +408,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         %{event | retries: pointer.retries + 1}
       end
 
+    emit_requeue_lookup_miss_telemetry(backend_id, length(retriable) - length(events))
+
     if events != [], do: IngestEventQueue.add_to_table({:consolidated, backend_id}, events)
 
     :ok
+  end
+
+  # A miss here means the pointer's generation was already dropped by
+  # GenerationJanitor before the retry could look it up — the event is silently
+  # lost rather than requeued. Bounded and rare in practice, but worth surfacing
+  # since it's otherwise invisible.
+  @spec emit_requeue_lookup_miss_telemetry(pos_integer(), non_neg_integer()) :: :ok
+  defp emit_requeue_lookup_miss_telemetry(_backend_id, 0), do: :ok
+
+  defp emit_requeue_lookup_miss_telemetry(backend_id, missing_count) do
+    Logger.warning(
+      "Dropped #{missing_count} ClickHouse event(s) during retry requeue: pointer's generation was already gone by lookup time",
+      backend_id: backend_id
+    )
+
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :requeue_lookup_miss],
+      %{count: missing_count},
+      %{backend_id: backend_id}
+    )
   end
 
   @spec drop_failed(

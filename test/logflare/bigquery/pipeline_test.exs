@@ -53,6 +53,42 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert requeued.retries == 1
     end
 
+    test "ack emits telemetry and logs a warning when a retriable event's generation is already gone",
+         %{source: source} do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      # simulate GenerationJanitor dropping the generation before the retry's own
+      # lookup — same race covered for pop_pending/2, but here on the requeue path
+      queues_key = Tuple.delete_at(sid_bid_pid, 2)
+      assert [{gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
+      :ok = IngestEventQueue.drop_generation(queues_key, gen_tid)
+
+      event = [:logflare, :ingest_event_queue, :requeue_lookup_miss]
+      ref = :telemetry_test.attach_event_handlers(self(), [event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      ack_ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(pointer, ref: ack_ref)
+      {mod, ack_ref, _data} = message.acknowledger
+
+      log =
+        capture_log(fn ->
+          mod.ack(ack_ref, [], [message])
+        end)
+
+      assert log =~ "Dropped 1 BigQuery event(s) during retry requeue"
+      assert_receive {^event, ^ref, %{count: 1}, %{source_id: sid, backend_id: nil}}
+      assert sid == source.id
+
+      # nothing left to requeue — the event was already gone at lookup time
+      assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+    end
+
     test "ack will not requeue failed events that have exhausted retries", %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)

@@ -1109,7 +1109,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   end
 
   describe "resolve_pipeline_count/2" do
-    test "scales up when the fleet average is above the scaling threshold" do
+    test "scales up when every queue is above the scaling threshold" do
       state = %{pipeline_count: 3, last_count_decrease: nil}
 
       lens = [
@@ -1122,7 +1122,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 4
     end
 
-    test "does not scale up when only one queue is over threshold but the fleet average isn't" do
+    test "does not scale up when only one queue is over threshold and the rest are idle" do
       state = %{pipeline_count: 4, last_count_decrease: nil}
 
       lens = [
@@ -1134,6 +1134,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       ]
 
       assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 4
+    end
+
+    test "does not scale up on a single outlier even when it drags the fleet average over threshold" do
+      state = %{pipeline_count: 2, last_count_decrease: nil}
+
+      # [30_000, 0] averages to exactly @scaling_threshold despite one queue being
+      # completely idle — averaging alone would incorrectly scale up here.
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 30_000},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 2
     end
 
     test "scales up when the startup queue has events, regardless of the average" do
