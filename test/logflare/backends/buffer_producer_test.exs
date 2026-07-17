@@ -535,4 +535,144 @@ defmodule Logflare.Backends.BufferProducerTest do
       assert captured =~ "Spool producer GenStage has discarded"
     end
   end
+
+  describe "max_in_flight capping" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      [source: source, backend: backend]
+    end
+
+    # Both GenStage callbacks below are called directly rather than through a running
+    # producer process — they're plain functions underneath the @impl annotation, and
+    # Process.send_after(self(), ...) inside them schedules to whichever process calls
+    # them, so calling them from the test process directly lets us assert on the
+    # resulting timing without a full running pipeline.
+
+    test "handle_info(:scheduled_resolve, _) schedules a short retry when a fetch is capped",
+         %{source: source, backend: backend} do
+      ref = :atomics.new(1, signed: true)
+      :atomics.put(ref, 1, 1)
+
+      state = %{
+        consolidated: false,
+        id_passing: true,
+        demand: 1,
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: backend.id,
+        last_discard_log_dt: nil,
+        interval: 5_000,
+        in_flight_ref: ref,
+        max_in_flight: 1,
+        timer_ref: nil
+      }
+
+      assert {:noreply, [], _state} = BufferProducer.handle_info(:scheduled_resolve, state)
+
+      assert_receive :scheduled_resolve, 400
+    end
+
+    test "handle_info(:scheduled_resolve, _) keeps the normal interval when genuinely empty, not capped",
+         %{source: source, backend: backend} do
+      ref = :atomics.new(1, signed: true)
+
+      state = %{
+        consolidated: false,
+        id_passing: true,
+        demand: 1,
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: backend.id,
+        last_discard_log_dt: nil,
+        interval: 1_000,
+        in_flight_ref: ref,
+        max_in_flight: 1_000,
+        timer_ref: nil
+      }
+
+      assert {:noreply, [], _state} = BufferProducer.handle_info(:scheduled_resolve, state)
+
+      refute_receive :scheduled_resolve, 400
+      assert_receive :scheduled_resolve, 1_100
+    end
+
+    test "handle_demand/2 proactively schedules a short retry when capped, instead of waiting for the pending timer",
+         %{source: source, backend: backend} do
+      ref = :atomics.new(1, signed: true)
+      :atomics.put(ref, 1, 1)
+
+      state = %{
+        consolidated: false,
+        id_passing: true,
+        demand: 0,
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: backend.id,
+        last_discard_log_dt: nil,
+        interval: 5_000,
+        in_flight_ref: ref,
+        max_in_flight: 1,
+        timer_ref: nil
+      }
+
+      assert {:noreply, [], _state} = BufferProducer.handle_demand(1, state)
+
+      assert_receive :scheduled_resolve, 400
+    end
+
+    test "handle_demand/2 does not schedule anything when not capped", %{
+      source: source,
+      backend: backend
+    } do
+      ref = :atomics.new(1, signed: true)
+
+      state = %{
+        consolidated: false,
+        id_passing: true,
+        demand: 0,
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: backend.id,
+        last_discard_log_dt: nil,
+        interval: 5_000,
+        in_flight_ref: ref,
+        max_in_flight: 1_000,
+        timer_ref: nil
+      }
+
+      assert {:noreply, [], _state} = BufferProducer.handle_demand(1, state)
+
+      refute_receive :scheduled_resolve, 400
+    end
+
+    test "handle_demand/2 cancels the previous timer instead of forking a second parallel loop when called again while still capped",
+         %{source: source, backend: backend} do
+      ref = :atomics.new(1, signed: true)
+      :atomics.put(ref, 1, 1)
+
+      state = %{
+        consolidated: false,
+        id_passing: true,
+        demand: 0,
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: backend.id,
+        last_discard_log_dt: nil,
+        interval: 5_000,
+        in_flight_ref: ref,
+        max_in_flight: 1,
+        timer_ref: nil
+      }
+
+      {:noreply, [], state} = BufferProducer.handle_demand(1, state)
+      # Still capped — without cancelling the first timer, this would fork off a
+      # second, independent :scheduled_resolve chain rather than replacing the first.
+      {:noreply, [], _state} = BufferProducer.handle_demand(1, state)
+
+      assert_receive :scheduled_resolve, 400
+      refute_receive :scheduled_resolve, 400
+    end
+  end
 end
