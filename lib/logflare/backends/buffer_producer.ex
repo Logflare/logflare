@@ -24,7 +24,9 @@ defmodule Logflare.Backends.BufferProducer do
           source_token: atom() | nil,
           backend_id: pos_integer(),
           last_discard_log_dt: DateTime.t() | nil,
-          interval: pos_integer()
+          interval: pos_integer(),
+          in_flight_ref: :atomics.atomics_ref() | nil,
+          max_in_flight: non_neg_integer() | :infinity | nil
         }
 
   @type spool_producer_state :: %{
@@ -36,7 +38,9 @@ defmodule Logflare.Backends.BufferProducer do
           source_token: nil,
           backend_id: nil,
           last_discard_log_dt: DateTime.t() | nil,
-          interval: pos_integer()
+          interval: pos_integer(),
+          in_flight_ref: :atomics.atomics_ref() | nil,
+          max_in_flight: non_neg_integer() | :infinity | nil
         }
 
   @type state :: standard_state() | spool_producer_state()
@@ -60,7 +64,7 @@ defmodule Logflare.Backends.BufferProducer do
 
     state =
       cond do
-        spool_producer? -> init_spool_producer_state(interval)
+        spool_producer? -> init_spool_producer_state(interval, opts)
         consolidated? -> init_consolidated_state(backend_id, interval, opts)
         true -> init_standard_state(opts, interval)
       end
@@ -68,8 +72,61 @@ defmodule Logflare.Backends.BufferProducer do
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
   end
 
-  @spec init_spool_producer_state(pos_integer()) :: state()
-  defp init_spool_producer_state(interval) do
+  # Publishes a reference to a mutable :atomics counter (not the counter value itself)
+  # via :persistent_term, so transform/2 — which runs in this same process, per
+  # Broadway.Topology.ProducerStage — can look it up once and hand it to ack/3 through
+  # the message's ack_data. Only :persistent_term.put/2 (here, once per producer
+  # lifecycle) and :erase/1 (in terminate/2) are ever called; the actual claim/ack
+  # traffic goes straight through the atomics ref, since repeated :persistent_term
+  # writes would trigger a global VM-wide sweep on every single event.
+  @spec init_in_flight(id_passing :: boolean(), max_in_flight :: non_neg_integer() | nil) ::
+          {:atomics.atomics_ref() | nil, non_neg_integer() | :infinity | nil}
+  defp init_in_flight(true, max_in_flight) do
+    ref = :atomics.new(1, signed: true)
+    :persistent_term.put({__MODULE__, :in_flight_ref, self()}, ref)
+    {ref, max_in_flight || :infinity}
+  end
+
+  defp init_in_flight(false, _max_in_flight), do: {nil, nil}
+
+  # One-time, capped pre-seed of a freshly (re)started producer's own queue from the
+  # shared startup queue — bounded to max_in_flight so it never absorbs more backlog
+  # than it could ever claim anyway, while giving it real pending work immediately
+  # instead of waiting on however many ticks do_fetch's own startup fallback would take
+  # to reach the same amount. Uses pop_pending_pointers' atomic :ets.take-gated claim
+  # (safe even if another producer is concurrently draining the same startup table)
+  # then relocates each pointer's row into the new own table by overriding queue_tid
+  # before reinsert_pointer/1 — a one-off exception to that function's usual "reinsert
+  # where it was claimed from" contract. Only meaningful for id-passing producers with a
+  # finite cap; max_in_flight is nil for non-id-passing producers and :infinity for
+  # id-passing ones with no configured cap.
+  @spec seed_from_startup(table_key(), table_key(), non_neg_integer() | :infinity | nil) :: :ok
+  defp seed_from_startup(_startup_key, _own_key, nil), do: :ok
+  defp seed_from_startup(_startup_key, _own_key, :infinity), do: :ok
+
+  defp seed_from_startup(startup_key, own_key, max_in_flight) when is_integer(max_in_flight) do
+    case IngestEventQueue.pop_pending_pointers(startup_key, max_in_flight) do
+      {:error, :not_initialized} ->
+        :ok
+
+      {:ok, [], _tid} ->
+        :ok
+
+      {:ok, pointers, _tid} ->
+        own_tid = IngestEventQueue.get_tid(own_key)
+
+        Enum.each(pointers, fn pointer ->
+          IngestEventQueue.reinsert_pointer(%{pointer | queue_tid: own_tid})
+        end)
+
+        :ok
+    end
+  end
+
+  @spec init_spool_producer_state(pos_integer(), keyword()) :: state()
+  defp init_spool_producer_state(interval, opts) do
+    {in_flight_ref, max_in_flight} = init_in_flight(true, Keyword.get(opts, :max_in_flight))
+
     state = %{
       spool_producer: true,
       consolidated: false,
@@ -79,13 +136,15 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: nil,
       backend_id: nil,
       last_discard_log_dt: nil,
-      interval: interval
+      interval: interval,
+      in_flight_ref: in_flight_ref,
+      max_in_flight: max_in_flight
     }
 
     table_key = {:spool_producer, nil, self()}
     startup_table_key = {:spool_producer, nil, nil}
     IngestEventQueue.upsert_tid(table_key)
-    IngestEventQueue.move(startup_table_key, table_key)
+    seed_from_startup(startup_table_key, table_key, max_in_flight)
     schedule(state, false)
 
     state
@@ -95,6 +154,7 @@ defmodule Logflare.Backends.BufferProducer do
   defp init_standard_state(opts, interval) do
     source = Sources.Cache.get_by_id(opts[:source_id])
     id_passing = Keyword.get(opts, :id_passing, false)
+    {in_flight_ref, max_in_flight} = init_in_flight(id_passing, Keyword.get(opts, :max_in_flight))
 
     state = %{
       consolidated: false,
@@ -104,13 +164,15 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: source.token,
       backend_id: opts[:backend_id],
       last_discard_log_dt: nil,
-      interval: interval
+      interval: interval,
+      in_flight_ref: in_flight_ref,
+      max_in_flight: max_in_flight
     }
 
     table_key = {state.source_id, state.backend_id, self()}
     startup_table_key = {state.source_id, state.backend_id, nil}
     IngestEventQueue.upsert_tid(table_key)
-    IngestEventQueue.move(startup_table_key, table_key)
+    seed_from_startup(startup_table_key, table_key, max_in_flight)
     schedule(state, false)
 
     state
@@ -119,6 +181,7 @@ defmodule Logflare.Backends.BufferProducer do
   @spec init_consolidated_state(pos_integer(), pos_integer(), keyword()) :: state()
   defp init_consolidated_state(backend_id, interval, opts) do
     id_passing = Keyword.get(opts, :id_passing, false)
+    {in_flight_ref, max_in_flight} = init_in_flight(id_passing, Keyword.get(opts, :max_in_flight))
 
     state = %{
       consolidated: true,
@@ -128,13 +191,15 @@ defmodule Logflare.Backends.BufferProducer do
       source_token: nil,
       backend_id: backend_id,
       last_discard_log_dt: nil,
-      interval: interval
+      interval: interval,
+      in_flight_ref: in_flight_ref,
+      max_in_flight: max_in_flight
     }
 
     table_key = {:consolidated, backend_id, self()}
     startup_table_key = {:consolidated, backend_id, nil}
     IngestEventQueue.upsert_tid(table_key)
-    IngestEventQueue.move(startup_table_key, table_key)
+    seed_from_startup(startup_table_key, table_key, max_in_flight)
 
     schedule(state, Keyword.get(opts, :scale, false))
 
@@ -231,13 +296,35 @@ defmodule Logflare.Backends.BufferProducer do
 
   @impl GenStage
   def terminate(_reason, %{spool_producer: true} = state) do
+    cleanup_in_flight_ref(state)
     table_key = {:spool_producer, nil, self()}
     startup_table_key = {:spool_producer, nil, nil}
     IngestEventQueue.move(table_key, startup_table_key)
     state
   end
 
-  def terminate(_reason, state), do: state
+  def terminate(_reason, state) do
+    cleanup_in_flight_ref(state)
+    state
+  end
+
+  defp cleanup_in_flight_ref(%{in_flight_ref: ref}) when not is_nil(ref) do
+    :persistent_term.erase({__MODULE__, :in_flight_ref, self()})
+  end
+
+  defp cleanup_in_flight_ref(_state), do: :ok
+
+  # Diagnostic getter only — atomics refs can't be sent across a distributed
+  # connection and read remotely (unlike the plain integer this returns), so callers
+  # inspecting a producer's in-flight count from another node must do it in one
+  # :rpc.call that runs entirely on the producer's own node.
+  @spec in_flight_count(pid()) :: non_neg_integer() | nil
+  def in_flight_count(pid) do
+    case :persistent_term.get({__MODULE__, :in_flight_ref, pid}, nil) do
+      nil -> nil
+      ref -> :atomics.get(ref, 1)
+    end
+  end
 
   @impl GenStage
   def handle_demand(demand, state) do
@@ -289,9 +376,14 @@ defmodule Logflare.Backends.BufferProducer do
           {[LogEvent.t()], state()}
   defp resolve_demand(%{demand: prev_demand} = state, new_demand \\ 0) do
     total_demand = prev_demand + new_demand
+    fetch_amount = capped_fetch_amount(state, total_demand)
 
-    events = do_fetch(state, total_demand)
+    events = do_fetch(state, fetch_amount)
     event_count = Enum.count(events)
+
+    if state.in_flight_ref != nil and event_count > 0 do
+      :atomics.add(state.in_flight_ref, 1, event_count)
+    end
 
     new_demand =
       if total_demand < event_count do
@@ -301,6 +393,22 @@ defmodule Logflare.Backends.BufferProducer do
       end
 
     {events, %{state | demand: new_demand}}
+  end
+
+  # A generous safety valve, not a fine-grained flow-control knob: caps how much a
+  # producer will claim from IngestEventQueue once too much already-claimed work is
+  # sitting unacked (e.g. stuck deep in Broadway's own, effectively unbounded batcher
+  # buffering — see BufferProducer moduledoc/callers for context). Non-id-passing
+  # producers have no in_flight_ref and are never throttled.
+  @spec capped_fetch_amount(state :: state(), requested :: non_neg_integer()) ::
+          non_neg_integer()
+  defp capped_fetch_amount(%{in_flight_ref: nil}, requested), do: requested
+  defp capped_fetch_amount(%{max_in_flight: :infinity}, requested), do: requested
+
+  defp capped_fetch_amount(%{in_flight_ref: ref, max_in_flight: max_in_flight}, requested) do
+    current = :atomics.get(ref, 1)
+    available = max(max_in_flight - current, 0)
+    min(requested, available)
   end
 
   # Every producer services its own queue first — a producer that's over

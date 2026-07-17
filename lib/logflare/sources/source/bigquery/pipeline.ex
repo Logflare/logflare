@@ -33,6 +33,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   @max_batch_length 6_000_000
   @max_batch_size 500
   @max_retries 0
+  @batcher_concurrency 16
+  # Generous safety valve (2x total batcher capacity), not a fine-grained flow-control
+  # knob — see BufferProducer's capped_fetch_amount/2. Should never engage during
+  # healthy operation; only caps genuinely runaway backlog.
+  @max_in_flight 2 * @max_batch_size * @batcher_concurrency
 
   def start_link(args, opts \\ []) do
     {name, args} = Keyword.pop(args, :name)
@@ -60,7 +65,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
                [
                  source_id: source.id,
                  backend_id: backend.id,
-                 id_passing: true
+                 id_passing: true,
+                 max_in_flight: @max_in_flight
                ]},
             transformer:
               {__MODULE__, :transform,
@@ -73,7 +79,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           ],
           batchers: [
             bq: [
-              concurrency: 16,
+              concurrency: @batcher_concurrency,
               batch_size: bq_batch_size_splitter(),
               batch_timeout: 1_500,
               # required when using a custom batch_size splitter
@@ -110,13 +116,17 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     String.to_atom("#{proc_name}-#{base_name}")
   end
 
-  # Broadway transformer for custom producer
+  # Broadway transformer for custom producer. Runs in the same process as the producer
+  # itself (Broadway.Topology.ProducerStage calls the producer module's own callbacks,
+  # then the transformer, inline, in one process) — so self() here is the producer's
+  # pid, and this lookup always finds the ref the producer published at init.
   def transform(event, args) do
     ref = args[:ref]
+    in_flight_ref = :persistent_term.get({BufferProducer, :in_flight_ref, self()}, nil)
 
     %Message{
       data: event,
-      acknowledger: {__MODULE__, ref, :ack_data}
+      acknowledger: {__MODULE__, ref, %{in_flight_ref: in_flight_ref}}
     }
   end
 
@@ -124,6 +134,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   def ack({queue, config}, successful, failed) do
     {sid, bid, _pipeline_ref} = queue
 
+    decrement_in_flight(successful ++ failed)
     finalize_acked_events({sid, bid}, successful)
     maybe_requeue_failed({sid, bid}, failed, config)
 
@@ -134,6 +145,18 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     )
 
     :ok
+  end
+
+  @spec decrement_in_flight([Message.t()]) :: :ok
+  defp decrement_in_flight(messages) do
+    messages
+    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} ->
+      Map.get(ack_data, :in_flight_ref)
+    end)
+    |> Enum.each(fn
+      {nil, _msgs} -> :ok
+      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
+    end)
   end
 
   # Always deletes the generation-store row. If the source's ingest rate is low, also
