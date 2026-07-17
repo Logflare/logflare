@@ -42,7 +42,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
   @pipelines_per_scheduler 4
-  @max_in_flight 120_000 #TODO: Share config with clickhouse pipeline
+  # TODO: Share config with clickhouse pipeline
+  @max_in_flight 120_000
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
