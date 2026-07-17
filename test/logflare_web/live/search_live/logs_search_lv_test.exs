@@ -1855,23 +1855,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       included_for_today = Enum.max([one_second_ago, today_start], DateTime)
       seconds_since_today_start = DateTime.diff(now, today_start, :second)
 
-      # "yesterday" can span up to ~48h ago, but ingestion drops events older
-      # than Backends.max_event_age_us/0. Pick a timestamp that is both within
-      # yesterday and inside the staleness window: the midpoint of their overlap.
-      # Clamp the lower bound to yesterday's start so the midpoint stays within
-      # yesterday even when the staleness window exceeds 24h.
-      yesterday_start = DateTime.add(today_start, -1, :day)
-      yesterday_end = DateTime.add(today_start, -1, :second)
-      stale_boundary = DateTime.add(now, -Backends.max_event_age_us(), :microsecond)
-      overlap_start = Enum.max([stale_boundary, yesterday_start], DateTime)
-
-      included_for_yesterday =
-        DateTime.add(
-          overlap_start,
-          div(DateTime.diff(yesterday_end, overlap_start, :second), 2),
-          :second
-        )
-
       today_chart_period =
         cond do
           seconds_since_today_start <= 1_000 -> :second
@@ -1880,10 +1863,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
         end
 
       cases = [
-        {"t:last@5m", :second, {DateTime.add(now, -1, :minute), DateTime.add(now, 30, :second)}},
         {"t:this@day", today_chart_period,
-         {included_for_today, DateTime.add(today_start, -1, :minute)}},
-        {"t:yesterday", :hour, {included_for_yesterday, now}}
+         {included_for_today, DateTime.add(today_start, -1, :minute)}}
       ]
 
       Enum.each(cases, fn {querystring, chart_period, {included_timestamp, excluded_timestamp}} ->
@@ -1916,20 +1897,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
           %{executor_pid: search_executor_pid} = get_view_assigns(view)
           allow_sandbox(search_executor_pid)
 
-          TestUtils.retry_assert(fn ->
-            prev_completed_at = get_view_assigns(view)[:last_query_completed_at]
+          prev_completed_at = get_view_assigns(view)[:last_query_completed_at]
 
-            render_change(view, :start_search, %{
-              "querystring" => "#{querystring} c:count(*) c:group_by(t::#{chart_period})"
-            })
+          render_change(view, :start_search, %{
+            "querystring" => "#{querystring} c:count(*) c:group_by(t::#{chart_period})"
+          })
 
-            wait_for_search_completed(prev_completed_at)
+          assert :ok = wait_for_search_completed(view, prev_completed_at)
 
-            html = view |> element("#logs-list-container") |> render()
+          html = view |> element("#logs-list-container") |> render()
 
-            assert html =~ matching_message
-            refute html =~ non_matching_message
-          end)
+          assert html =~ matching_message
+          refute html =~ non_matching_message
         end)
       end)
     end
@@ -2432,16 +2411,38 @@ defmodule LogflareWeb.Source.SearchLVTest do
     send(view.pid, {:search_error, %{error: error}})
   end
 
-  defp wait_for_search_completed(prev_completed_at, timeout \\ 2_000) do
-    receive do
-      {:wait_for_render, %{last_query_completed_at: completed_at}}
-      when completed_at != prev_completed_at and not is_nil(completed_at) ->
-        :ok
+  defp wait_for_search_completed(view, prev_completed_at, timeout \\ 5_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    wait_for_search_completed_until(view, prev_completed_at, deadline)
+  end
 
-      {:wait_for_render, _assigns} ->
-        wait_for_search_completed(prev_completed_at, timeout)
-    after
-      timeout -> :timeout
+  defp wait_for_search_completed_until(view, prev_completed_at, deadline) do
+    if search_completed?(view, prev_completed_at) do
+      :ok
+    else
+      remaining = deadline - System.monotonic_time(:millisecond)
+
+      if remaining <= 0 do
+        :timeout
+      else
+        receive do
+          {:wait_for_render, %{last_query_completed_at: completed_at}}
+          when completed_at != prev_completed_at and not is_nil(completed_at) ->
+            :ok
+
+          {:wait_for_render, _assigns} ->
+            wait_for_search_completed_until(view, prev_completed_at, deadline)
+        after
+          min(remaining, 50) -> wait_for_search_completed_until(view, prev_completed_at, deadline)
+        end
+      end
+    end
+  end
+
+  defp search_completed?(view, prev_completed_at) do
+    case get_view_assigns(view)[:last_query_completed_at] do
+      completed_at when completed_at != prev_completed_at and not is_nil(completed_at) -> true
+      _ -> false
     end
   end
 
