@@ -365,13 +365,27 @@ defmodule Logflare.Telemetry do
         event_name: [:logflare, :ingest_event_queue, :missing_ids],
         description: "Count of event IDs not found in ETS during handle_batch fetch"
       ),
-      sum("logflare.ingest_event_queue.stale_processing.reset",
-        event_name: [:logflare, :ingest_event_queue, :stale_processing],
-        description: "Count of stale :processing events reset to :pending by QueueJanitor"
+      sum("logflare.ingest_event_queue.generation_janitor.drop.generations",
+        event_name: [:logflare, :ingest_event_queue, :generation_janitor, :drop],
+        measurement: :generations,
+        description: "Count of generations dropped by GenerationJanitor for exceeding max_age_ms"
       ),
-      sum("logflare.ingest_event_queue.stale_processing.dropped",
-        event_name: [:logflare, :ingest_event_queue, :stale_processing],
-        description: "Count of stale :processing events dropped by QueueJanitor after max retries"
+      sum("logflare.ingest_event_queue.generation_janitor.drop.events",
+        event_name: [:logflare, :ingest_event_queue, :generation_janitor, :drop],
+        measurement: :events,
+        description: "Count of events lost when GenerationJanitor dropped an aged-out generation"
+      ),
+      sum("logflare.ingest_event_queue.generation_janitor.prune.generations",
+        event_name: [:logflare, :ingest_event_queue, :generation_janitor, :prune],
+        measurement: :generations,
+        description:
+          "Count of generations pruned by GenerationJanitor for a queues_key with no live queue left"
+      ),
+      sum("logflare.ingest_event_queue.requeue_lookup_miss.count",
+        event_name: [:logflare, :ingest_event_queue, :requeue_lookup_miss],
+        measurement: :count,
+        description:
+          "Count of retriable events whose generation-store row was already gone by requeue lookup time"
       )
     ]
 

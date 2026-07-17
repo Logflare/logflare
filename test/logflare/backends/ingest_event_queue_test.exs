@@ -326,6 +326,37 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending({sid, bid}) == 1
       assert IngestEventQueue.total_pending({sid, bid, nil}) == 0
     end
+
+    test "move/2 never duplicates a row a concurrent claimer takes from the same source queue",
+         %{queue: {sid, bid, _} = queue} do
+      target = {sid, bid, self()}
+      IngestEventQueue.upsert_tid(target)
+
+      le = build(:log_event, message: "123")
+      :ok = IngestEventQueue.add_to_table(queue, [le])
+
+      test_pid = self()
+
+      # Simulates an already-live producer draining the same (startup) queue via its
+      # own claim, concurrently with move/2 draining it into a newly-spawned
+      # producer's table — the exact interleaving flagged in
+      # github.com/Logflare/logflare/pull/3690#discussion_r3598370787. :ets.take/2 is
+      # atomic, so regardless of which side actually wins the race in a given run,
+      # the row must end up claimed exactly once — either returned here, or present
+      # in the move target, never both.
+      claimer =
+        spawn(fn ->
+          send(test_pid, {:claimed, IngestEventQueue.pop_pending_pointers(queue, 1)})
+        end)
+
+      Process.monitor(claimer)
+      {:ok, _moved} = IngestEventQueue.move(queue, target)
+
+      assert_receive {:claimed, {:ok, claimed_pointers, _tid}}
+      assert_receive {:DOWN, _ref, :process, ^claimer, _reason}
+
+      assert length(claimed_pointers) + IngestEventQueue.total_pending(target) == 1
+    end
   end
 
   describe "with a queue" do
@@ -1471,9 +1502,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # since do_rotate/1 has no concept of "which test owns this key". Sleeping past
       # max_age_ms first, then calling do_rotate/2 exactly once, makes "is it old
       # enough to drop yet" fully within this test's own control — no race, and
-      # nothing outside `queues_key` is ever touched.
+      # nothing outside `queues_key` is ever touched. interval: 0 keeps the cutoff
+      # math to plain max_age_ms — this test isn't exercising the rotation-interval
+      # headroom (see the "guarantees max_age_ms of retention..." test below).
       Process.sleep(20)
-      :ok = GenerationJanitor.do_rotate(%{max_age_ms: 10}, [queues_key])
+      :ok = GenerationJanitor.do_rotate(%{max_age_ms: 10, interval: 0}, [queues_key])
 
       # the dropped generation's table is gone outright (O(1) whole-table delete, not
       # a per-row scan)

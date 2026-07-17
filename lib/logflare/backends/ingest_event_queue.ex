@@ -746,17 +746,23 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @doc """
   Moves an entire queue from an origin to a target.
+
+  Claims each row from `from_tid` via `:ets.take/2` before inserting it into `to_tid`,
+  rather than copying the row `:ets.foldl/3` handed us and only then deleting it — a
+  live producer can independently drain the same `from_tid` (e.g. the startup queue,
+  during another producer's own scale-up) via its own `pop_pending_pointers/2` claim.
+  Taking first means whichever side's `:ets.take/2` actually wins is the only one that
+  ever sees the row again: if the other producer already claimed it, ours comes back
+  empty and we skip it, instead of recreating an already-claimed pointer in `to_tid`
+  and risking both sides processing (and acking) the same event
+  (github.com/Logflare/logflare/pull/3690#discussion_r3598370787).
   """
   def move(from, to) when is_tuple(from) and is_tuple(to) do
     with from_tid when from_tid != nil <- get_tid(from),
          to_tid when to_tid != nil <- get_tid(to) do
       moved =
         :ets.foldl(
-          fn el, acc ->
-            :ets.insert(to_tid, el)
-            :ets.delete_object(from_tid, el)
-            acc + 1
-          end,
+          fn {id, _, _, _, _, _, _}, acc -> acc + take_and_insert(from_tid, to_tid, id) end,
           0,
           from_tid
         )
@@ -764,6 +770,17 @@ defmodule Logflare.Backends.IngestEventQueue do
       {:ok, moved}
     else
       nil -> {:error, :not_initialized}
+    end
+  end
+
+  defp take_and_insert(from_tid, to_tid, id) do
+    case :ets.take(from_tid, id) do
+      [row] ->
+        :ets.insert(to_tid, row)
+        1
+
+      [] ->
+        0
     end
   end
 
@@ -891,7 +908,11 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Takes up to `n` pending pointers from a table, claiming each by removing its row
   outright — an atomic `:ets.take/2` per candidate, so a candidate raced away by another
-  claimer between the select and the take simply comes back empty and is filtered out.
+  claimer between the select and the take simply comes back empty and is skipped. The
+  returned pointer is built from what `take/2` actually removed, not the earlier
+  `select/3` snapshot — if the same id was reclaimed and reinserted (fresh generation,
+  bumped retries) in that narrow window, this still reflects its current row instead of
+  stale data.
 
   Returns `LogEventPointer` structs: intended for ID-passing pipeline variants
   (ClickHouse, BigQuery, spool producer) to avoid copying full events through Broadway —
@@ -913,10 +934,18 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {selected, _cont} <- :ets.select(tid, ms, n) do
-      confirmed =
-        selected
-        |> Enum.filter(fn {id, _, _, _, _, _, _} -> :ets.take(tid, id) != [] end)
-        |> Enum.map(fn {id, gen_tid, size, retries, event_type, day_bucket, freshness} ->
+      confirmed = Enum.flat_map(selected, fn {id, _, _, _, _, _, _} -> take_pointer(tid, id) end)
+      {:ok, confirmed, tid}
+    else
+      nil -> {:error, :not_initialized}
+      :"$end_of_table" -> {:ok, [], nil}
+    end
+  end
+
+  defp take_pointer(tid, id) do
+    case :ets.take(tid, id) do
+      [{^id, gen_tid, size, retries, event_type, day_bucket, freshness}] ->
+        [
           %LogEventPointer{
             id: id,
             tid: gen_tid,
@@ -927,12 +956,10 @@ defmodule Logflare.Backends.IngestEventQueue do
             day_bucket: day_bucket,
             ingest_freshness: freshness
           }
-        end)
+        ]
 
-      {:ok, confirmed, tid}
-    else
-      nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, [], nil}
+      [] ->
+        []
     end
   end
 

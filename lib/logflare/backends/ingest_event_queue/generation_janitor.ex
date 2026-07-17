@@ -25,8 +25,19 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   crashed before ack leaves its event unreferenced in the generation store (see
   `IngestEventQueue.pop_pending_pointers/2` — claiming deletes the pointer row outright,
   so there's nothing left to detect "abandoned"). Nothing here retries an abandoned
-  claim; it just eventually disappears with its generation, bounded to roughly
-  `max_age_ms` to `2 * max_age_ms` old.
+  claim; it just eventually disappears with its generation.
+
+  `max_age_ms` bounds a *generation's* age, not an individual event's — a generation
+  stays "current" (accepting inserts) for up to one `interval` before the next tick
+  replaces it, so an event inserted right before that handoff would only be `max_age_ms`
+  old itself right as its generation already hits the threshold. `drop_aged_generations/2`
+  therefore checks generation age against `max_age_ms + interval`, not `max_age_ms`
+  alone — the extra `interval` is headroom so every event gets to live for at least
+  `max_age_ms` from its own insertion time, not just from its generation's creation
+  time (see github.com/Logflare/logflare/pull/3690#discussion_r3598623581). With that
+  headroom, an event's own retention is bounded between `max_age_ms` (inserted right
+  before rotation) and `max_age_ms + 2 * interval` (inserted right as its generation
+  was created).
 
   Each tick also sweeps the recent-events cache (see
   `IngestEventQueue.record_recent_event/2`, `sweep_recent_events/1`) down to
@@ -127,7 +138,10 @@ defmodule Logflare.Backends.IngestEventQueue.GenerationJanitor do
   defp has_live_queue?(queues_key), do: IngestEventQueue.list_queues(queues_key) != []
 
   defp drop_aged_generations(queues_key, state) do
-    cutoff = System.monotonic_time(:millisecond) - state.max_age_ms
+    # + state.interval: headroom so an event inserted right before its generation
+    # stopped being "current" still gets a full max_age_ms of its own — see the
+    # moduledoc section on this.
+    cutoff = System.monotonic_time(:millisecond) - (state.max_age_ms + state.interval)
 
     {dropped_count, dropped_size} =
       queues_key
