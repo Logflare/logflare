@@ -107,7 +107,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       # Event is NOT requeued (retries == max_retries); its event row is deleted
       # from the generation store since nothing will ever ack it
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
-      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
     end
 
     test "ack deletes the generation-store row immediately but records an independent copy into the recent-events cache",
@@ -128,7 +128,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       # the generation-store row is gone immediately — the recent-events cache holds
       # an independent copy instead, so it stays visible even after the originating
       # generation is later rotated out and dropped by GenerationJanitor
-      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
       assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == [le]
     end
 
@@ -149,7 +149,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       mod.ack(ref, [message], [])
 
-      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
       assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == []
     end
 
@@ -171,7 +171,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       mod.ack(ref, [message], [])
 
-      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
       assert IngestEventQueue.list_recent_events({deleted_source_id, nil}, 10) == []
     end
 
@@ -194,7 +194,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       # ack still deletes the generation-store row as normal — only the recent-events
       # write is skipped, since list_recent_logs_local/2 hardcodes {source_id, nil} and
       # would never read a row recorded under this explicit backend_id anyway
-      assert IngestEventQueue.lookup_event(pointer.tid, le.id) == nil
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
       assert IngestEventQueue.list_recent_events({source.id, backend.id}, 10) == []
       assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == []
     end
@@ -658,7 +658,7 @@ defmodule Logflare.BigQuery.PipelineTest do
       pointer = message.data
 
       # Delete the event from the generation store so the id cannot be resolved
-      :ets.delete(pointer.tid, le.id)
+      :ets.delete(pointer.tid, pointer.gen_event_id)
 
       ref = make_ref()
 

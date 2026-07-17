@@ -171,12 +171,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
       if record?, do: record_recent_copy(queues_key, pointer)
-      IngestEventQueue.delete_id(pointer.tid, pointer.id)
+      IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
     end)
   end
 
   defp record_recent_copy(queues_key, %LogEventPointer{} = pointer) do
-    case IngestEventQueue.lookup_event(pointer.tid, pointer.id) do
+    case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
       nil -> :ok
       event -> IngestEventQueue.record_recent_event(queues_key, event)
     end
@@ -320,8 +320,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     end)
   end
 
-  defp lookup_message_event(%{data: %LogEventPointer{tid: tid, id: id}}) do
-    IngestEventQueue.lookup_event(tid, id)
+  defp lookup_message_event(%{data: %LogEventPointer{tid: tid, gen_event_id: gen_event_id}}) do
+    IngestEventQueue.lookup_event(tid, gen_event_id)
   end
 
   # Single pass collecting log events + batch metrics. Separate accumulator args (rather
@@ -576,9 +576,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     events =
       for pointer <- retriable,
-          event = IngestEventQueue.lookup_event(pointer.tid, pointer.id),
+          event = IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id),
           not is_nil(event) do
-        IngestEventQueue.delete_id(pointer.tid, pointer.id)
+        IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
         %{event | retries: pointer.retries + 1}
       end
 
@@ -616,7 +616,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   defp drop_pointers(pointers, reason) do
     Logger.warning("Dropping #{length(pointers)} BigQuery events: #{reason}")
 
-    Enum.each(pointers, fn pointer -> IngestEventQueue.delete_id(pointer.tid, pointer.id) end)
+    Enum.each(pointers, fn pointer ->
+      IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+    end)
   end
 
   # Emit per-event ingest telemetry from handle_batch, where the full LogEvent is

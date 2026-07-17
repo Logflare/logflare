@@ -190,7 +190,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     decrement_in_flight(successful ++ failed)
 
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
-      IngestEventQueue.delete_id(pointer.tid, pointer.id)
+      IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
     end)
 
     if failed != [] do
@@ -320,7 +320,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          {good, bad, chunks}
        )
        when msg_event_type == event_type do
-    case IngestEventQueue.lookup_event(pointer.tid, pointer.id) do
+    case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
       %LogEvent{} = event ->
         mapped_body =
           event.body
@@ -433,9 +433,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
     events =
       for pointer <- retriable,
-          event = IngestEventQueue.lookup_event(pointer.tid, pointer.id),
+          event = IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id),
           not is_nil(event) do
-        IngestEventQueue.delete_id(pointer.tid, pointer.id)
+        IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
         %{event | retries: pointer.retries + 1}
       end
 
@@ -479,7 +479,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       backend_id: backend_id
     )
 
-    Enum.each(pointers, fn pointer -> IngestEventQueue.delete_id(pointer.tid, pointer.id) end)
+    Enum.each(pointers, fn pointer ->
+      IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+    end)
   end
 
   @spec maybe_compute_duration(map(), TypeDetection.event_type()) :: map()

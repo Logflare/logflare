@@ -50,6 +50,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     tid
   end
 
+  # A real requeue (via IngestEventQueue.add_to_table/2) inserts the retried event under
+  # a freshly generated gen_event_id, not the event's own id — so a post-requeue
+  # generation table can't be looked up by event id directly. Scans by the event's own
+  # id in the stored value instead of assuming it's the table's key.
+  defp lookup_by_event_id(tid, event_id) do
+    tid
+    |> :ets.tab2list()
+    |> Enum.find_value(fn {_gen_event_id, event} -> if event.id == event_id, do: event end)
+  end
+
   # Builds a LogEventPointer for `event`, resolvable via `gen_tid` (see
   # setup_generation_events/1). `queue_tid` defaults to a fresh, otherwise-unused table
   # since most tests only care about claim/retry behavior driven off other fields.
@@ -57,6 +67,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     %LogEventPointer{
       id: event.id,
       tid: gen_tid,
+      gen_event_id: event.id,
       queue_tid: queue_tid || :ets.new(:test_pipeline_queue, [:set, :public]),
       size: :erlang.external_size(event.body),
       retries: event.retries || 0,
@@ -717,7 +728,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
         # ... and re-added to the current generation with incremented retries
         current_gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend.id})
-        assert %{retries: 1} = IngestEventQueue.lookup_event(current_gen_tid, event.id)
+        assert %{retries: 1} = lookup_by_event_id(current_gen_tid, event.id)
       end
 
       test "increments retry count on each re-queue", %{
@@ -743,7 +754,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         current_gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend.id})
 
         assert %{retries: ^initial_retries} = event
-        assert %{retries: retries} = IngestEventQueue.lookup_event(current_gen_tid, event.id)
+        assert %{retries: retries} = lookup_by_event_id(current_gen_tid, event.id)
         assert retries == initial_retries + 1
       end
 
@@ -786,12 +797,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert IngestEventQueue.lookup_event(gen_tid, exhausted_event.id) == nil
 
         current_gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend.id})
-        assert IngestEventQueue.lookup_event(current_gen_tid, exhausted_event.id) == nil
+        assert lookup_by_event_id(current_gen_tid, exhausted_event.id) == nil
 
         # retriable event's old copy is deleted too, but re-added to the current
         # generation with incremented retries
         assert IngestEventQueue.lookup_event(gen_tid, retriable_event.id) == nil
-        assert %{retries: 1} = IngestEventQueue.lookup_event(current_gen_tid, retriable_event.id)
+        assert %{retries: 1} = lookup_by_event_id(current_gen_tid, retriable_event.id)
       end
 
       test "emits telemetry and logs a warning when a retriable event's generation is already gone",
@@ -822,7 +833,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         # nothing landed in the current generation — the event was already gone at
         # lookup time
         current_gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend.id})
-        assert IngestEventQueue.lookup_event(current_gen_tid, event.id) == nil
+        assert lookup_by_event_id(current_gen_tid, event.id) == nil
       end
     end
   end
@@ -1036,7 +1047,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
 
       current_gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend.id})
-      assert %{retries: 1} = IngestEventQueue.lookup_event(current_gen_tid, event.id)
+      assert %{retries: 1} = lookup_by_event_id(current_gen_tid, event.id)
     end
   end
 end

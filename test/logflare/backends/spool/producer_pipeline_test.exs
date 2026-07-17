@@ -37,6 +37,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       data: %LogEventPointer{
         id: Ecto.UUID.generate(),
         tid: :fake_tid,
+        gen_event_id: make_ref(),
         queue_tid: :fake_tid,
         size: size,
         retries: 0,
