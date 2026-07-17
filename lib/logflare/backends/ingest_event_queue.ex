@@ -675,15 +675,11 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  # Claims the pointer row first — insert_new/2 into `queue_tid`, keyed by the event's
-  # own id, is atomic per key, so a duplicate id already pending in this same queue is
-  # rejected outright rather than overwriting (and thereby orphaning) whatever
-  # generation-store row the existing pointer references. Only once the claim succeeds
-  # is the event's full body written into the current generation's table (`gen_tid`),
-  # under a freshly generated `gen_event_id` rather than the event's own id — this
-  # decouples the shared store's key from the (possibly duplicated) event id, so
-  # independent producers that each receive their own copy of the same id never collide
-  # on the same generation-store row. Pointer row shape: {event_id, generation_tid,
+  # Writes the event body into the generation table before publishing its pointer, so a
+  # consumer can never claim a pointer whose backing row is not yet visible. The fresh
+  # `gen_event_id` makes this row independent from any duplicate event id. If insert_new/2
+  # rejects the pointer or the queue disappears during publication, only this insertion's
+  # generation row is removed. Pointer row shape: {event_id, generation_tid,
   # gen_event_id, size, retries, event_type, day_bucket, ingest_freshness}.
   defp insert_pointer_batch(sid_bid_pid, queue_tid, batch) do
     queues_key = pointer_queues_key(sid_bid_pid)
@@ -696,8 +692,16 @@ defmodule Logflare.Backends.IngestEventQueue do
         {id, gen_tid, gen_event_id, :erlang.external_size(event.body), event.retries || 0,
          event.event_type, event.day_bucket, event.ingest_freshness}
 
-      if :ets.insert_new(queue_tid, row) do
-        :ets.insert(gen_tid, {gen_event_id, event})
+      :ets.insert(gen_tid, {gen_event_id, event})
+
+      try do
+        if not :ets.insert_new(queue_tid, row) do
+          :ets.delete(gen_tid, gen_event_id)
+        end
+      rescue
+        error in ArgumentError ->
+          delete_id(gen_tid, gen_event_id)
+          reraise error, __STACKTRACE__
       end
     end
 
