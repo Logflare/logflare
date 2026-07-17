@@ -12,6 +12,8 @@ rustler = "0.37.2"
 tokio = { version = "1.47", features = ["rt-multi-thread", "time"] }
 iceberg = "=0.9.1"
 iceberg-catalog-s3tables = "=0.9.1"
+arrow-array = "57.1"
+arrow-cast = "57.1"
 arrow-json = "57.1"
 arrow-schema = "57.1"
 parquet = "57.1"

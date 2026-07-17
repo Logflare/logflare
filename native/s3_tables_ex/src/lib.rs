@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use arrow_array::RecordBatch;
+use arrow_cast::cast;
 use arrow_json::ReaderBuilder;
+use arrow_schema::{DataType, Field, Schema as ArrowSchema, TimeUnit};
 use iceberg::arrow::{schema_to_arrow_schema, RecordBatchPartitionSplitter};
 use iceberg::spec::{DataFileFormat, Transform, UnboundPartitionSpec};
 use iceberg::transaction::{ApplyTransactionAction, Transaction};
@@ -257,6 +260,10 @@ impl Encoder for AppendError {
 /// fast-append transaction. Commit conflicts are retried by the iceberg crate
 /// itself (bounded by the `commit.retry.*` table properties); exhaustion
 /// surfaces as `{:error, :commit_conflict}`.
+///
+/// Contract: integer values in `timestamptz` columns are interpreted as unix
+/// **nanoseconds** (the unit the mapper emits) and are scaled down to the
+/// microseconds Iceberg stores; RFC3339 strings are accepted in any unit.
 #[rustler::nif]
 fn append_batch<'a>(
     env: Env<'a>,
@@ -287,8 +294,13 @@ async fn do_append(
 
     let iceberg_schema = table.metadata().current_schema().clone();
     let arrow_schema = Arc::new(schema_to_arrow_schema(&iceberg_schema)?);
+    // arrow-json takes raw JSON integers in a timestamp column as already
+    // being in the column's unit, but callers send mapper-produced
+    // nanoseconds -- so decode against a nanosecond variant of the schema
+    // and cast down to the table's microsecond columns afterwards
+    let decode_schema = Arc::new(to_nanosecond_schema(&arrow_schema));
 
-    let mut decoder = ReaderBuilder::new(arrow_schema)
+    let mut decoder = ReaderBuilder::new(decode_schema)
         .with_batch_size(DECODER_BATCH_SIZE)
         .build_decoder()?;
 
@@ -305,12 +317,12 @@ async fn do_append(
         pos += read;
 
         if let Some(batch) = decoder.flush()? {
-            batches.push(batch);
+            batches.push(cast_batch(&batch, &arrow_schema)?);
         }
     }
 
     while let Some(batch) = decoder.flush()? {
-        batches.push(batch);
+        batches.push(cast_batch(&batch, &arrow_schema)?);
     }
 
     let row_count: u64 = batches.iter().map(|batch| batch.num_rows() as u64).sum();
@@ -365,6 +377,61 @@ async fn do_append(
         }
         Err(err) => Err(err.into()),
     }
+}
+
+/// Returns a copy of `schema` with every microsecond timestamp column
+/// (including inside lists) widened to nanoseconds, for JSON decoding.
+fn to_nanosecond_schema(schema: &ArrowSchema) -> ArrowSchema {
+    let fields: Vec<Arc<Field>> = schema
+        .fields()
+        .iter()
+        .map(|field| Arc::new(to_nanosecond_field(field)))
+        .collect();
+
+    ArrowSchema::new(fields)
+}
+
+fn to_nanosecond_field(field: &Field) -> Field {
+    Field::new(
+        field.name(),
+        to_nanosecond_type(field.data_type()),
+        field.is_nullable(),
+    )
+    .with_metadata(field.metadata().clone())
+}
+
+fn to_nanosecond_type(data_type: &DataType) -> DataType {
+    match data_type {
+        DataType::Timestamp(TimeUnit::Microsecond, tz) => {
+            DataType::Timestamp(TimeUnit::Nanosecond, tz.clone())
+        }
+        DataType::List(child) => DataType::List(Arc::new(to_nanosecond_field(child))),
+        DataType::LargeList(child) => DataType::LargeList(Arc::new(to_nanosecond_field(child))),
+        other => other.clone(),
+    }
+}
+
+/// Casts a batch decoded with the nanosecond schema back to the table's
+/// arrow schema, scaling timestamp columns down to microseconds and
+/// restoring the Iceberg field-id metadata the writers rely on.
+fn cast_batch(
+    batch: &RecordBatch,
+    target_schema: &Arc<ArrowSchema>,
+) -> Result<RecordBatch, AppendError> {
+    let columns = batch
+        .columns()
+        .iter()
+        .zip(target_schema.fields())
+        .map(|(column, field)| {
+            if column.data_type() == field.data_type() {
+                Ok(column.clone())
+            } else {
+                cast(column, field.data_type()).map_err(AppendError::from)
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    RecordBatch::try_new(target_schema.clone(), columns).map_err(AppendError::from)
 }
 
 #[derive(NifMap)]

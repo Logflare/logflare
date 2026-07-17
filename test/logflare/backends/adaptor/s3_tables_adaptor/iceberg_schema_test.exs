@@ -59,25 +59,6 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchemaTest do
     assert timeout =~ ~r/^\d+$/
   end
 
-  describe "timestamptz_columns/1" do
-    test "returns scalar and list timestamptz column names per event type" do
-      assert IcebergSchema.timestamptz_columns(:log) == %{
-               scalar: ["ingested_at", "timestamp"],
-               list: []
-             }
-
-      assert IcebergSchema.timestamptz_columns(:metric) == %{
-               scalar: ["time_unix", "start_time_unix", "ingested_at", "timestamp"],
-               list: ["exemplars.time_unix"]
-             }
-
-      assert IcebergSchema.timestamptz_columns(:trace) == %{
-               scalar: ["ingested_at", "timestamp"],
-               list: ["events.timestamp"]
-             }
-    end
-  end
-
   describe "table_name/1" do
     test "maps each event type to its OTEL table name" do
       assert IcebergSchema.table_name(:log) == "otel_logs"

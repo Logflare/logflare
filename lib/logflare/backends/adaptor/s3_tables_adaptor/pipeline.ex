@@ -164,8 +164,6 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Pipeline do
 
   @spec encode_batch([Message.t()], term(), String.t(), TypeDetection.event_type()) :: binary()
   defp encode_batch(messages, compiled, config_id, event_type) do
-    timestamptz_columns = IcebergSchema.timestamptz_columns(event_type)
-
     messages
     |> Enum.map(fn %{data: %LogEvent{} = event} ->
       row =
@@ -180,39 +178,11 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Pipeline do
           "source_name" => event.source_name,
           "ingested_at" => event.ingested_at
         })
-        |> convert_timestamps(timestamptz_columns)
 
       [Jason.encode_to_iodata!(row), ?\n]
     end)
     |> IO.iodata_to_binary()
   end
-
-  # the mapper emits nanosecond integers for timestamptz columns, while the
-  # Iceberg tables (and the NIF's arrow-json decoder) expect microseconds
-  @spec convert_timestamps(map(), %{scalar: [String.t()], list: [String.t()]}) :: map()
-  defp convert_timestamps(row, %{scalar: scalar_columns, list: list_columns}) do
-    row =
-      Enum.reduce(scalar_columns, row, &update_column(&2, &1, fn value -> ns_to_us(value) end))
-
-    Enum.reduce(list_columns, row, fn column, acc ->
-      update_column(acc, column, fn
-        values when is_list(values) -> Enum.map(values, &ns_to_us/1)
-        other -> other
-      end)
-    end)
-  end
-
-  @spec update_column(map(), String.t(), (term() -> term())) :: map()
-  defp update_column(row, column, fun) do
-    case row do
-      %{^column => value} -> %{row | column => fun.(value)}
-      _ -> row
-    end
-  end
-
-  @spec ns_to_us(term()) :: term()
-  defp ns_to_us(value) when is_integer(value), do: div(value, 1000)
-  defp ns_to_us(value), do: value
 
   @spec ack_backend_failures(backend_id :: pos_integer(), messages :: [Message.t()]) :: :ok
   defp ack_backend_failures(backend_id, messages) do
