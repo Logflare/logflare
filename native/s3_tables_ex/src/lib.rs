@@ -1,13 +1,28 @@
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
-use iceberg::spec::Transform;
-use iceberg::spec::UnboundPartitionSpec;
-use iceberg::{Catalog, CatalogBuilder, Namespace, NamespaceIdent, TableCreation, TableIdent};
+use arrow_json::ReaderBuilder;
+use iceberg::arrow::{schema_to_arrow_schema, RecordBatchPartitionSplitter};
+use iceberg::spec::{DataFileFormat, Transform, UnboundPartitionSpec};
+use iceberg::transaction::{ApplyTransactionAction, Transaction};
+use iceberg::writer::base_writer::data_file_writer::DataFileWriterBuilder;
+use iceberg::writer::file_writer::location_generator::{
+    DefaultFileNameGenerator, DefaultLocationGenerator,
+};
+use iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder;
+use iceberg::writer::file_writer::ParquetWriterBuilder;
+use iceberg::writer::partitioning::fanout_writer::FanoutWriter;
+use iceberg::writer::partitioning::PartitioningWriter;
+use iceberg::{
+    Catalog, CatalogBuilder, ErrorKind, Namespace, NamespaceIdent, TableCreation, TableIdent,
+};
 use iceberg_catalog_s3tables::{S3TablesCatalog, S3TablesCatalogBuilder};
+use parquet::file::properties::WriterProperties;
 use rustler::OwnedEnv;
 use rustler::{Atom as NifAtom, Encoder, Env, NifMap, Resource, ResourceArc, Term};
 use tokio::runtime::Runtime;
+use uuid::Uuid;
 
 mod schema;
 
@@ -19,8 +34,19 @@ mod atoms {
         error,
         created,
         already_exists,
+        commit_conflict,
+        timeout,
     }
 }
+
+/// Upper bound for the entire append (parquet upload + commit retries); kept
+/// below the Elixir-side receive timeout so callers get a real error instead
+/// of a leaked late message.
+const APPEND_TIMEOUT: Duration = Duration::from_secs(55);
+
+/// Rows buffered per decoded `RecordBatch`; above the pipeline's max batch
+/// size so a single flush normally yields one batch per NIF call.
+const DECODER_BATCH_SIZE: usize = 1 << 16;
 
 const TIMESTAMP_PARTITION_NAME: &str = "timestamp_day";
 
@@ -72,7 +98,7 @@ where
 
 /// Constructs a real S3 Tables catalog handle via the AWS credential chain.
 #[rustler::nif]
-fn init_catalog_nif<'a>(env: Env<'a>, result_tag: Term<'a>, config: Config) -> NifAtom {
+fn init_catalog<'a>(env: Env<'a>, result_tag: Term<'a>, config: Config) -> NifAtom {
     let mut props = HashMap::new();
 
     if !config.access_key_id.is_empty() && !config.secret_access_key.is_empty() {
@@ -109,7 +135,7 @@ fn init_catalog_nif<'a>(env: Env<'a>, result_tag: Term<'a>, config: Config) -> N
 /// Idempotent: returns `{:ok, :already_exists}` both when the table was already present
 /// and when AWS reports a conflict from a concurrent create.
 #[rustler::nif]
-fn ensure_table_nif<'a>(
+fn ensure_table<'a>(
     env: Env<'a>,
     result_tag: Term<'a>,
     catalog: ResourceArc<CatalogResource>,
@@ -164,7 +190,7 @@ fn ensure_table_nif<'a>(
 
 /// Returns the current column names of an existing Iceberg table, used to confirm table creation.
 #[rustler::nif]
-fn table_columns_nif<'a>(
+fn table_columns<'a>(
     env: Env<'a>,
     result_tag: Term<'a>,
     catalog: ResourceArc<CatalogResource>,
@@ -192,15 +218,197 @@ fn table_columns_nif<'a>(
     })
 }
 
-/// Stub: real Arrow IPC batch append lands in a later phase.
+#[derive(NifMap)]
+struct AppendOk {
+    row_count: u64,
+    data_files: u64,
+}
+
+enum AppendError {
+    CommitConflict,
+    Timeout,
+    Other(String),
+}
+
+impl From<iceberg::Error> for AppendError {
+    fn from(err: iceberg::Error) -> Self {
+        AppendError::Other(format!("{err:?}"))
+    }
+}
+
+impl From<arrow_schema::ArrowError> for AppendError {
+    fn from(err: arrow_schema::ArrowError) -> Self {
+        AppendError::Other(format!("{err:?}"))
+    }
+}
+
+impl Encoder for AppendError {
+    fn encode<'a>(&self, env: Env<'a>) -> Term<'a> {
+        match self {
+            AppendError::CommitConflict => atoms::commit_conflict().encode(env),
+            AppendError::Timeout => atoms::timeout().encode(env),
+            AppendError::Other(message) => message.encode(env),
+        }
+    }
+}
+
+/// Decodes newline-delimited JSON rows into Arrow record batches, writes them
+/// as Iceberg parquet data files (fanned out per day partition), and commits a
+/// fast-append transaction. Commit conflicts are retried by the iceberg crate
+/// itself (bounded by the `commit.retry.*` table properties); exhaustion
+/// surfaces as `{:error, :commit_conflict}`.
 #[rustler::nif]
-fn append_batch_nif<'a>(
+fn append_batch<'a>(
     env: Env<'a>,
     result_tag: Term<'a>,
-    _catalog: ResourceArc<CatalogResource>,
-    _arrow_ipc: rustler::Binary,
+    catalog: ResourceArc<CatalogResource>,
+    table_name: String,
+    ndjson: rustler::Binary,
 ) -> NifAtom {
-    spawn_reply(env, result_tag, async move { atoms::ok() })
+    // the binary term is bound to the calling env, so its bytes must be
+    // copied out before crossing into the tokio runtime
+    let bytes = ndjson.as_slice().to_vec();
+
+    spawn_reply(env, result_tag, async move {
+        match tokio::time::timeout(APPEND_TIMEOUT, do_append(&catalog, table_name, bytes)).await {
+            Ok(result) => result,
+            Err(_elapsed) => Err(AppendError::Timeout),
+        }
+    })
+}
+
+async fn do_append(
+    catalog: &CatalogResource,
+    table_name: String,
+    ndjson: Vec<u8>,
+) -> Result<AppendOk, AppendError> {
+    let table_ident = TableIdent::new(catalog.namespace.name().clone(), table_name);
+    let table = catalog.catalog.load_table(&table_ident).await?;
+
+    let iceberg_schema = table.metadata().current_schema().clone();
+    let arrow_schema = Arc::new(schema_to_arrow_schema(&iceberg_schema)?);
+
+    let mut decoder = ReaderBuilder::new(arrow_schema)
+        .with_batch_size(DECODER_BATCH_SIZE)
+        .build_decoder()?;
+
+    let mut batches = Vec::new();
+    let mut pos = 0;
+
+    while pos < ndjson.len() {
+        let read = decoder.decode(&ndjson[pos..])?;
+
+        if read == 0 {
+            break;
+        }
+
+        pos += read;
+
+        if let Some(batch) = decoder.flush()? {
+            batches.push(batch);
+        }
+    }
+
+    while let Some(batch) = decoder.flush()? {
+        batches.push(batch);
+    }
+
+    let row_count: u64 = batches.iter().map(|batch| batch.num_rows() as u64).sum();
+
+    if row_count == 0 {
+        return Ok(AppendOk {
+            row_count: 0,
+            data_files: 0,
+        });
+    }
+
+    let splitter = RecordBatchPartitionSplitter::try_new_with_computed_values(
+        iceberg_schema.clone(),
+        table.metadata().default_partition_spec().clone(),
+    )?;
+
+    let parquet_builder = ParquetWriterBuilder::new(WriterProperties::default(), iceberg_schema);
+    let location_generator = DefaultLocationGenerator::new(table.metadata().clone())?;
+    let file_name_generator = DefaultFileNameGenerator::new(
+        "part".to_string(),
+        Some(Uuid::new_v4().to_string()),
+        DataFileFormat::Parquet,
+    );
+    let rolling_builder = RollingFileWriterBuilder::new_with_default_file_size(
+        parquet_builder,
+        table.file_io().clone(),
+        location_generator,
+        file_name_generator,
+    );
+
+    let mut writer = FanoutWriter::new(DataFileWriterBuilder::new(rolling_builder));
+
+    for batch in &batches {
+        for (partition_key, partition_batch) in splitter.split(batch)? {
+            writer.write(partition_key, partition_batch).await?;
+        }
+    }
+
+    let data_files = writer.close().await?;
+    let data_file_count = data_files.len() as u64;
+
+    let tx = Transaction::new(&table);
+    let tx = tx.fast_append().add_data_files(data_files).apply(tx)?;
+
+    match tx.commit(&catalog.catalog).await {
+        Ok(_table) => Ok(AppendOk {
+            row_count,
+            data_files: data_file_count,
+        }),
+        Err(err) if err.kind() == ErrorKind::CatalogCommitConflicts => {
+            Err(AppendError::CommitConflict)
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[derive(NifMap)]
+struct SnapshotInfo {
+    snapshot_id: i64,
+    operation: String,
+    summary: HashMap<String, String>,
+    snapshot_count: u64,
+}
+
+/// Returns the current snapshot's id and summary (e.g. `added-records`,
+/// `total-records`) plus the total snapshot count; `{:ok, nil}` when the
+/// table has no snapshots yet.
+#[rustler::nif]
+fn snapshot_info<'a>(
+    env: Env<'a>,
+    result_tag: Term<'a>,
+    catalog: ResourceArc<CatalogResource>,
+    table_name: String,
+) -> NifAtom {
+    spawn_reply(env, result_tag, async move {
+        let table_ident = TableIdent::new(catalog.namespace.name().clone(), table_name);
+
+        let table = catalog
+            .catalog
+            .load_table(&table_ident)
+            .await
+            .map_err(|err| format!("{err:?}"))?;
+
+        let metadata = table.metadata();
+
+        let info = metadata.current_snapshot().map(|snapshot| {
+            let summary = snapshot.summary();
+
+            SnapshotInfo {
+                snapshot_id: snapshot.snapshot_id(),
+                operation: summary.operation.as_str().to_string(),
+                summary: summary.additional_properties.clone(),
+                snapshot_count: metadata.snapshots().len() as u64,
+            }
+        });
+
+        Ok::<_, String>(info)
+    })
 }
 
 fn on_load(env: Env, _info: Term) -> bool {
@@ -208,6 +416,6 @@ fn on_load(env: Env, _info: Term) -> bool {
 }
 
 rustler::init!(
-    "Elixir.Logflare.Backends.Adaptor.S3TablesAdaptor.Native",
+    "Elixir.Logflare.Backends.Adaptor.S3TablesAdaptor.Native.Nifs",
     load = on_load
 );

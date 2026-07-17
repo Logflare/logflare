@@ -51,10 +51,30 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchemaTest do
     end
   end
 
-  describe "table_properties/0" do
-    test "stamps a schema version" do
-      assert %{"logflare.schema-version" => version} = IcebergSchema.table_properties()
-      assert version =~ ~r/^\d+$/
+  test "table_properties/0" do
+    properties = IcebergSchema.table_properties()
+    assert %{"logflare.schema-version" => version} = properties
+    assert version =~ ~r/^\d+$/
+    assert %{"commit.retry.total-timeout-ms" => timeout} = properties
+    assert timeout =~ ~r/^\d+$/
+  end
+
+  describe "timestamptz_columns/1" do
+    test "returns scalar and list timestamptz column names per event type" do
+      assert IcebergSchema.timestamptz_columns(:log) == %{
+               scalar: ["ingested_at", "timestamp"],
+               list: []
+             }
+
+      assert IcebergSchema.timestamptz_columns(:metric) == %{
+               scalar: ["time_unix", "start_time_unix", "ingested_at", "timestamp"],
+               list: ["exemplars.time_unix"]
+             }
+
+      assert IcebergSchema.timestamptz_columns(:trace) == %{
+               scalar: ["ingested_at", "timestamp"],
+               list: ["events.timestamp"]
+             }
     end
   end
 

@@ -19,6 +19,10 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchema do
 
   @schema_version "1"
 
+  # keeps the iceberg-rust built-in commit retry loop well under the
+  # append NIF timeout (see `Native.append_batch/3`)
+  @commit_retry_total_timeout_ms "30000"
+
   @type field :: %{name: String.t(), type: String.t(), required: boolean()}
 
   @log_fields [
@@ -148,8 +152,31 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchema do
   def fields(:trace), do: @trace_fields
 
   @doc """
+  Returns the scalar and list column names holding `timestamptz` values for a
+  given event type. The mapper emits nanosecond integers for these columns,
+  which must be converted to microseconds before handing rows to the NIF.
+  """
+  @spec timestamptz_columns(TypeDetection.event_type()) :: %{
+          scalar: [String.t()],
+          list: [String.t()]
+        }
+  def timestamptz_columns(event_type) do
+    fields = fields(event_type)
+
+    %{
+      scalar: for(%{name: name, type: "timestamptz"} <- fields, do: name),
+      list: for(%{name: name, type: "list<timestamptz>"} <- fields, do: name)
+    }
+  end
+
+  @doc """
   Returns the Iceberg table properties stamped on every table at creation.
   """
   @spec table_properties() :: %{String.t() => String.t()}
-  def table_properties, do: %{"logflare.schema-version" => @schema_version}
+  def table_properties do
+    %{
+      "logflare.schema-version" => @schema_version,
+      "commit.retry.total-timeout-ms" => @commit_retry_total_timeout_ms
+    }
+  end
 end

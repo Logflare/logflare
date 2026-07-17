@@ -123,7 +123,7 @@ dependencies = [
  "arrow-csv",
  "arrow-data 56.2.0",
  "arrow-ipc 56.2.0",
- "arrow-json",
+ "arrow-json 56.2.0",
  "arrow-ord 56.2.0",
  "arrow-row",
  "arrow-schema 56.2.0",
@@ -345,6 +345,30 @@ dependencies = [
  "memchr",
  "num",
  "serde",
+ "serde_json",
+ "simdutf8",
+]
+
+[[package]]
+name = "arrow-json"
+version = "57.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a84a905f41fedfcd7679813c89a61dc369c0f932b27aa8dcc6aa051cc781a97d"
+dependencies = [
+ "arrow-array 57.3.1",
+ "arrow-buffer 57.3.1",
+ "arrow-cast 57.3.1",
+ "arrow-data 57.3.1",
+ "arrow-schema 57.3.1",
+ "chrono",
+ "half",
+ "indexmap 2.13.0",
+ "itoa",
+ "lexical-core",
+ "memchr",
+ "num-traits",
+ "ryu",
+ "serde_core",
  "serde_json",
  "simdutf8",
 ]
@@ -3408,10 +3432,14 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "s3_tables_ex"
 version = "0.1.0"
 dependencies = [
+ "arrow-json 57.3.1",
+ "arrow-schema 57.3.1",
  "iceberg",
  "iceberg-catalog-s3tables",
+ "parquet",
  "rustler",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
