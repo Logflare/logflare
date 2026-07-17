@@ -590,12 +590,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert :ok = ClickHouseAdaptor.test_connection(backend)
     end
 
-    test "fails when ingest URL is unreachable" do
+    test "fails when ingest URL is unreachable and logs the ingest URL" do
       {_source, backend} =
         setup_clickhouse_test(config: %{url: "http://localhost:19999"})
 
       start_supervised!({ClickHouseAdaptor, backend})
-      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+        end)
+
+      assert log =~ "ingest cluster"
+      assert log =~ "http://localhost:19999"
     end
 
     test "fails when read_only_url is unreachable" do
@@ -604,6 +611,44 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "passes when every labeled read cluster is valid" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "reporting" => "http://localhost:8123",
+              "adhoc" => "http://localhost:8123"
+            }
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when any labeled read cluster is unreachable and logs which one" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "reporting" => "http://localhost:8123",
+              "adhoc" => "http://localhost:19999"
+            }
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+        end)
+
+      assert log =~ "read cluster"
+      assert log =~ "adhoc"
+      assert log =~ "http://localhost:19999"
     end
   end
 

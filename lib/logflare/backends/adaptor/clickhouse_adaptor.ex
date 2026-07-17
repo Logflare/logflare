@@ -194,7 +194,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   GRANT checks to verify the configured user has the required ClickHouse permissions.
 
   Always checks the ingest cluster (primary `url`) for full write permissions.
-  When `read_only_url` is configured, additionally checks the read cluster for `SELECT` permission.
+
+  Then checks each configured read cluster.
   """
   @impl Logflare.Backends.Adaptor
   @spec test_connection(Backend.t()) ::
@@ -204,7 +205,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           | {:error, :grant_check_unknown_failure}
   def test_connection(%Backend{config: config} = backend) do
     with :ok <- check_ingest_grants(backend, config),
-         :ok <- maybe_check_read_grants(backend, config) do
+         :ok <- check_read_grants(backend, config) do
       :ok
     end
   end
@@ -220,54 +221,85 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
       {:ok, [%{"result" => 0}]} ->
         Logger.warning(
-          "ClickHouse ingest cluster GRANT check failed. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
-          backend_id: backend.id
+          "ClickHouse ingest cluster GRANT check failed for #{config.url}. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
+          backend_id: backend.id,
+          ingest_url: config.url
         )
 
         {:error, :permissions_missing}
 
       {:error, _} = error_result ->
         Logger.warning(
-          "ClickHouse ingest cluster GRANT check failed. Unexpected error #{inspect(error_result)}",
-          backend_id: backend.id
+          "ClickHouse ingest cluster connection/GRANT check failed for #{config.url}. Unexpected error #{inspect(error_result)}",
+          backend_id: backend.id,
+          ingest_url: config.url
         )
 
         {:error, :grant_check_unknown_failure}
     end
   end
 
-  @spec maybe_check_read_grants(Backend.t(), map()) ::
+  @spec check_read_grants(Backend.t(), map()) ::
           :ok | {:error, :read_permissions_missing} | {:error, term()}
-  defp maybe_check_read_grants(_backend, %{read_only_url: url}) when not is_non_empty_binary(url),
-    do: :ok
+  defp check_read_grants(%Backend{} = backend, config) do
+    config
+    |> read_grant_targets()
+    |> Enum.reduce_while(:ok, fn {label, url}, :ok ->
+      case check_read_grant(backend, config, label, url) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
-  defp maybe_check_read_grants(_backend, config) when not is_map_key(config, :read_only_url),
-    do: :ok
+  @spec read_grant_targets(map()) :: [{String.t() | nil, String.t()}]
+  defp read_grant_targets(config) do
+    case config |> Map.get(:read_only_urls, %{}) |> Map.to_list() do
+      [] ->
+        if is_non_empty_binary(Map.get(config, :read_only_url)),
+          do: [{nil, config.read_only_url}],
+          else: []
 
-  defp maybe_check_read_grants(%Backend{} = backend, %{read_only_url: _}) do
+      labeled ->
+        labeled
+    end
+  end
+
+  @spec check_read_grant(Backend.t(), map(), String.t() | nil, String.t()) ::
+          :ok | {:error, :read_permissions_missing} | {:error, term()}
+  defp check_read_grant(%Backend{} = backend, config, label, url) do
     sql_statement = QueryTemplates.read_grant_check_statement()
+    target = describe_read_target(label, url)
 
-    case execute_ch_query(backend, sql_statement) do
-      {:ok, {[%{"result" => 1}], _bytes}} ->
+    case execute_direct_query(url, config, sql_statement) do
+      {:ok, [%{"result" => 1}]} ->
         :ok
 
-      {:ok, {[%{"result" => 0}], _bytes}} ->
+      {:ok, [%{"result" => 0}]} ->
         Logger.warning(
-          "ClickHouse read cluster GRANT check failed. Required: `SELECT`",
-          backend_id: backend.id
+          "ClickHouse read cluster GRANT check failed for #{target}. Required: `SELECT`",
+          backend_id: backend.id,
+          read_cluster: label,
+          read_cluster_url: url
         )
 
         {:error, :read_permissions_missing}
 
       {:error, _} = error_result ->
         Logger.warning(
-          "ClickHouse read cluster GRANT check failed. Unexpected error #{inspect(error_result)}",
-          backend_id: backend.id
+          "ClickHouse read cluster connection/GRANT check failed for #{target}. Unexpected error #{inspect(error_result)}",
+          backend_id: backend.id,
+          read_cluster: label,
+          read_cluster_url: url
         )
 
         {:error, :grant_check_unknown_failure}
     end
   end
+
+  @spec describe_read_target(String.t() | nil, String.t()) :: String.t()
+  defp describe_read_target(label, url) when is_non_empty_binary(label), do: "#{label} (#{url})"
+  defp describe_read_target(_label, url), do: url
 
   @doc """
   Determines if a backend is hosted on ClickHouse Cloud
