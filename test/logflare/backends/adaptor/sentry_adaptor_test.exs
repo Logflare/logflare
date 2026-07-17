@@ -1,7 +1,6 @@
 defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Adaptor.HttpBased
@@ -91,7 +90,6 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
       [backend: backend, source: source]
     end
 
@@ -117,7 +115,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         )
       ]
 
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert {:ok, _} = enqueue_backend_logs(log_events, source)
       assert_receive {^ref, envelope_body}, 2000
 
       [header_line, item_header_line, item_payload_line] = String.split(envelope_body, "\n")
@@ -192,7 +190,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
           )
         end)
 
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert {:ok, _} = enqueue_backend_logs(log_events, source)
       assert_receive {^ref, envelope_body}, 2000
 
       [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
@@ -237,7 +235,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         )
       ]
 
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert {:ok, _} = enqueue_backend_logs(log_events, source)
       assert_receive {^ref, envelope_body}, 2000
 
       [_header_line, item_header_line, item_payload_line] = String.split(envelope_body, "\n")
@@ -288,7 +286,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         )
       ]
 
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert {:ok, _} = enqueue_backend_logs(log_events, source)
       assert_receive {^ref, envelope_body}, 2000
 
       [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
@@ -340,7 +338,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         )
       ]
 
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert {:ok, _} = enqueue_backend_logs(log_events, source)
       assert_receive {^ref, envelope_body}, 2000
 
       [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
@@ -380,7 +378,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         )
       ]
 
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert {:ok, _} = enqueue_backend_logs(log_events, source)
       assert_receive {^ref, envelope_body}, 2000
 
       [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")

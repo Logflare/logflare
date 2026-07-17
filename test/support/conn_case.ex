@@ -90,14 +90,20 @@ defmodule LogflareWeb.ConnCase do
   def login_user(conn, user, team_user) do
     conn
     |> login_user(user)
+    |> Plug.Conn.put_private(:logflare_test_team_id, team_user.team_id)
     |> Plug.Conn.assign(:team_user, team_user)
     |> Plug.Conn.put_session(:current_email, team_user.email)
   end
 
   def login_user(conn, user) do
     conn
+    |> Plug.Conn.put_private(:logflare_test_team_id, loaded_team_id(user))
+    |> Plug.Conn.put_private(:logflare_test_user_id, user.id)
     |> Plug.Test.init_test_session(%{current_email: user.email})
   end
+
+  defp loaded_team_id(%{team: %Logflare.Teams.Team{id: id}}), do: id
+  defp loaded_team_id(_user), do: nil
 
   # for api use
   def add_partner_access_token(conn, partner) do
@@ -125,12 +131,15 @@ defmodule LogflareWeb.ConnCase do
   end
 
   @doc """
-  Call live/3 and automatically follow the first live redirect.
+  Calls `live/3` with the signed-in user's selected team and follows the first
+  application redirect when the resource belongs to another team.
 
-  Useful for the common case of a live view redirecting to add the `t=` param.
+  Supplying the common `t=` parameter up front avoids mounting the LiveView
+  twice solely to discover the default team.
   """
   defmacro live_with_redirect(conn, path \\ nil, opts \\ []) do
     quote bind_quoted: [conn: conn, path: path, opts: opts] do
+      path = LogflareWeb.ConnCase.put_default_team_param(conn, path)
       result = Phoenix.LiveViewTest.live(conn, path, opts)
 
       case result do
@@ -138,7 +147,11 @@ defmodule LogflareWeb.ConnCase do
           result
 
         {:error, {:live_redirect, %{to: to}}} ->
-          Phoenix.LiveViewTest.live(conn, to, opts)
+          if LogflareWeb.ConnCase.redirected_to_different_team?(path, to) do
+            Phoenix.LiveViewTest.live(conn, to, opts)
+          else
+            result
+          end
 
         {:error, {:redirect, %{to: to}}} ->
           {:ok, Phoenix.ConnTest.get(conn, to)}
@@ -146,6 +159,63 @@ defmodule LogflareWeb.ConnCase do
         _ ->
           result
       end
+    end
+  end
+
+  @doc false
+  def redirected_to_different_team?(from, to) when is_binary(from) and is_binary(to) do
+    from_team = from |> URI.parse() |> then(&URI.decode_query(&1.query || "")) |> Map.get("t")
+    to_team = to |> URI.parse() |> then(&URI.decode_query(&1.query || "")) |> Map.get("t")
+
+    not is_nil(to_team) and to_team != from_team
+  end
+
+  def redirected_to_different_team?(_from, _to), do: false
+
+  @doc false
+  def put_default_team_param(_conn, nil), do: nil
+
+  def put_default_team_param(conn, path) when is_binary(path) do
+    uri = URI.parse(path)
+    query = URI.decode_query(uri.query || "")
+
+    if Map.has_key?(query, "t") do
+      path
+    else
+      case default_team_id(conn) do
+        nil -> path
+        team_id -> %{uri | query: URI.encode_query(Map.put(query, "t", team_id))} |> to_string()
+      end
+    end
+  end
+
+  defp default_team_id(conn) do
+    conn.private[:logflare_test_team_id] || default_user_team_id(conn)
+  end
+
+  defp default_user_team_id(conn) do
+    case conn.private[:logflare_test_user_id] do
+      nil ->
+        nil
+
+      user_id ->
+        case Logflare.Teams.get_team_by(user_id: user_id) do
+          nil -> create_default_team(user_id)
+          team -> team.id
+        end
+    end
+  end
+
+  defp create_default_team(user_id) do
+    case Logflare.Users.get(user_id) do
+      nil ->
+        nil
+
+      user ->
+        {:ok, team} =
+          Logflare.Teams.create_team(user, %{name: Logflare.Generators.team_name()})
+
+        team.id
     end
   end
 end

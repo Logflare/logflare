@@ -24,7 +24,6 @@ defmodule Logflare.Backends.BufferProducerTest do
       start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
 
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
-    :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
     [%LogEvent{id: id}] =
@@ -51,7 +50,6 @@ defmodule Logflare.Backends.BufferProducerTest do
       start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
 
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
-    :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
     PubSubRatesCache.cache_rates(source.token, %{
@@ -87,11 +85,9 @@ defmodule Logflare.Backends.BufferProducerTest do
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
     startup_table_key = {source.id, nil, nil}
     IngestEventQueue.upsert_tid(startup_table_key)
-    :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
-    Process.exit(buffer_producer_pid, :normal)
-    :timer.sleep(200)
+    signal_exit_and_wait(buffer_producer_pid)
 
     assert IngestEventQueue.total_pending(startup_table_key) == 1
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
@@ -107,7 +103,6 @@ defmodule Logflare.Backends.BufferProducerTest do
       start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, id_passing: true})
 
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
-    :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
     tid = IngestEventQueue.get_tid(sid_bid_pid)
@@ -159,9 +154,9 @@ defmodule Logflare.Backends.BufferProducerTest do
     captured =
       capture_log(fn ->
         send(pid, {:add_to_buffer, items})
-        :timer.sleep(100)
+        :sys.get_state(pid)
         send(pid, {:add_to_buffer, items})
-        :timer.sleep(100)
+        :sys.get_state(pid)
       end)
 
     assert captured =~ source.name
@@ -192,7 +187,6 @@ defmodule Logflare.Backends.BufferProducerTest do
         start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
 
       sid_bid_pid = {source.id, nil, buffer_producer_pid}
-      :timer.sleep(100)
 
       own_event = build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(sid_bid_pid, [own_event])
@@ -222,7 +216,6 @@ defmodule Logflare.Backends.BufferProducerTest do
         start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
 
       sid_bid_pid = {source.id, nil, buffer_producer_pid}
-      :timer.sleep(100)
 
       own_event = build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(sid_bid_pid, [own_event])
@@ -262,8 +255,6 @@ defmodule Logflare.Backends.BufferProducerTest do
           {BufferProducer, backend_id: nil, source_id: source.id, id_passing: true},
           id: :producer_b
         )
-
-      :timer.sleep(100)
 
       events = [build(:log_event, source: source), build(:log_event, source: source)]
       :ok = IngestEventQueue.add_to_table(startup_key, events)
@@ -307,7 +298,6 @@ defmodule Logflare.Backends.BufferProducerTest do
         )
 
       consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
-      :timer.sleep(150)
 
       le = build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
@@ -352,13 +342,11 @@ defmodule Logflare.Backends.BufferProducerTest do
         )
 
       consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
-      :timer.sleep(150)
 
       le = build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
 
-      Process.exit(buffer_producer_pid, :normal)
-      :timer.sleep(200)
+      signal_exit_and_wait(buffer_producer_pid)
 
       assert IngestEventQueue.total_pending(startup_key) == 1
       assert IngestEventQueue.total_pending(consolidated_key) == 0
@@ -379,7 +367,6 @@ defmodule Logflare.Backends.BufferProducerTest do
         )
 
       consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
-      :timer.sleep(150)
 
       le =
         build(:log_event, source: source)
@@ -428,9 +415,9 @@ defmodule Logflare.Backends.BufferProducerTest do
       captured =
         capture_log(fn ->
           send(pid, {:add_to_buffer, items})
-          :timer.sleep(100)
+          :sys.get_state(pid)
           send(pid, {:add_to_buffer, items})
-          :timer.sleep(100)
+          :sys.get_state(pid)
         end)
 
       assert captured =~ "Consolidated GenStage producer has discarded"
@@ -454,7 +441,6 @@ defmodule Logflare.Backends.BufferProducerTest do
         start_supervised!({BufferProducer, spool_producer: true, interval: 100})
 
       spool_key = {:spool_producer, nil, buffer_producer_pid}
-      :timer.sleep(150)
 
       le = build(:log_event)
       :ok = IngestEventQueue.add_to_table(spool_key, [le])
@@ -502,16 +488,14 @@ defmodule Logflare.Backends.BufferProducerTest do
         start_supervised!({BufferProducer, spool_producer: true, interval: 100})
 
       spool_key = {:spool_producer, nil, buffer_producer_pid}
-      :timer.sleep(150)
 
       le = build(:log_event)
       :ok = IngestEventQueue.add_to_table(spool_key, [le])
 
-      Process.exit(buffer_producer_pid, :normal)
-      :timer.sleep(200)
+      stop_and_wait(buffer_producer_pid)
 
       assert IngestEventQueue.total_pending(startup_key) == 1
-      assert IngestEventQueue.total_pending(spool_key) == 0
+      assert IngestEventQueue.total_pending(spool_key) == {:error, :not_initialized}
     end
 
     test "format_discarded logs a spool-specific message" do
@@ -527,9 +511,9 @@ defmodule Logflare.Backends.BufferProducerTest do
       captured =
         capture_log(fn ->
           send(pid, {:add_to_buffer, items})
-          :timer.sleep(100)
+          :sys.get_state(pid)
           send(pid, {:add_to_buffer, items})
-          :timer.sleep(100)
+          :sys.get_state(pid)
         end)
 
       assert captured =~ "Spool producer GenStage has discarded"
@@ -674,5 +658,17 @@ defmodule Logflare.Backends.BufferProducerTest do
       assert_receive :scheduled_resolve, 400
       refute_receive :scheduled_resolve, 400
     end
+  end
+
+  defp signal_exit_and_wait(pid) do
+    Process.exit(pid, :normal)
+    :sys.get_state(pid)
+    assert Process.alive?(pid)
+  end
+
+  defp stop_and_wait(pid) do
+    monitor_ref = Process.monitor(pid)
+    :ok = GenServer.stop(pid, :normal, 1_000)
+    assert_receive {:DOWN, ^monitor_ref, :process, ^pid, :normal}, 1_000
   end
 end

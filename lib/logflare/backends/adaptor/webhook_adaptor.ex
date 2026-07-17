@@ -257,6 +257,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     alias Logflare.Backends.BufferProducer
     alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
+    @batch_timeout if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
+    @producer_interval if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
+
     def start_link(args) do
       Broadway.start_link(__MODULE__,
         name: Backends.via_source(args.source, __MODULE__, args.backend),
@@ -269,7 +272,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
             {BufferProducer,
              [
                backend_id: Map.get(args.backend || %{}, :id),
-               source_id: args.source.id
+               source_id: args.source.id,
+               interval: @producer_interval
              ]},
           transformer: {__MODULE__, :transform, []},
           concurrency: 1
@@ -278,7 +282,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           default: [concurrency: 3, min_demand: 1]
         ],
         batchers: [
-          http: [concurrency: 6, batch_size: 250]
+          http: [concurrency: 6, batch_size: 250, batch_timeout: @batch_timeout]
         ],
         context: %{
           startup_config: args.config,

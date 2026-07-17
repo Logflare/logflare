@@ -308,12 +308,12 @@ defmodule Logflare.SourcesTest do
       start_supervised!(Source.Supervisor)
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
-      :timer.sleep(500)
-      assert {:ok, _pid} = Backends.lookup(SourceSup, token)
-      :timer.sleep(1_000)
+      TestUtils.retry_assert(fn -> assert {:ok, _pid} = Backends.lookup(SourceSup, token) end)
       assert {:ok, ^token} = Source.Supervisor.delete_source(token)
-      :timer.sleep(1000)
-      assert {:error, :not_started} = Backends.lookup(SourceSup, token)
+
+      TestUtils.retry_assert(fn ->
+        assert {:error, :not_started} = Backends.lookup(SourceSup, token)
+      end)
     end
 
     test "reset_source/1", %{user: user} do
@@ -321,12 +321,19 @@ defmodule Logflare.SourcesTest do
       start_supervised!(Source.Supervisor)
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
-      :timer.sleep(500)
-      assert {:ok, pid} = Backends.lookup(SourceSup, token)
+
+      pid =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, pid} = Backends.lookup(SourceSup, token)
+          pid
+        end)
+
       assert {:ok, ^token} = Source.Supervisor.reset_source(token)
-      :timer.sleep(1500)
-      assert {:ok, new_pid} = Backends.lookup(SourceSup, token)
-      assert new_pid != pid
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, new_pid} = Backends.lookup(SourceSup, token)
+        assert new_pid != pid
+      end)
     end
 
     test "able to start supervision tree", %{user: user} do
@@ -334,9 +341,11 @@ defmodule Logflare.SourcesTest do
 
       start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(1000)
-      assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
-      assert Backends.cached_pending_buffer_len(source) == 0
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
+        assert Backends.cached_pending_buffer_len(source) == 0
+      end)
     end
 
     test "able to reset supervision tree", %{user: user} do
@@ -344,14 +353,21 @@ defmodule Logflare.SourcesTest do
 
       start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(3000)
-      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
+
+      pid =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
+          pid
+        end)
+
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
-      :timer.sleep(3000)
-      assert {:ok, new_pid} = Backends.lookup(SourceSup, source.token)
-      assert pid != new_pid
-      assert Backends.cached_pending_buffer_len(source) == 0
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, new_pid} = Backends.lookup(SourceSup, source.token)
+        assert pid != new_pid
+        assert Backends.cached_pending_buffer_len(source) == 0
+      end)
     end
 
     test "concurrent start attempts", %{user: user} do
@@ -363,31 +379,49 @@ defmodule Logflare.SourcesTest do
       assert :ok = Source.Supervisor.ensure_started(source)
       assert :ok = Source.Supervisor.ensure_started(source)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(3000)
-      assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
-      assert Backends.cached_pending_buffer_len(source) == 0
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
+        assert Backends.cached_pending_buffer_len(source) == 0
+      end)
     end
 
     test "terminating Source.Supervisor does not bring everything down", %{user: user} do
       source = insert(:source, user_id: user.id)
       pid = start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(3000)
-      assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
+
+      prev_pid =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
+          prev_pid
+        end)
+
       Process.exit(pid, :kill)
-      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
-      assert prev_pid == pid
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
+        assert prev_pid == pid
+      end)
     end
 
     test "should start broadcasting metrics on ingest", %{user: user} do
       source = insert(:source, user_id: user.id)
       pid = start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(3000)
-      assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
+
+      prev_pid =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
+          prev_pid
+        end)
+
       Process.exit(pid, :kill)
-      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
-      assert prev_pid == pid
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
+        assert prev_pid == pid
+      end)
     end
   end
 
@@ -674,7 +708,6 @@ defmodule Logflare.SourcesTest do
       source = insert(:source, user_id: user.id, log_events_updated_at: timestamp)
       Sources.Cache.get_by_id(source.id)
       start_supervised!({SourceSup, source})
-      :timer.sleep(800)
       timestamp = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
       assert {:ok, 1} = Sources.recent_events_touch(timestamp)
       updated = Sources.get_by(id: source.id)
@@ -682,8 +715,7 @@ defmodule Logflare.SourcesTest do
 
       # does not update again if recently updated
       Sources.Cache.get_by_id(source.id)
-      :timer.sleep(1_000)
-      timestamp = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+      timestamp = NaiveDateTime.add(timestamp, 1, :second)
       assert {:ok, 0} = Sources.recent_events_touch(timestamp)
 
       updated = Sources.get_by(id: source.id)

@@ -27,7 +27,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
     )
 
     start_supervised!(MemoryMonitor)
-    Process.sleep(50)
+    :sys.get_state(MemoryMonitor)
 
     assert MemoryMonitor.throttled?() == true
   end
@@ -39,9 +39,29 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
     )
 
     start_supervised!(MemoryMonitor)
-    Process.sleep(50)
+    :sys.get_state(MemoryMonitor)
 
     assert MemoryMonitor.throttled?() == false
+  end
+
+  test "periodically refreshes cached memory pressure without an explicit message" do
+    Application.put_env(:logflare, :spool,
+      spool_memory_limit_percent: 1.0,
+      spool_max_ets_percent: 1.0
+    )
+
+    start_supervised!(MemoryMonitor)
+    :sys.get_state(MemoryMonitor)
+    assert MemoryMonitor.throttled?() == false
+
+    Application.put_env(:logflare, :spool,
+      spool_memory_limit_percent: 0.0,
+      spool_max_ets_percent: 0.0
+    )
+
+    TestUtils.retry_assert([duration: 1_500, sleep: 25], fn ->
+      assert MemoryMonitor.throttled?() == true
+    end)
   end
 
   test "refresh/0 emits a [:logflare, :backends, :spool, :throttled] telemetry event on every refresh" do
@@ -82,7 +102,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       )
 
       pid = start_supervised!(MemoryMonitor)
-      Process.sleep(50)
+      :sys.get_state(pid)
 
       {:ok, user: user, source: source, table_key: table_key, pid: pid}
     end
@@ -92,6 +112,17 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       :sys.get_state(pid)
     end
 
+    defp fill_queue(table_key) do
+      event = build(:log_event)
+
+      events =
+        for id <- 1..(Backends.max_buffer_queue_len() + 500) do
+          %{event | id: {event.id, id}}
+        end
+
+      IngestEventQueue.add_to_table(table_key, events)
+    end
+
     test "is true once a registered source's destination buffer is full", %{
       source: source,
       table_key: table_key,
@@ -99,10 +130,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
     } do
       assert MemoryMonitor.consumer_throttled?() == false
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue(table_key)
 
       MemoryMonitor.register_source(source.id)
       force_refresh(pid)
@@ -115,10 +143,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       table_key: table_key,
       pid: pid
     } do
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue(table_key)
 
       MemoryMonitor.register_source(source.id)
       force_refresh(pid)
@@ -134,10 +159,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       table_key: table_key,
       pid: pid
     } do
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue(table_key)
 
       # never registered
       force_refresh(pid)
@@ -164,10 +186,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       MemoryMonitor.register_source(source.id)
       MemoryMonitor.register_source(source.id)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue(table_key)
 
       force_refresh(pid)
 
@@ -189,10 +208,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       backend_table_key = {source.id, backend.id, self()}
       IngestEventQueue.upsert_tid(backend_table_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(backend_table_key, [le])
-      end
+      fill_queue(backend_table_key)
 
       MemoryMonitor.register_source(source.id)
       force_refresh(pid)

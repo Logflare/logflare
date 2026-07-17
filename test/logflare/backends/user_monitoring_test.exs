@@ -11,6 +11,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Backends.QueryError
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring
+  alias Logflare.Backends.UserMonitoring.IngestPipeline
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
@@ -28,7 +29,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
     start_supervised!({SourceSup, source}, id: :source)
     start_supervised!({SourceSup, source_b}, id: :source_b)
 
-    :timer.sleep(250)
     [source: source, source_b: source_b, user: user]
   end
 
@@ -181,8 +181,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
       start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
       start_supervised!({SourceSup, source}, id: :source)
 
-      :timer.sleep(1000)
-
       assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
 
       TestUtils.retry_assert(fn ->
@@ -230,6 +228,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
                  )
                )
       end)
+
+      stop_supervised!(IngestPipeline)
     end
 
     test "other users metrics" do
@@ -308,6 +308,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
         refute attr["source_id"] in [source_id, metrics_source_id]
         refute attr["my_label"] == "test"
       end
+
+      stop_supervised!(IngestPipeline)
     end
   end
 
@@ -350,8 +352,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
       {:ok, _} = Backends.update_source_backends(source, [webhook_backend])
       Backends.Cache.get_backend(webhook_backend.id)
 
-      :timer.sleep(1000)
-
       assert {:ok, _} = Backends.ingest_logs([%{"message" => "test webhook egress"}], source)
 
       assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 15_000
@@ -374,6 +374,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
       assert attributes["backend_id"] == webhook_backend.id
       assert attributes["_backend_environment"] == "test"
       assert attributes["_backend_region"] == "us-west"
+
+      stop_supervised!(IngestPipeline)
     end
   end
 
@@ -416,7 +418,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
         )
 
       assert {:ok, _} = Endpoints.run_query(endpoint)
-      :timer.sleep(1000)
       endpoint_id = endpoint.id
 
       assert_receive {:insert_all,
@@ -436,6 +437,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
                         | _
                       ]},
                      5_000
+
+      stop_supervised!(IngestPipeline)
     end
 
     test "endpoints.query emits backend_id and backend_type in attributes" do
@@ -470,7 +473,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
         )
 
       assert {:ok, _} = Endpoints.run_query(endpoint)
-      :timer.sleep(1000)
 
       backend_id = backend.id
 
@@ -489,6 +491,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
                         | _
                       ]},
                      5_000
+
+      stop_supervised!(IngestPipeline)
     end
   end
 

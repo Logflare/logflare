@@ -67,23 +67,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
   describe "connection test failure handling" do
     @tag capture_log: true
-    test "fails initialization when ClickHouse is unavailable" do
-      {_source, invalid_backend} =
-        setup_clickhouse_test(
-          config: %{
-            url: "http://localhost",
-            username: "invalid_user",
-            password: "invalid_pass",
-            port: 19_999
-          }
-        )
+    test "fails initialization when ClickHouse is unavailable", %{backend: backend} do
+      expect(ClickHouseAdaptor, :test_connection, fn ^backend ->
+        {:error, :grant_check_unknown_failure}
+      end)
 
-      pid = start_supervised!({Provisioner, invalid_backend}, restart: :transient)
+      pid = start_supervised!({Provisioner, backend}, restart: :transient)
       ref = Process.monitor(pid)
 
       assert_receive {:DOWN, ^ref, :process, ^pid,
                       {:shutdown, {:error, :grant_check_unknown_failure}}},
-                     5_000
+                     1_000
     end
   end
 

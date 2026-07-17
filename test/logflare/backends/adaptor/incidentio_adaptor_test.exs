@@ -2,7 +2,6 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Alerting
@@ -122,7 +121,6 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
       [backend: backend, source: source]
     end
 
@@ -137,7 +135,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
 
       %{body: %{"event_message" => message}} = le = build(:log_event, source: source)
 
-      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert {:ok, _} = enqueue_backend_logs([le], source)
       assert_receive payload, 2000
 
       assert %{
@@ -170,7 +168,6 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
       [backend: backend, source: source, user: user]
     end
 
