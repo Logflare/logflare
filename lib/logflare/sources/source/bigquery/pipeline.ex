@@ -34,10 +34,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   @max_batch_size 500
   @max_retries 0
   @batcher_concurrency 16
-  # Generous safety valve (2x total batcher capacity), not a fine-grained flow-control
+  # Generous safety valve (4x total batcher capacity), not a fine-grained flow-control
   # knob — see BufferProducer's capped_fetch_amount/2. Should never engage during
   # healthy operation; only caps genuinely runaway backlog.
-  @max_in_flight 2 * @max_batch_size * @batcher_concurrency
+  @max_in_flight 4 * @max_batch_size * @batcher_concurrency
 
   def start_link(args, opts \\ []) do
     {name, args} = Keyword.pop(args, :name)
