@@ -26,7 +26,8 @@ defmodule Logflare.Backends.BufferProducer do
           last_discard_log_dt: DateTime.t() | nil,
           interval: pos_integer(),
           in_flight_ref: :atomics.atomics_ref() | nil,
-          max_in_flight: non_neg_integer() | :infinity | nil
+          max_in_flight: non_neg_integer() | :infinity | nil,
+          timer_ref: reference() | nil
         }
 
   @type spool_producer_state :: %{
@@ -40,7 +41,8 @@ defmodule Logflare.Backends.BufferProducer do
           last_discard_log_dt: DateTime.t() | nil,
           interval: pos_integer(),
           in_flight_ref: :atomics.atomics_ref() | nil,
-          max_in_flight: non_neg_integer() | :infinity | nil
+          max_in_flight: non_neg_integer() | :infinity | nil,
+          timer_ref: reference() | nil
         }
 
   @type state :: standard_state() | spool_producer_state()
@@ -48,6 +50,11 @@ defmodule Logflare.Backends.BufferProducer do
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
   @default_interval 1_000
+  # How soon to retry after a fetch came back short specifically because
+  # capped_fetch_amount/2 throttled it (not because the queue was empty) — a producer
+  # sitting on freed-up in_flight capacity shouldn't have to wait a full interval (up
+  # to several seconds under the metrics-based backoff) to notice and resume.
+  @min_in_flight_retry_ms 100
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
@@ -138,16 +145,15 @@ defmodule Logflare.Backends.BufferProducer do
       last_discard_log_dt: nil,
       interval: interval,
       in_flight_ref: in_flight_ref,
-      max_in_flight: max_in_flight
+      max_in_flight: max_in_flight,
+      timer_ref: nil
     }
 
     table_key = {:spool_producer, nil, self()}
     startup_table_key = {:spool_producer, nil, nil}
     IngestEventQueue.upsert_tid(table_key)
     seed_from_startup(startup_table_key, table_key, max_in_flight)
-    schedule(state, false)
-
-    state
+    reschedule(state, false, false)
   end
 
   @spec init_standard_state(keyword(), pos_integer()) :: state()
@@ -166,16 +172,15 @@ defmodule Logflare.Backends.BufferProducer do
       last_discard_log_dt: nil,
       interval: interval,
       in_flight_ref: in_flight_ref,
-      max_in_flight: max_in_flight
+      max_in_flight: max_in_flight,
+      timer_ref: nil
     }
 
     table_key = {state.source_id, state.backend_id, self()}
     startup_table_key = {state.source_id, state.backend_id, nil}
     IngestEventQueue.upsert_tid(table_key)
     seed_from_startup(startup_table_key, table_key, max_in_flight)
-    schedule(state, false)
-
-    state
+    reschedule(state, false, false)
   end
 
   @spec init_consolidated_state(pos_integer(), pos_integer(), keyword()) :: state()
@@ -193,7 +198,8 @@ defmodule Logflare.Backends.BufferProducer do
       last_discard_log_dt: nil,
       interval: interval,
       in_flight_ref: in_flight_ref,
-      max_in_flight: max_in_flight
+      max_in_flight: max_in_flight,
+      timer_ref: nil
     }
 
     table_key = {:consolidated, backend_id, self()}
@@ -201,9 +207,7 @@ defmodule Logflare.Backends.BufferProducer do
     IngestEventQueue.upsert_tid(table_key)
     seed_from_startup(startup_table_key, table_key, max_in_flight)
 
-    schedule(state, Keyword.get(opts, :scale, false))
-
-    state
+    reschedule(state, Keyword.get(opts, :scale, false), false)
   end
 
   @impl GenStage
@@ -254,9 +258,9 @@ defmodule Logflare.Backends.BufferProducer do
 
   @impl GenStage
   def handle_info(:scheduled_resolve, state) do
-    {items, state} = resolve_demand(state)
+    {items, state, capped?} = resolve_demand(state)
     scale? = if Application.get_env(:logflare, :env) == :test, do: false, else: true
-    schedule(state, scale?)
+    state = reschedule(state, scale?, capped?)
     {:noreply, items, state}
   end
 
@@ -328,20 +332,54 @@ defmodule Logflare.Backends.BufferProducer do
 
   @impl GenStage
   def handle_demand(demand, state) do
-    {items, state} = resolve_demand(state, demand)
+    {items, state, capped?} = resolve_demand(state, demand)
+
+    # Unlike handle_info(:scheduled_resolve, _), this callback is driven by GenStage's
+    # own demand propagation, not our periodic loop, and doesn't otherwise touch
+    # scheduling at all — without this, discovering a cap here would mean waiting out
+    # whatever's left of the *current* pending timer (up to a full interval, or the
+    # metrics-backed-off multiple of it) before the next chance to resume. This nudges
+    # a short retry in immediately instead. Goes through reschedule/3 (not a bare
+    # Process.send_after) specifically so it cancels whatever timer is already
+    # pending rather than layering a second one on top — handle_info(:scheduled_resolve,
+    # _) unconditionally arms another timer every time it fires, so an uncancelled
+    # extra one here would fork off its own permanent, parallel copy of the loop
+    # instead of just nudging the existing one sooner.
+    state = if capped?, do: reschedule(state, false, true), else: state
+
     {:noreply, items, state}
   end
 
-  @spec schedule(state :: state(), scale? :: boolean()) :: reference()
-  defp schedule(%{spool_producer: true} = state, _scale?) do
+  # Only one pending :scheduled_resolve timer may exist at a time — cancels whatever's
+  # currently tracked in state.timer_ref (a no-op if nil, e.g. at init) before arming
+  # the next one, so callers can freely call this from more than one place (the
+  # periodic loop in handle_info/2, and the proactive capped nudge in handle_demand/2)
+  # without ever ending up with multiple independent timer chains running at once.
+  @spec reschedule(state :: state(), scale? :: boolean(), capped? :: boolean()) :: state()
+  defp reschedule(state, scale?, capped?) do
+    if ref = state.timer_ref, do: Process.cancel_timer(ref)
+    %{state | timer_ref: schedule(state, scale?, capped?)}
+  end
+
+  @spec schedule(state :: state(), scale? :: boolean(), capped? :: boolean()) :: reference()
+  defp schedule(state, scale?, capped?)
+
+  # Takes priority over every other clause below, regardless of producer kind —
+  # capacity freed up by an ack can happen at any moment, so this always gets a short,
+  # fixed retry instead of whatever the normal per-kind interval/backoff would give it.
+  defp schedule(_state, _scale?, true) do
+    Process.send_after(self(), :scheduled_resolve, @min_in_flight_retry_ms)
+  end
+
+  defp schedule(%{spool_producer: true} = state, _scale?, false) do
     Process.send_after(self(), :scheduled_resolve, state.interval)
   end
 
-  defp schedule(%{consolidated: true} = state, _scale?) do
+  defp schedule(%{consolidated: true} = state, _scale?, false) do
     Process.send_after(self(), :scheduled_resolve, state.interval)
   end
 
-  defp schedule(state, scale?) do
+  defp schedule(state, scale?, false) do
     metrics = Sources.get_source_metrics_for_ingest(state.source_token)
 
     interval =
@@ -373,10 +411,11 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   @spec resolve_demand(state :: state(), new_demand :: non_neg_integer()) ::
-          {[LogEvent.t()], state()}
+          {[LogEvent.t()], state(), boolean()}
   defp resolve_demand(%{demand: prev_demand} = state, new_demand \\ 0) do
     total_demand = prev_demand + new_demand
     fetch_amount = capped_fetch_amount(state, total_demand)
+    capped? = fetch_amount < total_demand
 
     events = do_fetch(state, fetch_amount)
     event_count = Enum.count(events)
@@ -392,7 +431,7 @@ defmodule Logflare.Backends.BufferProducer do
         total_demand - event_count
       end
 
-    {events, %{state | demand: new_demand}}
+    {events, %{state | demand: new_demand}, capped?}
   end
 
   # A generous safety valve, not a fine-grained flow-control knob: caps how much a
