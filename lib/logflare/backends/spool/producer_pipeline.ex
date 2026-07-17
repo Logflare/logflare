@@ -26,6 +26,10 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @processor_concurrency 6
   @batcher_concurrency 4
   @producer_concurrency 1
+  # Generous safety valve (2x total batcher capacity), not a fine-grained flow-control
+  # knob — see BufferProducer's capped_fetch_amount/2. Should never engage during
+  # healthy operation; only caps genuinely runaway backlog.
+  @max_in_flight 2 * @max_batch_size * @batcher_concurrency
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
@@ -45,7 +49,9 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       hibernate_after: 5_000,
       spawn_opt: [fullsweep_after: 10],
       producer: [
-        module: {BufferProducer, [spool_producer: true, id_passing: true]},
+        module:
+          {BufferProducer,
+           [spool_producer: true, id_passing: true, max_in_flight: @max_in_flight]},
         transformer: {__MODULE__, :transform, []},
         concurrency: @producer_concurrency
       ],
@@ -72,14 +78,18 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
   @spec transform(term(), keyword()) :: Message.t()
   def transform(event, _opts) do
+    in_flight_ref = :persistent_term.get({BufferProducer, :in_flight_ref, self()}, nil)
+
     %Message{
       data: event,
-      acknowledger: {__MODULE__, :no_ack_ref, :ack_data}
+      acknowledger: {__MODULE__, :no_ack_ref, %{in_flight_ref: in_flight_ref}}
     }
   end
 
   @impl Broadway.Acknowledger
   def ack(_ref, successful, failed) do
+    decrement_in_flight(successful ++ failed)
+
     # The pointer was already removed from its queue at claim time
     # (pop_pending_pointers/2 claims via :ets.take/2); ack still has to delete the
     # event row from the generation store itself — GenerationJanitor's rotation is a
@@ -91,6 +101,18 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     maybe_requeue_failed(failed)
 
     :ok
+  end
+
+  @spec decrement_in_flight([Message.t()]) :: :ok
+  defp decrement_in_flight(messages) do
+    messages
+    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} ->
+      Map.get(ack_data, :in_flight_ref)
+    end)
+    |> Enum.each(fn
+      {nil, _msgs} -> :ok
+      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
+    end)
   end
 
   # Requeue failed spool writes for retry — same bounded-retry pattern as

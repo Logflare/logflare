@@ -51,6 +51,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @stale_batch_timeout 12_000
   @stale_batcher_concurrency 2
   @max_retries 1
+  # Generous safety valve (2x total batcher capacity across ch_fresh + ch_stale), not a
+  # fine-grained flow-control knob — see BufferProducer's capped_fetch_amount/2. Should
+  # never engage during healthy operation; only caps genuinely runaway backlog.
+  @max_in_flight 2 *
+                   (@fresh_batch_size * @fresh_batcher_concurrency +
+                      @stale_batch_size * @stale_batcher_concurrency)
 
   @doc false
   @spec max_retries() :: non_neg_integer()
@@ -82,7 +88,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
            [
              backend_id: backend.id,
              consolidated: true,
-             id_passing: true
+             id_passing: true,
+             max_in_flight: @max_in_flight
            ]},
         transformer: {__MODULE__, :transform, [backend_id: backend.id]},
         concurrency: @producer_concurrency
@@ -119,9 +126,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @spec transform(pointer :: LogEventPointer.t(), opts :: keyword()) :: Message.t()
   def transform(%LogEventPointer{} = pointer, opts) do
+    # Runs in the same process as the producer itself (Broadway.Topology.ProducerStage
+    # calls the producer module's own callbacks, then the transformer, inline, in one
+    # process) — so self() here is the producer's pid, and this lookup always finds the
+    # ref the producer published at init.
+    in_flight_ref = :persistent_term.get({BufferProducer, :in_flight_ref, self()}, nil)
+
     %Message{
       data: pointer,
-      acknowledger: {__MODULE__, :ack_id, %{backend_id: opts[:backend_id]}}
+      acknowledger:
+        {__MODULE__, :ack_id, %{backend_id: opts[:backend_id], in_flight_ref: in_flight_ref}}
     }
   end
 
@@ -175,19 +189,38 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
   def ack(_ack_ref, successful, failed) do
+    decrement_in_flight(successful ++ failed)
+
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
       IngestEventQueue.delete_id(pointer.tid, pointer.id)
     end)
 
     if failed != [] do
       failed
-      |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} -> ack_data end)
-      |> Enum.each(fn {%{backend_id: backend_id}, messages} ->
+      |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} -> ack_data.backend_id end)
+      |> Enum.each(fn {backend_id, messages} ->
         maybe_requeue_failed(backend_id, messages)
       end)
     end
 
     :ok
+  end
+
+  # Decrements the claiming producer's in-flight counter directly via the atomics ref
+  # carried on each message's ack_data (see transform/2) — no message-passing, no
+  # cross-process call. By the time ack/3 fires for a message, Broadway has already
+  # finished handle_batch/4 for it, so it's no longer sitting in BatcherStage's
+  # (effectively unbounded) buffer regardless of what happens to it next.
+  @spec decrement_in_flight([Message.t()]) :: :ok
+  defp decrement_in_flight(messages) do
+    messages
+    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} ->
+      Map.get(ack_data, :in_flight_ref)
+    end)
+    |> Enum.each(fn
+      {nil, _msgs} -> :ok
+      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
+    end)
   end
 
   @spec emit_batch_telemetry(
