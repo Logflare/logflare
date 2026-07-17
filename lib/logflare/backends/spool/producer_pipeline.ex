@@ -95,7 +95,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     # event row from the generation store itself — GenerationJanitor's rotation is a
     # failsafe for abandoned claims, not the primary cleanup path.
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
-      IngestEventQueue.delete_id(pointer.tid, pointer.id)
+      IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
     end)
 
     maybe_requeue_failed(failed)
@@ -136,7 +136,9 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         "spool_producer_pipeline: dropping #{length(exhausted)} events: exhausted #{max_retries} retries"
       )
 
-      Enum.each(exhausted, fn pointer -> IngestEventQueue.delete_id(pointer.tid, pointer.id) end)
+      Enum.each(exhausted, fn pointer ->
+        IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+      end)
     end
 
     requeue_retriable(retriable)
@@ -297,8 +299,8 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     result
   end
 
-  defp lookup_message_event(%{data: %LogEventPointer{tid: tid, id: id}}) do
-    IngestEventQueue.lookup_event(tid, id)
+  defp lookup_message_event(%{data: %LogEventPointer{tid: tid, gen_event_id: gen_event_id}}) do
+    IngestEventQueue.lookup_event(tid, gen_event_id)
   end
 
   defp upload_plain(messages, bucket, file_key, storage_mod) do

@@ -675,24 +675,32 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  # Writes each event's full body into its current generation's table first, then the
-  # lightweight pointer row into `queue_tid` (the target pipeline's own table) — in that
-  # order, so a crash mid-batch can only leave an inert orphaned event (cleaned up by
-  # generation rotation), never a pointer with no backing data. Pointer row shape:
-  # {event_id, generation_tid, size, retries, event_type, day_bucket, ingest_freshness}.
+  # Claims the pointer row first — insert_new/2 into `queue_tid`, keyed by the event's
+  # own id, is atomic per key, so a duplicate id already pending in this same queue is
+  # rejected outright rather than overwriting (and thereby orphaning) whatever
+  # generation-store row the existing pointer references. Only once the claim succeeds
+  # is the event's full body written into the current generation's table (`gen_tid`),
+  # under a freshly generated `gen_event_id` rather than the event's own id — this
+  # decouples the shared store's key from the (possibly duplicated) event id, so
+  # independent producers that each receive their own copy of the same id never collide
+  # on the same generation-store row. Pointer row shape: {event_id, generation_tid,
+  # gen_event_id, size, retries, event_type, day_bucket, ingest_freshness}.
   defp insert_pointer_batch(sid_bid_pid, queue_tid, batch) do
     queues_key = pointer_queues_key(sid_bid_pid)
     gen_tid = current_generation_tid(queues_key)
 
-    objects =
-      for %{id: id} = event <- batch do
-        :ets.insert(gen_tid, {id, event})
+    for %{id: id} = event <- batch do
+      gen_event_id = make_ref()
 
-        {id, gen_tid, :erlang.external_size(event.body), event.retries || 0, event.event_type,
-         event.day_bucket, event.ingest_freshness}
+      row =
+        {id, gen_tid, gen_event_id, :erlang.external_size(event.body), event.retries || 0,
+         event.event_type, event.day_bucket, event.ingest_freshness}
+
+      if :ets.insert_new(queue_tid, row) do
+        :ets.insert(gen_tid, {gen_event_id, event})
       end
+    end
 
-    :ets.insert(queue_tid, objects)
     :ok
   rescue
     ArgumentError ->
@@ -762,7 +770,7 @@ defmodule Logflare.Backends.IngestEventQueue do
          to_tid when to_tid != nil <- get_tid(to) do
       moved =
         :ets.foldl(
-          fn {id, _, _, _, _, _, _}, acc -> acc + take_and_insert(from_tid, to_tid, id) end,
+          fn {id, _, _, _, _, _, _, _}, acc -> acc + take_and_insert(from_tid, to_tid, id) end,
           0,
           from_tid
         )
@@ -928,13 +936,15 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   def pop_pending_pointers(sid_bid_pid, n) when is_integer(n) do
     ms = [
-      {{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}, [],
-       [{{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}}]}
+      {{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7", :"$8"}, [],
+       [{{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7", :"$8"}}]}
     ]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {selected, _cont} <- :ets.select(tid, ms, n) do
-      confirmed = Enum.flat_map(selected, fn {id, _, _, _, _, _, _} -> take_pointer(tid, id) end)
+      confirmed =
+        Enum.flat_map(selected, fn {id, _, _, _, _, _, _, _} -> take_pointer(tid, id) end)
+
       {:ok, confirmed, tid}
     else
       nil -> {:error, :not_initialized}
@@ -944,11 +954,12 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp take_pointer(tid, id) do
     case :ets.take(tid, id) do
-      [{^id, gen_tid, size, retries, event_type, day_bucket, freshness}] ->
+      [{^id, gen_tid, gen_event_id, size, retries, event_type, day_bucket, freshness}] ->
         [
           %LogEventPointer{
             id: id,
             tid: gen_tid,
+            gen_event_id: gen_event_id,
             queue_tid: tid,
             size: size,
             retries: retries,
@@ -975,8 +986,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   @spec reinsert_pointer(LogEventPointer.t()) :: :ok
   def reinsert_pointer(%LogEventPointer{} = pointer) do
     row =
-      {pointer.id, pointer.tid, pointer.size, pointer.retries, pointer.event_type,
-       pointer.day_bucket, pointer.ingest_freshness}
+      {pointer.id, pointer.tid, pointer.gen_event_id, pointer.size, pointer.retries,
+       pointer.event_type, pointer.day_bucket, pointer.ingest_freshness}
 
     :ets.insert(pointer.queue_tid, row)
     :ok
@@ -997,7 +1008,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending(_, 0), do: {:ok, []}
 
   def pop_pending(sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :"$2", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2"}}]}]
+    ms = [{{:"$1", :"$2", :"$3", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2", :"$3"}}]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          size when is_integer(size) <- :ets.info(tid, :size),
@@ -1014,11 +1025,11 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  defp resolve_and_delete_pending(tid, {id, gen_tid}) do
+  defp resolve_and_delete_pending(tid, {id, gen_tid, gen_event_id}) do
     :ets.delete(tid, id)
 
-    case :ets.take(gen_tid, id) do
-      [{^id, event}] -> event
+    case :ets.take(gen_tid, gen_event_id) do
+      [{^gen_event_id, event}] -> event
       [] -> nil
     end
   rescue
@@ -1115,7 +1126,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   def truncate_tid(tid, status, n) when status in [:all, :pending] do
-    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$_"]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$_"]}]
 
     with size when is_integer(size) <- :ets.info(tid, :size) do
       to_keep = select_to_insert(tid, ms, size, n)
@@ -1248,13 +1259,13 @@ defmodule Logflare.Backends.IngestEventQueue do
   @spec drop_pending(source_backend_pid() | consolidated_table_key(), non_neg_integer()) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
   def drop_pending({_, _, _} = sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :"$2", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2"}}]}]
+    ms = [{{:"$1", :"$2", :"$3", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2", :"$3"}}]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {taken, _cont} <- :ets.select(tid, ms, n) do
-      for {id, gen_tid} <- taken do
+      for {id, gen_tid, gen_event_id} <- taken do
         :ets.delete(tid, id)
-        delete_id(gen_tid, id)
+        delete_id(gen_tid, gen_event_id)
       end
 
       {:ok, Enum.count(taken)}

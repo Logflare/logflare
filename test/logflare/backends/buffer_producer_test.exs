@@ -407,7 +407,7 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       # The claimed pointer row is already deleted (pop_pending_pointers/2 claims via
       # :ets.take/2), so the full event is resolved lazily via the pointer's own tid.
-      assert IngestEventQueue.lookup_event(pointer.tid, event_id) == le
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == le
 
       assert IngestEventQueue.total_pending(consolidated_key) == 0
     end

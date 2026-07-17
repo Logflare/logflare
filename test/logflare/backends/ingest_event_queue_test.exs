@@ -391,7 +391,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # schedule — it only ever evicts the cache row, never the generation store
       assert :ok = IngestEventQueue.truncate_recent(queues_key, 0)
       assert IngestEventQueue.list_recent_events(queues_key, 10) == []
-      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == le
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == le
     end
 
     test "drop n items from a queue", %{source: source, source_backend_pid: sbp} do
@@ -401,7 +401,14 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       queues_key = Tuple.delete_at(sbp, 2)
       gen_tid = IngestEventQueue.current_generation_tid(queues_key)
       pointer_tid = IngestEventQueue.get_tid(sbp)
-      ids_before = pointer_tid |> :ets.tab2list() |> Enum.map(&elem(&1, 0)) |> MapSet.new()
+      rows_before = pointer_tid |> :ets.tab2list()
+
+      gen_event_id_by_id =
+        Map.new(rows_before, fn {id, _gen_tid, gen_event_id, _, _, _, _, _} ->
+          {id, gen_event_id}
+        end)
+
+      ids_before = rows_before |> Enum.map(&elem(&1, 0)) |> MapSet.new()
 
       assert {:ok, 2} = IngestEventQueue.drop_pending(sbp, 2)
       assert IngestEventQueue.get_table_size(sbp) == 498
@@ -414,11 +421,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # otherwise the memory it's meant to relieve sits until GenerationJanitor's next
       # rotation instead of being freed immediately
       for id <- dropped_ids do
-        assert IngestEventQueue.lookup_event(gen_tid, id) == nil
+        assert IngestEventQueue.lookup_event(gen_tid, Map.fetch!(gen_event_id_by_id, id)) == nil
       end
 
       remaining_id = ids_after |> MapSet.to_list() |> hd()
-      assert %LogEvent{} = IngestEventQueue.lookup_event(gen_tid, remaining_id)
+      remaining_gen_event_id = Map.fetch!(gen_event_id_by_id, remaining_id)
+      assert %LogEvent{} = IngestEventQueue.lookup_event(gen_tid, remaining_gen_event_id)
     end
 
     test "truncate all events in a queue", %{source: source, source_backend_pid: sbp} do
@@ -565,7 +573,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert fresh_pointer.day_bucket == 12_345
       assert fresh_pointer.ingest_freshness == :fresh
       assert fresh_pointer.size == :erlang.external_size(fresh.body)
-      assert IngestEventQueue.lookup_event(fresh_pointer.tid, fresh_pointer.id).id == fresh.id
+
+      assert IngestEventQueue.lookup_event(fresh_pointer.tid, fresh_pointer.gen_event_id).id ==
+               fresh.id
 
       stale_pointer = Map.fetch!(by_id, stale.id)
       assert stale_pointer.event_type == :trace
@@ -727,6 +737,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       pointer = %LogEventPointer{
         id: "some-id",
         tid: tid,
+        gen_event_id: make_ref(),
         queue_tid: tid,
         size: 0,
         retries: 0,
@@ -1453,7 +1464,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
       IngestEventQueue.record_recent_event(queues_key, le)
-      IngestEventQueue.delete_id(pointer.tid, pointer.id)
+      IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
 
       assert [{gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
       :ok = IngestEventQueue.drop_generation(queues_key, gen_tid)
@@ -1461,7 +1472,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # the generation-store row is long gone, but the independent copy survives —
       # this is the exact case github.com/Logflare/logflare/pull/3690#discussion_r3597505520
       # flagged against the old pointer-based cache
-      assert IngestEventQueue.lookup_event(pointer.tid, pointer.id) == nil
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
       assert IngestEventQueue.list_recent_events(queues_key, 10) == [le]
     end
 
@@ -1514,12 +1525,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       # claiming the still-present pointer now resolves to a dead generation — the same
       # "not found" outcome as any other lookup miss, not a crash
-      assert {:ok, [%LogEventPointer{id: claimed_id, tid: claimed_tid}], _tid} =
-               IngestEventQueue.pop_pending_pointers(consolidated_key, 1)
+      assert {:ok,
+              [%LogEventPointer{id: claimed_id, tid: claimed_tid, gen_event_id: gen_event_id}],
+              _tid} = IngestEventQueue.pop_pending_pointers(consolidated_key, 1)
 
       assert claimed_id == le.id
       assert claimed_tid == gen_tid
-      assert IngestEventQueue.lookup_event(claimed_tid, le.id) == nil
+      assert IngestEventQueue.lookup_event(claimed_tid, gen_event_id) == nil
 
       # rotation keeps producing fresh generations for a queues_key with live traffic —
       # do_rotate/2 already created this synchronously above, so no polling needed
