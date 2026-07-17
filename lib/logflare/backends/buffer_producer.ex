@@ -54,7 +54,7 @@ defmodule Logflare.Backends.BufferProducer do
   # capped_fetch_amount/2 throttled it (not because the queue was empty) — a producer
   # sitting on freed-up in_flight capacity shouldn't have to wait a full interval (up
   # to several seconds under the metrics-based backoff) to notice and resume.
-  @min_in_flight_retry_ms 200
+  @min_in_flight_retry_ms 100
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
