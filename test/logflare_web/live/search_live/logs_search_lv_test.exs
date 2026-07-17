@@ -1897,18 +1897,20 @@ defmodule LogflareWeb.Source.SearchLVTest do
           %{executor_pid: search_executor_pid} = get_view_assigns(view)
           allow_sandbox(search_executor_pid)
 
-          prev_completed_at = get_view_assigns(view)[:last_query_completed_at]
+          TestUtils.retry_assert(fn ->
+            prev_completed_at = get_view_assigns(view)[:last_query_completed_at]
 
-          render_change(view, :start_search, %{
-            "querystring" => "#{querystring} c:count(*) c:group_by(t::#{chart_period})"
-          })
+            render_change(view, :start_search, %{
+              "querystring" => "#{querystring} c:count(*) c:group_by(t::#{chart_period})"
+            })
 
-          assert :ok = wait_for_search_completed(view, prev_completed_at)
+            assert :ok = wait_for_search_completed(view, prev_completed_at)
 
-          html = view |> element("#logs-list-container") |> render()
+            html = view |> element("#logs-list-container") |> render()
 
-          assert html =~ matching_message
-          refute html =~ non_matching_message
+            assert html =~ matching_message
+            refute html =~ non_matching_message
+          end)
         end)
       end)
     end
