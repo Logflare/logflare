@@ -8,6 +8,7 @@ defmodule LogflareWeb.Api.RuleController do
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApi.Unauthorized
   alias LogflareWeb.OpenApi.UnprocessableEntity
   alias LogflareWeb.OpenApiSchemas.RuleApiSchema
   alias LogflareWeb.OpenApiSchemas.RuleBatchResponse
@@ -19,22 +20,42 @@ defmodule LogflareWeb.Api.RuleController do
   tags(["management"])
 
   operation(:index,
-    summary: "List rules",
-    responses: %{200 => List.response(RuleApiSchema)}
+    summary: "List rules owned by the authenticated user",
+    parameters: [
+      backend_id: [
+        in: :query,
+        description: "Optional backend ID to filter the rule list",
+        type: :integer,
+        required: false
+      ],
+      backend_token: [
+        in: :query,
+        description: "Optional backend UUID to filter the rule list",
+        type: :string,
+        required: false
+      ]
+    ],
+    responses: %{
+      200 => List.response(RuleApiSchema),
+      401 => Unauthorized.response(),
+      404 => NotFound.response()
+    }
   )
 
-  def index(%{assigns: %{user: user}} = conn, filters)
-      when is_map_key(filters, "backend_id") or is_map_key(filters, "backend_token") do
-    kw =
-      case filters do
-        %{"backend_id" => bid} -> [id: bid]
-        %{"backend_token" => token} -> [token: token]
-      end
-
-    with {:ok, backend} <- Backends.fetch_backend_by([{:user_id, user.id} | kw]) do
-      rules = Rules.list_rules(backend)
-      json(conn, rules)
+  def index(%{assigns: %{user: user}} = conn, %{"backend_id" => backend_id}) do
+    with {:ok, backend} <- Backends.fetch_backend_by(user_id: user.id, id: backend_id) do
+      json(conn, Rules.list_rules_by_user_id(user.id, backend.id))
     end
+  end
+
+  def index(%{assigns: %{user: user}} = conn, %{"backend_token" => backend_token}) do
+    with {:ok, backend} <- Backends.fetch_backend_by(user_id: user.id, token: backend_token) do
+      json(conn, Rules.list_rules_by_user_id(user.id, backend.id))
+    end
+  end
+
+  def index(%{assigns: %{user: user}} = conn, _params) do
+    json(conn, Rules.list_rules_by_user_id(user.id))
   end
 
   operation(:show,
