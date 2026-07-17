@@ -706,7 +706,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       true ->
         state.pipeline_count
     end
-    |> dbg()
   end
 
   defp validate_user_pass(changeset) do
