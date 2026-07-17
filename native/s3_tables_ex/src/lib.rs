@@ -61,6 +61,19 @@ pub struct CatalogResource {
 
 impl Resource for CatalogResource {}
 
+impl CatalogResource {
+    fn table_ident(&self, table_name: impl Into<String>) -> TableIdent {
+        TableIdent::new(self.namespace.name().clone(), table_name.into())
+    }
+}
+
+/// Flattens any error into its `{:?}` string. The S3 Tables / iceberg libraries
+/// collapse most failures into an opaque `Unexpected` message, so this is the
+/// best fidelity available to the Elixir side.
+fn fmt_err<E: std::fmt::Debug>(err: E) -> String {
+    format!("{err:?}")
+}
+
 #[derive(Debug, NifMap)]
 struct Config {
     table_bucket_arn: String,
@@ -123,12 +136,12 @@ fn init_catalog<'a>(env: Env<'a>, result_tag: Term<'a>, config: Config) -> NifAt
                 .get_namespace(&NamespaceIdent::new(config.namespace))
                 .await?;
 
-            Ok(CatalogResource { catalog, namespace })
+            Ok::<_, iceberg::Error>(CatalogResource { catalog, namespace })
         }
         .await
         // the lib does a poor job with errors, everything is flattened to Unexpected with a message
         // TODO: Match message and try to translate to meaningful errors
-        .map_err(|err: iceberg::Error| format!("{err:?}"))
+        .map_err(fmt_err)
         .map(ResourceArc::new)
     })
 }
@@ -147,19 +160,19 @@ fn ensure_table<'a>(
     properties: HashMap<String, String>,
 ) -> NifAtom {
     spawn_reply(env, result_tag, async move {
-        let table_ident = TableIdent::new(catalog.namespace.name().clone(), table_name.clone());
+        let table_ident = catalog.table_ident(table_name.clone());
 
         match catalog.catalog.table_exists(&table_ident).await {
             Ok(true) => return Ok(atoms::already_exists()),
             Ok(false) => {}
-            Err(err) => return Err(format!("{err:?}")),
+            Err(err) => return Err(fmt_err(err)),
         }
 
         let (table_schema, timestamp_field_id) = schema::build(&fields)?;
 
         let partition_spec = UnboundPartitionSpec::builder()
             .add_partition_field(timestamp_field_id, TIMESTAMP_PARTITION_NAME, Transform::Day)
-            .map_err(|err| format!("{err:?}"))?
+            .map_err(fmt_err)?
             .build();
 
         let creation = TableCreation::builder()
@@ -176,7 +189,7 @@ fn ensure_table<'a>(
         {
             Ok(_) => Ok(atoms::created()),
             Err(err) => {
-                let message = format!("{err:?}");
+                let message = fmt_err(err);
                 // the lib flattens all errors to Unexpected with a message, so the
                 // concurrent-create-conflict race is detected via a lenient string match.
                 if message.to_lowercase().contains("conflict")
@@ -200,13 +213,13 @@ fn table_columns<'a>(
     table_name: String,
 ) -> NifAtom {
     spawn_reply(env, result_tag, async move {
-        let table_ident = TableIdent::new(catalog.namespace.name().clone(), table_name);
+        let table_ident = catalog.table_ident(table_name);
 
         let table = catalog
             .catalog
             .load_table(&table_ident)
             .await
-            .map_err(|err| format!("{err:?}"))?;
+            .map_err(fmt_err)?;
 
         let names = table
             .metadata()
@@ -235,13 +248,13 @@ enum AppendError {
 
 impl From<iceberg::Error> for AppendError {
     fn from(err: iceberg::Error) -> Self {
-        AppendError::Other(format!("{err:?}"))
+        AppendError::Other(fmt_err(err))
     }
 }
 
 impl From<arrow_schema::ArrowError> for AppendError {
     fn from(err: arrow_schema::ArrowError) -> Self {
-        AppendError::Other(format!("{err:?}"))
+        AppendError::Other(fmt_err(err))
     }
 }
 
@@ -289,7 +302,7 @@ async fn do_append(
     table_name: String,
     ndjson: Vec<u8>,
 ) -> Result<AppendOk, AppendError> {
-    let table_ident = TableIdent::new(catalog.namespace.name().clone(), table_name);
+    let table_ident = catalog.table_ident(table_name);
     let table = catalog.catalog.load_table(&table_ident).await?;
 
     let iceberg_schema = table.metadata().current_schema().clone();
@@ -453,13 +466,13 @@ fn snapshot_info<'a>(
     table_name: String,
 ) -> NifAtom {
     spawn_reply(env, result_tag, async move {
-        let table_ident = TableIdent::new(catalog.namespace.name().clone(), table_name);
+        let table_ident = catalog.table_ident(table_name);
 
         let table = catalog
             .catalog
             .load_table(&table_ident)
             .await
-            .map_err(|err| format!("{err:?}"))?;
+            .map_err(fmt_err)?;
 
         let metadata = table.metadata();
 
