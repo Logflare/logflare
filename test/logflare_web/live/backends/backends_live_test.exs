@@ -640,6 +640,51 @@ defmodule LogflareWeb.BackendsLiveTest do
              |> has_element?()
     end
 
+    test "removing a read cluster row drops that specific row's cluster on save", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            username: "user",
+            password: "pass",
+            read_only_urls: %{
+              "alpha" => "http://alpha.local:8123",
+              "beta" => "http://beta.local:8123",
+              "gamma" => "http://gamma.local:8123"
+            }
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      # rows render in the same order the component folds the map, so row 0 and the last
+      # row are known — removing row 0 must drop row 0's cluster, not the last one.
+      entries = Map.to_list(backend.config.read_only_urls)
+      {row0_label, _url} = hd(entries)
+      {last_label, _url} = List.last(entries)
+
+      view
+      |> element("#read-cluster-row-0 button[phx-click='remove_row']")
+      |> render_click()
+
+      view |> form("form") |> render_submit()
+
+      read_only_urls = Backends.get_backend(backend.id).config.read_only_urls
+
+      refute Map.has_key?(read_only_urls, row0_label)
+      assert Map.has_key?(read_only_urls, last_label)
+      assert map_size(read_only_urls) == 2
+    end
+
     test "cancel will nav back to show", %{conn: conn, user: user} do
       backend = insert(:backend, type: :webhook, user: user)
       assert {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")

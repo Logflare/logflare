@@ -12,10 +12,10 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
     socket = assign(socket, assigns)
 
     socket =
-      if Map.has_key?(socket.assigns, :row_count) do
+      if Map.has_key?(socket.assigns, :rows) do
         socket
       else
-        assign(socket, :row_count, initial_row_count(socket.assigns.form))
+        assign(socket, :rows, initial_rows(socket.assigns.form))
       end
 
     {:ok, socket}
@@ -23,11 +23,19 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
 
   @impl true
   def handle_event("add_row", _params, socket) do
-    {:noreply, assign(socket, :row_count, socket.assigns.row_count + 1)}
+    {:noreply, assign(socket, :rows, socket.assigns.rows ++ [{"", ""}])}
   end
 
-  def handle_event("remove_row", _params, socket) do
-    {:noreply, assign(socket, :row_count, max(socket.assigns.row_count - 1, 1))}
+  def handle_event("remove_row", %{"index" => index}, socket) do
+    rows =
+      socket.assigns.rows
+      |> List.delete_at(String.to_integer(index))
+      |> case do
+        [] -> [{"", ""}]
+        rows -> rows
+      end
+
+    {:noreply, assign(socket, :rows, rows)}
   end
 
   @impl true
@@ -42,9 +50,7 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
           Read-Only URL above.
         </small>
 
-        <% entries = Map.to_list(input_value(@form, :read_only_urls) || %{}) %>
-        <%= for i <- 0..(@row_count - 1) do %>
-          <% {row_label, row_url} = Enum.at(entries, i, {"", ""}) %>
+        <%= for {{row_label, row_url}, i} <- Enum.with_index(@rows) do %>
           <div class="form-row tw-flex tw-gap-2 tw-mb-2" id={"read-cluster-row-#{i}"}>
             {text_input(@form, "read_cluster_label_#{i}",
               value: row_label,
@@ -56,7 +62,7 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
               placeholder: "https://read-cluster:8443",
               class: "form-control"
             )}
-            <button type="button" class="btn btn-outline-danger" phx-click="remove_row" phx-target={@myself}>
+            <button type="button" class="btn btn-outline-danger" phx-click="remove_row" phx-value-index={i} phx-target={@myself}>
               <i class="fas fa-minus"></i>
             </button>
           </div>
@@ -116,11 +122,11 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
     end
   end
 
-  @spec initial_row_count(Phoenix.HTML.Form.t()) :: pos_integer()
-  defp initial_row_count(form) do
+  @spec initial_rows(Phoenix.HTML.Form.t()) :: [{String.t(), String.t()}]
+  defp initial_rows(form) do
     case input_value(form, :read_only_urls) do
-      urls when is_non_empty_map(urls) -> map_size(urls)
-      _ -> 1
+      urls when is_non_empty_map(urls) -> Map.to_list(urls)
+      _ -> [{"", ""}]
     end
   end
 

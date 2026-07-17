@@ -446,14 +446,22 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   @spec assemble_read_clusters(map()) :: {:ok, map()} | {:error, String.t()}
-  defp assemble_read_clusters(%{"type" => "clickhouse", "config" => config} = params)
-       when is_map(config) do
-    with {:ok, config} <- ReadClusterUrlsComponent.assemble_read_only_urls(config) do
-      {:ok, %{params | "config" => config}}
+  defp assemble_read_clusters(%{"config" => config} = params) when is_map(config) do
+    if has_read_cluster_fields?(config) do
+      with {:ok, config} <- ReadClusterUrlsComponent.assemble_read_only_urls(config) do
+        {:ok, %{params | "config" => config}}
+      end
+    else
+      {:ok, params}
     end
   end
 
   defp assemble_read_clusters(params), do: {:ok, params}
+
+  @spec has_read_cluster_fields?(map()) :: boolean()
+  defp has_read_cluster_fields?(config) do
+    Enum.any?(config, fn {key, _value} -> String.starts_with?(key, "read_cluster_label_") end)
+  end
 
   defp transform_params(params) do
     type = params["type"]
