@@ -9,6 +9,7 @@ defmodule LogflareWeb.BackendsLive do
   alias Logflare.Backends
   alias Logflare.Rules
   alias Logflare.Sources
+  alias LogflareWeb.Backends.ReadClusterUrlsComponent
 
   require Logger
 
@@ -70,24 +71,26 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :edit}} = socket
       ) do
-    params = transform_params(params)
+    with {:ok, params} <- assemble_read_clusters(transform_params(params)) do
+      socket =
+        case Backends.update_backend(socket.assigns.backend, params) do
+          {:ok, backend} ->
+            socket
+            |> assign(:show_rule_form?, false)
+            |> refresh_backend(backend.id)
+            |> refresh_backends()
+            |> put_flash(:info, "Successfully updated backend")
+            |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
 
-    socket =
-      case Backends.update_backend(socket.assigns.backend, params) do
-        {:ok, backend} ->
-          socket
-          |> assign(:show_rule_form?, false)
-          |> refresh_backend(backend.id)
-          |> refresh_backends()
-          |> put_flash(:info, "Successfully updated backend")
-          |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
+          {:error, changeset} ->
+            message = stringify_changeset_errors(changeset)
+            put_flash(socket, :error, "Encountered error when updating backend:\n#{message}")
+        end
 
-        {:error, changeset} ->
-          message = stringify_changeset_errors(changeset)
-          put_flash(socket, :error, "Encountered error when updating backend:\n#{message}")
-      end
-
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
   end
 
   def handle_event(
@@ -95,26 +98,28 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :new}} = socket
       ) do
-    params = transform_params(params)
+    with {:ok, params} <- assemble_read_clusters(transform_params(params)) do
+      socket =
+        case Logflare.Backends.create_backend(socket.assigns.user, params) do
+          {:ok, backend} ->
+            socket
+            |> assign(:show_rule_form?, false)
+            |> assign(:backends, [backend | socket.assigns.backends])
+            |> put_flash(:info, "Successfully created backend")
+            |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
 
-    socket =
-      case Logflare.Backends.create_backend(socket.assigns.user, params) do
-        {:ok, backend} ->
-          socket
-          |> assign(:show_rule_form?, false)
-          |> assign(:backends, [backend | socket.assigns.backends])
-          |> put_flash(:info, "Successfully created backend")
-          |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
+          {:error, changeset} ->
+            message = stringify_changeset_errors(changeset)
 
-        {:error, changeset} ->
-          message = stringify_changeset_errors(changeset)
+            put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
+        end
 
-          put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
-      end
+      socket = refresh_backends(socket)
 
-    socket = refresh_backends(socket)
-
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
   end
 
   def handle_event("save_rule", %{"rule" => params}, socket) do
@@ -440,6 +445,16 @@ defmodule LogflareWeb.BackendsLive do
     |> assign(:available_sources, available_sources)
   end
 
+  @spec assemble_read_clusters(map()) :: {:ok, map()} | {:error, String.t()}
+  defp assemble_read_clusters(%{"type" => "clickhouse", "config" => config} = params)
+       when is_map(config) do
+    with {:ok, config} <- ReadClusterUrlsComponent.assemble_read_only_urls(config) do
+      {:ok, %{params | "config" => config}}
+    end
+  end
+
+  defp assemble_read_clusters(params), do: {:ok, params}
+
   defp transform_params(params) do
     type = params["type"]
 
@@ -460,18 +475,18 @@ defmodule LogflareWeb.BackendsLive do
           {key, value}
         end
 
-      Map.put(config, "headers", headers)
-      |> case do
-        %{"metadata" => metadata_str} = config
-        when is_binary(metadata_str) and type == "incidentio" ->
-          metadata = parse_incidentio_metadata(metadata_str)
-          Map.put(config, "metadata", metadata)
-
-        config ->
-          config
-      end
+      config
+      |> Map.put("headers", headers)
+      |> transform_config_for_type(type)
     end)
   end
+
+  defp transform_config_for_type(%{"metadata" => metadata_str} = config, "incidentio")
+       when is_binary(metadata_str) do
+    Map.put(config, "metadata", parse_incidentio_metadata(metadata_str))
+  end
+
+  defp transform_config_for_type(config, _type), do: config
 
   defp parse_incidentio_metadata(data) when is_binary(data) do
     data

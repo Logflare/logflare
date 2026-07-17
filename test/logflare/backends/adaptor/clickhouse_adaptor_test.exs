@@ -334,11 +334,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Keyword.has_key?(changeset.errors, :default_read_cluster)
     end
 
-    test "rejects default_read_cluster when no read_only_urls configured" do
-      changeset = cast_and_validate_config(default_read_cluster: "dashboard_logs")
+    test "does not validate default_read_cluster when read_only_urls is empty" do
+      changeset = cast_and_validate_config(default_read_cluster: "reporting")
 
-      refute changeset.valid?
-      assert Keyword.has_key?(changeset.errors, :default_read_cluster)
+      assert changeset.valid?
+      refute Keyword.has_key?(changeset.errors, :default_read_cluster)
     end
   end
 

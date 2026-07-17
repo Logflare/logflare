@@ -821,22 +821,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec validate_default_read_cluster(Changeset.t()) :: Changeset.t()
   defp validate_default_read_cluster(changeset) do
-    case Changeset.get_field(changeset, :default_read_cluster) do
-      label when is_non_empty_binary(label) ->
-        urls = Changeset.get_field(changeset, :read_only_urls) || %{}
+    urls = Changeset.get_field(changeset, :read_only_urls) || %{}
+    default = Changeset.get_field(changeset, :default_read_cluster)
 
-        if Map.has_key?(urls, label) do
-          changeset
-        else
-          Changeset.add_error(
-            changeset,
-            :default_read_cluster,
-            "must be a key of read_only_urls"
-          )
-        end
+    validate_default_read_cluster(changeset, urls, default)
+  end
 
-      _ ->
-        changeset
+  @spec validate_default_read_cluster(Changeset.t(), map(), term()) :: Changeset.t()
+  defp validate_default_read_cluster(changeset, urls, _default) when map_size(urls) == 0,
+    do: changeset
+
+  defp validate_default_read_cluster(changeset, _urls, default)
+       when not is_non_empty_binary(default),
+       do: changeset
+
+  defp validate_default_read_cluster(changeset, urls, default) do
+    if Map.has_key?(urls, default) do
+      changeset
+    else
+      Changeset.add_error(
+        changeset,
+        :default_read_cluster,
+        "must match one of the defined read cluster labels"
+      )
     end
   end
 

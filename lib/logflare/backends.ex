@@ -901,12 +901,8 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Registers a unique backend-related process on the backend registry, scoped by a
-  label dimension.
-
-  A `nil` label produces the same key as `via_backend/2`, so unlabeled callers and
-  legacy processes keep their existing single registry key. A non-`nil` label adds
-  a third key element, giving each label its own process (e.g. per read cluster).
+  Like `via_backend/2` but adds a `label` dimension to the registry key. `nil` reuses the
+  `via_backend/2` key, so legacy/unlabeled callers are unchanged.
   """
   @spec via_backend(Backend.t() | non_neg_integer(), module(), String.t() | nil) ::
           {:via, module(), term()}
