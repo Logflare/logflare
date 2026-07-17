@@ -48,6 +48,25 @@ defmodule Logflare.DataCase do
         Enum.each(caches, &Cachex.reset(&1, hooks: [Cachex.Stats]))
 
         on_exit(fn ->
+          # Deterministic, not timer-based: IngestEventQueue's generation-store
+          # tables are owned by its own long-lived GenServer, not by this (ephemeral)
+          # test process, so nothing but an explicit :ets.delete ever reclaims them —
+          # unlike delete_all_mappings/0 below, which only clears the mapper's rows.
+          # Without this, that data is a global, never-restarted-between-tests
+          # singleton that only GenerationJanitor's production-tuned timer ever
+          # sweeps, letting residue from every prior test accumulate for the rest of
+          # the suite run. Pruning here, keyed off the same liveness check
+          # GenerationJanitor's own pruning uses, converges that to near-zero
+          # regardless of how that timer happens to be tuned. Order matters: this
+          # must run before delete_all_mappings/0 wipes the mapper, so "live" is
+          # judged against genuinely-still-live state — including other concurrently
+          # running tests' own queues_keys — not a mapper this same callback is about
+          # to clear out from under them.
+          for queues_key <- IngestEventQueue.list_generation_queues_keys(),
+              IngestEventQueue.list_queues(queues_key) == [] do
+            IngestEventQueue.prune_generations(queues_key)
+          end
+
           IngestEventQueue.delete_all_mappings()
           PubSubRates.Cache.clear()
           ClickHouseAdaptor.QueryConnectionSup.terminate_all()

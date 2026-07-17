@@ -14,7 +14,11 @@ defmodule Logflare.Backends.Spool.ProducerSup do
 
   @impl Supervisor
   def init(_opts) do
+    # create the startup queue and its generation, before any producer/traffic exists
+    # for this queues_key — avoids racing concurrent first-time inserts against each
+    # other to lazily create the generation (see IngestEventQueue.current_generation_tid/1)
     IngestEventQueue.upsert_tid({:spool_producer, nil, nil})
+    IngestEventQueue.current_generation_tid({:spool_producer, nil})
 
     children = [
       {ProducerPipeline, [name: @pipeline_name]}

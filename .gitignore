@@ -106,3 +106,5 @@ dev-*
 .envrc
 flake.nix
 flake.lock
+
+/tmp
