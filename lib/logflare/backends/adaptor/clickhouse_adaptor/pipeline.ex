@@ -182,8 +182,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
     backend = Backends.Cache.get_backend(backend_id)
 
-    Process.sleep(10000)
-
     encode_and_insert(backend, messages, event_type, batcher, batch_info, day_bucket)
   end
 

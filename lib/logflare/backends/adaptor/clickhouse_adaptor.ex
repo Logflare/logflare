@@ -37,11 +37,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @min_pipelines 1
   @resolve_interval 10_000
-  @scaling_threshold 15_000
+  @scaling_threshold 1_000
   @async_insert_busy_timeout_max_ms 3_000
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
   @pipelines_per_scheduler 4
+  @max_in_flight 120_000 #TODO: Share config with clickhouse pipeline
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -689,7 +690,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     cond do
       # Scale up if startup queue has events (pipeline not yet ready)
       startup_size > 0 ->
-        state.pipeline_count + 1
+        state.pipeline_count + max(div(startup_size, @max_in_flight), 1)
 
       # Scale up only if the fleet is loaded on average, not just one outlier
       fleet_above_threshold? and len > 0 ->
@@ -704,6 +705,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       true ->
         state.pipeline_count
     end
+    |> dbg()
   end
 
   defp validate_user_pass(changeset) do
