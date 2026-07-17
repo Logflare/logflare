@@ -12,13 +12,13 @@ defmodule Logflare.Backends.BufferProducer do
   require Logger
 
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.LogEvent
   alias Logflare.Sources
 
   @type standard_state :: %{
           consolidated: boolean(),
           id_passing: boolean(),
-          id_passing_metadata: boolean(),
           demand: non_neg_integer(),
           source_id: pos_integer() | nil,
           source_token: atom() | nil,
@@ -44,7 +44,6 @@ defmodule Logflare.Backends.BufferProducer do
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
   @default_interval 1_000
-  @max_avg_before_pop 100
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
@@ -95,11 +94,11 @@ defmodule Logflare.Backends.BufferProducer do
   @spec init_standard_state(keyword(), pos_integer()) :: state()
   defp init_standard_state(opts, interval) do
     source = Sources.Cache.get_by_id(opts[:source_id])
+    id_passing = Keyword.get(opts, :id_passing, false)
 
     state = %{
       consolidated: false,
-      id_passing: Keyword.get(opts, :id_passing, false),
-      id_passing_metadata: Keyword.get(opts, :id_passing_metadata, false),
+      id_passing: id_passing,
       demand: 0,
       source_id: opts[:source_id],
       source_token: source.token,
@@ -120,13 +119,11 @@ defmodule Logflare.Backends.BufferProducer do
   @spec init_consolidated_state(pos_integer(), pos_integer(), keyword()) :: state()
   defp init_consolidated_state(backend_id, interval, opts) do
     id_passing = Keyword.get(opts, :id_passing, false)
-    id_passing_metadata = Keyword.get(opts, :id_passing_metadata, false)
 
     state = %{
       consolidated: true,
       demand: 0,
       id_passing: id_passing,
-      id_passing_metadata: id_passing_metadata,
       source_id: nil,
       source_token: nil,
       backend_id: backend_id,
@@ -138,10 +135,6 @@ defmodule Logflare.Backends.BufferProducer do
     startup_table_key = {:consolidated, backend_id, nil}
     IngestEventQueue.upsert_tid(table_key)
     IngestEventQueue.move(startup_table_key, table_key)
-
-    if id_passing do
-      IngestEventQueue.reset_processing_to_pending(table_key)
-    end
 
     schedule(state, Keyword.get(opts, :scale, false))
 
@@ -310,118 +303,84 @@ defmodule Logflare.Backends.BufferProducer do
     {events, %{state | demand: new_demand}}
   end
 
+  # Every producer services its own queue first — a producer that's over
+  # max_queue_size (the reason anything lands in startup at all) needs to clear its
+  # own dedicated backlog to become round-robin-eligible again, and splitting its
+  # attention with the shared startup queue instead only delays that. The shared
+  # startup queue is only pulled from to top off whatever demand the producer's own
+  # queue couldn't satisfy — a brand-new producer's own queue is empty anyway, so it
+  # falls through to startup immediately regardless; an already-loaded producer just
+  # keeps grinding its own queue down instead of competing for the shared one.
   @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [
-          LogEvent.t()
-          | {term(), :ets.tid(), non_neg_integer()}
-          | {term(), :ets.tid(), non_neg_integer(), LogEvent.TypeDetection.event_type(),
-             integer(), :fresh | :stale}
+          LogEvent.t() | LogEventPointer.t()
         ]
-  defp do_fetch(
-         %{consolidated: true, id_passing: true, id_passing_metadata: true, backend_id: bid},
-         n
-       ) do
-    key = {:consolidated, bid, self()}
-
-    case IngestEventQueue.take_pending_ids_with_metadata(key, n) do
-      {:error, :not_initialized} ->
-        []
-
-      {:ok, [], _tid} ->
-        []
-
-      {:ok, metadata, tid} ->
-        Enum.map(metadata, fn {id, size, event_type, day_bucket, freshness} ->
-          {id, tid, size, event_type, day_bucket, freshness}
-        end)
-    end
-  end
-
-  defp do_fetch(%{consolidated: true, id_passing: true, backend_id: bid} = _state, n) do
-    key = {:consolidated, bid, self()}
-
-    case IngestEventQueue.take_pending_ids(key, n) do
-      {:error, :not_initialized} -> []
-      {:ok, [], _tid} -> []
-      {:ok, id_size_pairs, tid} -> Enum.map(id_size_pairs, fn {id, size} -> {id, tid, size} end)
-    end
+  defp do_fetch(%{consolidated: true, id_passing: true, backend_id: bid}, n) do
+    own_key = {:consolidated, bid, self()}
+    startup_key = {:consolidated, bid, nil}
+    fetch_own_first(own_key, startup_key, n, &fetch_pointers/2)
   end
 
   defp do_fetch(%{consolidated: true, backend_id: bid} = _state, n) do
-    key = {:consolidated, bid, self()}
-
-    do_pop_key(key, n)
+    own_key = {:consolidated, bid, self()}
+    startup_key = {:consolidated, bid, nil}
+    fetch_own_first(own_key, startup_key, n, &do_pop_key/2)
   end
 
   defp do_fetch(%{spool_producer: true} = _state, n) do
-    key = {:spool_producer, nil, self()}
-
-    case IngestEventQueue.take_pending_ids(key, n) do
-      {:error, :not_initialized} ->
-        Logger.warning("IngestEventQueue not initialized for spool_producer")
-        []
-
-      {:ok, [], _tid} ->
-        []
-
-      {:ok, id_size_pairs, tid} ->
-        Enum.map(id_size_pairs, fn {id, size} -> {id, tid, size} end)
-    end
+    own_key = {:spool_producer, nil, self()}
+    startup_key = {:spool_producer, nil, nil}
+    fetch_own_first(own_key, startup_key, n, &fetch_pointers/2)
   end
 
   defp do_fetch(
-         %{source_id: sid, backend_id: bid, source_token: source_token, id_passing: id_passing} =
-           _state,
+         %{source_id: sid, backend_id: bid, id_passing: id_passing} = _state,
          n
        ) do
-    key = {sid, bid, self()}
+    own_key = {sid, bid, self()}
+    startup_key = {sid, bid, nil}
 
-    Sources.get_source_metrics_for_ingest(source_token)
-    |> case do
-      %{avg: avg} when avg > @max_avg_before_pop and not id_passing -> do_pop_key(key, n)
-      _ -> do_take_key(key, n, id_passing)
+    if id_passing do
+      fetch_own_first(own_key, startup_key, n, &fetch_pointers/2)
+    else
+      fetch_own_first(own_key, startup_key, n, &do_pop_key/2)
     end
   end
 
-  @spec do_take_key(key :: table_key(), count :: non_neg_integer(), id_passing :: boolean()) ::
-          [LogEvent.t()] | [{term(), :ets.tid(), non_neg_integer()}]
-  defp do_take_key({sid, bid, _pid} = key, n, true) do
-    case IngestEventQueue.take_pending_ids(key, n) do
-      {:error, :not_initialized} ->
-        Logger.warning(
-          "IngestEventQueue not initialized, could not fetch events. source_id: #{sid}",
-          backend_id: bid
-        )
+  # The startup key can be claimed from by more than one live producer at once, so
+  # every fetch function passed here must resolve via an atomic claim primitive
+  # (:ets.take-gated) — see do_pop_key/2 and fetch_pointers/2, the only two in use.
+  @spec fetch_own_first(
+          own_key :: table_key(),
+          startup_key :: table_key(),
+          n :: non_neg_integer(),
+          fetch_fn :: (table_key(), non_neg_integer() -> [term()])
+        ) :: [term()]
+  defp fetch_own_first(own_key, startup_key, n, fetch_fn) do
+    own_events = fetch_fn.(own_key, n)
+    remaining = n - length(own_events)
 
-        []
-
-      {:ok, [], _tid} ->
-        []
-
-      {:ok, id_size_pairs, tid} ->
-        Enum.map(id_size_pairs, fn {id, size} -> {id, tid, size} end)
+    if remaining > 0 do
+      own_events ++ fetch_fn.(startup_key, remaining)
+    else
+      own_events
     end
   end
 
-  defp do_take_key({sid, bid, _pid} = key, n, false) do
-    case IngestEventQueue.take_pending(key, n) do
-      {:error, :not_initialized} ->
-        Logger.warning(
-          "IngestEventQueue not initialized, could not fetch events. source_id: #{sid}",
-          backend_id: bid
-        )
-
-        []
-
-      {:ok, []} ->
-        []
-
-      {:ok, events} ->
-        {:ok, _} = IngestEventQueue.mark_ingested(key, events)
-
-        events
+  defp fetch_pointers(key, n) do
+    case IngestEventQueue.pop_pending_pointers(key, n) do
+      {:error, :not_initialized} -> []
+      {:ok, pointers, _tid} -> pointers
     end
   end
 
+  # Only fetch primitive for non-id-passing producers now — pop_pending atomically
+  # resolves both the pointer row and the generation-store event in one step, so it's
+  # safe against the startup key's multiple concurrent readers (see fetch_own_first/4).
+  # Doesn't record into the recent-events cache: none of the non-id-passing adaptors
+  # (webhook, syslog, http_based, postgres, s3) need deferred "recent logs" visibility
+  # the way BigQuery's ack does, and pop_pending has already deleted the
+  # generation-store row as part of claiming anyway, so there'd be nothing left to defer
+  # deleting even if they did.
   @spec do_pop_key(key :: table_key(), count :: non_neg_integer()) :: [
           LogEvent.t()
         ]
@@ -436,8 +395,9 @@ defmodule Logflare.Backends.BufferProducer do
         []
 
       {:ok, events} ->
-        events
-        |> Enum.map(fn %LogEvent{} = e -> %{e | is_popped: true} end)
+        Enum.map(events, fn %LogEvent{} = e ->
+          %{e | is_popped: true}
+        end)
     end
   end
 end

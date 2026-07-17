@@ -1108,6 +1108,106 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "resolve_pipeline_count/2" do
+    test "scales up when every queue is above the scaling threshold" do
+      state = %{pipeline_count: 3, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 16_000},
+        {{:consolidated, 1, self()}, 16_000},
+        {{:consolidated, 1, self()}, 16_000}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 4
+    end
+
+    test "does not scale up when only one queue is over threshold and the rest are idle" do
+      state = %{pipeline_count: 4, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 40_000},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 4
+    end
+
+    test "does not scale up on a single outlier even when it drags the fleet average over threshold" do
+      state = %{pipeline_count: 2, last_count_decrease: nil}
+
+      # [30_000, 0] averages to exactly @scaling_threshold despite one queue being
+      # completely idle — averaging alone would incorrectly scale up here.
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 30_000},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 2
+    end
+
+    test "scales up when the startup queue has events, regardless of the average" do
+      state = %{pipeline_count: 2, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 500},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
+    end
+
+    test "scales down when every queue is well below threshold and enough time has passed" do
+      state = %{
+        pipeline_count: 3,
+        last_count_decrease: NaiveDateTime.utc_now() |> NaiveDateTime.add(-60)
+      }
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 2
+    end
+
+    test "does not scale down again within 30 seconds of the last decrease" do
+      state = %{pipeline_count: 3, last_count_decrease: NaiveDateTime.utc_now()}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
+    end
+
+    test "holds steady when nothing warrants scaling up or down" do
+      state = %{pipeline_count: 3, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 2_000},
+        {{:consolidated, 1, self()}, 2_000},
+        {{:consolidated, 1, self()}, 2_000}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
+    end
+
+    test "handles an empty lens list without dividing by zero" do
+      state = %{pipeline_count: 1, last_count_decrease: nil}
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, []) == 1
+    end
+  end
+
   defp modify_backend_with_long_token(%Backend{} = backend) do
     long_token = random_string(200)
 
