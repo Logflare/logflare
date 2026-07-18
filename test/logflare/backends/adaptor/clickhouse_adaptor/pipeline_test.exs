@@ -79,10 +79,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
   # Builds a message in the format produced by handle_message/3, for use in
   # handle_batch/4 and ack/3 tests.
-  defp batch_message(event, gen_tid, backend_id, queue_tid \\ nil) do
+  defp batch_message(event, gen_tid, backend_id, queue_tid \\ nil, in_flight_ref \\ nil) do
     %Message{
       data: pointer_for(event, gen_tid, queue_tid),
-      acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id}}
+      acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id, in_flight_ref: in_flight_ref}}
     }
   end
 
@@ -659,6 +659,40 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   describe "ack/3" do
     test "returns :ok when both lists are empty" do
       assert Pipeline.ack(:ack_ref, [], []) == :ok
+    end
+
+    test "decrements each producer's atomics ref across successful and failed messages", %{
+      source: source,
+      backend: backend
+    } do
+      ref_a = :atomics.new(1, signed: true)
+      ref_b = :atomics.new(1, signed: true)
+      :atomics.put(ref_a, 1, 2)
+      :atomics.put(ref_b, 1, 1)
+
+      successful_event = build(:log_event, source: source)
+
+      failed_event_a =
+        build(:log_event, source: source) |> Map.put(:retries, Pipeline.max_retries())
+
+      failed_event_b =
+        build(:log_event, source: source) |> Map.put(:retries, Pipeline.max_retries())
+
+      gen_tid = setup_generation_events([successful_event, failed_event_a, failed_event_b])
+
+      successful = [batch_message(successful_event, gen_tid, backend.id, nil, ref_a)]
+
+      failed = [
+        batch_message(failed_event_a, gen_tid, backend.id, nil, ref_a)
+        |> Message.failed(:insert_failed),
+        batch_message(failed_event_b, gen_tid, backend.id, nil, ref_b)
+        |> Message.failed(:insert_failed)
+      ]
+
+      capture_log(fn -> assert :ok = Pipeline.ack(:ack_ref, successful, failed) end)
+
+      assert :atomics.get(ref_a, 1) == 0
+      assert :atomics.get(ref_b, 1) == 0
     end
 
     test "deletes the event from the generation store for successful messages, without recording it into the recent-events cache",

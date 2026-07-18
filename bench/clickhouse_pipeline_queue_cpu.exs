@@ -4,7 +4,7 @@
 # intentionally omits:
 #
 #   old queue path: add_to_table -> pop_pending -> encode_batch -> gzip
-#   id queue path:  add_to_table -> take_pending_ids -> routing lookup ->
+#   id queue path:  add_to_table -> pop_pending_pointers -> routing lookup ->
 #                   per-row ETS lookup -> stream deflate -> delete_id ack
 #
 # It still avoids ClickHouse/network I/O so the result is focused on local CPU,
@@ -54,15 +54,17 @@ inputs =
         "(#{Float.round(encoded_bytes / batch_size, 1)} bytes/event)"
     )
 
-    {label,
-     %{
-       events: events,
-       type: type,
-       compiled: compiled,
-       config_id: config_id,
-       queue_key: queue_key,
-       queue_tid: queue_tid
-     }}
+    input = %{
+      events: events,
+      type: type,
+      compiled: compiled,
+      config_id: config_id,
+      queue_key: queue_key,
+      queue_tid: queue_tid
+    }
+
+    :ok = Data.validate_scenarios!(input)
+    {label, input}
   end
 
 IO.puts("")
