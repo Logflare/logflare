@@ -27,9 +27,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       end
     end)
 
-    Process.sleep(200)
-
-    assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+    TestUtils.retry_assert(fn ->
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+    end)
 
     context = %{backend_id: backend.id}
 
@@ -242,15 +242,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert_same_messages(result, messages)
 
-      Process.sleep(200)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      assert {:ok, {[%{"count" => 2}], _bytes}} =
-               ClickHouseAdaptor.execute_ch_query(
-                 backend,
-                 "SELECT count(*) as count FROM #{table_name}"
-               )
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[%{"count" => 2}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT count(*) as count FROM #{table_name}"
+                 )
+      end)
     end
 
     test "handles empty messages list", %{context: context} do
@@ -345,17 +345,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
       assert_same_messages(result, messages)
 
-      Process.sleep(200)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, {query_result, _bytes}} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT event_message, timestamp FROM #{table_name} ORDER BY timestamp DESC"
-        )
+      query_result =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, {query_result, _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(
+                     backend,
+                     "SELECT event_message, timestamp FROM #{table_name} ORDER BY timestamp DESC"
+                   )
 
-      assert length(query_result) == 2
+          assert length(query_result) == 2
+          query_result
+        end)
 
       [first_row, second_row] = query_result
 
@@ -396,15 +398,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert_same_messages(result, messages)
 
-      Process.sleep(200)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      assert {:ok, {[%{"count" => 3}], _bytes}} =
-               ClickHouseAdaptor.execute_ch_query(
-                 backend,
-                 "SELECT count(*) as count FROM #{table_name}"
-               )
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[%{"count" => 3}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT count(*) as count FROM #{table_name}"
+                 )
+      end)
     end
 
     test "routes metric events to metrics table", %{
@@ -430,15 +432,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert_same_messages(result, messages)
 
-      Process.sleep(200)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
-      assert {:ok, {[%{"count" => 1}], _bytes}} =
-               ClickHouseAdaptor.execute_ch_query(
-                 backend,
-                 "SELECT count(*) as count FROM #{table_name}"
-               )
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[%{"count" => 1}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT count(*) as count FROM #{table_name}"
+                 )
+      end)
     end
 
     test "routes trace events to traces table", %{
@@ -463,15 +465,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert_same_messages(result, messages)
 
-      Process.sleep(200)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
-      assert {:ok, {[%{"count" => 1}], _bytes}} =
-               ClickHouseAdaptor.execute_ch_query(
-                 backend,
-                 "SELECT count(*) as count FROM #{table_name}"
-               )
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[%{"count" => 1}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT count(*) as count FROM #{table_name}"
+                 )
+      end)
     end
 
     test "inserts logs with all scalar fields readable via SELECT", %{
@@ -499,23 +501,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
       assert_same_messages(result, messages)
 
-      Process.sleep(200)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, {[row], _bytes}} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          """
-          SELECT
-            id, source_uuid, source_name, project, trace_id, span_id, trace_flags,
-            severity_text, severity_number, service_name, event_message,
-            scope_name, scope_version, scope_schema_url, resource_schema_url,
-            resource_attributes, scope_attributes, log_attributes, timestamp
-          FROM #{table_name}
-          LIMIT 1
-          """
-        )
+      row =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, {[row], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(
+                     backend,
+                     """
+                     SELECT
+                       id, source_uuid, source_name, project, trace_id, span_id, trace_flags,
+                       severity_text, severity_number, service_name, event_message,
+                       scope_name, scope_version, scope_schema_url, resource_schema_url,
+                       resource_attributes, scope_attributes, log_attributes, timestamp
+                     FROM #{table_name}
+                     LIMIT 1
+                     """
+                   )
+
+          row
+        end)
 
       assert row["id"] != nil
       assert is_binary(row["source_uuid"])
@@ -564,28 +569,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
       assert_same_messages(result, messages)
 
-      Process.sleep(200)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
-      {:ok, {[row], _bytes}} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          """
-          SELECT
-            id, source_uuid, source_name, project, time_unix, start_time_unix,
-            metric_name, metric_description, metric_unit, metric_type,
-            service_name, event_message, scope_name, scope_version,
-            scope_schema_url, resource_schema_url,
-            resource_attributes, scope_attributes, attributes,
-            aggregation_temporality, is_monotonic, flags,
-            value, count, sum, min, max,
-            scale, zero_count, positive_offset, negative_offset,
-            timestamp
-          FROM #{table_name}
-          LIMIT 1
-          """
-        )
+      row =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, {[row], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(
+                     backend,
+                     """
+                     SELECT
+                       id, source_uuid, source_name, project, time_unix, start_time_unix,
+                       metric_name, metric_description, metric_unit, metric_type,
+                       service_name, event_message, scope_name, scope_version,
+                       scope_schema_url, resource_schema_url,
+                       resource_attributes, scope_attributes, attributes,
+                       aggregation_temporality, is_monotonic, flags,
+                       value, count, sum, min, max,
+                       scale, zero_count, positive_offset, negative_offset,
+                       timestamp
+                     FROM #{table_name}
+                     LIMIT 1
+                     """
+                   )
+
+          row
+        end)
 
       assert row["id"] != nil
       assert is_binary(row["source_uuid"])
@@ -621,25 +629,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
       assert_same_messages(result, messages)
 
-      Process.sleep(200)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
-      {:ok, {[row], _bytes}} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          """
-          SELECT
-            id, source_uuid, source_name, project, timestamp,
-            trace_id, span_id, parent_span_id, trace_state,
-            span_name, span_kind, service_name, event_message,
-            duration, status_code, status_message,
-            scope_name, scope_version,
-            resource_attributes, span_attributes
-          FROM #{table_name}
-          LIMIT 1
-          """
-        )
+      row =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, {[row], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(
+                     backend,
+                     """
+                     SELECT
+                       id, source_uuid, source_name, project, timestamp,
+                       trace_id, span_id, parent_span_id, trace_state,
+                       span_name, span_kind, service_name, event_message,
+                       duration, status_code, status_message,
+                       scope_name, scope_version,
+                       resource_attributes, span_attributes
+                     FROM #{table_name}
+                     LIMIT 1
+                     """
+                   )
+
+          row
+        end)
 
       assert row["id"] != nil
       assert is_binary(row["source_uuid"])

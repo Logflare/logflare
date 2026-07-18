@@ -1855,6 +1855,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
       included_for_today = Enum.max([one_second_ago, today_start], DateTime)
       seconds_since_today_start = DateTime.diff(now, today_start, :second)
 
+      yesterday_start = DateTime.add(today_start, -1, :day)
+      yesterday_end = DateTime.add(today_start, -1, :second)
+      stale_boundary = DateTime.add(now, -Backends.max_event_age_us(), :microsecond)
+      overlap_start = Enum.max([stale_boundary, yesterday_start], DateTime)
+
+      included_for_yesterday =
+        DateTime.add(
+          overlap_start,
+          div(DateTime.diff(yesterday_end, overlap_start, :second), 2),
+          :second
+        )
+
       today_chart_period =
         cond do
           seconds_since_today_start <= 1_000 -> :second
@@ -1863,40 +1875,49 @@ defmodule LogflareWeb.Source.SearchLVTest do
         end
 
       cases = [
+        {"t:last@5m", :second, {DateTime.add(now, -1, :minute), DateTime.add(now, 30, :second)}},
         {"t:this@day", today_chart_period,
-         {included_for_today, DateTime.add(today_start, -1, :minute)}}
+         {included_for_today, DateTime.add(today_start, -1, :minute)}},
+        {"t:yesterday", :hour, {included_for_yesterday, now}}
       ]
 
-      Enum.each(cases, fn {querystring, chart_period, {included_timestamp, excluded_timestamp}} ->
-        matching_message = "included-#{System.unique_integer([:positive])}"
-        non_matching_message = "excluded-#{System.unique_integer([:positive])}"
+      cases =
+        Enum.map(cases, fn {querystring, chart_period, {included_timestamp, excluded_timestamp}} ->
+          matching_message = "included-#{System.unique_integer([:positive])}"
+          non_matching_message = "excluded-#{System.unique_integer([:positive])}"
 
-        {:ok, 2} =
-          [
-            %{
-              "event_message" => matching_message,
-              "timestamp" => included_timestamp |> DateTime.to_iso8601()
-            },
-            %{
-              "event_message" => non_matching_message,
-              "timestamp" => excluded_timestamp |> DateTime.to_iso8601()
-            }
-          ]
-          |> Backends.ingest_logs(source)
+          assert {:ok, 2} =
+                   Backends.ingest_logs(
+                     [
+                       %{
+                         "event_message" => matching_message,
+                         "timestamp" => DateTime.to_iso8601(included_timestamp)
+                       },
+                       %{
+                         "event_message" => non_matching_message,
+                         "timestamp" => DateTime.to_iso8601(excluded_timestamp)
+                       }
+                     ],
+                     source
+                   )
 
-        Enum.each(["UTC", "Singapore"], fn timezone ->
-          {:ok, view, _html} =
-            live_with_redirect(
-              conn,
-              Routes.live_path(conn, SearchLV, source.id,
-                tailing?: false,
-                tz: timezone
-              )
+          {querystring, chart_period, matching_message, non_matching_message}
+        end)
+
+      Enum.each(["UTC", "Singapore"], fn timezone ->
+        {:ok, view, _html} =
+          live_with_redirect(
+            conn,
+            Routes.live_path(conn, SearchLV, source.id,
+              tailing?: false,
+              tz: timezone
             )
+          )
 
-          %{executor_pid: search_executor_pid} = get_view_assigns(view)
-          allow_sandbox(search_executor_pid)
+        %{executor_pid: search_executor_pid} = get_view_assigns(view)
+        allow_sandbox(search_executor_pid)
 
+        Enum.each(cases, fn {querystring, chart_period, matching_message, non_matching_message} ->
           TestUtils.retry_assert(fn ->
             prev_completed_at = get_view_assigns(view)[:last_query_completed_at]
 

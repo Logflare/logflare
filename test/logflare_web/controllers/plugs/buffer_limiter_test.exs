@@ -15,6 +15,16 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     {:ok, conn: conn, source: source, table_key: table_key}
   end
 
+  defp queue_events(source, count) do
+    event = build(:log_event, source: source)
+    for id <- 1..count, do: %{event | id: {event.id, id}}
+  end
+
+  defp fill_queue(table_key, source) do
+    events = queue_events(source, Backends.max_buffer_queue_len() + 500)
+    IngestEventQueue.add_to_table(table_key, events)
+  end
+
   test "returns 429 when memory utilization is at or over 85%", %{conn: conn, source: source} do
     SystemCache
     |> stub(:memory_utilization, fn -> 0.85 end)
@@ -46,10 +56,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     source: source,
     table_key: table_key
   } do
-    for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-      le = build(:log_event, source: source)
-      IngestEventQueue.add_to_table(table_key, [le])
-    end
+    fill_queue(table_key, source)
 
     # get and cache the value
     Backends.cache_local_buffer_lens(source.id, nil)
@@ -72,11 +79,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     other_table_key = {source.id, nil, self()}
     IngestEventQueue.upsert_tid(other_table_key)
 
-    for _ <- 1..round(Backends.max_buffer_queue_len() / 2) do
-      le = build(:log_event, source: source)
-      IngestEventQueue.add_to_table(table_key, [le])
-      IngestEventQueue.add_to_table(other_table_key, [le])
-    end
+    events = queue_events(source, round(Backends.max_buffer_queue_len() / 2))
+    IngestEventQueue.add_to_table(table_key, events)
+    IngestEventQueue.add_to_table(other_table_key, events)
 
     # get and cache the value
     Backends.cache_local_buffer_lens(source.id, nil)
@@ -88,11 +93,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     assert conn.halted == false
 
-    for _ <- 1..(round(Backends.max_buffer_queue_len() / 2) + 500) do
-      le = build(:log_event, source: source)
-      IngestEventQueue.add_to_table(table_key, [le])
-      IngestEventQueue.add_to_table(other_table_key, [le])
-    end
+    events = queue_events(source, round(Backends.max_buffer_queue_len() / 2) + 500)
+    IngestEventQueue.add_to_table(table_key, events)
+    IngestEventQueue.add_to_table(other_table_key, events)
 
     # get and cache the value
     Backends.cache_local_buffer_lens(source.id, nil)
@@ -108,11 +111,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
   end
 
   test "200 if most events are ingested", %{conn: conn, source: source, table_key: table_key} do
-    for _ <- 1..(Backends.max_buffer_queue_len() - 500) do
-      le = build(:log_event, source: source)
-      IngestEventQueue.add_to_table(table_key, [le])
-      IngestEventQueue.pop_pending(table_key, 1)
-    end
+    count = Backends.max_buffer_queue_len() - 500
+    IngestEventQueue.add_to_table(table_key, queue_events(source, count))
+    IngestEventQueue.pop_pending(table_key, count)
 
     # get and cache the value
     Backends.cache_local_buffer_lens(source.id, nil)
@@ -162,10 +163,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     refute_receive {:telemetry_event, [:logflare, :ingest, :requests, :buffer_full], _, _}
 
-    for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-      le = build(:log_event, source: source)
-      IngestEventQueue.add_to_table(table_key, [le])
-    end
+    fill_queue(table_key, source)
 
     Backends.cache_local_buffer_lens(source.id, nil)
 
@@ -220,10 +218,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       table_key_webhook = {source.id, backend2.id, self()}
       IngestEventQueue.upsert_tid(table_key_webhook)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(table_key_webhook, [le])
-      end
+      fill_queue(table_key_webhook, source)
 
       table_key_bigquery = {source.id, backend1.id, self()}
       IngestEventQueue.upsert_tid(table_key_bigquery)
@@ -251,10 +246,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(table_key)
 
       # Fill up the default ingest backend
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue(table_key, source)
 
       Backends.cache_local_buffer_lens(source.id, nil)
 
@@ -275,10 +267,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       table_key = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(table_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue(table_key, source)
 
       Backends.cache_local_buffer_lens(source.id, nil)
 
@@ -299,10 +288,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       system_queue_key = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(system_queue_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(system_queue_key, [le])
-      end
+      fill_queue(system_queue_key, source)
 
       user_queue_key = {source.id, backend1.id, self()}
       IngestEventQueue.upsert_tid(user_queue_key)
@@ -341,10 +327,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       user_queue_key = {source.id, backend1.id, spawn(fn -> :ok end)}
       IngestEventQueue.upsert_tid(user_queue_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(user_queue_key, [le])
-      end
+      fill_queue(user_queue_key, source)
 
       Backends.cache_local_buffer_lens(source.id, nil)
       Backends.cache_local_buffer_lens(source.id, backend1.id)
@@ -407,10 +390,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       unlinked_queue_key = {source.id, unlinked_backend.id, self()}
       IngestEventQueue.upsert_tid(unlinked_queue_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(unlinked_queue_key, [le])
-      end
+      fill_queue(unlinked_queue_key, source)
 
       Backends.cache_local_buffer_lens(source.id, unlinked_backend.id)
 
@@ -441,20 +421,14 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       backend_queue_key = {source.id, backend.id, self()}
       IngestEventQueue.upsert_tid(backend_queue_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(backend_queue_key, [le])
-      end
+      fill_queue(backend_queue_key, source)
 
       Backends.cache_local_buffer_lens(source.id, backend.id)
 
       other_queue_key = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(other_queue_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(other_queue_key, [le])
-      end
+      fill_queue(other_queue_key, source)
 
       Backends.cache_local_buffer_lens(source.id, nil)
 
@@ -486,10 +460,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       backend_queue_key = {source.id, backend.id, self()}
       IngestEventQueue.upsert_tid(backend_queue_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(backend_queue_key, [le])
-      end
+      fill_queue(backend_queue_key, source)
 
       Backends.cache_local_buffer_lens(source.id, backend.id)
 
@@ -534,10 +505,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       clickhouse_queue_key = {source.id, clickhouse_backend.id, self()}
       IngestEventQueue.upsert_tid(clickhouse_queue_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(clickhouse_queue_key, [le])
-      end
+      fill_queue(clickhouse_queue_key, source)
 
       # Cache buffer stats for both backends
       Backends.cache_local_buffer_lens(source.id, nil)

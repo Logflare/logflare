@@ -736,8 +736,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
         )
       end
 
-      :timer.sleep(2_000)
-
       params = %{
         iso_timestamp_start:
           DateTime.utc_now() |> DateTime.add(-3, :day) |> DateTime.to_iso8601(),
@@ -746,13 +744,18 @@ defmodule LogflareWeb.EndpointsControllerTest do
         sql: "select  timestamp,  event_message, metadata from edge_logs"
       }
 
-      conn =
-        initial_conn
-        |> put_req_header("x-api-key", user.api_key)
-        |> get(~p"/endpoints/query/logs.all?#{params}")
+      {conn, timestamp} =
+        TestUtils.retry_assert(fn ->
+          conn =
+            initial_conn
+            |> put_req_header("x-api-key", user.api_key)
+            |> get(~p"/endpoints/query/logs.all?#{params}")
 
-      assert [%{"event_message" => "some message", "timestamp" => timestamp}] =
-               json_response(conn, 200)["result"]
+          assert [%{"event_message" => "some message", "timestamp" => timestamp}] =
+                   json_response(conn, 200)["result"]
+
+          {conn, timestamp}
+        end)
 
       # render as unix microsecond
       assert inspect(timestamp) |> String.length() == 16

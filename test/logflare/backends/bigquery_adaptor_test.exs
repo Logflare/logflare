@@ -36,7 +36,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         assert_receive :streamed, 2500
       end)
 
-      :timer.sleep(1000)
+      assert_buffers_empty(source.id)
     end
 
     test "does not use LF managed BQ if legacy user BQ config is set" do
@@ -64,7 +64,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         assert_receive :ok, 2500
       end)
 
-      :timer.sleep(1000)
+      assert_buffers_empty(source.id)
     end
 
     test "can query with parameters" do
@@ -78,10 +78,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
         {:ok, TestUtils.gen_bq_response([%{"test" => value}])}
       end)
-
-      user = insert(:user)
-      source = insert(:source, user: user)
-      start_supervised!({SourceSup, source})
 
       assert {:ok, %QueryResult{rows: [%{"test" => "input_data"}]}} =
                BigQueryAdaptor.execute_query(
@@ -102,10 +98,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
         {:ok, TestUtils.gen_bq_response([%{"test" => "1"}])}
       end)
-
-      user = insert(:user)
-      source = insert(:source, user: user)
-      start_supervised!({SourceSup, source})
 
       assert {:ok, %QueryResult{rows: [%{"test" => "1"}]}} =
                BigQueryAdaptor.execute_query(backend, "SELECT 1", [])
@@ -146,7 +138,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
       assert_receive :streamed, 2500
-      :timer.sleep(1000)
+      assert_buffers_empty(source.id)
     end
 
     test "update table", %{source: source} do
@@ -174,7 +166,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
       assert_receive :patched, 2500
-      :timer.sleep(1000)
+      assert_buffers_empty(source.id)
     end
 
     test "bug: invalid json encode update table", %{
@@ -209,25 +201,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       assert {:ok, %{len: 1}} = Backends.cache_local_buffer_lens(source_id, nil)
       assert {:ok, %{len: 1}} = Backends.cache_local_buffer_lens(source_id, backend_id)
-      :timer.sleep(2000)
 
       TestUtils.retry_assert(fn ->
         assert_receive ^ref
       end)
 
-      {:ok, %{queues: queues}} = Backends.cache_local_buffer_lens(source_id, nil)
-
-      assert Enum.find_value(queues, fn
-               {{^source_id, nil, nil}, count} -> count
-               _ -> nil
-             end) == 0
-
-      {:ok, %{queues: queues}} = Backends.cache_local_buffer_lens(source_id, backend_id)
-
-      assert Enum.find_value(queues, fn
-               {{^source_id, ^backend_id, nil}, count} -> count
-               _ -> nil
-             end) == 0
+      assert_buffers_empty(source_id, backend_id)
     end
   end
 
@@ -330,8 +309,18 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         assert_receive :ok, 2500
       end)
 
-      :timer.sleep(1000)
+      assert_buffers_empty(source.id)
     end
+  end
+
+  defp assert_buffers_empty(source_id, backend_id \\ nil) do
+    TestUtils.retry_assert(fn ->
+      assert {:ok, %{len: 0}} = Backends.cache_local_buffer_lens(source_id)
+
+      if backend_id do
+        assert {:ok, %{len: 0}} = Backends.cache_local_buffer_lens(source_id, backend_id)
+      end
+    end)
   end
 
   describe "bq storage api benchmark" do
