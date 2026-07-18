@@ -11,6 +11,12 @@ defmodule LogflareWeb.ConnCase do
   it cannot be async. For this reason, every test runs
   inside a transaction which is reset at the beginning
   of the test unless the test case is marked as async.
+
+  The HTTP request helpers imported from this module (`get/3`, `post/3`, and
+  the other verbs) dispatch through `dispatch_and_assert_open_api_response/5`.
+  Responses from documented `/api` routes are therefore checked against their
+  OpenAPI operation and documented status. Tests that intentionally need to
+  bypass this validation can call `Phoenix.ConnTest.dispatch/5` directly.
   """
 
   @session Plug.Session.init(
@@ -128,6 +134,7 @@ defmodule LogflareWeb.ConnCase do
     Plug.Conn.put_req_header(conn, "authorization", "Bearer #{access_token.token}")
   end
 
+  # Preserve Phoenix.ConnTest's request helpers while adding OpenAPI response validation.
   for method <- @http_methods do
     defmacro unquote(method)(conn, path_or_action, params_or_body \\ nil) do
       method = unquote(method)

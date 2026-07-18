@@ -3,16 +3,16 @@ defmodule LogflareWeb.Api.RuleController do
   use OpenApiSpex.ControllerSpecs
 
   alias Logflare.Backends
-  alias Logflare.Sources
   alias Logflare.Rules
+  alias Logflare.Sources
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApi.UnprocessableEntity
   alias LogflareWeb.OpenApiSchemas.RuleApiSchema
-  alias LogflareWeb.OpenApiSchemas.RuleParams
   alias LogflareWeb.OpenApiSchemas.RuleBatchResponse
   alias LogflareWeb.OpenApiSchemas.RuleCreateResponse
+  alias LogflareWeb.OpenApiSchemas.RuleParams
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
