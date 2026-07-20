@@ -621,7 +621,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
     # other to lazily create the generation (see IngestEventQueue.current_generation_tid/1)
 
-    
     # IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
     IngestEventQueue.current_generation_tid({:consolidated, backend.id})
 
@@ -652,7 +651,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-# produce fewer, larger batches for ClickHouse efficiency
+  # produce fewer, larger batches for ClickHouse efficiency
   #
   # Exposed (not private) so it can be unit tested directly, same convention as
   # Backends.handle_resolve_count/3 (BigQuery's counterpart).
