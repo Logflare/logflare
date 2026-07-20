@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup, as: NativePoolSup
@@ -1391,6 +1392,110 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
              "Connection pool PID should be reused across concurrent queries"
 
       assert ConnectionManager.pool_active?(backend)
+    end
+  end
+
+  describe "resolve_pipeline_count/3" do
+    test "scales up when startup contains a complete batch-key group" do
+      state = %{pipeline_count: 3, last_count_decrease: nil}
+      batch_size = Pipeline.max_batch_size()
+
+      lens = [
+        {{:consolidated, 1, nil}, batch_size},
+        {{:consolidated, 1, self()}, batch_size},
+        {{:consolidated, 1, self()}, batch_size},
+        {{:consolidated, 1, self()}, batch_size}
+      ]
+
+      counts = %{{:fresh, :log, 20_594} => batch_size}
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, counts) == 4
+    end
+
+    test "does not scale up when only one queue is over threshold and the rest are idle" do
+      state = %{pipeline_count: 4, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 40_000},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 4
+    end
+
+    test "does not scale up on a single outlier even when it drags the fleet average over threshold" do
+      state = %{pipeline_count: 2, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 30_000},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 2
+    end
+
+    test "does not scale up for a startup burst smaller than one full batch" do
+      state = %{pipeline_count: 2, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 500},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      counts = %{{:fresh, :log, 20_594} => 500}
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, counts) == 2
+    end
+
+    test "scales down when every queue is well below threshold and enough time has passed" do
+      state = %{
+        pipeline_count: 3,
+        last_count_decrease: NaiveDateTime.utc_now() |> NaiveDateTime.add(-60)
+      }
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 2
+    end
+
+    test "does not scale down again within 30 seconds of the last decrease" do
+      state = %{pipeline_count: 3, last_count_decrease: NaiveDateTime.utc_now()}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 3
+    end
+
+    test "holds steady when nothing warrants scaling up or down" do
+      state = %{pipeline_count: 3, last_count_decrease: nil}
+
+      # each queue must sit above @scaling_threshold / 10 (the scale-down cutoff) to
+      # avoid scaling down, and total pending must stay under @scaling_threshold to
+      # avoid scaling up
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 10_000},
+        {{:consolidated, 1, self()}, 10_000},
+        {{:consolidated, 1, self()}, 10_000}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 3
+    end
+
+    test "handles an empty lens list without dividing by zero" do
+      state = %{pipeline_count: 1, last_count_decrease: nil}
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, [], %{}) == 1
     end
   end
 

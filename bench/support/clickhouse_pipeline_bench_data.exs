@@ -52,10 +52,12 @@ defmodule Logflare.Bench.ClickHousePipelineData do
   @spec stream_deflate_events([LogEvent.t()], event_type(), reference(), String.t()) :: binary()
   def stream_deflate_events(events, type, compiled, config_id) do
     gzip_stream(fn z ->
-      Enum.reduce(events, [], fn event, chunks ->
+      events
+      |> Enum.reduce([], fn event, chunks ->
         mapped = map_event(event, type, compiled, config_id)
-        [chunks, :zlib.deflate(z, Ingester.encode_row(mapped, type))]
+        [:zlib.deflate(z, Ingester.encode_row(mapped, type)) | chunks]
       end)
+      |> Enum.reverse()
     end)
   end
 
@@ -65,10 +67,12 @@ defmodule Logflare.Bench.ClickHousePipelineData do
     mapping_config_id = Ingester.encode_mapping_config_id(config_id)
 
     gzip_stream(fn z ->
-      Enum.reduce(events, [], fn event, chunks ->
-        mapped = map_event(event, type, compiled, config_id)
-        [chunks, :zlib.deflate(z, Ingester.encode_row(mapped, type, mapping_config_id))]
+      events
+      |> Enum.reduce([], fn event, chunks ->
+        mapped = map_event_without_config(event, type, compiled)
+        [:zlib.deflate(z, Ingester.encode_row(mapped, type, mapping_config_id)) | chunks]
       end)
+      |> Enum.reverse()
     end)
   end
 
@@ -79,7 +83,7 @@ defmodule Logflare.Bench.ClickHousePipelineData do
 
     gzip_stream_chunked(events, fn event ->
       event
-      |> map_event(type, compiled, config_id)
+      |> map_event_without_config(type, compiled)
       |> Ingester.encode_row(type, mapping_config_id)
     end)
   end
@@ -87,13 +91,9 @@ defmodule Logflare.Bench.ClickHousePipelineData do
   @spec setup_processing_ets([LogEvent.t()]) :: :ets.tid()
   def setup_processing_ets(events) do
     tid = :ets.new(:clickhouse_pipeline_bench_queue, [:set, :public, read_concurrency: true])
-    claimed_at = System.monotonic_time(:millisecond)
 
     for event <- events do
-      :ets.insert(
-        tid,
-        {event.id, :processing, event, :erlang.external_size(event.body), 1, claimed_at}
-      )
+      :ets.insert(tid, {event.id, event})
     end
 
     tid
@@ -103,16 +103,18 @@ defmodule Logflare.Bench.ClickHousePipelineData do
           binary()
   def stream_deflate_ets(id_tid_pairs, type, compiled, config_id) do
     gzip_stream(fn z ->
-      Enum.reduce(id_tid_pairs, [], fn {id, tid}, chunks ->
-        case IngestEventQueue.lookup_id(tid, id) do
-          {^id, :processing, %LogEvent{} = event, _size} ->
+      id_tid_pairs
+      |> Enum.reduce([], fn {id, tid}, chunks ->
+        case IngestEventQueue.lookup_event(tid, id) do
+          %LogEvent{event_type: ^type} = event ->
             mapped = map_event(event, type, compiled, config_id)
-            [chunks, :zlib.deflate(z, Ingester.encode_row(mapped, type))]
+            [:zlib.deflate(z, Ingester.encode_row(mapped, type)) | chunks]
 
           _ ->
             chunks
         end
       end)
+      |> Enum.reverse()
     end)
   end
 
@@ -122,16 +124,18 @@ defmodule Logflare.Bench.ClickHousePipelineData do
     mapping_config_id = Ingester.encode_mapping_config_id(config_id)
 
     gzip_stream(fn z ->
-      Enum.reduce(id_tid_pairs, [], fn {id, tid}, chunks ->
-        case IngestEventQueue.lookup_id(tid, id) do
-          {^id, :processing, %LogEvent{} = event, _size} ->
-            mapped = map_event(event, type, compiled, config_id)
-            [chunks, :zlib.deflate(z, Ingester.encode_row(mapped, type, mapping_config_id))]
+      id_tid_pairs
+      |> Enum.reduce([], fn {id, tid}, chunks ->
+        case IngestEventQueue.lookup_event(tid, id) do
+          %LogEvent{event_type: ^type} = event ->
+            mapped = map_event_without_config(event, type, compiled)
+            [:zlib.deflate(z, Ingester.encode_row(mapped, type, mapping_config_id)) | chunks]
 
           _ ->
             chunks
         end
       end)
+      |> Enum.reverse()
     end)
   end
 
@@ -141,10 +145,10 @@ defmodule Logflare.Bench.ClickHousePipelineData do
     mapping_config_id = Ingester.encode_mapping_config_id(config_id)
 
     gzip_stream_chunked(id_tid_pairs, fn {id, tid} ->
-      case IngestEventQueue.lookup_id(tid, id) do
-        {^id, :processing, %LogEvent{} = event, _size} ->
+      case IngestEventQueue.lookup_event(tid, id) do
+        %LogEvent{event_type: ^type} = event ->
           event
-          |> map_event(type, compiled, config_id)
+          |> map_event_without_config(type, compiled)
           |> Ingester.encode_row(type, mapping_config_id)
 
         _ ->
@@ -234,17 +238,17 @@ defmodule Logflare.Bench.ClickHousePipelineData do
   defp id_passing_queue_stream(key, tid, events, type, compiled, config_id, mode) do
     :ets.delete_all_objects(tid)
     :ok = IngestEventQueue.add_to_table({key, tid}, events)
-    {:ok, id_size_pairs, ^tid} = IngestEventQueue.take_pending_ids(key, length(events))
+    {:ok, pointers, ^tid} = IngestEventQueue.pop_pending_pointers(key, length(events))
 
     routed_pairs =
-      Enum.reduce(id_size_pairs, [], fn {id, _size}, acc ->
-        case IngestEventQueue.lookup_id(tid, id) do
-          {^id, :processing, %LogEvent{event_type: ^type}, _size} -> [{id, tid} | acc]
+      Enum.reduce(pointers, [], fn pointer, acc ->
+        case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
+          %LogEvent{event_type: ^type} -> [{pointer.gen_event_id, pointer.tid} | acc]
           _ -> acc
         end
       end)
 
-    compress_and_delete(routed_pairs, tid, type, compiled, config_id, mode)
+    compress_and_delete(routed_pairs, type, compiled, config_id, mode)
   end
 
   @spec id_passing_queue_stream_metadata(
@@ -259,19 +263,21 @@ defmodule Logflare.Bench.ClickHousePipelineData do
     :ets.delete_all_objects(tid)
     :ok = IngestEventQueue.add_to_table({key, tid}, events)
 
-    {:ok, metadata, ^tid} =
-      IngestEventQueue.take_pending_ids_with_metadata(key, length(events))
+    {:ok, pointers, ^tid} = IngestEventQueue.pop_pending_pointers(key, length(events))
 
     routed_pairs =
-      Enum.reduce(metadata, [], fn
-        {id, _size, ^type, _day_bucket, _freshness}, acc -> [{id, tid} | acc]
-        _other, acc -> acc
+      Enum.reduce(pointers, [], fn
+        %{event_type: ^type, tid: gen_tid, gen_event_id: gen_event_id}, acc ->
+          [{gen_event_id, gen_tid} | acc]
+
+        _other, acc ->
+          acc
       end)
 
-    compress_and_delete(routed_pairs, tid, type, compiled, config_id, :hoisted)
+    compress_and_delete(routed_pairs, type, compiled, config_id, :hoisted)
   end
 
-  defp compress_and_delete(routed_pairs, tid, type, compiled, config_id, mode) do
+  defp compress_and_delete(routed_pairs, type, compiled, config_id, mode) do
     compressed =
       case mode do
         :per_row -> stream_deflate_ets(routed_pairs, type, compiled, config_id)
@@ -279,9 +285,72 @@ defmodule Logflare.Bench.ClickHousePipelineData do
         :chunked -> stream_deflate_ets_chunked(routed_pairs, type, compiled, config_id)
       end
 
-    Enum.each(routed_pairs, fn {id, ^tid} -> IngestEventQueue.delete_id(tid, id) end)
+    Enum.each(routed_pairs, fn {id, tid} -> IngestEventQueue.delete_id(tid, id) end)
 
     compressed
+  end
+
+  @spec validate_scenario!(atom(), map()) :: :ok
+  def validate_scenario!(
+        scenario,
+        %{events: events, type: type, compiled: compiled, config_id: config_id} = input
+      ) do
+    expected = old_encode_gzip(events, type, compiled, config_id) |> :zlib.gunzip()
+    validate_scenario!(scenario, input, expected)
+  end
+
+  @spec validate_scenarios!(map()) :: :ok
+  def validate_scenarios!(
+        %{events: events, type: type, compiled: compiled, config_id: config_id} = input
+      ) do
+    expected = old_encode_gzip(events, type, compiled, config_id) |> :zlib.gunzip()
+
+    for scenario <- [
+          :stream,
+          :stream_hoisted,
+          :stream_chunked,
+          :old_queue,
+          :id_queue,
+          :id_queue_hoisted,
+          :id_queue_chunked,
+          :id_queue_metadata
+        ] do
+      validate_scenario!(scenario, input, expected)
+    end
+
+    :ok
+  end
+
+  defp validate_scenario!(scenario, input, expected)
+       when scenario in [
+              :old_queue,
+              :id_queue,
+              :id_queue_hoisted,
+              :id_queue_chunked,
+              :id_queue_metadata
+            ] do
+    %{queue_key: {:consolidated, backend_id, _pid} = queue_key} = input
+    actual_size = scenario |> run_scenario(input) |> :zlib.gunzip() |> byte_size()
+    pending = IngestEventQueue.total_pending(queue_key)
+    gen_tid = IngestEventQueue.current_generation_tid({:consolidated, backend_id})
+    generation_size = :ets.info(gen_tid, :size)
+
+    if actual_size != byte_size(expected) or pending != 0 or generation_size != 0 do
+      raise "#{scenario} failed queue benchmark validation: " <>
+              "encoded_size=#{actual_size}, pending=#{pending}, generation_size=#{generation_size}"
+    end
+
+    :ok
+  end
+
+  defp validate_scenario!(scenario, input, expected) do
+    actual = scenario |> run_scenario(input) |> :zlib.gunzip()
+
+    if actual != expected do
+      raise "#{scenario} produced different RowBinary bytes from the reference encoder"
+    end
+
+    :ok
   end
 
   @spec run_scenario(atom(), map()) :: binary()
@@ -451,14 +520,21 @@ defmodule Logflare.Bench.ClickHousePipelineData do
   end
 
   defp map_event(%LogEvent{} = event, type, compiled, config_id) do
-    mapped_body =
-      event.body
-      |> Mapper.map(compiled)
-      |> Map.put("mapping_config_id", config_id)
-      |> maybe_compute_duration(type)
-      |> resolve_severity_number(type)
+    %{
+      event
+      | body: map_body(event.body, type, compiled) |> Map.put("mapping_config_id", config_id)
+    }
+  end
 
-    %{event | body: mapped_body}
+  defp map_event_without_config(%LogEvent{} = event, type, compiled) do
+    %{event | body: map_body(event.body, type, compiled)}
+  end
+
+  defp map_body(body, type, compiled) do
+    body
+    |> Mapper.map(compiled)
+    |> maybe_compute_duration(type)
+    |> resolve_severity_number(type)
   end
 
   defp maybe_compute_duration(

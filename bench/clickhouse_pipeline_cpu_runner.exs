@@ -96,8 +96,13 @@ IO.puts("rows=#{batch_size * batches}")
 IO.puts("uncompressed_rowbinary_bytes_per_batch=#{encoded_bytes}")
 IO.puts("uncompressed_rowbinary_bytes_per_row=#{Float.round(encoded_bytes / batch_size, 2)}")
 
-for _ <- 1..warmup_batches do
-  Data.run_scenario(scenario, input) |> byte_size()
+:ok = Data.validate_scenario!(scenario, input)
+IO.puts("validation=ok")
+
+if warmup_batches > 0 do
+  for _ <- 1..warmup_batches do
+    Data.run_scenario(scenario, input) |> byte_size()
+  end
 end
 
 :erlang.garbage_collect()

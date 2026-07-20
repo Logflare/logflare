@@ -377,32 +377,38 @@ defmodule Logflare.Logs.SearchOperationsTest do
              ] = corrected.lql_ts_filters
     end
 
-    test "does not shift shorthand timestamps" do
-      querystring = "t:last@1hour"
+    test "does not shift shorthand timestamp filters" do
       schema = TestUtils.default_bq_schema()
 
-      {:ok, lql_rules} = Lql.decode(querystring, schema)
-      [timestamp_filter] = Enum.filter(lql_rules, &(&1.path == "timestamp"))
+      for {querystring, shorthand} <-
+            [
+              {"t:last@1hour", "last@1hour"},
+              {"t:this@day", "this@day"},
+              {"t:yesterday", "yesterday"}
+            ] do
+        {:ok, lql_rules} = Lql.decode(querystring, schema)
+        [timestamp_filter] = Enum.filter(lql_rules, &(&1.path == "timestamp"))
 
-      so =
-        %SO{
-          partition_by: :timestamp,
-          querystring: querystring,
-          tailing?: false,
-          chart_data_shape_id: nil,
-          lql_ts_filters: [timestamp_filter],
-          search_timezone: "Australia/Brisbane"
-        }
+        so =
+          %SO{
+            partition_by: :timestamp,
+            querystring: querystring,
+            tailing?: false,
+            chart_data_shape_id: nil,
+            lql_ts_filters: [timestamp_filter],
+            search_timezone: "Australia/Brisbane"
+          }
 
-      corrected = SearchOperations.apply_local_timestamp_correction(so)
+        corrected = SearchOperations.apply_local_timestamp_correction(so)
 
-      assert %FilterRule{
-               operator: :range,
-               shorthand: "last@1hour",
-               modifiers: %{timestamp_origin: :absolute}
-             } = timestamp_filter
+        assert %FilterRule{
+                 operator: :range,
+                 shorthand: ^shorthand,
+                 modifiers: %{timestamp_origin: :absolute}
+               } = timestamp_filter
 
-      assert corrected.lql_ts_filters == so.lql_ts_filters
+        assert corrected.lql_ts_filters == so.lql_ts_filters
+      end
     end
   end
 
