@@ -26,6 +26,15 @@
       Don't worry, you can change the name later.
     </small>
   </div>
+  <div class="form-group">
+    <%= label f, :retention_days, "Backend TTL", class: "label-padding" %>
+    <%= text_input f, :retention_days, placeholder: default_source_retention_days(@plan), class: "form-control form-control-margin" %>
+    <%= error_tag f, :retention_days %>
+    <%= error_tag f, :bigquery_table_ttl %>
+    <small class="form-text text-muted">
+      Days to keep data in the source backend. <%= link("Learn more", to: "https://docs.logflare.app/concepts/ingestion/#backend-time-to-live-ttl") %>
+    </small>
+  </div>
   <%= submit "Add source", class: "btn btn-primary form-button" %>
   <% end %>
 </div>

@@ -365,6 +365,12 @@ defmodule LogflareWeb.SourceControllerTest do
     end
 
     test "logged user can create a new source", %{conn: conn, user: user} do
+      plan = Repo.get_by!(Logflare.Billing.Plan, name: "Free")
+
+      plan
+      |> Ecto.Changeset.change(limit_source_ttl: :timer.hours(24) * 3)
+      |> Repo.update!()
+
       conn
       |> login_user(user)
       |> visit(~p"/dashboard")
@@ -372,9 +378,29 @@ defmodule LogflareWeb.SourceControllerTest do
       |> assert_path(~p"/sources/new")
       |> assert_has("h5", text: "~/logs/new")
       |> assert_has("form")
+      |> assert_has("input[name='source[retention_days]'][placeholder='3']")
       |> fill_in("Source Name", with: "MyApp.Logs")
+      |> fill_in("Backend TTL", with: "2")
       |> submit()
       |> assert_path(~p"/sources/*", query_params: %{new: true})
+
+      assert %{bigquery_table_ttl: 2} = Sources.get_by(name: "MyApp.Logs")
+    end
+
+    test "shows an error when the retention exceeds the plan limit", %{
+      conn: conn,
+      user: user
+    } do
+      conn
+      |> login_user(user)
+      |> visit(~p"/sources/new")
+      |> fill_in("Source Name", with: "MyApp.OverLimit")
+      |> fill_in("Backend TTL", with: "4")
+      |> submit()
+      |> assert_path(~p"/sources")
+      |> assert_has(".help-block", text: "ttl is over your plan limit")
+
+      refute Sources.get_by(name: "MyApp.OverLimit")
     end
 
     test "team user can create a new source", %{conn: conn, user: user} do
