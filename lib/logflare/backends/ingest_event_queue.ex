@@ -38,6 +38,11 @@ defmodule Logflare.Backends.IngestEventQueue do
   # traffic without ever being fully excluded (excluding it entirely risks dumping
   # bursts into the startup queue with no guaranteed prompt drain — see add_to_table/3).
   @max_queue_weight 5
+  @pointer_batch_key_match_spec (for freshness <- [:fresh, :stale],
+                                     event_type <- [:log, :metric, :trace] do
+                                   {{:_, :_, :_, :_, :_, event_type, :"$1", freshness},
+                                    [{:is_integer, :"$1"}], [{{freshness, event_type, :"$1"}}]}
+                                 end)
 
   @type source_backend :: {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil}
   @type source_backend_pid ::
@@ -49,6 +54,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   @type consolidated_table_key :: {:consolidated, pos_integer(), pid() | nil}
   @type spool_producer_queues_key :: {:spool_producer, nil}
   @type spool_producer_table_key :: {:spool_producer, nil, pid() | nil}
+  @type pointer_batch_key ::
+          {:fresh | :stale, LogEvent.TypeDetection.event_type(), integer()}
 
   defguardp is_pid_or_nil(value) when is_pid(value) or is_nil(value)
 
@@ -522,13 +529,13 @@ defmodule Logflare.Backends.IngestEventQueue do
     chunk_size = Keyword.get(opts, :chunk_size, 100)
     startup_queue = {:spool_producer, nil, nil}
 
-    reducer = fn
-      {{:spool_producer, nil, nil}, _}, acc -> acc
-      {obj, _count}, acc -> [obj | acc]
+    eligible? = fn
+      {{:spool_producer, nil, nil}, _} -> false
+      _ -> true
     end
 
     with all = [_ | _] <- list_counts_with_tids(key),
-         available_queues = [_ | _] <- Enum.reduce(all, [], reducer) do
+         available_queues = [_ | _] <- targets_by_load(all, eligible?) do
       Logflare.Utils.chunked_round_robin(
         batch,
         available_queues,
@@ -607,23 +614,22 @@ defmodule Logflare.Backends.IngestEventQueue do
     check_queue_size = Keyword.get(opts, :check_queue_size, true)
     startup_queue = {sid, bid, nil}
 
-    reducer =
+    eligible? =
       if check_queue_size do
         fn
-          {{_, _, nil}, _}, acc -> acc
-          {_obj, count}, acc when count >= @max_queue_size -> acc
-          {obj, _count}, acc -> [obj | acc]
+          {{_, _, nil}, _} -> false
+          {_obj, count} -> count < @max_queue_size
         end
       else
         fn
-          {{_, _, nil}, _}, acc -> acc
-          {obj, _count}, acc -> [obj | acc]
+          {{_, _, nil}, _} -> false
+          _ -> true
         end
       end
 
     if no_get_tid do
       with all = [_ | _] <- list_counts_with_tids(sid_bid),
-           available_queues = [_ | _] <- Enum.reduce(all, [], reducer) do
+           available_queues = [_ | _] <- targets_by_load(all, eligible?) do
         Logflare.Utils.chunked_round_robin(
           batch,
           available_queues,
@@ -720,6 +726,17 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp add_to_target_table(chunk, target), do: add_to_table(target, chunk)
 
+  @spec targets_by_load(
+          [{term(), non_neg_integer()}],
+          ({term(), non_neg_integer()} -> boolean())
+        ) :: [term()]
+  defp targets_by_load(entries, eligible?) do
+    entries
+    |> Enum.filter(eligible?)
+    |> Enum.sort_by(&elem(&1, 1), :asc)
+    |> Enum.map(&elem(&1, 0))
+  end
+
   # Expands `entries` (already filtered down to eligible, non-startup, non-hard-capped
   # queues) into a weighted target list for chunked_round_robin/4 — a queue appears
   # more than once per cycle to get more than one chunk_size-sized share. Weight is
@@ -734,18 +751,19 @@ defmodule Logflare.Backends.IngestEventQueue do
   # amplify a merely-noisy difference (e.g. 990 vs. 1010) up to the full weight range
   # just as readily as a genuinely clogged queue.
   @spec weight_by_load([{term(), non_neg_integer()}], non_neg_integer()) :: [term()]
-  defp weight_by_load(entries, noise_floor) do
-    counts = Enum.map(entries, &elem(&1, 1))
-    max_count = Enum.max(counts)
-    min_count = Enum.min(counts)
+  defp weight_by_load([{_, first_count} | rest] = entries, noise_floor) do
+    {min_count, max_count} =
+      Enum.reduce(rest, {first_count, first_count}, fn {_, count}, {min_count, max_count} ->
+        {min(min_count, count), max(max_count, count)}
+      end)
+
     spread = max_count - min_count
+    entries = Enum.sort_by(entries, &elem(&1, 1), :asc)
 
     if spread <= noise_floor do
       Enum.map(entries, &elem(&1, 0))
     else
-      entries
-      |> Enum.sort_by(&elem(&1, 1), :asc)
-      |> Enum.flat_map(fn {obj, count} ->
+      Enum.flat_map(entries, fn {obj, count} ->
         weight = 1 + round((max_count - count) / spread * (@max_queue_weight - 1))
         List.duplicate(obj, weight)
       end)
@@ -860,7 +878,6 @@ defmodule Logflare.Backends.IngestEventQueue do
         is_integer(size) do
       {table_key, size}
     end
-    |> Enum.sort_by(&elem(&1, 1), :desc)
   end
 
   @doc """
@@ -940,6 +957,68 @@ defmodule Logflare.Backends.IngestEventQueue do
        [{{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7", :"$8"}}]}
     ]
 
+    pop_selected_pointers(sid_bid_pid, n, ms)
+  end
+
+  @doc """
+  Counts pending pointers in one queue by the exact Broadway batch identity used by
+  the ClickHouse pipeline: `{ingest_freshness, event_type, day_bucket}`.
+
+  This scans pointer metadata only; full events remain in the generation store.
+  """
+  @spec pending_batch_key_counts(
+          source_backend_pid()
+          | spool_producer_table_key()
+          | consolidated_table_key()
+        ) :: %{optional(pointer_batch_key()) => non_neg_integer()}
+  def pending_batch_key_counts(sid_bid_pid) do
+    case get_tid(sid_bid_pid) do
+      nil ->
+        %{}
+
+      tid ->
+        tid
+        |> :ets.select(@pointer_batch_key_match_spec)
+        |> Enum.frequencies()
+    end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      %{}
+  end
+
+  @doc """
+  Atomically claims up to `n` pointers for one ClickHouse batch key.
+
+  As with `pop_pending_pointers/2`, the select is only a candidate snapshot. Each
+  pointer is returned only when the following `:ets.take/2` wins its claim.
+  """
+  @spec pop_pending_pointers_by_batch_key(
+          source_backend_pid() | spool_producer_table_key() | consolidated_table_key(),
+          pointer_batch_key(),
+          non_neg_integer()
+        ) ::
+          {:ok, [LogEventPointer.t()], :ets.tid() | nil} | {:error, :not_initialized}
+  def pop_pending_pointers_by_batch_key(_sid_bid_pid, _batch_key, 0),
+    do: {:ok, [], nil}
+
+  def pop_pending_pointers_by_batch_key(
+        sid_bid_pid,
+        {freshness, event_type, day_bucket},
+        n
+      )
+      when freshness in [:fresh, :stale] and
+             event_type in [:log, :metric, :trace] and is_integer(day_bucket) and
+             is_integer(n) and n > 0 do
+    ms = [
+      {{:"$1", :"$2", :"$3", :"$4", :"$5", event_type, day_bucket, freshness}, [],
+       [{{:"$1", :"$2", :"$3", :"$4", :"$5", event_type, day_bucket, freshness}}]}
+    ]
+
+    pop_selected_pointers(sid_bid_pid, n, ms)
+  end
+
+  defp pop_selected_pointers(sid_bid_pid, n, ms) do
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {selected, _cont} <- :ets.select(tid, ms, n) do
       confirmed =

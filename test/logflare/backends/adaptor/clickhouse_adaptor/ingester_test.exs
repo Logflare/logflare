@@ -85,6 +85,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert binary =~ "custom_field"
       assert binary =~ "custom_value"
     end
+
+    test "encodes a batch-constant mapping config without storing it in every body" do
+      event = build_mapped_log_event(message: "test message")
+      config_id = Ingester.encode_mapping_config_id(event.body["mapping_config_id"])
+      event_without_config = %{event | body: Map.delete(event.body, "mapping_config_id")}
+
+      assert IO.iodata_to_binary(Ingester.encode_row(event, :log)) ==
+               IO.iodata_to_binary(Ingester.encode_row(event_without_config, :log, config_id))
+    end
   end
 
   describe "encode_row/2 for metrics" do
@@ -94,6 +103,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       encoded = Ingester.encode_row(event, :metric)
       assert is_list(encoded)
       assert IO.iodata_length(encoded) > 0
+    end
+
+    test "encodes a batch-constant mapping config without storing it in every body" do
+      event = build_mapped_metric_event()
+      config_id = Ingester.encode_mapping_config_id(event.body["mapping_config_id"])
+      event_without_config = %{event | body: Map.delete(event.body, "mapping_config_id")}
+
+      assert IO.iodata_to_binary(Ingester.encode_row(event, :metric)) ==
+               IO.iodata_to_binary(Ingester.encode_row(event_without_config, :metric, config_id))
     end
 
     test "includes metric fields in encoded output" do
@@ -123,6 +141,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       encoded = Ingester.encode_row(event, :trace)
       assert is_list(encoded)
       assert IO.iodata_length(encoded) > 0
+    end
+
+    test "encodes a batch-constant mapping config without storing it in every body" do
+      event = build_mapped_trace_event()
+      config_id = Ingester.encode_mapping_config_id(event.body["mapping_config_id"])
+      event_without_config = %{event | body: Map.delete(event.body, "mapping_config_id")}
+
+      assert IO.iodata_to_binary(Ingester.encode_row(event, :trace)) ==
+               IO.iodata_to_binary(Ingester.encode_row(event_without_config, :trace, config_id))
     end
 
     test "includes trace fields in encoded output" do

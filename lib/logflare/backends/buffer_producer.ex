@@ -97,38 +97,87 @@ defmodule Logflare.Backends.BufferProducer do
   defp init_in_flight(false, _max_in_flight), do: {nil, nil}
 
   # One-time, capped pre-seed of a freshly (re)started producer's own queue from the
-  # shared startup queue — bounded to max_in_flight so it never absorbs more backlog
-  # than it could ever claim anyway, while giving it real pending work immediately
-  # instead of waiting on however many ticks do_fetch's own startup fallback would take
-  # to reach the same amount. Uses pop_pending_pointers' atomic :ets.take-gated claim
-  # (safe even if another producer is concurrently draining the same startup table)
-  # then relocates each pointer's row into the new own table by overriding queue_tid
-  # before reinsert_pointer/1 — a one-off exception to that function's usual "reinsert
-  # where it was claimed from" contract. Only meaningful for id-passing producers with a
-  # finite cap; max_in_flight is nil for non-id-passing producers and :infinity for
-  # id-passing ones with no configured cap.
-  @spec seed_from_startup(table_key(), table_key(), non_neg_integer() | :infinity | nil) :: :ok
-  defp seed_from_startup(_startup_key, _own_key, nil), do: :ok
-  defp seed_from_startup(_startup_key, _own_key, :infinity), do: :ok
+  # shared startup queue. ID-passing producers normally claim any pointers up to their
+  # max_in_flight cap. A producer configured with seed_batch_size instead claims only
+  # complete ClickHouse batch-key groups, so scaling cannot split partial groups into a
+  # newly-created cold pipeline. Every claim still uses the atomic :ets.take-gated
+  # pointer APIs before relocating the pointer to the new queue.
+  @spec seed_from_startup(
+          table_key(),
+          table_key(),
+          non_neg_integer() | :infinity | nil,
+          pos_integer() | nil
+        ) :: :ok
+  defp seed_from_startup(_startup_key, _own_key, nil, _seed_batch_size), do: :ok
+  defp seed_from_startup(_startup_key, _own_key, :infinity, _seed_batch_size), do: :ok
 
-  defp seed_from_startup(startup_key, own_key, max_in_flight) when is_integer(max_in_flight) do
+  defp seed_from_startup(startup_key, own_key, max_in_flight, seed_batch_size)
+       when is_integer(max_in_flight) do
+    pointers = claim_seed_pointers(startup_key, max_in_flight, seed_batch_size)
+    own_tid = IngestEventQueue.get_tid(own_key)
+
+    Enum.each(pointers, fn pointer ->
+      IngestEventQueue.reinsert_pointer(%{pointer | queue_tid: own_tid})
+    end)
+
+    :ok
+  end
+
+  @spec claim_seed_pointers(table_key(), non_neg_integer(), pos_integer() | nil) ::
+          [LogEventPointer.t()]
+  defp claim_seed_pointers(startup_key, max_in_flight, nil) do
     case IngestEventQueue.pop_pending_pointers(startup_key, max_in_flight) do
-      {:error, :not_initialized} ->
-        :ok
-
-      {:ok, [], _tid} ->
-        :ok
-
-      {:ok, pointers, _tid} ->
-        own_tid = IngestEventQueue.get_tid(own_key)
-
-        Enum.each(pointers, fn pointer ->
-          IngestEventQueue.reinsert_pointer(%{pointer | queue_tid: own_tid})
-        end)
-
-        :ok
+      {:ok, pointers, _tid} -> pointers
+      {:error, :not_initialized} -> []
     end
   end
+
+  defp claim_seed_pointers(startup_key, max_in_flight, batch_size)
+       when is_integer(batch_size) and batch_size > 0 do
+    {chunks, _remaining} =
+      startup_key
+      |> IngestEventQueue.pending_batch_key_counts()
+      |> Enum.sort_by(fn {batch_key, count} -> {-count, batch_key} end)
+      |> Enum.reduce_while(
+        {[], max_in_flight},
+        &claim_seed_batch(&1, &2, startup_key, batch_size)
+      )
+
+    chunks |> Enum.reverse() |> List.flatten()
+  end
+
+  @spec claim_seed_batch(
+          {IngestEventQueue.pointer_batch_key(), non_neg_integer()},
+          {[[LogEventPointer.t()]], non_neg_integer()},
+          table_key(),
+          pos_integer()
+        ) :: {:cont | :halt, {[[LogEventPointer.t()]], non_neg_integer()}}
+  defp claim_seed_batch({batch_key, count}, {chunks, remaining}, startup_key, batch_size) do
+    claimable =
+      min(div(count, batch_size) * batch_size, div(remaining, batch_size) * batch_size)
+
+    if claimable < batch_size do
+      {:halt, {chunks, remaining}}
+    else
+      case IngestEventQueue.pop_pending_pointers_by_batch_key(startup_key, batch_key, claimable) do
+        {:ok, pointers, _tid} ->
+          {complete, partial} =
+            Enum.split(pointers, div(length(pointers), batch_size) * batch_size)
+
+          Enum.each(partial, &IngestEventQueue.reinsert_pointer/1)
+          chunks = prepend_seed_chunk(complete, chunks)
+          {:cont, {chunks, remaining - length(complete)}}
+
+        {:error, :not_initialized} ->
+          {:halt, {chunks, remaining}}
+      end
+    end
+  end
+
+  @spec prepend_seed_chunk([LogEventPointer.t()], [[LogEventPointer.t()]]) ::
+          [[LogEventPointer.t()]]
+  defp prepend_seed_chunk([], chunks), do: chunks
+  defp prepend_seed_chunk(complete, chunks), do: [complete | chunks]
 
   @spec init_spool_producer_state(pos_integer(), keyword()) :: state()
   defp init_spool_producer_state(interval, opts) do
@@ -152,7 +201,7 @@ defmodule Logflare.Backends.BufferProducer do
     table_key = {:spool_producer, nil, self()}
     startup_table_key = {:spool_producer, nil, nil}
     IngestEventQueue.upsert_tid(table_key)
-    seed_from_startup(startup_table_key, table_key, max_in_flight)
+    seed_from_startup(startup_table_key, table_key, max_in_flight, opts[:seed_batch_size])
     reschedule(state, false, false)
   end
 
@@ -179,7 +228,7 @@ defmodule Logflare.Backends.BufferProducer do
     table_key = {state.source_id, state.backend_id, self()}
     startup_table_key = {state.source_id, state.backend_id, nil}
     IngestEventQueue.upsert_tid(table_key)
-    seed_from_startup(startup_table_key, table_key, max_in_flight)
+    seed_from_startup(startup_table_key, table_key, max_in_flight, opts[:seed_batch_size])
     reschedule(state, false, false)
   end
 
@@ -205,7 +254,7 @@ defmodule Logflare.Backends.BufferProducer do
     table_key = {:consolidated, backend_id, self()}
     startup_table_key = {:consolidated, backend_id, nil}
     IngestEventQueue.upsert_tid(table_key)
-    seed_from_startup(startup_table_key, table_key, max_in_flight)
+    seed_from_startup(startup_table_key, table_key, max_in_flight, opts[:seed_batch_size])
 
     reschedule(state, Keyword.get(opts, :scale, false), false)
   end
@@ -417,8 +466,7 @@ defmodule Logflare.Backends.BufferProducer do
     fetch_amount = capped_fetch_amount(state, total_demand)
     capped? = fetch_amount < total_demand
 
-    events = do_fetch(state, fetch_amount)
-    event_count = Enum.count(events)
+    {events, event_count} = do_fetch(state, fetch_amount)
 
     if state.in_flight_ref != nil and event_count > 0 do
       :atomics.add(state.in_flight_ref, 1, event_count)
@@ -458,9 +506,8 @@ defmodule Logflare.Backends.BufferProducer do
   # queue couldn't satisfy — a brand-new producer's own queue is empty anyway, so it
   # falls through to startup immediately regardless; an already-loaded producer just
   # keeps grinding its own queue down instead of competing for the shared one.
-  @spec do_fetch(state :: state(), count :: non_neg_integer()) :: [
-          LogEvent.t() | LogEventPointer.t()
-        ]
+  @spec do_fetch(state :: state(), count :: non_neg_integer()) ::
+          {[LogEvent.t() | LogEventPointer.t()], non_neg_integer()}
   defp do_fetch(%{consolidated: true, id_passing: true, backend_id: bid}, n) do
     own_key = {:consolidated, bid, self()}
     startup_key = {:consolidated, bid, nil}
@@ -500,23 +547,24 @@ defmodule Logflare.Backends.BufferProducer do
           own_key :: table_key(),
           startup_key :: table_key(),
           n :: non_neg_integer(),
-          fetch_fn :: (table_key(), non_neg_integer() -> [term()])
-        ) :: [term()]
+          fetch_fn :: (table_key(), non_neg_integer() -> {[term()], non_neg_integer()})
+        ) :: {[term()], non_neg_integer()}
   defp fetch_own_first(own_key, startup_key, n, fetch_fn) do
-    own_events = fetch_fn.(own_key, n)
-    remaining = n - length(own_events)
+    {own_events, own_count} = fetch_fn.(own_key, n)
+    remaining = n - own_count
 
     if remaining > 0 do
-      own_events ++ fetch_fn.(startup_key, remaining)
+      {startup_events, startup_count} = fetch_fn.(startup_key, remaining)
+      {own_events ++ startup_events, own_count + startup_count}
     else
-      own_events
+      {own_events, own_count}
     end
   end
 
   defp fetch_pointers(key, n) do
     case IngestEventQueue.pop_pending_pointers(key, n) do
-      {:error, :not_initialized} -> []
-      {:ok, pointers, _tid} -> pointers
+      {:error, :not_initialized} -> {[], 0}
+      {:ok, pointers, _tid} -> {pointers, length(pointers)}
     end
   end
 
@@ -528,9 +576,8 @@ defmodule Logflare.Backends.BufferProducer do
   # the way BigQuery's ack does, and pop_pending has already deleted the
   # generation-store row as part of claiming anyway, so there'd be nothing left to defer
   # deleting even if they did.
-  @spec do_pop_key(key :: table_key(), count :: non_neg_integer()) :: [
-          LogEvent.t()
-        ]
+  @spec do_pop_key(key :: table_key(), count :: non_neg_integer()) ::
+          {[LogEvent.t()], non_neg_integer()}
   defp do_pop_key({sid, bid, _pid} = key, n) do
     case IngestEventQueue.pop_pending(key, n) do
       {:error, :not_initialized} ->
@@ -539,12 +586,15 @@ defmodule Logflare.Backends.BufferProducer do
           backend_id: bid
         )
 
-        []
+        {[], 0}
 
       {:ok, events} ->
-        Enum.map(events, fn %LogEvent{} = e ->
-          %{e | is_popped: true}
-        end)
+        {events, event_count} =
+          Enum.map_reduce(events, 0, fn %LogEvent{} = e, count ->
+            {%{e | is_popped: true}, count + 1}
+          end)
+
+        {events, event_count}
     end
   end
 end

@@ -585,6 +585,86 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
+    test "counts and claims pointers by exact ClickHouse batch key", %{
+      source: source,
+      sbp: sbp
+    } do
+      events =
+        for {event_type, day_bucket, freshness, count} <- [
+              {:log, 12_345, :fresh, 3},
+              {:metric, 12_345, :fresh, 2},
+              {:log, 54_321, :stale, 1}
+            ],
+            _ <- 1..count do
+          build(:log_event, source: source)
+          |> Map.put(:event_type, event_type)
+          |> Map.put(:day_bucket, day_bucket)
+          |> Map.put(:ingest_freshness, freshness)
+        end
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      assert IngestEventQueue.pending_batch_key_counts(sbp) == %{
+               {:fresh, :log, 12_345} => 3,
+               {:fresh, :metric, 12_345} => 2,
+               {:stale, :log, 54_321} => 1
+             }
+
+      assert {:ok, pointers, _tid} =
+               IngestEventQueue.pop_pending_pointers_by_batch_key(
+                 sbp,
+                 {:fresh, :log, 12_345},
+                 2
+               )
+
+      assert length(pointers) == 2
+      assert Enum.all?(pointers, &match?(%{event_type: :log, day_bucket: 12_345}, &1))
+      assert Enum.all?(pointers, &(&1.ingest_freshness == :fresh))
+      assert IngestEventQueue.total_pending(sbp) == 4
+
+      assert IngestEventQueue.pending_batch_key_counts(sbp) == %{
+               {:fresh, :log, 12_345} => 1,
+               {:fresh, :metric, 12_345} => 2,
+               {:stale, :log, 54_321} => 1
+             }
+    end
+
+    @tag :race
+    test "concurrent batch-key claims never claim a pointer twice", %{
+      source: source,
+      sbp: sbp
+    } do
+      events =
+        for _ <- 1..500 do
+          build(:log_event, source: source)
+          |> Map.put(:event_type, :log)
+          |> Map.put(:day_bucket, 12_345)
+          |> Map.put(:ingest_freshness, :fresh)
+        end
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      claimed_ids =
+        for _ <- 1..4 do
+          Task.async(fn ->
+            {:ok, pointers, _tid} =
+              IngestEventQueue.pop_pending_pointers_by_batch_key(
+                sbp,
+                {:fresh, :log, 12_345},
+                500
+              )
+
+            Enum.map(pointers, & &1.id)
+          end)
+        end
+        |> Task.await_many(10_000)
+        |> List.flatten()
+
+      assert length(claimed_ids) == 500
+      assert length(Enum.uniq(claimed_ids)) == 500
+      assert IngestEventQueue.total_pending(sbp) == 0
+    end
+
     test "returns empty without claiming when count is 0", %{
       source: source,
       sbp: sbp
@@ -785,6 +865,23 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert active2_size > 0
     end
 
+    test "sends a sub-cycle burst to the least-loaded active queue first", %{
+      source: source,
+      backend: backend
+    } do
+      loaded_queue = {source.id, backend.id, :erlang.list_to_pid(~c"<0.100.3>")}
+      empty_queue = {source.id, backend.id, :erlang.list_to_pid(~c"<0.100.4>")}
+
+      IngestEventQueue.upsert_tid(loaded_queue)
+      IngestEventQueue.upsert_tid(empty_queue)
+      :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(101, :log_event))
+
+      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, [build(:log_event)])
+
+      assert IngestEventQueue.get_table_size(loaded_queue) == 101
+      assert IngestEventQueue.get_table_size(empty_queue) == 1
+    end
+
     test "falls back to startup queue when no active queues exist", %{
       source: source,
       backend: backend
@@ -917,6 +1014,36 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert IngestEventQueue.get_table_size(startup_key) == 10_000
       for queue <- queues, do: assert(IngestEventQueue.get_table_size(queue) == max_size)
+    end
+  end
+
+  describe "`add_to_table/3` distribution with spool queues" do
+    setup do
+      for key <- IngestEventQueue.list_queues({:spool_producer, nil}) do
+        IngestEventQueue.delete_queue(key)
+      end
+
+      on_exit(fn ->
+        for key <- IngestEventQueue.list_queues({:spool_producer, nil}) do
+          IngestEventQueue.delete_queue(key)
+        end
+      end)
+
+      :ok
+    end
+
+    test "sends a sub-cycle burst to the least-loaded spool queue first" do
+      loaded_queue = {:spool_producer, nil, :erlang.list_to_pid(~c"<0.110.1>")}
+      empty_queue = {:spool_producer, nil, :erlang.list_to_pid(~c"<0.110.2>")}
+
+      IngestEventQueue.upsert_tid(loaded_queue)
+      IngestEventQueue.upsert_tid(empty_queue)
+      :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(101, :log_event))
+
+      :ok = IngestEventQueue.add_to_table({:spool_producer, nil}, [build(:log_event)])
+
+      assert IngestEventQueue.get_table_size(loaded_queue) == 101
+      assert IngestEventQueue.get_table_size(empty_queue) == 1
     end
   end
 
@@ -1065,6 +1192,23 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert added1 == 100
       assert added2 == 100
+    end
+
+    test "starts a sub-cycle burst with the least-loaded queue inside the noise floor", %{
+      backend: backend
+    } do
+      lighter_queue = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.100.5>")}
+      heavier_queue = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.100.6>")}
+
+      IngestEventQueue.upsert_tid(lighter_queue)
+      IngestEventQueue.upsert_tid(heavier_queue)
+      :ok = IngestEventQueue.add_to_table(lighter_queue, build_list(10, :log_event))
+      :ok = IngestEventQueue.add_to_table(heavier_queue, build_list(20, :log_event))
+
+      :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, [build(:log_event)])
+
+      assert IngestEventQueue.get_table_size(lighter_queue) == 11
+      assert IngestEventQueue.get_table_size(heavier_queue) == 20
     end
 
     test "routes an entire incoming batch to the startup queue when every consolidated queue is at the hard cap",
