@@ -7,7 +7,7 @@ Mimic.copy(Logflare.Backends)
 Mimic.copy(Logflare.Logs)
 Mimic.copy(Logflare.Partners)
 
-Mimic.stub(Logflare.Backends, :ingest_logs, fn _, _ -> :ok end)
+Mimic.stub(Logflare.Backends, :ingest_logs, fn _, _, _, _ -> :ok end)
 Mimic.stub(Logflare.Logs, :ingest_logs, fn _, _ -> :ok end)
 # Mimic.stub(Broadway, :push_messages, fn _, _ -> :ok end)
 ver = System.argv() |> Enum.at(0)

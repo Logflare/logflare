@@ -74,16 +74,22 @@ defmodule Logflare.Endpoints do
   end
 
   @doc """
-  Gets an endpoint query by id that the user has access to.
+  Gets an endpoint query that the user has access to.
   Returns the endpoint query if the user owns it or is a team member, otherwise returns nil.
   """
-  @spec get_endpoint_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
-          EndpointQuery.t() | nil
+  @spec get_endpoint_query_by_user_access(
+          User.t() | TeamUser.t(),
+          integer() | String.t() | keyword()
+        ) :: EndpointQuery.t() | nil
   def get_endpoint_query_by_user_access(user_or_team_user, id)
       when is_integer(id) or is_binary(id) do
+    get_endpoint_query_by_user_access(user_or_team_user, id: id)
+  end
+
+  def get_endpoint_query_by_user_access(user_or_team_user, filters) when is_list(filters) do
     EndpointQuery
     |> Teams.filter_by_user_access(user_or_team_user)
-    |> where([query], query.id == ^id)
+    |> where([query], ^filters)
     |> Repo.one()
   end
 
@@ -286,15 +292,18 @@ defmodule Logflare.Endpoints do
   @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) :: :ok
   defp maybe_kill_endpoint_caches(endpoint, changes) do
     if should_kill_caches?(changes) do
-      for pid <- Resolver.list_caches(endpoint) do
-        Utils.Tasks.async(fn ->
-          ResultsCache.invalidate(pid)
-        end)
-      end
+      endpoint
+      |> Resolver.list_caches()
+      |> Enum.map(&invalidate_cache_async/1)
       |> Task.await_many(30_000)
     end
 
     :ok
+  end
+
+  @spec invalidate_cache_async(pid()) :: Task.t()
+  defp invalidate_cache_async(pid) do
+    Utils.Tasks.async(fn -> ResultsCache.invalidate(pid) end)
   end
 
   @spec get_endpoint_query_version(integer(), integer()) :: Version.t() | nil

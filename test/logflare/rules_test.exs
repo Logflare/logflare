@@ -104,7 +104,7 @@ defmodule Logflare.RulesTest do
       assert rule.source_id == source.id
       assert rule.token != nil
       assert is_list(rule.lql_filters)
-      assert length(rule.lql_filters) >= 1
+      assert [_ | _rest] = rule.lql_filters
     end
 
     test "creates a rule with backend_id when provided" do

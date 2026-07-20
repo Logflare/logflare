@@ -306,6 +306,29 @@ regex_100_rules =
 regex_100_tree = RulesTree.build(regex_100_rules)
 
 # ---------------------------------------------------------------------------
+# Scenario 8: 100 comparison rules on an existing numeric field, all match
+# ---------------------------------------------------------------------------
+build_comparison_rules = fn path, base ->
+  for i <- 0..99 do
+    {op, value} =
+      case rem(i, 4) do
+        0 -> {:>, base - i - 1}
+        1 -> {:>=, base - i}
+        2 -> {:<, base + i + 1}
+        3 -> {:<=, base + i}
+      end
+
+    %Rule{id: i, lql_filters: [make_filter.(path, op, value)]}
+  end
+end
+
+comparison_100_otel_rules = build_comparison_rules.("attributes._http_status_code", 404)
+comparison_100_edge_rules = build_comparison_rules.("metadata.response.status_code", 200)
+
+comparison_100_otel_tree = RulesTree.build(comparison_100_otel_rules)
+comparison_100_edge_tree = RulesTree.build(comparison_100_edge_rules)
+
+# ---------------------------------------------------------------------------
 # Profile setup
 # ---------------------------------------------------------------------------
 profile_after =
@@ -366,6 +389,13 @@ suite =
       end,
       "rt regex only 100 | edge" => fn ->
         RulesTree.matching_rule_ids(edge_le, regex_100_tree)
+      end,
+      # Scenario 8: comparison-only 100, all match
+      "rt comparison 100 | otel" => fn ->
+        RulesTree.matching_rule_ids(otel_le, comparison_100_otel_tree)
+      end,
+      "rt comparison 100 | edge" => fn ->
+        RulesTree.matching_rule_ids(edge_le, comparison_100_edge_tree)
       end
     },
     time: 5,

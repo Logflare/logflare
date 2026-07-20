@@ -12,11 +12,20 @@ defmodule LogflareWeb.Api.QueryControllerTest do
     {:ok, user: user}
   end
 
-  test "no query param provided", %{conn: conn, user: user} do
-    conn
-    |> add_access_token(user, ~w(private))
-    |> get(~p"/api/query")
-    |> json_response(400)
+  test "no query param provided returns a JSON 400 error", %{conn: conn, user: user} do
+    conn =
+      conn
+      |> add_access_token(user, ~w(private))
+      |> get(~p"/api/query")
+
+    assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
+
+    assert %{error: message} =
+             conn
+             |> json_response(400)
+             |> assert_schema("BadRequestResponse")
+
+    assert message =~ "No query params provided"
   end
 
   describe "validate/2" do
@@ -38,13 +47,19 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       assert %{"result" => %{"parameters" => []}} = json_response(conn, 200)
     end
 
-    test "invalid valid sql query returns 200 ok", %{conn: conn, user: user} do
+    test "invalid sql query returns a JSON 400 error", %{conn: conn, user: user} do
       conn =
         conn
         |> add_access_token(user, ~w(private))
         |> get(~p"/api/query/parse?#{[bq_sql: ~s|update something SET test = 'something'|]}")
 
-      assert %{"error" => err} = json_response(conn, 400)
+      assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
+
+      assert %{error: err} =
+               conn
+               |> json_response(400)
+               |> assert_schema("BadRequestResponse")
+
       assert err =~ "SELECT"
     end
   end
@@ -58,11 +73,15 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         {:ok, TestUtils.gen_bq_response([%{"my_time" => "123"}])}
       end)
 
-      response =
+      conn =
         conn
         |> add_access_token(user, ~w(private))
         |> get(~p"/api/query?#{[bq_sql: ~s|select current_datetime() as 'my_time'|]}")
-        |> json_response(200)
+
+      assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
+
+      response = json_response(conn, 200)
+      assert_schema(response, "QueryResult")
 
       assert %{"result" => [%{"my_time" => "123"}]} = response
 
@@ -73,6 +92,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         |> get(~p"/api/query?#{[sql: ~s|select current_datetime() as 'my_time'|]}")
         |> json_response(200)
 
+      assert_schema(response, "QueryResult")
       assert %{"result" => [%{"my_time" => "123"}]} = response
     end
 

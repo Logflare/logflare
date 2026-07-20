@@ -199,7 +199,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       assert conn
              |> json_response(401)
-             |> assert_schema("Unauthorized") == %{"error" => "Unauthorized"}
+             |> assert_schema("UnauthorizedResponse") == %{error: "Unauthorized"}
 
       assert conn.halted == true
     end

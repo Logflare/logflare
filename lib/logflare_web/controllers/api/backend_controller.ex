@@ -20,7 +20,7 @@ defmodule LogflareWeb.Api.BackendController do
   )
 
   def index(%{assigns: %{user: user}} = conn, params) do
-    backends = Backends.list_backends(user_id: user.id, metadata: params["metadata"])
+    backends = Backends.list_backends_by_user_access(user, metadata: params["metadata"])
     json(conn, backends)
   end
 
@@ -34,8 +34,11 @@ defmodule LogflareWeb.Api.BackendController do
   )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with {:ok, backend} <- Backends.fetch_backend_by(token: token, user_id: user.id) do
+    with backend when not is_nil(backend) <-
+           Backends.get_backend_by_user_access(user, token: token) do
       json(conn, backend)
+    else
+      nil -> {:error, :not_found}
     end
   end
 

@@ -41,6 +41,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @async_insert_busy_timeout_max_ms 3_000
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
+  @pipelines_per_scheduler 4
+  # TODO: Share config with clickhouse pipeline
+  @max_in_flight 120_000
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -540,6 +543,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
+  @doc """
+  Inserts a pre-gzipped RowBinary payload into the appropriate type-specific ingest table.
+
+  Bypasses encoding and compression. Intended for streaming-zlib pipelines.
+  """
+  @spec insert_log_events_compressed(
+          Backend.t(),
+          TypeDetection.event_type(),
+          compressed :: binary(),
+          opts :: keyword()
+        ) :: :ok | {:error, term()}
+  def insert_log_events_compressed(%Backend{} = backend, event_type, compressed, opts \\ [])
+      when is_event_type(event_type) and is_binary(compressed) do
+    Logger.metadata(backend_id: backend.id)
+    table_name = clickhouse_ingest_table_name(backend, event_type)
+    insert_opts = build_insert_opts(opts)
+
+    case Ingester.insert_compressed(backend, table_name, event_type, compressed, insert_opts) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("ClickHouse http insert error.",
+          host: config_host(backend),
+          error_string: inspect(reason)
+        )
+
+        {:error, reason}
+    end
+  end
+
   @spec build_insert_opts(keyword()) :: keyword()
   defp build_insert_opts(opts) do
     if Keyword.get(opts, :async, false), do: async_insert_opts(), else: []
@@ -585,6 +619,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
+    # create the startup queue and its generation, before any producer/traffic exists
+    # for this queues_key — avoids racing concurrent first-time inserts against each
+    # other to lazily create the generation (see IngestEventQueue.current_generation_tid/1)
+    IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+    IngestEventQueue.current_generation_tid({:consolidated, backend.id})
+
     children =
       if(Application.get_env(:logflare, :env) != :test,
         do: [Provisioner.child_spec(backend)],
@@ -598,7 +638,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
             pipeline: Pipeline,
             pipeline_args: [backend: backend],
             min_pipelines: @min_pipelines,
-            max_pipelines: System.schedulers_online(),
+            max_pipelines: System.schedulers_online() * @pipelines_per_scheduler,
             initial_count: @min_pipelines,
             resolve_interval: @resolve_interval,
             resolve_count: fn state ->
@@ -613,8 +653,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   # produce fewer, larger batches for ClickHouse efficiency
+  #
+  # Exposed (not private) so it can be unit tested directly, same convention as
+  # Backends.handle_resolve_count/3 (BigQuery's counterpart).
+  @doc false
   @spec resolve_pipeline_count(map(), [{term(), non_neg_integer()}]) :: non_neg_integer()
-  defp resolve_pipeline_count(state, lens) do
+  def resolve_pipeline_count(state, lens) do
     startup_size =
       Enum.find_value(lens, 0, fn
         {{:consolidated, _bid, nil}, val} -> val
@@ -633,15 +677,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
     sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
 
-    any_above_threshold? = Enum.any?(lens_no_startup_values, &(&1 >= @scaling_threshold))
+    # Gated on every queue being above threshold, not the average: an average can
+    # still be dragged over threshold by a single large outlier while every other
+    # queue sits idle (e.g. [30_000, 0] and [60_000, 0, 0, 0] both average to
+    # exactly @scaling_threshold with empty queues in the mix). Weighted routing
+    # (see IngestEventQueue.weight_by_load/2) already fills the least-loaded queue
+    # preferentially, so if even that one is over threshold the fleet genuinely
+    # needs the extra pipeline.
+    fleet_above_threshold? =
+      lens_no_startup_values != [] and
+        Enum.all?(lens_no_startup_values, &(&1 >= @scaling_threshold))
 
     cond do
       # Scale up if startup queue has events (pipeline not yet ready)
       startup_size > 0 ->
-        state.pipeline_count + 1
+        state.pipeline_count + max(div(startup_size, @max_in_flight), 1)
 
-      # Scale up if any queue exceeds threshold
-      any_above_threshold? and len > 0 ->
+      # Scale up only if the fleet is loaded on average, not just one outlier
+      fleet_above_threshold? and len > 0 ->
         state.pipeline_count + 1
 
       # Faster decrease when queues are low

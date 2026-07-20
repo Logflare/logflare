@@ -447,6 +447,31 @@ defmodule Logflare.BackendsTest do
       refute forbidden_backend_id in backend_ids
     end
 
+    test "list_backends_by_user_access/2 filters team backends with sources or rules", %{
+      user: user
+    } do
+      team_user = insert(:team_user, email: user.email)
+      owner = team_user.team.user
+      source = insert(:source, user: owner)
+
+      backend_with_source = insert(:backend, user: owner, sources: [source])
+      backend_with_rule = insert(:backend, user: owner)
+      backend_with_both = insert(:backend, user: owner, sources: [source])
+      backend_without_sources_or_rules = insert(:backend, user: owner)
+      insert(:rule, source: source, backend: backend_with_rule, lql_string: "testing")
+      insert(:rule, source: source, backend: backend_with_both, lql_string: "testing")
+
+      backend_ids =
+        Backends.list_backends_by_user_access(user, has_sources_or_rules: true)
+        |> Enum.map(& &1.id)
+
+      assert backend_with_source.id in backend_ids
+      assert backend_with_rule.id in backend_ids
+      assert backend_with_both.id in backend_ids
+      assert Enum.count(backend_ids, &(&1 == backend_with_both.id)) == 1
+      refute backend_without_sources_or_rules.id in backend_ids
+    end
+
     test "get_backend_by_user_access/2" do
       owner = insert(:user)
       team_user = insert(:team_user, email: owner.email)
@@ -889,6 +914,56 @@ defmodule Logflare.BackendsTest do
       :sys.get_state(cacher)
 
       assert Backends.fetch_latest_timestamp(source) != 0
+    end
+
+    test "any_ingest_queue_over_limit?/1 is false when no queues exist for the source", %{
+      source: source
+    } do
+      refute Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is true when the system default (nil) queue is over the limit",
+         %{source: source} do
+      table_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(table_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(table_key, [le])
+      end
+
+      assert Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is true for a backend that is not flagged default_ingest?",
+         %{source: source} do
+      user = Repo.get(User, source.user_id)
+      backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: false)
+      {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      table_key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(table_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(table_key, [le])
+      end
+
+      assert Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is false when queues exist but are under the limit", %{
+      source: source
+    } do
+      table_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(table_key)
+
+      for _ <- 1..100 do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(table_key, [le])
+      end
+
+      refute Backends.any_ingest_queue_over_limit?(source.id)
     end
 
     test "cache_estimated_buffer_lens/1 will cache all queue information", %{
@@ -1815,6 +1890,96 @@ defmodule Logflare.BackendsTest do
 
       refute log =~ "Dropping"
       refute log =~ "timestamps outside"
+    end
+  end
+
+  describe "ingest_logs/3 per-source spooling gate" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user, enable_spooling: false)
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      prev_spool_config = Application.get_env(:logflare, :spool)
+
+      on_exit(fn ->
+        if prev_spool_config do
+          Application.put_env(:logflare, :spool, prev_spool_config)
+        else
+          Application.delete_env(:logflare, :spool)
+        end
+      end)
+
+      {:ok, source: source}
+    end
+
+    defp stub_add_to_table_observer(test_pid) do
+      stub(IngestEventQueue, :add_to_table, fn key, _batch ->
+        send(test_pid, {:add_to_table, key})
+        :ok
+      end)
+    end
+
+    test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :disable)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "does not dispatch to the spool producer when allow_spooling is omitted, even if the global mode and source.enable_spooling are true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      le = build(:log_event, source: source)
+      le = %{le | via_rule_id: 123}
+
+      assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
     end
   end
 end
