@@ -141,6 +141,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        database: :string,
        port: :integer,
        pool_size: :integer,
+       # read_only_url is depreciated and will be removed in the release after PR#3693 lands
        read_only_url: :string,
        read_only_urls: {:map, :string},
        default_read_cluster: :string,
