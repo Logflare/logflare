@@ -15,6 +15,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Mailer
   alias Logflare.Sources
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.BufferProducer
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.Supervisor
@@ -32,6 +33,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   @max_batch_length 6_000_000
   @max_batch_size 500
   @max_retries 0
+  @batcher_concurrency 16
+  # Generous safety valve (4x total batcher capacity), not a fine-grained flow-control
+  # knob — see BufferProducer's capped_fetch_amount/2. Should never engage during
+  # healthy operation; only caps genuinely runaway backlog.
+  @max_in_flight 4 * @max_batch_size * @batcher_concurrency
 
   def start_link(args, opts \\ []) do
     {name, args} = Keyword.pop(args, :name)
@@ -58,7 +64,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
               {BufferProducer,
                [
                  source_id: source.id,
-                 backend_id: backend.id
+                 backend_id: backend.id,
+                 id_passing: true,
+                 max_in_flight: @max_in_flight
                ]},
             transformer:
               {__MODULE__, :transform,
@@ -71,10 +79,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           ],
           batchers: [
             bq: [
-              concurrency: 16,
+              concurrency: @batcher_concurrency,
               batch_size: bq_batch_size_splitter(),
               batch_timeout: 1_500,
-              # must be set when using custom batch_size splitter
+              # required when using a custom batch_size splitter
               max_demand: @max_batch_size
             ]
           ],
@@ -108,45 +116,81 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     String.to_atom("#{proc_name}-#{base_name}")
   end
 
-  # Broadway transformer for custom producer
+  # Broadway transformer for custom producer. Runs in the same process as the producer
+  # itself (Broadway.Topology.ProducerStage calls the producer module's own callbacks,
+  # then the transformer, inline, in one process) — so self() here is the producer's
+  # pid, and this lookup always finds the ref the producer published at init.
   def transform(event, args) do
     ref = args[:ref]
+    in_flight_ref = :persistent_term.get({BufferProducer, :in_flight_ref, self()}, nil)
 
     %Message{
       data: event,
-      acknowledger: {__MODULE__, ref, :ack_data}
+      acknowledger: {__MODULE__, ref, %{in_flight_ref: in_flight_ref}}
     }
   end
 
   @impl Broadway.Acknowledger
   def ack({queue, config}, successful, failed) do
-    {sid, bid, _tid} = queue
+    {sid, bid, _pipeline_ref} = queue
 
+    decrement_in_flight(successful ++ failed)
+    finalize_acked_events({sid, bid}, successful)
     maybe_requeue_failed({sid, bid}, failed, config)
 
-    backend_metadata =
-      if bid do
-        Backends.Cache.get_backend(bid).metadata || %{}
-      else
-        %{}
-      end
-
-    case Sources.Cache.get_by_id(sid) do
-      nil ->
-        Logger.warning("Source not found for ack!", source_id: sid)
-
-        for %{data: %{is_popped: false} = le} <- successful do
-          IngestEventQueue.delete(queue, le)
-        end
-
-      source ->
-        for %{data: le} <- successful do
-          # emit telemetry on event
-          emit_event_telemetry(queue, source, le, backend_metadata)
-        end
-    end
+    :telemetry.execute(
+      [:logflare, :backends, :pipeline, :ack],
+      %{successful: length(successful), failed: length(failed)},
+      %{}
+    )
 
     :ok
+  end
+
+  @spec decrement_in_flight([Message.t()]) :: :ok
+  defp decrement_in_flight(messages) do
+    messages
+    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} ->
+      Map.get(ack_data, :in_flight_ref)
+    end)
+    |> Enum.each(fn
+      {nil, _msgs} -> :ok
+      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
+    end)
+  end
+
+  # Always deletes the generation-store row. If the source's ingest rate is low, also
+  # keeps an independent copy in the recent-events cache first, so "recent logs" reads
+  # (list_recent_logs_local/2, Sources.source_idle?/1) still see it long after the row
+  # itself — and its generation — is gone.
+  @spec finalize_acked_events(IngestEventQueue.queues_key(), [Message.t()]) :: :ok
+  defp finalize_acked_events(_queues_key, []), do: :ok
+
+  defp finalize_acked_events({sid, bid} = queues_key, successful) do
+    record? = bid == nil and should_record_recent?(sid)
+
+    Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
+      if record?, do: record_recent_copy(queues_key, pointer)
+      IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+    end)
+  end
+
+  defp record_recent_copy(queues_key, %LogEventPointer{} = pointer) do
+    case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
+      nil -> :ok
+      event -> IngestEventQueue.record_recent_event(queues_key, event)
+    end
+  end
+
+  # No source to resolve (e.g. it was deleted mid-flight) means no ingest rate to check
+  # and no source-scoped "recent logs" reader to serve — skip the cache instead of
+  # guessing at a default rate.
+  @spec should_record_recent?(pos_integer()) :: boolean()
+  defp should_record_recent?(sid) do
+    case Sources.Cache.get_by_id(sid) do
+      nil -> false
+      source -> Sources.get_source_metrics_for_ingest(source).avg <= 100
+    end
   end
 
   @impl Broadway
@@ -158,10 +202,33 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       system_source: context.system_source
     )
 
-    message
-    |> Message.update_data(&process_data(&1, context))
-    |> Message.put_batcher(:bq)
+    Message.put_batcher(message, :bq)
   end
+
+  @spec bq_batch_size_splitter() ::
+          {{non_neg_integer(), non_neg_integer()},
+           (Message.t(), {non_neg_integer(), non_neg_integer()} ->
+              {:emit | :cont, {non_neg_integer(), non_neg_integer()}})}
+  defp bq_batch_size_splitter do
+    {
+      {@max_batch_size, @max_batch_length},
+      fn
+        _message, {1, _len} ->
+          {:emit, {@max_batch_size, @max_batch_length}}
+
+        message, {count, len} ->
+          size = message_size(message)
+
+          if len - size <= 0 do
+            {:emit, {@max_batch_size, @max_batch_length}}
+          else
+            {:cont, {count - 1, len - size}}
+          end
+      end
+    }
+  end
+
+  defp message_size(%{data: %LogEventPointer{size: size}}), do: size
 
   @impl Broadway
   def handle_batch(:bq, messages, batch_info, context) do
@@ -189,9 +256,23 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     } do
       source = Sources.Cache.get_by_id(context.source_id)
 
+      # Fetch full LogEvents from ETS. Sizes were computed in the producer and are
+      # carried on each message — no recomputation needed here. The batch is already
+      # byte-bounded by bq_batch_size_splitter/0 in the batcher config.
+      {triples, missing} = fetch_events_from_messages(messages, context, source)
+
+      if missing != [] do
+        :telemetry.execute(
+          [:logflare, :ingest_event_queue, :missing_ids],
+          %{count: length(missing)},
+          %{source_id: context.source_id}
+        )
+      end
+
+      {log_events, batch_count, batch_size} = collect_batch_events(triples)
+
       if source && source.bq_storage_write_api do
-        log_events = messages |> Enum.map(& &1.data)
-        batch_attrs = compute_batch_attrs(messages, :bq_storage_write)
+        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
           BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
@@ -202,22 +283,59 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             backend_id: context.backend_id
           )
         end
-
-        messages
       else
-        batch_attrs = compute_batch_attrs(messages, :bq_streaming_insert)
+        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_streaming_insert)
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
-          stream_batch(context, messages)
+          stream_batch(context, log_events)
         end
+      end
+
+      emit_ingest_telemetry(context, source, triples)
+
+      succeeded = Enum.map(triples, fn {msg, _le, _size} -> msg end)
+      failed_missing = Enum.map(missing, &Message.failed(&1, "missing from ETS"))
+
+      case failed_missing do
+        [] -> succeeded
+        _ -> succeeded ++ failed_missing
       end
     end
   end
 
-  def le_messages_to_bq_rows(messages) do
-    Enum.map(messages, fn message ->
-      le_to_bq_row(message.data)
+  @spec le_list_to_bq_rows([LE.t()]) :: [Model.TableDataInsertAllRequestRows.t()]
+  def le_list_to_bq_rows(log_events) do
+    Enum.map(log_events, &le_to_bq_row/1)
+  end
+
+  defp fetch_events_from_messages(messages, context, source) do
+    Enum.reduce(messages, {[], []}, fn message, {out, missing} ->
+      case {lookup_message_event(message), message_size(message)} do
+        {nil, _size} ->
+          {out, [message | missing]}
+
+        {log_event, size} ->
+          {[{message, process_data(log_event, context, source), size} | out], missing}
+      end
     end)
+  end
+
+  defp lookup_message_event(%{data: %LogEventPointer{tid: tid, gen_event_id: gen_event_id}}) do
+    IngestEventQueue.lookup_event(tid, gen_event_id)
+  end
+
+  # Single pass collecting log events + batch metrics. Separate accumulator args (rather
+  # than a tuple-accumulator Enum.reduce) avoid allocating a fresh tuple per event. The
+  # cons-built list is reversed relative to `triples`; output order is insignificant since
+  # each BQ row carries its own insertId.
+  @spec collect_batch_events([{Message.t(), LE.t(), non_neg_integer()}]) ::
+          {[LE.t()], non_neg_integer(), non_neg_integer()}
+  defp collect_batch_events(triples), do: collect_batch_events(triples, [], 0, 0)
+
+  defp collect_batch_events([], log_events, count, bytes), do: {log_events, count, bytes}
+
+  defp collect_batch_events([{_msg, le, size} | rest], log_events, count, bytes) do
+    collect_batch_events(rest, [le | log_events], count + 1, bytes + size)
   end
 
   def le_to_bq_row(%LE{body: body, id: id}) do
@@ -265,7 +383,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   def stream_batch(
         %{source_token: source_token, user_id: user_id, system_source: system_source} = context,
-        messages
+        log_events
       ) do
     Logger.metadata(
       source_id: source_token,
@@ -277,17 +395,16 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :telemetry.span(
       [:logflare, :ingest, :pipeline, :stream_batch],
       %{source_token: source_token},
-      fn -> execute_bigquery_stream_batch(context, messages) end
+      fn -> execute_bigquery_stream_batch(context, log_events) end
     )
   end
 
-  defp execute_bigquery_stream_batch(%{source_token: source_token} = context, messages) do
+  defp execute_bigquery_stream_batch(%{source_token: source_token} = context, log_events) do
     rows =
       OpenTelemetry.Tracer.with_span "ingest.bq_serialize", %{
         attributes: %{insert_method: :bq_streaming_insert}
       } do
-        OpenTelemetry.Tracer.set_attribute(:input_bytes, :erlang.external_size(messages))
-        result = le_messages_to_bq_rows(messages)
+        result = le_list_to_bq_rows(log_events)
         OpenTelemetry.Tracer.set_attribute(:serialized_bytes, :erlang.external_size(result))
         result
       end
@@ -322,12 +439,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
               # "The project web-wtc-1537199112807 has not enabled BigQuery."
               disconnect_backend_and_email(source_token, message)
 
-            # Don't disconnect here because sometimes the GCP API doesn't find projects
-            #
-            # "Not found:" <> _tail = message ->
-            #   disconnect_backend_and_email(source_id, message)
-            #   messages
-
             _message ->
               Logger.warning("Stream batch response error!",
                 tesla_response: GenUtils.get_tesla_error_message(response)
@@ -336,15 +447,19 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
         {:error, response} ->
           OpenTelemetry.Tracer.set_status(:error, inspect(response))
-          Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
+
+          Logger.warning("Stream batch unknown error!",
+            tesla_response: inspect(response, limit: 20)
+          )
       end
     end
 
-    {messages, %{}}
+    {log_events, %{}}
   end
 
-  def process_data(%LE{source_id: source_id} = log_event, context) do
-    source = Sources.Cache.get_by_id(source_id)
+  @spec process_data(LE.t(), map(), Sources.Source.t() | nil) :: LE.t()
+  def process_data(%LE{} = log_event, context, source) do
+    # Source is resolved once per batch in handle_batch/4 and reused, not re-fetched per event.
 
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that
@@ -380,11 +495,13 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     String.to_atom("#{source_id}" <> "-pipeline")
   end
 
-  defp compute_batch_attrs(messages, bq_api_tag) do
-    event_count = length(messages)
-    bytes = messages |> Enum.map(&:erlang.external_size(&1.data.body)) |> Enum.sum()
-
-    %{insert_method: bq_api_tag, batch_event_count: event_count, batch_bytes: bytes}
+  @spec compute_batch_attrs(non_neg_integer(), non_neg_integer(), atom()) :: map()
+  defp compute_batch_attrs(batch_count, batch_size, bq_api_tag) do
+    %{
+      insert_method: bq_api_tag,
+      batch_event_count: batch_count,
+      batch_bytes: batch_size
+    }
   end
 
   defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
@@ -434,34 +551,103 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     end
   end
 
-  # Requeue failed events if the number of previous retries is less than @max_retries
-  defp maybe_requeue_failed(_, [], _), do: :ok
-  defp maybe_requeue_failed(_, _, %{max_retries: 0}), do: :ok
+  # Requeue failed events if the number of previous retries is less than max_retries.
+  defp maybe_requeue_failed(_sid_bid, [], _config), do: :ok
 
-  defp maybe_requeue_failed({_sid, _bid} = sid_bid, failed, %{max_retries: max_retries}) do
+  defp maybe_requeue_failed(_sid_bid, failed, %{max_retries: 0}) do
+    pointers = Enum.map(failed, fn %{data: %LogEventPointer{} = pointer} -> pointer end)
+    drop_pointers(pointers, "retries disabled")
+  end
+
+  defp maybe_requeue_failed(sid_bid, failed, %{max_retries: max_retries}) do
+    {retriable, exhausted} =
+      failed
+      |> Enum.map(fn %{data: %LogEventPointer{} = pointer} -> pointer end)
+      |> Enum.split_with(&(&1.retries < max_retries))
+
+    drop_pointers(exhausted, "exhausted #{max_retries} retries")
+    requeue_retriable(sid_bid, retriable)
+  end
+
+  defp requeue_retriable(_sid_bid, []), do: :ok
+
+  defp requeue_retriable(sid_bid, retriable) do
+    Logger.info("Requeuing #{length(retriable)} BigQuery events for retry")
+
     events =
-      Enum.filter(failed, fn %{data: %LE{retries: retries}} -> retries < max_retries end)
-      |> Enum.map(fn %{data: %LE{} = event} ->
-        %LE{event | retries: (event.retries || 0) + 1}
-      end)
+      for pointer <- retriable,
+          event = IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id),
+          not is_nil(event) do
+        IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+        %{event | retries: pointer.retries + 1}
+      end
 
-    requeue(sid_bid, events)
+    emit_requeue_lookup_miss_telemetry(sid_bid, length(retriable) - length(events))
+
+    if events != [], do: IngestEventQueue.add_to_table(sid_bid, events)
+
+    :ok
   end
 
-  defp requeue(_, []), do: :ok
+  # A miss here means the pointer's generation was already dropped by
+  # GenerationJanitor before the retry could look it up — the event is silently
+  # lost rather than requeued. Bounded and rare in practice, but worth surfacing
+  # since it's otherwise invisible.
+  @spec emit_requeue_lookup_miss_telemetry({pos_integer(), pos_integer()}, non_neg_integer()) ::
+          :ok
+  defp emit_requeue_lookup_miss_telemetry(_sid_bid, 0), do: :ok
 
-  defp requeue(sid_bid, events) do
-    Logger.info("Requeuing #{length(events)} BigQuery events for retry")
+  defp emit_requeue_lookup_miss_telemetry({sid, bid}, missing_count) do
+    Logger.warning(
+      "Dropped #{missing_count} BigQuery event(s) during retry requeue: pointer's generation was already gone by lookup time",
+      source_id: sid,
+      backend_id: bid
+    )
 
-    IngestEventQueue.delete_batch(sid_bid, events)
-    IngestEventQueue.add_to_table(sid_bid, events)
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :requeue_lookup_miss],
+      %{count: missing_count},
+      %{source_id: sid, backend_id: bid}
+    )
   end
 
-  defp emit_event_telemetry({sid, bid, _}, source, le, backend_metadata) do
-    # emit telemetry on event
-    event_labels = Sources.get_labels_from_event(source, le)
+  defp drop_pointers([], _reason), do: :ok
 
-    metrics = %{ingested_bytes: :erlang.external_size(le.body)}
+  defp drop_pointers(pointers, reason) do
+    Logger.warning("Dropping #{length(pointers)} BigQuery events: #{reason}")
+
+    Enum.each(pointers, fn pointer ->
+      IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+    end)
+  end
+
+  # Emit per-event ingest telemetry from handle_batch, where the full LogEvent is
+  # already in hand (no extra ETS lookup in ack). The label mapping and backend
+  # metadata are resolved once per batch rather than per event.
+  defp emit_ingest_telemetry(_context, nil, _triples), do: :ok
+
+  defp emit_ingest_telemetry(context, source, triples) do
+    label_mapping = Sources.get_labels_mapping(source)
+    backend_metadata = backend_metadata(context.backend_id)
+    queue = {context.source_id, context.backend_id, nil}
+
+    for {_msg, le, size} <- triples do
+      event_labels = Sources.extract_labels(label_mapping, le)
+      emit_event_telemetry(queue, source, event_labels, size, backend_metadata)
+    end
+  end
+
+  defp backend_metadata(nil), do: %{}
+
+  defp backend_metadata(bid) do
+    case Backends.Cache.get_backend(bid) do
+      %{metadata: metadata} -> metadata || %{}
+      _ -> %{}
+    end
+  end
+
+  defp emit_event_telemetry({sid, bid, _}, source, event_labels, size, backend_metadata) do
+    metrics = %{ingested_bytes: size}
 
     metadata =
       %{
@@ -475,35 +661,5 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       |> Map.merge(backend_metadata)
 
     :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
-  end
-
-  # https://hexdocs.pm/broadway/Broadway.html#start_link/2
-  # split batch sizes based on json size
-  # ensure that we are well below the 10MB limit
-  def bq_batch_size_splitter do
-    {
-      {@max_batch_size, @max_batch_length},
-      fn
-        # reach max count, emit
-        _message, {1, _len} ->
-          {:emit, {@max_batch_size, @max_batch_length}}
-
-        # check content length
-        message, {count, len} ->
-          length = message_size(message.data.body)
-
-          if len - length <= 0 do
-            # below max batch count, but reach max batch length
-            {:emit, {@max_batch_size, @max_batch_length}}
-          else
-            # below max batch count, below max batch length
-            {:cont, {count - 1, len - length}}
-          end
-      end
-    }
-  end
-
-  def message_size(data) do
-    :erlang.external_size(data)
   end
 end

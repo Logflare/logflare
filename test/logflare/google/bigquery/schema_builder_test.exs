@@ -61,6 +61,80 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
     end
   end
 
+  describe "nested arrays (no BigQuery array-of-arrays type)" do
+    test "drops a top-level nested-array field but keeps sibling fields" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{"bad" => [["x"], ["y"]], "good" => "keep"},
+          @default_schema
+        )
+
+      assert TestUtils.get_bq_field_schema(schema, "bad") == nil
+
+      assert %TFS{name: "good", type: "STRING", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(schema, "good")
+    end
+
+    test "drops a nested-array field inside a record but keeps sibling fields" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{"a" => %{"bad" => [["x"], ["y"]], "good" => 1}},
+          @default_schema
+        )
+
+      assert TestUtils.get_bq_field_schema(schema, "a.bad") == nil
+
+      assert %TFS{name: "good", type: "INTEGER", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(schema, "a.good")
+
+      assert %TFS{name: "a", type: "RECORD", mode: "REPEATED"} =
+               TestUtils.get_bq_field_schema(schema, "a")
+    end
+
+    test "drops a nested-array field found inside an array of maps" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{"a" => [%{"bad" => [[1], [2]], "good" => "ok"}]},
+          @default_schema
+        )
+
+      assert TestUtils.get_bq_field_schema(schema, "a.bad") == nil
+
+      assert %TFS{name: "good", type: "STRING", mode: "NULLABLE"} =
+               TestUtils.get_bq_field_schema(schema, "a.good")
+    end
+
+    test "produced schema is JSON-encodable (no tuple field types reach the BigQuery patch)" do
+      schema =
+        SchemaBuilder.build_table_schema(
+          %{"a" => %{"bad" => [["x"]], "good" => 1}},
+          @default_schema
+        )
+
+      assert {:ok, _json} = Poison.encode(schema)
+    end
+
+    test "drops a previously-typed field that now arrives as a nested array" do
+      prev_schema = SchemaBuilder.build_table_schema(%{"a" => "ok"}, @default_schema)
+
+      assert %TFS{name: "a", type: "STRING"} = TestUtils.get_bq_field_schema(prev_schema, "a")
+
+      curr_schema = SchemaBuilder.build_table_schema(%{"a" => [["x"], ["y"]]}, prev_schema)
+
+      assert TestUtils.get_bq_field_schema(curr_schema, "a") == nil
+      assert {:ok, _json} = Poison.encode(curr_schema)
+    end
+
+    test "a record whose only field is a nested array becomes a valid empty RECORD" do
+      schema = SchemaBuilder.build_table_schema(%{"a" => %{"bad" => [["x"]]}}, @default_schema)
+
+      assert %TFS{name: "a", type: "RECORD", mode: "REPEATED", fields: []} =
+               TestUtils.get_bq_field_schema(schema, "a")
+
+      assert {:ok, _json} = Poison.encode(schema)
+    end
+  end
+
   test "schema update: params do not match schema" do
     schema = SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0}}, @default_schema)
 

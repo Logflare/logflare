@@ -140,7 +140,7 @@ defmodule Logflare.Factory do
   end
 
   def log_event_factory(attrs) do
-    {source, attrs} = Map.pop(attrs, :source, build(:source))
+    {source, attrs} = Map.pop_lazy(attrs, :source, fn -> build(:source) end)
     {ingested_at, params} = Map.pop(attrs, :ingested_at)
 
     params =

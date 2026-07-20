@@ -1,13 +1,61 @@
 defmodule LogflareWeb.QueryComponents do
   use Phoenix.Component
+  use LogflareWeb, :html
   use LogflareWeb, :routes
 
+  import LogflareWeb.ErrorHelpers
+  import Phoenix.HTML.Form
+
+  alias Logflare.Backends.Backend
   alias Logflare.Logs.SearchOperations.Helpers
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
-  alias Logflare.Teams.Team
+  alias Logflare.Sql
   alias LogflareWeb.Utils
   alias Phoenix.LiveView.JS
+
+  attr :backends, :list, required: true
+  attr :form, :any, required: true
+  attr :field, :atom, default: :backend_id
+  attr :show_language, :boolean, default: true
+  attr :label, :string, default: nil
+  attr :default_backend, Backend, required: true
+
+  slot :help
+
+  def backend_select(assigns) do
+    assigns =
+      assign_new(assigns, :options, fn %{backends: backends, default_backend: default_backend} ->
+        backend_options = Enum.map(backends, &{"#{&1.name} (#{&1.type})", &1.id})
+        [{default_backend.name, nil}] ++ backend_options
+      end)
+
+    ~H"""
+    <div class="form-group">
+      <label :if={@label}>{@label}</label>
+      <small :if={render_slot(@help)} class="form-text text-muted">{render_slot(@help)}</small>
+      <select id={@form[@field].id} name={@form[@field].name} class="form-control">
+        {options_for_select(@options, @form[@field].value)}
+      </select>
+      {error_tag(@form, @field)}
+      <div :if={@show_language} class="tw-mt-2">
+        <strong>Query Language: <span id="query-language">{format_query_language(@form[@field].value, @backends, @default_backend)}</span></strong>
+      </div>
+    </div>
+    """
+  end
+
+  defp format_query_language(nil, _backends, default_backend),
+    do: format_backend_language(default_backend)
+
+  defp format_query_language(backend_id, backends, _default_backend) do
+    backend = Enum.find(backends, &(to_string(&1.id) == to_string(backend_id)))
+    format_backend_language(backend)
+  end
+
+  defp format_backend_language(%Backend{type: :clickhouse}), do: "ClickHouse SQL"
+  defp format_backend_language(%Backend{type: :postgres}), do: "Postgres SQL"
+  defp format_backend_language(_), do: "BigQuery SQL"
 
   attr :bytes, :integer, default: nil
 
@@ -34,35 +82,32 @@ defmodule LogflareWeb.QueryComponents do
   attr :search_params, :map, default: %{}
   attr :team, :any, default: nil
 
-  def quick_filter(%{node: %{path: [path]}} = assigns)
-      when path in ["id", "event_message", "timestamp"] and not is_map_key(assigns, :class) do
-    assigns
-    |> assign(:class, nil)
-    |> quick_filter()
-  end
-
   def quick_filter(assigns) do
+    include_path = append_to_query(assigns)
+    exclude_path = append_to_query(assigns, :exclude)
+
     assigns =
       assigns
-      |> assign(
-        :path,
-        append_to_query(
-          assigns.lql,
-          assigns.node,
-          assigns.source,
-          assigns.source_schema_flat_map,
-          assigns.lql_schema,
-          assigns.search_params,
-          assigns.team
-        )
-      )
+      |> assign(:include_path, include_path)
+      |> assign(:exclude_path, exclude_path)
       |> assign(:value_ok?, quick_filter_value_ok?(assigns.node))
-      |> assign_new(:class, fn -> "tw-hidden group-hover:tw-inline" end)
+      |> assign_new(:class, fn %{node: %{path: [path | _]}} ->
+        if path in ~w(id event_message timestamp) do
+          "tw-visible"
+        end
+      end)
 
     ~H"""
-    <.link :if={@path && @value_ok?} title="Append to query" class={@class} patch={@path}>
-      <i class="fas fa-search tw-text-xs tw-mr-1 tw-w-2"></i>
-    </.link>
+    <div class="tw-inline-block tw-space-x-1">
+      <.team_link :if={@include_path && @value_ok?} team={@team} title="Append to query" class="tw-no-underline tw-invisible group-hover:tw-visible" patch={@include_path}>
+        <i class={["fas fa-search tw-text-xs", @class]}></i>
+        <span>Include</span>
+      </.team_link>
+      <.team_link :if={@exclude_path && @value_ok?} team={@team} title="Exclude from query" class="tw-no-underline tw-invisible group-hover:tw-visible" patch={@exclude_path}>
+        <i class="fa fa-ban tw-text-xs"></i>
+        <span>Exclude</span>
+      </.team_link>
+    </div>
     """
   end
 
@@ -76,7 +121,7 @@ defmodule LogflareWeb.QueryComponents do
         {:ok, formatted} =
           Utils.sql_params_to_sql(assigns.sql_string, assigns.params)
           |> prepare_table_name()
-          |> SqlFmt.format_query()
+          |> Sql.format()
 
         formatted
       end)
@@ -115,25 +160,20 @@ defmodule LogflareWeb.QueryComponents do
     )
   end
 
-  @spec append_to_query(
-          String.t(),
-          map(),
-          Logflare.Sources.Source.t(),
-          map(),
-          map(),
-          map(),
-          Team.t() | nil
-        ) ::
-          String.t() | nil
+  @spec append_to_query(map(), :include | :exclude) :: String.t() | nil
   def append_to_query(
-        lql,
-        %{path: path, value: value},
-        source,
-        flat_map,
-        lql_schema,
-        search_params,
-        team \\ nil
+        %{
+          lql: lql,
+          node: %{path: path, value: value},
+          source: source,
+          source_schema_flat_map: flat_map,
+          lql_schema: lql_schema,
+          search_params: search_params
+        } = assigns,
+        action \\ :include
       ) do
+    team = Map.get(assigns, :team)
+
     case lookup_schema_path(path, flat_map) do
       {normalized_key, list_includes?} ->
         resolved_path = resolve_lql_path(normalized_key, flat_map)
@@ -141,7 +181,7 @@ defmodule LogflareWeb.QueryComponents do
         updated_lql =
           lql
           |> Lql.decode!(lql_schema)
-          |> upsert_filter_rule(resolved_path, value, list_includes?)
+          |> upsert_filter_rule(resolved_path, value, list_includes?, action)
           |> Lql.encode!()
 
         params =
@@ -157,17 +197,18 @@ defmodule LogflareWeb.QueryComponents do
     end
   end
 
-  defp upsert_filter_rule(rules, "timestamp", value, _list_includes?) do
+  defp upsert_filter_rule(rules, "timestamp", value, _list_includes?, action) do
     chart_period = Lql.Rules.get_chart_period(rules, :minute)
 
     ts_rule =
       normalize_filter_rule_value("timestamp", value)
       |> build_timestamp_filter_rule(chart_period)
+      |> maybe_negate_filter_rule(action)
 
     Lql.Rules.upsert_filter_rule_by_path(rules, ts_rule)
   end
 
-  defp upsert_filter_rule(rules, path, value, list_includes?) do
+  defp upsert_filter_rule(rules, path, value, list_includes?, action) do
     filter_rule =
       FilterRule.build(
         path: path,
@@ -175,9 +216,16 @@ defmodule LogflareWeb.QueryComponents do
         value: value,
         modifiers: if(is_binary(value), do: %{quoted_string: true}, else: %{})
       )
+      |> maybe_negate_filter_rule(action)
 
     Lql.Rules.upsert_filter_rule_by_path(rules, filter_rule)
   end
+
+  defp maybe_negate_filter_rule(%FilterRule{} = rule, :exclude) do
+    %{rule | modifiers: Map.put(rule.modifiers, :negate, true)}
+  end
+
+  defp maybe_negate_filter_rule(%FilterRule{} = rule, :include), do: rule
 
   @doc """
   Looks up the path in the schema flat map and returns whether it's a list type.

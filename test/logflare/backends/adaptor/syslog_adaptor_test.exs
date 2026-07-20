@@ -483,12 +483,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
 
     test "for invalid host" do
       {_, backend} = start_syslog(%{host: "invalid-host", port: 6514})
-      assert {:error, "non-existing domain"} = SyslogAdaptor.test_connection(backend)
+      assert {:error, :unknown_error} = SyslogAdaptor.test_connection(backend)
     end
 
     test "for unreachable port" do
       {_, backend} = start_syslog(%{host: "localhost", port: probably_closed_port()})
-      assert {:error, "connection refused"} = SyslogAdaptor.test_connection(backend)
+      assert {:error, :unknown_error} = SyslogAdaptor.test_connection(backend)
     end
   end
 

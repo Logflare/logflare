@@ -42,6 +42,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
              :description,
              :name,
              :query,
+             :language,
              :source_mapping,
              :sandboxable,
              :cache_duration_seconds,
@@ -50,7 +51,8 @@ defmodule Logflare.Endpoints.EndpointQuery do
              :enable_auth,
              :labels,
              :redact_pii,
-             :enable_dynamic_reservation
+             :enable_dynamic_reservation,
+             :backend_id
            ]}
   typed_schema "endpoint_queries" do
     field(:token, Ecto.UUID, autogenerate: true)
@@ -195,7 +197,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
 
   def update_source_mapping(changeset), do: changeset
 
-  @spec map_backend_to_language(Backend.t(), supabase_mode :: boolean()) ::
+  @spec map_backend_to_language(Backend.t() | nil, supabase_mode :: boolean()) ::
           :bq_sql | :ch_sql | :pg_sql
   def map_backend_to_language(%Backend{type: :clickhouse}, _supabase_mode), do: :ch_sql
   def map_backend_to_language(%Backend{type: :postgres}, false), do: :pg_sql

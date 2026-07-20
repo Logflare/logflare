@@ -173,7 +173,9 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     {:noreply, socket}
   end
 
-  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+  def handle_params(_params, _uri, socket) do
+    {:noreply, assign(socket, :selected_version, nil)}
+  end
 
   @impl true
   def handle_event("load-more", _params, %{assigns: %{next_cursor_id: nil}} = socket) do

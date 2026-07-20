@@ -1,6 +1,144 @@
 [
   %{
     meta: %{
+      captured_at: "2026-07-10T15:51:33.695745Z",
+      git_sha: "63210949d",
+      label: "apply/3 baseline + comparison scenario",
+      machine: "Darwin Pauls-MBP.localdomain arm64"
+    },
+    results: %{
+      "rt comparison 100 | edge" => %{
+        ips: 204_134,
+        memory_avg_bytes: 28_912,
+        reductions_avg: 2459,
+        wall_avg_us: 4.9,
+        wall_median_us: 4.58,
+        wall_p99_us: 13.67
+      },
+      "rt comparison 100 | otel" => %{
+        ips: 207_380,
+        memory_avg_bytes: 35_320,
+        reductions_avg: 2597,
+        wall_avg_us: 4.82,
+        wall_median_us: 4.58,
+        wall_p99_us: 11.96
+      },
+      "rt drain 100 project= match | edge" => %{
+        ips: 6_592_328,
+        memory_avg_bytes: 384,
+        reductions_avg: 41,
+        wall_avg_us: 0.15,
+        wall_median_us: 0.13,
+        wall_p99_us: 0.25
+      },
+      "rt drain 100 project= match | otel" => %{
+        ips: 2_522_866,
+        memory_avg_bytes: 472,
+        reductions_avg: 62,
+        wall_avg_us: 0.4,
+        wall_median_us: 0.38,
+        wall_p99_us: 0.5
+      },
+      "rt drain 100 project= miss | edge" => %{
+        ips: 7_695_154,
+        memory_avg_bytes: 232,
+        reductions_avg: 31,
+        wall_avg_us: 0.13,
+        wall_median_us: 0.13,
+        wall_p99_us: 0.21
+      },
+      "rt drain 100 project= miss | otel" => %{
+        ips: 6_956_036,
+        memory_avg_bytes: 232,
+        reductions_avg: 31,
+        wall_avg_us: 0.14,
+        wall_median_us: 0.13,
+        wall_p99_us: 0.21
+      },
+      "rt drain 1000 project= match | edge" => %{
+        ips: 6_530_453,
+        memory_avg_bytes: 384,
+        reductions_avg: 41,
+        wall_avg_us: 0.15,
+        wall_median_us: 0.13,
+        wall_p99_us: 0.25
+      },
+      "rt drain 1000 project= match | otel" => %{
+        ips: 2_498_863,
+        memory_avg_bytes: 472,
+        reductions_avg: 62,
+        wall_avg_us: 0.4,
+        wall_median_us: 0.38,
+        wall_p99_us: 0.5
+      },
+      "rt empty | edge" => %{
+        ips: 48_411_342,
+        memory_avg_bytes: 112,
+        reductions_avg: 15,
+        wall_avg_us: 0.02,
+        wall_median_us: 0.02,
+        wall_p99_us: 0.03
+      },
+      "rt empty | otel" => %{
+        ips: 18_332_445,
+        memory_avg_bytes: 112,
+        reductions_avg: 15,
+        wall_avg_us: 0.05,
+        wall_median_us: 0.04,
+        wall_p99_us: 0.04
+      },
+      "rt mixed 100 | edge" => %{
+        ips: 248_593,
+        memory_avg_bytes: 4728,
+        reductions_avg: 796,
+        wall_avg_us: 4.02,
+        wall_median_us: 3.92,
+        wall_p99_us: 5.17
+      },
+      "rt mixed 100 | otel" => %{
+        ips: 240_041,
+        memory_avg_bytes: 4688,
+        reductions_avg: 535,
+        wall_avg_us: 4.17,
+        wall_median_us: 3.88,
+        wall_p99_us: 15.71
+      },
+      "rt regex only 100 | edge" => %{
+        ips: 38_464,
+        memory_avg_bytes: 3448,
+        reductions_avg: 3244,
+        wall_avg_us: 26.0,
+        wall_median_us: 25.67,
+        wall_p99_us: 31.75
+      },
+      "rt regex only 100 | otel" => %{
+        ips: 39_014,
+        memory_avg_bytes: 3448,
+        reductions_avg: 2024,
+        wall_avg_us: 25.63,
+        wall_median_us: 25.42,
+        wall_p99_us: 31.04
+      },
+      "rt scattered 100 path= match | edge" => %{
+        ips: 275_014,
+        memory_avg_bytes: 6512,
+        reductions_avg: 415,
+        wall_avg_us: 3.64,
+        wall_median_us: 3.58,
+        wall_p99_us: 4.63
+      },
+      "rt scattered 100 path= match | otel" => %{
+        ips: 200_634,
+        memory_avg_bytes: 6512,
+        reductions_avg: 415,
+        wall_avg_us: 4.98,
+        wall_median_us: 4.83,
+        wall_p99_us: 6.29
+      }
+    }
+  },
+  %{
+    meta: %{
       captured_at: "2026-06-01T14:41:59.833094Z",
       git_sha: "655e83a02",
       label: "eq_index leaf + 1f fast-path",

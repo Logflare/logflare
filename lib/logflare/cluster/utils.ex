@@ -50,4 +50,16 @@ defmodule Logflare.Cluster.Utils do
   def rpc_call(node, func, timeout \\ 5_000) do
     :erpc.call(node, func, timeout)
   end
+
+  @doc """
+  Convenience function for `:erpc.multicall/5` against an explicit list of nodes.
+
+  Returns per-node results as `{node, result}` tuples, preserving node order.
+  """
+  @spec erpc_multicall([Node.t()], module(), atom(), [term()], non_neg_integer()) :: [
+          {Node.t(), {:ok, term()} | {:error, term()} | {:throw, term()} | {:exit, term()}}
+        ]
+  def erpc_multicall(nodes, mod, func, args, timeout \\ 5_000) do
+    Enum.zip(nodes, :erpc.multicall(nodes, mod, func, args, timeout))
+  end
 end

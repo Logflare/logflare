@@ -6,7 +6,10 @@ defmodule Logflare.OpenTelemetryTest do
 
   use ExUnitProperties
 
+  import Logflare.Utils.Guards
+
   alias Broadway.Message
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources.Source.BigQuery.Pipeline
 
   @span_fields Record.extract(:span, from: "deps/opentelemetry/include/otel_span.hrl")
@@ -28,8 +31,13 @@ defmodule Logflare.OpenTelemetryTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event, source: source)
-      messages = [%Message{data: le, acknowledger: {Pipeline, :ack_id, :ack_data}}]
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      messages = [%Message{data: pointer, acknowledger: {Pipeline, :ack_id, :ack_data}}]
       batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
 
       context = %{
@@ -45,7 +53,7 @@ defmodule Logflare.OpenTelemetryTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       spans = collect_spans()
-      assert length(spans) > 0
+      assert is_non_empty_list(spans)
 
       for span <- spans do
         assert span(name: "ingest." <> _) = span
@@ -61,8 +69,13 @@ defmodule Logflare.OpenTelemetryTest do
         fn _rows, _context, _table -> :ok end
       )
 
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event, source: source)
-      messages = [%Message{data: le, acknowledger: {Pipeline, :ack_id, :ack_data}}]
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      messages = [%Message{data: pointer, acknowledger: {Pipeline, :ack_id, :ack_data}}]
       batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
 
       context = %{
@@ -78,7 +91,7 @@ defmodule Logflare.OpenTelemetryTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       spans = collect_spans()
-      assert length(spans) > 0
+      assert is_non_empty_list(spans)
 
       for span <- spans do
         assert span(name: "ingest." <> _) = span

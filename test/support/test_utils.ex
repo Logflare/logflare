@@ -148,10 +148,15 @@ defmodule Logflare.TestUtils do
   end)
   ```
   """
-  def gen_bq_error(err) do
+  def gen_bq_error(err, attrs \\ []) do
+    error =
+      attrs
+      |> Enum.into(%{}, fn {key, value} -> {to_string(key), value} end)
+      |> Map.put("message", err)
+
     %Tesla.Env{
       status: 400,
-      body: Jason.encode!(%{error: %{message: err}})
+      body: Jason.encode!(%{error: error})
     }
   end
 
@@ -181,7 +186,7 @@ defmodule Logflare.TestUtils do
         schema ->
           schema
 
-        length(results) > 0 ->
+        results != [] ->
           SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema())
 
         true ->
@@ -499,16 +504,25 @@ defmodule Logflare.TestUtils do
       end
 
   """
-  def wait_for_render(view, selector, timeout \\ 5000) do
-    if view |> Phoenix.LiveViewTest.has_element?(selector) do
+  def wait_for_render(view, selector, timeout \\ 5_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    wait_for_render_until(view, selector, deadline)
+  end
+
+  defp wait_for_render_until(view, selector, deadline) do
+    if Phoenix.LiveViewTest.has_element?(view, selector) do
       view
     else
-      receive do
-        {:wait_for_render, _} ->
-          wait_for_render(view, selector)
-      after
-        timeout ->
-          raise "Timeout waiting for render"
+      remaining = deadline - System.monotonic_time(:millisecond)
+
+      if remaining <= 0 do
+        raise "Timeout waiting for render"
+      else
+        receive do
+          {:wait_for_render, _} -> wait_for_render_until(view, selector, deadline)
+        after
+          min(remaining, 50) -> wait_for_render_until(view, selector, deadline)
+        end
       end
     end
   end

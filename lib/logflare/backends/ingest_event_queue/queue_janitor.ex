@@ -1,15 +1,21 @@
 defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   @moduledoc """
-  Performs cleanup actions for a private :ets queue
+  Performs cleanup actions for a private :ets queue.
 
-  Periodically purges the queue of `:ingested` events.
-
-  If total events exceeds a max threshold, it will purge all events from the queue.
-  This is in the case of sudden bursts of events that do not get cleared fast enough.
-  It also acts as a failsafe for any potential runaway queue buildup from bugs.
+  If total events exceeds a max threshold, it will purge a fraction of pending events
+  from the queue. This is in the case of sudden bursts of events that do not get cleared
+  fast enough. It also acts as a failsafe for any potential runaway queue buildup from
+  bugs.
 
   For consolidated queues, larger thresholds are used since they aggregate events
   from multiple sources.
+
+  Recovery of abandoned in-flight claims (a producer crashed between claiming a pointer
+  and acking it) is not this module's job — pointer rows have no in-place "processing"
+  state to find stale (claiming one deletes it outright, see
+  `Logflare.Backends.IngestEventQueue.pop_pending_pointers/2`). That's bounded instead
+  by `Logflare.Backends.IngestEventQueue.GenerationJanitor` dropping whole generations
+  on a schedule.
   """
   use GenServer
 
@@ -48,6 +54,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     }
 
     handle_info(:work, state)
+
     {:ok, state}
   end
 
@@ -65,7 +72,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   def do_drop(%{consolidated?: true, consolidated_key: consolidated_key} = state, metrics) do
     for {:consolidated, _bid, pid} = table_key <- IngestEventQueue.list_queues(consolidated_key) do
       truncate_all? = metrics.avg > 100
-      drop_queue(state, table_key, pid, truncate_all?, :consolidated)
+      drop_queue(state, table_key, consolidated_key, pid, truncate_all?, :consolidated)
     end
   end
 
@@ -74,7 +81,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
     for {_sid, bid, pid} = table_key <- IngestEventQueue.list_queues(sid_bid) do
       truncate_all? = metrics.avg > 100 or bid != nil
-      drop_queue(state, table_key, pid, truncate_all?, :source)
+      drop_queue(state, table_key, sid_bid, pid, truncate_all?, :source)
     end
   end
 
@@ -82,22 +89,23 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
           map(),
           {pos_integer(), pos_integer() | nil, pid() | nil}
           | {:consolidated, pos_integer(), pid() | nil},
+          IngestEventQueue.queues_key() | IngestEventQueue.consolidated_queues_key(),
           pid() | nil,
           boolean(),
           :consolidated | :source
         ) :: :ok | nil
-  defp drop_queue(state, table_key, pid, truncate_all?, queue_type) do
+  defp drop_queue(state, table_key, queues_key, pid, truncate_all?, queue_type) do
     if truncate_all? do
-      IngestEventQueue.truncate_table(table_key, :ingested, 0)
+      IngestEventQueue.truncate_recent(queues_key, 0)
     else
-      IngestEventQueue.truncate_table(table_key, :ingested, state.remainder)
+      IngestEventQueue.truncate_recent(queues_key, state.remainder)
     end
 
     size = IngestEventQueue.get_table_size(table_key)
 
     if is_integer(size) and size > state.max and pid != nil do
       to_drop = round(state.purge_ratio * size)
-      IngestEventQueue.drop(table_key, :pending, to_drop)
+      IngestEventQueue.drop_pending(table_key, to_drop)
 
       log_msg =
         case queue_type do

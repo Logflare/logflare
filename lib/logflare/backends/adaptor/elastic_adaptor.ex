@@ -79,4 +79,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
     changeset
     |> validate_required([:url])
   end
+
+  @impl Logflare.Backends.Adaptor
+  def test_connection(_), do: {:error, :not_implemented}
 end

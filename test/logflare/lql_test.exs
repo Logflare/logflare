@@ -246,6 +246,36 @@ defmodule Logflare.LqlTest do
 
       assert encoded == ""
     end
+
+    test "escapes double quotes in quoted filter values" do
+      schema_flat_map =
+        TestUtils.build_bq_schema(%{
+          "metadata" => %{
+            "level" => "info",
+            "status" => "error",
+            "tags" => ["popular"]
+          }
+        })
+        |> SchemaUtils.bq_schema_to_flat_typemap()
+
+      values = [~s|ok" m.level:"error|, "trailing backslash\\"]
+
+      attrs_list = [
+        [path: "metadata.status", operator: :=],
+        [path: "metadata.tags", operator: :list_includes],
+        [path: "metadata.tags", operator: :list_includes_regexp],
+        [path: "metadata.level", operator: :>]
+      ]
+
+      for value <- values, attrs <- attrs_list do
+        rule =
+          attrs
+          |> Keyword.merge(value: value, modifiers: %{quoted_string: true})
+          |> FilterRule.build()
+
+        assert [^rule] = [rule] |> Lql.encode!() |> Lql.decode!(schema_flat_map)
+      end
+    end
   end
 
   describe "decode/2 with message filters (legacy build_message_filter_from_regex behavior)" do

@@ -110,29 +110,80 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   defp retriable?({:error, _reason}), do: false
 
+  @doc """
+  Inserts a pre-gzipped RowBinary payload directly into ClickHouse.
+
+  Skips encoding and compression — callers must supply a valid gzip-compressed RowBinary binary.
+  Intended for use with streaming-zlib pipelines that build the compressed body incrementally.
+  """
+  @spec insert_compressed(
+          Backend.t() | Keyword.t(),
+          table :: String.t(),
+          TypeDetection.event_type(),
+          compressed :: binary(),
+          opts :: keyword()
+        ) :: :ok | {:error, String.t()}
+  def insert_compressed(backend_or_conn_opts, table, event_type, compressed, opts \\ [])
+
+  def insert_compressed(%Backend{} = backend, table, event_type, compressed, opts)
+      when is_event_type(event_type) and is_binary(compressed) do
+    with {:ok, connection_opts} <- build_connection_opts(backend) do
+      insert_compressed(connection_opts, table, event_type, compressed, opts)
+    end
+  end
+
+  def insert_compressed(connection_opts, table, event_type, compressed, opts)
+      when is_list(connection_opts) and is_non_empty_binary(table) and is_event_type(event_type) and
+             is_binary(compressed) do
+    do_insert(connection_opts, table, event_type, compressed, opts)
+  end
+
+  @doc false
+  @spec encode_mapping_config_id(String.t()) :: iodata()
+  def encode_mapping_config_id(config_id), do: RowBinaryEncoder.uuid(config_id)
+
   @doc false
   @spec encode_row(LogEvent.t(), TypeDetection.event_type()) :: iodata()
-  def encode_row(%LogEvent{} = event, :log), do: encode_log_row(event)
-  def encode_row(%LogEvent{} = event, :metric), do: encode_metric_row(event)
-  def encode_row(%LogEvent{} = event, :trace), do: encode_trace_row(event)
+  def encode_row(%LogEvent{body: body} = event, event_type) when is_event_type(event_type) do
+    encode_row(event, event_type, encode_mapping_config_id(body["mapping_config_id"]))
+  end
+
+  @doc false
+  @spec encode_row(LogEvent.t(), TypeDetection.event_type(), iodata()) :: iodata()
+  def encode_row(%LogEvent{} = event, :log, mapping_config_id),
+    do: encode_log_row(event, mapping_config_id)
+
+  def encode_row(%LogEvent{} = event, :metric, mapping_config_id),
+    do: encode_metric_row(event, mapping_config_id)
+
+  def encode_row(%LogEvent{} = event, :trace, mapping_config_id),
+    do: encode_trace_row(event, mapping_config_id)
 
   @doc false
   @spec encode_batch([LogEvent.t()], TypeDetection.event_type()) :: iodata()
-  def encode_batch([%LogEvent{} | _] = rows, event_type) when is_event_type(event_type) do
-    Enum.map(rows, &encode_row(&1, event_type))
+  def encode_batch([%LogEvent{body: body} | _] = rows, event_type)
+      when is_event_type(event_type) do
+    # mapping_config_id is uniform across the batch (set from the event-type's
+    # config_id), so encode it once. Do NOT hoist source_uuid/source_name the
+    # same way -- a batch can mix sources (see pipeline.ex), so those vary per row.
+    mapping_config_id = RowBinaryEncoder.uuid(body["mapping_config_id"])
+    Enum.map(rows, &encode_row(&1, event_type, mapping_config_id))
   end
 
   @doc false
   defdelegate columns_for_type(event_type), to: QueryTemplates
 
-  @spec encode_log_row(LogEvent.t()) :: iodata()
-  defp encode_log_row(%LogEvent{
-         id: id,
-         body: body,
-         source_uuid: source_uuid,
-         source_name: source_name,
-         ingested_at: ingested_at
-       }) do
+  @spec encode_log_row(LogEvent.t(), iodata()) :: iodata()
+  defp encode_log_row(
+         %LogEvent{
+           id: id,
+           body: body,
+           source_uuid: source_uuid,
+           source_name: source_name,
+           ingested_at: ingested_at
+         },
+         mapping_config_id
+       ) do
     source_uuid_str = Atom.to_string(source_uuid)
 
     [
@@ -154,20 +205,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       RowBinaryEncoder.map_string_string(body["resource_attributes"] || %{}),
       RowBinaryEncoder.map_string_string(body["scope_attributes"] || %{}),
       RowBinaryEncoder.map_string_string(body["log_attributes"] || %{}),
-      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      mapping_config_id,
       RowBinaryEncoder.nullable(ingested_at, &RowBinaryEncoder.datetime64(&1, 6)),
       RowBinaryEncoder.int64(body["timestamp"])
     ]
   end
 
-  @spec encode_metric_row(LogEvent.t()) :: iodata()
-  defp encode_metric_row(%LogEvent{
-         id: id,
-         body: body,
-         source_uuid: source_uuid,
-         source_name: source_name,
-         ingested_at: ingested_at
-       }) do
+  @spec encode_metric_row(LogEvent.t(), iodata()) :: iodata()
+  defp encode_metric_row(
+         %LogEvent{
+           id: id,
+           body: body,
+           source_uuid: source_uuid,
+           source_name: source_name,
+           ingested_at: ingested_at
+         },
+         mapping_config_id
+       ) do
     source_uuid_str = Atom.to_string(source_uuid)
 
     [
@@ -216,20 +270,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       RowBinaryEncoder.array_float64(body["exemplars.value"] || []),
       RowBinaryEncoder.array_string(body["exemplars.span_id"] || []),
       RowBinaryEncoder.array_string(body["exemplars.trace_id"] || []),
-      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      mapping_config_id,
       RowBinaryEncoder.nullable(ingested_at, &RowBinaryEncoder.datetime64(&1, 6)),
       RowBinaryEncoder.int64(body["timestamp"])
     ]
   end
 
-  @spec encode_trace_row(LogEvent.t()) :: iodata()
-  defp encode_trace_row(%LogEvent{
-         id: id,
-         body: body,
-         source_uuid: source_uuid,
-         source_name: source_name,
-         ingested_at: ingested_at
-       }) do
+  @spec encode_trace_row(LogEvent.t(), iodata()) :: iodata()
+  defp encode_trace_row(
+         %LogEvent{
+           id: id,
+           body: body,
+           source_uuid: source_uuid,
+           source_name: source_name,
+           ingested_at: ingested_at
+         },
+         mapping_config_id
+       ) do
     source_uuid_str = Atom.to_string(source_uuid)
 
     [
@@ -265,7 +322,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         body["links.attributes"] || [],
         &RowBinaryEncoder.map_string_string/1
       ),
-      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      mapping_config_id,
       RowBinaryEncoder.nullable(ingested_at, &RowBinaryEncoder.datetime64(&1, 6)),
       RowBinaryEncoder.int64(body["timestamp"])
     ]

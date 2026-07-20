@@ -29,9 +29,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     assert get_resp_header(conn, "retry-after") == ["3"]
   end
 
-  test "allows request when memory utilization is below 85%", %{conn: conn, source: source} do
+  test "allows request when memory utilization is below 80%", %{conn: conn, source: source} do
     SystemCache
-    |> stub(:memory_utilization, fn -> 0.84 end)
+    |> stub(:memory_utilization, fn -> 0.79 end)
 
     conn =
       conn
@@ -47,7 +47,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     table_key: table_key
   } do
     for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-      le = build(:log_event)
+      le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(table_key, [le])
     end
 
@@ -73,7 +73,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     IngestEventQueue.upsert_tid(other_table_key)
 
     for _ <- 1..round(Backends.max_buffer_queue_len() / 2) do
-      le = build(:log_event)
+      le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(table_key, [le])
       IngestEventQueue.add_to_table(other_table_key, [le])
     end
@@ -88,8 +88,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     assert conn.halted == false
 
-    for _ <- 1..25_100 do
-      le = build(:log_event)
+    for _ <- 1..(round(Backends.max_buffer_queue_len() / 2) + 500) do
+      le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(table_key, [le])
       IngestEventQueue.add_to_table(other_table_key, [le])
     end
@@ -109,9 +109,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
   test "200 if most events are ingested", %{conn: conn, source: source, table_key: table_key} do
     for _ <- 1..(Backends.max_buffer_queue_len() - 500) do
-      le = build(:log_event)
+      le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(table_key, [le])
-      IngestEventQueue.mark_ingested(table_key, [le])
+      IngestEventQueue.pop_pending(table_key, 1)
     end
 
     # get and cache the value
@@ -163,7 +163,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     refute_receive {:telemetry_event, [:logflare, :ingest, :requests, :buffer_full], _, _}
 
     for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-      le = build(:log_event)
+      le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(table_key, [le])
     end
 
@@ -221,7 +221,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(table_key_webhook)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(table_key_webhook, [le])
       end
 
@@ -229,7 +229,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(table_key_bigquery)
 
       for _ <- 1..100 do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(table_key_bigquery, [le])
       end
 
@@ -252,7 +252,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
       # Fill up the default ingest backend
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(table_key, [le])
       end
 
@@ -276,7 +276,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(table_key)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(table_key, [le])
       end
 
@@ -300,7 +300,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(system_queue_key)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(system_queue_key, [le])
       end
 
@@ -308,7 +308,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(user_queue_key)
 
       for _ <- 1..100 do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(user_queue_key, [le])
       end
 
@@ -334,7 +334,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(system_queue_key)
 
       for _ <- 1..100 do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(system_queue_key, [le])
       end
 
@@ -342,7 +342,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(user_queue_key)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(user_queue_key, [le])
       end
 
@@ -367,7 +367,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(system_queue_key)
 
       for _ <- 1..100 do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(system_queue_key, [le])
       end
 
@@ -375,7 +375,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(user_queue_key)
 
       for _ <- 1..100 do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(user_queue_key, [le])
       end
 
@@ -408,7 +408,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(unlinked_queue_key)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(unlinked_queue_key, [le])
       end
 
@@ -442,7 +442,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(backend_queue_key)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(backend_queue_key, [le])
       end
 
@@ -452,7 +452,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(other_queue_key)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(other_queue_key, [le])
       end
 
@@ -487,7 +487,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(backend_queue_key)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(backend_queue_key, [le])
       end
 
@@ -526,7 +526,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(system_queue_key)
 
       for _ <- 1..100 do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(system_queue_key, [le])
       end
 
@@ -535,7 +535,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.upsert_tid(clickhouse_queue_key)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
+        le = build(:log_event, source: source)
         IngestEventQueue.add_to_table(clickhouse_queue_key, [le])
       end
 

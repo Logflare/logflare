@@ -124,8 +124,17 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
       :"~" ->
         stringify(le_value) =~ expected
 
-      op when op in [:<=, :<, :>=, :>] ->
-        apply(Kernel, operator, [le_value, expected])
+      :< ->
+        le_value < expected
+
+      :<= ->
+        le_value <= expected
+
+      :> ->
+        le_value > expected
+
+      :>= ->
+        le_value >= expected
     end
   end
 

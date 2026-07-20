@@ -5,6 +5,20 @@ defmodule Logflare.Sql.AstUtils do
 
   import Logflare.Utils.Guards
 
+  @empty_span %{
+    "start" => %{"line" => 0, "column" => 0},
+    "end" => %{"line" => 0, "column" => 0}
+  }
+
+  @doc """
+  Builds an identifier AST node map, including the `span` field the parser
+  requires when a hand-built AST is serialized back into SQL.
+  """
+  @spec build_identifier(value :: String.t() | nil, quote_style :: String.t() | nil) :: map()
+  def build_identifier(value, quote_style \\ nil) do
+    %{"value" => value, "quote_style" => quote_style, "span" => @empty_span}
+  end
+
   @doc """
   Recursively transforms an AST using a provided transform function.
 

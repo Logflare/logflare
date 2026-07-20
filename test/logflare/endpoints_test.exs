@@ -1,6 +1,8 @@
 defmodule Logflare.EndpointsTest do
   use Logflare.DataCase
 
+  import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
+
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
@@ -622,6 +624,59 @@ defmodule Logflare.EndpointsTest do
 
       assert_received {:backend_used, backend_id}
       assert backend_id == backend.id
+    end
+
+    test "emits total_bytes_processed in telemetry for ClickHouse backend" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "c")
+      {_source, backend} = setup_clickhouse_test(user: user, source: source)
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+      log_events =
+        for i <- 1..5 do
+          build_mapped_log_event(
+            source: source,
+            message: "telemetry test message #{i}",
+            body: %{"metadata" => %{"level" => "info", "request_id" => "req-#{i}"}}
+          )
+        end
+
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
+      Process.sleep(200)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+      test_pid = self()
+
+      handler_id = "test-ch-bytes-telemetry-#{inspect(self())}"
+
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :endpoints, :query],
+        fn _event, measurements, metadata, _config ->
+          send(test_pid, {:telemetry_event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      query_string = """
+      SELECT event_message
+      FROM #{table_name}
+      WHERE source_name = '#{source.name}'
+      """
+
+      assert {:ok, %{rows: rows, total_bytes_processed: bytes}} =
+               Endpoints.run_query_string(user, {:ch_sql, query_string}, backend_id: backend.id)
+
+      assert length(rows) == length(log_events)
+      assert_received {:telemetry_event, measurements, metadata}
+      assert measurements.total_bytes_processed == bytes
+      assert is_integer(bytes) and bytes > 0
+      assert metadata["backend_type"] == "clickhouse"
+      assert metadata["backend_id"] == backend.id
     end
 
     test "run_query/1 applies PII redaction based on redact_pii flag" do

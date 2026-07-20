@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -47,6 +48,52 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     test "handles URL without password" do
       config = %{url: "postgresql://localhost:5432/dbname"}
       assert ^config = PostgresAdaptor.redact_config(config)
+    end
+
+    test "redacts standalone password field when configured via individual fields" do
+      config = %{hostname: "localhost", username: "user", password: "secret123", database: "db"}
+
+      assert %{password: "REDACTED"} = PostgresAdaptor.redact_config(config)
+    end
+
+    test "does not crash when config has no url" do
+      config = %{hostname: "localhost", username: "user", password: "secret123"}
+
+      assert %{hostname: "localhost"} = PostgresAdaptor.redact_config(config)
+    end
+
+    test "redacts both url-embedded and standalone passwords when both are present" do
+      config = %{
+        url: "postgresql://user:secret123@localhost:5432/dbname",
+        password: "secret123"
+      }
+
+      assert %{
+               url: "postgresql://user:REDACTED@localhost:5432/dbname",
+               password: "REDACTED"
+             } = PostgresAdaptor.redact_config(config)
+    end
+
+    test "redacts a string-keyed url in place, without leaving the atom key unredacted" do
+      config = %{"url" => "postgresql://user:secret123@localhost:5432/dbname"}
+
+      assert %{"url" => "postgresql://user:REDACTED@localhost:5432/dbname"} =
+               redacted =
+               PostgresAdaptor.redact_config(config)
+
+      refute Map.has_key?(redacted, :url)
+    end
+
+    test "redacts both key variants if a config has both :url and \"url\"" do
+      config = %{
+        "url" => "postgresql://user:othersecret@localhost:5432/otherdb",
+        url: "postgresql://user:secret123@localhost:5432/dbname"
+      }
+
+      assert %{
+               "url" => "postgresql://user:REDACTED@localhost:5432/otherdb",
+               url: "postgresql://user:REDACTED@localhost:5432/dbname"
+             } = PostgresAdaptor.redact_config(config)
     end
   end
 
@@ -93,6 +140,71 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                   ["test"]},
                  []
                )
+    end
+
+    test "execute_query/3 normalizes Ecto query undefined column errors", %{
+      backend: backend,
+      source: source
+    } do
+      log_event = build(:log_event, source: source, test: "data")
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+
+      query =
+        from(l in PostgresAdaptor.table_name(source),
+          select: field(l, :notthere)
+        )
+
+      TestUtils.retry_assert(fn ->
+        assert {:error,
+                %QueryError{
+                  kind: :invalid_query,
+                  backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                  raw_error: %Postgrex.Error{},
+                  description: nil
+                } = error} = PostgresAdaptor.execute_query(backend, query, [])
+
+        assert Exception.message(error.raw_error) =~ "notthere"
+      end)
+    end
+
+    test "execute_query/3 normalizes raw SQL undefined column errors", %{
+      backend: backend,
+      source: source
+    } do
+      log_event = build(:log_event, source: source, test: "data")
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+
+      query = "select notthere from #{PostgresAdaptor.table_name(source)}"
+
+      TestUtils.retry_assert(fn ->
+        assert {:error,
+                %QueryError{
+                  kind: :invalid_query,
+                  backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                  raw_error: %Postgrex.Error{},
+                  description: nil
+                } = error} = PostgresAdaptor.execute_query(backend, query, [])
+
+        assert Exception.message(error.raw_error) =~ "notthere"
+      end)
+    end
+
+    test "execute_query/3 normalizes raw SQL syntax errors", %{backend: backend} do
+      TestUtils.retry_assert(fn ->
+        assert {:error,
+                %QueryError{
+                  kind: :invalid_query,
+                  backend: Logflare.Backends.Adaptor.PostgresAdaptor,
+                  raw_error: %Postgrex.Error{},
+                  description: nil
+                } = error} = PostgresAdaptor.execute_query(backend, "select from", [])
+
+        message = Exception.message(error.raw_error)
+        assert message =~ "syntax_error"
+        assert message =~ "syntax error"
+      end)
     end
 
     test "ingest/2 and execute_query/2 dispatched message with metadata transformation into list",
@@ -165,7 +277,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
         {:error, :cannot_connect}
       end)
 
-      assert {:error, :cannot_connect} = PostgresAdaptor.test_connection(backend)
+      assert {:error, :connection_error} = PostgresAdaptor.test_connection(backend)
+    end
+
+    test "execute_query/3 returns error tuple on invalid query", %{backend: backend} do
+      assert {:error, %QueryError{kind: :backend_error, raw_error: %Postgrex.Error{}}} =
+               PostgresAdaptor.execute_query(backend, "select id from nonexistent_source", [])
     end
   end
 

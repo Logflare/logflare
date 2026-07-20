@@ -124,9 +124,9 @@ setup.node:
 	@echo ""
 
 reset:
-	docker compose down
 	MIX_ENV=dev mix ecto.reset
 	MIX_ENV=test mix ecto.reset
+	docker compose down
 	rm -rf _build .elixir_ls deps assets/node_modules
 
 .PHONY: setup setup.node reset check-version-manager check-tools
@@ -157,19 +157,25 @@ start.green: __start__
 start.sb.bq: LOGFLARE_SUPABASE_MODE = true
 start.sb.bq: start.st.bq
 
-start.st.bq: ERL_NAME = st_
+# SPOOL_MODE (producer|consumer|both), SPOOL_PROVIDER (aws|gcp), and related
+# SPOOL_* vars pass straight through to the app via __start__ (see config/runtime.exs).
+# To run a producer + consumer pair side by side, override PORT/ERL_NAME/LOGFLARE_GRPC_PORT
+# so the two nodes don't collide, e.g.:
+#   SPOOL_MODE=producer make start.st.bq
+#   SPOOL_MODE=consumer PORT=4001 ERL_NAME=consumer LOGFLARE_GRPC_PORT=50052 make start.st.bq
+start.st.bq: ERL_NAME ?= st_
 start.st.bq: PORT ?= 4000
 start.st.bq: ENV_FILE = .single_tenant_bq.env
-start.st.bq: LOGFLARE_GRPC_PORT = 50051
+start.st.bq: LOGFLARE_GRPC_PORT ?= 50051
 start.st.bq: __start__
 
 start.sb.pg: LOGFLARE_SUPABASE_MODE = true
 start.sb.pg: start.st.pg
 
-start.st.pg: ERL_NAME = st_pg
+start.st.pg: ERL_NAME ?= st_pg
 start.st.pg: PORT ?= 4000
 start.st.pg: ENV_FILE = .single_tenant_pg.env
-start.st.pg: LOGFLARE_GRPC_PORT = 50051
+start.st.pg: LOGFLARE_GRPC_PORT ?= 50051
 start.st.pg: __start__
 
 observer:
@@ -179,7 +185,7 @@ __start__:
 	@if [ ! -f ${ENV_FILE} ]; then \
 		touch ${ENV_FILE}; \
 	fi
-	@env $$(cat ${ENV_FILE} .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
+	@env $$(cat ${ENV_FILE} .dev.env | grep -v '^PHX_HTTP_PORT=' | xargs) PHX_HTTP_PORT=${PORT} SPOOL_MODE=${SPOOL_MODE} SPOOL_PROVIDER=${SPOOL_PROVIDER} SPOOL_QUEUE_NAME=${SPOOL_QUEUE_NAME} SPOOL_PUBSUB_TOPIC=${SPOOL_PUBSUB_TOPIC} SPOOL_BUCKET=${SPOOL_BUCKET} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
 
 
 migrate:
@@ -310,7 +316,6 @@ deploy.staging.versioned:
 		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=versioned \
 		--region=us-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-
 
 deploy.prod.versioned:
 	@gcloud config set project logflare-232118

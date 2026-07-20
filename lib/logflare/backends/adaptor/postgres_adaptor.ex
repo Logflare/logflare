@@ -23,6 +23,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
   alias Logflare.Sql
@@ -91,12 +92,17 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def execute_query(%Backend{} = backend, %Ecto.Query{} = query, _opts) do
     mod = PgRepo.create_repo(backend)
 
-    result =
-      query
-      |> mod.all()
-      |> Enum.map(&nested_map_update/1)
+    try do
+      result =
+        query
+        |> mod.all()
+        |> Enum.map(&nested_map_update/1)
 
-    {:ok, QueryResult.new(result, pg_meta(result))}
+      {:ok, QueryResult.new(result, pg_meta(result))}
+    rescue
+      error in [Postgrex.Error, DBConnection.ConnectionError, Ecto.QueryError] ->
+        {:error, error |> to_query_error() |> log_query_error(backend)}
+    end
   end
 
   def execute_query(%Backend{} = backend, query_string, opts)
@@ -119,6 +125,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
         end
 
       {:ok, QueryResult.new(rows, pg_meta(rows))}
+    else
+      {:error, error} ->
+        {:error, error |> to_query_error() |> log_query_error(backend)}
     end
   end
 
@@ -143,8 +152,21 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
   def test_connection(%Backend{} = backend) do
     case execute_query(backend, "SELECT 1 AS result", []) do
-      {:ok, %QueryResult{rows: [%{"result" => 1}]}} -> :ok
-      {:error, _} = error -> error
+      {:ok, %QueryResult{rows: [%{"result" => 1}]}} ->
+        :ok
+
+      {:error, %QueryError{kind: kind}}
+      when kind in [:connection_error, :backend_error] ->
+        {:error, kind}
+
+      {:error, reason} ->
+        Logger.warning(
+          "Unexpected error when testing Postgres backend connection: #{inspect(reason)}",
+          backend_id: backend.id,
+          user_id: backend.user_id
+        )
+
+        {:error, :unknown_error}
     end
   end
 
@@ -207,9 +229,81 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
-    url = Map.get(config, :url) || Map.get(config, "url")
-    updated = String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
-    Map.put(config, :url, updated)
+    config
+    |> redact_url()
+    |> Map.replace(:password, "REDACTED")
+    |> Map.replace("password", "REDACTED")
+  end
+
+  defp redact_url(config) do
+    config
+    |> Map.replace_lazy(:url, &redact_url_string/1)
+    |> Map.replace_lazy("url", &redact_url_string/1)
+  end
+
+  defp redact_url_string(nil), do: nil
+  defp redact_url_string(url), do: String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
+
+  @spec to_query_error(
+          :cannot_connect
+          | Postgrex.Error.t()
+          | DBConnection.ConnectionError.t()
+          | %Ecto.QueryError{}
+        ) :: QueryError.t()
+  defp to_query_error(:cannot_connect) do
+    query_error(:connection_error, :cannot_connect)
+  end
+
+  defp to_query_error(%Postgrex.Error{} = error) do
+    error
+    |> postgres_query_error_kind()
+    |> query_error(error)
+  end
+
+  defp to_query_error(%DBConnection.ConnectionError{} = error) do
+    query_error(:connection_error, error)
+  end
+
+  defp to_query_error(%Ecto.QueryError{} = error) do
+    query_error(:backend_error, error)
+  end
+
+  @spec postgres_query_error_kind(Postgrex.Error.t()) :: QueryError.kind()
+  defp postgres_query_error_kind(%Postgrex.Error{postgres: %{code: code}})
+       when code in [:undefined_column, :syntax_error],
+       do: :invalid_query
+
+  defp postgres_query_error_kind(%Postgrex.Error{postgres: %{pg_code: pg_code}})
+       when pg_code in ["42703", "42601"],
+       do: :invalid_query
+
+  defp postgres_query_error_kind(%Postgrex.Error{} = error) do
+    message = Exception.message(error)
+
+    if message =~ "undefined_column" or message =~ "syntax_error" or
+         message =~ ~r/column\s+["'`]?([^"'`\s]+)["'`]?\s+does not exist/ do
+      :invalid_query
+    else
+      :backend_error
+    end
+  end
+
+  @spec query_error(QueryError.kind(), term()) :: QueryError.t()
+  defp query_error(kind, raw_error) do
+    %QueryError{
+      kind: kind,
+      raw_error: raw_error,
+      backend: __MODULE__
+    }
+  end
+
+  @spec log_query_error(QueryError.t(), Backend.t()) :: QueryError.t()
+  defp log_query_error(%QueryError{} = error, %Backend{} = backend) do
+    QueryError.log(error,
+      user_id: backend.user_id,
+      backend_id: backend.id,
+      backend_token: backend.token
+    )
   end
 
   # expose PgRepo functions

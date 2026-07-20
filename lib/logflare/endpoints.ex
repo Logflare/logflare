@@ -9,8 +9,9 @@ defmodule Logflare.Endpoints do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
-  alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.Resolver
@@ -35,7 +36,7 @@ defmodule Logflare.Endpoints do
   @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
-           | {:error, String.t()}
+           | {:error, String.t() | QueryError.t()}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
@@ -73,16 +74,22 @@ defmodule Logflare.Endpoints do
   end
 
   @doc """
-  Gets an endpoint query by id that the user has access to.
+  Gets an endpoint query that the user has access to.
   Returns the endpoint query if the user owns it or is a team member, otherwise returns nil.
   """
-  @spec get_endpoint_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
-          EndpointQuery.t() | nil
+  @spec get_endpoint_query_by_user_access(
+          User.t() | TeamUser.t(),
+          integer() | String.t() | keyword()
+        ) :: EndpointQuery.t() | nil
   def get_endpoint_query_by_user_access(user_or_team_user, id)
       when is_integer(id) or is_binary(id) do
+    get_endpoint_query_by_user_access(user_or_team_user, id: id)
+  end
+
+  def get_endpoint_query_by_user_access(user_or_team_user, filters) when is_list(filters) do
     EndpointQuery
     |> Teams.filter_by_user_access(user_or_team_user)
-    |> where([query], query.id == ^id)
+    |> where([query], ^filters)
     |> Repo.one()
   end
 
@@ -285,15 +292,18 @@ defmodule Logflare.Endpoints do
   @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) :: :ok
   defp maybe_kill_endpoint_caches(endpoint, changes) do
     if should_kill_caches?(changes) do
-      for pid <- Resolver.list_caches(endpoint) do
-        Utils.Tasks.async(fn ->
-          ResultsCache.invalidate(pid)
-        end)
-      end
+      endpoint
+      |> Resolver.list_caches()
+      |> Enum.map(&invalidate_cache_async/1)
       |> Task.await_many(30_000)
     end
 
     :ok
+  end
+
+  @spec invalidate_cache_async(pid()) :: Task.t()
+  defp invalidate_cache_async(pid) do
+    Utils.Tasks.async(fn -> ResultsCache.invalidate(pid) end)
   end
 
   @spec get_endpoint_query_version(integer(), integer()) :: Version.t() | nil
@@ -488,14 +498,20 @@ defmodule Logflare.Endpoints do
           {run_query_return(), map()}
   defp emit_query_telemetry({:ok, data} = result, endpoint_query) do
     measurements = %{
-      total_bytes_processed: Map.get(data, :total_bytes_processed, 0)
+      total_bytes_processed:
+        if(is_integer(data.total_bytes_processed), do: data.total_bytes_processed, else: 0)
     }
+
+    backend =
+      endpoint_query.backend_id && Backends.Cache.get_backend(endpoint_query.backend_id)
 
     metadata =
       Map.merge(endpoint_query.parsed_labels || %{}, %{
         "endpoint_id" => endpoint_query.id,
         "endpoint_uuid" => Utils.stringify(endpoint_query.token),
-        "user_id" => endpoint_query.user_id
+        "user_id" => endpoint_query.user_id,
+        "backend_id" => endpoint_query.backend_id,
+        "backend_type" => backend && to_string(backend.type)
       })
 
     :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)

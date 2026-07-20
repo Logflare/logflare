@@ -10,6 +10,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias LogflareWeb.QueryErrorHelpers
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -30,7 +31,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       pid = self()
 
       expect(BigQueryJobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-        {:error, :failed_request}
+        {:error, TestUtils.gen_bq_error("failed_request")}
       end)
 
       conn =
@@ -42,7 +43,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> json_response(200)
         |> assert_schema("EndpointQuery")
 
-      assert response.error == %{"message" => "failed_request"}
+      assert response.error == QueryErrorHelpers.generic_query_error_message()
       refute response.result
       refute conn.halted
 
@@ -198,7 +199,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       assert conn
              |> json_response(401)
-             |> assert_schema("Unauthorized") == %{"error" => "Unauthorized"}
+             |> assert_schema("UnauthorizedResponse") == %{error: "Unauthorized"}
 
       assert conn.halted == true
     end
@@ -264,7 +265,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> assert_schema("EndpointQuery")
 
       assert response.error =~
-               "Multiple CTEs available (first_cte, second_cte, final_data). You must specify which one to query using `f:name`"
+               LogflareWeb.QueryErrorHelpers.generic_query_error_message()
 
       refute response.result
     end
@@ -387,7 +388,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> assert_schema("EndpointQuery")
 
       assert response.error =~
-               "Table 'nonexistent' not found in available CTEs: first_cte, second_cte"
+               LogflareWeb.QueryErrorHelpers.generic_query_error_message()
 
       refute response.result
     end

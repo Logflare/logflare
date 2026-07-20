@@ -14,56 +14,71 @@ defmodule Logflare.Logs.IngestTransformers do
     Enum.reduce(rules, log_params, &do_transform(&2, &1))
   end
 
-  # Single-pass key transformation applying all BigQuery column spec rules.
-  # This works because the rules target independent character patterns — no
-  # rule's output triggers a subsequent rule.
-  # If adding a new rule, verify that still holds, otherwise fall back to multi-pass via transform/2.
+  # Rewrites a map key into a valid BigQuery standard column name in a single
+  # pass. Standard names allow only [A-Za-z0-9_], cannot start with a digit,
+  # cannot use a reserved prefix, and must be valid UTF-8. Classification is per
+  # Unicode codepoint (not per byte), so every codepoint outside [A-Za-z0-9_] —
+  # including all multibyte characters — collapses to a single "_" and the
+  # result is always valid UTF-8.
+  #
+  # Each applicable rule prepends at most one leading underscore; the leading-
+  # digit rule is suppressed when a reserved prefix or dash has already added one.
   @spec to_bigquery_column_spec(term()) :: term()
   defp to_bigquery_column_spec(key) when is_binary(key) do
-    key
-    |> strip_bq_prefix()
-    |> dashes_to_underscores()
-    |> alter_leading_number()
-    |> alphanumeric_only()
+    {body, dash?, non_alnum?} = walk_bq_key(key, <<>>, false, false)
+    prefix? = bq_reserved_prefix?(key)
+    digit? = not prefix? and not dash? and leading_digit?(key)
+
+    underscores =
+      bool_int(prefix?) + bool_int(dash?) + bool_int(digit?) + bool_int(non_alnum?)
+
+    body
+    |> prepend_underscores(underscores)
     |> enforce_field_length()
   end
 
   defp to_bigquery_column_spec(key), do: key
 
-  @spec strip_bq_prefix(String.t()) :: String.t()
-  defp strip_bq_prefix("_TABLE_" <> _rest = key), do: "_" <> key
-  defp strip_bq_prefix("_FILE_" <> _rest = key), do: "_" <> key
-  defp strip_bq_prefix("_PARTITION_" <> _rest = key), do: "_" <> key
-  defp strip_bq_prefix(key), do: key
+  @compile {:inline, bool_int: 1}
+  defp bool_int(true), do: 1
+  defp bool_int(false), do: 0
 
-  @spec dashes_to_underscores(String.t()) :: String.t()
-  defp dashes_to_underscores(key) do
-    if String.contains?(key, "-") do
-      "_" <> String.replace(key, "-", "_")
-    else
-      key
-    end
-  end
+  defp prepend_underscores(body, 0), do: body
+  defp prepend_underscores(body, n), do: <<:binary.copy("_", n)::binary, body::binary>>
 
-  @spec alter_leading_number(String.t()) :: String.t()
-  defp alter_leading_number(<<symbol::binary-size(1), rest::binary>>)
-       when symbol in ~w(0 1 2 3 4 5 6 7 8 9),
-       do: "_" <> symbol <> rest
+  # BigQuery reserves these column-name prefixes; a single prepended underscore
+  # breaks the match (e.g. "_TABLE_" → "__TABLE_", "__ROOT__" → "___ROOT__").
+  defp bq_reserved_prefix?("_TABLE_" <> _), do: true
+  defp bq_reserved_prefix?("_FILE_" <> _), do: true
+  defp bq_reserved_prefix?("_PARTITION" <> _), do: true
+  defp bq_reserved_prefix?("_ROW_TIMESTAMP" <> _), do: true
+  defp bq_reserved_prefix?("__ROOT__" <> _), do: true
+  defp bq_reserved_prefix?("_COLIDENTIFIER" <> _), do: true
+  defp bq_reserved_prefix?("_CHANGE_SEQUENCE_NUMBER" <> _), do: true
+  defp bq_reserved_prefix?("_CHANGE_TYPE" <> _), do: true
+  defp bq_reserved_prefix?("_CHANGE_TIMESTAMP" <> _), do: true
+  defp bq_reserved_prefix?(_), do: false
 
-  defp alter_leading_number(key), do: key
+  defp leading_digit?(<<b, _::binary>>) when b in ?0..?9, do: true
+  defp leading_digit?(_), do: false
 
-  @spec alphanumeric_only(String.t()) :: String.t()
-  defp alphanumeric_only(key) do
-    if Regex.match?(@alphanumeric_regex, key) do
-      "_" <> String.replace(key, @alphanumeric_regex, "_")
-    else
-      key
-    end
-  end
+  defp walk_bq_key(<<>>, acc, dash?, non_alnum?), do: {acc, dash?, non_alnum?}
 
-  @spec enforce_field_length(String.t()) :: String.t()
+  defp walk_bq_key(<<?-, rest::binary>>, acc, _dash?, non_alnum?),
+    do: walk_bq_key(rest, <<acc::binary, ?_>>, true, non_alnum?)
+
+  defp walk_bq_key(<<b, rest::binary>>, acc, dash?, non_alnum?)
+       when b in ?0..?9 or b in ?A..?Z or b in ?a..?z or b == ?_,
+       do: walk_bq_key(rest, <<acc::binary, b>>, dash?, non_alnum?)
+
+  defp walk_bq_key(<<_c::utf8, rest::binary>>, acc, dash?, _non_alnum?),
+    do: walk_bq_key(rest, <<acc::binary, ?_>>, dash?, true)
+
+  defp walk_bq_key(<<_b, rest::binary>>, acc, dash?, _non_alnum?),
+    do: walk_bq_key(rest, <<acc::binary, ?_>>, dash?, true)
+
   defp enforce_field_length(key) when byte_size(key) > @max_field_length,
-    do: "_" <> String.slice(key, 0..(@max_field_length - 1))
+    do: <<?_, binary_part(key, 0, @max_field_length)::binary>>
 
   defp enforce_field_length(key), do: key
 

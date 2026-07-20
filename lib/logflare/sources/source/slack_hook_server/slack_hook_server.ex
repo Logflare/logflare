@@ -50,7 +50,7 @@ defmodule Logflare.Sources.Source.SlackHookServer do
            true <- new_count > 0,
            true <- source.slack_hook_url != nil,
            events when is_list(events) <- fetch_events(source, new_count),
-           true <- Enum.count(events) > 0 do
+           true <- not Enum.empty?(events) do
         SlackAdaptor.send_message(source, events, new_count)
         |> handle_response(source)
 

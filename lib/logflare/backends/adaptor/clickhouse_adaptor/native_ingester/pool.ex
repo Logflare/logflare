@@ -140,7 +140,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Pool do
            transfer_or_close!(conn, pool_pid)
 
          {:error, reason} ->
-           Logger.warning("ClickHouse NativeIngester.Pool: failed to connect: #{inspect(reason)}")
+           Logger.warning(
+             "ClickHouse NativeIngester.Pool: failed to connect: #{inspect(reason)}",
+             host: Keyword.get(connect_opts, :host)
+           )
 
            exit({:connect_failed, reason})
        end

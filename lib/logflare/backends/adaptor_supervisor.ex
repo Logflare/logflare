@@ -19,8 +19,11 @@ defmodule Logflare.Backends.AdaptorSupervisor do
   @impl Supervisor
   def init({source, backend}) do
     adaptor_module = Adaptor.get_adaptor(backend)
-    # create the startup queue
+    # create the startup queue and its generation, before any producer/traffic exists
+    # for this queues_key — avoids racing concurrent first-time inserts against each
+    # other to lazily create the generation (see IngestEventQueue.current_generation_tid/1)
     IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+    IngestEventQueue.current_generation_tid({source.id, backend.id})
 
     children =
       [

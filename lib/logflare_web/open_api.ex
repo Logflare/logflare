@@ -65,7 +65,7 @@ defmodule LogflareWeb.OpenApi do
       }
     end
 
-    def response, do: {"Not found", "text/plain", schema()}
+    def response, do: {"Not found", "application/json", schema()}
   end
 
   defmodule UnprocessableEntity do
@@ -82,17 +82,36 @@ defmodule LogflareWeb.OpenApi do
   end
 
   defmodule BadRequest do
-    require OpenApiSpex
-    OpenApiSpex.schema(%{})
+    def schema do
+      %Schema{
+        title: "BadRequestResponse",
+        type: :object,
+        properties: %{
+          error: %Schema{
+            oneOf: [
+              %Schema{type: :string},
+              %Schema{type: :object}
+            ]
+          }
+        },
+        required: [:error]
+      }
+    end
 
-    def response, do: {"Bad request", "text/plain", __MODULE__}
+    def response, do: {"Bad request", "application/json", schema()}
   end
 
   defmodule Unauthorized do
-    require OpenApiSpex
-    OpenApiSpex.schema(%{})
+    def schema do
+      %Schema{
+        title: "UnauthorizedResponse",
+        type: :object,
+        properties: %{error: %Schema{type: :string}},
+        required: [:error]
+      }
+    end
 
-    def response, do: {"Unauthorized", "text/plain", __MODULE__}
+    def response, do: {"Unauthorized", "application/json", schema()}
   end
 
   defmodule ServerError do

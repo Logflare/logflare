@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
   alias Logflare.Lql.Rules.FilterRule
 
@@ -80,14 +81,102 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       result =
         ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
 
-      assert {:ok, [%{"test" => 1}]} = result
+      assert {:ok, {[%{"test" => 1}], bytes}} = result
+      assert is_integer(bytes)
     end
 
     test "handles query errors", %{backend: backend} do
       result =
         ClickHouseAdaptor.execute_ch_query(backend, "INVALID SQL QUERY")
 
-      assert {:error, _} = result
+      assert {:error, %QueryError{} = error} = result
+      assert error.backend == ClickHouseAdaptor
+      assert error.kind in [:invalid_query, :connection_error]
+
+      if error.kind == :invalid_query do
+        assert %Ch.Error{} = error.raw_error
+        assert error.description == nil
+      end
+    end
+
+    test "normalizes missing field query errors", %{backend: backend} do
+      expect(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error,
+         %Ch.Error{
+           code: 47,
+           message:
+             "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
+         }}
+      end)
+
+      assert {:error,
+              %QueryError{
+                kind: :invalid_query,
+                backend: Logflare.Backends.Adaptor.ClickHouseAdaptor,
+                raw_error: %Ch.Error{
+                  code: 47,
+                  message:
+                    "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
+                },
+                description: nil
+              }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT notthere")
+    end
+
+    test "normalizes ClickHouse server errors as backend errors", %{backend: backend} do
+      expect(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error, %Ch.Error{code: 999, message: "Backend server error"}}
+      end)
+
+      assert {:error,
+              %QueryError{
+                kind: :backend_error,
+                backend: Logflare.Backends.Adaptor.ClickHouseAdaptor,
+                raw_error: %Ch.Error{code: 999, message: "Backend server error"},
+                description: nil
+              }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1")
+    end
+
+    test "logs a warning when connection checkout is slow", %{backend: backend} do
+      original = Application.get_env(:logflare, ClickHouseAdaptor)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:logflare, ClickHouseAdaptor, original)
+        else
+          Application.delete_env(:logflare, ClickHouseAdaptor)
+        end
+      end)
+
+      Application.put_env(:logflare, ClickHouseAdaptor, slow_pool_checkout_ms: 0)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+        end)
+
+      assert log =~ "ClickHouse slow connection checkout"
+      assert log =~ "for a pool connection"
+    end
+
+    test "does not log when connection checkout is within threshold", %{backend: backend} do
+      original = Application.get_env(:logflare, ClickHouseAdaptor)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:logflare, ClickHouseAdaptor, original)
+        else
+          Application.delete_env(:logflare, ClickHouseAdaptor)
+        end
+      end)
+
+      Application.put_env(:logflare, ClickHouseAdaptor, slow_pool_checkout_ms: 60_000)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+        end)
+
+      refute log =~ "ClickHouse slow connection checkout"
     end
 
     test "preserves 16-byte strings while converting UUID columns", %{backend: backend} do
@@ -97,7 +186,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       uuid_hex = "550e8400-e29b-41d4-a716-446655440000"
 
-      {:ok, rows} =
+      {:ok, {rows, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT toFixedString('exactly16bytesXX', 16) AS fixed_str, toUUID('#{uuid_hex}') AS uuid_col"
@@ -109,7 +198,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "handles Nullable(UUID) values", %{backend: backend} do
       uuid_hex = "660e8400-e29b-41d4-a716-446655440001"
 
-      {:ok, rows} =
+      {:ok, {rows, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT NULL::Nullable(UUID) AS null_uuid, toUUID('#{uuid_hex}')::Nullable(UUID) AS present_uuid"
@@ -308,7 +397,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
           "SELECT id, source_name FROM #{table_name} WHERE id = '660e8400-e29b-41d4-a716-446655440001'"
         )
 
-      assert {:ok, [row]} = query_result
+      assert {:ok, {[row], _bytes}} = query_result
       assert row["id"] == "660e8400-e29b-41d4-a716-446655440001"
       assert row["source_name"] == source.name
     end
@@ -342,8 +431,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
           "SELECT id, source_uuid, source_name, event_message, log_attributes, timestamp FROM #{table_name} ORDER BY timestamp"
         )
 
-      assert {:ok, rows} = query_result
+      assert {:ok, {rows, bytes}} = query_result
       assert length(rows) == 2
+      assert bytes > 0
 
       assert [
                %{
@@ -399,7 +489,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(native_backend, :log)
 
       ddl = QueryTemplates.create_table_statement(table_name, :log, ttl_days: 0)
-      {:ok, _} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
+      {:ok, {_, _}} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
 
       log_event = build_mapped_log_event(source: source, message: "native route test")
 
@@ -408,13 +498,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       pool_pid = GenServer.whereis(NativeIngester.Pool.via(native_backend))
       assert is_pid(pool_pid)
 
-      {:ok, rows} =
+      {:ok, {rows, bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           query_backend,
           "SELECT event_message, ingested_at FROM #{table_name}"
         )
 
       assert length(rows) == 1
+      assert bytes > 0
       assert Enum.at(rows, 0)["event_message"] == "native route test"
       assert %NaiveDateTime{} = Enum.at(rows, 0)["ingested_at"]
 
@@ -441,7 +532,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, [row]} =
+      {:ok, {[row], _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT event_message, resource_attributes, scope_attributes, log_attributes, ingested_at FROM #{table_name}"
@@ -472,7 +563,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
-      {:ok, [row]} =
+      {:ok, {[row], _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT event_message, resource_attributes, scope_attributes, attributes, ingested_at FROM #{table_name}"
@@ -501,7 +592,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
-      {:ok, [row]} =
+      {:ok, {[row], _bytes}} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT event_message, resource_attributes, span_attributes, ingested_at FROM #{table_name}"
@@ -531,7 +622,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
         table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
-        {:ok, query_result} =
+        {:ok, {query_result, _bytes}} =
           ClickHouseAdaptor.execute_ch_query(
             backend,
             "SELECT count(*) as count FROM #{table_name}"
@@ -539,6 +630,69 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
         assert [%{"count" => 1}] = query_result
       end
+    end
+  end
+
+  describe "SAMPLE and query-level SETTINGS execution" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} = setup_clickhouse_test()
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+      [source: source, backend: backend]
+    end
+
+    test "executes a query with query-level SETTINGS", %{source: source, backend: backend} do
+      log_event = build_mapped_log_event(source: source, message: "settings exec test")
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
+
+      Process.sleep(100)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      query =
+        "SELECT source_name, count(*) AS event_count FROM #{table_name} " <>
+          "GROUP BY source_name SETTINGS max_threads = 4, max_execution_time = 10"
+
+      assert {:ok, {[row], bytes}} = ClickHouseAdaptor.execute_ch_query(backend, query)
+      assert row["source_name"] == source.name
+      assert row["event_count"] >= 1
+      assert is_integer(bytes)
+    end
+
+    test "executes a SAMPLE query against a sampling-keyed table", %{backend: backend} do
+      table_name = "sample_test_#{System.unique_integer([:positive])}"
+
+      ddl =
+        "CREATE TABLE #{table_name} (id UInt64, val String) " <>
+          "ENGINE = MergeTree ORDER BY cityHash64(id) SAMPLE BY cityHash64(id)"
+
+      assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, ddl)
+
+      on_exit(fn ->
+        ClickHouseAdaptor.execute_ch_query(backend, "DROP TABLE IF EXISTS #{table_name}")
+      end)
+
+      values = Enum.map_join(1..100, ", ", fn i -> "(#{i}, 'v#{i}')" end)
+
+      assert {:ok, _} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "INSERT INTO #{table_name} (id, val) VALUES #{values}"
+               )
+
+      assert {:ok, {[%{"sampled" => sampled}], bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) AS sampled FROM #{table_name} SAMPLE 0.1"
+               )
+
+      assert is_integer(sampled)
+      assert sampled <= 100
+      assert is_integer(bytes)
     end
   end
 
@@ -632,6 +786,39 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       result = ClickHouseAdaptor.execute_query(backend, "INVALID SQL SYNTAX", [])
 
       assert {:error, _error_message} = result
+    end
+
+    test "populates total_bytes_processed from X-ClickHouse-Summary header", %{
+      source: source,
+      backend: backend
+    } do
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+      log_events =
+        for i <- 1..5 do
+          build_mapped_log_event(
+            source: source,
+            message: "bytes processed test #{i}",
+            body: %{"metadata" => %{"level" => "info", "request_id" => "req-#{i}"}}
+          )
+        end
+
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
+      Process.sleep(200)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      query = """
+      SELECT event_message
+      FROM #{table_name}
+      WHERE source_name = '#{source.name}'
+      """
+
+      result = ClickHouseAdaptor.execute_query(backend, query, [])
+
+      assert {:ok, %QueryResult{rows: rows, total_bytes_processed: bytes}} = result
+      assert length(rows) == length(log_events)
+      assert is_integer(bytes) and bytes > 0
     end
 
     test "converts Ecto queries to ClickHouse SQL format" do
@@ -803,7 +990,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         end
         |> Task.await_many(1_000)
 
-      assert Enum.all?(results, &match?({:ok, [%{"result" => _}]}, &1))
+      assert Enum.all?(results, &match?({:ok, {[%{"result" => _}], _}}, &1))
       assert connection_manager_pid = GenServer.whereis(via)
 
       children =
@@ -821,7 +1008,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       Process.exit(original_pid, :kill)
 
       TestUtils.retry_assert(fn ->
-        assert {:ok, [%{"result" => 2}]} =
+        assert {:ok, {[%{"result" => 2}], _bytes}} =
                  ClickHouseAdaptor.execute_ch_query(backend, "SELECT 2 as result")
 
         assert new_pid = GenServer.whereis(via)
@@ -876,7 +1063,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       # Subsequent queries reuse the same ConnectionManager and pool
       for i <- 2..5 do
-        {:ok, [%{"result" => ^i}]} =
+        {:ok, {[%{"result" => ^i}], _bytes}} =
           ClickHouseAdaptor.execute_ch_query(backend, "SELECT #{i} as result")
 
         assert GenServer.whereis(via) == manager_pid,
@@ -918,6 +1105,106 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
              "Connection pool PID should be reused across concurrent queries"
 
       assert ConnectionManager.pool_active?(backend)
+    end
+  end
+
+  describe "resolve_pipeline_count/2" do
+    test "scales up when every queue is above the scaling threshold" do
+      state = %{pipeline_count: 3, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 16_000},
+        {{:consolidated, 1, self()}, 16_000},
+        {{:consolidated, 1, self()}, 16_000}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 4
+    end
+
+    test "does not scale up when only one queue is over threshold and the rest are idle" do
+      state = %{pipeline_count: 4, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 40_000},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 4
+    end
+
+    test "does not scale up on a single outlier even when it drags the fleet average over threshold" do
+      state = %{pipeline_count: 2, last_count_decrease: nil}
+
+      # [30_000, 0] averages to exactly @scaling_threshold despite one queue being
+      # completely idle — averaging alone would incorrectly scale up here.
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 30_000},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 2
+    end
+
+    test "scales up when the startup queue has events, regardless of the average" do
+      state = %{pipeline_count: 2, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 500},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
+    end
+
+    test "scales down when every queue is well below threshold and enough time has passed" do
+      state = %{
+        pipeline_count: 3,
+        last_count_decrease: NaiveDateTime.utc_now() |> NaiveDateTime.add(-60)
+      }
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 2
+    end
+
+    test "does not scale down again within 30 seconds of the last decrease" do
+      state = %{pipeline_count: 3, last_count_decrease: NaiveDateTime.utc_now()}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 0},
+        {{:consolidated, 1, self()}, 0}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
+    end
+
+    test "holds steady when nothing warrants scaling up or down" do
+      state = %{pipeline_count: 3, last_count_decrease: nil}
+
+      lens = [
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 2_000},
+        {{:consolidated, 1, self()}, 2_000},
+        {{:consolidated, 1, self()}, 2_000}
+      ]
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
+    end
+
+    test "handles an empty lens list without dividing by zero" do
+      state = %{pipeline_count: 1, last_count_decrease: nil}
+
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, []) == 1
     end
   end
 

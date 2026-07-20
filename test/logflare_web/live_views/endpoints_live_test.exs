@@ -29,6 +29,65 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert Logflare.Endpoints.get_endpoint_query(endpoint.id)
     end
+
+    test "attacker cannot attach another user's backend to an endpoint", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user, endpoints_beta: true)
+      backend = insert(:postgres_backend, user: victim, name: "Victim Postgres")
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live_with_redirect(~p"/endpoints/new")
+
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{
+        endpoint: %{
+          backend_id: backend.id,
+          name: "forged endpoint",
+          query: "select 1"
+        }
+      })
+
+      assert render(view) =~ "Backend not found"
+
+      endpoints = Logflare.Endpoints.list_endpoints_by(user_id: attacker.id)
+      refute Enum.any?(endpoints, &(&1.backend_id == backend.id))
+    end
+
+    test "attacker cannot preview query another user's backend", %{conn: conn} do
+      attacker = insert(:user, endpoints_beta: true)
+      victim = insert(:user, endpoints_beta: true)
+      backend = insert(:postgres_backend, user: victim, config: postgres_backend_config())
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live_with_redirect(~p"/endpoints/new")
+
+      view
+      |> element("form#endpoint")
+      |> render_change(%{
+        endpoint: %{
+          backend_id: backend.id,
+          name: "forged endpoint",
+          query: "SELECT 1 as testing"
+        }
+      })
+
+      html =
+        view
+        |> element("form", "Test query")
+        |> render_submit(%{
+          run: %{
+            query: "SELECT 1 as testing",
+            params: %{}
+          }
+        })
+
+      assert html =~ "Backend not found"
+    end
   end
 
   describe "with existing endpoint" do
@@ -36,7 +95,17 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, endpoint: insert(:endpoint, user: user)}
     end
 
-    test "list endpoints", %{conn: conn, endpoint: endpoint, team: team} do
+    test "list endpoints", %{conn: conn, endpoint: endpoint, team: team, user: user} do
+      backend = insert(:postgres_backend, user: user, name: "Test Postgres")
+
+      postgres_endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :pg_sql,
+          name: "postgres endpoint"
+        )
+
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints")
 
       # intro message and link to docs
@@ -49,6 +118,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
       # description
       assert has_element?(view, "ul li p", endpoint.description)
       assert has_element?(view, "ul li *[title='Auth enabled']")
+      assert has_element?(view, "ul li span", "BigQuery SQL")
+
+      postgres_endpoint_html = view |> element("ul li", postgres_endpoint.name) |> render()
+      assert postgres_endpoint_html =~ "Postgres SQL"
+      assert postgres_endpoint_html =~ backend.name
 
       # link to show
       view
@@ -444,6 +518,32 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
+  describe "run query errors" do
+    test "backend errors display a generic message", %{conn: conn, user: user} do
+      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as ts")
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("raw backend detail", reason: "backendError")}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+
+      html =
+        view
+        |> element("form", "Test query")
+        |> render_submit(%{
+          run: %{
+            query: endpoint.query,
+            params: %{}
+          }
+        })
+
+      assert html =~ LogflareWeb.QueryErrorHelpers.generic_query_error_message()
+      refute html =~ "raw backend detail"
+    end
+  end
+
   defp change_editor_query(view, query) do
     result =
       view
@@ -491,7 +591,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       html = render(view)
       assert html =~ "Backend (optional)"
       assert html =~ "(clickhouse)"
-      assert html =~ "Default (BigQuery)"
+      assert html =~ "Default BigQuery backend"
     end
 
     @tag env: :prod, feature_overrides: %{"endpointBackendSelection" => "false"}
@@ -532,6 +632,23 @@ defmodule LogflareWeb.EndpointsLiveTest do
       })
 
       assert has_element?(view, "#query-language", "ClickHouse SQL")
+    end
+  end
+
+  describe "backend selection in supabase mode with postgres default backend" do
+    TestUtils.setup_single_tenant(backend_type: :postgres, supabase_mode: true)
+
+    setup %{user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse, name: "Test ClickHouse")
+      {:ok, backend: backend}
+    end
+
+    test "keeps the default backend language as BigQuery SQL", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
+
+      html = render(view)
+      assert html =~ "Default PostgreSQL backend"
+      assert html =~ ~s(name="endpoint[language]" type="hidden" value="bq_sql")
     end
   end
 
@@ -1274,10 +1391,15 @@ defmodule LogflareWeb.EndpointsLiveTest do
       team_user: team_user,
       endpoint: endpoint
     } do
-      {:ok, _view, html} =
+      backend = insert(:postgres_backend, user: user)
+      insert(:endpoint, user: user, backend: backend)
+
+      {:ok, view, _html} =
         conn |> login_user(user, team_user) |> live_with_redirect(~p"/endpoints")
 
-      for path <- ["endpoints/new", "endpoints/#{endpoint.id}"] do
+      html = render(view)
+
+      for path <- ["endpoints/new", "endpoints/#{endpoint.id}", "backends/#{backend.id}"] do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
     end
@@ -1316,7 +1438,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   defp assert_query_displayed(view, query) do
-    {:ok, formatted_query} = SqlFmt.format_query(query)
+    {:ok, formatted_query} = Logflare.Sql.format(query)
 
     assert has_element?(view, "code", formatted_query)
   end
@@ -1338,5 +1460,15 @@ defmodule LogflareWeb.EndpointsLiveTest do
     })
 
     render(view)
+  end
+
+  defp postgres_backend_config do
+    repo = Application.fetch_env!(:logflare, Logflare.Repo)
+
+    %{
+      url:
+        "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}",
+      schema: nil
+    }
   end
 end

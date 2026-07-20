@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
 
   # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
   # identifier-quoting characters, whitespace, and shell metacharacters.
@@ -218,6 +219,101 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
               }} =
                result
     end
+
+    test "execute_query translates errors to QueryError", %{user: user} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error,
+         TestUtils.gen_bq_error("Unrecognized name: notthere at [1:8]",
+           reason: "invalidQuery"
+         )}
+      end)
+
+      project_id = user.bigquery_project_id || "test-project"
+
+      assert {:error,
+              %QueryError{
+                kind: :invalid_query,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                description: nil,
+                raw_error: %{
+                  "message" => "Unrecognized name: notthere at [1:8]",
+                  "reason" => "invalidQuery"
+                }
+              }} =
+               BigQueryAdaptor.execute_query(
+                 {project_id, user.bigquery_dataset_id, user.id},
+                 {"select notthere", []},
+                 []
+               )
+    end
+
+    test "execute_query normalizes bytes billed limit errors", %{user: user} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error,
+         TestUtils.gen_bq_error(
+           "Query exceeded limit for bytes billed: 2000000000. 20004857600 or higher required.",
+           reason: "billingTierLimitExceeded"
+         )}
+      end)
+
+      assert {:error,
+              %QueryError{
+                kind: :backend_error,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                description: nil,
+                raw_error: %{
+                  "message" =>
+                    "Query exceeded limit for bytes billed: 2000000000. 20004857600 or higher required.",
+                  "reason" => "billingTierLimitExceeded"
+                }
+              }} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select count(*) from logs", []},
+                 []
+               )
+    end
+
+    test "execute_query normalizes transport timeout errors", %{user: user} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error, :timeout}
+      end)
+
+      assert {:error,
+              %QueryError{
+                kind: :connection_error,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                description: nil,
+                raw_error: :timeout
+              }} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select count(*) from logs", []},
+                 []
+               )
+    end
+
+    test "execute_query maps non-invalid BigQuery reasons as backend errors", %{user: user} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("backend unavailable", reason: "backendError")}
+      end)
+
+      assert {:error,
+              %QueryError{
+                kind: :backend_error,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                description: nil,
+                raw_error: %{
+                  "message" => "backend unavailable",
+                  "reason" => "backendError"
+                }
+              }} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select count(*) from logs", []},
+                 []
+               )
+    end
   end
 
   describe "build_base_query_opts reservation" do
@@ -272,6 +368,77 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       )
 
       assert_received {:reservation, nil}
+    end
+  end
+
+  describe "search query timeouts" do
+    setup do
+      insert(:plan, name: "Free", type: "standard")
+      pid = self()
+
+      stub(BqJobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:timeouts, opts[:body].jobTimeoutMs, opts[:body].timeoutMs})
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      :ok
+    end
+
+    test "uses a 60s timeout for :search queries with a custom reservation" do
+      user =
+        insert(:user,
+          bigquery_dataset_id: "test_dataset",
+          bigquery_reservation_search: "projects/p/locations/l/reservations/search"
+        )
+
+      BigQueryAdaptor.execute_query(
+        {"test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :search
+      )
+
+      assert_received {:timeouts, 60_000, 60_000}
+    end
+
+    test "uses a 60s timeout for :search queries" do
+      user = insert(:user, bigquery_dataset_id: "test_dataset")
+
+      BigQueryAdaptor.execute_query(
+        {"test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :search
+      )
+
+      assert_received {:timeouts, 60_000, 60_000}
+    end
+
+    test "keeps the default timeout for non-seareh queries" do
+      user_with_reservation =
+        insert(:user,
+          bigquery_dataset_id: "test_dataset",
+          bigquery_reservation_alerts: "projects/p/locations/l/reservations/alerts"
+        )
+
+      BigQueryAdaptor.execute_query(
+        {"test-project", user_with_reservation.bigquery_dataset_id, user_with_reservation.id},
+        {"select 1", []},
+        query_type: :alerts
+      )
+
+      assert_received {:timeouts, 25_000, 25_000}
+    end
+
+    test "uses a 60s timeout for :search queries with an explicit reservation override" do
+      user = insert(:user, bigquery_dataset_id: "test_dataset")
+
+      BigQueryAdaptor.execute_query(
+        {"test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :search,
+        reservation: "projects/p/locations/l/reservations/override"
+      )
+
+      assert_received {:timeouts, 60_000, 60_000}
     end
   end
 

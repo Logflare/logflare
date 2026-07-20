@@ -70,7 +70,6 @@ defmodule Logflare.Logs.IngestTransformerTest do
     @batch [
       %{
         "metadata" => %{
-          # "1level_key" => "value",
           "1level_key" => %{
             "2level_key" => %{
               "3level_key" => "value"
@@ -248,6 +247,169 @@ defmodule Logflare.Logs.IngestTransformerTest do
                %{"_metad" => %{"_12345" => %{"_12345" => %{"12345" => "value"}}}},
                %{"_metad" => %{"_12345" => [%{"_12345" => %{"12345" => "value"}}]}}
              ]
+    end
+  end
+
+  describe ":to_bigquery_column_spec fused pipeline" do
+    test "already-valid keys pass through unchanged" do
+      log = %{"safe_key" => %{"already_underscored" => "v"}}
+      assert transform(log, :to_bigquery_column_spec) == log
+    end
+
+    test "non-binary keys are returned as-is" do
+      log = %{:atom_key => "v", 42 => "v"}
+      assert transform(log, :to_bigquery_column_spec) == log
+    end
+
+    test "empty-string keys pass through" do
+      assert transform(%{"" => "v"}, :to_bigquery_column_spec) == %{"" => "v"}
+    end
+
+    test "escapes every BigQuery-reserved prefix by prepending one underscore" do
+      log = %{
+        "_TABLE_x" => 1,
+        "_FILE_x" => 1,
+        "_PARTITIONx" => 1,
+        "_PARTITION_x" => 1,
+        "_ROW_TIMESTAMPx" => 1,
+        "__ROOT__x" => 1,
+        "_COLIDENTIFIERx" => 1,
+        "_CHANGE_SEQUENCE_NUMBERx" => 1,
+        "_CHANGE_TYPEx" => 1,
+        "_CHANGE_TIMESTAMPx" => 1
+      }
+
+      assert transform(log, :to_bigquery_column_spec) == %{
+               "__TABLE_x" => 1,
+               "__FILE_x" => 1,
+               "__PARTITIONx" => 1,
+               "__PARTITION_x" => 1,
+               "__ROW_TIMESTAMPx" => 1,
+               "___ROOT__x" => 1,
+               "__COLIDENTIFIERx" => 1,
+               "__CHANGE_SEQUENCE_NUMBERx" => 1,
+               "__CHANGE_TYPEx" => 1,
+               "__CHANGE_TIMESTAMPx" => 1
+             }
+    end
+
+    test "only treats reserved prefix when it appears at the start of the key" do
+      assert transform(%{"x_TABLE_y" => 1}, :to_bigquery_column_spec) == %{"x_TABLE_y" => 1}
+    end
+
+    test "reserved prefix with empty suffix still gets prepended" do
+      assert transform(%{"_TABLE_" => 1}, :to_bigquery_column_spec) == %{"__TABLE_" => 1}
+    end
+
+    test "leading digit gets a prepended underscore" do
+      log = %{"1foo" => 1, "9bar" => 1}
+      assert transform(log, :to_bigquery_column_spec) == %{"_1foo" => 1, "_9bar" => 1}
+    end
+
+    test "dashes are replaced with underscores and a leading underscore is prepended" do
+      log = %{"a-b" => 1, "a-b-c" => 1, "--" => 1}
+
+      assert transform(log, :to_bigquery_column_spec) == %{
+               "_a_b" => 1,
+               "_a_b_c" => 1,
+               "___" => 1
+             }
+    end
+
+    test "non-alphanumeric bytes are replaced and a leading underscore is prepended" do
+      log = %{"foo!" => 1, "a b" => 1, "x.y" => 1}
+      assert transform(log, :to_bigquery_column_spec) == %{"_foo_" => 1, "_a_b" => 1, "_x_y" => 1}
+    end
+
+    test "multibyte UTF-8 codepoints each collapse to a single underscore" do
+      # BigQuery standard column names are ASCII [A-Za-z0-9_] and must be valid
+      # UTF-8. "é" is one codepoint outside that set, so it becomes "_"; the
+      # non-alnum match then prepends a single leading underscore.
+      assert transform(%{"é" => 1}, :to_bigquery_column_spec) == %{"__" => 1}
+    end
+
+    test "non-ASCII keys produce valid UTF-8, encodable column names" do
+      for key <- ["é", "日本語", "🚀", "ßðemoji😀", "naïve-café"] do
+        [transformed] = transform(%{key => 1}, :to_bigquery_column_spec) |> Map.keys()
+        assert String.valid?(transformed), "#{inspect(transformed)} is not valid UTF-8"
+        assert {:ok, _} = Jason.encode(%{transformed => 1})
+        assert transformed =~ ~r/\A[A-Za-z0-9_]*\z/
+      end
+    end
+
+    test "invalid-UTF-8 keys do not crash and still produce valid column names" do
+      # Production keys arrive as valid UTF-8 (JSON/protobuf), but the walk must
+      # not crash on a stray byte; the fallback clause replaces it with "_".
+      for key <- [<<0xC3>>, <<0xFF, 0xFE>>, <<"ok", 0xFF, "x">>] do
+        [transformed] = transform(%{key => 1}, :to_bigquery_column_spec) |> Map.keys()
+        assert String.valid?(transformed), "#{inspect(transformed)} is not valid UTF-8"
+        assert {:ok, _} = Jason.encode(%{transformed => 1})
+        assert transformed =~ ~r/\A[A-Za-z0-9_]*\z/
+      end
+    end
+
+    test "dash prepend suppresses the leading-digit prepend" do
+      assert transform(%{"1-key" => 1}, :to_bigquery_column_spec) == %{"_1_key" => 1}
+    end
+
+    test "bq prefix prepend suppresses the leading-digit prepend" do
+      assert transform(%{"_TABLE_1foo" => 1}, :to_bigquery_column_spec) == %{"__TABLE_1foo" => 1}
+    end
+
+    test "bq prefix + dash both prepend (two leading underscores)" do
+      assert transform(%{"_TABLE_-foo" => 1}, :to_bigquery_column_spec) ==
+               %{"___TABLE__foo" => 1}
+    end
+
+    test "leading digit + non-alnum both prepend (two leading underscores)" do
+      assert transform(%{"1key!" => 1}, :to_bigquery_column_spec) == %{"__1key_" => 1}
+    end
+
+    test "dash + non-alnum both prepend (two leading underscores)" do
+      assert transform(%{"a-b!" => 1}, :to_bigquery_column_spec) == %{"__a_b_" => 1}
+    end
+
+    test "dash + non-alnum + leading-digit-suppressed (still two leading underscores)" do
+      assert transform(%{"1-key!" => 1}, :to_bigquery_column_spec) == %{"__1_key_" => 1}
+    end
+
+    test "reserved prefix + non-alnum both prepend (two leading underscores)" do
+      assert transform(%{"_TABLE_a!" => 1}, :to_bigquery_column_spec) == %{"___TABLE_a_" => 1}
+    end
+
+    test "leading digit followed by multibyte: digit-prepend + codepoint collapse" do
+      # "é" collapses to "_" (non-alnum prepend), and the leading "1" triggers
+      # the digit prepend, so two leading underscores stack: "1é" -> "__1_".
+      assert transform(%{"1é" => 1}, :to_bigquery_column_spec) == %{"__1_" => 1}
+    end
+
+    test "keys at the 128-byte limit pass through untouched" do
+      key = String.duplicate("a", 128)
+      assert transform(%{key => 1}, :to_bigquery_column_spec) == %{key => 1}
+    end
+
+    test "keys over 128 bytes are truncated and prefixed with underscore" do
+      key = String.duplicate("a", 129)
+      expected = "_" <> String.duplicate("a", 128)
+      assert transform(%{key => 1}, :to_bigquery_column_spec) == %{expected => 1}
+    end
+
+    test "prefix-induced length growth triggers truncation, dropping the last byte" do
+      base = "_TABLE_" <> String.duplicate("a", 121)
+      assert byte_size(base) == 128
+      expected = "_" <> "__TABLE_" <> String.duplicate("a", 120)
+      assert byte_size(expected) == 129
+      assert transform(%{base => 1}, :to_bigquery_column_spec) == %{expected => 1}
+    end
+
+    test "transformation is idempotent (re-transforming a generated name is a no-op)" do
+      # Schema column names must stay stable across re-ingest: a name already
+      # produced by the rule must transform to itself.
+      for key <- ["user-é", "_TABLE_x", "1é", "日本", "a.b!", "9bad", <<0xC3>>] do
+        [once] = transform(%{key => 1}, :to_bigquery_column_spec) |> Map.keys()
+        [twice] = transform(%{once => 1}, :to_bigquery_column_spec) |> Map.keys()
+        assert once == twice, "#{inspect(key)} -> #{inspect(once)} -> #{inspect(twice)}"
+      end
     end
   end
 end

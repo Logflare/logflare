@@ -18,11 +18,11 @@ defmodule Logflare.Alerting do
   alias Logflare.Cluster
   alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Repo
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
+  alias Logflare.Utils.LoggerMetadata
 
   require Logger
   require OpenTelemetry.Tracer
@@ -102,6 +102,23 @@ defmodule Logflare.Alerting do
     |> Repo.one()
   end
 
+  @doc """
+  Fetches a single alert query by arbitrary conditions, scoped to the
+  alert queries the user has team access to.
+  """
+  @spec fetch_alert_query_by_user_access(User.t() | TeamUser.t(), keyword()) ::
+          {:ok, AlertQuery.t()} | {:error, :not_found}
+  def fetch_alert_query_by_user_access(user_or_team_user, kw) when is_list(kw) do
+    AlertQuery
+    |> Teams.filter_by_user_access(user_or_team_user)
+    |> where([alert_query], ^kw)
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      alert_query -> {:ok, alert_query}
+    end
+  end
+
   def preload_alert_query(alert) do
     alert
     |> Repo.preload([:user, :backends])
@@ -123,10 +140,13 @@ defmodule Logflare.Alerting do
 
   """
   def create_alert_query(%User{} = user, attrs \\ %{}) do
+    backends = Map.get(attrs, :backends) || Map.get(attrs, "backends")
+
     user
     |> Ecto.build_assoc(:alert_queries)
     |> Repo.preload(:user)
     |> AlertQuery.changeset(attrs)
+    |> put_backends(backends)
     |> Repo.insert()
   end
 
@@ -143,20 +163,20 @@ defmodule Logflare.Alerting do
 
   """
   def update_alert_query(%AlertQuery{} = alert_query, attrs) do
-    backends_modified = if backends = Map.get(attrs, :backends), do: true, else: false
+    backends = Map.get(attrs, :backends) || Map.get(attrs, "backends")
 
     alert_query
     |> preload_alert_query()
     |> AlertQuery.changeset(attrs)
-    |> then(fn
-      changeset when backends_modified == true ->
-        Ecto.Changeset.put_assoc(changeset, :backends, backends)
-
-      changeset ->
-        changeset
-    end)
+    |> put_backends(backends)
     |> Repo.update()
     |> handle_schedule_change(alert_query)
+  end
+
+  defp put_backends(changeset, nil), do: changeset
+
+  defp put_backends(changeset, backends) do
+    Ecto.Changeset.put_assoc(changeset, :backends, backends)
   end
 
   defp handle_schedule_change({:ok, %AlertQuery{} = updated} = result, previous) do
@@ -431,72 +451,51 @@ defmodule Logflare.Alerting do
   @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
           {:ok, QueryResult.t()} | {:error, any()}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
-    Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
+    LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
+      Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
-    endpoints = Endpoints.list_endpoints_by(user_id: alert_query.user_id)
-    use_query_cache = Keyword.get(opts, :use_query_cache, true)
+      endpoints = Endpoints.list_endpoints_by(user_id: alert_query.user_id)
+      use_query_cache = Keyword.get(opts, :use_query_cache, true)
 
-    alerts =
-      list_alert_queries_by_user_id(alert_query.user_id)
-      |> Enum.filter(&(&1.id != alert_query.id))
+      alerts =
+        list_alert_queries_by_user_id(alert_query.user_id)
+        |> Enum.filter(&(&1.id != alert_query.id))
 
-    with {:ok, expanded_query} <-
-           Logflare.Sql.expand_subqueries(
-             alert_query.language,
-             alert_query.query,
-             endpoints ++ alerts
-           ),
-         {:ok, transformed_query} <-
-           Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
-         {:ok, result} <-
-           BigQueryAdaptor.execute_query(
-             {
-               alert_query.user.bigquery_project_id || GCPConfig.default_project_id(),
-               alert_query.user.bigquery_dataset_id,
-               alert_query.user.id
-             },
-             {transformed_query, []},
-             parameterMode: "NAMED",
-             maxResults: 1000,
-             location: alert_query.user.bigquery_dataset_location,
-             use_query_cache: use_query_cache,
-             labels: %{
-               "alert_id" => alert_query.id
-             },
-             query_type: :alerts
-           ) do
-      {:ok, result}
-    else
-      {:error, %Tesla.Env{body: body}} ->
-        decoded = Jason.decode!(body)["error"]
+      with {:ok, expanded_query} <-
+             Logflare.Sql.expand_subqueries(
+               alert_query.language,
+               alert_query.query,
+               endpoints ++ alerts
+             ),
+           {:ok, transformed_query} <-
+             Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
+           {:ok, result} <-
+             BigQueryAdaptor.execute_query(
+               {
+                 alert_query.user.bigquery_project_id || GCPConfig.default_project_id(),
+                 alert_query.user.bigquery_dataset_id,
+                 alert_query.user.id
+               },
+               {transformed_query, []},
+               parameterMode: "NAMED",
+               maxResults: 1000,
+               location: alert_query.user.bigquery_dataset_location,
+               use_query_cache: use_query_cache,
+               labels: %{
+                 "alert_id" => alert_query.id
+               },
+               query_type: :alerts
+             ) do
+        {:ok, result}
+      end
+    end)
+  end
 
-        error =
-          decoded
-          |> GenUtils.process_bq_errors(alert_query.user_id)
-          |> case do
-            %{"message" => msg} -> msg
-            other -> other
-          end
-
-        Logger.error("Alert query execution failed with bad response",
-          user_id: alert_query.user_id,
-          alert_query_id: alert_query.id,
-          alert_name: alert_query.name,
-          possible_reservation_error: BigQueryAdaptor.reservation_error?(decoded),
-          error_string: inspect(error)
-        )
-
-        {:error, error}
-
-      {:error, error} ->
-        Logger.error("Alert query execution failed with an unknown error",
-          user_id: alert_query.user_id,
-          alert_query_id: alert_query.id,
-          alert_name: alert_query.name,
-          error_string: inspect(error)
-        )
-
-        {:error, error}
-    end
+  defp alert_query_logger_metadata(%AlertQuery{} = alert_query) do
+    [
+      user_id: alert_query.user_id,
+      alert_query_id: alert_query.id,
+      alert_name: alert_query.name
+    ]
   end
 end

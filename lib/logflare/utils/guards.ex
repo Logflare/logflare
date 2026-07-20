@@ -8,7 +8,7 @@ defmodule Logflare.Utils.Guards do
   @doc """
   Guard that indicates if the value provided is a number and greater than or equal to 0.
   """
-  defguard is_pos_number(num) when is_number(num) and num >= 0
+  defguard is_non_negative_number(num) when is_number(num) and num >= 0
 
   @doc """
   Guard that indicates if the value provided is an integer and greater than or equal to 0.
@@ -24,6 +24,11 @@ defmodule Logflare.Utils.Guards do
   Guard that indicates if the value provided is a binary and not equal to `""`.
   """
   defguard is_non_empty_binary(value) when is_binary(value) and value != ""
+
+  @doc """
+  Guard that indicates if the value provided is a list with at least one element.
+  """
+  defguard is_non_empty_list(value) when is_list(value) and value != []
 
   @doc """
   Guard that indicates if the value provided is a map with at least one key.

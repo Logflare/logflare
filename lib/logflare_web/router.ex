@@ -470,6 +470,11 @@ defmodule LogflareWeb.Router do
       only: [:index, :show, :create, :update, :delete]
     )
 
+    resources("/alerts", Api.AlertController,
+      param: "token",
+      only: [:index, :show, :create, :update, :delete]
+    )
+
     resources("/endpoints", Api.EndpointController,
       param: "token",
       only: [:index, :show, :create, :update, :delete]
@@ -599,6 +604,7 @@ defmodule LogflareWeb.Router do
       pipe_through([:browser])
 
       forward("/mailbox", Plug.Swoosh.MailboxPreview, base_path: "/dev/mailbox")
+      live("/dashboard", LogflareWeb.Live.Dev.DashboardLive)
     end
   end
 

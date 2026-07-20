@@ -139,10 +139,20 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       assert modal_html =~ "Version 2"
       assert modal_html =~ "BigQuery SQL"
       assert modal_html =~ "copy"
-      assert modal_html =~ "SELECT"
-      assert modal_html =~ "2 AS version_number"
+      assert modal_html =~ "select"
+      assert modal_html =~ "2 as version_number"
       assert modal_html =~ "snapshot description"
       assert_query_displayed(view, "select 2 as version_number")
+
+      view
+      |> element("#endpoint-version-snapshot-modal .phx-modal-close")
+      |> render_click()
+
+      patched_uri = assert_patch(view) |> URI.parse()
+
+      assert "/endpoints/#{endpoint.id}/versions" == patched_uri.path
+      assert "t=#{team.id}" == patched_uri.query
+      refute has_element?(view, "#endpoint-version-snapshot-modal")
     end
 
     test "loads additional versions", %{
@@ -283,7 +293,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
   defp endpoint_version_row(%Version{id: version_id}), do: "#versions-#{version_id}"
 
   defp assert_query_displayed(view, query) do
-    {:ok, formatted_query} = SqlFmt.format_query(query)
+    {:ok, formatted_query} = Logflare.Sql.format(query)
 
     assert has_element?(view, "code", formatted_query)
   end

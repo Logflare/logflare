@@ -9,6 +9,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
   alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Socket, Pipeline}
+  alias Logflare.Backends.Backend
+  require Logger
+
   @behaviour Logflare.Backends.Adaptor
 
   typedstruct enforce: true do
@@ -174,6 +177,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, :socket_closed | :timeout | :unknown_error}
   def test_connection(backend) do
     result =
       with {:ok, socket} <- Socket.connect(backend.config, to_timeout(second: 3)) do
@@ -182,13 +186,24 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
       end
 
     with {:error, reason} <- result do
-      {:error, format_connection_error(reason)}
+      formatted_error = format_connection_error(reason)
+
+      Logger.warning("Unexpected error when testing Syslog backend connection: #{reason}",
+        backend_id: backend.id,
+        user_id: backend.user_id
+      )
+
+      if is_binary(formatted_error) do
+        {:error, :unknown_error}
+      else
+        {:error, formatted_error}
+      end
     end
   end
 
   # copied from mint: https://github.com/elixir-mint/mint/blob/0bfcc869b53b83989c24ba681d66d0a447b5a1c3/lib/mint/transport_error.ex#L86-L101
-  defp format_connection_error(:closed), do: "socket closed"
-  defp format_connection_error(:timeout), do: "timeout"
+  defp format_connection_error(:closed), do: :socket_closed
+  defp format_connection_error(:timeout), do: :timeout
 
   defp format_connection_error(reason) do
     case :ssl.format_error(reason) do

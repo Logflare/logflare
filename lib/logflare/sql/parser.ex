@@ -3,7 +3,6 @@ defmodule Logflare.Sql.Parser do
   Provides functionality for converting SQL queries into an AST and back to SQL strings.
 
   This leverages the [sqlparser](https://crates.io/crates/sqlparser) Rust crate to handle SQL parsing and AST generation.
-
   """
 
   import Logflare.Utils.Guards
