@@ -637,7 +637,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
             pipeline: Pipeline,
             pipeline_args: [backend: backend],
             min_pipelines: @min_pipelines,
-            max_pipelines: System.schedulers_online(),
+            max_pipelines: 1,
             initial_count: @min_pipelines,
             resolve_interval: @resolve_interval,
             resolve_count: fn state ->
