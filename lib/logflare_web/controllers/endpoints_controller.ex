@@ -80,7 +80,8 @@ defmodule LogflareWeb.EndpointsController do
         get_req_header(conn, "lf-endpoint-bigquery-reservation") |> List.first()
       end
 
-    read_cluster = get_req_header(conn, "lf-endpoint-read-cluster") |> List.first()
+    read_cluster =
+      get_req_header(conn, "lf-endpoint-clickhouse-read-cluster-label") |> List.first()
 
     case Endpoints.run_cached_query(
            %{endpoint_query | parsed_labels: parsed_labels},

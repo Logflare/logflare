@@ -1017,7 +1017,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       {:ok, user: user}
     end
 
-    test "passes lf-endpoint-read-cluster header as the :read_cluster opt", %{
+    test "passes lf-endpoint-clickhouse-read-cluster-label header as the :read_cluster opt", %{
       conn: init_conn,
       user: user
     } do
@@ -1032,7 +1032,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       conn =
         init_conn
-        |> put_req_header("lf-endpoint-read-cluster", "api")
+        |> put_req_header("lf-endpoint-clickhouse-read-cluster-label", "api")
         |> get(~p"/endpoints/query/#{endpoint.token}")
 
       assert json_response(conn, 200)
