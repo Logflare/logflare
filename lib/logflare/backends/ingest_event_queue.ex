@@ -30,7 +30,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_current_generation :ingest_event_queue_current_generation
   @ets_recent_events :ingest_event_queue_recent_events
   @max_queue_size 30_000
-  @consolidated_max_queue_size 60_000
+  @consolidated_max_queue_size 30_000
   @pointer_batch_key_match_spec (for freshness <- [:fresh, :stale],
                                      event_type <- [:log, :metric, :trace] do
                                    {{:_, :_, :_, :_, :_, event_type, :"$1", freshness},
