@@ -43,11 +43,9 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
     ~H"""
     <div>
       <div class="form-group">
-        <label>Per-Caller Read Cluster URLs (Optional)</label>
+        <label>Read-Only Cluster URLs (Optional)</label>
         <small class="form-text text-muted">
-          Route ClickHouse reads to a dedicated cluster per caller. Each row maps a free-form
-          caller label to a read cluster URL. The query source sends the label in the <code>LF-ENDPOINT-READ-CLUSTER</code> header and Logflare routes the read to the matching cluster. Leave empty to use the
-          Read-Only URL above.
+          Optionally add multiple read-only cluster URLs for the ability to route endpoint queries to a specific cluster.
         </small>
 
         <%= for {{row_label, row_url}, i} <- Enum.with_index(@rows) do %>
