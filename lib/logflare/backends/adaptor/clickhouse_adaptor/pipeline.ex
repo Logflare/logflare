@@ -169,6 +169,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   defp ingest_freshness_to_batcher(:fresh), do: :ch_fresh
   defp ingest_freshness_to_batcher(:stale), do: :ch_stale
 
+  @spec batcher_to_freshness(:ch_fresh | :ch_stale) :: :fresh | :stale
+  defp batcher_to_freshness(:ch_fresh), do: :fresh
+  defp batcher_to_freshness(:ch_stale), do: :stale
+
   @spec batcher_async?(:ch_fresh | :ch_stale) :: boolean()
   defp batcher_async?(:ch_stale), do: true
   defp batcher_async?(:ch_fresh), do: false
@@ -252,6 +256,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         backend_id: backend_id,
         event_type: event_type,
         batcher: batcher,
+        freshness: batcher_to_freshness(batcher),
+        batch_trigger: batch_info.trigger,
         day_bucket: day_bucket
       }
     )
