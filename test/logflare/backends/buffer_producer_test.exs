@@ -719,17 +719,17 @@ defmodule Logflare.Backends.BufferProducerTest do
       Process.cancel_timer(state.timer_ref)
     end
 
-    test "handle_info(:scheduled_resolve, _) schedules a short retry when a fetch is capped",
-         %{source: source, backend: backend} do
+    test "handle_info(:scheduled_resolve, _) schedules a short retry when a fetch is capped, for a consolidated producer",
+         %{backend: backend} do
       ref = :atomics.new(1, signed: true)
       :atomics.put(ref, 1, 1)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 1,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,
@@ -741,6 +741,38 @@ defmodule Logflare.Backends.BufferProducerTest do
       assert {:noreply, [], _state} = BufferProducer.handle_info(:scheduled_resolve, state)
 
       assert_receive :scheduled_resolve, 400
+    end
+
+    test "handle_info(:scheduled_resolve, _) never fast-retries a capped fetch for a standard (BigQuery) producer, regardless of source volume",
+         %{source: source, backend: backend} do
+      # The fast in-flight retry is scoped to consolidated/spool producers only — a
+      # bounded, small instance count each. Standard producers have no such bound
+      # (potentially many thousands of low-traffic sources fleet-wide), so a capped
+      # fetch there always falls through to the normal avg-tiered backoff instead,
+      # regardless of how busy the source is.
+      stub(Logflare.Sources, :get_source_metrics_for_ingest, fn _ -> %{avg: 300} end)
+
+      ref = :atomics.new(1, signed: true)
+      :atomics.put(ref, 1, 1)
+
+      state = %{
+        consolidated: false,
+        id_passing: true,
+        demand: 1,
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: backend.id,
+        last_discard_log_dt: nil,
+        interval: 1_000,
+        in_flight_ref: ref,
+        max_in_flight: 1,
+        timer_ref: nil
+      }
+
+      assert {:noreply, [], _state} = BufferProducer.handle_info(:scheduled_resolve, state)
+
+      refute_receive :scheduled_resolve, 400
+      assert_receive :scheduled_resolve, 1_100
     end
 
     test "handle_info(:scheduled_resolve, _) keeps the normal interval when genuinely empty, not capped",
@@ -768,16 +800,16 @@ defmodule Logflare.Backends.BufferProducerTest do
     end
 
     test "handle_demand/2 proactively schedules a short retry when capped, instead of waiting for the pending timer",
-         %{source: source, backend: backend} do
+         %{backend: backend} do
       ref = :atomics.new(1, signed: true)
       :atomics.put(ref, 1, 1)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 0,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,
@@ -795,14 +827,18 @@ defmodule Logflare.Backends.BufferProducerTest do
       source: source,
       backend: backend
     } do
+      own_key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(own_key)
+      :ok = IngestEventQueue.add_to_table(own_key, [build(:log_event, source: source)])
+
       ref = :atomics.new(1, signed: true)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 0,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,
@@ -811,22 +847,22 @@ defmodule Logflare.Backends.BufferProducerTest do
         timer_ref: nil
       }
 
-      assert {:noreply, [], _state} = BufferProducer.handle_demand(1, state)
+      assert {:noreply, [_fetched], _state} = BufferProducer.handle_demand(1, state)
 
       refute_receive :scheduled_resolve, 400
     end
 
     test "handle_demand/2 cancels the previous timer instead of forking a second parallel loop when called again while still capped",
-         %{source: source, backend: backend} do
+         %{backend: backend} do
       ref = :atomics.new(1, signed: true)
       :atomics.put(ref, 1, 1)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 0,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,

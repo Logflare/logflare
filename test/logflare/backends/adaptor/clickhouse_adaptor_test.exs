@@ -1193,11 +1193,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "holds steady when nothing warrants scaling up or down" do
       state = %{pipeline_count: 3, last_count_decrease: nil}
 
+      # each queue must sit above @scaling_threshold / 10 (the scale-down cutoff) to
+      # avoid scaling down, and total pending must stay under @scaling_threshold to
+      # avoid scaling up
       lens = [
         {{:consolidated, 1, nil}, 0},
-        {{:consolidated, 1, self()}, 2_000},
-        {{:consolidated, 1, self()}, 2_000},
-        {{:consolidated, 1, self()}, 2_000}
+        {{:consolidated, 1, self()}, 10_000},
+        {{:consolidated, 1, self()}, 10_000},
+        {{:consolidated, 1, self()}, 10_000}
       ]
 
       assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 3

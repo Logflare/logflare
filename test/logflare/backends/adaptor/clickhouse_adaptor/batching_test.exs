@@ -71,7 +71,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.BatchingTest do
     lens = [{@pipeline_key, Pipeline.max_batch_size()}, {@startup_key, 40_000}]
 
     assert resolve(state(1), lens, %{@log_key => 40_000}) == 1
-    assert Pipeline.max_in_flight() == 120_000
+    assert Pipeline.max_in_flight() == 2_160_000
   end
 
   test "two complete startup batches fit in one new pipeline's in-flight budget" do

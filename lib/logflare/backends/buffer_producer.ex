@@ -413,10 +413,16 @@ defmodule Logflare.Backends.BufferProducer do
   @spec schedule(state :: state(), scale? :: boolean(), capped? :: boolean()) :: reference()
   defp schedule(state, scale?, capped?)
 
-  # Takes priority over every other clause below, regardless of producer kind —
-  # capacity freed up by an ack can happen at any moment, so this always gets a short,
-  # fixed retry instead of whatever the normal per-kind interval/backoff would give it.
-  defp schedule(_state, _scale?, true) do
+  # Consolidated/spool producers, regardless of capped?: a bounded, small instance
+  # count (DynamicPipeline's max_pipelines, or a single spool producer) means firing
+  # the fast retry unconditionally on capped? has negligible aggregate cost — and
+  # unlike standard producers below, there's no single source to read an avg
+  # ingest rate from anyway.
+  defp schedule(%{spool_producer: true}, _scale?, true) do
+    Process.send_after(self(), :scheduled_resolve, @min_in_flight_retry_ms)
+  end
+
+  defp schedule(%{consolidated: true}, _scale?, true) do
     Process.send_after(self(), :scheduled_resolve, @min_in_flight_retry_ms)
   end
 
@@ -428,7 +434,7 @@ defmodule Logflare.Backends.BufferProducer do
     Process.send_after(self(), :scheduled_resolve, state.interval)
   end
 
-  defp schedule(state, scale?, false) do
+  defp schedule(state, scale?, _capped?) do
     metrics = Sources.get_source_metrics_for_ingest(state.source_token)
 
     interval =
@@ -464,9 +470,10 @@ defmodule Logflare.Backends.BufferProducer do
   defp resolve_demand(%{demand: prev_demand} = state, new_demand \\ 0) do
     total_demand = prev_demand + new_demand
     fetch_amount = capped_fetch_amount(state, total_demand)
-    capped? = fetch_amount < total_demand
 
     {events, event_count} = do_fetch(state, fetch_amount)
+
+    capped? = event_count < total_demand
 
     if state.in_flight_ref != nil and event_count > 0 do
       :atomics.add(state.in_flight_ref, 1, event_count)
