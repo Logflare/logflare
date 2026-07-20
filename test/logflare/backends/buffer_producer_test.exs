@@ -297,6 +297,131 @@ defmodule Logflare.Backends.BufferProducerTest do
       [user: user, source: source, backend: backend]
     end
 
+    test "batch-aware startup seeding moves complete keys and leaves partial keys", %{
+      source: source,
+      backend: backend
+    } do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      complete_group =
+        for _ <- 1..2 do
+          build(:log_event, source: source)
+          |> Map.put(:event_type, :log)
+          |> Map.put(:day_bucket, 12_345)
+          |> Map.put(:ingest_freshness, :fresh)
+        end
+
+      partial =
+        build(:log_event, source: source)
+        |> Map.put(:event_type, :metric)
+        |> Map.put(:day_bucket, 12_345)
+        |> Map.put(:ingest_freshness, :fresh)
+
+      :ok = IngestEventQueue.add_to_table(startup_key, complete_group ++ [partial])
+
+      producer =
+        start_supervised!(
+          {BufferProducer,
+           backend_id: backend.id,
+           consolidated: true,
+           id_passing: true,
+           max_in_flight: 4,
+           seed_batch_size: 2,
+           interval: 5_000}
+        )
+
+      own_key = {:consolidated, backend.id, producer}
+
+      assert IngestEventQueue.pending_batch_key_counts(own_key) == %{
+               {:fresh, :log, 12_345} => 2
+             }
+
+      assert IngestEventQueue.pending_batch_key_counts(startup_key) == %{
+               {:fresh, :metric, 12_345} => 1
+             }
+    end
+
+    test "batch-aware startup seeding does not move aggregate-only partial groups", %{
+      source: source,
+      backend: backend
+    } do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      events =
+        for event_type <- [:log, :metric] do
+          build(:log_event, source: source)
+          |> Map.put(:event_type, event_type)
+          |> Map.put(:day_bucket, 12_345)
+          |> Map.put(:ingest_freshness, :fresh)
+        end
+
+      :ok = IngestEventQueue.add_to_table(startup_key, events)
+
+      producer =
+        start_supervised!(
+          {BufferProducer,
+           backend_id: backend.id,
+           consolidated: true,
+           id_passing: true,
+           max_in_flight: 4,
+           seed_batch_size: 2,
+           interval: 5_000}
+        )
+
+      own_key = {:consolidated, backend.id, producer}
+      assert IngestEventQueue.total_pending(own_key) == 0
+      assert IngestEventQueue.total_pending(startup_key) == 2
+    end
+
+    test "returns a raced partial seed claim to startup", %{
+      source: source,
+      backend: backend
+    } do
+      startup_key = {:consolidated, backend.id, nil}
+      batch_key = {:fresh, :log, 12_345}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      events =
+        for _ <- 1..2 do
+          build(:log_event, source: source)
+          |> Map.put(:event_type, :log)
+          |> Map.put(:day_bucket, 12_345)
+          |> Map.put(:ingest_freshness, :fresh)
+        end
+
+      :ok = IngestEventQueue.add_to_table(startup_key, events)
+      test_pid = self()
+
+      expect(IngestEventQueue, :pending_batch_key_counts, fn ^startup_key ->
+        {:ok, [raced_pointer], _tid} =
+          IngestEventQueue.pop_pending_pointers_by_batch_key(startup_key, batch_key, 1)
+
+        send(test_pid, {:raced_pointer, raced_pointer})
+        %{batch_key => 2}
+      end)
+
+      producer =
+        start_supervised!(
+          {BufferProducer,
+           backend_id: backend.id,
+           consolidated: true,
+           id_passing: true,
+           max_in_flight: 2,
+           seed_batch_size: 2,
+           interval: 5_000}
+        )
+
+      own_key = {:consolidated, backend.id, producer}
+      assert_receive {:raced_pointer, raced_pointer}
+      assert IngestEventQueue.total_pending(own_key) == 0
+      assert IngestEventQueue.total_pending(startup_key) == 1
+
+      IngestEventQueue.reinsert_pointer(raced_pointer)
+      assert IngestEventQueue.total_pending(startup_key) == 2
+    end
+
     test "pulls events from consolidated queue", %{source: source, backend: backend} do
       startup_key = {:consolidated, backend.id, nil}
       IngestEventQueue.upsert_tid(startup_key)
@@ -550,17 +675,61 @@ defmodule Logflare.Backends.BufferProducerTest do
     # them, so calling them from the test process directly lets us assert on the
     # resulting timing without a full running pipeline.
 
-    test "handle_info(:scheduled_resolve, _) schedules a short retry when a fetch is capped",
-         %{source: source, backend: backend} do
+    test "counts real pointer fetches against the cap and resumes after ack capacity is freed", %{
+      source: source,
+      backend: backend
+    } do
+      own_key = {:consolidated, backend.id, self()}
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(own_key)
+      IngestEventQueue.upsert_tid(startup_key)
+
+      events = for _ <- 1..3, do: build(:log_event, source: source)
+      :ok = IngestEventQueue.add_to_table(own_key, events)
+
+      ref = :atomics.new(1, signed: true)
+
+      state = %{
+        consolidated: true,
+        id_passing: true,
+        demand: 0,
+        source_id: nil,
+        source_token: nil,
+        backend_id: backend.id,
+        last_discard_log_dt: nil,
+        interval: 5_000,
+        in_flight_ref: ref,
+        max_in_flight: 2,
+        timer_ref: nil
+      }
+
+      assert {:noreply, first, state} = BufferProducer.handle_demand(3, state)
+      assert length(first) == 2
+      assert :atomics.get(ref, 1) == 2
+      assert state.demand == 1
+      assert IngestEventQueue.total_pending(own_key) == 1
+
+      :atomics.sub(ref, 1, 2)
+
+      assert {:noreply, [last], state} = BufferProducer.handle_info(:scheduled_resolve, state)
+      assert %LogEventPointer{} = last
+      assert :atomics.get(ref, 1) == 1
+      assert state.demand == 0
+      assert IngestEventQueue.total_pending(own_key) == 0
+      Process.cancel_timer(state.timer_ref)
+    end
+
+    test "handle_info(:scheduled_resolve, _) schedules a short retry when a fetch is capped, for a consolidated producer",
+         %{backend: backend} do
       ref = :atomics.new(1, signed: true)
       :atomics.put(ref, 1, 1)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 1,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,
@@ -572,6 +741,38 @@ defmodule Logflare.Backends.BufferProducerTest do
       assert {:noreply, [], _state} = BufferProducer.handle_info(:scheduled_resolve, state)
 
       assert_receive :scheduled_resolve, 400
+    end
+
+    test "handle_info(:scheduled_resolve, _) never fast-retries a capped fetch for a standard (BigQuery) producer, regardless of source volume",
+         %{source: source, backend: backend} do
+      # The fast in-flight retry is scoped to consolidated/spool producers only — a
+      # bounded, small instance count each. Standard producers have no such bound
+      # (potentially many thousands of low-traffic sources fleet-wide), so a capped
+      # fetch there always falls through to the normal avg-tiered backoff instead,
+      # regardless of how busy the source is.
+      stub(Logflare.Sources, :get_source_metrics_for_ingest, fn _ -> %{avg: 300} end)
+
+      ref = :atomics.new(1, signed: true)
+      :atomics.put(ref, 1, 1)
+
+      state = %{
+        consolidated: false,
+        id_passing: true,
+        demand: 1,
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: backend.id,
+        last_discard_log_dt: nil,
+        interval: 1_000,
+        in_flight_ref: ref,
+        max_in_flight: 1,
+        timer_ref: nil
+      }
+
+      assert {:noreply, [], _state} = BufferProducer.handle_info(:scheduled_resolve, state)
+
+      refute_receive :scheduled_resolve, 400
+      assert_receive :scheduled_resolve, 1_100
     end
 
     test "handle_info(:scheduled_resolve, _) keeps the normal interval when genuinely empty, not capped",
@@ -599,16 +800,16 @@ defmodule Logflare.Backends.BufferProducerTest do
     end
 
     test "handle_demand/2 proactively schedules a short retry when capped, instead of waiting for the pending timer",
-         %{source: source, backend: backend} do
+         %{backend: backend} do
       ref = :atomics.new(1, signed: true)
       :atomics.put(ref, 1, 1)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 0,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,
@@ -626,14 +827,18 @@ defmodule Logflare.Backends.BufferProducerTest do
       source: source,
       backend: backend
     } do
+      own_key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(own_key)
+      :ok = IngestEventQueue.add_to_table(own_key, [build(:log_event, source: source)])
+
       ref = :atomics.new(1, signed: true)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 0,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,
@@ -642,22 +847,22 @@ defmodule Logflare.Backends.BufferProducerTest do
         timer_ref: nil
       }
 
-      assert {:noreply, [], _state} = BufferProducer.handle_demand(1, state)
+      assert {:noreply, [_fetched], _state} = BufferProducer.handle_demand(1, state)
 
       refute_receive :scheduled_resolve, 400
     end
 
     test "handle_demand/2 cancels the previous timer instead of forking a second parallel loop when called again while still capped",
-         %{source: source, backend: backend} do
+         %{backend: backend} do
       ref = :atomics.new(1, signed: true)
       :atomics.put(ref, 1, 1)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 0,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,

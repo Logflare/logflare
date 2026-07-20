@@ -47,19 +47,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @processor_max_demand 1_000
   @fresh_batch_size 60_000
   @fresh_batch_timeout 5_000
-  @fresh_batcher_concurrency 1
+  @fresh_batcher_concurrency 16
   @stale_batch_size 60_000
   @stale_batch_timeout 12_000
-  @stale_batcher_concurrency 1
+  @stale_batcher_concurrency 4
   @max_retries 1
-  # Generous safety valve (2x total batcher capacity across ch_fresh + ch_stale), not a
-  # fine-grained flow-control knob — see BufferProducer's capped_fetch_amount/2. Should
-  # never engage during healthy operation; only caps genuinely runaway backlog.
-  @max_in_flight 2 * (@fresh_batch_size * @fresh_batcher_concurrency)
+  # One full batch per fresh/stale batcher lane, used as a generous safety valve rather
+  # than a fine-grained flow-control knob — see BufferProducer.capped_fetch_amount/2.
+  # It should only cap genuinely runaway backlog during healthy operation.
+  @max_in_flight 2 * @fresh_batch_size * @fresh_batcher_concurrency +
+                   @stale_batch_size * @stale_batcher_concurrency
 
   @doc false
   @spec max_retries() :: non_neg_integer()
   def max_retries, do: @max_retries
+
+  @doc false
+  @spec max_batch_size() :: pos_integer()
+  def max_batch_size, do: @fresh_batch_size
+
+  @doc false
+  @spec max_in_flight() :: pos_integer()
+  def max_in_flight, do: @max_in_flight
 
   @doc false
   @spec child_spec(arg :: term()) :: Supervisor.child_spec()
@@ -88,7 +97,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
              backend_id: backend.id,
              consolidated: true,
              id_passing: true,
-             max_in_flight: @max_in_flight
+             max_in_flight: @max_in_flight,
+             seed_batch_size: @fresh_batch_size
            ]},
         transformer: {__MODULE__, :transform, [backend_id: backend.id]},
         concurrency: @producer_concurrency
@@ -188,7 +198,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
   def ack(_ack_ref, successful, failed) do
-    decrement_in_flight(successful ++ failed)
+    decrement_in_flight(successful, failed)
 
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
@@ -210,15 +220,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   # cross-process call. By the time ack/3 fires for a message, Broadway has already
   # finished handle_batch/4 for it, so it's no longer sitting in BatcherStage's
   # (effectively unbounded) buffer regardless of what happens to it next.
-  @spec decrement_in_flight([Message.t()]) :: :ok
-  defp decrement_in_flight(messages) do
-    messages
-    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} ->
-      Map.get(ack_data, :in_flight_ref)
-    end)
-    |> Enum.each(fn
-      {nil, _msgs} -> :ok
-      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
+  @spec decrement_in_flight([Message.t()], [Message.t()]) :: :ok
+  defp decrement_in_flight(successful, failed) do
+    counts = count_in_flight(successful, %{})
+    counts = count_in_flight(failed, counts)
+
+    Enum.each(counts, fn {ref, count} -> :atomics.sub(ref, 1, count) end)
+  end
+
+  defp count_in_flight(messages, counts) do
+    Enum.reduce(messages, counts, fn %{acknowledger: {_, _, ack_data}}, counts ->
+      case Map.get(ack_data, :in_flight_ref) do
+        nil -> counts
+        ref -> Map.update(counts, ref, 1, &(&1 + 1))
+      end
     end)
   end
 
@@ -287,15 +302,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       # good/bad end up reversed relative to `messages`; that's fine — Broadway
       # partitions and re-reverses handle_batch/4's return by status internally,
       # and neither the acknowledger nor ClickHouse cares about row order.
+      # This value is constant for the batch. Keep it out of every mapped body and
+      # pass its already-encoded form directly to the row encoder.
       mapping_config_id = Ingester.encode_mapping_config_id(config_id)
 
       {good, bad, chunks} =
         Enum.reduce(messages, {[], [], []}, fn message, acc ->
-          encode_message(z, event_type, compiled, config_id, mapping_config_id, message, acc)
+          encode_message(z, event_type, compiled, mapping_config_id, message, acc)
         end)
 
       final_chunk = :zlib.deflate(z, "", :finish)
-      {good, bad, IO.iodata_to_binary([chunks, final_chunk])}
+      {good, bad, IO.iodata_to_binary([Enum.reverse(chunks), final_chunk])}
     after
       :zlib.deflateEnd(z)
       :zlib.close(z)
@@ -306,7 +323,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           term(),
           TypeDetection.event_type(),
           reference(),
-          String.t(),
           iodata(),
           Message.t(),
           {[Message.t()], [Message.t()], iodata()}
@@ -315,7 +331,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          z,
          event_type,
          compiled,
-         config_id,
          mapping_config_id,
          %{data: %LogEventPointer{event_type: msg_event_type} = pointer} = message,
          {good, bad, chunks}
@@ -326,7 +341,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         mapped_body =
           event.body
           |> Mapper.map(compiled)
-          |> Map.put("mapping_config_id", config_id)
           |> PostProcess.apply(event_type)
 
         row_chunk =
@@ -335,7 +349,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
             Ingester.encode_row(%{event | body: mapped_body}, event_type, mapping_config_id)
           )
 
-        {[message | good], bad, [chunks, row_chunk]}
+        {[message | good], bad, [row_chunk | chunks]}
 
       nil ->
         {good, [message | bad], chunks}
@@ -346,7 +360,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          _z,
          _event_type,
          _compiled,
-         _config_id,
          _mapping_config_id,
          message,
          {good, bad, chunks}

@@ -585,6 +585,86 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
+    test "counts and claims pointers by exact ClickHouse batch key", %{
+      source: source,
+      sbp: sbp
+    } do
+      events =
+        for {event_type, day_bucket, freshness, count} <- [
+              {:log, 12_345, :fresh, 3},
+              {:metric, 12_345, :fresh, 2},
+              {:log, 54_321, :stale, 1}
+            ],
+            _ <- 1..count do
+          build(:log_event, source: source)
+          |> Map.put(:event_type, event_type)
+          |> Map.put(:day_bucket, day_bucket)
+          |> Map.put(:ingest_freshness, freshness)
+        end
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      assert IngestEventQueue.pending_batch_key_counts(sbp) == %{
+               {:fresh, :log, 12_345} => 3,
+               {:fresh, :metric, 12_345} => 2,
+               {:stale, :log, 54_321} => 1
+             }
+
+      assert {:ok, pointers, _tid} =
+               IngestEventQueue.pop_pending_pointers_by_batch_key(
+                 sbp,
+                 {:fresh, :log, 12_345},
+                 2
+               )
+
+      assert length(pointers) == 2
+      assert Enum.all?(pointers, &match?(%{event_type: :log, day_bucket: 12_345}, &1))
+      assert Enum.all?(pointers, &(&1.ingest_freshness == :fresh))
+      assert IngestEventQueue.total_pending(sbp) == 4
+
+      assert IngestEventQueue.pending_batch_key_counts(sbp) == %{
+               {:fresh, :log, 12_345} => 1,
+               {:fresh, :metric, 12_345} => 2,
+               {:stale, :log, 54_321} => 1
+             }
+    end
+
+    @tag :race
+    test "concurrent batch-key claims never claim a pointer twice", %{
+      source: source,
+      sbp: sbp
+    } do
+      events =
+        for _ <- 1..500 do
+          build(:log_event, source: source)
+          |> Map.put(:event_type, :log)
+          |> Map.put(:day_bucket, 12_345)
+          |> Map.put(:ingest_freshness, :fresh)
+        end
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      claimed_ids =
+        for _ <- 1..4 do
+          Task.async(fn ->
+            {:ok, pointers, _tid} =
+              IngestEventQueue.pop_pending_pointers_by_batch_key(
+                sbp,
+                {:fresh, :log, 12_345},
+                500
+              )
+
+            Enum.map(pointers, & &1.id)
+          end)
+        end
+        |> Task.await_many(10_000)
+        |> List.flatten()
+
+      assert length(claimed_ids) == 500
+      assert length(Enum.uniq(claimed_ids)) == 500
+      assert IngestEventQueue.total_pending(sbp) == 0
+    end
+
     test "returns empty without claiming when count is 0", %{
       source: source,
       sbp: sbp
@@ -785,6 +865,23 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert active2_size > 0
     end
 
+    test "sends a sub-cycle burst to the least-loaded active queue first", %{
+      source: source,
+      backend: backend
+    } do
+      loaded_queue = {source.id, backend.id, :erlang.list_to_pid(~c"<0.100.3>")}
+      empty_queue = {source.id, backend.id, :erlang.list_to_pid(~c"<0.100.4>")}
+
+      IngestEventQueue.upsert_tid(loaded_queue)
+      IngestEventQueue.upsert_tid(empty_queue)
+      :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(101, :log_event))
+
+      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, [build(:log_event)])
+
+      assert IngestEventQueue.get_table_size(loaded_queue) == 101
+      assert IngestEventQueue.get_table_size(empty_queue) == 1
+    end
+
     test "falls back to startup queue when no active queues exist", %{
       source: source,
       backend: backend
@@ -920,6 +1017,36 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "`add_to_table/3` distribution with spool queues" do
+    setup do
+      for key <- IngestEventQueue.list_queues({:spool_producer, nil}) do
+        IngestEventQueue.delete_queue(key)
+      end
+
+      on_exit(fn ->
+        for key <- IngestEventQueue.list_queues({:spool_producer, nil}) do
+          IngestEventQueue.delete_queue(key)
+        end
+      end)
+
+      :ok
+    end
+
+    test "sends a sub-cycle burst to the least-loaded spool queue first" do
+      loaded_queue = {:spool_producer, nil, :erlang.list_to_pid(~c"<0.110.1>")}
+      empty_queue = {:spool_producer, nil, :erlang.list_to_pid(~c"<0.110.2>")}
+
+      IngestEventQueue.upsert_tid(loaded_queue)
+      IngestEventQueue.upsert_tid(empty_queue)
+      :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(101, :log_event))
+
+      :ok = IngestEventQueue.add_to_table({:spool_producer, nil}, [build(:log_event)])
+
+      assert IngestEventQueue.get_table_size(loaded_queue) == 101
+      assert IngestEventQueue.get_table_size(empty_queue) == 1
+    end
+  end
+
   describe "`add_to_table/3` distribution with consolidated queues_key" do
     setup do
       user = insert(:user)
@@ -980,7 +1107,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(full_queue)
       IngestEventQueue.upsert_tid(available_queue)
 
-      max_size = IngestEventQueue.max_queue_size()
+      max_size = IngestEventQueue.max_consolidated_queue_size()
       full_batch = build_list(max_size, :log_event, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
@@ -1015,33 +1142,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert size1 + size2 == 10
     end
 
-    test "weights round-robin toward the less-loaded consolidated queue once the spread exceeds the noise floor",
-         %{backend: backend} do
-      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
-      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
-      loaded_queue = {:consolidated, backend.id, pid1}
-      empty_queue = {:consolidated, backend.id, pid2}
-
-      IngestEventQueue.upsert_tid(loaded_queue)
-      IngestEventQueue.upsert_tid(empty_queue)
-
-      # pre-load one queue well past the noise floor (chunk_size, 100 here) so
-      # weight_by_load/2 kicks in instead of falling back to plain round-robin
-      :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(40_000, :log_event))
-
-      new_events = build_list(6_000, :log_event)
-
-      :ok =
-        IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events, chunk_size: 50)
-
-      loaded_added = IngestEventQueue.get_table_size(loaded_queue) - 40_000
-      empty_added = IngestEventQueue.get_table_size(empty_queue)
-
-      assert loaded_added + empty_added == 6_000
-      assert empty_added > loaded_added * 3
-    end
-
-    test "falls back to plain round-robin for consolidated queues when the spread is within the noise floor",
+    test "splits evenly across consolidated queues regardless of their current load",
          %{backend: backend} do
       pid1 = :erlang.list_to_pid(~c"<0.100.1>")
       pid2 = :erlang.list_to_pid(~c"<0.100.2>")
@@ -1051,7 +1152,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(queue1)
       IngestEventQueue.upsert_tid(queue2)
 
-      # a 10-event difference is far below the noise floor (chunk_size, 100 here)
       :ok = IngestEventQueue.add_to_table(queue1, build_list(1_000, :log_event))
       :ok = IngestEventQueue.add_to_table(queue2, build_list(1_010, :log_event))
 
