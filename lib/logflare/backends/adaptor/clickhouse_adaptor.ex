@@ -37,7 +37,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @min_pipelines 1
   @resolve_interval 10_000
-  @scaling_threshold 15_000
+  @scaling_threshold 30_000
   @async_insert_busy_timeout_max_ms 3_000
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000

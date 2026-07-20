@@ -46,15 +46,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @processor_max_demand 1_000
   @fresh_batch_size 60_000
   @fresh_batch_timeout 5_000
-  @fresh_batcher_concurrency 1
+  @fresh_batcher_concurrency 16
   @stale_batch_size 60_000
   @stale_batch_timeout 12_000
-  @stale_batcher_concurrency 1
+  @stale_batcher_concurrency 4
   @max_retries 1
   # One full batch per fresh/stale batcher lane, used as a generous safety valve rather
   # than a fine-grained flow-control knob — see BufferProducer.capped_fetch_amount/2.
   # It should only cap genuinely runaway backlog during healthy operation.
-  @max_in_flight @fresh_batch_size * @fresh_batcher_concurrency +
+  @max_in_flight 2 * @fresh_batch_size * @fresh_batcher_concurrency +
                    @stale_batch_size * @stale_batcher_concurrency
 
   @doc false

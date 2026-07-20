@@ -1107,7 +1107,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(full_queue)
       IngestEventQueue.upsert_tid(available_queue)
 
-      max_size = IngestEventQueue.max_queue_size()
+      max_size = IngestEventQueue.max_consolidated_queue_size()
       full_batch = build_list(max_size, :log_event, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
@@ -1142,33 +1142,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert size1 + size2 == 10
     end
 
-    test "weights round-robin toward the less-loaded consolidated queue once the spread exceeds the noise floor",
-         %{backend: backend} do
-      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
-      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
-      loaded_queue = {:consolidated, backend.id, pid1}
-      empty_queue = {:consolidated, backend.id, pid2}
-
-      IngestEventQueue.upsert_tid(loaded_queue)
-      IngestEventQueue.upsert_tid(empty_queue)
-
-      # pre-load one queue well past the noise floor (chunk_size, 100 here) so
-      # weight_by_load/2 kicks in instead of falling back to plain round-robin
-      :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(40_000, :log_event))
-
-      new_events = build_list(6_000, :log_event)
-
-      :ok =
-        IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events, chunk_size: 50)
-
-      loaded_added = IngestEventQueue.get_table_size(loaded_queue) - 40_000
-      empty_added = IngestEventQueue.get_table_size(empty_queue)
-
-      assert loaded_added + empty_added == 6_000
-      assert empty_added > loaded_added * 3
-    end
-
-    test "falls back to plain round-robin for consolidated queues when the spread is within the noise floor",
+    test "splits evenly across consolidated queues regardless of their current load",
          %{backend: backend} do
       pid1 = :erlang.list_to_pid(~c"<0.100.1>")
       pid2 = :erlang.list_to_pid(~c"<0.100.2>")
@@ -1178,7 +1152,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(queue1)
       IngestEventQueue.upsert_tid(queue2)
 
-      # a 10-event difference is far below the noise floor (chunk_size, 100 here)
       :ok = IngestEventQueue.add_to_table(queue1, build_list(1_000, :log_event))
       :ok = IngestEventQueue.add_to_table(queue2, build_list(1_010, :log_event))
 
@@ -1192,23 +1165,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert added1 == 100
       assert added2 == 100
-    end
-
-    test "starts a sub-cycle burst with the least-loaded queue inside the noise floor", %{
-      backend: backend
-    } do
-      lighter_queue = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.100.5>")}
-      heavier_queue = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.100.6>")}
-
-      IngestEventQueue.upsert_tid(lighter_queue)
-      IngestEventQueue.upsert_tid(heavier_queue)
-      :ok = IngestEventQueue.add_to_table(lighter_queue, build_list(10, :log_event))
-      :ok = IngestEventQueue.add_to_table(heavier_queue, build_list(20, :log_event))
-
-      :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, [build(:log_event)])
-
-      assert IngestEventQueue.get_table_size(lighter_queue) == 11
-      assert IngestEventQueue.get_table_size(heavier_queue) == 20
     end
 
     test "routes an entire incoming batch to the startup queue when every consolidated queue is at the hard cap",
