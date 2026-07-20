@@ -41,7 +41,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @async_insert_busy_timeout_max_ms 3_000
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
-  @pipelines_per_scheduler 4
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -622,6 +621,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
     # other to lazily create the generation (see IngestEventQueue.current_generation_tid/1)
 
+    
     # IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
     IngestEventQueue.current_generation_tid({:consolidated, backend.id})
 
@@ -652,18 +652,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  # produce fewer, larger batches for ClickHouse efficiency
+# produce fewer, larger batches for ClickHouse efficiency
   #
   # Exposed (not private) so it can be unit tested directly, same convention as
   # Backends.handle_resolve_count/3 (BigQuery's counterpart).
   @doc false
   @spec resolve_pipeline_count(map(), [{term(), non_neg_integer()}]) :: non_neg_integer()
   def resolve_pipeline_count(state, lens) do
-    startup_size =
-      Enum.find_value(lens, 0, fn
-        {{:consolidated, _bid, nil}, val} -> val
-        _ -> false
-      end)
+    startup_size = startup_queue_size(lens)
 
     lens_no_startup =
       Enum.filter(lens, fn
@@ -691,7 +687,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     cond do
       # Scale up if startup queue has events (pipeline not yet ready)
       startup_size > 0 ->
-        state.pipeline_count + max(div(startup_size, Pipeline.max_in_flight()), 1)
+        state.pipeline_count + 1
 
       # Scale up only if the fleet is loaded on average, not just one outlier
       fleet_above_threshold? and len > 0 ->
@@ -706,6 +702,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       true ->
         state.pipeline_count
     end
+  end
+
+  @spec startup_queue_size([{term(), non_neg_integer()}]) :: non_neg_integer()
+  defp startup_queue_size(lens) do
+    Enum.find_value(lens, 0, fn
+      {{:consolidated, _bid, nil}, value} -> value
+      _ -> false
+    end)
   end
 
   defp validate_user_pass(changeset) do
