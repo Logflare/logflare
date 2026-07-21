@@ -97,7 +97,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       token: %Schema{type: :string, nullable: true},
       description: %Schema{type: :string, nullable: true},
       scopes: %Schema{type: :string},
-      inserted_at: %Schema{type: :string}
+      inserted_at: %Schema{type: :string, format: :"date-time"}
     }
     use LogflareWeb.OpenApi, properties: @properties, required: []
   end

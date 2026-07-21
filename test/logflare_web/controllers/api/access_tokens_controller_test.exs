@@ -17,6 +17,7 @@ defmodule LogflareWeb.Api.AccessTokensTest do
                |> json_response(200)
 
       assert token["scopes"] =~ "private"
+      assert_rfc3339_timestamp(token["inserted_at"])
       # don't reveal value of management tokens
       refute token["token"]
     end
@@ -45,13 +46,14 @@ defmodule LogflareWeb.Api.AccessTokensTest do
 
   describe "create/2" do
     test "creating a public token", %{conn: conn, user: user} do
-      assert %{"token" => token} =
+      assert %{"token" => token, "inserted_at" => inserted_at} =
                conn
                |> add_access_token(user, "private")
                |> post(~p"/api/access-tokens")
                |> json_response(201)
 
       assert token
+      assert_rfc3339_timestamp(inserted_at)
     end
 
     test "creates a new access token for an authenticated user", %{conn: conn, user: user} do
@@ -164,5 +166,9 @@ defmodule LogflareWeb.Api.AccessTokensTest do
              |> delete("/api/access-tokens/#{access_token.token}")
              |> response(404)
     end
+  end
+
+  defp assert_rfc3339_timestamp(timestamp) do
+    assert {:ok, %DateTime{}, 0} = DateTime.from_iso8601(timestamp)
   end
 end
