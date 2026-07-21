@@ -510,6 +510,22 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 406) =~ "Source Name"
     end
 
+    test "shows the plan limit error when retention days exceeds the plan", %{
+      conn: conn,
+      users: [u1, _u2],
+      sources: [s1, _s2 | _]
+    } do
+      conn =
+        conn
+        |> login_user(u1)
+        |> patch(~p"/sources/#{s1}", %{
+          "source" => %{"retention_days" => "7"}
+        })
+
+      assert html_response(conn, 406) =~ "ttl is over your plan limit"
+      assert Sources.get(s1.id).retention_days == 3
+    end
+
     test "updates description when valid", %{
       conn: conn,
       users: [u1, _u2],
