@@ -146,6 +146,9 @@ defmodule LogflareWeb.Utils do
           num when num in ["INTEGER", "FLOAT"] ->
             inspect(value)
 
+          "BOOL" ->
+            to_string(value)
+
           _ ->
             escaped =
               value |> to_string() |> String.replace("\\", "\\\\") |> String.replace("'", "''")

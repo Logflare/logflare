@@ -140,6 +140,36 @@ defmodule LogflareWeb.UtilsTest do
       assert Utils.sql_params_to_sql(sql, [param]) ==
                "SELECT * FROM t WHERE t.col = 'simple_value'"
     end
+
+    test "renders BOOL parameters as unquoted literals" do
+      sql = "SELECT * FROM t WHERE t.col = ?"
+
+      for value <- [false, "false"] do
+        param = %{parameterType: %{type: "BOOL"}, parameterValue: %{value: value}}
+
+        assert Utils.sql_params_to_sql(sql, [param]) ==
+                 "SELECT * FROM t WHERE t.col = false"
+      end
+
+      for value <- [true, "true"] do
+        param = %{parameterType: %{type: "BOOL"}, parameterValue: %{value: value}}
+
+        assert Utils.sql_params_to_sql(sql, [param]) ==
+                 "SELECT * FROM t WHERE t.col = true"
+      end
+    end
+
+    test "renders numeric parameters as unquoted literals" do
+      sql = "SELECT * FROM t WHERE a = ? AND b = ?"
+
+      params = [
+        %{parameterType: %{type: "INTEGER"}, parameterValue: %{value: 42}},
+        %{parameterType: %{type: "FLOAT"}, parameterValue: %{value: 3.5}}
+      ]
+
+      assert Utils.sql_params_to_sql(sql, params) ==
+               "SELECT * FROM t WHERE a = 42 AND b = 3.5"
+    end
   end
 
   describe "replace_table_with_source_name/2" do
