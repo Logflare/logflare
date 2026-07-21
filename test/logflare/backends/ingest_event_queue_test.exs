@@ -99,6 +99,27 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert [] == IngestEventQueue.list_counts({source.id, nil})
     end
 
+    test "add_to_table/2 removes the backing row when a duplicate pointer is rejected", %{
+      source: %{id: source_id} = source,
+      backend: %{id: backend_id}
+    } do
+      key = {source_id, backend_id, self()}
+      queues_key = {source_id, backend_id}
+      assert {:ok, _pointer_tid} = IngestEventQueue.upsert_tid(key)
+
+      first = build(:log_event, source: source)
+      duplicate = %{first | body: Map.put(first.body, "event_message", "duplicate")}
+
+      assert :ok = IngestEventQueue.add_to_table(key, [first])
+      assert :ok = IngestEventQueue.add_to_table(key, [duplicate])
+
+      gen_tid = IngestEventQueue.current_generation_tid(queues_key)
+      assert :ets.info(gen_tid, :size) == 1
+
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == first
+    end
+
     test "add_to_table/2 falls back to the startup queue when a producer table died mid-dispatch",
          %{source: %{id: source_id} = source, backend: %{id: backend_id}} do
       pid = self()
@@ -117,6 +138,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert :ok = IngestEventQueue.add_to_table({producer_key, producer_tid}, [le])
 
       assert IngestEventQueue.total_pending(startup_key) == 1
+
+      gen_tid = IngestEventQueue.current_generation_tid({source_id, backend_id})
+      assert :ets.info(gen_tid, :size) == 1
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(startup_key, 1)
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == le
     end
 
     test "add_to_table/2 does not raise when the current generation was dropped before an insert",
