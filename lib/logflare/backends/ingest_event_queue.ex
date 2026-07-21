@@ -1474,7 +1474,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp maybe_emit_not_initialized({:error, :not_initialized}, backend_type, batch) do
     :telemetry.execute(
-      [:logflare, :ingest_event_queue, :not_initialised, :dropped],
+      [:logflare, :ingest_event_queue, :not_initialized, :dropped],
       %{count: length(batch)},
       %{backend_type: backend_type}
     )
