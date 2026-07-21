@@ -380,7 +380,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     :telemetry.execute(
       [:logflare, :ingest_event_queue, :missing_ids],
       %{count: length(bad)},
-      %{backend_id: backend.id, event_type: event_type}
+      %{backend_type: :clickhouse, backend_id: backend.id, event_type: event_type}
     )
   end
 

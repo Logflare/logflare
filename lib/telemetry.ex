@@ -379,7 +379,14 @@ defmodule Logflare.Telemetry do
       ),
       sum("logflare.ingest_event_queue.missing_ids.count",
         event_name: [:logflare, :ingest_event_queue, :missing_ids],
+        tags: [:backend_type],
         description: "Count of event IDs not found in ETS during handle_batch fetch"
+      ),
+      sum("logflare.ingest_event_queue.not_initialised.dropped.count",
+        event_name: [:logflare, :ingest_event_queue, :not_initialised, :dropped],
+        tags: [:backend_type],
+        description:
+          "Count of events dropped because a backend had no live producer queue with capacity and its startup queue was never initialized"
       ),
       sum("logflare.ingest_event_queue.generation_janitor.drop.generations",
         event_name: [:logflare, :ingest_event_queue, :generation_janitor, :drop],
