@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
+  alias Logflare.TestUtils
 
   # Arbitrary day bucket value — pipeline only passes it through telemetry/OTEL
   # attributes, so these tests assert tuple shape, not the value itself.
@@ -235,12 +236,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         batcher: :ch_fresh,
         batch_key: {:log, @day_bucket},
         size: 2,
-        trigger: :flush
+        trigger: :size
       }
+
+      telemetry_event = [:logflare, :backends, :pipeline, :handle_batch]
+      TestUtils.attach_forwarder(telemetry_event)
 
       result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
 
       assert_same_messages(result, messages)
+
+      assert_receive {:telemetry_event, ^telemetry_event, %{batch_size: 2, batch_trigger: :size},
+                      %{
+                        backend_type: :clickhouse,
+                        backend_id: backend_id,
+                        event_type: :log,
+                        batcher: :ch_fresh,
+                        freshness: :fresh,
+                        batch_trigger: :size,
+                        day_bucket: @day_bucket
+                      }}
+
+      assert backend_id == backend.id
 
       Process.sleep(200)
 
@@ -912,7 +929,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
     test "routes stale batches through async inserts", %{
       context: context,
-      messages: messages
+      messages: messages,
+      backend: backend
     } do
       test_pid = self()
 
@@ -931,10 +949,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         trigger: :timeout
       }
 
+      telemetry_event = [:logflare, :backends, :pipeline, :handle_batch]
+      TestUtils.attach_forwarder(telemetry_event)
+
       Pipeline.handle_batch(:ch_stale, messages, batch_info, context)
 
       assert_receive {:insert_opts, opts}
       assert Keyword.get(opts, :async) == true
+
+      assert_receive {:telemetry_event, ^telemetry_event,
+                      %{batch_size: 1, batch_trigger: :timeout},
+                      %{
+                        backend_type: :clickhouse,
+                        backend_id: backend_id,
+                        event_type: :log,
+                        batcher: :ch_stale,
+                        freshness: :stale,
+                        batch_trigger: :timeout,
+                        day_bucket: @day_bucket
+                      }}
+
+      assert backend_id == backend.id
     end
 
     test "routes fresh batches through synchronous inserts", %{
