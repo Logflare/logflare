@@ -81,6 +81,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
   end
 
   @doc """
+  Immediately opens the breaker, bypassing the failure-count threshold.
+
+  Intended for failures that are self-amplifying under retry — notably a
+  ClickHouse `TOO_MANY_PARTS` (error 252) response, where retrying inserts
+  creates more parts and worsens the condition. Opening at once sheds requeued
+  retries and lets background merges catch up.
+
+  Synchronously updates the breaker so callers can rely on `check/1` seeing it
+  open when this function returns. A missing or concurrently stopped breaker is
+  a no-op.
+  """
+  @spec trip(Backend.t()) :: :ok
+  def trip(%Backend{id: backend_id}) do
+    case Registry.lookup(BackendRegistry, {__MODULE__, backend_id}) do
+      [{pid, _table}] ->
+        try do
+          GenServer.call(pid, :trip)
+        catch
+          :exit, _ -> :ok
+        end
+
+      [] ->
+        :ok
+    end
+  end
+
+  @doc """
   Returns the breaker's current state, or `nil` if no breaker is running.
 
   Useful for introspection (_and tests_).
@@ -107,37 +134,43 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
     {:reply, state, state}
   end
 
+  def handle_call(:trip, _from, %__MODULE__{} = state) do
+    now = System.system_time(:millisecond)
+    {:reply, :ok, open_breaker(state, now, length(state.failures), :forced)}
+  end
+
   @impl true
   def handle_cast(:record_failure, %__MODULE__{} = state) do
     now = System.system_time(:millisecond)
     cutoff = now - window_ms()
     failures = Enum.filter([now | state.failures], &(&1 >= cutoff))
 
-    {:noreply, maybe_trip(state, failures, now)}
+    if length(failures) >= max_failures() do
+      {:noreply, open_breaker(state, now, length(failures), :threshold)}
+    else
+      {:noreply, %{state | failures: failures}}
+    end
   end
 
-  @spec maybe_trip(t(), [integer()], integer()) :: t()
-  defp maybe_trip(%__MODULE__{} = state, failures, now) do
-    if length(failures) >= max_failures() do
-      blocked_until = now + block_ms()
-      :ets.insert(state.table, {@blocked_key, blocked_until})
+  @spec open_breaker(t(), integer(), non_neg_integer(), :threshold | :forced) :: t()
+  defp open_breaker(%__MODULE__{} = state, now, failure_count, reason) do
+    blocked_until = now + block_ms()
+    :ets.insert(state.table, {@blocked_key, blocked_until})
 
-      Logger.warning("ClickHouse circuit breaker opened",
-        backend_id: state.backend_id,
-        blocked_until: blocked_until,
-        failures: length(failures)
-      )
+    Logger.warning("ClickHouse circuit breaker opened",
+      backend_id: state.backend_id,
+      blocked_until: blocked_until,
+      failures: failure_count,
+      reason: reason
+    )
 
-      :telemetry.execute(
-        [:logflare, :clickhouse, :circuit_breaker, :open],
-        %{failures: length(failures)},
-        %{backend_id: state.backend_id}
-      )
+    :telemetry.execute(
+      [:logflare, :clickhouse, :circuit_breaker, :open],
+      %{failures: failure_count},
+      %{backend_id: state.backend_id, reason: reason}
+    )
 
-      %{state | failures: []}
-    else
-      %{state | failures: failures}
-    end
+    %{state | failures: []}
   end
 
   @spec safe_lookup(:ets.table(), term()) :: [tuple()]
