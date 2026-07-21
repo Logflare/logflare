@@ -37,11 +37,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @min_pipelines 1
   @resolve_interval 10_000
-  @scaling_threshold 30_000
+  @scaling_threshold 15_000
   @async_insert_busy_timeout_max_ms 3_000
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
-  @pipelines_per_scheduler 4
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
   defdelegate connection_pool_via(arg, label), to: ConnectionManager
@@ -742,8 +741,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def init(%Backend{} = backend) do
     # create the startup queue and its generation, before any producer/traffic exists
     # for this queues_key — avoids racing concurrent first-time inserts against each
+
     # other to lazily create the generation (see IngestEventQueue.current_generation_tid/1)
-    IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+
+    # IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
     IngestEventQueue.current_generation_tid({:consolidated, backend.id})
 
     children =
@@ -759,22 +760,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
             pipeline: Pipeline,
             pipeline_args: [backend: backend],
             min_pipelines: @min_pipelines,
-            max_pipelines: System.schedulers_online() * @pipelines_per_scheduler,
+            max_pipelines: 1,
             initial_count: @min_pipelines,
             resolve_interval: @resolve_interval,
             resolve_count: fn state ->
-              queues_key = {:consolidated, backend.id}
-              startup_key = {:consolidated, backend.id, nil}
-              lens = IngestEventQueue.list_pending_counts(queues_key)
+              lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
 
-              startup_batch_key_counts =
-                if startup_queue_size(lens) >= Pipeline.max_batch_size() do
-                  IngestEventQueue.pending_batch_key_counts(startup_key)
-                else
-                  %{}
-                end
-
-              resolve_pipeline_count(state, lens, startup_batch_key_counts)
+              resolve_pipeline_count(state, lens)
             end
           }
         ]
@@ -782,71 +774,55 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  # Produce fewer, larger batches for ClickHouse efficiency. A new pipeline is useful
-  # only when the shared startup queue contains at least one complete Broadway batch
-  # for an exact `{freshness, event_type, day_bucket}` key. Aggregate queue size is not
-  # sufficient: 60k rows split across two keys would create two timeout-sized batches.
-  # The new producer's batch-aware seed mirrors this decision and moves only complete
-  # key groups, leaving partial groups for an existing producer to combine with its own
-  # pending work.
+  # produce fewer, larger batches for ClickHouse efficiency
   #
   # Exposed (not private) so it can be unit tested directly, same convention as
   # Backends.handle_resolve_count/3 (BigQuery's counterpart).
   @doc false
-  @spec resolve_pipeline_count(
-          map(),
-          [{term(), non_neg_integer()}],
-          %{optional(IngestEventQueue.pointer_batch_key()) => non_neg_integer()}
-        ) :: non_neg_integer()
-  def resolve_pipeline_count(state, lens, startup_batch_key_counts) do
+  @spec resolve_pipeline_count(map(), [{term(), non_neg_integer()}]) :: non_neg_integer()
+  def resolve_pipeline_count(state, lens) do
     startup_size = startup_queue_size(lens)
 
-    lens_no_startup_values =
-      for {key, value} <- lens,
-          not match?({:consolidated, _bid, nil}, key),
-          do: value
-
-    pending_size = startup_size + Enum.sum(lens_no_startup_values)
-    pipeline_count = state.pipeline_count
-    batch_size = Pipeline.max_batch_size()
-    max_pipelines = Map.get(state, :max_pipelines)
-
-    complete_startup_batches =
-      Enum.reduce(startup_batch_key_counts, 0, fn {_batch_key, count}, total ->
-        total + div(count, batch_size)
+    lens_no_startup =
+      Enum.filter(lens, fn
+        {{:consolidated, _bid, nil}, _val} -> false
+        _ -> true
       end)
 
-    batches_per_pipeline = max(div(Pipeline.max_in_flight(), batch_size), 1)
-
-    additional_pipelines =
-      if complete_startup_batches > 0 do
-        max(div(complete_startup_batches, batches_per_pipeline), 1)
-      else
-        0
-      end
+    lens_no_startup_values = Enum.map(lens_no_startup, fn {_, v} -> v end)
+    len = Enum.map(lens, fn {_, v} -> v end) |> Enum.sum()
 
     last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
     sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
 
-    desired_count =
-      cond do
-        additional_pipelines > 0 ->
-          pipeline_count + additional_pipelines
+    # Gated on every queue being above threshold, not the average: an average can
+    # still be dragged over threshold by a single large outlier while every other
+    # queue sits idle (e.g. [30_000, 0] and [60_000, 0, 0, 0] both average to
+    # exactly @scaling_threshold with empty queues in the mix). Weighted routing
+    # (see IngestEventQueue.weight_by_load/2) already fills the least-loaded queue
+    # preferentially, so if even that one is over threshold the fleet genuinely
+    # needs the extra pipeline.
+    fleet_above_threshold? =
+      lens_no_startup_values != [] and
+        Enum.all?(lens_no_startup_values, &(&1 >= @scaling_threshold))
 
-        startup_size == 0 and
-          Enum.all?(lens_no_startup_values, &(&1 < div(@scaling_threshold, 10))) and
-          pending_size < @scaling_threshold and pipeline_count > 1 and
-            (sec_since_last_decr > 30 or state.last_count_decrease == nil) ->
-          pipeline_count - 1
+    cond do
+      # Scale up if startup queue has events (pipeline not yet ready)
+      startup_size > 0 ->
+        state.pipeline_count + 1
 
-        true ->
-          pipeline_count
-      end
+      # Scale up only if the fleet is loaded on average, not just one outlier
+      fleet_above_threshold? and len > 0 ->
+        state.pipeline_count + 1
 
-    if is_integer(max_pipelines) do
-      min(desired_count, max_pipelines)
-    else
-      desired_count
+      # Faster decrease when queues are low
+      Enum.all?(lens_no_startup_values, &(&1 < div(@scaling_threshold, 10))) and
+        len < @scaling_threshold and state.pipeline_count > 1 and
+          (sec_since_last_decr > 30 or state.last_count_decrease == nil) ->
+        state.pipeline_count - 1
+
+      true ->
+        state.pipeline_count
     end
   end
 

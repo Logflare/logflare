@@ -46,10 +46,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @processor_max_demand 1_000
   @fresh_batch_size 60_000
   @fresh_batch_timeout 5_000
-  @fresh_batcher_concurrency 16
+  @fresh_batcher_concurrency 32
   @stale_batch_size 60_000
   @stale_batch_timeout 12_000
-  @stale_batcher_concurrency 4
+  @stale_batcher_concurrency 8
   @max_retries 1
   # One full batch per fresh/stale batcher lane, used as a generous safety valve rather
   # than a fine-grained flow-control knob — see BufferProducer.capped_fetch_amount/2.
@@ -169,6 +169,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   defp ingest_freshness_to_batcher(:fresh), do: :ch_fresh
   defp ingest_freshness_to_batcher(:stale), do: :ch_stale
 
+  @spec batcher_to_freshness(:ch_fresh | :ch_stale) :: :fresh | :stale
+  defp batcher_to_freshness(:ch_fresh), do: :fresh
+  defp batcher_to_freshness(:ch_stale), do: :stale
+
   @spec batcher_async?(:ch_fresh | :ch_stale) :: boolean()
   defp batcher_async?(:ch_stale), do: true
   defp batcher_async?(:ch_fresh), do: false
@@ -252,6 +256,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         backend_id: backend_id,
         event_type: event_type,
         batcher: batcher,
+        freshness: batcher_to_freshness(batcher),
+        batch_trigger: batch_info.trigger,
         day_bucket: day_bucket
       }
     )
@@ -374,7 +380,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     :telemetry.execute(
       [:logflare, :ingest_event_queue, :missing_ids],
       %{count: length(bad)},
-      %{backend_id: backend.id, event_type: event_type}
+      %{backend_type: :clickhouse, backend_id: backend.id, event_type: event_type}
     )
   end
 
@@ -407,8 +413,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         Enum.map(bad, &Message.failed(&1, :not_found)) ++ good
 
       {:error, reason} ->
-        CircuitBreaker.record_failure(backend)
+        record_insert_failure(backend, reason)
         Enum.map(bad, &Message.failed(&1, reason)) ++ Enum.map(good, &Message.failed(&1, reason))
+    end
+  end
+
+  @spec record_insert_failure(Backend.t(), term()) :: :ok
+  defp record_insert_failure(backend, reason) do
+    if Ingester.too_many_parts?(reason) do
+      CircuitBreaker.trip(backend)
+    else
+      CircuitBreaker.record_failure(backend)
     end
   end
 

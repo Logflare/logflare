@@ -30,7 +30,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_current_generation :ingest_event_queue_current_generation
   @ets_recent_events :ingest_event_queue_recent_events
   @max_queue_size 30_000
-  @consolidated_max_queue_size 60_000
+  @consolidated_max_queue_size 120_000
   @pointer_batch_key_match_spec (for freshness <- [:fresh, :stale],
                                      event_type <- [:log, :metric, :trace] do
                                    {{:_, :_, :_, :_, :_, event_type, :"$1", freshness},
@@ -575,6 +575,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       else
         _ ->
           add_to_table(startup_queue, batch)
+          |> maybe_emit_not_initialized(:clickhouse, batch)
       end
     else
       proc_counts =
@@ -589,6 +590,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
       if procs == [] do
         add_to_table({:consolidated, bid, nil}, batch)
+        |> maybe_emit_not_initialized(:clickhouse, batch)
       else
         Logflare.Utils.chunked_round_robin(
           batch,
@@ -1469,4 +1471,16 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp emit_stale_ets_table_telemetry do
     :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
   end
+
+  defp maybe_emit_not_initialized({:error, :not_initialized}, backend_type, batch) do
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :not_initialized, :dropped],
+      %{count: length(batch)},
+      %{backend_type: backend_type}
+    )
+
+    {:error, :not_initialized}
+  end
+
+  defp maybe_emit_not_initialized(other, _, _), do: other
 end

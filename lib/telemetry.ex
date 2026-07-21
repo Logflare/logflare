@@ -206,6 +206,22 @@ defmodule Logflare.Telemetry do
         tags: [:backend_type],
         description: "Sum of batch sizes for broadway pipeline by backend type"
       ),
+      distribution("logflare.backends.clickhouse.pipeline.handle_batch.batch_size",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :batch_size,
+        tags: [:event_type, :freshness, :batch_trigger],
+        keep: &clickhouse_batch?/1,
+        reporter_options: batch_size_reporter_opts(),
+        description:
+          "Distribution of ClickHouse batch sizes by event type, freshness, and trigger"
+      ),
+      sum("logflare.backends.clickhouse.pipeline.handle_batch.batch_size",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :batch_size,
+        tags: [:event_type, :freshness, :batch_trigger],
+        keep: &clickhouse_batch?/1,
+        description: "Sum of ClickHouse batch sizes by event type, freshness, and trigger"
+      ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
       sum("logflare.logs.ingest_logs.drop_lql",
         event_name: [:logflare, :logs, :ingest_logs, :drop_lql],
@@ -363,7 +379,14 @@ defmodule Logflare.Telemetry do
       ),
       sum("logflare.ingest_event_queue.missing_ids.count",
         event_name: [:logflare, :ingest_event_queue, :missing_ids],
+        tags: [:backend_type],
         description: "Count of event IDs not found in ETS during handle_batch fetch"
+      ),
+      sum("logflare.ingest_event_queue.not_initialized.dropped.count",
+        event_name: [:logflare, :ingest_event_queue, :not_initialized, :dropped],
+        tags: [:backend_type],
+        description:
+          "Count of events dropped because a backend had no live producer queue with capacity and its startup queue was never initialized"
       ),
       sum("logflare.ingest_event_queue.generation_janitor.drop.generations",
         event_name: [:logflare, :ingest_event_queue, :generation_janitor, :drop],
@@ -577,6 +600,9 @@ defmodule Logflare.Telemetry do
     |> inspect()
     |> String.replace(@number_suffix_regex, "")
   end
+
+  defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
+  defp clickhouse_batch?(_metadata), do: false
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]
