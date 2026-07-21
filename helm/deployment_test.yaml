@@ -1,0 +1,9 @@
+suite: test deployment kind
+templates:
+  - deployment.yaml
+tests:
+  - it: should render the correct deployment Kind
+    asserts:
+      - equal:
+          path: kind
+          value: Deployment
