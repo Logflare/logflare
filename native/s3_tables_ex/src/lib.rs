@@ -204,9 +204,16 @@ fn ensure_table<'a>(
     })
 }
 
-/// Returns the current column names of an existing Iceberg table, used to confirm table creation.
+#[derive(NifMap)]
+struct TableInfo {
+    columns: Vec<String>,
+    properties: HashMap<String, String>,
+}
+
+/// Returns the current column names and table properties of an existing
+/// Iceberg table, used to confirm table creation and detect schema drift.
 #[rustler::nif]
-fn table_columns<'a>(
+fn table_info<'a>(
     env: Env<'a>,
     result_tag: Term<'a>,
     catalog: ResourceArc<CatalogResource>,
@@ -221,8 +228,9 @@ fn table_columns<'a>(
             .await
             .map_err(fmt_err)?;
 
-        let names = table
-            .metadata()
+        let metadata = table.metadata();
+
+        let columns = metadata
             .current_schema()
             .as_struct()
             .fields()
@@ -230,7 +238,31 @@ fn table_columns<'a>(
             .map(|field| field.name.clone())
             .collect::<Vec<String>>();
 
-        Ok::<_, String>(names)
+        Ok::<_, String>(TableInfo {
+            columns,
+            properties: metadata.properties().clone(),
+        })
+    })
+}
+
+/// Drops an Iceberg table, discarding its data.
+#[rustler::nif]
+fn drop_table<'a>(
+    env: Env<'a>,
+    result_tag: Term<'a>,
+    catalog: ResourceArc<CatalogResource>,
+    table_name: String,
+) -> NifAtom {
+    spawn_reply(env, result_tag, async move {
+        let table_ident = catalog.table_ident(table_name);
+
+        catalog
+            .catalog
+            .drop_table(&table_ident)
+            .await
+            .map_err(fmt_err)?;
+
+        Ok::<_, String>(atoms::ok())
     })
 }
 

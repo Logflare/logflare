@@ -17,6 +17,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.CatalogManager do
   alias Logflare.Backends.Adaptor.S3TablesAdaptor.Native
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BackendRegistry
+  alias Logflare.LogEvent.TypeDetection
 
   @doc false
   def child_spec(backend) do
@@ -84,14 +85,14 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.CatalogManager do
     Enum.reduce_while(IcebergSchema.event_types(), :ok, fn event_type, :ok ->
       table_name = IcebergSchema.table_name(event_type)
       fields = IcebergSchema.fields(event_type)
-      properties = IcebergSchema.table_properties()
+      properties = IcebergSchema.table_properties(event_type)
 
       case Native.ensure_table(catalog, table_name, fields, properties) do
         {:ok, :created} ->
           {:cont, :ok}
 
         {:ok, :already_exists} ->
-          warn_on_column_drift(catalog, table_name, fields, backend)
+          warn_on_schema_drift(catalog, event_type, table_name, backend)
           {:cont, :ok}
 
         {:error, _reason} = error ->
@@ -100,25 +101,23 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.CatalogManager do
     end)
   end
 
-  @spec warn_on_column_drift(reference(), String.t(), [IcebergSchema.field()], Backend.t()) ::
-          :ok
-  defp warn_on_column_drift(catalog, table_name, fields, backend) do
-    expected = Enum.map(fields, & &1.name)
-
-    case Native.table_columns(catalog, table_name) do
-      {:ok, ^expected} ->
-        :ok
-
-      {:ok, actual} ->
-        Logger.warning("S3 Tables Iceberg table columns drifted from expected schema",
-          backend_id: backend.id,
-          table_name: table_name,
-          missing_columns: inspect(expected -- actual),
-          extra_columns: inspect(actual -- expected)
-        )
+  @spec warn_on_schema_drift(
+          reference(),
+          TypeDetection.event_type(),
+          String.t(),
+          Backend.t()
+        ) :: :ok
+  defp warn_on_schema_drift(catalog, event_type, table_name, backend) do
+    with {:ok, info} <- Native.table_info(catalog, table_name),
+         :ok <- check_version(info, event_type) do
+      :ok
+    else
+      {:error, :version_mismatch, error_meta} ->
+        metadata = [backend_id: backend.id, table_name: table_name] ++ error_meta
+        Logger.warning("S3 Tables Iceberg table schema mismatch", metadata)
 
       {:error, reason} ->
-        Logger.warning("S3 Tables Iceberg table column check failed",
+        Logger.warning("S3 Tables Iceberg table schema check failed",
           backend_id: backend.id,
           table_name: table_name,
           error_string: inspect(reason)
@@ -126,5 +125,22 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.CatalogManager do
     end
 
     :ok
+  end
+
+  defp check_version(info, event_type) do
+    expected_version = IcebergSchema.schema_version(event_type)
+    expected_columns = Enum.map(IcebergSchema.fields(event_type), & &1.name)
+    stored_version = info.properties["logflare.schema-version"]
+
+    if stored_version == expected_version do
+      :ok
+    else
+      error_meta = [
+        missing_columns: expected_columns -- info.columns,
+        extra_columns: info.columns -- expected_columns
+      ]
+
+      {:error, :version_mismatch, error_meta}
+    end
   end
 end

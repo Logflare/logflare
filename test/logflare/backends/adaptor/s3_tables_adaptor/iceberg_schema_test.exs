@@ -51,12 +51,22 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchemaTest do
     end
   end
 
-  test "table_properties/0" do
-    properties = IcebergSchema.table_properties()
-    assert %{"logflare.schema-version" => version} = properties
-    assert version =~ ~r/^\d+$/
-    assert %{"commit.retry.total-timeout-ms" => timeout} = properties
-    assert timeout =~ ~r/^\d+$/
+  test "table_properties/1" do
+    for event_type <- IcebergSchema.event_types() do
+      properties = IcebergSchema.table_properties(event_type)
+      assert %{"logflare.schema-version" => version} = properties
+      assert version == IcebergSchema.schema_version(event_type)
+      assert %{"commit.retry.total-timeout-ms" => timeout} = properties
+      assert timeout =~ ~r/^\d+$/
+    end
+  end
+
+  test "schema_version/1" do
+    for event_type <- IcebergSchema.event_types() do
+      version = IcebergSchema.schema_version(event_type)
+      assert version =~ ~r/^[0-9a-f]{64}$/
+      version
+    end
   end
 
   describe "table_name/1" do

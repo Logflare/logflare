@@ -24,10 +24,22 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Native do
     |> wrap_sending_nif()
   end
 
-  @spec table_columns(reference(), String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
-  def table_columns(catalog, table_name) do
-    fn ref -> Nifs.table_columns(ref, catalog, table_name) end
+  @spec table_info(reference(), String.t()) ::
+          {:ok, %{columns: [String.t()], properties: %{String.t() => String.t()}}}
+          | {:error, String.t()}
+  def table_info(catalog, table_name) do
+    fn ref -> Nifs.table_info(ref, catalog, table_name) end
     |> wrap_sending_nif()
+  end
+
+  @spec drop_table(reference(), String.t()) :: :ok | {:error, String.t()}
+  def drop_table(catalog, table_name) do
+    fn ref -> Nifs.drop_table(ref, catalog, table_name) end
+    |> wrap_sending_nif()
+    |> case do
+      {:ok, :ok} -> :ok
+      {:error, _reason} = error -> error
+    end
   end
 
   # integer values in timestamptz columns are interpreted as unix nanoseconds

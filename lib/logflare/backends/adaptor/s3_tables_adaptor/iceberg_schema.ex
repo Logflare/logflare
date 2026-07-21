@@ -11,13 +11,12 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchema do
   `"events.timestamp"`.
 
   Only `id` and `timestamp` are required. Each table is stamped with a
-  `logflare.schema-version` property (see `table_properties/0`) so future
-  provisioning runs can detect schema drift and drive migrations.
+  `logflare.schema-version` property (see `table_properties/1`) — a hash of
+  the table's field definitions — so provisioning runs can detect schema
+  drift against live tables.
   """
 
   alias Logflare.LogEvent.TypeDetection
-
-  @schema_version "1"
 
   # keeps the iceberg-rust built-in commit retry loop well under the
   # append NIF timeout (see `Native.append_batch/3`)
@@ -25,6 +24,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchema do
 
   @type field :: %{name: String.t(), type: String.t(), required: boolean()}
 
+  @event_types [:log, :metric, :trace]
   @log_fields [
     %{name: "id", type: "string", required: true},
     %{name: "source_uuid", type: "string", required: false},
@@ -133,7 +133,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchema do
   Returns all event types with a corresponding Iceberg table.
   """
   @spec event_types() :: [TypeDetection.event_type()]
-  def event_types, do: [:log, :metric, :trace]
+  def event_types, do: @event_types
 
   @doc """
   Returns the Iceberg table name for a given event type.
@@ -151,13 +151,45 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchema do
   def fields(:metric), do: @metric_fields
   def fields(:trace), do: @trace_fields
 
+  # Calculate schema version at compile time
+  defmacrop schema_version_m(event_type) when is_atom(event_type) do
+    canonical =
+      event_type
+      |> case do
+        :log -> @log_fields
+        :metric -> @metric_fields
+        :trace -> @trace_fields
+      end
+      |> Enum.map_join("\n", fn %{name: name, type: type, required: required} ->
+        "#{name}:#{type}:#{required}"
+      end)
+
+    version =
+      :sha256
+      |> :crypto.hash(canonical)
+      |> Base.encode16(case: :lower)
+
+    quote do
+      unquote(version)
+    end
+  end
+
   @doc """
-  Returns the Iceberg table properties stamped on every table at creation.
+  Returns the schema version for a given event type's table: a SHA-256 hash
+  of the canonical field definitions.
   """
-  @spec table_properties() :: %{String.t() => String.t()}
-  def table_properties do
+  @spec schema_version(TypeDetection.event_type()) :: String.t()
+  def schema_version(:log), do: schema_version_m(:log)
+  def schema_version(:metric), do: schema_version_m(:metric)
+  def schema_version(:trace), do: schema_version_m(:trace)
+
+  @doc """
+  Returns the Iceberg table properties stamped on a table at creation.
+  """
+  @spec table_properties(TypeDetection.event_type()) :: %{String.t() => String.t()}
+  def table_properties(event_type) do
     %{
-      "logflare.schema-version" => @schema_version,
+      "logflare.schema-version" => schema_version(event_type),
       "commit.retry.total-timeout-ms" => @commit_retry_total_timeout_ms
     }
   end
