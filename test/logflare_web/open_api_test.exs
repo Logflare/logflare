@@ -4,6 +4,7 @@ defmodule LogflareWeb.OpenApiTest do
   alias LogflareWeb.Api.AccessTokenController
   alias LogflareWeb.Api.QueryController
   alias LogflareWeb.Api.TeamController
+  alias LogflareWeb.OpenApiSchemas.AccessToken
   alias LogflareWeb.OpenApiSchemas.QueryResult
   alias OpenApiSpex.MediaType
   alias OpenApiSpex.Response
@@ -32,6 +33,11 @@ defmodule LogflareWeb.OpenApiTest do
              properties: %{result: %Schema{type: :array, items: %Schema{type: :object}}},
              required: [:result]
            } = QueryResult.schema()
+  end
+
+  test "Management API access token timestamps are documented as RFC3339" do
+    assert %Schema{type: :string, format: :"date-time"} =
+             AccessToken.schema().properties.inserted_at
   end
 
   test "Management API 400 errors are documented as JSON" do

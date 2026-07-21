@@ -11,6 +11,7 @@ defmodule LogflareWeb.Api.EndpointController do
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApi.UnprocessableEntity
 
+  alias LogflareWeb.OpenApiSchemas.EndpointApiParams
   alias LogflareWeb.OpenApiSchemas.EndpointApiSchema
 
   action_fallback(LogflareWeb.Api.FallbackController)
@@ -46,7 +47,7 @@ defmodule LogflareWeb.Api.EndpointController do
 
   operation(:create,
     summary: "Create endpoint",
-    request_body: EndpointApiSchema.params(),
+    request_body: EndpointApiParams.params(),
     responses: %{
       201 => Created.response(EndpointApiSchema),
       404 => NotFound.response(),
@@ -70,7 +71,7 @@ defmodule LogflareWeb.Api.EndpointController do
   operation(:update,
     summary: "Update endpoint",
     parameters: [token: [in: :path, description: "Endpoint UUID Token", type: :string]],
-    request_body: EndpointApiSchema.params(),
+    request_body: EndpointApiParams.params(),
     responses: %{
       200 => Accepted.response(EndpointApiSchema),
       204 => Accepted.response(),
