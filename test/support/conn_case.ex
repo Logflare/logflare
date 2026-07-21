@@ -166,33 +166,27 @@ defmodule LogflareWeb.ConnCase do
         params_or_body
       ) do
     conn = Phoenix.ConnTest.dispatch(conn, endpoint, method, path_or_action, params_or_body)
-    assert_open_api_response(conn)
+
+    if String.starts_with?(conn.request_path, "/api") do
+      assert_open_api_response(conn)
+    else
+      conn
+    end
   end
 
   @spec assert_open_api_response(Plug.Conn.t()) :: Plug.Conn.t()
   def assert_open_api_response(conn) do
-    case open_api_operation(conn) do
-      nil ->
-        conn
-
-      operation ->
-        assert_documented_response!(operation, conn)
-        OpenApiSpex.TestAssertions.assert_operation_response(conn, operation.operationId)
-        conn
-    end
-  end
-
-  defp open_api_operation(conn) do
     with %{route: route} <-
            Phoenix.Router.route_info(Router, conn.method, conn.request_path, conn.host),
-         true <- String.starts_with?(route, "/api"),
-         {spec, _operation_lookup} <-
-           PutApiSpec.get_spec_and_operation_lookup(conn),
-         path_item when not is_nil(path_item) <- Map.get(spec.paths, open_api_path(route)) do
-      Map.get(path_item, Map.fetch!(@open_api_methods, conn.method))
-    else
-      _ -> nil
+         {spec, _operation_lookup} <- PutApiSpec.get_spec_and_operation_lookup(conn),
+         path_item when not is_nil(path_item) <- Map.get(spec.paths, open_api_path(route)),
+         operation when not is_nil(operation) <-
+           Map.get(path_item, Map.fetch!(@open_api_methods, conn.method)) do
+      assert_documented_response!(operation, conn)
+      OpenApiSpex.TestAssertions.assert_operation_response(conn, operation.operationId)
     end
+
+    conn
   end
 
   defp assert_documented_response!(operation, conn) do
