@@ -1,0 +1,75 @@
+suite: test backend wiring
+templates:
+  - configmap.yaml
+  - secret.yaml
+tests:
+  - it: should render bigquery vars and omit postgres vars by default
+    asserts:
+      - equal:
+          path: data.GOOGLE_PROJECT_ID
+          value: ""
+        template: configmap.yaml
+      - isNotNull:
+          path: data.GOOGLE_DATASET_LOCATION
+        template: configmap.yaml
+      - isNull:
+          path: data.POSTGRES_BACKEND_SCHEMA
+        template: configmap.yaml
+      - isNotNull:
+          path: stringData.GOOGLE_SERVICE_ACCOUNT
+        template: secret.yaml
+      - isNull:
+          path: stringData.POSTGRES_BACKEND_URL
+        template: secret.yaml
+
+  - it: should render postgres vars and omit bigquery vars when backend.type is postgres
+    set:
+      logflare.backend.type: postgres
+    asserts:
+      - isNotNull:
+          path: data.POSTGRES_BACKEND_SCHEMA
+        template: configmap.yaml
+      - isNull:
+          path: data.GOOGLE_PROJECT_ID
+        template: configmap.yaml
+      - isNull:
+          path: data.GOOGLE_PROJECT_NUMBER
+        template: configmap.yaml
+      - isNotNull:
+          path: stringData.POSTGRES_BACKEND_URL
+        template: secret.yaml
+      - isNull:
+          path: stringData.GOOGLE_SERVICE_ACCOUNT
+        template: secret.yaml
+
+  - it: should always render the phoenix session secrets
+    asserts:
+      - isNotNull:
+          path: stringData.PHX_SECRET_KEY_BASE
+        template: secret.yaml
+      - isNotNull:
+          path: stringData.PHX_LIVE_VIEW_SIGNING_SALT
+        template: secret.yaml
+
+  - it: should omit empty optional configmap keys
+    asserts:
+      - notExists:
+          path: data.LOGFLARE_FEATURE_FLAG_OVERRIDE
+        template: configmap.yaml
+      - notExists:
+          path: data.PHX_URL_HOST
+        template: configmap.yaml
+
+  - it: should render optional configmap keys when set
+    set:
+      logflare.featureFlagOverride: "some-flag"
+      logflare.phx.urlHost: "example.com"
+    asserts:
+      - equal:
+          path: data.LOGFLARE_FEATURE_FLAG_OVERRIDE
+          value: "some-flag"
+        template: configmap.yaml
+      - equal:
+          path: data.PHX_URL_HOST
+          value: "example.com"
+        template: configmap.yaml

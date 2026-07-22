@@ -11,5 +11,5 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
-      args: ['{{ include "logflare.fullname" . }}:{{ .Values.service.port }}']
+      args: ['{{ include "logflare.fullname" . }}:{{ .Values.service.port }}/health']
   restartPolicy: Never

@@ -1,9 +1,87 @@
 suite: test deployment kind
 templates:
   - deployment.yaml
+  - configmap.yaml
+  - secret.yaml
 tests:
   - it: should render the correct deployment Kind
     asserts:
       - equal:
           path: kind
           value: Deployment
+        template: deployment.yaml
+
+  - it: should reference the chart's ConfigMap and Secret via envFrom by default
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].configMapRef.name
+          value: RELEASE-NAME-logflare
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[1].secretRef.name
+          value: RELEASE-NAME-logflare
+        template: deployment.yaml
+
+  - it: should reference an existingSecret when set, instead of the chart's own Secret
+    set:
+      logflare.existingSecret: my-custom-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[1].secretRef.name
+          value: my-custom-secret
+        template: deployment.yaml
+
+  - it: should render checksum/config annotation, and checksum/secret only when not using existingSecret
+    asserts:
+      - isNotNull:
+          path: spec.template.metadata.annotations["checksum/config"]
+        template: deployment.yaml
+      - isNotNull:
+          path: spec.template.metadata.annotations["checksum/secret"]
+        template: deployment.yaml
+
+  - it: should omit checksum/secret annotation when using an existingSecret
+    set:
+      logflare.existingSecret: my-custom-secret
+    asserts:
+      - isNotNull:
+          path: spec.template.metadata.annotations["checksum/config"]
+        template: deployment.yaml
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/secret"]
+        template: deployment.yaml
+
+  - it: should inject LOGFLARE_NODE_HOST from the pod IP by default
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: LOGFLARE_NODE_HOST
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+        template: deployment.yaml
+
+  - it: should use an explicit LOGFLARE_NODE_HOST when set
+    set:
+      logflare.nodeHost: "my-host"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: LOGFLARE_NODE_HOST
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[0].value
+          value: "my-host"
+        template: deployment.yaml
+
+  - it: should expose http and grpc container ports
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 4000
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].ports[1].containerPort
+          value: 50051
+        template: deployment.yaml

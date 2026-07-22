@@ -11,5 +11,9 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    - port: {{ .Values.logflare.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
   selector:
     {{- include "logflare.selectorLabels" . | nindent 4 }}

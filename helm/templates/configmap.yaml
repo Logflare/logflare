@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "logflare.fullname" . }}
+  labels:
+    {{- include "logflare.labels" . | nindent 4 }}
+data:
+  LOGFLARE_SINGLE_TENANT: {{ .Values.logflare.singleTenant | quote }}
+  LOGFLARE_SUPABASE_MODE: {{ .Values.logflare.supabaseMode | quote }}
+  LOGFLARE_GRPC_PORT: {{ .Values.logflare.grpcPort | quote }}
+  LOGFLARE_HTTP_CONNECTION_POOLS: {{ .Values.logflare.httpConnectionPools | quote }}
+  {{- if .Values.logflare.featureFlagOverride }}
+  LOGFLARE_FEATURE_FLAG_OVERRIDE: {{ .Values.logflare.featureFlagOverride | quote }}
+  {{- end }}
+
+  PHX_HTTP_PORT: {{ .Values.logflare.phx.httpPort | quote }}
+  {{- if .Values.logflare.phx.urlHost }}
+  PHX_URL_HOST: {{ .Values.logflare.phx.urlHost | quote }}
+  {{- end }}
+  PHX_URL_SCHEME: {{ .Values.logflare.phx.urlScheme | quote }}
+  PHX_URL_PORT: {{ .Values.logflare.phx.urlPort | quote }}
+  PHX_CHECK_ORIGIN: {{ .Values.logflare.phx.checkOrigin | quote }}
+
+  DB_HOSTNAME: {{ .Values.logflare.db.hostname | quote }}
+  DB_PORT: {{ .Values.logflare.db.port | quote }}
+  DB_DATABASE: {{ .Values.logflare.db.database | quote }}
+  DB_USERNAME: {{ .Values.logflare.db.username | quote }}
+  DB_SCHEMA: {{ .Values.logflare.db.schema | quote }}
+  DB_POOL_SIZE: {{ .Values.logflare.db.poolSize | quote }}
+  DB_SSL: {{ .Values.logflare.db.ssl | quote }}
+
+  {{- if eq .Values.logflare.backend.type "bigquery" }}
+  GOOGLE_PROJECT_ID: {{ .Values.logflare.backend.bigquery.projectId | quote }}
+  GOOGLE_PROJECT_NUMBER: {{ .Values.logflare.backend.bigquery.projectNumber | quote }}
+  GOOGLE_DATASET_ID_APPEND: {{ .Values.logflare.backend.bigquery.datasetIdAppend | quote }}
+  GOOGLE_DATASET_LOCATION: {{ .Values.logflare.backend.bigquery.datasetLocation | quote }}
+  {{- else if eq .Values.logflare.backend.type "postgres" }}
+  POSTGRES_BACKEND_SCHEMA: {{ .Values.logflare.backend.postgres.schema | quote }}
+  {{- else }}
+  {{- fail (printf "logflare.backend.type must be 'bigquery' or 'postgres', got %q" .Values.logflare.backend.type) }}
+  {{- end }}
