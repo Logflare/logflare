@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.IngestEventQueue
 
   @behaviour Adaptor
 
@@ -97,6 +98,10 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor do
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
+    # create the startup queue and its generation, before any producer/traffic exists
+    IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+    IngestEventQueue.current_generation_tid({:consolidated, backend.id})
+
     config = Adaptor.get_backend_config(backend)
 
     pipeline_args = [

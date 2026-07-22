@@ -28,6 +28,10 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Pipeline do
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
   alias Logflare.Mapper.PostProcess
+  alias Logflare.Utils
+
+  @behaviour Broadway
+  @behaviour Broadway.Acknowledger
 
   @producer_concurrency 1
   @processor_concurrency 5
@@ -80,8 +84,13 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Pipeline do
     end
   end
 
-  @spec handle_message(processor_name :: atom(), message :: Message.t(), context :: map()) ::
-          Message.t()
+  @impl Broadway
+  def process_name({:via, module, {registry, identifier}}, base_name) do
+    new_identifier = Utils.append_to_tuple(identifier, base_name)
+    {:via, module, {registry, new_identifier}}
+  end
+
+  @impl Broadway
   def handle_message(
         _processor_name,
         %Message{data: %LogEvent{event_type: event_type, day_bucket: day_bucket}} = message,
@@ -93,12 +102,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Pipeline do
     |> Message.put_batch_key({event_type, day_bucket})
   end
 
-  @spec handle_batch(
-          batcher :: atom(),
-          messages :: [Message.t()],
-          batch_info :: Broadway.BatchInfo.t(),
-          context :: map()
-        ) :: [Message.t()]
+  @impl Broadway
   def handle_batch(
         :s3_tables,
         messages,
@@ -132,7 +136,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Pipeline do
     }
   end
 
-  @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
+  @impl Broadway.Acknowledger
   def ack(_ack_ref, _successful, []), do: :ok
 
   def ack(_ack_ref, _successful, failed) do
