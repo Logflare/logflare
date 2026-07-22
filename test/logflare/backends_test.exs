@@ -1736,11 +1736,11 @@ defmodule Logflare.BackendsTest do
       {:ok, source: source}
     end
 
-    test "drops events older than 72 hours", %{source: source} do
+    test "drops events older than 24 hours", %{source: source} do
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
 
       now_us = System.system_time(:microsecond)
-      old_timestamp = now_us - 73 * 3_600 * 1_000_000
+      old_timestamp = now_us - 25 * 3_600 * 1_000_000
 
       params = [%{"message" => "old event", "timestamp" => old_timestamp}]
 
