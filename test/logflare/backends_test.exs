@@ -1787,9 +1787,9 @@ defmodule Logflare.BackendsTest do
 
       params = [
         %{"message" => "valid now", "timestamp" => now_us},
-        %{"message" => "too old", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "too old", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
         %{"message" => "too future", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
-        %{"message" => "valid past", "timestamp" => now_us - 24 * 3_600 * 1_000_000}
+        %{"message" => "valid past", "timestamp" => now_us - 15 * 3_600 * 1_000_000}
       ]
 
       assert {:ok, 2} = Backends.ingest_logs(params, source)
@@ -1825,9 +1825,9 @@ defmodule Logflare.BackendsTest do
       refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future], _, _}
     end
 
-    test "accepts events at exact boundary (72 hours ago)", %{source: source} do
+    test "accepts events at exact boundary (24 hours ago)", %{source: source} do
       now_us = System.system_time(:microsecond)
-      boundary_timestamp = now_us - (71 * 3_600 + 59 * 60) * 1_000_000
+      boundary_timestamp = now_us - (23 * 3_600 + 59 * 60) * 1_000_000
 
       params = [%{"message" => "boundary event", "timestamp" => boundary_timestamp}]
 
@@ -1862,7 +1862,7 @@ defmodule Logflare.BackendsTest do
 
       params = [
         %{"message" => "valid event", "timestamp" => now_us},
-        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "old event 1", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
         %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
         %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
       ]
@@ -1872,7 +1872,7 @@ defmodule Logflare.BackendsTest do
           assert {:ok, 1} = Backends.ingest_logs(params, source)
         end)
 
-      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-72h, +1h] window"
+      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-24h, +1h] window"
     end
 
     test "does not log when no events are filtered", %{source: source} do

@@ -231,7 +231,7 @@ defmodule Logflare.Telemetry do
       sum("logflare.logs.ingest_logs.drop_stale",
         event_name: [:logflare, :logs, :ingest_logs, :drop_stale],
         measurement: :count,
-        description: "Sum of events dropped (timestamp older than 72h)"
+        description: "Sum of events dropped (timestamp older than 24h)"
       ),
       sum("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],
