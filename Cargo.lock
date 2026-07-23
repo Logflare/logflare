@@ -634,7 +634,9 @@ name = "mapper_ex"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "itoa",
  "rustler",
+ "serde",
  "serde_json",
 ]
 
