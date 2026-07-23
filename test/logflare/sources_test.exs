@@ -125,7 +125,9 @@ defmodule Logflare.SourcesTest do
     test "retention days exceeds", %{user: user} do
       insert(:plan, name: "Free", limit_source_ttl: :timer.hours(24))
       source = insert(:source, user: user)
-      assert {:error, %Ecto.Changeset{}} = Sources.update_source(source, %{retention_days: 12})
+
+      assert {:error, changeset} = Sources.update_source(source, %{retention_days: 12})
+      assert {"ttl is over your plan limit", []} = changeset.errors[:retention_days]
     end
   end
 
@@ -410,7 +412,12 @@ defmodule Logflare.SourcesTest do
       ten_minutes_ago = DateTime.utc_now() |> DateTime.add(-10 * 60, :second)
       old_event = build(:log_event, source: source, ingested_at: ten_minutes_ago)
       Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [old_event])
-      Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [old_event])
+
+      {:ok, [pointer], _tid} =
+        Backends.IngestEventQueue.pop_pending_pointers({source.id, nil, nil}, 1)
+
+      Backends.IngestEventQueue.record_recent_event({source.id, nil}, old_event)
+      Backends.IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
 
       TestUtils.retry_assert(fn ->
         assert Backends.source_sup_started?(source)
@@ -446,7 +453,12 @@ defmodule Logflare.SourcesTest do
     test "does NOT shut down sources with recent logs within 5 minutes", %{source: source} do
       event = build(:log_event, source: source, ingested_at: DateTime.utc_now())
       Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [event])
-      Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [event])
+
+      {:ok, [pointer], _tid} =
+        Backends.IngestEventQueue.pop_pending_pointers({source.id, nil, nil}, 1)
+
+      Backends.IngestEventQueue.record_recent_event({source.id, nil}, event)
+      Backends.IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
 
       TestUtils.retry_assert(fn ->
         assert [_event] = Backends.list_recent_logs_local(source, 1)

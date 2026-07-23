@@ -35,7 +35,16 @@ defmodule Logflare.Sources.Source do
              :transform_key_values,
              :transform_drop_fields,
              :bigquery_clustering_fields,
-             :default_ingest_backend_enabled?
+             :default_ingest_backend_enabled?,
+             :notifications_every,
+             :lock_schema,
+             :validate_schema,
+             :drop_lql_string,
+             :default_search_lql,
+             :suggested_keys,
+             :disable_tailing,
+             :bq_storage_write_api,
+             :labels
            ]}
 
   defmodule Metrics do
@@ -139,6 +148,7 @@ defmodule Logflare.Sources.Source do
     field :drop_lql_string, :string
     field :default_search_lql, :string, default: nil
     field :disable_tailing, :boolean, default: false
+    field :enable_spooling, :boolean, default: false
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
     field :transform_copy_fields, :string
@@ -212,6 +222,7 @@ defmodule Logflare.Sources.Source do
       :transform_key_values,
       :transform_drop_fields,
       :disable_tailing,
+      :enable_spooling,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,
       :labels,
@@ -248,6 +259,7 @@ defmodule Logflare.Sources.Source do
       :transform_key_values,
       :transform_drop_fields,
       :disable_tailing,
+      :enable_spooling,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,
       :labels
@@ -313,7 +325,7 @@ defmodule Logflare.Sources.Source do
       user = Users.get(source.user_id)
       plan = Billing.get_plan_by_user(user)
 
-      validate_change(changeset, :bigquery_table_ttl, fn :bigquery_table_ttl, ttl ->
+      validate_change(changeset, :retention_days, fn :retention_days, ttl ->
         days = round(plan.limit_source_ttl / :timer.hours(24))
 
         cond do
@@ -321,7 +333,7 @@ defmodule Logflare.Sources.Source do
             []
 
           ttl > days ->
-            [bigquery_table_ttl: "ttl is over your plan limit"]
+            [retention_days: "ttl is over your plan limit"]
 
           true ->
             []

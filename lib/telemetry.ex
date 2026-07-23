@@ -86,7 +86,11 @@ defmodule Logflare.Telemetry do
 
   defp maybe_put_commit(service, _commit_sha), do: service
 
-  defp metrics do
+  # Public (not private) so the metric definitions can be validated directly
+  # in tests — init/1 only calls this when OpenTelemetry is enabled, which
+  # isn't the case in dev/test, so there'd otherwise be no way to exercise it.
+  @doc false
+  def metrics do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
 
     cache_metrics =
@@ -202,6 +206,22 @@ defmodule Logflare.Telemetry do
         tags: [:backend_type],
         description: "Sum of batch sizes for broadway pipeline by backend type"
       ),
+      distribution("logflare.backends.clickhouse.pipeline.handle_batch.batch_size",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :batch_size,
+        tags: [:event_type, :freshness, :batch_trigger],
+        keep: &clickhouse_batch?/1,
+        reporter_options: batch_size_reporter_opts(),
+        description:
+          "Distribution of ClickHouse batch sizes by event type, freshness, and trigger"
+      ),
+      sum("logflare.backends.clickhouse.pipeline.handle_batch.batch_size",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :batch_size,
+        tags: [:event_type, :freshness, :batch_trigger],
+        keep: &clickhouse_batch?/1,
+        description: "Sum of ClickHouse batch sizes by event type, freshness, and trigger"
+      ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
       sum("logflare.logs.ingest_logs.drop_lql",
         event_name: [:logflare, :logs, :ingest_logs, :drop_lql],
@@ -211,7 +231,7 @@ defmodule Logflare.Telemetry do
       sum("logflare.logs.ingest_logs.drop_stale",
         event_name: [:logflare, :logs, :ingest_logs, :drop_stale],
         measurement: :count,
-        description: "Sum of events dropped (timestamp older than 72h)"
+        description: "Sum of events dropped (timestamp older than 24h)"
       ),
       sum("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],
@@ -267,6 +287,69 @@ defmodule Logflare.Telemetry do
         unit: {:native, :millisecond},
         description: "Ingest dispatch latency by backend type"
       ),
+      last_value("logflare.backends.spool.throttled.throttled",
+        description: "Spool memory-pressure throttle state (1=throttled, 0=not)"
+      ),
+      last_value("logflare.backends.spool.throttled.total_percent",
+        description: "Spool: total memory usage ratio"
+      ),
+      last_value("logflare.backends.spool.throttled.ets_percent",
+        description: "Spool: ETS memory usage ratio"
+      ),
+      last_value("logflare.backends.spool.throttled.consumer_throttled",
+        description:
+          "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
+      ),
+      sum("logflare.backends.spool.storage.put.count",
+        tags: [:format, :result],
+        description: "Spool storage writes (S3/GCS put) count by format/result"
+      ),
+      sum("logflare.backends.spool.storage.put.bytes",
+        tags: [:format, :result],
+        description: "Spool storage writes: bytes by format/result"
+      ),
+      sum("logflare.backends.spool.queue.publish.count",
+        tags: [:result],
+        description: "Spool queue publish (SQS send / PubSub publish) count"
+      ),
+      sum("logflare.backends.spool.producer.batch.count",
+        tags: [:result, :stage],
+        description:
+          "Spool producer batches by end-to-end outcome (:ok, or :error tagged with which stage — :upload or :notify — failed)"
+      ),
+      sum("logflare.backends.spool.queue.receive.count",
+        tags: [:result],
+        description: "Spool queue receive (SQS/PubSub) message count"
+      ),
+      sum("logflare.backends.spool.storage.get.count",
+        tags: [:result],
+        description: "Spool storage downloads (S3/GCS get) count by result"
+      ),
+      sum("logflare.backends.spool.storage.get.bytes",
+        tags: [:result],
+        description: "Spool storage downloads: bytes by result"
+      ),
+      sum("logflare.backends.spool.storage.get.line_count",
+        tags: [:result],
+        description: "Spool events parsed per downloaded file"
+      ),
+      sum("logflare.backends.spool.queue.ack.count",
+        tags: [:reason, :result],
+        description:
+          "Spool queue ack (delete) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
+      ),
+      sum("logflare.backends.spool.queue.nack.count",
+        tags: [:reason, :result],
+        description:
+          "Spool queue nack (requeue) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
+      ),
+      sum("logflare.backends.spool.consumer.skipped.count",
+        tags: [:reason],
+        description: "Spool consumer: events skipped (missing/unknown source_id) by reason"
+      ),
+      sum("logflare.backends.spool.consumer.messages_failed.count",
+        description: "Spool consumer: Broadway messages marked failed during processing"
+      ),
       counter("thousand_island.acceptor.spawn_error",
         description: "Count of client connection spawn errors"
       ),
@@ -296,15 +379,36 @@ defmodule Logflare.Telemetry do
       ),
       sum("logflare.ingest_event_queue.missing_ids.count",
         event_name: [:logflare, :ingest_event_queue, :missing_ids],
+        tags: [:backend_type],
         description: "Count of event IDs not found in ETS during handle_batch fetch"
       ),
-      sum("logflare.ingest_event_queue.stale_processing.reset",
-        event_name: [:logflare, :ingest_event_queue, :stale_processing],
-        description: "Count of stale :processing events reset to :pending by QueueJanitor"
+      sum("logflare.ingest_event_queue.not_initialized.dropped.count",
+        event_name: [:logflare, :ingest_event_queue, :not_initialized, :dropped],
+        tags: [:backend_type],
+        description:
+          "Count of events dropped because a backend had no live producer queue with capacity and its startup queue was never initialized"
       ),
-      sum("logflare.ingest_event_queue.stale_processing.dropped",
-        event_name: [:logflare, :ingest_event_queue, :stale_processing],
-        description: "Count of stale :processing events dropped by QueueJanitor after max retries"
+      sum("logflare.ingest_event_queue.generation_janitor.drop.generations",
+        event_name: [:logflare, :ingest_event_queue, :generation_janitor, :drop],
+        measurement: :generations,
+        description: "Count of generations dropped by GenerationJanitor for exceeding max_age_ms"
+      ),
+      sum("logflare.ingest_event_queue.generation_janitor.drop.events",
+        event_name: [:logflare, :ingest_event_queue, :generation_janitor, :drop],
+        measurement: :events,
+        description: "Count of events lost when GenerationJanitor dropped an aged-out generation"
+      ),
+      sum("logflare.ingest_event_queue.generation_janitor.prune.generations",
+        event_name: [:logflare, :ingest_event_queue, :generation_janitor, :prune],
+        measurement: :generations,
+        description:
+          "Count of generations pruned by GenerationJanitor for a queues_key with no live queue left"
+      ),
+      sum("logflare.ingest_event_queue.requeue_lookup_miss.count",
+        event_name: [:logflare, :ingest_event_queue, :requeue_lookup_miss],
+        measurement: :count,
+        description:
+          "Count of retriable events whose generation-store row was already gone by requeue lookup time"
       )
     ]
 
@@ -496,6 +600,9 @@ defmodule Logflare.Telemetry do
     |> inspect()
     |> String.replace(@number_suffix_regex, "")
   end
+
+  defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
+  defp clickhouse_batch?(_metadata), do: false
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]

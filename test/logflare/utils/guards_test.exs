@@ -5,24 +5,24 @@ defmodule Logflare.Utils.GuardsTest do
 
   doctest Logflare.Utils.Guards
 
-  describe "is_pos_number/1" do
+  describe "is_non_negative_number/1" do
     test "passes for zero and positive numbers (integers and floats)" do
-      assert match?(x when is_pos_number(x), 0)
-      assert match?(x when is_pos_number(x), 0.0)
-      assert match?(x when is_pos_number(x), 1)
-      assert match?(x when is_pos_number(x), 1.5)
-      assert match?(x when is_pos_number(x), 1_000_000_000)
+      assert match?(x when is_non_negative_number(x), 0)
+      assert match?(x when is_non_negative_number(x), 0.0)
+      assert match?(x when is_non_negative_number(x), 1)
+      assert match?(x when is_non_negative_number(x), 1.5)
+      assert match?(x when is_non_negative_number(x), 1_000_000_000)
     end
 
     test "fails for negative numbers" do
-      refute match?(x when is_pos_number(x), -1)
-      refute match?(x when is_pos_number(x), -0.1)
-      refute match?(x when is_pos_number(x), -1_000_000)
+      refute match?(x when is_non_negative_number(x), -1)
+      refute match?(x when is_non_negative_number(x), -0.1)
+      refute match?(x when is_non_negative_number(x), -1_000_000)
     end
 
     test "fails for non-numbers" do
       for value <- ["1", :one, nil, true, [], %{}] do
-        refute match?(x when is_pos_number(x), value)
+        refute match?(x when is_non_negative_number(x), value)
       end
     end
   end
@@ -100,6 +100,29 @@ defmodule Logflare.Utils.GuardsTest do
       refute match?(x when is_non_empty_binary(x), nil)
       refute match?(x when is_non_empty_binary(x), 1)
       refute match?(x when is_non_empty_binary(x), [])
+    end
+  end
+
+  describe "is_non_empty_list/1" do
+    test "passes for lists with at least one element" do
+      assert match?(x when is_non_empty_list(x), [1])
+      assert match?(x when is_non_empty_list(x), [1, 2, 3])
+      assert match?(x when is_non_empty_list(x), [nil])
+      assert match?(x when is_non_empty_list(x), foo: 1, bar: 2)
+    end
+
+    test "passes for improper lists" do
+      assert match?(x when is_non_empty_list(x), [1 | 2])
+    end
+
+    test "fails for the empty list" do
+      refute match?(x when is_non_empty_list(x), [])
+    end
+
+    test "fails for non-lists" do
+      for value <- ["list", :list, 1, nil, {1, 2}, %{}] do
+        refute match?(x when is_non_empty_list(x), value)
+      end
     end
   end
 
