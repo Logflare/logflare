@@ -2104,6 +2104,20 @@ defmodule Logflare.MapperTest do
       assert attrs["extra"] == "val"
     end
 
+    test "top-level and literal dotted keys win over elevated values" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$", elevate_keys: ["metadata"])],
+          %{
+            "metadata" => %{"level" => "nested", "a" => %{"b" => 1}},
+            "level" => "top",
+            "a.b" => 2
+          }
+        )
+
+      assert result["attrs"] == %{"level" => "top", "a.b" => "2"}
+    end
+
     test "JSON-encodes list of mixed types" do
       result =
         compile_and_map(

@@ -6,11 +6,46 @@
 /// - Array wildcard: `$.items[*]` -> `[Key("items"), Wildcard]`
 /// - Array index: `$.source[0]` -> `[Key("source"), Index(0)]`
 /// - Combined: `$.notes[*].action` -> `[Key("notes"), Wildcard, Key("action")]`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PathSegment {
     Key(String),
     Wildcard,
     Index(usize),
+}
+
+#[derive(Debug)]
+pub struct CompiledPath {
+    pub segments: Vec<PathSegment>,
+    pub cache_indices: Vec<Option<usize>>,
+    pub cached: bool,
+    pub wildcard_index: Option<usize>,
+    pub flat_key: Option<String>,
+    pub flat_cache_index: Option<usize>,
+}
+
+pub fn compile(path: &str) -> Result<CompiledPath, String> {
+    let segments = parse(path)?;
+    let flat_key = segments
+        .iter()
+        .map(|segment| match segment {
+            PathSegment::Key(key) => Some(key.as_str()),
+            PathSegment::Wildcard | PathSegment::Index(_) => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|parts| parts.join("."));
+    let cache_indices = vec![None; segments.len()];
+    let wildcard_index = segments
+        .iter()
+        .position(|segment| matches!(segment, PathSegment::Wildcard));
+
+    Ok(CompiledPath {
+        segments,
+        cache_indices,
+        cached: false,
+        wildcard_index,
+        flat_key,
+        flat_cache_index: None,
+    })
 }
 
 /// Parses a `$`-prefixed dot-notation path into a vector of PathSegments.
@@ -167,5 +202,19 @@ mod tests {
         assert_eq!(segs.len(), 5);
         assert!(matches!(&segs[0], PathSegment::Key(k) if k == "a"));
         assert!(matches!(&segs[4], PathSegment::Key(k) if k == "e"));
+    }
+
+    #[test]
+    fn test_compile_precomputes_flat_key() {
+        let path = compile("$.resource.service.name").unwrap();
+        assert_eq!(path.flat_key.as_deref(), Some("resource.service.name"));
+        assert_eq!(path.wildcard_index, None);
+    }
+
+    #[test]
+    fn test_compile_marks_wildcard_and_disables_flat_key() {
+        let path = compile("$.events[*].name").unwrap();
+        assert_eq!(path.flat_key, None);
+        assert_eq!(path.wildcard_index, Some(1));
     }
 }
