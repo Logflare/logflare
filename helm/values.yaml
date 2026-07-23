@@ -69,6 +69,60 @@ logflare:
     postgres:
       schema: "public" # POSTGRES_BACKEND_SCHEMA; url (POSTGRES_BACKEND_URL) comes from a Secret in logflare.secretRefs
 
+# External Secrets Operator (ESO) integration. When enabled, the chart renders
+# ExternalSecret resources so ESO syncs secrets from your backend (AWS SSM,
+# Vault, GCP Secret Manager, etc., resolved via the referenced SecretStore) into
+# the Kubernetes Secrets this chart consumes. Requires ESO and its CRDs to be
+# installed in the cluster. Off by default: when disabled the chart renders no
+# ExternalSecret and you provision the Secrets in logflare.secretRefs yourself.
+#
+# This is one secret-provider integration. Others (e.g. a HashiCorp Vault Agent
+# block) can be added alongside it without changing this one.
+externalSecrets:
+  enabled: false
+
+  # The (Cluster)SecretStore every generated ExternalSecret references. ESO
+  # resolves the actual backend (SSM, Vault, ...) from this store, so the store
+  # must already exist in the cluster.
+  secretStore:
+    # Name of the store. Required when externalSecrets.enabled is true.
+    name: ""
+    # ClusterSecretStore (cluster-scoped) or SecretStore (namespaced).
+    kind: ClusterSecretStore
+
+  # Default re-sync interval for every generated ExternalSecret. Override per
+  # entry with secrets[].refreshInterval.
+  refreshInterval: 1h
+
+  # ExternalSecrets to generate. Each entry produces one ExternalSecret and, via
+  # ESO, one Kubernetes Secret named `name`. Add env-var Secrets to
+  # logflare.secretRefs; mount file Secrets via volumes / volumeMounts.
+  secrets: []
+    # - name: logflare-secrets
+    #   # Prepended to each key's remoteRef.key below. Omit for raw keys.
+    #   remotePrefix: secret/logflare
+    #   # Each key becomes a Secret entry whose key name IS the key, pulled from
+    #   # <remotePrefix>/<key>. For env-var Secrets these must match the env vars
+    #   # Logflare reads.
+    #   keys:
+    #     - PHX_SECRET_KEY_BASE
+    #     - DB_PASSWORD
+    # - name: logflare-cert-files
+    #   remotePrefix: secret/logflare
+    #   keys:
+    #     - db-server-ca.pem
+    #     - cert.pem
+    #   # Optional per-entry overrides:
+    #   # refreshInterval: 30m
+    #   # creationPolicy: Owner
+    #   # Advanced verbatim passthrough, merged after `keys` (use for bundle
+    #   # extraction or custom remoteRef options):
+    #   # data:
+    #   #   - secretKey: FOO
+    #   #     remoteRef: { key: path/to/foo }
+    #   # dataFrom:
+    #   #   - extract: { key: prod/logflare/bundle }
+
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
 # This is to override the chart name.
