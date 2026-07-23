@@ -254,9 +254,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       }
     } do
       with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(event_type) do
-        {good, bad, compressed} = stream_compress(messages, event_type, compiled, config_id)
+        {good, bad, good_count, compressed} =
+          stream_compress(messages, event_type, compiled, config_id)
+
         emit_missing_ids_telemetry(bad, backend, event_type)
-        finalize_insert(backend, event_type, compressed, good, bad)
+        finalize_insert(backend, event_type, compressed, good_count, good, bad)
       else
         {:error, reason} -> Enum.map(messages, &Message.failed(&1, reason))
       end
@@ -265,10 +267,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   # Streams each message's event through the mapper + RowBinary encoder directly into
   # a gzip zlib stream, so the full batch is never materialized as a flat binary.
-  # Returns the messages that encoded successfully, the ones missing from ETS, and the
-  # finished compressed payload.
+  # Returns the messages that encoded successfully, the ones missing from ETS, a count of
+  # successful messages that were compressed, and the finished compressed payload.
   @spec stream_compress([Message.t()], TypeDetection.event_type(), reference(), String.t()) ::
-          {[Message.t()], [Message.t()], binary()}
+          {[Message.t()], [Message.t()], non_neg_integer(), binary()}
   defp stream_compress(messages, event_type, compiled, config_id) do
     z = :zlib.open()
 
@@ -282,13 +284,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       # pass its already-encoded form directly to the row encoder.
       mapping_config_id = Ingester.encode_mapping_config_id(config_id)
 
-      {good, bad, chunks} =
-        Enum.reduce(messages, {[], [], []}, fn message, acc ->
+      {good, bad, good_count, chunks} =
+        Enum.reduce(messages, {[], [], 0, []}, fn message, acc ->
           encode_message(z, event_type, compiled, mapping_config_id, message, acc)
         end)
 
       final_chunk = :zlib.deflate(z, "", :finish)
-      {good, bad, IO.iodata_to_binary([Enum.reverse(chunks), final_chunk])}
+      {good, bad, good_count, IO.iodata_to_binary([Enum.reverse(chunks), final_chunk])}
     after
       :zlib.deflateEnd(z)
       :zlib.close(z)
@@ -301,15 +303,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           reference(),
           iodata(),
           Message.t(),
-          {[Message.t()], [Message.t()], iodata()}
-        ) :: {[Message.t()], [Message.t()], iodata()}
+          {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
+        ) :: {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
   defp encode_message(
          z,
          event_type,
          compiled,
          mapping_config_id,
          %{data: %LogEventPointer{event_type: msg_event_type} = pointer} = message,
-         {good, bad, chunks}
+         {good, bad, good_count, chunks}
        )
        when msg_event_type == event_type do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
@@ -326,10 +328,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
             Ingester.encode_row(%{event | body: mapped_body}, event_type, mapping_config_id)
           )
 
-        {[message | good], bad, [row_chunk | chunks]}
+        {[message | good], bad, good_count + 1, [row_chunk | chunks]}
 
       nil ->
-        {good, [message | bad], chunks}
+        {good, [message | bad], good_count, chunks}
     end
   end
 
@@ -339,9 +341,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          _compiled,
          _mapping_config_id,
          message,
-         {good, bad, chunks}
+         {good, bad, good_count, chunks}
        ) do
-    {good, [message | bad], chunks}
+    {good, [message | bad], good_count, chunks}
   end
 
   @spec emit_missing_ids_telemetry([Message.t()], Backend.t(), TypeDetection.event_type()) :: :ok
@@ -359,17 +361,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           Backend.t(),
           TypeDetection.event_type(),
           binary(),
+          non_neg_integer(),
           [Message.t()],
           [Message.t()]
         ) :: [Message.t()]
-  defp finalize_insert(_backend, _event_type, _compressed, [] = _good, bad) do
+  defp finalize_insert(_backend, _event_type, _compressed, _good_count, [] = _good, bad) do
     # No rows encoded (every event was missing from ETS by batch time), so the
     # compressed payload carries zero RowBinary rows. Skip the empty ClickHouse
     # insert and fail the missing messages, mirroring Ingester.insert/5's empty guard.
     Enum.map(bad, &Message.failed(&1, :not_found))
   end
 
-  defp finalize_insert(backend, event_type, compressed, good, bad) do
+  defp finalize_insert(backend, event_type, compressed, _good_count, good, bad) do
     case ClickHouseAdaptor.insert_log_events_compressed(
            backend,
            event_type,
