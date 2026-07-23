@@ -24,9 +24,7 @@ metadata() {
 }
 
 wait_for_docker() {
-  local attempt
-
-  for attempt in {1..30}; do
+  for _ in {1..30}; do
     if docker info >/dev/null 2>&1; then
       return 0
     fi
@@ -71,7 +69,8 @@ main() {
   fi
 
   export HOME="${DOCKER_HOME}"
-  install -d -m 0700 "${HOME}"
+  mkdir -p "${HOME}"
+  chmod 0700 "${HOME}"
   docker-credential-gcr configure-docker --registries=gcr.io
 
   configure_firewall

@@ -12,6 +12,8 @@
 
 set -euo pipefail
 
+umask 077
+
 # ── Argument validation ───────────────────────────────────────────────────────
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
@@ -30,6 +32,10 @@ if [[ "${ENV}" != "prod" && "${ENV}" != "staging" ]]; then
 fi
 
 NORMALIZED_VERSION="${VERSION//./-}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TEMP_DIR="$(mktemp -d)"
+
+trap 'rm -rf "${TEMP_DIR}"' EXIT
 
 # ── Environment-specific config ───────────────────────────────────────────────
 
@@ -72,6 +78,8 @@ for cluster in "${CLUSTERS[@]}"; do
   # Cookie derived per cluster: "default-<cluster>" (matches _COOKIE in cloudbuild yamls)
   cluster_cookie="default-${cluster}"
 
+  container_env_file="${TEMP_DIR}/${cluster}.env"
+
   # Container env differs per env
   if [[ "${ENV}" == "prod" ]]; then
     # Only prod-a has alerting enabled (matches deploy.prod.versioned in Makefile)
@@ -80,15 +88,26 @@ for cluster in "${CLUSTERS[@]}"; do
     else
       alerts_enabled="false"
     fi
-    container_env="LOGFLARE_GRPC_PORT=50051,LOGFLARE_MIN_CLUSTER_SIZE=2,RELEASE_COOKIE=${cluster_cookie},LOGFLARE_PUBSUB_POOL_SIZE=32,LOGFLARE_METADATA_CLUSTER=${cluster},LOGFLARE_ALERTS_ENABLED=${alerts_enabled}"
+
+    {
+      printf '%s\n' 'LOGFLARE_GRPC_PORT=50051'
+      printf '%s\n' 'LOGFLARE_MIN_CLUSTER_SIZE=2'
+      printf 'RELEASE_COOKIE=%s\n' "${cluster_cookie}"
+      printf '%s\n' 'LOGFLARE_PUBSUB_POOL_SIZE=32'
+      printf 'LOGFLARE_METADATA_CLUSTER=%s\n' "${cluster}"
+      printf 'LOGFLARE_ALERTS_ENABLED=%s\n' "${alerts_enabled}"
+    } >"${container_env_file}"
   else
-    container_env="LOGFLARE_GRPC_PORT=50051,RELEASE_COOKIE=${cluster_cookie},LOGFLARE_METADATA_CLUSTER=${cluster}"
+    {
+      printf '%s\n' 'LOGFLARE_GRPC_PORT=50051'
+      printf 'RELEASE_COOKIE=%s\n' "${cluster_cookie}"
+      printf 'LOGFLARE_METADATA_CLUSTER=%s\n' "${cluster}"
+    } >"${container_env_file}"
   fi
 
   printf "  %-55s " "${template}"
 
-  err_output=$(gcloud compute instance-templates create-with-container "${template}" \
-    --project="${PROJECT}" \
+  err_output=$("${REPO_ROOT}/cloudbuild/create-instance-template.sh" "${PROJECT}" "${template}" \
     --boot-disk-size=10GB \
     --boot-disk-type=pd-balanced \
     --machine-type="${MACHINE_TYPE}" \
@@ -97,12 +116,8 @@ for cluster in "${CLUSTERS[@]}"; do
     --service-account="${SERVICE_ACCOUNT}" \
     --scopes=https://www.googleapis.com/auth/cloud-platform \
     --tags=phoenix-http,https-server \
-    --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh \
-    --metadata=google-monitoring-enabled=true,google-logging-enabled=true \
-    --container-image="${CONTAINER_IMAGE}" \
-    --container-privileged \
-    --container-restart-policy=always \
-    --container-env="${container_env}" \
+    --metadata-from-file="startup-script=${REPO_ROOT}/cloudbuild/gce-startup.sh,shutdown-script=${REPO_ROOT}/cloudbuild/shutdown.sh,logflare-container-env=${container_env_file}" \
+    --metadata="google-monitoring-enabled=true,google-logging-enabled=true,logflare-container-image=${CONTAINER_IMAGE}" \
     --no-shielded-secure-boot \
     --shielded-vtpm \
     --shielded-integrity-monitoring \
@@ -110,12 +125,12 @@ for cluster in "${CLUSTERS[@]}"; do
     --image-project=cos-cloud \
     2>&1) && rc=0 || rc=$?
 
-  if [[ $rc -eq 0 ]]; then
-    echo "created"
-    created+=("${template}")
-  elif echo "${err_output}" | grep -qiE "already exists|alreadyExists"; then
+  if [[ $rc -eq 0 ]] && grep -qi "already exists" <<<"${err_output}"; then
     echo "already exists (skipped)"
     already_exists+=("${template}")
+  elif [[ $rc -eq 0 ]]; then
+    echo "created"
+    created+=("${template}")
   else
     echo "ERROR"
     echo "    ${err_output}" >&2

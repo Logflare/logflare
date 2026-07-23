@@ -2,10 +2,13 @@
 
 set -euo pipefail
 
-readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+readonly REPO_ROOT
 readonly STARTUP_SCRIPT="${REPO_ROOT}/cloudbuild/gce-startup.sh"
 readonly CREATE_SCRIPT="${REPO_ROOT}/cloudbuild/create-instance-template.sh"
-readonly TEST_DIR="$(mktemp -d)"
+readonly TEMPLATE_SCRIPT="${REPO_ROOT}/scripts/create-instance-templates.sh"
+TEST_DIR="$(mktemp -d)"
+readonly TEST_DIR
 
 trap 'rm -rf "${TEST_DIR}"' EXIT
 
@@ -162,6 +165,16 @@ if [[ "$3" == "describe" ]]; then
       printf '%s\n' '{"properties":{"metadata":{"items":[{"key":"startup-script"}]}}}'
       ;;
   esac
+elif [[ "$3" == "create" && -n "${ENV_CAPTURE_DIR:-}" ]]; then
+  template="$4"
+  for arg in "$@"; do
+    case "${arg}" in
+      --metadata-from-file=*logflare-container-env=*)
+        env_file="${arg##*logflare-container-env=}"
+        cp "${env_file}" "${ENV_CAPTURE_DIR}/${template}.env"
+        ;;
+    esac
+  done
 fi
 STUB
   chmod +x "${path}"
@@ -201,7 +214,43 @@ test_create_script() {
   fi
 }
 
+test_manual_template_script() {
+  local call_log="${TEST_DIR}/manual-gcloud-calls"
+  local capture_dir="${TEST_DIR}/captured-env"
+  local output="${TEST_DIR}/manual-output"
+
+  mkdir -p "${capture_dir}"
+  : >"${call_log}"
+
+  CALL_LOG="${call_log}" \
+    ENV_CAPTURE_DIR="${capture_dir}" \
+    GCLOUD_DESCRIBE_MODE=missing \
+    GCLOUD_BIN="${TEST_DIR}/gcloud" \
+    bash "${TEMPLATE_SCRIPT}" 1.2.3 staging >"${output}"
+
+  assert_contains "${output}" "Created        : 2"
+  assert_contains "${capture_dir}/logflare-staging-main-cluster-1-2-3.env" "RELEASE_COOKIE=default-main"
+  assert_contains "${capture_dir}/logflare-staging-versioned-cluster-1-2-3.env" "LOGFLARE_METADATA_CLUSTER=versioned"
+  assert_contains "${call_log}" "logflare-container-image=gcr.io/logflare-staging/logflare_app:1.2.3"
+  assert_not_contains "${call_log}" "create-with-container"
+
+  rm -rf "${capture_dir}"
+  mkdir -p "${capture_dir}"
+  : >"${call_log}"
+
+  CALL_LOG="${call_log}" \
+    ENV_CAPTURE_DIR="${capture_dir}" \
+    GCLOUD_DESCRIBE_MODE=missing \
+    GCLOUD_BIN="${TEST_DIR}/gcloud" \
+    bash "${TEMPLATE_SCRIPT}" 1.2.3 >"${output}"
+
+  assert_contains "${output}" "Created        : 8"
+  assert_contains "${capture_dir}/logflare-prod-1-2-3-prod-a.env" "LOGFLARE_ALERTS_ENABLED=true"
+  assert_contains "${capture_dir}/logflare-prod-1-2-3-prod-b.env" "LOGFLARE_ALERTS_ENABLED=false"
+}
+
 test_startup_script
 test_create_script
+test_manual_template_script
 
 echo "gce script tests passed"
