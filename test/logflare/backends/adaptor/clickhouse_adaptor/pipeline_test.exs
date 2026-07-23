@@ -73,8 +73,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       size: :erlang.external_size(event.body),
       retries: event.retries || 0,
       event_type: event.event_type,
-      day_bucket: event.day_bucket,
-      ingest_freshness: event.ingest_freshness
+      day_bucket: event.day_bucket
     }
   end
 
@@ -136,7 +135,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   end
 
   describe "handle_message/3" do
-    test "routes fresh log events to :ch_fresh batcher keyed by {event_type, day_bucket}", %{
+    test "routes log events to :ch batcher keyed by {event_type, day_bucket}", %{
       context: context,
       backend: backend
     } do
@@ -151,7 +150,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_message(:default, message, context)
 
-      assert %Message{batcher: :ch_fresh, batch_key: {:log, day_bucket}} = result
+      assert %Message{batcher: :ch, batch_key: {:log, day_bucket}} = result
       assert result.data == pointer
       assert day_bucket == event.day_bucket
     end
@@ -168,7 +167,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_message(:default, message, context)
 
-      assert %Message{batcher: :ch_fresh, batch_key: {:metric, _}} = result
+      assert %Message{batcher: :ch, batch_key: {:metric, _}} = result
     end
 
     test "keys trace events by `{:trace, day_bucket}`", %{context: context, backend: backend} do
@@ -183,22 +182,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_message(:default, message, context)
 
-      assert %Message{batcher: :ch_fresh, batch_key: {:trace, _}} = result
-    end
-
-    test "routes stale events to :ch_stale batcher", %{context: context, backend: backend} do
-      event = build(:log_event) |> Map.put(:ingest_freshness, :stale)
-      gen_tid = setup_generation_events([event])
-      pointer = pointer_for(event, gen_tid)
-
-      message = %Message{
-        data: pointer,
-        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
-      }
-
-      result = Pipeline.handle_message(:default, message, context)
-
-      assert %Message{batcher: :ch_stale, batch_key: {:log, _}} = result
+      assert %Message{batcher: :ch, batch_key: {:trace, _}} = result
     end
 
     test "fails message when event_type is nil", %{context: context, backend: backend} do
@@ -233,7 +217,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       ]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 2,
         trigger: :size
@@ -242,7 +226,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       telemetry_event = [:logflare, :backends, :pipeline, :handle_batch]
       TestUtils.attach_forwarder(telemetry_event)
 
-      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert_same_messages(result, messages)
 
@@ -251,8 +235,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
                         backend_type: :clickhouse,
                         backend_id: backend_id,
                         event_type: :log,
-                        batcher: :ch_fresh,
-                        freshness: :fresh,
                         batch_trigger: :size,
                         day_bucket: @day_bucket
                       }}
@@ -272,13 +254,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
     test "handles empty messages list", %{context: context} do
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 0,
         trigger: :flush
       }
 
-      result = Pipeline.handle_batch(:ch_fresh, [], batch_info, context)
+      result = Pipeline.handle_batch(:ch, [], batch_info, context)
       assert result == []
     end
 
@@ -302,15 +284,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       ]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 2,
         trigger: :flush
       }
 
-      Mimic.reject(ClickHouseAdaptor, :insert_log_events_compressed, 4)
+      Mimic.reject(ClickHouseAdaptor, :insert_log_events_compressed, 3)
 
-      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert length(result) == 2
       assert Enum.all?(result, &match?(%Message{status: {:failed, :not_found}}, &1))
@@ -353,13 +335,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       ]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 2,
         trigger: :flush
       }
 
-      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
       assert_same_messages(result, messages)
 
       Process.sleep(200)
@@ -403,13 +385,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       ]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 3,
         trigger: :flush
       }
 
-      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert_same_messages(result, messages)
 
@@ -437,13 +419,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:metric, @day_bucket},
         size: 1,
         trigger: :flush
       }
 
-      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert_same_messages(result, messages)
 
@@ -470,13 +452,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:trace, @day_bucket},
         size: 1,
         trigger: :flush
       }
 
-      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert_same_messages(result, messages)
 
@@ -507,13 +489,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 1,
         trigger: :flush
       }
 
-      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
       assert_same_messages(result, messages)
 
       Process.sleep(200)
@@ -572,13 +554,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:metric, @day_bucket},
         size: 1,
         trigger: :flush
       }
 
-      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
       assert_same_messages(result, messages)
 
       Process.sleep(200)
@@ -629,13 +611,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:trace, @day_bucket},
         size: 1,
         trigger: :flush
       }
 
-      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
       assert_same_messages(result, messages)
 
       Process.sleep(200)
@@ -901,102 +883,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
-                                                                        _compressed,
-                                                                        _opts ->
+                                                                        _compressed ->
         {:error, "Connection timeout"}
       end)
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 1,
         trigger: :flush
       }
 
-      result = Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert [%Message{status: {:failed, "Connection timeout"}}] = result
-    end
-  end
-
-  describe "handle_batch/4 async routing" do
-    setup %{source: source, backend: backend} do
-      log_event = build(:log_event, source: source, message: "Test message")
-      gen_tid = setup_generation_events([log_event])
-      messages = [batch_message(log_event, gen_tid, backend.id)]
-      [messages: messages]
-    end
-
-    test "routes stale batches through async inserts", %{
-      context: context,
-      messages: messages,
-      backend: backend
-    } do
-      test_pid = self()
-
-      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
-                                                                        _event_type,
-                                                                        _compressed,
-                                                                        opts ->
-        send(test_pid, {:insert_opts, opts})
-        :ok
-      end)
-
-      batch_info = %Broadway.BatchInfo{
-        batcher: :ch_stale,
-        batch_key: {:log, @day_bucket},
-        size: 1,
-        trigger: :timeout
-      }
-
-      telemetry_event = [:logflare, :backends, :pipeline, :handle_batch]
-      TestUtils.attach_forwarder(telemetry_event)
-
-      Pipeline.handle_batch(:ch_stale, messages, batch_info, context)
-
-      assert_receive {:insert_opts, opts}
-      assert Keyword.get(opts, :async) == true
-
-      assert_receive {:telemetry_event, ^telemetry_event,
-                      %{batch_size: 1, batch_trigger: :timeout},
-                      %{
-                        backend_type: :clickhouse,
-                        backend_id: backend_id,
-                        event_type: :log,
-                        batcher: :ch_stale,
-                        freshness: :stale,
-                        batch_trigger: :timeout,
-                        day_bucket: @day_bucket
-                      }}
-
-      assert backend_id == backend.id
-    end
-
-    test "routes fresh batches through synchronous inserts", %{
-      context: context,
-      messages: messages
-    } do
-      test_pid = self()
-
-      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
-                                                                        _event_type,
-                                                                        _compressed,
-                                                                        opts ->
-        send(test_pid, {:insert_opts, opts})
-        :ok
-      end)
-
-      batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
-        batch_key: {:log, @day_bucket},
-        size: 1,
-        trigger: :flush
-      }
-
-      Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
-
-      assert_receive {:insert_opts, opts}
-      assert Keyword.get(opts, :async) == false
     end
   end
 
@@ -1012,8 +912,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
-                                                                        _compressed,
-                                                                        _opts ->
+                                                                        _compressed ->
         send(test_pid, :inserted)
         :ok
       end)
@@ -1023,14 +922,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       messages = [batch_message(log_event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 1,
         trigger: :flush
       }
 
       assert [%Message{status: :ok}] =
-               Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+               Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert_received :inserted
     end
@@ -1045,8 +944,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
-                                                                        _compressed,
-                                                                        _opts ->
+                                                                        _compressed ->
         {:error, "boom"}
       end)
 
@@ -1060,14 +958,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       messages = [batch_message(log_event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 1,
         trigger: :flush
       }
 
       assert [%Message{status: {:failed, "boom"}}] =
-               Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+               Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert_received {:recorded_failure, ^expected_backend_id}
     end
@@ -1085,8 +983,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
-                                                                        _compressed,
-                                                                        _opts ->
+                                                                        _compressed ->
         {:error, too_many_parts_error}
       end)
 
@@ -1103,14 +1000,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       messages = [batch_message(log_event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 1,
         trigger: :flush
       }
 
       assert [%Message{status: {:failed, ^too_many_parts_error}}] =
-               Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+               Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert_received {:tripped, ^expected_backend_id}
     end
@@ -1126,8 +1023,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
-                                                                        _compressed,
-                                                                        _opts ->
+                                                                        _compressed ->
         {:error, too_many_parts_error}
       end)
 
@@ -1139,14 +1035,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       messages = [batch_message(event, gen_tid, backend.id)]
 
       batch_info = %Broadway.BatchInfo{
-        batcher: :ch_fresh,
+        batcher: :ch,
         batch_key: {:log, @day_bucket},
         size: 1,
         trigger: :flush
       }
 
       assert [failed_message = %Message{status: {:failed, ^too_many_parts_error}}] =
-               Pipeline.handle_batch(:ch_fresh, messages, batch_info, context)
+               Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
 

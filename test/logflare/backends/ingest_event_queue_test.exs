@@ -430,7 +430,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       rows_before = pointer_tid |> :ets.tab2list()
 
       gen_event_id_by_id =
-        Map.new(rows_before, fn {id, _gen_tid, gen_event_id, _, _, _, _, _} ->
+        Map.new(rows_before, fn {id, _gen_tid, gen_event_id, _, _, _, _} ->
           {id, gen_event_id}
         end)
 
@@ -575,38 +575,34 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     test "pointers carry routing metadata and can resolve the full event via lookup_event/2",
          %{source: source, sbp: sbp} do
-      fresh =
+      log_ev =
         build(:log_event, source: source)
         |> Map.put(:event_type, :log)
         |> Map.put(:day_bucket, 12_345)
-        |> Map.put(:ingest_freshness, :fresh)
 
-      stale =
+      trace_ev =
         build(:log_event, source: source)
         |> Map.put(:event_type, :trace)
         |> Map.put(:day_bucket, 54_321)
-        |> Map.put(:ingest_freshness, :stale)
 
-      assert :ok = IngestEventQueue.add_to_table(sbp, [fresh, stale])
+      assert :ok = IngestEventQueue.add_to_table(sbp, [log_ev, trace_ev])
 
       assert {:ok, pointers, tid} = IngestEventQueue.pop_pending_pointers(sbp, 2)
       assert tid != nil
 
       by_id = Map.new(pointers, &{&1.id, &1})
 
-      fresh_pointer = Map.fetch!(by_id, fresh.id)
-      assert fresh_pointer.event_type == :log
-      assert fresh_pointer.day_bucket == 12_345
-      assert fresh_pointer.ingest_freshness == :fresh
-      assert fresh_pointer.size == :erlang.external_size(fresh.body)
+      log_pointer = Map.fetch!(by_id, log_ev.id)
+      assert log_pointer.event_type == :log
+      assert log_pointer.day_bucket == 12_345
+      assert log_pointer.size == :erlang.external_size(log_ev.body)
 
-      assert IngestEventQueue.lookup_event(fresh_pointer.tid, fresh_pointer.gen_event_id).id ==
-               fresh.id
+      assert IngestEventQueue.lookup_event(log_pointer.tid, log_pointer.gen_event_id).id ==
+               log_ev.id
 
-      stale_pointer = Map.fetch!(by_id, stale.id)
-      assert stale_pointer.event_type == :trace
-      assert stale_pointer.day_bucket == 54_321
-      assert stale_pointer.ingest_freshness == :stale
+      trace_pointer = Map.fetch!(by_id, trace_ev.id)
+      assert trace_pointer.event_type == :trace
+      assert trace_pointer.day_bucket == 54_321
 
       assert IngestEventQueue.total_pending(sbp) == 0
     end
@@ -616,42 +612,40 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       sbp: sbp
     } do
       events =
-        for {event_type, day_bucket, freshness, count} <- [
-              {:log, 12_345, :fresh, 3},
-              {:metric, 12_345, :fresh, 2},
-              {:log, 54_321, :stale, 1}
+        for {event_type, day_bucket, count} <- [
+              {:log, 12_345, 3},
+              {:metric, 12_345, 2},
+              {:log, 54_321, 1}
             ],
             _ <- 1..count do
           build(:log_event, source: source)
           |> Map.put(:event_type, event_type)
           |> Map.put(:day_bucket, day_bucket)
-          |> Map.put(:ingest_freshness, freshness)
         end
 
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
 
       assert IngestEventQueue.pending_batch_key_counts(sbp) == %{
-               {:fresh, :log, 12_345} => 3,
-               {:fresh, :metric, 12_345} => 2,
-               {:stale, :log, 54_321} => 1
+               {:log, 12_345} => 3,
+               {:metric, 12_345} => 2,
+               {:log, 54_321} => 1
              }
 
       assert {:ok, pointers, _tid} =
                IngestEventQueue.pop_pending_pointers_by_batch_key(
                  sbp,
-                 {:fresh, :log, 12_345},
+                 {:log, 12_345},
                  2
                )
 
       assert length(pointers) == 2
       assert Enum.all?(pointers, &match?(%{event_type: :log, day_bucket: 12_345}, &1))
-      assert Enum.all?(pointers, &(&1.ingest_freshness == :fresh))
       assert IngestEventQueue.total_pending(sbp) == 4
 
       assert IngestEventQueue.pending_batch_key_counts(sbp) == %{
-               {:fresh, :log, 12_345} => 1,
-               {:fresh, :metric, 12_345} => 2,
-               {:stale, :log, 54_321} => 1
+               {:log, 12_345} => 1,
+               {:metric, 12_345} => 2,
+               {:log, 54_321} => 1
              }
     end
 
@@ -665,7 +659,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
           build(:log_event, source: source)
           |> Map.put(:event_type, :log)
           |> Map.put(:day_bucket, 12_345)
-          |> Map.put(:ingest_freshness, :fresh)
         end
 
       assert :ok = IngestEventQueue.add_to_table(sbp, events)
@@ -676,7 +669,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
             {:ok, pointers, _tid} =
               IngestEventQueue.pop_pending_pointers_by_batch_key(
                 sbp,
-                {:fresh, :log, 12_345},
+                {:log, 12_345},
                 500
               )
 
@@ -714,7 +707,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         build(:log_event, source: source)
         |> Map.put(:event_type, nil)
         |> Map.put(:day_bucket, nil)
-        |> Map.put(:ingest_freshness, nil)
 
       assert :ok = IngestEventQueue.add_to_table(sbp, [event])
 
@@ -724,7 +716,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert pointer.size == :erlang.external_size(event.body)
       assert pointer.event_type == nil
       assert pointer.day_bucket == nil
-      assert pointer.ingest_freshness == nil
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
@@ -848,8 +839,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         size: 0,
         retries: 0,
         event_type: :log,
-        day_bucket: 0,
-        ingest_freshness: :fresh
+        day_bucket: 0
       }
 
       assert :ok = IngestEventQueue.reinsert_pointer(pointer)
