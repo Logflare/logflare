@@ -27,8 +27,7 @@ defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
     :size,
     :retries,
     :event_type,
-    :day_bucket,
-    :ingest_freshness
+    :day_bucket
   ]
   defstruct [
     :id,
@@ -38,8 +37,7 @@ defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
     :size,
     :retries,
     :event_type,
-    :day_bucket,
-    :ingest_freshness
+    :day_bucket
   ]
 
   @type t :: %__MODULE__{
@@ -50,7 +48,6 @@ defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
           size: non_neg_integer(),
           retries: non_neg_integer(),
           event_type: TypeDetection.event_type(),
-          day_bucket: integer(),
-          ingest_freshness: :fresh | :stale
+          day_bucket: integer()
         }
 end
