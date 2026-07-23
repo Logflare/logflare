@@ -2,6 +2,10 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "logflare.fullname" . }}
+  {{- if .Values.logflare.reloader }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  {{- end }}
   labels:
     {{- include "logflare.labels" . | nindent 4 }}
 spec:
@@ -58,6 +62,19 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
             {{- end }}
+            {{- if .Values.logflare.certFilesSecret }}
+            {{- $mount := .Values.logflare.certFilesMountPath }}
+            - name: DB_SSL_CA_CERT_PATH
+              value: {{ printf "%s/db-server-ca.pem" $mount | quote }}
+            - name: DB_SSL_CLIENT_CERT_PATH
+              value: {{ printf "%s/db-client-cert.pem" $mount | quote }}
+            - name: DB_SSL_CLIENT_KEY_PATH
+              value: {{ printf "%s/db-client-key.pem" $mount | quote }}
+            - name: LOGFLARE_TLS_CERT_PATH
+              value: {{ printf "%s/cert.pem" $mount | quote }}
+            - name: LOGFLARE_TLS_KEY_PATH
+              value: {{ printf "%s/cert.key" $mount | quote }}
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "logflare.fullname" . }}
@@ -81,13 +98,27 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.volumeMounts }}
+          {{- if or .Values.logflare.certFilesSecret .Values.volumeMounts }}
           volumeMounts:
+            {{- if .Values.logflare.certFilesSecret }}
+            - name: cert-files
+              mountPath: {{ .Values.logflare.certFilesMountPath }}
+              readOnly: true
+            {{- end }}
+            {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
-      {{- with .Values.volumes }}
+      {{- if or .Values.logflare.certFilesSecret .Values.volumes }}
       volumes:
+        {{- if .Values.logflare.certFilesSecret }}
+        - name: cert-files
+          secret:
+            secretName: {{ .Values.logflare.certFilesSecret }}
+        {{- end }}
+        {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
