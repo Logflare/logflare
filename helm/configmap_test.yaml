@@ -51,3 +51,18 @@ tests:
           path: data.PHX_URL_HOST
           value: "example.com"
         template: configmap.yaml
+
+  - it: should render extraConfig entries verbatim into the ConfigMap
+    set:
+      logflare.extraConfig:
+        LOGFLARE_LOG_LEVEL: info
+        SPOOL_MODE: enabled
+    asserts:
+      - equal:
+          path: data.LOGFLARE_LOG_LEVEL
+          value: "info"
+        template: configmap.yaml
+      - equal:
+          path: data.SPOOL_MODE
+          value: "enabled"
+        template: configmap.yaml

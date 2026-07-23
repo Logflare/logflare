@@ -219,8 +219,27 @@ Per-entry `refreshInterval` and `creationPolicy` overrides are also supported; s
 | `logflare.backend.bigquery.datasetLocation` | `GOOGLE_DATASET_LOCATION` | bigquery only |
 | `logflare.backend.postgres.schema` | `POSTGRES_BACKEND_SCHEMA` | postgres only |
 | `logflare.secretRefs` | see [Loading secrets](#loading-secrets) | |
+| `logflare.certFilesSecret` | — | Name of a Secret whose keys are cert filenames; mounted as files. See [Certificate files](#certificate-files) |
+| `logflare.certFilesMountPath` | `DB_SSL_*_PATH`, `LOGFLARE_TLS_*_PATH` | Mount path for `certFilesSecret`; the chart points the cert path env vars here |
+| `logflare.reloader` | — | When `true`, adds the Stakater Reloader annotation so the Deployment rolls on ConfigMap/Secret changes |
+| `logflare.extraConfig` | (any) | Map of non-secret env vars rendered verbatim into the ConfigMap |
 
 See `values.yaml` for the full set of generic chart values (image, service, ingress, resources, autoscaling, etc.).
+
+### Certificate files
+
+Unlike the env-var secrets loaded via `envFrom`, Logflare reads its TLS/mTLS
+material from files on disk: the internal database SSL certs (when `DB_SSL` is
+enabled) and the gRPC TLS cert/key (when `LOGFLARE_ENABLE_GRPC_SSL` is enabled).
+
+Provide these via a separate Secret whose keys are the exact filenames —
+`db-server-ca.pem`, `db-client-cert.pem`, `db-client-key.pem`, `cert.pem`,
+`cert.key` — and set `logflare.certFilesSecret` to its name. The chart mounts it
+at `logflare.certFilesMountPath` and sets `DB_SSL_CA_CERT_PATH`,
+`DB_SSL_CLIENT_CERT_PATH`, `DB_SSL_CLIENT_KEY_PATH`, `LOGFLARE_TLS_CERT_PATH`,
+and `LOGFLARE_TLS_KEY_PATH` to point at the mounted files. (The BigQuery service
+account key is handled as an env-var secret via `GOOGLE_APPLICATION_CREDENTIALS_JSON`,
+not a mounted file.)
 
 ## Verifying a deployment
 
