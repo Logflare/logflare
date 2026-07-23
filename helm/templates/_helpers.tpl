@@ -60,3 +60,18 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Render an env entry sourced via secretKeyRef, pointing at either the chart's
+own Secret or an externally-managed one when .field.existingSecret is set.
+Expects a dict with: root (the root context $), field (a logflare.secrets.*
+entry), envName (the env var name), defaultKey (the key used in the chart's
+own Secret).
+*/}}
+{{- define "logflare.secretEnv" -}}
+- name: {{ .envName }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ .field.existingSecret | default (include "logflare.fullname" .root) }}
+      key: {{ .field.existingSecretKey | default .defaultKey | quote }}
+{{- end }}

@@ -14,8 +14,9 @@ image:
   tag: ""
 
 # Logflare single-tenant application configuration.
-# These values are rendered into a ConfigMap (non-sensitive) and a Secret
-# (sensitive) which are wired into the Deployment via envFrom.
+# Non-sensitive values are rendered into a ConfigMap and wired into the
+# Deployment via envFrom. Sensitive values (logflare.secrets.*) are wired in
+# individually via secretKeyRef - see the comment above logflare.secrets.
 logflare:
   singleTenant: true
   supabaseMode: false
@@ -34,23 +35,50 @@ logflare:
     urlPort: 443
     checkOrigin: false
 
-  # Sensitive values. Either set them inline here (rendered into a Secret
-  # this chart creates), or set existingSecret to the name of a Secret you
-  # manage yourself containing the same keys (see templates/secret.yaml).
-  existingSecret: ""
+  # Sensitive values. For each field, either set `value` inline (rendered
+  # into a Secret this chart creates), or set `existingSecret`/
+  # `existingSecretKey` to reference a key in a Secret you manage yourself
+  # (e.g. one materialized by External Secrets Operator). When
+  # `existingSecret` is set, `value` and `existingSecretKey` (defaults to the
+  # chart's own key name) are used to build a secretKeyRef instead of
+  # rendering that key into the chart's own Secret.
   secrets:
-    publicAccessToken: ""
-    privateAccessToken: ""
-    dbPassword: ""
-    dbEncryptionKey: ""
+    publicAccessToken:
+      value: ""
+      existingSecret: ""
+      existingSecretKey: ""
+    privateAccessToken:
+      value: ""
+      existingSecret: ""
+      existingSecretKey: ""
+    dbPassword:
+      value: ""
+      existingSecret: ""
+      existingSecretKey: ""
+    dbEncryptionKey:
+      value: ""
+      existingSecret: ""
+      existingSecretKey: ""
     # Phoenix session/cookie signing. Required for the app to boot.
-    phxSecretKeyBase: ""
-    phxLiveViewSigningSalt: ""
+    phxSecretKeyBase:
+      value: ""
+      existingSecret: ""
+      existingSecretKey: ""
+    phxLiveViewSigningSalt:
+      value: ""
+      existingSecret: ""
+      existingSecretKey: ""
     # Only used when backend.type == postgres
-    postgresBackendUrl: ""
+    postgresBackendUrl:
+      value: ""
+      existingSecret: ""
+      existingSecretKey: ""
     # Only used when backend.type == bigquery. Contents of the GCP service
     # account JSON key file.
-    googleServiceAccountJson: ""
+    googleServiceAccountJson:
+      value: ""
+      existingSecret: ""
+      existingSecretKey: ""
 
   # Logflare's own metadata Postgres database (distinct from the optional
   # "postgres" event-storage backend below).

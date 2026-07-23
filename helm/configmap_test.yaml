@@ -51,6 +51,17 @@ tests:
           path: stringData.PHX_LIVE_VIEW_SIGNING_SALT
         template: secret.yaml
 
+  - it: should omit a field's key from the chart's own Secret when existingSecret is set for it
+    set:
+      logflare.secrets.publicAccessToken.existingSecret: my-custom-secret
+    asserts:
+      - notExists:
+          path: stringData.LOGFLARE_PUBLIC_ACCESS_TOKEN
+        template: secret.yaml
+      - isNotNull:
+          path: stringData.LOGFLARE_PRIVATE_ACCESS_TOKEN
+        template: secret.yaml
+
   - it: should omit empty optional configmap keys
     asserts:
       - notExists:
