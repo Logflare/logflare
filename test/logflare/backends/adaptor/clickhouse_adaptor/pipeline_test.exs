@@ -290,7 +290,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         trigger: :flush
       }
 
-      Mimic.reject(ClickHouseAdaptor, :insert_log_events_compressed, 3)
+      Mimic.reject(ClickHouseAdaptor, :insert_log_events_compressed, 4)
 
       result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
@@ -655,6 +655,115 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     end
   end
 
+  describe "handle_batch/4 async insert decision" do
+    setup do
+      {async_source, async_backend} =
+        setup_clickhouse_test(
+          config: %{use_async_inserts_for_small_batches: true, async_insert_max_rows: 2}
+        )
+
+      [async_source: async_source, async_backend: async_backend]
+    end
+
+    test "sends async: true when the encoded row count is below the cutoff", %{
+      async_source: source,
+      async_backend: backend
+    } do
+      test_pid = self()
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                        _event_type,
+                                                                        _compressed,
+                                                                        opts ->
+        send(test_pid, {:insert_opts, opts})
+        :ok
+      end)
+
+      event = build(:log_event, source: source, message: "small batch")
+      gen_tid = setup_generation_events([event])
+      messages = [batch_message(event, gen_tid, backend.id)]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      Pipeline.handle_batch(:ch, messages, batch_info, %{backend_id: backend.id})
+
+      assert_received {:insert_opts, opts}
+      assert Keyword.get(opts, :async) == true
+    end
+
+    test "sends async: false when the encoded row count is at or above the cutoff", %{
+      async_source: source,
+      async_backend: backend
+    } do
+      test_pid = self()
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                        _event_type,
+                                                                        _compressed,
+                                                                        opts ->
+        send(test_pid, {:insert_opts, opts})
+        :ok
+      end)
+
+      event1 = build(:log_event, source: source, message: "row 1")
+      event2 = build(:log_event, source: source, message: "row 2")
+      gen_tid = setup_generation_events([event1, event2])
+
+      messages = [
+        batch_message(event1, gen_tid, backend.id),
+        batch_message(event2, gen_tid, backend.id)
+      ]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 2,
+        trigger: :flush
+      }
+
+      Pipeline.handle_batch(:ch, messages, batch_info, %{backend_id: backend.id})
+
+      assert_received {:insert_opts, opts}
+      assert Keyword.get(opts, :async) == false
+    end
+
+    test "sends async: false when the backend has the feature disabled", %{
+      source: source,
+      backend: backend
+    } do
+      test_pid = self()
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                        _event_type,
+                                                                        _compressed,
+                                                                        opts ->
+        send(test_pid, {:insert_opts, opts})
+        :ok
+      end)
+
+      event = build(:log_event, source: source, message: "disabled")
+      gen_tid = setup_generation_events([event])
+      messages = [batch_message(event, gen_tid, backend.id)]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      Pipeline.handle_batch(:ch, messages, batch_info, %{backend_id: backend.id})
+
+      assert_received {:insert_opts, opts}
+      assert Keyword.get(opts, :async) == false
+    end
+  end
+
   describe "ack/3" do
     test "returns :ok when both lists are empty" do
       assert Pipeline.ack(:ack_ref, [], []) == :ok
@@ -883,7 +992,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
-                                                                        _compressed ->
+                                                                        _compressed,
+                                                                        _opts ->
         {:error, "Connection timeout"}
       end)
 
@@ -912,7 +1022,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
-                                                                        _compressed ->
+                                                                        _compressed,
+                                                                        _opts ->
         send(test_pid, :inserted)
         :ok
       end)
@@ -944,7 +1055,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
-                                                                        _compressed ->
+                                                                        _compressed,
+                                                                        _opts ->
         {:error, "boom"}
       end)
 
@@ -983,7 +1095,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
-                                                                        _compressed ->
+                                                                        _compressed,
+                                                                        _opts ->
         {:error, too_many_parts_error}
       end)
 
@@ -1023,7 +1136,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
-                                                                        _compressed ->
+                                                                        _compressed,
+                                                                        _opts ->
         {:error, too_many_parts_error}
       end)
 

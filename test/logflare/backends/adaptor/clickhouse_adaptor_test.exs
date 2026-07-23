@@ -284,6 +284,65 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert changeset.valid?
     end
+
+    test "use_async_inserts_for_small_batches defaults to false when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_for_small_batches) == false
+    end
+
+    test "casts use_async_inserts_for_small_batches when provided" do
+      changeset = cast_and_validate_config(use_async_inserts_for_small_batches: true)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_for_small_batches) == true
+    end
+
+    test "async_insert_max_rows defaults to 1000 when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_max_rows) == 1_000
+    end
+
+    test "casts a custom async_insert_max_rows" do
+      changeset = cast_and_validate_config(async_insert_max_rows: 500)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_max_rows) == 500
+    end
+
+    test "rejects a non-positive async_insert_max_rows" do
+      changeset = cast_and_validate_config(async_insert_max_rows: 0)
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :async_insert_max_rows)
+    end
+
+    test "async_insert_cluster_url defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_cluster_url) == nil
+    end
+
+    test "casts a valid async_insert_cluster_url" do
+      changeset =
+        cast_and_validate_config(async_insert_cluster_url: "https://async.clickhouse.cloud:8443")
+
+      assert changeset.valid?
+
+      assert Ecto.Changeset.get_field(changeset, :async_insert_cluster_url) ==
+               "https://async.clickhouse.cloud:8443"
+    end
+
+    test "rejects an invalid async_insert_cluster_url format" do
+      changeset = cast_and_validate_config(async_insert_cluster_url: "not-a-url")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :async_insert_cluster_url)
+    end
   end
 
   defp cast_and_validate_config(attrs \\ []) do

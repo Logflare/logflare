@@ -141,7 +141,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_url: :string,
        insert_protocol: :string,
        native_port: :integer,
-       native_pool_size: :integer
+       native_pool_size: :integer,
+       use_async_inserts_for_small_batches: :boolean,
+       async_insert_cluster_url: :string,
+       async_insert_max_rows: :integer
      }}
     |> Changeset.cast(params, [
       :url,
@@ -153,9 +156,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_url,
       :insert_protocol,
       :native_port,
-      :native_pool_size
+      :native_pool_size,
+      :use_async_inserts_for_small_batches,
+      :async_insert_cluster_url,
+      :async_insert_max_rows
     ])
     |> Logflare.Utils.default_field_value(:insert_protocol, "http")
+    |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
+    |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
   end
 
   @doc false
@@ -168,6 +176,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     changeset
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
+    |> validate_number(:async_insert_max_rows, greater_than: 0)
     |> validate_read_only_url()
     |> validate_user_pass()
     |> validate_inclusion(:insert_protocol, ["http", "native"])

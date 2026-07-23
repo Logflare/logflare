@@ -18,7 +18,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @behaviour Broadway.Acknowledger
 
-  import Logflare.Utils.Guards, only: [is_event_type: 1]
+  import Logflare.Utils.Guards, only: [is_event_type: 1, is_pos_integer: 1]
 
   require Logger
   require OpenTelemetry.Tracer
@@ -372,11 +372,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     Enum.map(bad, &Message.failed(&1, :not_found))
   end
 
-  defp finalize_insert(backend, event_type, compressed, _good_count, good, bad) do
+  defp finalize_insert(backend, event_type, compressed, good_count, good, bad) do
+    insert_opts = [async: async_insert?(backend, good_count)]
+
     case ClickHouseAdaptor.insert_log_events_compressed(
            backend,
            event_type,
-           compressed
+           compressed,
+           insert_opts
          ) do
       :ok ->
         # `bad` (rare, typically empty) goes on the left of `++` so the cons cells
@@ -389,6 +392,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         Enum.map(bad, &Message.failed(&1, reason)) ++ Enum.map(good, &Message.failed(&1, reason))
     end
   end
+
+  @spec async_insert?(Backend.t(), non_neg_integer()) :: boolean()
+  defp async_insert?(
+         %Backend{
+           config: %{use_async_inserts_for_small_batches: true, async_insert_max_rows: max_rows}
+         },
+         row_count
+       )
+       when is_pos_integer(max_rows) and is_pos_integer(row_count) and row_count < max_rows,
+       do: true
+
+  defp async_insert?(_backend, _row_count), do: false
 
   @spec record_insert_failure(Backend.t(), term()) :: :ok
   defp record_insert_failure(backend, reason) do
