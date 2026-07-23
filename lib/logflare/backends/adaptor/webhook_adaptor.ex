@@ -33,7 +33,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = args) do
-    GenServer.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__, backend))
+    GenServer.start_link(__MODULE__, args,
+      name: Backends.via_source(source, __MODULE__, backend),
+      hibernate_after: 5_000
+    )
   end
 
   @impl GenServer
