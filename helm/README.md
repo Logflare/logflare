@@ -41,94 +41,54 @@ The connection URL (`POSTGRES_BACKEND_URL`) is a secret and is not set here — 
 
 ## Loading secrets
 
-The chart needs several sensitive values, each configured under its own key in `logflare.secrets.*`:
-
-| `logflare.secrets.*` key | Env var | Notes |
-|---|---|---|
-| `publicAccessToken` | `LOGFLARE_PUBLIC_ACCESS_TOKEN` | |
-| `privateAccessToken` | `LOGFLARE_PRIVATE_ACCESS_TOKEN` | |
-| `dbPassword` | `DB_PASSWORD` | |
-| `dbEncryptionKey` | `LOGFLARE_DB_ENCRYPTION_KEY` | |
-| `phxSecretKeyBase` | `PHX_SECRET_KEY_BASE` | e.g. `openssl rand -base64 48` |
-| `phxLiveViewSigningSalt` | `PHX_LIVE_VIEW_SIGNING_SALT` | e.g. `openssl rand -base64 8` |
-| `postgresBackendUrl` | `POSTGRES_BACKEND_URL` | postgres backend only |
-| `googleServiceAccountJson` | `GOOGLE_SERVICE_ACCOUNT` | bigquery backend only, the raw service-account JSON key content |
-
-Each field is its own object with three sub-keys:
+**This chart never creates or owns a `Secret`.** You provision the Secret(s) yourself (e.g. via `kubectl create secret`, or via a tool like External Secrets Operator) with keys already named the way Logflare expects, and list their names in `logflare.secretRefs`. Every key in each listed Secret is injected in bulk via `envFrom`, the same way the chart's own ConfigMap is:
 
 ```yaml
 logflare:
-  secrets:
-    <field>:
-      value: ""               # inline value, rendered into the chart's own Secret
-      existingSecret: ""      # OR: name of a Secret that already exists in the namespace
-      existingSecretKey: ""   # key within that Secret (defaults to the chart's own key name above)
+  secretRefs:
+    - logflare-secrets
 ```
 
-For each field independently: if `existingSecret` is empty, the chart renders that key into the Secret it creates (named after the release) using `value`. If `existingSecret` is set, the chart instead wires that env var via `secretKeyRef` straight to `existingSecret`/`existingSecretKey`, and **does not** render that key into its own Secret. You can mix both approaches — e.g. keep `dbPassword` inline while sourcing `googleServiceAccountJson` from an externally managed Secret.
+Unlike a per-variable mapping, this means **the Secret's key names must exactly match the env vars Logflare reads** (see the table below) — there's no renaming step. If you need to source individual vars from differently-named keys, or split them across Secrets with arbitrary key names, create multiple Secrets with the right key names upstream (e.g. via multiple `ExternalSecret` objects) and list all of them in `secretRefs`.
 
-### 1. Inline via values (quick/dev use)
+Most deployments need at least these env vars, so your Secret(s) should contain these keys:
 
-```yaml
-logflare:
-  secrets:
-    publicAccessToken:
-      value: "..."
-    privateAccessToken:
-      value: "..."
-    dbPassword:
-      value: "..."
-    dbEncryptionKey:
-      value: "..."
-    phxSecretKeyBase:
-      value: "..."          # e.g. `openssl rand -base64 48`
-    phxLiveViewSigningSalt:
-      value: "..."          # e.g. `openssl rand -base64 8`
-    postgresBackendUrl:
-      value: "postgresql://user:pass@host:5432/db"   # postgres backend
-    # googleServiceAccountJson:
-    #   value: '{"type": "service_account", ...}'    # bigquery backend
-```
+| Env var | Notes |
+|---|---|
+| `LOGFLARE_PUBLIC_ACCESS_TOKEN` | |
+| `LOGFLARE_PRIVATE_ACCESS_TOKEN` | |
+| `DB_PASSWORD` | |
+| `LOGFLARE_DB_ENCRYPTION_KEY` | |
+| `PHX_SECRET_KEY_BASE` | e.g. `openssl rand -base64 48` |
+| `PHX_LIVE_VIEW_SIGNING_SALT` | e.g. `openssl rand -base64 8` |
+| `POSTGRES_BACKEND_URL` | postgres backend only |
+| `GOOGLE_SERVICE_ACCOUNT` | bigquery backend only, the raw service-account JSON key content |
 
-Keep this in a values file that is *not* committed to source control (e.g. `secrets-values.yaml`), and pass it alongside your other values:
-
-```sh
-helm install logflare ./helm -f my-values.yaml -f secrets-values.yaml
-```
-
-This is the simplest option, but the values end up stored in the Helm release's state (in-cluster), which is not ideal for production.
-
-### 2. Referencing an existing Secret (recommended for production)
-
-Create the Secret yourself, outside of Helm, then point the relevant field(s) at it via `existingSecret`/`existingSecretKey`. Unlike the previous whole-chart `existingSecret` toggle, this is per field — the Secret's key names don't need to match the chart's own, and different fields can point at entirely different Secrets:
+### Creating the Secret yourself
 
 ```sh
 kubectl create secret generic logflare-secrets \
-  --from-literal=public-access-token=... \
-  --from-literal=private-access-token=... \
-  --from-literal=db-password=...
+  --from-literal=LOGFLARE_PUBLIC_ACCESS_TOKEN=... \
+  --from-literal=LOGFLARE_PRIVATE_ACCESS_TOKEN=... \
+  --from-literal=DB_PASSWORD=... \
+  --from-literal=LOGFLARE_DB_ENCRYPTION_KEY=... \
+  --from-literal=PHX_SECRET_KEY_BASE=... \
+  --from-literal=PHX_LIVE_VIEW_SIGNING_SALT=... \
+  --from-literal=POSTGRES_BACKEND_URL=postgresql://user:pass@host:5432/db
+  # or: --from-file=GOOGLE_SERVICE_ACCOUNT=./gcloud.json   (bigquery backend)
 ```
 
 ```yaml
 logflare:
-  secrets:
-    publicAccessToken:
-      existingSecret: "logflare-secrets"
-      existingSecretKey: "public-access-token"
-    privateAccessToken:
-      existingSecret: "logflare-secrets"
-      existingSecretKey: "private-access-token"
-    dbPassword:
-      existingSecret: "logflare-secrets"
-      existingSecretKey: "db-password"
-    # remaining fields fall back to `value` / the chart's own Secret
+  secretRefs:
+    - logflare-secrets
 ```
 
-### 3. External Secrets Operator (ESO)
+### External Secrets Operator (ESO)
 
-[External Secrets Operator](https://external-secrets.io/) is the recommended way to run this in production: it syncs values from a real secret manager (AWS Secrets Manager, GCP Secret Manager, Vault, etc.) into a plain Kubernetes `Secret` that this chart then references via `existingSecret`.
+[External Secrets Operator](https://external-secrets.io/) is the recommended way to run this in production: it syncs values from a real secret manager (AWS Secrets Manager, GCP Secret Manager, Vault, etc.) into a plain Kubernetes `Secret`, which this chart then references via `logflare.secretRefs`.
 
-1. **Provision an `ExternalSecret`** (outside this chart, e.g. in your cluster-config repo) that materializes the Secret this chart will consume:
+1. **Provision an `ExternalSecret`** (outside this chart, e.g. in your cluster-config repo) that materializes the Secret this chart will consume, with keys already named to match what Logflare expects:
 
     ```yaml
     apiVersion: external-secrets.io/v1
@@ -151,44 +111,23 @@ logflare:
             key: prod/logflare/secrets
     ```
 
-    This produces a Secret named `logflare-secrets` in the namespace, with whatever keys exist at `prod/logflare/secrets` in your secret store (e.g. `public_access_token`, `private_access_token`, `db_password`, ...). ESO owns creation/rotation of this Secret entirely; the chart never sees the underlying values.
+    If the secrets in your secret store at `prod/logflare/secrets` don't already use Logflare's expected key names (e.g. `public_access_token` instead of `LOGFLARE_PUBLIC_ACCESS_TOKEN`), use `data:` entries with explicit `secretKey`/`remoteRef` pairs (or a templated `target.template`) instead of `dataFrom.extract`, so the resulting Secret's keys match exactly — ESO owns creation/rotation of this Secret entirely, and the chart injects whatever keys land in it verbatim.
 
-2. **Point the chart's fields at it**, matching each field to the key your secret store uses:
+2. **List the Secret's name in `logflare.secretRefs`:**
 
     ```yaml
     logflare:
-      secrets:
-        publicAccessToken:
-          existingSecret: "logflare-secrets"
-          existingSecretKey: "public_access_token"
-        privateAccessToken:
-          existingSecret: "logflare-secrets"
-          existingSecretKey: "private_access_token"
-        dbPassword:
-          existingSecret: "logflare-secrets"
-          existingSecretKey: "db_password"
-        dbEncryptionKey:
-          existingSecret: "logflare-secrets"
-          existingSecretKey: "db_encryption_key"
-        phxSecretKeyBase:
-          existingSecret: "logflare-secrets"
-          existingSecretKey: "phx_secret_key_base"
-        phxLiveViewSigningSalt:
-          existingSecret: "logflare-secrets"
-          existingSecretKey: "phx_live_view_signing_salt"
-        # bigquery backend:
-        googleServiceAccountJson:
-          existingSecret: "logflare-secrets"
-          existingSecretKey: "google_service_account_json"
+      secretRefs:
+        - logflare-secrets
     ```
 
-3. **Install/upgrade as usual** — no chart changes are needed, since the Deployment always wires each field via `secretKeyRef`:
+3. **Install/upgrade as usual** — no chart changes are needed, since the Deployment always wires every listed Secret in via `envFrom.secretRef`:
 
     ```sh
     helm upgrade --install logflare ./helm -f my-values.yaml
     ```
 
-Because each field is wired independently, you can also split fields across multiple `ExternalSecret`/Secret objects (e.g. one per upstream secret-store path) — just set a different `existingSecret` name per field.
+You can list multiple Secret names in `secretRefs` (e.g. one per `ExternalSecret`/upstream secret-store path) — all of their keys are injected together.
 
 ## Configurable values
 
@@ -218,7 +157,7 @@ Because each field is wired independently, you can also split fields across mult
 | `logflare.backend.bigquery.datasetIdAppend` | `GOOGLE_DATASET_ID_APPEND` | bigquery only |
 | `logflare.backend.bigquery.datasetLocation` | `GOOGLE_DATASET_LOCATION` | bigquery only |
 | `logflare.backend.postgres.schema` | `POSTGRES_BACKEND_SCHEMA` | postgres only |
-| `logflare.secrets.*` | see [Loading secrets](#loading-secrets) | |
+| `logflare.secretRefs` | see [Loading secrets](#loading-secrets) | |
 
 See `values.yaml` for the full set of generic chart values (image, service, ingress, resources, autoscaling, etc.).
 

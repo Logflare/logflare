@@ -2,7 +2,6 @@ suite: test deployment kind
 templates:
   - deployment.yaml
   - configmap.yaml
-  - secret.yaml
 tests:
   - it: should render the correct deployment Kind
     asserts:
@@ -21,91 +20,41 @@ tests:
           path: spec.template.spec.containers[0].envFrom[1]
         template: deployment.yaml
 
-  - it: should wire each secret field via secretKeyRef pointing at the chart's own Secret by default
+  - it: should reference no Secrets via envFrom by default
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].env[1].name
-          value: LOGFLARE_PUBLIC_ACCESS_TOKEN
+          path: spec.template.spec.containers[0].envFrom[0].configMapRef.name
+          value: RELEASE-NAME-logflare
         template: deployment.yaml
+      - notExists:
+          path: spec.template.spec.containers[0].envFrom[1]
+        template: deployment.yaml
+
+  - it: should reference each Secret in logflare.secretRefs via envFrom
+    set:
+      logflare.secretRefs:
+        - logflare-secrets
+        - logflare-db-secret
+    asserts:
       - equal:
-          path: spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.name
+          path: spec.template.spec.containers[0].envFrom[0].configMapRef.name
           value: RELEASE-NAME-logflare
         template: deployment.yaml
       - equal:
-          path: spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.key
-          value: LOGFLARE_PUBLIC_ACCESS_TOKEN
+          path: spec.template.spec.containers[0].envFrom[1].secretRef.name
+          value: logflare-secrets
         template: deployment.yaml
       - equal:
-          path: spec.template.spec.containers[0].env[2].name
-          value: LOGFLARE_PRIVATE_ACCESS_TOKEN
-        template: deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].env[3].name
-          value: DB_PASSWORD
-        template: deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].env[4].name
-          value: LOGFLARE_DB_ENCRYPTION_KEY
-        template: deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].env[5].name
-          value: PHX_SECRET_KEY_BASE
-        template: deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].env[6].name
-          value: PHX_LIVE_VIEW_SIGNING_SALT
-        template: deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].env[7].name
-          value: GOOGLE_SERVICE_ACCOUNT
+          path: spec.template.spec.containers[0].envFrom[2].secretRef.name
+          value: logflare-db-secret
         template: deployment.yaml
 
-  - it: should wire POSTGRES_BACKEND_URL instead of GOOGLE_SERVICE_ACCOUNT when backend.type is postgres
-    set:
-      logflare.backend.type: postgres
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].env[7].name
-          value: POSTGRES_BACKEND_URL
-        template: deployment.yaml
-
-  - it: should reference an existingSecret/existingSecretKey for a single field when set, leaving others on the chart's own Secret
-    set:
-      logflare.secrets.publicAccessToken.existingSecret: my-custom-secret
-      logflare.secrets.publicAccessToken.existingSecretKey: my-custom-key
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.name
-          value: my-custom-secret
-        template: deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.key
-          value: my-custom-key
-        template: deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].env[2].valueFrom.secretKeyRef.name
-          value: RELEASE-NAME-logflare
-        template: deployment.yaml
-
-  - it: should default existingSecretKey to the chart's own key name when existingSecret is set without a key
-    set:
-      logflare.secrets.dbPassword.existingSecret: my-custom-secret
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].env[3].valueFrom.secretKeyRef.name
-          value: my-custom-secret
-        template: deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].env[3].valueFrom.secretKeyRef.key
-          value: DB_PASSWORD
-        template: deployment.yaml
-
-  - it: should always render checksum/config and checksum/secret annotations
+  - it: should always render checksum/config annotation
     asserts:
       - isNotNull:
           path: spec.template.metadata.annotations["checksum/config"]
         template: deployment.yaml
-      - isNotNull:
+      - notExists:
           path: spec.template.metadata.annotations["checksum/secret"]
         template: deployment.yaml
 

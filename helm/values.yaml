@@ -15,8 +15,8 @@ image:
 
 # Logflare single-tenant application configuration.
 # Non-sensitive values are rendered into a ConfigMap and wired into the
-# Deployment via envFrom. Sensitive values (logflare.secrets.*) are wired in
-# individually via secretKeyRef - see the comment above logflare.secrets.
+# Deployment via envFrom. Sensitive values are loaded the same way, in bulk,
+# from Secret(s) you manage yourself - see the comment above logflare.secretRefs.
 logflare:
   singleTenant: true
   supabaseMode: false
@@ -35,50 +35,17 @@ logflare:
     urlPort: 443
     checkOrigin: false
 
-  # Sensitive values. For each field, either set `value` inline (rendered
-  # into a Secret this chart creates), or set `existingSecret`/
-  # `existingSecretKey` to reference a key in a Secret you manage yourself
-  # (e.g. one materialized by External Secrets Operator). When
-  # `existingSecret` is set, `value` and `existingSecretKey` (defaults to the
-  # chart's own key name) are used to build a secretKeyRef instead of
-  # rendering that key into the chart's own Secret.
-  secrets:
-    publicAccessToken:
-      value: ""
-      existingSecret: ""
-      existingSecretKey: ""
-    privateAccessToken:
-      value: ""
-      existingSecret: ""
-      existingSecretKey: ""
-    dbPassword:
-      value: ""
-      existingSecret: ""
-      existingSecretKey: ""
-    dbEncryptionKey:
-      value: ""
-      existingSecret: ""
-      existingSecretKey: ""
-    # Phoenix session/cookie signing. Required for the app to boot.
-    phxSecretKeyBase:
-      value: ""
-      existingSecret: ""
-      existingSecretKey: ""
-    phxLiveViewSigningSalt:
-      value: ""
-      existingSecret: ""
-      existingSecretKey: ""
-    # Only used when backend.type == postgres
-    postgresBackendUrl:
-      value: ""
-      existingSecret: ""
-      existingSecretKey: ""
-    # Only used when backend.type == bigquery. Contents of the GCP service
-    # account JSON key file.
-    googleServiceAccountJson:
-      value: ""
-      existingSecret: ""
-      existingSecretKey: ""
+  # This chart never creates or owns a Secret. List the name(s) of Secret(s)
+  # you manage yourself (e.g. materialized by External Secrets Operator, or
+  # via `kubectl create secret`) here - every key in each Secret is injected
+  # in bulk as an env var, the same way the chart's ConfigMap is. At minimum,
+  # most deployments need a Secret containing: LOGFLARE_PUBLIC_ACCESS_TOKEN,
+  # LOGFLARE_PRIVATE_ACCESS_TOKEN, DB_PASSWORD, LOGFLARE_DB_ENCRYPTION_KEY,
+  # PHX_SECRET_KEY_BASE, PHX_LIVE_VIEW_SIGNING_SALT, and one of
+  # POSTGRES_BACKEND_URL (postgres backend) or GOOGLE_SERVICE_ACCOUNT
+  # (bigquery backend). See README.md for a full walkthrough.
+  secretRefs: []
+  # - logflare-secrets
 
   # Logflare's own metadata Postgres database (distinct from the optional
   # "postgres" event-storage backend below).
@@ -100,7 +67,7 @@ logflare:
       datasetIdAppend: "_prod"
       datasetLocation: "US"
     postgres:
-      schema: "public" # POSTGRES_BACKEND_SCHEMA; url comes from logflare.secrets.postgresBackendUrl
+      schema: "public" # POSTGRES_BACKEND_SCHEMA; url (POSTGRES_BACKEND_URL) comes from a Secret in logflare.secretRefs
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []

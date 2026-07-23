@@ -15,7 +15,6 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -59,20 +58,13 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
             {{- end }}
-            {{- include "logflare.secretEnv" (dict "root" $ "field" .Values.logflare.secrets.publicAccessToken "envName" "LOGFLARE_PUBLIC_ACCESS_TOKEN" "defaultKey" "LOGFLARE_PUBLIC_ACCESS_TOKEN") | nindent 12 }}
-            {{- include "logflare.secretEnv" (dict "root" $ "field" .Values.logflare.secrets.privateAccessToken "envName" "LOGFLARE_PRIVATE_ACCESS_TOKEN" "defaultKey" "LOGFLARE_PRIVATE_ACCESS_TOKEN") | nindent 12 }}
-            {{- include "logflare.secretEnv" (dict "root" $ "field" .Values.logflare.secrets.dbPassword "envName" "DB_PASSWORD" "defaultKey" "DB_PASSWORD") | nindent 12 }}
-            {{- include "logflare.secretEnv" (dict "root" $ "field" .Values.logflare.secrets.dbEncryptionKey "envName" "LOGFLARE_DB_ENCRYPTION_KEY" "defaultKey" "LOGFLARE_DB_ENCRYPTION_KEY") | nindent 12 }}
-            {{- include "logflare.secretEnv" (dict "root" $ "field" .Values.logflare.secrets.phxSecretKeyBase "envName" "PHX_SECRET_KEY_BASE" "defaultKey" "PHX_SECRET_KEY_BASE") | nindent 12 }}
-            {{- include "logflare.secretEnv" (dict "root" $ "field" .Values.logflare.secrets.phxLiveViewSigningSalt "envName" "PHX_LIVE_VIEW_SIGNING_SALT" "defaultKey" "PHX_LIVE_VIEW_SIGNING_SALT") | nindent 12 }}
-            {{- if eq .Values.logflare.backend.type "postgres" }}
-            {{- include "logflare.secretEnv" (dict "root" $ "field" .Values.logflare.secrets.postgresBackendUrl "envName" "POSTGRES_BACKEND_URL" "defaultKey" "POSTGRES_BACKEND_URL") | nindent 12 }}
-            {{- else if eq .Values.logflare.backend.type "bigquery" }}
-            {{- include "logflare.secretEnv" (dict "root" $ "field" .Values.logflare.secrets.googleServiceAccountJson "envName" "GOOGLE_SERVICE_ACCOUNT" "defaultKey" "GOOGLE_SERVICE_ACCOUNT") | nindent 12 }}
-            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "logflare.fullname" . }}
+            {{- range .Values.logflare.secretRefs }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}

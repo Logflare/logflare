@@ -1,7 +1,6 @@
 suite: test backend wiring
 templates:
   - configmap.yaml
-  - secret.yaml
 tests:
   - it: should render bigquery vars and omit postgres vars by default
     asserts:
@@ -15,12 +14,6 @@ tests:
       - isNull:
           path: data.POSTGRES_BACKEND_SCHEMA
         template: configmap.yaml
-      - isNotNull:
-          path: stringData.GOOGLE_SERVICE_ACCOUNT
-        template: secret.yaml
-      - isNull:
-          path: stringData.POSTGRES_BACKEND_URL
-        template: secret.yaml
 
   - it: should render postgres vars and omit bigquery vars when backend.type is postgres
     set:
@@ -35,32 +28,6 @@ tests:
       - isNull:
           path: data.GOOGLE_PROJECT_NUMBER
         template: configmap.yaml
-      - isNotNull:
-          path: stringData.POSTGRES_BACKEND_URL
-        template: secret.yaml
-      - isNull:
-          path: stringData.GOOGLE_SERVICE_ACCOUNT
-        template: secret.yaml
-
-  - it: should always render the phoenix session secrets
-    asserts:
-      - isNotNull:
-          path: stringData.PHX_SECRET_KEY_BASE
-        template: secret.yaml
-      - isNotNull:
-          path: stringData.PHX_LIVE_VIEW_SIGNING_SALT
-        template: secret.yaml
-
-  - it: should omit a field's key from the chart's own Secret when existingSecret is set for it
-    set:
-      logflare.secrets.publicAccessToken.existingSecret: my-custom-secret
-    asserts:
-      - notExists:
-          path: stringData.LOGFLARE_PUBLIC_ACCESS_TOKEN
-        template: secret.yaml
-      - isNotNull:
-          path: stringData.LOGFLARE_PRIVATE_ACCESS_TOKEN
-        template: secret.yaml
 
   - it: should omit empty optional configmap keys
     asserts:
