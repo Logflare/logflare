@@ -74,6 +74,19 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert %{gzip: false, headers: %{"x-test" => "true"}} =
                Ecto.Changeset.apply_changes(changeset)
     end
+
+    test "downcases submitted header names" do
+      changeset =
+        Adaptor.cast_and_validate_config(@subject, %{
+          @valid_config_input
+          | "headers" => %{"Content-Type" => "application/json", "X-Custom" => "v"}
+        })
+
+      assert changeset.valid?
+
+      assert %{headers: %{"content-type" => "application/json", "x-custom" => "v"}} =
+               Ecto.Changeset.apply_changes(changeset)
+    end
   end
 
   describe "test_connection/1" do
@@ -181,6 +194,46 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert_receive {^ref, body}, 5000
       assert request = Protobuf.decode(body, ExportLogsServiceRequest)
       assert %{resource_logs: [%{scope_logs: [%{log_records: [_, _, _]}]}]} = request
+    end
+  end
+
+  describe "reserved headers" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: %{@valid_config | headers: %{"Content-Type" => "application/json"}}
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}})
+      :timer.sleep(250)
+      [source: source]
+    end
+
+    test "drops a user-supplied content-type so the formatter's is the only one", %{
+      source: source
+    } do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, env.headers})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      log_event = build(:log_event, source: source, timestamp: System.system_time(:microsecond))
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+      assert_receive {^ref, headers}, 5000
+
+      content_types =
+        for {key, value} <- headers, String.downcase(key) == "content-type", do: value
+
+      assert content_types == ["application/x-protobuf"]
     end
   end
 

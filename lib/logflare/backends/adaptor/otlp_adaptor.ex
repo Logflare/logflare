@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
+  alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter
   alias Logflare.Backends.Backend
   alias Logflare.Utils
@@ -48,9 +49,20 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
 
     {existing_config, types}
     |> Ecto.Changeset.cast(params, Map.keys(types))
+    |> normalize_header_keys()
     |> Utils.default_field_value(:gzip, true)
     |> Utils.default_field_value(:protocol, "http/protobuf")
     |> Utils.default_field_value(:headers, %{})
+  end
+
+  # Canonicalizes submitted header names to lower case so stored config cannot
+  # hold case-variant duplicates of the same header (e.g. "Content-Type" and
+  # "content-type"), matching the form used on the wire.
+  defp normalize_header_keys(changeset) do
+    case Ecto.Changeset.get_change(changeset, :headers) do
+      nil -> changeset
+      headers -> Ecto.Changeset.put_change(changeset, :headers, Headers.normalize_keys(headers))
+    end
   end
 
   @impl Adaptor
