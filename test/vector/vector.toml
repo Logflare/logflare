@@ -1,0 +1,105 @@
+# Sample Vector configuration that emits synthetic test data and sinks it to
+# Logflare's gRPC ingestion endpoint using Vector's native `vector` protocol.
+#
+# Set the following environment variables before running Vector:
+#   LOGFLARE_SOURCE_TOKEN  - target Logflare source UUID
+#   LOGFLARE_API_KEY       - access token with `ingest` scope
+#   LOGFLARE_GRPC_ENDPOINT - defaults to http://localhost:50051
+
+data_dir = "/tmp/vector-data"
+
+# Synthetic log lines exercised by the `logs` sink path. The `demo_logs`
+# source emits Apache common-format lines so we can verify ingestion.
+[sources.demo_logs]
+type = "demo_logs"
+format = "apache_common"
+interval = 1.0
+
+# Synthetic metrics so we can verify the metric branch of the proto.
+[sources.host_metrics]
+type = "internal_metrics"
+scrape_interval_secs = 5
+
+# Normalise the log and decorate it with complex nested data structures so we
+# can verify Logflare correctly ingests arrays, nested objects, and arrays of
+# objects via the Vector gRPC protocol.
+[transforms.parse_logs]
+type = "remap"
+inputs = ["demo_logs"]
+source = '''
+. = parse_apache_log!(.message, format: "common")
+.host = get_hostname!()
+.service = "vector-demo"
+
+# Flat array of scalars.
+.tags = ["vector", "grpc", "logflare", "test"]
+
+# Nested object.
+.request = {
+  "method": .method,
+  "path": .path,
+  "protocol": .protocol,
+  "headers": {
+    "user-agent": "vector-demo/1.0",
+    "x-trace-id": uuid_v4()
+  }
+}
+
+# Array of nested objects.
+.events = [
+  {
+    "name": "received",
+    "ts": now(),
+    "attributes": {
+      "stage": "ingress",
+      "weight": 1
+    }
+  },
+  {
+    "name": "parsed",
+    "ts": now(),
+    "attributes": {
+      "stage": "transform",
+      "weight": 2,
+      "tags": ["apache", "common"]
+    }
+  }
+]
+
+# Mixed-type array including nested array of objects.
+.batches = [
+  {
+    "id": 1,
+    "items": [
+      {"key": "a", "value": 1},
+      {"key": "b", "value": 2}
+    ]
+  },
+  {
+    "id": 2,
+    "items": [
+      {"key": "c", "value": 3}
+    ]
+  }
+]
+'''
+
+[sinks.logflare_logs]
+type = "vector"
+inputs = ["parse_logs"]
+address = "${LOGFLARE_GRPC_ENDPOINT:-http://localhost:50051}"
+compression = true
+
+[sinks.logflare_logs.request.headers]
+"x-api-key" = "${LOGFLARE_API_KEY}"
+"x-source"  = "${LOGFLARE_SOURCE_TOKEN}"
+
+[sinks.logflare_metrics]
+type = "vector"
+inputs = ["host_metrics"]
+address = "${LOGFLARE_GRPC_ENDPOINT:-http://localhost:50051}"
+compression = true
+
+[sinks.logflare_metrics.request.headers]
+"x-api-key" = "${LOGFLARE_API_KEY}"
+"x-source"  = "${LOGFLARE_SOURCE_TOKEN}"
