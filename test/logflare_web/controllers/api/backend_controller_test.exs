@@ -58,6 +58,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert result["id"] == backend.id
     end
+
     @backend_configs_by_type [
       {:webhook, %{url: "http://example.com", headers: %{"Authorization" => "leaked-secret"}}},
       {:elastic, %{url: "https://example.com", username: "someuser", password: "leaked-secret"}},
@@ -603,6 +604,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       assert response["config"]["gzip"] == false
       assert response["config"]["http"] == "http1"
     end
+
     test "redacted webhook config round-trip preserves stored credentials", %{
       conn: conn,
       user: user
