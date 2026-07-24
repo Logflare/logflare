@@ -252,6 +252,7 @@
               Separate endpoint for read queries, for example: <code>https://read-warehouse.clickhouse.cloud:8443</code>
             </small>
           </div>
+          <.live_component module={LogflareWeb.Backends.ReadClusterUrlsComponent} id="read-cluster-urls" form={f_config} />
         <% "incidentio" -> %>
           <div class="form-group">
             {label(f_config, :api_token, "API Token")}

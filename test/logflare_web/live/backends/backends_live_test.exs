@@ -203,6 +203,33 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "some: custom-metadata"
     end
 
+    test "displays clickhouse read cluster config without redaction", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            read_only_urls: %{"api" => "http://api-read.local:8123"},
+            default_read_cluster: "api"
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
+      html = render(view)
+
+      assert html =~ "api-read.local"
+      assert html =~ "default_read_cluster"
+      refute html =~ "&quot;read_only_urls&quot;: &quot;**********&quot;"
+    end
+
     test "add/delete a rule", %{
       conn: conn,
       user: user,
@@ -404,6 +431,133 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "Successfully created backend"
       assert html =~ "my clickhouse"
     end
+
+    test "can create a clickhouse backend with a read cluster URL", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "ch read clusters",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "user",
+              password: "pass",
+              read_cluster_label_0: "reporting",
+              read_cluster_url_0: "http://reporting-read.local:8123",
+              default_read_cluster: "reporting"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+
+      backend =
+        user.id
+        |> Backends.list_backends_by_user_id()
+        |> Enum.find(&(&1.name == "ch read clusters"))
+
+      assert backend.config.read_only_urls == %{"reporting" => "http://reporting-read.local:8123"}
+      assert backend.config.default_read_cluster == "reporting"
+    end
+
+    test "can add and remove read cluster rows", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      refute view
+             |> element("input[name='backend[config][read_cluster_label_1]']")
+             |> has_element?()
+
+      view |> element("button", "Add read cluster") |> render_click()
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_1]']")
+             |> has_element?()
+
+      view
+      |> element("#read-cluster-row-1 button[phx-click='remove_row']")
+      |> render_click()
+
+      refute view
+             |> element("input[name='backend[config][read_cluster_label_1]']")
+             |> has_element?()
+    end
+
+    test "rejects duplicate read cluster labels on save", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      view |> element("button", "Add read cluster") |> render_click()
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "dupe labels",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "user",
+              password: "pass",
+              read_cluster_label_0: "same",
+              read_cluster_url_0: "http://a.local:8123",
+              read_cluster_label_1: "same",
+              read_cluster_url_1: "http://b.local:8123"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Duplicate read cluster labels"
+    end
+
+    test "rejects a default read cluster that is not a defined label", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "bad default",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "user",
+              password: "pass",
+              read_cluster_label_0: "reporting",
+              read_cluster_url_0: "http://reporting-read.local:8123",
+              default_read_cluster: "missing"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "must match one of the defined read cluster labels"
+    end
   end
 
   describe "edit" do
@@ -440,6 +594,95 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert render(view) =~ "URL"
 
       refute view |> element("select#type") |> has_element?()
+    end
+
+    test "pre-populates read cluster rows when editing a clickhouse backend", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            read_only_urls: %{
+              "reporting" => "http://reporting.local:8123",
+              "adhoc" => "http://adhoc.local:8123"
+            },
+            default_read_cluster: "reporting"
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+      html = render(view)
+
+      assert html =~ "reporting"
+      assert html =~ "http://reporting.local:8123"
+      assert html =~ "adhoc"
+      assert html =~ "http://adhoc.local:8123"
+
+      # one row per existing read cluster entry, and no extra empty row
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_0]']")
+             |> has_element?()
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_1]']")
+             |> has_element?()
+
+      refute view
+             |> element("input[name='backend[config][read_cluster_label_2]']")
+             |> has_element?()
+    end
+
+    test "removing a read cluster row drops that specific row's cluster on save", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            username: "user",
+            password: "pass",
+            read_only_urls: %{
+              "alpha" => "http://alpha.local:8123",
+              "beta" => "http://beta.local:8123",
+              "gamma" => "http://gamma.local:8123"
+            }
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      # rows render in the same order the component folds the map, so row 0 and the last
+      # row are known — removing row 0 must drop row 0's cluster, not the last one.
+      entries = Map.to_list(backend.config.read_only_urls)
+      {row0_label, _url} = hd(entries)
+      {last_label, _url} = List.last(entries)
+
+      view
+      |> element("#read-cluster-row-0 button[phx-click='remove_row']")
+      |> render_click()
+
+      view |> form("form") |> render_submit()
+
+      read_only_urls = Backends.get_backend(backend.id).config.read_only_urls
+
+      refute Map.has_key?(read_only_urls, row0_label)
+      assert Map.has_key?(read_only_urls, last_label)
+      assert map_size(read_only_urls) == 2
     end
 
     test "cancel will nav back to show", %{conn: conn, user: user} do

@@ -43,6 +43,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @ch_slow_pool_checkout_ms 1_000
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
+  defdelegate connection_pool_via(arg, label), to: ConnectionManager
 
   @doc false
   def child_spec(arg) do
@@ -96,26 +97,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     execute_query(backend, {query_string, []}, opts)
   end
 
-  def execute_query(%Backend{} = backend, {query_string, params}, _opts)
-      when is_non_empty_binary(query_string) and is_list(params) do
-    case execute_ch_query(backend, query_string, params) do
+  def execute_query(%Backend{} = backend, {query_string, params}, opts)
+      when is_non_empty_binary(query_string) and is_list(params) and is_list(opts) do
+    case execute_ch_query(backend, query_string, params, opts) do
       {:ok, {rows, bytes}} -> {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
       error -> error
     end
   end
 
-  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, _opts)
-      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
-    execute_query_with_params(backend, query_string, declared_params, input_params)
+  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, opts)
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    execute_query_with_params(backend, query_string, declared_params, input_params, opts)
   end
 
   def execute_query(
         %Backend{} = backend,
         {query_string, declared_params, input_params, _endpoint_query},
-        _opts
+        opts
       )
-      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
-    execute_query_with_params(backend, query_string, declared_params, input_params)
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    execute_query_with_params(backend, query_string, declared_params, input_params, opts)
   end
 
   def execute_query(%Backend{} = backend, %Ecto.Query{} = query, opts) when is_list(opts) do
@@ -138,7 +141,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        database: :string,
        port: :integer,
        pool_size: :integer,
+       # read_only_url is depreciated and will be removed in the release after PR#3693 lands
        read_only_url: :string,
+       read_only_urls: {:map, :string},
+       default_read_cluster: :string,
        insert_protocol: :string,
        native_port: :integer,
        native_pool_size: :integer
@@ -151,6 +157,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :port,
       :pool_size,
       :read_only_url,
+      :read_only_urls,
+      :default_read_cluster,
       :insert_protocol,
       :native_port,
       :native_pool_size
@@ -169,6 +177,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> validate_read_only_url()
+    |> validate_read_only_urls()
+    |> validate_default_read_cluster()
     |> validate_user_pass()
     |> validate_inclusion(:insert_protocol, ["http", "native"])
     |> validate_number(:pool_size,
@@ -185,7 +195,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   GRANT checks to verify the configured user has the required ClickHouse permissions.
 
   Always checks the ingest cluster (primary `url`) for full write permissions.
-  When `read_only_url` is configured, additionally checks the read cluster for `SELECT` permission.
+
+  Then checks each configured read cluster.
   """
   @impl Logflare.Backends.Adaptor
   @spec test_connection(Backend.t()) ::
@@ -195,7 +206,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           | {:error, :grant_check_unknown_failure}
   def test_connection(%Backend{config: config} = backend) do
     with :ok <- check_ingest_grants(backend, config),
-         :ok <- maybe_check_read_grants(backend, config) do
+         :ok <- check_read_grants(backend, config) do
       :ok
     end
   end
@@ -211,54 +222,85 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
       {:ok, [%{"result" => 0}]} ->
         Logger.warning(
-          "ClickHouse ingest cluster GRANT check failed. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
-          backend_id: backend.id
+          "ClickHouse ingest cluster GRANT check failed for #{config.url}. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
+          backend_id: backend.id,
+          ingest_url: config.url
         )
 
         {:error, :permissions_missing}
 
       {:error, _} = error_result ->
         Logger.warning(
-          "ClickHouse ingest cluster GRANT check failed. Unexpected error #{inspect(error_result)}",
-          backend_id: backend.id
+          "ClickHouse ingest cluster connection/GRANT check failed for #{config.url}. Unexpected error #{inspect(error_result)}",
+          backend_id: backend.id,
+          ingest_url: config.url
         )
 
         {:error, :grant_check_unknown_failure}
     end
   end
 
-  @spec maybe_check_read_grants(Backend.t(), map()) ::
+  @spec check_read_grants(Backend.t(), map()) ::
           :ok | {:error, :read_permissions_missing} | {:error, term()}
-  defp maybe_check_read_grants(_backend, %{read_only_url: url}) when not is_non_empty_binary(url),
-    do: :ok
+  defp check_read_grants(%Backend{} = backend, config) do
+    config
+    |> read_grant_targets()
+    |> Enum.reduce_while(:ok, fn {label, url}, :ok ->
+      case check_read_grant(backend, config, label, url) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
-  defp maybe_check_read_grants(_backend, config) when not is_map_key(config, :read_only_url),
-    do: :ok
+  @spec read_grant_targets(map()) :: [{String.t() | nil, String.t()}]
+  defp read_grant_targets(config) do
+    case config |> Map.get(:read_only_urls, %{}) |> Map.to_list() do
+      [] ->
+        if is_non_empty_binary(Map.get(config, :read_only_url)),
+          do: [{nil, config.read_only_url}],
+          else: []
 
-  defp maybe_check_read_grants(%Backend{} = backend, %{read_only_url: _}) do
+      labeled ->
+        labeled
+    end
+  end
+
+  @spec check_read_grant(Backend.t(), map(), String.t() | nil, String.t()) ::
+          :ok | {:error, :read_permissions_missing} | {:error, term()}
+  defp check_read_grant(%Backend{} = backend, config, label, url) do
     sql_statement = QueryTemplates.read_grant_check_statement()
+    target = describe_read_target(label, url)
 
-    case execute_ch_query(backend, sql_statement) do
-      {:ok, {[%{"result" => 1}], _bytes}} ->
+    case execute_direct_query(url, config, sql_statement) do
+      {:ok, [%{"result" => 1}]} ->
         :ok
 
-      {:ok, {[%{"result" => 0}], _bytes}} ->
+      {:ok, [%{"result" => 0}]} ->
         Logger.warning(
-          "ClickHouse read cluster GRANT check failed. Required: `SELECT`",
-          backend_id: backend.id
+          "ClickHouse read cluster GRANT check failed for #{target}. Required: `SELECT`",
+          backend_id: backend.id,
+          read_cluster: label,
+          read_cluster_url: url
         )
 
         {:error, :read_permissions_missing}
 
       {:error, _} = error_result ->
         Logger.warning(
-          "ClickHouse read cluster GRANT check failed. Unexpected error #{inspect(error_result)}",
-          backend_id: backend.id
+          "ClickHouse read cluster connection/GRANT check failed for #{target}. Unexpected error #{inspect(error_result)}",
+          backend_id: backend.id,
+          read_cluster: label,
+          read_cluster_url: url
         )
 
         {:error, :grant_check_unknown_failure}
     end
   end
+
+  @spec describe_read_target(String.t() | nil, String.t()) :: String.t()
+  defp describe_read_target(label, url) when is_non_empty_binary(label), do: "#{label} (#{url})"
+  defp describe_read_target(_label, url), do: url
 
   @doc """
   Determines if a backend is hosted on ClickHouse Cloud
@@ -285,6 +327,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   def clickhouse_cloud_url?(_url), do: false
+
+  @doc """
+  Resolves a read cluster label
+  """
+  @spec resolve_read_cluster_label(Backend.t() | map(), String.t() | nil) :: String.t() | nil
+  def resolve_read_cluster_label(%Backend{config: config}, read_cluster),
+    do: resolve_read_cluster_label(config, read_cluster)
+
+  def resolve_read_cluster_label(config, read_cluster) when is_map(config) do
+    urls = Map.get(config, :read_only_urls) || %{}
+
+    if is_non_empty_binary(read_cluster) and Map.has_key?(urls, read_cluster) do
+      read_cluster
+    else
+      default_read_cluster_label(config, urls)
+    end
+  end
+
+  @spec default_read_cluster_label(Backend.t()) :: String.t() | nil
+  defp default_read_cluster_label(%Backend{config: config}) do
+    urls = Map.get(config, :read_only_urls) || %{}
+    default_read_cluster_label(config, urls)
+  end
+
+  @spec default_read_cluster_label(map(), map()) :: String.t() | nil
+  defp default_read_cluster_label(config, urls) do
+    default = Map.get(config, :default_read_cluster)
+    if is_non_empty_binary(default) and Map.has_key?(urls, default), do: default, else: nil
+  end
 
   @spec config_host(Backend.t()) :: String.t() | nil
   defp config_host(%Backend{config: %{url: url}}), do: url_host(url)
@@ -351,21 +422,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
-    with :ok <- ensure_query_connection_manager_started(backend) do
-      pool_via = connection_pool_via(backend)
+    requested = Keyword.get(opts, :read_cluster)
+    label = resolve_read_cluster_label(backend, requested)
+
+    warn_on_unconfigured_read_cluster(backend, requested, label)
+
+    case do_ch_query_on_label(backend, statement, params, label) do
+      {:error, %QueryError{kind: :connection_error}} = error ->
+        maybe_retry_on_default_cluster(backend, statement, params, label, error)
+
+      result ->
+        result
+    end
+  end
+
+  @spec do_ch_query_on_label(Backend.t(), iodata(), term(), String.t() | nil) ::
+          {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
+  defp do_ch_query_on_label(%Backend{} = backend, statement, params, label) do
+    with :ok <- ensure_query_connection_manager_started(backend, label) do
+      pool_via = connection_pool_via(backend, label)
 
       timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
 
       backend_id = backend.id
       log_fun = fn entry -> log_slow_checkout(entry, backend_id) end
 
-      opts =
-        opts
-        |> Keyword.put(:decode, false)
-        |> Keyword.put(:timeout, timeout)
-        |> Keyword.put(:log, log_fun)
+      ch_opts = [decode: false, timeout: timeout, log: log_fun]
 
-      case Ch.query(pool_via, statement, params, opts) do
+      case Ch.query(pool_via, statement, params, ch_opts) do
         {:ok, %Ch.Result{} = result} ->
           rows = decode_ch_result(result)
           bytes = parse_summary_read_bytes(result.headers)
@@ -382,6 +466,45 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
              host: read_host(backend)
            )}
       end
+    end
+  end
+
+  @spec warn_on_unconfigured_read_cluster(Backend.t(), String.t() | nil, String.t() | nil) :: :ok
+  defp warn_on_unconfigured_read_cluster(%Backend{} = backend, requested, label)
+       when is_non_empty_binary(requested) and requested != label do
+    Logger.warning(
+      "ClickHouse read cluster not configured, falling back to resolved read cluster",
+      backend_id: backend.id,
+      requested_read_cluster: requested,
+      resolved_read_cluster: label
+    )
+
+    :ok
+  end
+
+  defp warn_on_unconfigured_read_cluster(_backend, _requested, _label), do: :ok
+
+  @spec maybe_retry_on_default_cluster(
+          Backend.t(),
+          iodata(),
+          term(),
+          String.t() | nil,
+          {:error, term()}
+        ) :: {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
+  defp maybe_retry_on_default_cluster(%Backend{} = backend, statement, params, label, error) do
+    default = default_read_cluster_label(backend)
+
+    if is_non_empty_binary(default) and default != label do
+      Logger.warning(
+        "ClickHouse read cluster unhealthy, falling back to default read cluster",
+        backend_id: backend.id,
+        read_cluster: label,
+        default_read_cluster: default
+      )
+
+      do_ch_query_on_label(backend, statement, params, default)
+    else
+      error
     end
   end
 
@@ -735,6 +858,53 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
+  @spec validate_read_only_urls(Changeset.t()) :: Changeset.t()
+  defp validate_read_only_urls(changeset) do
+    changeset
+    |> Changeset.get_field(:read_only_urls)
+    |> case do
+      urls when is_map(urls) -> Enum.reduce(urls, changeset, &validate_read_only_url_entry/2)
+      _ -> changeset
+    end
+  end
+
+  @spec validate_read_only_url_entry({String.t(), term()}, Changeset.t()) :: Changeset.t()
+  defp validate_read_only_url_entry({label, url}, changeset) do
+    if is_non_empty_binary(url) and Regex.match?(~r/https?\:\/\/.+/, url) do
+      changeset
+    else
+      Changeset.add_error(changeset, :read_only_urls, "invalid URL for read cluster \"#{label}\"")
+    end
+  end
+
+  @spec validate_default_read_cluster(Changeset.t()) :: Changeset.t()
+  defp validate_default_read_cluster(changeset) do
+    urls = Changeset.get_field(changeset, :read_only_urls) || %{}
+    default = Changeset.get_field(changeset, :default_read_cluster)
+
+    validate_default_read_cluster(changeset, urls, default)
+  end
+
+  @spec validate_default_read_cluster(Changeset.t(), map(), term()) :: Changeset.t()
+  defp validate_default_read_cluster(changeset, urls, _default) when map_size(urls) == 0,
+    do: changeset
+
+  defp validate_default_read_cluster(changeset, _urls, default)
+       when not is_non_empty_binary(default),
+       do: changeset
+
+  defp validate_default_read_cluster(changeset, urls, default) do
+    if Map.has_key?(urls, default) do
+      changeset
+    else
+      Changeset.add_error(
+        changeset,
+        :default_read_cluster,
+        "must match one of the defined read cluster labels"
+      )
+    end
+  end
+
   @spec decode_ch_result(Ch.Result.t()) :: [map()]
   defp decode_ch_result(%Ch.Result{} = result) do
     format = get_response_header(result.headers, "x-clickhouse-format")
@@ -836,19 +1006,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           Backend.t(),
           query_string :: String.t(),
           declared_params :: [String.t()],
-          input_params :: map()
+          input_params :: map(),
+          opts :: Keyword.t()
         ) ::
           {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_params(
          %Backend{} = backend,
          query_string,
          declared_params,
-         input_params
+         input_params,
+         opts
        ) do
     converted_query = convert_query_params(query_string, declared_params)
     ch_params = Map.take(input_params, declared_params)
 
-    case execute_ch_query(backend, converted_query, ch_params) do
+    case execute_ch_query(backend, converted_query, ch_params, opts) do
       {:ok, {rows, bytes}} -> {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
       error -> error
     end
@@ -869,28 +1041,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end)
   end
 
-  @spec ensure_query_connection_manager_started(Backend.t()) :: :ok | {:error, term()}
-  defp ensure_query_connection_manager_started(%Backend{id: backend_id} = backend) do
-    via = Backends.via_backend(backend, ConnectionManager)
+  @spec ensure_query_connection_manager_started(Backend.t(), String.t() | nil) ::
+          :ok | {:error, term()}
+  defp ensure_query_connection_manager_started(%Backend{id: backend_id} = backend, label) do
+    via = Backends.via_backend(backend, ConnectionManager, label)
 
     via
     |> GenServer.whereis()
-    |> maybe_start_query_connection_manager(backend_id)
+    |> maybe_start_query_connection_manager(backend_id, label)
     |> case do
-      :ok -> ensure_pool_and_notify(backend)
+      :ok -> ensure_pool_and_notify(backend, label)
       error -> error
     end
   end
 
-  @spec maybe_start_query_connection_manager(pid() | nil, pos_integer()) :: :ok | {:error, term()}
-  defp maybe_start_query_connection_manager(nil, backend_id) when is_integer(backend_id) do
+  @spec maybe_start_query_connection_manager(pid() | nil, pos_integer(), String.t() | nil) ::
+          :ok | {:error, term()}
+  defp maybe_start_query_connection_manager(nil, backend_id, label) when is_integer(backend_id) do
     backend = Backends.Cache.get_backend(backend_id)
 
-    with child_spec <- ConnectionManager.child_spec(backend),
+    with child_spec <- ConnectionManager.child_spec(backend, label),
          {:ok, _pid} <- QueryConnectionSup.start_connection_manager(child_spec) do
       Logger.info(
         "Started query ConnectionManager for ClickHouse backend",
-        backend_id: backend.id
+        backend_id: backend.id,
+        read_cluster: label
       )
 
       :ok
@@ -902,6 +1077,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         Logger.warning(
           "Failed to start query ConnectionManager for backend",
           backend_id: backend_id,
+          read_cluster: label,
           reason: reason
         )
 
@@ -909,12 +1085,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  defp maybe_start_query_connection_manager(_pid, _backend_id), do: :ok
+  defp maybe_start_query_connection_manager(_pid, _backend_id, _label), do: :ok
 
-  @spec ensure_pool_and_notify(Backend.t()) :: :ok
-  defp ensure_pool_and_notify(%Backend{} = backend) do
-    ConnectionManager.ensure_pool_started(backend)
-    ConnectionManager.notify_activity(backend)
+  @spec ensure_pool_and_notify(Backend.t(), String.t() | nil) :: :ok
+  defp ensure_pool_and_notify(%Backend{} = backend, label) do
+    ConnectionManager.ensure_pool_started(backend, label)
+    ConnectionManager.notify_activity(backend, label)
     :ok
   end
 end

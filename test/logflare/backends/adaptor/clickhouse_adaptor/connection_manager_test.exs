@@ -20,8 +20,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
       child_spec = ConnectionManager.child_spec(backend)
 
       assert %{
-               id: {ConnectionManager, backend_id},
-               start: {ConnectionManager, :start_link, [^backend]}
+               id: {ConnectionManager, backend_id, nil},
+               start: {ConnectionManager, :start_link, [^backend, nil]}
              } = child_spec
 
       assert backend_id == backend.id
@@ -35,8 +35,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
       child_spec2 = ConnectionManager.child_spec(backend2)
 
       assert child_spec1.id != child_spec2.id
-      assert child_spec1.id == {ConnectionManager, backend1.id}
-      assert child_spec2.id == {ConnectionManager, backend2.id}
+      assert child_spec1.id == {ConnectionManager, backend1.id, nil}
+      assert child_spec2.id == {ConnectionManager, backend2.id, nil}
     end
 
     test "child specs work with `Supervisor.start_link`", %{backend: backend} do
@@ -48,7 +48,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
       assert length(children) == 1
 
       [{child_id, child_pid, :worker, [ConnectionManager]}] = children
-      assert child_id == {ConnectionManager, backend.id}
+      assert child_id == {ConnectionManager, backend.id, nil}
       assert Process.alive?(child_pid)
 
       Supervisor.stop(sup)

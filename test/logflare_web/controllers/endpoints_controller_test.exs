@@ -5,6 +5,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
+  alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources
@@ -990,6 +991,58 @@ defmodule LogflareWeb.EndpointsControllerTest do
       refute conn.halted
 
       assert_received {:reservation, nil}
+    end
+  end
+
+  describe "read cluster header" do
+    setup do
+      _plan = insert(:plan, name: "Free")
+      user = insert(:user)
+      {:ok, user: user}
+    end
+
+    test "passes lf-endpoint-clickhouse-read-cluster-label header as the :read_cluster opt", %{
+      conn: init_conn,
+      user: user
+    } do
+      pid = self()
+      endpoint = insert(:endpoint, user: user, enable_auth: false)
+
+      Endpoints
+      |> expect(:run_cached_query, fn _query, _params, opts ->
+        send(pid, {:read_cluster, Keyword.get(opts, :read_cluster)})
+        {:ok, %{rows: []}}
+      end)
+
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-clickhouse-read-cluster-label", "api")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert json_response(conn, 200)
+      refute conn.halted
+
+      assert_received {:read_cluster, "api"}
+    end
+
+    test "sets :read_cluster to nil when the header is absent", %{conn: init_conn, user: user} do
+      pid = self()
+      endpoint = insert(:endpoint, user: user, enable_auth: false)
+
+      Endpoints
+      |> expect(:run_cached_query, fn _query, _params, opts ->
+        send(pid, {:read_cluster, Keyword.get(opts, :read_cluster)})
+        {:ok, %{rows: []}}
+      end)
+
+      conn =
+        init_conn
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert json_response(conn, 200)
+      refute conn.halted
+
+      assert_received {:read_cluster, nil}
     end
   end
 end

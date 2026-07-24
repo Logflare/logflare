@@ -284,6 +284,62 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert changeset.valid?
     end
+
+    test "casts read_only_urls map when provided" do
+      urls = %{
+        "dashboard_logs" => "http://logs-read.local:8123",
+        "dashboard_metrics" => "http://metrics-read.local:8123"
+      }
+
+      changeset = cast_and_validate_config(read_only_urls: urls)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == urls
+    end
+
+    test "read_only_urls defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == nil
+    end
+
+    test "rejects a malformed URL in read_only_urls" do
+      changeset =
+        cast_and_validate_config(read_only_urls: %{"dashboard_logs" => "not-a-url"})
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :read_only_urls)
+    end
+
+    test "casts default_read_cluster when it names a configured label" do
+      changeset =
+        cast_and_validate_config(
+          read_only_urls: %{"dashboard_logs" => "http://logs-read.local:8123"},
+          default_read_cluster: "dashboard_logs"
+        )
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :default_read_cluster) == "dashboard_logs"
+    end
+
+    test "rejects default_read_cluster that is not a configured label" do
+      changeset =
+        cast_and_validate_config(
+          read_only_urls: %{"dashboard_logs" => "http://logs-read.local:8123"},
+          default_read_cluster: "api"
+        )
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :default_read_cluster)
+    end
+
+    test "does not validate default_read_cluster when read_only_urls is empty" do
+      changeset = cast_and_validate_config(default_read_cluster: "reporting")
+
+      assert changeset.valid?
+      refute Keyword.has_key?(changeset.errors, :default_read_cluster)
+    end
   end
 
   defp cast_and_validate_config(attrs \\ []) do
@@ -335,6 +391,191 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
   end
 
+  describe "resolve_read_cluster_label/2" do
+    setup do
+      config = %{
+        url: "http://ingest.local:8123",
+        read_only_url: "http://legacy-read.local:8123",
+        read_only_urls: %{
+          "dashboard_metrics" => "http://metrics-read.local:8123",
+          "dashboard_logs" => "http://logs-read.local:8123",
+          "api" => "http://api-read.local:8123",
+          "mcp" => "http://mcp-read.local:8123"
+        },
+        default_read_cluster: "dashboard_logs"
+      }
+
+      %{config: config}
+    end
+
+    test "returns the requested label when it is a configured key", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "api") == "api"
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "mcp") == "mcp"
+    end
+
+    test "falls back to default_read_cluster for an unknown label", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "does_not_exist") ==
+               "dashboard_logs"
+    end
+
+    test "falls back to default_read_cluster for an absent label", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, nil) == "dashboard_logs"
+    end
+
+    test "returns nil (legacy path) when no labels are configured" do
+      config = %{url: "http://ingest.local:8123", read_only_url: "http://legacy.local:8123"}
+
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "api") == nil
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, nil) == nil
+    end
+
+    test "returns nil when a label is requested but no default and no match", %{config: config} do
+      config = Map.delete(config, :default_read_cluster)
+
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "unmapped") == nil
+    end
+
+    test "prefers the requested label over the default", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "dashboard_metrics") ==
+               "dashboard_metrics"
+    end
+
+    test "accepts a Backend struct", %{config: config} do
+      backend = %Backend{config: config}
+
+      assert ClickHouseAdaptor.resolve_read_cluster_label(backend, "api") == "api"
+    end
+  end
+
+  describe "read cluster routing" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      [source: source, backend: backend]
+    end
+
+    test "routes to the labeled pool for a configured read cluster", %{backend: backend} do
+      assert {:ok, {[%{"test" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                 read_cluster: "api"
+               )
+
+      assert ConnectionManager.pool_active?(backend, "api")
+      refute ConnectionManager.pool_active?(backend, "dashboard_logs")
+      refute ConnectionManager.pool_active?(backend)
+    end
+
+    test "routes an unknown read cluster to the default and warns", %{backend: backend} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, {[%{"test" => 1}], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                     read_cluster: "nope"
+                   )
+        end)
+
+      assert log =~ "read cluster not configured"
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+      refute ConnectionManager.pool_active?(backend, "api")
+    end
+
+    test "routes an absent read cluster to the default", %{backend: backend} do
+      assert {:ok, {[%{"test" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+  end
+
+  describe "read cluster routing without configured clusters" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} = setup_clickhouse_test()
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      [source: source, backend: backend]
+    end
+
+    test "warns and uses the legacy pool when a label is requested", %{backend: backend} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, {[%{"test" => 1}], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                     read_cluster: "api"
+                   )
+        end)
+
+      assert log =~ "read cluster not configured"
+      assert ConnectionManager.pool_active?(backend)
+      refute ConnectionManager.pool_active?(backend, "api")
+    end
+  end
+
+  describe "read cluster unhealthy fallback" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "falls back to the default cluster when the requested cluster is unhealthy" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api" => "http://localhost:19999",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, {[%{"test" => 1}], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                     read_cluster: "api"
+                   )
+        end)
+
+      assert log =~ "read cluster unhealthy"
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+
+    test "does not fall back when the unhealthy cluster is already the default" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{"dashboard_logs" => "http://localhost:19999"},
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      assert {:error, %QueryError{}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                 read_cluster: "dashboard_logs"
+               )
+    end
+  end
+
   describe "test_connection/1 with dual cluster config" do
     setup do
       insert(:plan, name: "Free")
@@ -349,12 +590,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert :ok = ClickHouseAdaptor.test_connection(backend)
     end
 
-    test "fails when ingest URL is unreachable" do
+    test "fails when ingest URL is unreachable and logs the ingest URL" do
       {_source, backend} =
         setup_clickhouse_test(config: %{url: "http://localhost:19999"})
 
       start_supervised!({ClickHouseAdaptor, backend})
-      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+        end)
+
+      assert log =~ "ingest cluster"
+      assert log =~ "http://localhost:19999"
     end
 
     test "fails when read_only_url is unreachable" do
@@ -363,6 +611,44 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "passes when every labeled read cluster is valid" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "reporting" => "http://localhost:8123",
+              "adhoc" => "http://localhost:8123"
+            }
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when any labeled read cluster is unreachable and logs which one" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "reporting" => "http://localhost:8123",
+              "adhoc" => "http://localhost:19999"
+            }
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+        end)
+
+      assert log =~ "read cluster"
+      assert log =~ "adhoc"
+      assert log =~ "http://localhost:19999"
     end
   end
 
