@@ -24,6 +24,7 @@ defmodule Logflare.Factory do
   alias Logflare.Users.UserPreferences
   alias Logflare.Alerting.AlertQuery
   alias Logflare.KeyValues.KeyValue
+  alias Logflare.KeyValues.KeyValueUsage
   alias Logflare.Google.BigQuery.SchemaUtils
   alias PaperTrail.Version
 
@@ -432,6 +433,13 @@ defmodule Logflare.Factory do
       user: build(:user),
       key: TestUtils.random_string(),
       value: %{"value" => TestUtils.random_string()}
+    }
+  end
+
+  def key_value_usage_factory do
+    %KeyValueUsage{
+      key_value: build(:key_value),
+      last_used_at: DateTime.utc_now()
     }
   end
 
