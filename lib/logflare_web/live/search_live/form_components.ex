@@ -8,8 +8,9 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   use Phoenix.Component
 
   alias Logflare.Lql.Rules
-  alias Logflare.Utils
   alias Logflare.Sources.Source
+  alias Logflare.Utils
+  alias LogflareWeb.MonacoEditorComponentNew
 
   attr :lql_rules, :list, required: true
   attr :chart_aggregate_enabled?, :boolean, required: true
@@ -128,7 +129,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     end
   end
 
-  attr :querystring, :string, required: true
+  attr :search_form, Phoenix.HTML.Form, required: true
   attr :saved_searches, :list, required: true
   attr :loading, :boolean, required: true
   attr :tailing?, :boolean, required: true
@@ -143,40 +144,43 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   attr :lql_schema_flat_map, :map, required: true
 
   def search_controls(assigns) do
-    assigns =
-      assigns
-      |> assign(:saved_searches_json, JSON.encode!(assigns.saved_searches))
-      |> assign(
-        :lql_schema_fields_json,
-        assigns.lql_schema_flat_map |> lql_schema_fields() |> Jason.encode!()
-      )
+    assigns = assign(assigns, :lql_schema_fields, lql_schema_fields(assigns.lql_schema_flat_map))
 
     ~H"""
     <div class="search-control tw-mt-1" id="source-logs-search-control" phx-hook="SourceLogsSearch">
       <div class="form-group">
-        <div class="form-group form-text">
-          <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-2">
-            <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
-
-            <div class="tw-order-2 tw-basis-full tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
-              <div id="lql-editor-hook" phx-hook="LqlEditorWrapper" phx-update="ignore" data-querystring={@querystring} data-schema-fields-json={@lql_schema_fields_json} data-suggested-searches-json={@saved_searches_json} class="lql-editor-wrapper tw-mt-0">
-                <LiveMonacoEditor.code_editor value={@querystring} path="lql_query" class="tw-w-full tw-h-8" opts={lql_editor_opts()} />
+        <.form id="source-logs-search-form" for={@search_form} phx-change="update_search_form" phx-submit="start_search" class="form-group">
+          <div class="form-group form-text">
+            <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-2">
+              <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
+              <div class="tw-order-2 tw-basis-full tw-px-2 tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
+                <MonacoEditorComponentNew.code_editor
+                  id="lql-editor-hook"
+                  field={@search_form[:querystring]}
+                  language="lql"
+                  opts={MonacoEditorComponentNew.lql_editor_opts()}
+                  schema_fields={@lql_schema_fields}
+                  suggested_searches={@saved_searches}
+                  class="lql-editor-wrapper tw-mt-0 tw-mb-0"
+                  editor_class="tw-w-full tw-h-8"
+                  emit_focus_events
+                />
               </div>
             </div>
           </div>
-        </div>
 
-        <div class="d-flex flex-wrap align-items-center form-text">
-          <div class="pr-2 pt-1 pb-1">
-            <button type="button" disabled={@loading} id="search" class="btn btn-primary" phx-click={Phoenix.LiveView.JS.dispatch("lql:submit", to: "#lql-editor-hook")}>
-              <i class="fas fa-search"></i><span class="fas-in-button hide-on-mobile">Search</span>
-            </button>
+          <div class="d-flex flex-wrap align-items-center form-text">
+            <div class="pr-2 pt-1 pb-1">
+              <button type="submit" disabled={@loading} id="search" class="btn btn-primary">
+                <i class="fas fa-search"></i><span class="fas-in-button hide-on-mobile">Search</span>
+              </button>
+            </div>
+
+            <.navigation_buttons tailing?={@tailing?} uri_params={@uri_params} />
+
+            <.action_buttons source={@source} user={@user} has_results?={@has_results?} />
           </div>
-
-          <.navigation_buttons tailing?={@tailing?} uri_params={@uri_params} />
-
-          <.action_buttons source={@source} user={@user} has_results?={@has_results?} />
-        </div>
+        </.form>
 
         <.chart_controls lql_rules={@lql_rules} chart_aggregate_enabled?={search_agg_controls_enabled?(@lql_rules)} />
 
@@ -186,40 +190,6 @@ defmodule LogflareWeb.SearchLive.FormComponents do
       <.query_timing last_query_completed_at={@last_query_completed_at} />
     </div>
     """
-  end
-
-  defp lql_editor_opts do
-    Map.merge(
-      LiveMonacoEditor.default_opts(),
-      %{
-        "language" => "lql",
-        "lineNumbers" => "off",
-        "glyphMargin" => false,
-        "folding" => false,
-        "lineDecorationsWidth" => 0,
-        "lineNumbersMinChars" => 0,
-        "wordWrap" => "off",
-        "scrollbar" => %{
-          "horizontal" => "hidden",
-          "vertical" => "hidden",
-          "handleMouseWheel" => false
-        },
-        "overviewRulerLanes" => 0,
-        "overviewRulerBorder" => false,
-        "hideCursorInOverviewRuler" => true,
-        "contextmenu" => false,
-        "fixedOverflowWidgets" => true,
-        "suggest" => %{"enabled" => true, "showWords" => false},
-        "parameterHints" => %{"enabled" => false},
-        "quickSuggestions" => true,
-        "matchBrackets" => "never",
-        "tabIndex" => 0,
-        "fontFamily" =>
-          "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-        "padding" => %{"top" => 5, "bottom" => 5},
-        "automaticLayout" => true
-      }
-    )
   end
 
   defp search_agg_controls_enabled?(lql_rules) do
