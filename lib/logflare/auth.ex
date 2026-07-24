@@ -9,20 +9,24 @@ defmodule Logflare.Auth do
   alias Logflare.Partners
   alias Logflare.Partners.Partner
   alias Logflare.Repo
-  alias Logflare.Teams.Team
+  alias Logflare.Teams.TeamContext
   alias Logflare.User
   alias Logflare.Users
   alias Phoenix.Token
 
   @max_age_default 86_400
+  @admin_scope "private:admin"
 
   @email_token_salt "logflare email auth token"
   @user_socket_salt "logflare user socket auth"
   @public_source_salt "logflare public source token"
 
-  @scopes_main_allowed ~w(public ingest query private)
+  @scopes_main_allowed ~w(public ingest query private) ++ [@admin_scope]
   @scopes_ingest_pattern ~r/^ingest:(?:source|collection):\d+$/
   @scopes_query_pattern ~r/^query:endpoint:\d+$/
+
+  @spec admin_scope() :: String.t()
+  def admin_scope, do: @admin_scope
 
   defp env_oauth_config, do: Application.get_env(:logflare, ExOauth2Provider)
   defp env_partner_oauth_config, do: Application.get_env(:logflare, ExOauth2ProviderPartner)
@@ -130,17 +134,28 @@ defmodule Logflare.Auth do
     ExOauth2Provider.AccessTokens.get_by_token(token, env_partner_oauth_config())
   end
 
-  @doc "Creates an Oauth access token with no expiry, linked to the given user or team's user."
-  @typep create_attrs :: %{optional(atom() | String.t()) => String.t()}
-  @spec create_access_token(Team.t() | User.t() | Partner.t(), create_attrs()) ::
-          {:ok, OauthAccessToken.t() | PartnerOauthAccessToken.t()} | {:error, Changeset.t()}
-  def create_access_token(user_or_team_or_partner, attrs \\ %{})
+  @doc """
+  Creates a user Oauth access token with verification `context` is authorized for requested scopes.
 
-  def create_access_token(%Team{user_id: user_id}, attrs) do
-    user_id
-    |> Logflare.Users.get()
-    |> create_access_token(attrs)
+  """
+  @typep create_attr_value :: String.t() | nil
+  @typep create_attrs :: %{optional(atom() | String.t()) => create_attr_value()}
+  @spec create_access_token(OauthAccessToken.t() | TeamContext.t(), User.t(), create_attrs()) ::
+          {:ok, OauthAccessToken.t()} | {:error, Changeset.t()} | {:error, :unauthorized}
+  def create_access_token(context, %User{} = user, attrs) do
+    with :ok <- verify_create_scopes(context, attrs) do
+      create_access_token(user, attrs)
+    end
   end
+
+  @doc """
+  Creates an Oauth access token but without checking authorization.
+
+  Handlers that accept user-selected scopes should call `create_access_token/3`.
+  """
+  @spec create_access_token(User.t() | Partner.t(), create_attrs()) ::
+          {:ok, OauthAccessToken.t() | PartnerOauthAccessToken.t()} | {:error, Changeset.t()}
+  def create_access_token(user_or_partner, attrs \\ %{})
 
   def create_access_token(%User{} = user, attrs) do
     do_create_user_access_token(user, attrs, [:scopes, :description])
@@ -176,6 +191,20 @@ defmodule Logflare.Auth do
       |> validate_scopes()
       |> Changeset.unique_constraint(:token)
     end)
+  end
+
+  defp verify_create_scopes(context, %{scopes: scopes}),
+    do: verify_create_scopes(context, %{"scopes" => scopes})
+
+  defp verify_create_scopes(context, attrs) do
+    with scopes when is_binary(scopes) <- Map.get(attrs, "scopes", nil),
+         true <- @admin_scope in String.split(scopes),
+         false <- can_create_admin_token?(context) do
+      {:error, :unauthorized}
+    else
+      _ ->
+        :ok
+    end
   end
 
   defp run_create_access_token(resource_owner, oauth_config, build_changeset) do
@@ -264,8 +293,12 @@ defmodule Logflare.Auth do
   @doc """
   Checks that an access token contains any scopes that are provided in a given required scopes list.
 
-  Private scope will allways return `:ok`
+  Private scope will always return `:ok`
   iex> check_scopes(access_token, ["private"])
+
+  Admin scope (`private:admin`) implies private scope access:
+  iex> check_scopes(%OauthAccessToken{scopes: "private:admin"}, ["private"])
+  :ok
 
   iex> check_scopes(%OauthAccessToken{scopes: "ingest:source:1"}, ["ingest:source:1"])
   If multiple scopes are provided, each scope must be in the access token's scope string
@@ -281,9 +314,13 @@ defmodule Logflare.Auth do
   """
   def check_scopes(%_{} = access_token, required_scopes) when is_list(required_scopes) do
     token_scopes = String.split(access_token.scopes || "")
+    requires_admin = @admin_scope in required_scopes
 
     cond do
-      "private" in token_scopes ->
+      @admin_scope in token_scopes ->
+        :ok
+
+      "private" in token_scopes and not requires_admin ->
         :ok
 
       Enum.empty?(required_scopes) ->
@@ -320,4 +357,14 @@ defmodule Logflare.Auth do
       :ok
     end
   end
+
+  @spec can_create_admin_token?(OauthAccessToken.t() | TeamContext.t()) :: boolean()
+  def can_create_admin_token?(%TeamContext{} = team_context),
+    do: TeamContext.team_admin?(team_context)
+
+  def can_create_admin_token?(%OauthAccessToken{scopes: scopes}) when is_binary(scopes) do
+    @admin_scope in String.split(scopes)
+  end
+
+  def can_create_admin_token?(_), do: false
 end
