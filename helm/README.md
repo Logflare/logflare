@@ -129,6 +129,67 @@ logflare:
 
 You can list multiple Secret names in `secretRefs` (e.g. one per `ExternalSecret`/upstream secret-store path) — all of their keys are injected together.
 
+#### Letting the chart render the ExternalSecrets (optional)
+
+If you already run ESO, the chart can render the `ExternalSecret` objects for you instead of you hand-writing them, so all of the deployment configuration lives in one place. This is opt-in via `externalSecrets.enabled` and requires ESO (and its CRDs) to be installed in the cluster. When it is disabled (the default) the chart renders no `ExternalSecret` and the manual flow above still applies.
+
+Point it at an existing `(Cluster)SecretStore` and list the secrets to sync. Each entry produces one `ExternalSecret`, and therefore one Kubernetes `Secret`, whose name you then reference in `logflare.secretRefs` (for env vars) or mount as files (for certificates):
+
+```yaml
+externalSecrets:
+  enabled: true
+  secretStore:
+    name: my-secret-store        # an existing ClusterSecretStore / SecretStore
+    kind: ClusterSecretStore
+  secrets:
+    - name: logflare-secrets           # env-var secrets, injected via secretRefs below
+      remotePrefix: secret/logflare
+      keys:
+        - PHX_SECRET_KEY_BASE
+        - PHX_LIVE_VIEW_SIGNING_SALT
+        - LOGFLARE_DB_ENCRYPTION_KEY
+        - DB_PASSWORD
+        - GOOGLE_SERVICE_ACCOUNT
+    - name: logflare-cert-files        # cert/key files, mounted as a volume
+      remotePrefix: secret/logflare
+      keys:
+        - db-server-ca.pem
+        - db-client-cert.pem
+        - db-client-key.pem
+
+logflare:
+  secretRefs:
+    - logflare-secrets
+
+# Mount the cert-file Secret with the chart's generic volume hooks:
+volumes:
+  - name: logflare-cert-files
+    secret:
+      secretName: logflare-cert-files
+volumeMounts:
+  - name: logflare-cert-files
+    mountPath: /etc/logflare/certs
+    readOnly: true
+```
+
+`remotePrefix` is prepended to each key, so a key of `DB_PASSWORD` reads from `secret/logflare/DB_PASSWORD` and lands in the Secret under the identical key name `DB_PASSWORD`. Omit `remotePrefix` to use each key as the remote reference verbatim.
+
+When the backend paths do not map one-to-one to key names, drop to the verbatim `data` and `dataFrom` passthroughs on an entry (they map straight onto the `ExternalSecret` spec), for example to extract a whole bundle:
+
+```yaml
+externalSecrets:
+  enabled: true
+  secretStore:
+    name: my-secret-store
+  secrets:
+    - name: logflare-secrets
+      dataFrom:
+        - extract:
+            key: secret/logflare/all
+```
+
+Per-entry `refreshInterval` and `creationPolicy` overrides are also supported; see `values.yaml` for the full set of fields. This block is ESO-specific by design, so support for other providers (for example a HashiCorp Vault Agent integration) can be added as a sibling block without disturbing it.
+
 ## Configurable values
 
 | `values.yaml` key | Env var | Notes |
