@@ -27,6 +27,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils do
   @doc """
   Resolves the request origin `{scheme, host, port}` for a ClickHouse URL.
 
+  An explicitly-specified port is always honored — including the standard `80`/`443`. When
+  the URL omits a port, `fallback_port` is used, falling back to the ClickHouse scheme default.
+
   ## Examples
 
       iex> origin("https://cluster.example.com:9444", 8443)
@@ -34,6 +37,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils do
 
       iex> origin("https://cluster.example.com", 8443)
       {"https", "cluster.example.com", 8443}
+
+      iex> origin("http://localhost:80", 8123)
+      {"http", "localhost", 80}
 
       iex> origin("http://localhost", nil)
       {"http", "localhost", 8123}
@@ -44,29 +50,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils do
       when is_non_empty_binary(url) and is_pos_integer_or_nil(fallback_port) do
     uri = URI.parse(url)
     scheme = uri.scheme || "http"
-    {scheme, uri.host, resolve_port(uri, fallback_port || default_port(scheme))}
+    {scheme, uri.host, explicit_port(url) || fallback_port || default_port(scheme)}
   end
 
-  @doc """
-  Resolves the effective port for an ClickHouse URI.
-
-  ## Examples
-
-      iex> resolve_port(URI.parse("http://host:9000"), 8123)
-      9000
-
-      iex> resolve_port(URI.parse("https://host"), 8443)
-      8443
-
-      iex> resolve_port(%URI{port: nil}, 8123)
-      8123
-  """
-  @spec resolve_port(URI.t(), pos_integer() | nil) :: pos_integer() | nil
-  def resolve_port(%URI{port: port}, fallback)
-      when port in [nil, 80, 443] and is_pos_integer(fallback),
-      do: fallback
-
-  def resolve_port(%URI{port: port}, _fallback), do: port
+  # `URI.parse/1` normalizes both an omitted port and an explicitly-supplied standard port
+  # (80/443) to the same value, losing that distinction. `:uri_string.parse/1` reports
+  # `:port` only when the URL actually carries one, so an explicit 80/443 is preserved
+  # rather than being mistaken for "absent" and overwritten with the fallback.
+  @spec explicit_port(String.t()) :: :inet.port_number() | nil
+  defp explicit_port(url) do
+    case :uri_string.parse(url) do
+      %{port: port} -> port
+      _ -> nil
+    end
+  end
 
   @doc """
   Extracts the host from a URL, or `nil` when the URL is blank or has no parsable host.

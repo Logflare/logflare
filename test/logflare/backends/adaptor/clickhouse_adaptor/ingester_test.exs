@@ -498,6 +498,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""), @async_opts)
     end
 
+    test "async insert honors an explicit standard port on the cluster URL" do
+      {backend, table} =
+        ingest_target(%{async_insert_cluster_url: "http://async-cluster.local:80"})
+
+      # an explicit :80 must be preserved, not mistaken for "absent" and overwritten
+      expect_ingest_request("async-cluster.local", 80, Logflare.FinchClickHouseAsyncIngest)
+
+      assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""), @async_opts)
+    end
+
     test "async insert falls back to the primary port when the async cluster URL omits one" do
       {backend, table} =
         ingest_target(%{async_insert_cluster_url: "https://async-cluster.local"})
