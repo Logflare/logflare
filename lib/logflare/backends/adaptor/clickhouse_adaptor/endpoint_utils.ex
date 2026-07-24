@@ -53,18 +53,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils do
     {scheme, uri.host, explicit_port(url) || fallback_port || default_port(scheme)}
   end
 
-  # `URI.parse/1` normalizes both an omitted port and an explicitly-supplied standard port
-  # (80/443) to the same value, losing that distinction. `:uri_string.parse/1` reports
-  # `:port` only when the URL actually carries one, so an explicit 80/443 is preserved
-  # rather than being mistaken for "absent" and overwritten with the fallback.
-  @spec explicit_port(String.t()) :: :inet.port_number() | nil
-  defp explicit_port(url) do
-    case :uri_string.parse(url) do
-      %{port: port} -> port
-      _ -> nil
-    end
-  end
-
   @doc """
   Extracts the host from a URL, or `nil` when the URL is blank or has no parsable host.
 
@@ -118,4 +106,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils do
   end
 
   def clickhouse_cloud_url?(_url), do: false
+
+  # `URI.parse/1` normalizes both an omitted port and an explicitly-supplied standard port
+  # (80/443) to the same value, losing that distinction. `:uri_string.parse/1` reports
+  # `:port` only when the URL actually carries one, so an explicit 80/443 is preserved
+  # rather than being mistaken for "absent" and overwritten with the fallback.
+  @spec explicit_port(String.t()) :: :inet.port_number() | nil
+  defp explicit_port(url) do
+    case :uri_string.parse(url) do
+      %{port: port} -> port
+      _ -> nil
+    end
+  end
 end
