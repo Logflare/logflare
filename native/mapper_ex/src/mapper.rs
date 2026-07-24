@@ -403,8 +403,13 @@ fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>]) -> T
                         elevated_keys.push(ck);
                         elevated_values.push(cv);
                     }
+                    continue; // Don't include the elevated key itself
                 }
-                continue; // Don't include the elevated key itself
+                // Non-map value (e.g. a stringified `metadata`): there are no
+                // children to elevate, so preserve it as a literal top-level
+                // key instead of dropping it.
+                top_entries.push((k, v));
+                continue;
             }
         }
         top_entries.push((k, v));
@@ -519,8 +524,13 @@ fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>])
             let mut matched = false;
             for ek in elevate {
                 if key_bytes == ek.as_slice() {
-                    // Exact match — drop the key entirely
-                    matched = true;
+                    // Exact match. A map value is a leftover parent placeholder
+                    // whose children were elevated — drop it. A non-map value
+                    // (e.g. a stringified `metadata`) has no children, so leave
+                    // it unmatched and preserve it as a literal top-level key.
+                    if v.is_map() {
+                        matched = true;
+                    }
                     break;
                 }
                 if key_bytes.len() > ek.len()
