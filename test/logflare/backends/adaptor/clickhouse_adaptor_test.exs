@@ -208,38 +208,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  describe "clickhouse_cloud?/1" do
-    test "returns true for ClickHouse Cloud URLs" do
-      backend = %Backend{config: %{url: "https://abc123.eu-central-1.aws.clickhouse.cloud"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns true for GCP Cloud URLs" do
-      backend = %Backend{config: %{url: "https://xyz.europe-west4.gcp.clickhouse.cloud"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns true regardless of port in URL" do
-      backend = %Backend{config: %{url: "https://foo.clickhouse.cloud:8443"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false for self-hosted URLs" do
-      backend = %Backend{config: %{url: "http://localhost:8123"}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false for similar but non-Cloud domains" do
-      backend = %Backend{config: %{url: "https://clickhouse.cloud.example.com"}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false when config has no url" do
-      backend = %Backend{config: %{}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-  end
-
   describe "redact_config/1" do
     test "redacts password field" do
       config = %{password: "secret123", database: "logs"}
@@ -422,6 +390,45 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "passes when async is enabled and async_insert_cluster_url points to a valid cluster" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://localhost:8123"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when async is enabled but async_insert_cluster_url is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://localhost:19999"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "skips the async check when async is disabled even if the cluster URL is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: false,
+            async_insert_cluster_url: "http://localhost:19999"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
     end
   end
 

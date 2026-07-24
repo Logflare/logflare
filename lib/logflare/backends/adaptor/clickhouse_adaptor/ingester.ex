@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder
   alias Logflare.Backends.Backend
@@ -371,22 +372,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     {:error, "Unable to build connection options"}
   end
 
-  @spec insert_origin(Keyword.t(), boolean()) :: {String.t(), String.t(), non_neg_integer()}
+  @spec insert_origin(Keyword.t(), boolean()) ::
+          {String.t(), String.t() | nil, pos_integer() | nil}
   defp insert_origin(connection_opts, async?) do
-    case dedicated_async_url(connection_opts, async?) do
-      nil ->
-        # non-async request or no dedicated async cluster URL configured
-        # use the primary url / schema / port
-        uri = URI.parse(Keyword.get(connection_opts, :url))
-        scheme = uri.scheme || "http"
-        {scheme, uri.host, Keyword.get(connection_opts, :port, default_port(scheme))}
-
-      async_url ->
-        # async request with a dedicated async cluster URL configured
-        uri = URI.parse(async_url)
-        scheme = uri.scheme || "http"
-        {scheme, uri.host, dedicated_port(uri, connection_opts, scheme)}
-    end
+    # async inserts with a configured dedicated cluster URL target it; everything else
+    # (sync, or async with no dedicated URL) targets the primary URL.
+    url = dedicated_async_url(connection_opts, async?) || Keyword.get(connection_opts, :url)
+    EndpointUtils.origin(url, Keyword.get(connection_opts, :port))
   end
 
   @spec dedicated_async_url(Keyword.t(), boolean()) :: String.t() | nil
@@ -398,12 +390,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   defp dedicated_async_url(_connection_opts, false), do: nil
-
-  @spec dedicated_port(URI.t(), Keyword.t(), String.t()) :: non_neg_integer()
-  defp dedicated_port(%URI{port: port}, connection_opts, scheme) when port in [nil, 80, 443],
-    do: Keyword.get(connection_opts, :port, default_port(scheme))
-
-  defp dedicated_port(%URI{port: port}, _connection_opts, _scheme), do: port
 
   @spec async_insert_request?(keyword()) :: boolean()
   defp async_insert_request?(opts), do: Keyword.get(opts, :async_insert) == 1
@@ -442,7 +428,4 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       Map.put(acc, to_string(key), to_string(value))
     end)
   end
-
-  defp default_port("https"), do: 8443
-  defp default_port(_), do: 8123
 end
