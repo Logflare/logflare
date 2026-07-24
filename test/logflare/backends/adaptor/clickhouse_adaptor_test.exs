@@ -208,38 +208,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  describe "clickhouse_cloud?/1" do
-    test "returns true for ClickHouse Cloud URLs" do
-      backend = %Backend{config: %{url: "https://abc123.eu-central-1.aws.clickhouse.cloud"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns true for GCP Cloud URLs" do
-      backend = %Backend{config: %{url: "https://xyz.europe-west4.gcp.clickhouse.cloud"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns true regardless of port in URL" do
-      backend = %Backend{config: %{url: "https://foo.clickhouse.cloud:8443"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false for self-hosted URLs" do
-      backend = %Backend{config: %{url: "http://localhost:8123"}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false for similar but non-Cloud domains" do
-      backend = %Backend{config: %{url: "https://clickhouse.cloud.example.com"}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false when config has no url" do
-      backend = %Backend{config: %{}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-  end
-
   describe "redact_config/1" do
     test "redacts password field" do
       config = %{password: "secret123", database: "logs"}
@@ -283,6 +251,65 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         cast_and_validate_config(read_only_url: "https://read-cluster.clickhouse.cloud:8443")
 
       assert changeset.valid?
+    end
+
+    test "use_async_inserts_for_small_batches defaults to false when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_for_small_batches) == false
+    end
+
+    test "casts use_async_inserts_for_small_batches when provided" do
+      changeset = cast_and_validate_config(use_async_inserts_for_small_batches: true)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_for_small_batches) == true
+    end
+
+    test "async_insert_max_rows defaults to 1000 when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_max_rows) == 1_000
+    end
+
+    test "casts a custom async_insert_max_rows" do
+      changeset = cast_and_validate_config(async_insert_max_rows: 500)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_max_rows) == 500
+    end
+
+    test "rejects a non-positive async_insert_max_rows" do
+      changeset = cast_and_validate_config(async_insert_max_rows: 0)
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :async_insert_max_rows)
+    end
+
+    test "async_insert_cluster_url defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_cluster_url) == nil
+    end
+
+    test "casts a valid async_insert_cluster_url" do
+      changeset =
+        cast_and_validate_config(async_insert_cluster_url: "https://async.clickhouse.cloud:8443")
+
+      assert changeset.valid?
+
+      assert Ecto.Changeset.get_field(changeset, :async_insert_cluster_url) ==
+               "https://async.clickhouse.cloud:8443"
+    end
+
+    test "rejects an invalid async_insert_cluster_url format" do
+      changeset = cast_and_validate_config(async_insert_cluster_url: "not-a-url")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :async_insert_cluster_url)
     end
   end
 
@@ -363,6 +390,80 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "passes when async is enabled and async_insert_cluster_url points to a valid cluster" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://localhost:8123"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when async is enabled but async_insert_cluster_url is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://localhost:19999"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "skips the async check when async is disabled even if the cluster URL is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: false,
+            async_insert_cluster_url: "http://localhost:19999"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+  end
+
+  describe "insert_log_events_compressed/4 failure logging" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "logs the dedicated async cluster host when an async insert fails" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://async-cluster.local:9000"
+          }
+        )
+
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 400, body: "boom"}}
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log([format: "$metadata$message", metadata: [:host]], fn ->
+          assert {:error, _} =
+                   ClickHouseAdaptor.insert_log_events_compressed(
+                     backend,
+                     :log,
+                     :zlib.gzip(""),
+                     async: true
+                   )
+        end)
+
+      assert log =~ "host=async-cluster.local"
+      refute log =~ "localhost"
     end
   end
 

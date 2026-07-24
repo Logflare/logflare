@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   alias __MODULE__.CircuitBreaker
   alias __MODULE__.ConnectionManager
+  alias __MODULE__.EndpointUtils
   alias __MODULE__.Ingester
   alias __MODULE__.NativeIngester
   alias __MODULE__.NativeIngester.PoolSup, as: NativePoolSup
@@ -141,7 +142,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_url: :string,
        insert_protocol: :string,
        native_port: :integer,
-       native_pool_size: :integer
+       native_pool_size: :integer,
+       use_async_inserts_for_small_batches: :boolean,
+       async_insert_cluster_url: :string,
+       async_insert_max_rows: :integer
      }}
     |> Changeset.cast(params, [
       :url,
@@ -153,9 +157,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_url,
       :insert_protocol,
       :native_port,
-      :native_pool_size
+      :native_pool_size,
+      :use_async_inserts_for_small_batches,
+      :async_insert_cluster_url,
+      :async_insert_max_rows
     ])
     |> Logflare.Utils.default_field_value(:insert_protocol, "http")
+    |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
+    |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
   end
 
   @doc false
@@ -168,6 +177,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     changeset
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
+    |> validate_number(:async_insert_max_rows, greater_than: 0)
     |> validate_read_only_url()
     |> validate_user_pass()
     |> validate_inclusion(:insert_protocol, ["http", "native"])
@@ -186,16 +197,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   Always checks the ingest cluster (primary `url`) for full write permissions.
   When `read_only_url` is configured, additionally checks the read cluster for `SELECT` permission.
+  When async inserts are enabled and a parsable `async_insert_cluster_url` is configured,
+  additionally checks that endpoint for connectivity and write permissions.
   """
   @impl Logflare.Backends.Adaptor
   @spec test_connection(Backend.t()) ::
           :ok
           | {:error, :permissions_missing}
           | {:error, :read_permissions_missing}
+          | {:error, :async_permissions_missing}
           | {:error, :grant_check_unknown_failure}
   def test_connection(%Backend{config: config} = backend) do
     with :ok <- check_ingest_grants(backend, config),
-         :ok <- maybe_check_read_grants(backend, config) do
+         :ok <- maybe_check_read_grants(backend, config),
+         :ok <- maybe_check_async_grants(backend, config) do
       :ok
     end
   end
@@ -260,51 +275,57 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  @doc """
-  Determines if a backend is hosted on ClickHouse Cloud
-  by checking if the URL hostname ends with `.clickhouse.cloud`.
-
-  Note: _There may be edge cases where this will not be picked up_
-  """
-  @spec clickhouse_cloud?(Backend.t()) :: boolean()
-  def clickhouse_cloud?(%Backend{config: %{url: url}}) when is_non_empty_binary(url) do
-    clickhouse_cloud_url?(url)
-  end
-
-  def clickhouse_cloud?(%Backend{}), do: false
-
-  @spec clickhouse_cloud_url?(String.t()) :: boolean()
-  def clickhouse_cloud_url?(url) when is_non_empty_binary(url) do
-    case URI.new(url) do
-      {:ok, %URI{host: host}} when is_binary(host) ->
-        String.ends_with?(host, ".clickhouse.cloud")
-
-      _ ->
-        false
+  @spec maybe_check_async_grants(Backend.t(), map()) ::
+          :ok | {:error, :async_permissions_missing} | {:error, :grant_check_unknown_failure}
+  defp maybe_check_async_grants(%Backend{} = backend, config) do
+    case async_grant_check_url(config) do
+      nil -> :ok
+      async_url -> check_async_grants(backend, config, async_url)
     end
   end
 
-  def clickhouse_cloud_url?(_url), do: false
-
-  @spec config_host(Backend.t()) :: String.t() | nil
-  defp config_host(%Backend{config: %{url: url}}), do: url_host(url)
-  defp config_host(_backend), do: nil
-
-  @spec read_host(Backend.t()) :: String.t() | nil
-  defp read_host(%Backend{config: %{read_only_url: url}}) when is_non_empty_binary(url),
-    do: url_host(url)
-
-  defp read_host(%Backend{} = backend), do: config_host(backend)
-
-  @spec url_host(term()) :: String.t() | nil
-  defp url_host(url) when is_non_empty_binary(url) do
-    case URI.new(url) do
-      {:ok, %URI{host: host}} when is_binary(host) -> host
+  # The dedicated async endpoint is only checked when async routing is enabled and a
+  # set, parsable `async_insert_cluster_url` is configured.
+  @spec async_grant_check_url(map()) :: String.t() | nil
+  defp async_grant_check_url(%{
+         use_async_inserts_for_small_batches: true,
+         async_insert_cluster_url: url
+       })
+       when is_non_empty_binary(url) do
+    case EndpointUtils.host(url) do
+      host when is_non_empty_binary(host) -> url
       _ -> nil
     end
   end
 
-  defp url_host(_url), do: nil
+  defp async_grant_check_url(_config), do: nil
+
+  @spec check_async_grants(Backend.t(), map(), String.t()) ::
+          :ok | {:error, :async_permissions_missing} | {:error, :grant_check_unknown_failure}
+  defp check_async_grants(%Backend{} = backend, config, async_url) do
+    sql_statement = QueryTemplates.async_insert_grant_check_statement()
+
+    case execute_direct_query(async_url, config, sql_statement) do
+      {:ok, [%{"result" => 1}]} ->
+        :ok
+
+      {:ok, [%{"result" => 0}]} ->
+        Logger.warning(
+          "ClickHouse async insert cluster GRANT check failed. Required: `INSERT`, `SELECT`",
+          backend_id: backend.id
+        )
+
+        {:error, :async_permissions_missing}
+
+      {:error, _} = error_result ->
+        Logger.warning(
+          "ClickHouse async insert cluster GRANT check failed. Unexpected error #{inspect(error_result)}",
+          backend_id: backend.id
+        )
+
+        {:error, :grant_check_unknown_failure}
+    end
+  end
 
   @doc """
   Produces a type-specific ingest table name for ClickHouse.
@@ -379,7 +400,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
              user_id: backend.user_id,
              backend_id: backend.id,
              backend_token: backend.token,
-             host: read_host(backend)
+             host:
+               EndpointUtils.host(backend.config[:read_only_url]) ||
+                 EndpointUtils.host(backend.config[:url])
            )}
       end
     end
@@ -448,13 +471,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @spec execute_direct_query(url :: String.t(), config :: map(), statement :: String.t()) ::
           {:ok, list()} | {:error, term()}
   defp execute_direct_query(url, config, statement) do
-    uri = URI.parse(url)
+    {scheme, hostname, port} = EndpointUtils.origin(url, Map.get(config, :port))
     timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 30_000
 
     ch_opts = [
-      scheme: uri.scheme,
-      hostname: uri.host,
-      port: uri.port || Map.get(config, :port),
+      scheme: scheme,
+      hostname: hostname,
+      port: port,
       database: config.database,
       username: config.username,
       password: config.password,
@@ -512,7 +535,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     else
       {:error, reason} ->
         Logger.warning("ClickHouse native insert error.",
-          host: config_host(backend),
+          host: EndpointUtils.host(backend.config[:url]),
           error_string: inspect(reason)
         )
 
@@ -524,7 +547,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       when is_event_type(event_type) do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
-    insert_opts = build_insert_opts(opts)
+    async? = Keyword.get(opts, :async, false)
+    insert_opts = [{:async, async?} | build_insert_opts(opts)]
 
     case Ingester.insert(backend, table_name, events, event_type, insert_opts) do
       :ok ->
@@ -532,7 +556,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
       {:error, reason} ->
         Logger.warning("ClickHouse http insert error.",
-          host: config_host(backend),
+          host: insert_host(backend.config, async?),
           error_string: inspect(reason)
         )
 
@@ -555,7 +579,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       when is_event_type(event_type) and is_binary(compressed) do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
-    insert_opts = build_insert_opts(opts)
+    async? = Keyword.get(opts, :async, false)
+    insert_opts = [{:async, async?} | build_insert_opts(opts)]
 
     case Ingester.insert_compressed(backend, table_name, event_type, compressed, insert_opts) do
       :ok ->
@@ -563,7 +588,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
       {:error, reason} ->
         Logger.warning("ClickHouse http insert error.",
-          host: config_host(backend),
+          host: insert_host(backend.config, async?),
           error_string: inspect(reason)
         )
 
@@ -575,6 +600,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   defp build_insert_opts(opts) do
     if Keyword.get(opts, :async, false), do: async_insert_opts(), else: []
   end
+
+  # The endpoint host an HTTP insert actually targets, for failure logging: async inserts
+  # hit the dedicated `async_insert_cluster_url` when configured (falling back to the
+  # primary URL), mirroring the routing in `Ingester`; everything else hits the primary URL.
+  @spec insert_host(term(), boolean()) :: String.t() | nil
+  defp insert_host(%{async_insert_cluster_url: async_url} = config, true)
+       when is_non_empty_binary(async_url) do
+    EndpointUtils.host(async_url) || EndpointUtils.host(Map.get(config, :url))
+  end
+
+  defp insert_host(config, _async?) when is_map(config) do
+    EndpointUtils.host(Map.get(config, :url))
+  end
+
+  defp insert_host(_config, _async?), do: nil
 
   @spec async_insert_opts() :: keyword()
   defp async_insert_opts do
@@ -592,7 +632,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   """
   @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, QueryError.t()}
   def provision_ingest_tables(%Backend{config: config} = backend) do
-    cloud? = clickhouse_cloud?(backend)
+    cloud? = EndpointUtils.clickhouse_cloud_url?(config[:url])
 
     Enum.reduce_while([:log, :metric, :trace], :ok, fn event_type, :ok ->
       table_name = clickhouse_ingest_table_name(backend, event_type)

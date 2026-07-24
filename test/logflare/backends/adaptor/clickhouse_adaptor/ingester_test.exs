@@ -464,4 +464,94 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert :ok = Ingester.insert(backend, table_name, [log_event], :log, opts)
     end
   end
+
+  describe "insert routing" do
+    @async_opts [
+      async: true,
+      async_insert: 1,
+      wait_for_async_insert: 1,
+      async_insert_busy_timeout_max_ms: 3_000
+    ]
+
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "sync insert uses the primary URL, port, and primary Finch pool" do
+      {backend, table} =
+        ingest_target(%{async_insert_cluster_url: "http://async-cluster.local:9000"})
+
+      # ensure the sync pool is utilized
+      expect_ingest_request("localhost", 8123, Logflare.FinchClickHouseIngest)
+
+      assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""))
+    end
+
+    test "async insert uses a dedicated cluster host and port when specified" do
+      {backend, table} =
+        ingest_target(%{async_insert_cluster_url: "http://async-cluster.local:9000"})
+
+      # ensure the async pool is utilized
+      expect_ingest_request("async-cluster.local", 9000, Logflare.FinchClickHouseAsyncIngest)
+
+      assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""), @async_opts)
+    end
+
+    test "async insert honors an explicit standard port on the cluster URL" do
+      {backend, table} =
+        ingest_target(%{async_insert_cluster_url: "http://async-cluster.local:80"})
+
+      # an explicit :80 must be preserved, not mistaken for "absent" and overwritten
+      expect_ingest_request("async-cluster.local", 80, Logflare.FinchClickHouseAsyncIngest)
+
+      assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""), @async_opts)
+    end
+
+    test "async insert falls back to the primary port when the async cluster URL omits one" do
+      {backend, table} =
+        ingest_target(%{async_insert_cluster_url: "https://async-cluster.local"})
+
+      # ensure the async pool is utilized
+      expect_ingest_request("async-cluster.local", 8123, Logflare.FinchClickHouseAsyncIngest)
+
+      assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""), @async_opts)
+    end
+
+    test "async insert falls back to the primary URL/port when no cluster URL is configured" do
+      {backend, table} = ingest_target(%{})
+
+      # ensure the async pool is utilized
+      expect_ingest_request("localhost", 8123, Logflare.FinchClickHouseAsyncIngest)
+
+      assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""), @async_opts)
+    end
+
+    test "async insert falls back to the primary URL/port when the dedicated async cluster URL an empty string" do
+      {backend, table} = ingest_target(%{async_insert_cluster_url: ""})
+
+      # ensure the async pool is utilized
+      expect_ingest_request("localhost", 8123, Logflare.FinchClickHouseAsyncIngest)
+
+      assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""), @async_opts)
+    end
+  end
+
+  # Persists a ClickHouse backend with `config` merged over the defaults and returns it
+  # alongside its :log ingest table name. Finch.request/3 is mocked in these tests, so no
+  # adaptor/supervision needs starting — insert_compressed/5 reads only the backend struct.
+  defp ingest_target(config) do
+    {_source, backend} = setup_clickhouse_test(config: config)
+    {backend, ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)}
+  end
+
+  # Asserts the next Finch request targets `host`/`port` on `pool`, and returns a 200.
+  defp expect_ingest_request(host, port, pool) do
+    expect(Finch, :request, fn request, req_pool, _opts ->
+      assert request.host == host
+      assert request.port == port
+      assert req_pool == pool
+      {:ok, %Finch.Response{status: 200, body: ""}}
+    end)
+  end
 end
