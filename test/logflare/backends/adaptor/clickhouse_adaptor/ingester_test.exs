@@ -464,4 +464,91 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert :ok = Ingester.insert(backend, table_name, [log_event], :log, opts)
     end
   end
+
+  describe "async insert routing with a dedicated cluster URL" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} =
+        setup_clickhouse_test(
+          config: %{async_insert_cluster_url: "http://async-cluster.local:8123"}
+        )
+
+      {:ok, _supervisor_pid} = ClickHouseAdaptor.start_link(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+      Process.sleep(200)
+
+      [source: source, backend: backend, table_name: table_name]
+    end
+
+    test "routes async inserts to the async cluster URL via the async Finch pool", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      async_opts = [
+        async_insert: 1,
+        wait_for_async_insert: 1,
+        async_insert_busy_timeout_max_ms: 3_000
+      ]
+
+      Finch
+      |> expect(:request, fn request, pool, _opts ->
+        assert request.host == "async-cluster.local"
+        assert pool == Logflare.FinchClickHouseAsyncIngest
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok =
+               Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""), async_opts)
+    end
+
+    test "routes sync inserts to the primary URL via the primary Finch pool", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      Finch
+      |> expect(:request, fn request, pool, _opts ->
+        assert request.host == "localhost"
+        assert pool == Logflare.FinchClickHouseIngest
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
+    end
+  end
+
+  describe "async insert routing without a dedicated cluster URL" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} = setup_clickhouse_test()
+
+      {:ok, _supervisor_pid} = ClickHouseAdaptor.start_link(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+      Process.sleep(200)
+
+      [source: source, backend: backend, table_name: table_name]
+    end
+
+    test "falls back to the primary URL but still uses the isolated async Finch pool", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      async_opts = [
+        async_insert: 1,
+        wait_for_async_insert: 1,
+        async_insert_busy_timeout_max_ms: 3_000
+      ]
+
+      Finch
+      |> expect(:request, fn request, pool, _opts ->
+        assert request.host == "localhost"
+        assert pool == Logflare.FinchClickHouseAsyncIngest
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok =
+               Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""), async_opts)
+    end
+  end
 end
