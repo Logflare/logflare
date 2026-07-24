@@ -478,6 +478,46 @@ defmodule Logflare.MapperTest do
 
       assert result["attrs"] == %{"region" => "us-east"}
     end
+
+    test "elevate_keys: non-map value is preserved as a literal key" do
+      doc = %{
+        "level" => "info",
+        "metadata" => "{\"reason\":\"abuse\",\"actor\":\"admin\"}"
+      }
+
+      result =
+        compile_and_map(
+          [Field.json("attrs", path: "$", elevate_keys: ["metadata"])],
+          doc
+        )
+
+      assert result["attrs"]["level"] == "info"
+      assert result["attrs"]["metadata"] == "{\"reason\":\"abuse\",\"actor\":\"admin\"}"
+    end
+
+    test "elevate_keys: preserves stringified metadata alongside excluded keys" do
+      doc = %{
+        "id" => "uuid",
+        "event_message" => "hello",
+        "timestamp" => 123,
+        "region" => "us-east",
+        "metadata" => "serialized-string"
+      }
+
+      result =
+        compile_and_map(
+          [
+            Field.json("attrs",
+              path: "$",
+              exclude_keys: ["id", "event_message", "timestamp"],
+              elevate_keys: ["metadata"]
+            )
+          ],
+          doc
+        )
+
+      assert result["attrs"] == %{"region" => "us-east", "metadata" => "serialized-string"}
+    end
   end
 
   # ── Pick ──────────────────────────────────────────────────────────────
@@ -2118,6 +2158,30 @@ defmodule Logflare.MapperTest do
       assert result["attrs"] == %{"level" => "top", "a.b" => "2"}
     end
 
+    test "elevate_keys: non-map metadata is preserved as a literal string key" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              path: "$",
+              exclude_keys: ["id"],
+              elevate_keys: ["metadata"]
+            )
+          ],
+          %{
+            "id" => "123",
+            "metadata" => ~s({"reason":"abuse","actor":"admin"}),
+            "extra" => "val"
+          }
+        )
+
+      attrs = result["attrs"]
+      refute Map.has_key?(attrs, "id")
+      assert attrs["extra"] == "val"
+      # stringified metadata survives elevate and stringify: attrs["metadata"] == raw string
+      assert attrs["metadata"] == ~s({"reason":"abuse","actor":"admin"})
+    end
+
     test "JSON-encodes list of mixed types" do
       result =
         compile_and_map(
@@ -2245,6 +2309,29 @@ defmodule Logflare.MapperTest do
         )
 
       assert result["body"] == doc
+    end
+
+    test "elevate_keys strips prefixes but preserves a non-map leaf at the elevate key" do
+      result =
+        compile_and_map_flat(
+          [
+            Field.json("attrs",
+              path: "$",
+              elevate_keys: ["metadata"]
+            )
+          ],
+          %{
+            "level" => "info",
+            "metadata" => "serialized-string",
+            "metadata.region" => "us-east"
+          }
+        )
+
+      # dotted child is elevated (prefix stripped)
+      assert result["attrs"]["region"] == "us-east"
+      # bare `metadata` leaf survives instead of being dropped
+      assert result["attrs"]["metadata"] == "serialized-string"
+      assert result["attrs"]["level"] == "info"
     end
   end
 

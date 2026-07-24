@@ -42,8 +42,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
         size: size,
         retries: 0,
         event_type: :log,
-        day_bucket: 0,
-        ingest_freshness: :fresh
+        day_bucket: 0
       }
     }
   end
