@@ -1,0 +1,243 @@
+# Default values for logflare.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
+replicaCount: 1
+
+# This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
+image:
+  repository: supabase/logflare
+  # This sets the pull policy for images.
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+# Logflare single-tenant application configuration.
+# Non-sensitive values are rendered into a ConfigMap and wired into the
+# Deployment via envFrom. Sensitive values are loaded the same way, in bulk,
+# from Secret(s) you manage yourself - see the comment above logflare.secretRefs.
+logflare:
+  singleTenant: true
+  supabaseMode: false
+
+  # Erlang node host, used to build the node name for clustering. When empty,
+  # the chart injects the pod IP via the downward API instead of a fixed value.
+  nodeHost: ""
+  grpcPort: 50051
+  httpConnectionPools: "all"
+  featureFlagOverride: ""
+
+  phx:
+    httpPort: 4000
+    urlHost: ""
+    urlScheme: "https"
+    urlPort: 443
+    checkOrigin: false
+
+  # This chart never creates or owns a Secret. List the name(s) of Secret(s)
+  # you manage yourself (e.g. materialized by External Secrets Operator, or
+  # via `kubectl create secret`) here - every key in each Secret is injected
+  # in bulk as an env var, the same way the chart's ConfigMap is. At minimum,
+  # most deployments need a Secret containing: LOGFLARE_PUBLIC_ACCESS_TOKEN,
+  # LOGFLARE_PRIVATE_ACCESS_TOKEN, DB_PASSWORD, LOGFLARE_DB_ENCRYPTION_KEY,
+  # PHX_SECRET_KEY_BASE, PHX_LIVE_VIEW_SIGNING_SALT, and one of
+  # POSTGRES_BACKEND_URL (postgres backend) or GOOGLE_SERVICE_ACCOUNT
+  # (bigquery backend). See README.md for a full walkthrough.
+  secretRefs: []
+  # - logflare-secrets
+
+  # Cert/key files (internal DB SSL and gRPC TLS) come from a mounted Secret
+  # rather than envFrom, because Logflare reads them from disk. Set to the name
+  # of a Secret you manage yourself whose keys are the cert filenames
+  # (db-server-ca.pem, db-client-cert.pem, db-client-key.pem, cert.pem,
+  # cert.key); empty disables the mount. The chart points the matching
+  # DB_SSL_*_PATH / LOGFLARE_TLS_*_PATH env vars at the mount for you.
+  certFilesSecret: ""
+  certFilesMountPath: /etc/logflare/certs
+
+  # Roll the Deployment automatically when its ConfigMap or referenced Secrets
+  # change. Requires the Stakater Reloader controller to be installed.
+  reloader: false
+
+  # Free-form non-secret environment variables rendered verbatim into the
+  # ConfigMap. Use this for configuration not modeled as first-class values
+  # above (e.g. LOGFLARE_LOG_LEVEL, LIBCLUSTER_TOPOLOGY, SPOOL_*, GOOGLE_*_SA).
+  extraConfig: {}
+    # LOGFLARE_LOG_LEVEL: info
+
+  # Logflare's own metadata Postgres database (distinct from the optional
+  # "postgres" event-storage backend below).
+  db:
+    hostname: ""
+    port: 5432
+    database: "logflare"
+    username: "postgres"
+    schema: "public"
+    poolSize: 10
+    ssl: false
+
+  # Event storage backend. bigquery and postgres are mutually exclusive.
+  backend:
+    type: bigquery # bigquery | postgres
+    bigquery:
+      projectId: ""
+      projectNumber: ""
+      datasetIdAppend: "_prod"
+      datasetLocation: "US"
+    postgres:
+      schema: "public" # POSTGRES_BACKEND_SCHEMA; url (POSTGRES_BACKEND_URL) comes from a Secret in logflare.secretRefs
+
+# This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+imagePullSecrets: []
+# This is to override the chart name.
+nameOverride: ""
+fullnameOverride: ""
+
+# This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
+serviceAccount:
+  # Specifies whether a service account should be created.
+  create: true
+  # Automatically mount a ServiceAccount's API credentials?
+  automount: true
+  # Annotations to add to the service account.
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template.
+  name: ""
+
+# This is for setting Kubernetes Annotations to a Pod.
+# For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+podAnnotations: {}
+# This is for setting Kubernetes Labels to a Pod.
+# For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+podLabels: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+# This is for setting up a service more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/
+service:
+  # This sets the service type more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
+  type: ClusterIP
+  # This sets the ports more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
+  port: 4000
+
+# This block is for setting up the ingress for more information can be found here: https://kubernetes.io/docs/concepts/services-networking/ingress/
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+    # - secretName: chart-example-tls
+    #   hosts:
+    #     - chart-example.local
+
+# -- Expose the service via gateway-api HTTPRoute
+# Requires Gateway API resources and suitable controller installed within the cluster
+# (see: https://gateway-api.sigs.k8s.io/guides/)
+httpRoute:
+  # HTTPRoute enabled.
+  enabled: false
+  # HTTPRoute annotations.
+  annotations: {}
+  # Which Gateways this Route is attached to.
+  parentRefs:
+  - name: gateway
+    sectionName: http
+    # namespace: default
+  # Hostnames matching HTTP header.
+  hostnames:
+  - chart-example.local
+  # List of rules and filters applied.
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+  #   filters:
+  #   - type: RequestHeaderModifier
+  #     requestHeaderModifier:
+  #       set:
+  #       - name: My-Overwrite-Header
+  #         value: this-is-the-only-value
+  #       remove:
+  #       - User-Agent
+  # - matches:
+  #   - path:
+  #       type: PathPrefix
+  #       value: /echo
+  #     headers:
+  #     - name: version
+  #       value: v2
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+# This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+# Guards against liveness/readiness killing the pod mid-migration on first boot.
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+  failureThreshold: 30
+  periodSeconds: 10
+
+# This section is for setting up autoscaling more information can be found here: https://kubernetes.io/docs/concepts/workloads/autoscaling/
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+# Additional volumes on the output Deployment definition.
+volumes: []
+  # - name: foo
+  #   secret:
+  #     secretName: mysecret
+  #     optional: false
+
+# Additional volumeMounts on the output Deployment definition.
+volumeMounts: []
+  # - name: foo
+  #   mountPath: "/etc/foo"
+  #   readOnly: true
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
