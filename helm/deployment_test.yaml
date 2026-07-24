@@ -2,6 +2,7 @@ suite: test deployment kind
 templates:
   - deployment.yaml
   - configmap.yaml
+  - vm-args-configmap.yaml
 tests:
   - it: should render the correct deployment Kind
     asserts:
@@ -95,8 +96,17 @@ tests:
 
   - it: should not mount cert files or set cert paths by default
     asserts:
-      - notExists:
+      - notContains:
           path: spec.template.spec.volumes
+          content:
+            name: cert-files
+          any: true
+        template: deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: cert-files
+          any: true
         template: deployment.yaml
       - notContains:
           path: spec.template.spec.containers[0].env
@@ -109,17 +119,19 @@ tests:
     set:
       logflare.certFilesSecret: logflare-cert-files
     asserts:
-      - equal:
-          path: spec.template.spec.volumes[0].name
-          value: cert-files
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: cert-files
+            secret:
+              secretName: logflare-cert-files
         template: deployment.yaml
-      - equal:
-          path: spec.template.spec.volumes[0].secret.secretName
-          value: logflare-cert-files
-        template: deployment.yaml
-      - equal:
-          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
-          value: /etc/logflare/certs
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: cert-files
+            mountPath: /etc/logflare/certs
+            readOnly: true
         template: deployment.yaml
       - contains:
           path: spec.template.spec.containers[0].env

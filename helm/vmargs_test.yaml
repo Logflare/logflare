@@ -2,6 +2,7 @@ suite: test vm.args wiring
 templates:
   - vm-args-configmap.yaml
   - deployment.yaml
+  - configmap.yaml
 tests:
   - it: renders the vm.args ConfigMap with +Q by default
     template: vm-args-configmap.yaml
