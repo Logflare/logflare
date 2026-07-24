@@ -432,6 +432,41 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "insert_log_events_compressed/4 failure logging" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "logs the dedicated async cluster host when an async insert fails" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://async-cluster.local:9000"
+          }
+        )
+
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 400, body: "boom"}}
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log([format: "$metadata$message", metadata: [:host]], fn ->
+          assert {:error, _} =
+                   ClickHouseAdaptor.insert_log_events_compressed(
+                     backend,
+                     :log,
+                     :zlib.gzip(""),
+                     async: true
+                   )
+        end)
+
+      assert log =~ "host=async-cluster.local"
+      refute log =~ "localhost"
+    end
+  end
+
   describe "log event insertion and retrieval" do
     setup do
       insert(:plan, name: "Free")

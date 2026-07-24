@@ -547,7 +547,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       when is_event_type(event_type) do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
-    insert_opts = build_insert_opts(opts)
+    async? = Keyword.get(opts, :async, false)
+    insert_opts = [{:async, async?} | build_insert_opts(opts)]
 
     case Ingester.insert(backend, table_name, events, event_type, insert_opts) do
       :ok ->
@@ -555,7 +556,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
       {:error, reason} ->
         Logger.warning("ClickHouse http insert error.",
-          host: EndpointUtils.host(backend.config[:url]),
+          host: insert_host(backend.config, async?),
           error_string: inspect(reason)
         )
 
@@ -578,7 +579,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       when is_event_type(event_type) and is_binary(compressed) do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
-    insert_opts = build_insert_opts(opts)
+    async? = Keyword.get(opts, :async, false)
+    insert_opts = [{:async, async?} | build_insert_opts(opts)]
 
     case Ingester.insert_compressed(backend, table_name, event_type, compressed, insert_opts) do
       :ok ->
@@ -586,7 +588,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
       {:error, reason} ->
         Logger.warning("ClickHouse http insert error.",
-          host: EndpointUtils.host(backend.config[:url]),
+          host: insert_host(backend.config, async?),
           error_string: inspect(reason)
         )
 
@@ -598,6 +600,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   defp build_insert_opts(opts) do
     if Keyword.get(opts, :async, false), do: async_insert_opts(), else: []
   end
+
+  # The endpoint host an HTTP insert actually targets, for failure logging: async inserts
+  # hit the dedicated `async_insert_cluster_url` when configured (falling back to the
+  # primary URL), mirroring the routing in `Ingester`; everything else hits the primary URL.
+  @spec insert_host(term(), boolean()) :: String.t() | nil
+  defp insert_host(%{async_insert_cluster_url: async_url} = config, true)
+       when is_non_empty_binary(async_url) do
+    EndpointUtils.host(async_url) || EndpointUtils.host(Map.get(config, :url))
+  end
+
+  defp insert_host(config, _async?) when is_map(config) do
+    EndpointUtils.host(Map.get(config, :url))
+  end
+
+  defp insert_host(_config, _async?), do: nil
 
   @spec async_insert_opts() :: keyword()
   defp async_insert_opts do

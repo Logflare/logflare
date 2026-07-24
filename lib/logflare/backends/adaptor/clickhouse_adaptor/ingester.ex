@@ -63,9 +63,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @spec do_insert(Keyword.t(), String.t(), TypeDetection.event_type(), iodata(), keyword()) ::
           :ok | {:error, String.t()}
   defp do_insert(connection_opts, table, event_type, request_body, opts) do
-    async? = async_insert_request?(opts)
+    async? = Keyword.get(opts, :async, false)
+    settings = Keyword.delete(opts, :async)
     client = build_client(connection_opts, async?)
-    url = build_request_url(connection_opts, table, event_type, opts, async?)
+    url = build_request_url(connection_opts, table, event_type, settings, async?)
 
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
@@ -390,9 +391,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   defp dedicated_async_url(_connection_opts, false), do: nil
-
-  @spec async_insert_request?(keyword()) :: boolean()
-  defp async_insert_request?(opts), do: Keyword.get(opts, :async_insert) == 1
 
   @spec build_request_url(
           connection_opts :: Keyword.t(),

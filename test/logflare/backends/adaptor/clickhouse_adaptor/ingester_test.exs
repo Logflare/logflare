@@ -467,6 +467,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
   describe "insert routing" do
     @async_opts [
+      async: true,
       async_insert: 1,
       wait_for_async_insert: 1,
       async_insert_busy_timeout_max_ms: 3_000
