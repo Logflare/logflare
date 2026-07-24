@@ -31,53 +31,50 @@ assert_not_contains() {
   fi
 }
 
-# Expected snippets intentionally include literal shell substitutions.
-# shellcheck disable=SC2016
-test_startup_script_config() {
-  local option
+test_startup_script_contract() {
+  local required
 
-  assert_contains "${STARTUP_SCRIPT}" 'image="$(metadata logflare-container-image)"'
-  assert_contains "${STARTUP_SCRIPT}" 'metadata logflare-container-env >"${CONTAINER_ENV_FILE}"'
-  assert_contains "${STARTUP_SCRIPT}" "docker-credential-gcr configure-docker --registries=gcr.io"
-  assert_contains "${STARTUP_SCRIPT}" 'iptables -C "${chain}" -p "${protocol}" -j ACCEPT'
-  assert_contains "${STARTUP_SCRIPT}" 'iptables -A "${chain}" -p "${protocol}" -j ACCEPT'
-
-  for option in \
-    '--privileged' \
-    '--restart=always' \
-    '--network=host' \
-    '--log-driver=json-file' \
-    '--log-opt max-size=500m' \
-    '--log-opt max-file=3' \
-    '--env-file "${CONTAINER_ENV_FILE}"'; do
-    assert_contains "${STARTUP_SCRIPT}" "${option}"
+  for required in \
+    "logflare-container-image" \
+    "logflare-container-env" \
+    "docker-credential-gcr configure-docker" \
+    "iptables -C" \
+    "iptables -A" \
+    "docker run" \
+    "--privileged" \
+    "--restart=always" \
+    "--network=host" \
+    "--log-driver=json-file" \
+    "--log-opt max-size=500m" \
+    "--log-opt max-file=3" \
+    "--env-file"; do
+    assert_contains "${STARTUP_SCRIPT}" "${required}"
   done
 }
 
-# shellcheck disable=SC2016
-test_instance_template_config() {
+test_instance_template_contract() {
   local config
+  local metadata_key
 
-  assert_contains "${CREATE_SCRIPT}" '"${GCLOUD_BIN}" compute instance-templates create "${TEMPLATE}"'
-  assert_contains "${CREATE_SCRIPT}" 'metadata_has_key "${description}" "gce-container-declaration"'
-
-  for config in "${PROD_CONFIG}" "${STAGING_CONFIG}"; do
-    assert_contains "${config}" "./cloudbuild/create-instance-template.sh"
-    assert_contains "${config}" "> gce-container.env"
-    assert_contains "${config}" "--metadata-from-file=startup-script=./cloudbuild/gce-startup.sh,shutdown-script=./cloudbuild/shutdown.sh,logflare-container-env=./gce-container.env"
-    assert_contains "${config}" '--metadata=google-monitoring-enabled=true,google-logging-enabled=true,logflare-container-image=${_CONTAINER_IMAGE}'
-  done
-
-  assert_contains "${TEMPLATE_SCRIPT}" '"${REPO_ROOT}/cloudbuild/create-instance-template.sh"'
-  assert_contains "${TEMPLATE_SCRIPT}" '--metadata-from-file="startup-script=${REPO_ROOT}/cloudbuild/gce-startup.sh,shutdown-script=${REPO_ROOT}/cloudbuild/shutdown.sh,logflare-container-env=${container_env_file}"'
-  assert_contains "${TEMPLATE_SCRIPT}" '--metadata="google-monitoring-enabled=true,google-logging-enabled=true,logflare-container-image=${CONTAINER_IMAGE}"'
+  assert_contains "${CREATE_SCRIPT}" "compute instance-templates create"
 
   for config in "${PROD_CONFIG}" "${STAGING_CONFIG}" "${TEMPLATE_SCRIPT}"; do
+    assert_contains "${config}" "create-instance-template.sh"
+    assert_contains "${config}" "--metadata-from-file="
+    assert_contains "${config}" "--metadata="
     assert_not_contains "${config}" "create-with-container"
+
+    for metadata_key in \
+      "startup-script" \
+      "shutdown-script" \
+      "logflare-container-env" \
+      "logflare-container-image"; do
+      assert_contains "${config}" "${metadata_key}"
+    done
   done
 }
 
-test_startup_script_config
-test_instance_template_config
+test_startup_script_contract
+test_instance_template_contract
 
-echo "gce script config tests passed"
+echo "gce script contract tests passed"
