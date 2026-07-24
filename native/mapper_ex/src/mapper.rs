@@ -9,7 +9,8 @@ use crate::mapping::{
 use crate::query;
 use crate::string_filters;
 
-use serde_json::Value as JsonValue;
+use serde::ser::{SerializeMap, SerializeSeq};
+use serde::{Serialize, Serializer};
 
 mod atoms {
     rustler::atoms! {
@@ -46,24 +47,60 @@ pub fn map_single<'a>(
 
     let mut keys: Vec<Term<'a>> = Vec::with_capacity(field_count);
     let mut values: Vec<Term<'a>> = Vec::with_capacity(field_count);
+    let mut query_cache =
+        query::QueryCache::new(mapping.path_cache_size, mapping.root_cache_size, nil);
+    if !flat_keys
+        && !mapping.root_cache_keys.is_empty()
+        && body.map_size().unwrap_or(usize::MAX) <= mapping.root_cache_scan_limit
+    {
+        query_cache.preload_root(body, &mapping.root_cache_keys);
+    }
 
     for field in &mapping.fields {
         let is_array = is_array_type(&field.field_type);
+
+        if is_array {
+            if let PathSource::Single(path) = &field.path_source {
+                let inner_type = coerce::array_inner_type(&field.field_type);
+                if let Some(value) = query::evaluate_wildcard_mapped(
+                    env,
+                    body,
+                    path,
+                    nil,
+                    flat_keys,
+                    &mut query_cache,
+                    |elem| {
+                        coerce::coerce_array_element(
+                            env,
+                            elem,
+                            &field.field_type,
+                            inner_type.as_ref(),
+                            field.filter_nil,
+                            nil,
+                        )
+                    },
+                ) {
+                    keys.push(crate::encode_string(env, &field.name));
+                    values.push(value);
+                    continue;
+                }
+            }
+        }
 
         // For Enum8 fields, use a special resolution flow:
         // resolve raw value (no default), then enum8 handler does lookup + inference + default
         let is_enum8 = matches!(&field.field_type, FieldType::Enum8 { .. });
 
         let value = if is_enum8 {
-            resolve_value_raw(env, body, field, &values, nil, flat_keys)
+            resolve_value_raw(env, body, field, &values, nil, flat_keys, &mut query_cache)
         } else {
-            resolve_value(env, body, field, &values, nil, flat_keys)
+            resolve_value(env, body, field, &values, nil, flat_keys, &mut query_cache)
         };
 
         // Array types skip transform, allowed_values, value_map, enum8, and json operations
         if is_array {
             let value = coerce::coerce_array(env, value, &field.field_type, field.filter_nil, nil);
-            keys.push(field.name.encode(env));
+            keys.push(crate::encode_string(env, &field.name));
             values.push(value);
             continue;
         }
@@ -116,44 +153,32 @@ pub fn map_single<'a>(
 
         // For Enum8 fields, handle enum resolution (string->int lookup + inference + default)
         let value = if is_enum8 {
-            resolve_enum8(env, body, field, value, nil, flat_keys)
+            resolve_enum8(env, body, field, value, nil, flat_keys, &mut query_cache)
         } else {
             value
         };
 
-        // For Json and FlatMap fields, apply exclude/elevate/pick
-        let value = if field.field_type == FieldType::Json || field.field_type == FieldType::FlatMap
-        {
-            if flat_keys {
-                apply_json_operations_flat(env, body, field, value, nil)
-            } else {
-                apply_json_operations(env, body, field, value, nil, flat_keys)
+        let value = match field.field_type {
+            FieldType::Json => {
+                if flat_keys {
+                    apply_json_operations_flat(env, body, field, value, nil, &mut query_cache)
+                } else {
+                    apply_json_operations(env, body, field, value, nil, false, &mut query_cache)
+                }
             }
-        } else {
-            value
-        };
-
-        // For FlatMap fields, flatten and stringify the resolved map.
-        // When flat_keys is true, input is already flat — just stringify values.
-        let value = if field.field_type == FieldType::FlatMap {
-            if flat_keys {
-                stringify_values(env, value, nil)
-            } else {
-                flatten_and_stringify(env, value, nil)
+            FieldType::FlatMap => {
+                if flat_keys {
+                    let value =
+                        apply_json_operations_flat(env, body, field, value, nil, &mut query_cache);
+                    stringify_values(env, value, nil)
+                } else {
+                    flatten_field(env, body, field, value, nil, &mut query_cache)
+                }
             }
-        } else {
-            value
+            _ => coerce::coerce(env, value, &field.field_type, nil),
         };
 
-        // Apply type coercion (skip for Json and FlatMap pass-through)
-        let value = if field.field_type == FieldType::Json || field.field_type == FieldType::FlatMap
-        {
-            value
-        } else {
-            coerce::coerce(env, value, &field.field_type, nil)
-        };
-
-        keys.push(field.name.encode(env));
+        keys.push(crate::encode_string(env, &field.name));
         values.push(value);
     }
 
@@ -170,12 +195,13 @@ fn resolve_value_raw<'a>(
     output_values: &[Term<'a>],
     nil: Term<'a>,
     flat_keys: bool,
+    cache: &mut query::QueryCache<'a>,
 ) -> Term<'a> {
     match &field.path_source {
         PathSource::Root => body,
-        PathSource::Single(segments) => query::evaluate(env, body, segments, nil, flat_keys),
+        PathSource::Single(path) => query::evaluate(env, body, path, nil, flat_keys, cache),
         PathSource::Coalesce(paths) => {
-            query::evaluate_first(env, body, paths, false, None, nil, flat_keys)
+            query::evaluate_first(env, body, paths, (false, None), nil, flat_keys, cache)
         }
         PathSource::FromOutput(idx) => {
             let v = output_values[*idx];
@@ -197,13 +223,14 @@ fn resolve_value<'a>(
     output_values: &[Term<'a>],
     nil: Term<'a>,
     flat_keys: bool,
+    cache: &mut query::QueryCache<'a>,
 ) -> Term<'a> {
     let skip_empty = field.field_type == FieldType::String;
 
     match &field.path_source {
         PathSource::Root => body,
-        PathSource::Single(segments) => {
-            let v = query::evaluate(env, body, segments, nil, flat_keys);
+        PathSource::Single(path) => {
+            let v = query::evaluate(env, body, path, nil, flat_keys, cache);
             if v == nil {
                 coerce::encode_default(env, &field.default, nil)
             } else if skip_empty {
@@ -229,8 +256,15 @@ fn resolve_value<'a>(
         }
         PathSource::Coalesce(paths) => {
             let string_filters = field.filters.as_ref();
-            let result =
-                query::evaluate_first(env, body, paths, skip_empty, string_filters, nil, flat_keys);
+            let result = query::evaluate_first(
+                env,
+                body,
+                paths,
+                (skip_empty, string_filters),
+                nil,
+                flat_keys,
+                cache,
+            );
             if result == nil {
                 coerce::encode_default(env, &field.default, nil)
             } else {
@@ -257,6 +291,7 @@ fn resolve_enum8<'a>(
     resolved_value: Term<'a>,
     nil: Term<'a>,
     flat_keys: bool,
+    cache: &mut query::QueryCache<'a>,
 ) -> Term<'a> {
     let enum8_data = match &field.enum8_data {
         Some(data) => data,
@@ -276,7 +311,7 @@ fn resolve_enum8<'a>(
     }
 
     // Step 2: Try inference rules
-    if let Some(result_val) = evaluate_infer_rules(env, body, enum8_data, nil, flat_keys) {
+    if let Some(result_val) = evaluate_infer_rules(env, body, enum8_data, nil, flat_keys, cache) {
         return (result_val as i64).encode(env);
     }
 
@@ -292,19 +327,9 @@ fn apply_json_operations<'a>(
     value: Term<'a>,
     nil: Term<'a>,
     flat_keys: bool,
+    cache: &mut query::QueryCache<'a>,
 ) -> Term<'a> {
-    // Pick-first: if pick is defined, try to build a sparse map
-    let value = if !field.pick.is_empty() {
-        let pick_result = build_pick_map(env, body, field, nil, flat_keys);
-        if pick_result != nil {
-            pick_result
-        } else {
-            // Pick produced empty map, fall back to path-resolved value
-            value
-        }
-    } else {
-        value
-    };
+    let value = select_json_value(env, body, field, value, nil, flat_keys, cache);
 
     if value == nil || !value.is_map() {
         return value;
@@ -327,6 +352,27 @@ fn apply_json_operations<'a>(
     value
 }
 
+fn select_json_value<'a>(
+    env: Env<'a>,
+    body: Term<'a>,
+    field: &CompiledField,
+    value: Term<'a>,
+    nil: Term<'a>,
+    flat_keys: bool,
+    cache: &mut query::QueryCache<'a>,
+) -> Term<'a> {
+    if field.pick.is_empty() {
+        return value;
+    }
+
+    let picked = build_pick_map(env, body, field, nil, flat_keys, cache);
+    if picked == nil {
+        value
+    } else {
+        picked
+    }
+}
+
 /// Build a sparse map from pick entries.
 fn build_pick_map<'a>(
     env: Env<'a>,
@@ -334,14 +380,23 @@ fn build_pick_map<'a>(
     field: &CompiledField,
     nil: Term<'a>,
     flat_keys: bool,
+    cache: &mut query::QueryCache<'a>,
 ) -> Term<'a> {
     let mut keys: Vec<Term<'a>> = Vec::with_capacity(field.pick.len());
     let mut values: Vec<Term<'a>> = Vec::with_capacity(field.pick.len());
 
     for entry in &field.pick {
-        let value = query::evaluate_first(env, body, &entry.paths, false, None, nil, flat_keys);
+        let value = query::evaluate_first(
+            env,
+            body,
+            &entry.paths,
+            (false, None),
+            nil,
+            flat_keys,
+            cache,
+        );
         if value != nil {
-            keys.push(entry.key.encode(env));
+            keys.push(crate::encode_string(env, &entry.key));
             values.push(value);
         }
     }
@@ -384,6 +439,10 @@ fn apply_exclude_keys<'a>(env: Env<'a>, map: Term<'a>, exclude: &[Vec<u8>]) -> T
 /// because duplicate keys (between elevated children and top-level) would
 /// cause enif_make_map_from_arrays to fail.
 fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>]) -> Term<'a> {
+    if elevate.len() > 1 {
+        return apply_multiple_elevate_keys(env, map, elevate);
+    }
+
     let iter = match MapIterator::new(map) {
         Some(it) => it,
         None => return map,
@@ -431,6 +490,44 @@ fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>]) -> T
     result
 }
 
+fn apply_multiple_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>]) -> Term<'a> {
+    let mut result = Term::map_new(env);
+
+    // Apply in reverse so the first configured elevate key wins when child
+    // maps contain the same key. Top-level entries are applied afterwards and
+    // retain the documented highest precedence.
+    for elevate_key in elevate.iter().rev() {
+        let Ok(elevate_key) = std::str::from_utf8(elevate_key) else {
+            continue;
+        };
+        let Ok(child) = map.map_get(crate::encode_string(env, elevate_key)) else {
+            continue;
+        };
+        let Some(children) = MapIterator::new(child) else {
+            continue;
+        };
+
+        for (key, value) in children {
+            result = result.map_put(key, value).unwrap_or(result);
+        }
+    }
+
+    if let Some(entries) = MapIterator::new(map) {
+        for (key, value) in entries {
+            let elevated = value.is_map()
+                && key
+                    .decode::<Binary>()
+                    .ok()
+                    .is_some_and(|binary| elevate.iter().any(|item| item == binary.as_slice()));
+            if !elevated {
+                result = result.map_put(key, value).unwrap_or(result);
+            }
+        }
+    }
+
+    result
+}
+
 /// Apply JSON operations for flat-key input.
 ///
 /// Flat-key variants of exclude/elevate operate on dot-notation prefixes
@@ -441,18 +538,9 @@ fn apply_json_operations_flat<'a>(
     field: &CompiledField,
     value: Term<'a>,
     nil: Term<'a>,
+    cache: &mut query::QueryCache<'a>,
 ) -> Term<'a> {
-    // Pick still works the same — evaluate_first with flat_keys=true
-    let value = if !field.pick.is_empty() {
-        let pick_result = build_pick_map(env, body, field, nil, true);
-        if pick_result != nil {
-            pick_result
-        } else {
-            value
-        }
-    } else {
-        value
-    };
+    let value = select_json_value(env, body, field, value, nil, true, cache);
 
     if value == nil || !value.is_map() {
         return value;
@@ -507,6 +595,10 @@ fn apply_exclude_keys_flat<'a>(env: Env<'a>, map: Term<'a>, exclude: &[Vec<u8>])
 /// stripped. The elevate key itself (exact match) is dropped. Top-level keys
 /// (those not starting with any elevate prefix) win over elevated children.
 fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>]) -> Term<'a> {
+    if elevate.len() > 1 {
+        return apply_multiple_elevate_keys_flat(env, map, elevate);
+    }
+
     let iter = match MapIterator::new(map) {
         Some(it) => it,
         None => return map,
@@ -539,7 +631,8 @@ fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>])
                 {
                     // Strip prefix: "metadata.level" -> "level"
                     let suffix = &key_bytes[ek.len() + 1..];
-                    let suffix_term = std::str::from_utf8(suffix).unwrap_or("").encode(env);
+                    let suffix_term =
+                        crate::encode_string(env, std::str::from_utf8(suffix).unwrap_or(""));
                     elevated_keys.push(suffix_term);
                     elevated_values.push(v);
                     matched = true;
@@ -570,6 +663,61 @@ fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>])
     result
 }
 
+fn apply_multiple_elevate_keys_flat<'a>(
+    env: Env<'a>,
+    map: Term<'a>,
+    elevate: &[Vec<u8>],
+) -> Term<'a> {
+    let Some(entries) = MapIterator::new(map) else {
+        return map;
+    };
+
+    let mut elevated_entries = vec![Vec::new(); elevate.len()];
+    let mut top_entries = Vec::new();
+
+    for (key, value) in entries {
+        let Ok(binary) = key.decode::<Binary>() else {
+            top_entries.push((key, value));
+            continue;
+        };
+        let key_bytes = binary.as_slice();
+        let mut matched = false;
+
+        for (index, elevate_key) in elevate.iter().enumerate() {
+            if key_bytes == elevate_key.as_slice() {
+                matched = value.is_map();
+                break;
+            }
+            if key_bytes.len() > elevate_key.len()
+                && key_bytes.starts_with(elevate_key.as_slice())
+                && key_bytes[elevate_key.len()] == b'.'
+            {
+                let suffix = &key_bytes[elevate_key.len() + 1..];
+                let suffix = crate::encode_string(env, std::str::from_utf8(suffix).unwrap_or(""));
+                elevated_entries[index].push((suffix, value));
+                matched = true;
+                break;
+            }
+        }
+
+        if !matched {
+            top_entries.push((key, value));
+        }
+    }
+
+    let mut result = Term::map_new(env);
+    for entries in elevated_entries.into_iter().rev() {
+        for (key, value) in entries {
+            result = result.map_put(key, value).unwrap_or(result);
+        }
+    }
+    for (key, value) in top_entries {
+        result = result.map_put(key, value).unwrap_or(result);
+    }
+
+    result
+}
+
 /// Evaluate inference conditions and return the matching rule's result.
 pub fn evaluate_infer_rules<'a>(
     env: Env<'a>,
@@ -577,6 +725,7 @@ pub fn evaluate_infer_rules<'a>(
     enum8_data: &Enum8Data,
     nil: Term<'a>,
     flat_keys: bool,
+    cache: &mut query::QueryCache<'a>,
 ) -> Option<i8> {
     for rule in &enum8_data.infer_rules {
         let any_match = if rule.any.is_empty() {
@@ -584,7 +733,7 @@ pub fn evaluate_infer_rules<'a>(
         } else {
             rule.any
                 .iter()
-                .any(|cond| evaluate_condition(env, body, cond, nil, flat_keys))
+                .any(|cond| evaluate_condition(env, body, cond, nil, flat_keys, cache))
         };
 
         let all_match = if rule.all.is_empty() {
@@ -592,7 +741,7 @@ pub fn evaluate_infer_rules<'a>(
         } else {
             rule.all
                 .iter()
-                .all(|cond| evaluate_condition(env, body, cond, nil, flat_keys))
+                .all(|cond| evaluate_condition(env, body, cond, nil, flat_keys, cache))
         };
 
         if any_match && all_match {
@@ -613,8 +762,9 @@ fn evaluate_condition<'a>(
     cond: &crate::mapping::InferCondition,
     nil: Term<'a>,
     flat_keys: bool,
+    cache: &mut query::QueryCache<'a>,
 ) -> bool {
-    let value = query::evaluate(env, body, &cond.path, nil, flat_keys);
+    let value = query::evaluate(env, body, &cond.path, nil, flat_keys, cache);
 
     match &cond.predicate {
         Predicate::Exists => value != nil,
@@ -754,6 +904,117 @@ fn matches_predicate_value(term: Term, expected: &PredicateValue) -> bool {
 
 // ── FlatMap: flatten nested maps to dot-notation keys with string values ─────
 
+fn flatten_field<'a>(
+    env: Env<'a>,
+    body: Term<'a>,
+    field: &CompiledField,
+    value: Term<'a>,
+    nil: Term<'a>,
+    cache: &mut query::QueryCache<'a>,
+) -> Term<'a> {
+    let value = select_json_value(env, body, field, value, nil, false, cache);
+
+    if field.exclude_keys.is_empty() && field.elevate_keys.is_empty() {
+        return flatten_and_stringify(env, value, nil);
+    }
+
+    if let Some(flattened) =
+        try_flatten_with_operations(env, value, &field.exclude_keys, &field.elevate_keys, nil)
+    {
+        return flattened;
+    }
+
+    let value = if field.exclude_keys.is_empty() {
+        value
+    } else {
+        apply_exclude_keys(env, value, &field.exclude_keys)
+    };
+    let value = if field.elevate_keys.is_empty() {
+        value
+    } else {
+        apply_elevate_keys(env, value, &field.elevate_keys)
+    };
+    flatten_and_stringify(env, value, nil)
+}
+
+fn try_flatten_with_operations<'a>(
+    env: Env<'a>,
+    value: Term<'a>,
+    exclude: &[Vec<u8>],
+    elevate: &[Vec<u8>],
+    nil: Term<'a>,
+) -> Option<Term<'a>> {
+    if value == nil || !value.is_map() {
+        return Some(Term::map_new(env));
+    }
+    if elevate.len() > 1 {
+        return None;
+    }
+
+    let capacity = value.map_size().unwrap_or(0);
+    let mut keys = Vec::with_capacity(capacity);
+    let mut values = Vec::with_capacity(capacity);
+    let mut prefix = String::new();
+
+    for (key, child) in MapIterator::new(value)? {
+        let binary = match key.decode::<Binary>() {
+            Ok(binary) => binary,
+            Err(_) => continue,
+        };
+        let bytes = binary.as_slice();
+
+        if exclude.iter().any(|excluded| excluded.as_slice() == bytes) {
+            continue;
+        }
+        if elevate.iter().any(|elevated| elevated.as_slice() == bytes) {
+            if let Some(children) = MapIterator::new(child) {
+                for (child_key, child_value) in children {
+                    if top_level_wins(value, child_key, exclude, elevate) {
+                        continue;
+                    }
+                    flatten_map_entry(
+                        env,
+                        child_key,
+                        child_value,
+                        &mut prefix,
+                        &mut keys,
+                        &mut values,
+                        nil,
+                    );
+                }
+                continue;
+            }
+        }
+
+        flatten_map_entry(env, key, child, &mut prefix, &mut keys, &mut values, nil);
+    }
+
+    if keys.is_empty() {
+        Some(Term::map_new(env))
+    } else {
+        Term::map_from_term_arrays(env, &keys, &values).ok()
+    }
+}
+
+fn top_level_wins(map: Term<'_>, key: Term<'_>, exclude: &[Vec<u8>], elevate: &[Vec<u8>]) -> bool {
+    if map.map_get(key).is_err() {
+        return false;
+    }
+
+    let binary = match key.decode::<Binary>() {
+        Ok(binary) => binary,
+        Err(_) => return false,
+    };
+    let bytes = binary.as_slice();
+
+    !exclude
+        .iter()
+        .any(|candidate| candidate.as_slice() == bytes)
+        && !elevate
+            .iter()
+            .any(|candidate| candidate.as_slice() == bytes)
+}
+
 /// Flatten a potentially nested map into `%{String.t() => String.t()}`.
 ///
 /// - Nested maps: `%{"a" => %{"b" => 1}}` → `%{"a.b" => "1"}`
@@ -766,20 +1027,13 @@ pub fn flatten_and_stringify<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -
         return Term::map_new(env);
     }
 
-    let mut keys: Vec<Term<'a>> = Vec::new();
-    let mut values: Vec<Term<'a>> = Vec::new();
-    flatten_map_recursive(env, value, "", &mut keys, &mut values, nil);
+    let capacity = value.map_size().unwrap_or(0);
+    let mut keys: Vec<Term<'a>> = Vec::with_capacity(capacity);
+    let mut values: Vec<Term<'a>> = Vec::with_capacity(capacity);
+    let mut prefix = String::new();
+    flatten_map_recursive(env, value, &mut prefix, &mut keys, &mut values, nil);
 
-    if keys.is_empty() {
-        Term::map_new(env)
-    } else {
-        // Use map_put to handle potential duplicate keys (last-write-wins)
-        let mut result = Term::map_new(env);
-        for (k, v) in keys.into_iter().zip(values.into_iter()) {
-            result = result.map_put(k, v).unwrap_or(result);
-        }
-        result
-    }
+    build_flat_map(env, &keys, &values)
 }
 
 /// Stringify values in an already-flat map without recursive flattening.
@@ -797,8 +1051,9 @@ pub fn stringify_values<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -> Ter
         None => return Term::map_new(env),
     };
 
-    let mut keys: Vec<Term<'a>> = Vec::new();
-    let mut values: Vec<Term<'a>> = Vec::new();
+    let capacity = value.map_size().unwrap_or(0);
+    let mut keys: Vec<Term<'a>> = Vec::with_capacity(capacity);
+    let mut values: Vec<Term<'a>> = Vec::with_capacity(capacity);
 
     for (k, v) in iter {
         if v == nil {
@@ -812,9 +1067,8 @@ pub fn stringify_values<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -> Ter
             continue;
         }
 
-        let str_val = term_to_string(env, v);
         keys.push(k);
-        values.push(str_val.encode(env));
+        values.push(term_to_string_term(env, v, nil));
     }
 
     if keys.is_empty() {
@@ -827,7 +1081,7 @@ pub fn stringify_values<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -> Ter
 fn flatten_map_recursive<'a>(
     env: Env<'a>,
     map: Term<'a>,
-    prefix: &str,
+    prefix: &mut String,
     keys: &mut Vec<Term<'a>>,
     values: &mut Vec<Term<'a>>,
     nil: Term<'a>,
@@ -837,162 +1091,181 @@ fn flatten_map_recursive<'a>(
         None => return,
     };
 
-    for (k, v) in iter {
-        // Get the key as a string
-        let key_str = if let Ok(s) = k.decode::<String>() {
-            s
-        } else if let Ok(b) = k.decode::<Binary>() {
-            match std::str::from_utf8(b.as_slice()) {
-                Ok(s) => s.to_string(),
-                Err(_) => continue,
-            }
-        } else {
-            continue;
-        };
-
-        let full_key = if prefix.is_empty() {
-            key_str
-        } else {
-            format!("{}.{}", prefix, key_str)
-        };
-
-        // Skip nil values
-        if v == nil {
-            continue;
-        }
-
-        // If value is a nested map, recurse
-        if v.is_map() {
-            // Check if the map is empty
-            if let Some(iter) = MapIterator::new(v) {
-                if iter.count() == 0 {
-                    // Empty map → encode as "{}"
-                    keys.push(full_key.encode(env));
-                    values.push("{}".encode(env));
-                } else {
-                    flatten_map_recursive(env, v, &full_key, keys, values, nil);
-                }
-            }
-            continue;
-        }
-
-        // If value is a list, JSON-encode it
-        if v.is_list() {
-            let json_val = term_to_json(env, v, nil);
-            let json_str = serde_json::to_string(&json_val).unwrap_or_else(|_| "[]".to_string());
-            keys.push(full_key.encode(env));
-            values.push(json_str.encode(env));
-            continue;
-        }
-
-        // Scalar coercion to string
-        let str_val = term_to_string(env, v);
-        keys.push(full_key.encode(env));
-        values.push(str_val.encode(env));
+    for (key, value) in iter {
+        flatten_map_entry(env, key, value, prefix, keys, values, nil);
     }
 }
 
-/// Convert a BEAM term to a string representation.
-fn term_to_string<'a>(env: Env<'a>, value: Term<'a>) -> String {
-    if value.is_binary() {
-        if let Ok(s) = value.decode::<String>() {
-            return s;
-        }
+fn flatten_map_entry<'a>(
+    env: Env<'a>,
+    key: Term<'a>,
+    value: Term<'a>,
+    prefix: &mut String,
+    keys: &mut Vec<Term<'a>>,
+    values: &mut Vec<Term<'a>>,
+    nil: Term<'a>,
+) {
+    let binary = match key.decode::<Binary>() {
+        Ok(binary) => binary,
+        Err(_) => return,
+    };
+    let key = match std::str::from_utf8(binary.as_slice()) {
+        Ok(key) => key,
+        Err(_) => return,
+    };
+
+    let prefix_len = prefix.len();
+    if prefix_len != 0 {
+        prefix.push('.');
     }
+    prefix.push_str(key);
 
-    if let Ok(i) = value.decode::<i64>() {
-        return i.to_string();
-    }
-
-    if let Ok(f) = value.decode::<f64>() {
-        return f.to_string();
-    }
-
-    if let Ok(b) = value.decode::<bool>() {
-        return if b { "true" } else { "false" }.to_string();
-    }
-
-    if value.is_atom() {
-        if let Ok(s) = value.atom_to_string() {
-            return s;
-        }
-    }
-
-    // For maps, JSON-encode
-    if value.is_map() {
-        let json_val = term_to_json(env, value, atoms::nil().encode(env));
-        return serde_json::to_string(&json_val).unwrap_or_else(|_| "{}".to_string());
-    }
-
-    // For lists, JSON-encode
-    if value.is_list() {
-        let json_val = term_to_json(env, value, atoms::nil().encode(env));
-        return serde_json::to_string(&json_val).unwrap_or_else(|_| "[]".to_string());
-    }
-
-    "".to_string()
-}
-
-/// Convert a BEAM term to a serde_json::Value for JSON serialization.
-#[allow(clippy::only_used_in_recursion)]
-fn term_to_json<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -> JsonValue {
     if value == nil {
-        return JsonValue::Null;
-    }
-
-    // Try boolean before integer (booleans are atoms in Erlang)
-    if let Ok(b) = value.decode::<bool>() {
-        return JsonValue::Bool(b);
-    }
-
-    if let Ok(i) = value.decode::<i64>() {
-        return JsonValue::Number(serde_json::Number::from(i));
-    }
-
-    if let Ok(f) = value.decode::<f64>() {
-        return serde_json::Number::from_f64(f)
-            .map(JsonValue::Number)
-            .unwrap_or(JsonValue::Null);
-    }
-
-    if value.is_binary() {
-        if let Ok(s) = value.decode::<String>() {
-            return JsonValue::String(s);
-        }
-    }
-
-    if value.is_atom() {
-        if let Ok(s) = value.atom_to_string() {
-            return JsonValue::String(s);
-        }
-    }
-
-    if value.is_list() {
-        if let Ok(iter) = value.decode::<ListIterator>() {
-            let arr: Vec<JsonValue> = iter.map(|elem| term_to_json(env, elem, nil)).collect();
-            return JsonValue::Array(arr);
-        }
+        prefix.truncate(prefix_len);
+        return;
     }
 
     if value.is_map() {
-        if let Some(iter) = MapIterator::new(value) {
-            let mut map = serde_json::Map::new();
-            for (k, v) in iter {
-                let key_str = if let Ok(s) = k.decode::<String>() {
-                    s
-                } else if let Ok(b) = k.decode::<Binary>() {
-                    match std::str::from_utf8(b.as_slice()) {
-                        Ok(s) => s.to_string(),
-                        Err(_) => continue,
-                    }
-                } else {
+        if value.map_size().unwrap_or(0) == 0 {
+            keys.push(crate::encode_string(env, prefix));
+            values.push(crate::encode_string(env, "{}"));
+        } else {
+            flatten_map_recursive(env, value, prefix, keys, values, nil);
+        }
+        prefix.truncate(prefix_len);
+        return;
+    }
+
+    keys.push(crate::encode_string(env, prefix));
+    if value.is_list() {
+        values.push(crate::encode_string(
+            env,
+            &term_to_json_string(value, nil, "[]"),
+        ));
+    } else {
+        values.push(term_to_string_term(env, value, nil));
+    }
+    prefix.truncate(prefix_len);
+}
+
+fn build_flat_map<'a>(env: Env<'a>, keys: &[Term<'a>], values: &[Term<'a>]) -> Term<'a> {
+    if keys.is_empty() {
+        return Term::map_new(env);
+    }
+
+    Term::map_from_term_arrays(env, keys, values).unwrap_or_else(|_| {
+        let mut result = Term::map_new(env);
+        for (key, value) in keys.iter().copied().zip(values.iter().copied()) {
+            result = result.map_put(key, value).unwrap_or(result);
+        }
+        result
+    })
+}
+
+fn term_to_string_term<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -> Term<'a> {
+    if let Ok(binary) = value.decode::<Binary>() {
+        return if std::str::from_utf8(binary.as_slice()).is_ok() {
+            value
+        } else {
+            crate::encode_string(env, "")
+        };
+    }
+
+    if let Ok(i) = value.decode::<i64>() {
+        return crate::encode_integer(env, i);
+    }
+    if let Ok(f) = value.decode::<f64>() {
+        return crate::encode_string(env, &f.to_string());
+    }
+    if let Ok(b) = value.decode::<bool>() {
+        return crate::encode_string(env, if b { "true" } else { "false" });
+    }
+    if value.is_atom() {
+        return value
+            .atom_to_string()
+            .map(|atom| crate::encode_string(env, &atom))
+            .unwrap_or_else(|_| crate::encode_string(env, ""));
+    }
+    if value.is_map() || value.is_list() {
+        let fallback = if value.is_map() { "{}" } else { "[]" };
+        return crate::encode_string(env, &term_to_json_string(value, nil, fallback));
+    }
+
+    crate::encode_string(env, "")
+}
+
+fn term_to_json_string<'a>(value: Term<'a>, nil: Term<'a>, fallback: &str) -> String {
+    serde_json::to_string(&JsonTerm { value, nil }).unwrap_or_else(|_| fallback.to_string())
+}
+
+struct JsonTerm<'a> {
+    value: Term<'a>,
+    nil: Term<'a>,
+}
+
+impl Serialize for JsonTerm<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if self.value == self.nil {
+            return serializer.serialize_none();
+        }
+        if let Ok(value) = self.value.decode::<bool>() {
+            return serializer.serialize_bool(value);
+        }
+        if let Ok(value) = self.value.decode::<i64>() {
+            return serializer.serialize_i64(value);
+        }
+        if let Ok(value) = self.value.decode::<f64>() {
+            return if value.is_finite() {
+                serializer.serialize_f64(value)
+            } else {
+                serializer.serialize_none()
+            };
+        }
+        if let Ok(binary) = self.value.decode::<Binary>() {
+            return match std::str::from_utf8(binary.as_slice()) {
+                Ok(value) => serializer.serialize_str(value),
+                Err(_) => serializer.serialize_none(),
+            };
+        }
+        if self.value.is_atom() {
+            return match self.value.atom_to_string() {
+                Ok(value) => serializer.serialize_str(&value),
+                Err(_) => serializer.serialize_none(),
+            };
+        }
+        if let Ok(iter) = self.value.decode::<ListIterator>() {
+            let mut sequence = serializer.serialize_seq(None)?;
+            for value in iter {
+                sequence.serialize_element(&JsonTerm {
+                    value,
+                    nil: self.nil,
+                })?;
+            }
+            return sequence.end();
+        }
+        if let Some(iter) = MapIterator::new(self.value) {
+            let mut map = serializer.serialize_map(None)?;
+            for (key, value) in iter {
+                let Ok(binary) = key.decode::<Binary>() else {
                     continue;
                 };
-                map.insert(key_str, term_to_json(env, v, nil));
+                let Ok(key) = std::str::from_utf8(binary.as_slice()) else {
+                    continue;
+                };
+                map.serialize_entry(
+                    key,
+                    &JsonTerm {
+                        value,
+                        nil: self.nil,
+                    },
+                )?;
             }
-            return JsonValue::Object(map);
+            return map.end();
         }
-    }
 
-    JsonValue::Null
+        serializer.serialize_none()
+    }
 }

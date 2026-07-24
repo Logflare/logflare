@@ -1,108 +1,269 @@
+use std::collections::HashMap;
+
+use rustler::types::map::MapIterator;
 use rustler::types::ListIterator;
 use rustler::{Binary, Encoder, Env, Term};
 
-use crate::path::PathSegment;
+use crate::path::{CompiledPath, PathSegment};
 use crate::string_filters::{self, StringFilters};
+
+pub struct QueryCache<'a> {
+    values: Vec<Option<Term<'a>>>,
+    root_size: usize,
+    root_preloaded: bool,
+    nil: Term<'a>,
+}
+
+impl<'a> QueryCache<'a> {
+    pub fn new(size: usize, root_size: usize, nil: Term<'a>) -> Self {
+        Self {
+            values: vec![None; size],
+            root_size,
+            root_preloaded: false,
+            nil,
+        }
+    }
+
+    pub fn preload_root(&mut self, document: Term<'a>, keys: &HashMap<Vec<u8>, usize>) {
+        if keys.is_empty() {
+            return;
+        }
+
+        self.root_preloaded = true;
+        if let Some(entries) = MapIterator::new(document) {
+            for (key, value) in entries {
+                if let Ok(binary) = key.decode::<Binary>() {
+                    if let Some(index) = keys.get(binary.as_slice()) {
+                        self.values[*index] = Some(value);
+                    }
+                }
+            }
+        }
+    }
+
+    #[inline]
+    fn get(&self, index: Option<usize>) -> Option<Term<'a>> {
+        index.and_then(|index| {
+            self.values[index]
+                .or_else(|| (self.root_preloaded && index < self.root_size).then_some(self.nil))
+        })
+    }
+
+    #[inline]
+    fn put(&mut self, index: Option<usize>, value: Term<'a>) {
+        if let Some(index) = index {
+            self.values[index] = Some(value);
+        }
+    }
+}
 
 /// Evaluates a path against an Elixir term (map/list).
 ///
 /// Uses iterative traversal for key-only and index segments (the common case),
-/// falling back to a separate function for wildcard fan-out.
+/// falling back to a separate function for wildcard fan-out. Repeated path
+/// prefixes are served from the per-document cache populated during traversal.
 /// Returns the matched value or the `nil` atom for missing paths.
 ///
-/// When `flat_keys` is true, all Key segments are joined with `.` and resolved
-/// as a single literal key lookup against the root map. This supports
-/// pre-flattened input where `"resource.service.name"` is a top-level key.
+/// When `flat_keys` is true, the precompiled dot-joined key is resolved as a
+/// single literal key lookup against the root map.
+#[inline]
 pub fn evaluate<'a>(
     env: Env<'a>,
     term: Term<'a>,
-    segments: &[PathSegment],
+    path: &CompiledPath,
     nil: Term<'a>,
     flat_keys: bool,
+    cache: &mut QueryCache<'a>,
 ) -> Term<'a> {
-    if segments.is_empty() {
+    if path.segments.is_empty() {
         return term;
     }
 
     if flat_keys {
-        return evaluate_flat(env, term, segments, nil);
+        return evaluate_flat(env, term, path, nil, cache);
+    }
+    if !path.cached {
+        return evaluate_uncached(env, term, &path.segments, nil);
     }
 
+    evaluate_nested(env, term, &path.segments, &path.cache_indices, nil, cache)
+}
+
+pub fn evaluate_wildcard_mapped<'a, F>(
+    env: Env<'a>,
+    term: Term<'a>,
+    path: &CompiledPath,
+    nil: Term<'a>,
+    flat_keys: bool,
+    cache: &mut QueryCache<'a>,
+    mut mapper: F,
+) -> Option<Term<'a>>
+where
+    F: FnMut(Term<'a>) -> Option<Term<'a>>,
+{
+    if flat_keys {
+        return None;
+    }
+    let wildcard_index = path.wildcard_index?;
+    let current = if wildcard_index == 0 {
+        term
+    } else if path.cached {
+        evaluate_nested(
+            env,
+            term,
+            &path.segments[..wildcard_index],
+            &path.cache_indices[..wildcard_index],
+            nil,
+            cache,
+        )
+    } else {
+        evaluate_uncached(env, term, &path.segments[..wildcard_index], nil)
+    };
+
+    let iter = match current.decode::<ListIterator>() {
+        Ok(iter) => iter,
+        Err(_) => return Some(Vec::<Term>::new().encode(env)),
+    };
+    let remaining = &path.segments[wildcard_index + 1..];
+    let mut results = Vec::new();
+    for item in iter {
+        let value = evaluate_uncached(env, item, remaining, nil);
+        if let Some(value) = mapper(value) {
+            results.push(value);
+        }
+    }
+    Some(results.encode(env))
+}
+
+fn evaluate_uncached<'a>(
+    env: Env<'a>,
+    term: Term<'a>,
+    segments: &[PathSegment],
+    nil: Term<'a>,
+) -> Term<'a> {
     let mut current = term;
     let mut i = 0;
 
     while i < segments.len() {
         match &segments[i] {
-            PathSegment::Key(key) => {
-                let key_term = key.encode(env);
-                match current.map_get(key_term) {
-                    Ok(value) => current = value,
-                    Err(_) => return nil,
-                }
-                i += 1;
-            }
-            PathSegment::Wildcard => {
-                // Fall back to wildcard fan-out for the remaining segments
-                return evaluate_wildcard(env, current, &segments[i..], nil);
-            }
-            PathSegment::Index(idx) => match current.decode::<ListIterator>() {
-                Ok(mut iter) => match iter.nth(*idx) {
-                    Some(item) => {
-                        current = item;
-                        i += 1;
-                    }
+            PathSegment::Key(key) => match current.map_get(crate::encode_string(env, key)) {
+                Ok(value) => current = value,
+                Err(_) => return nil,
+            },
+            PathSegment::Index(index) => match current.decode::<ListIterator>() {
+                Ok(mut iter) => match iter.nth(*index) {
+                    Some(value) => current = value,
                     None => return nil,
                 },
                 Err(_) => return nil,
             },
+            PathSegment::Wildcard => {
+                let iter = match current.decode::<ListIterator>() {
+                    Ok(iter) => iter,
+                    Err(_) => return nil,
+                };
+                let values: Vec<Term<'a>> = iter
+                    .map(|item| evaluate_uncached(env, item, &segments[i + 1..], nil))
+                    .collect();
+                return values.encode(env);
+            }
         }
+        i += 1;
     }
 
     current
 }
 
-/// Flat-key evaluation: joins all Key segments with `.` and does a single
-/// `map_get` on the root term. Non-Key segments (Wildcard, Index) cause
-/// a nil return since they have no flat-key representation.
-fn evaluate_flat<'a>(
+#[inline]
+fn evaluate_nested<'a>(
     env: Env<'a>,
     term: Term<'a>,
     segments: &[PathSegment],
+    cache_indices: &[Option<usize>],
     nil: Term<'a>,
+    cache: &mut QueryCache<'a>,
 ) -> Term<'a> {
-    let mut parts: Vec<&str> = Vec::with_capacity(segments.len());
+    let mut current = term;
+    let mut i = 0;
 
-    for seg in segments {
-        match seg {
-            PathSegment::Key(k) => parts.push(k.as_str()),
-            // Wildcard/Index paths don't have a flat-key equivalent
-            _ => return nil,
+    while i < segments.len() {
+        let cache_index = cache_indices[i];
+        if let Some(value) = cache.get(cache_index) {
+            if value == nil {
+                return nil;
+            }
+            current = value;
+            i += 1;
+            continue;
         }
+
+        let value = match &segments[i] {
+            PathSegment::Key(key) => current
+                .map_get(crate::encode_string(env, key))
+                .unwrap_or(nil),
+            PathSegment::Wildcard => {
+                return evaluate_wildcard(
+                    env,
+                    current,
+                    &segments[i + 1..],
+                    &cache_indices[i + 1..],
+                    nil,
+                    cache,
+                );
+            }
+            PathSegment::Index(index) => match current.decode::<ListIterator>() {
+                Ok(mut iter) => iter.nth(*index).unwrap_or(nil),
+                Err(_) => nil,
+            },
+        };
+
+        cache.put(cache_index, value);
+        if value == nil {
+            return nil;
+        }
+        current = value;
+        i += 1;
     }
 
-    let flat_key = parts.join(".");
-    let key_term = flat_key.encode(env);
-
-    match term.map_get(key_term) {
-        Ok(value) => value,
-        Err(_) => nil,
-    }
+    current
 }
 
-/// Handle wildcard fan-out: segments[0] is Wildcard.
+#[inline]
+fn evaluate_flat<'a>(
+    env: Env<'a>,
+    term: Term<'a>,
+    path: &CompiledPath,
+    nil: Term<'a>,
+    cache: &mut QueryCache<'a>,
+) -> Term<'a> {
+    let key = match &path.flat_key {
+        Some(key) => key,
+        None => return nil,
+    };
+
+    if let Some(value) = cache.get(path.flat_cache_index) {
+        return value;
+    }
+
+    let value = term.map_get(crate::encode_string(env, key)).unwrap_or(nil);
+    cache.put(path.flat_cache_index, value);
+    value
+}
+
 fn evaluate_wildcard<'a>(
     env: Env<'a>,
     term: Term<'a>,
     segments: &[PathSegment],
+    cache_indices: &[Option<usize>],
     nil: Term<'a>,
+    cache: &mut QueryCache<'a>,
 ) -> Term<'a> {
     let iter = match term.decode::<ListIterator>() {
         Ok(iter) => iter,
         Err(_) => return nil,
     };
-    // Wildcard fan-out always uses nested evaluation (flat_keys=false)
     let results: Vec<Term<'a>> = iter
-        .map(|item| evaluate(env, item, &segments[1..], nil, false))
+        .map(|item| evaluate_nested(env, item, segments, cache_indices, nil, cache))
         .collect();
     results.encode(env)
 }
@@ -110,29 +271,29 @@ fn evaluate_wildcard<'a>(
 /// Evaluates multiple paths against a document, returning the first
 /// non-nil result. For String field types, also skips empty strings.
 /// When filters are provided, resolved strings must pass all filters.
+#[inline]
 pub fn evaluate_first<'a>(
     env: Env<'a>,
     document: Term<'a>,
-    paths: &[Vec<PathSegment>],
-    skip_empty_strings: bool,
-    string_filters: Option<&StringFilters>,
+    paths: &[CompiledPath],
+    string_options: (bool, Option<&StringFilters>),
     nil: Term<'a>,
     flat_keys: bool,
+    cache: &mut QueryCache<'a>,
 ) -> Term<'a> {
-    for segments in paths {
-        let result = evaluate(env, document, segments, nil, flat_keys);
+    let (skip_empty_strings, filters) = string_options;
+    for path in paths {
+        let result = evaluate(env, document, path, nil, flat_keys, cache);
         if result == nil {
             continue;
         }
         if skip_empty_strings {
-            // Check binary length without allocating a String
-            if let Ok(b) = result.decode::<Binary>() {
-                if b.is_empty() {
+            if let Ok(binary) = result.decode::<Binary>() {
+                if binary.is_empty() {
                     continue;
                 }
-                // Piggyback filter check on already-decoded binary
-                if let Some(f) = string_filters {
-                    if !string_filters::passes_filters(b.as_slice(), f) {
+                if let Some(filters) = filters {
+                    if !string_filters::passes_filters(binary.as_slice(), filters) {
                         continue;
                     }
                 }

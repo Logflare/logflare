@@ -73,7 +73,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
     * `:exclude_keys` — top-level keys to remove from the output map
     * `:elevate_keys` — keys whose children are merged into the parent map (the key itself
-      is removed). Existing top-level keys win over elevated children.
+      is removed). Existing top-level keys win over elevated children. When multiple
+      elevated maps contain the same child key, the earlier configured elevate key wins.
     * `:pick` — list of `{key, paths}` tuples for sparse map assembly. Each entry tries its
       coalesce paths; resolved entries are included in the output, unresolved are omitted.
       If pick produces a non-empty map, it becomes the field value. If empty, falls back
