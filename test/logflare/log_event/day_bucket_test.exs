@@ -37,41 +37,6 @@ defmodule Logflare.LogEvent.DayBucketTest do
     end
   end
 
-  describe "classify_freshness/1" do
-    setup do
-      [current: DayBucket.current()]
-    end
-
-    test "current day is :fresh", %{current: current} do
-      assert DayBucket.classify_freshness(current) == :fresh
-    end
-
-    test "one day in the past is :fresh", %{current: current} do
-      assert DayBucket.classify_freshness(current - 1) == :fresh
-    end
-
-    test "one day in the future is :fresh", %{current: current} do
-      assert DayBucket.classify_freshness(current + 1) == :fresh
-    end
-
-    test "two days in the past is :stale", %{current: current} do
-      assert DayBucket.classify_freshness(current - 2) == :stale
-    end
-
-    test "two days in the future is :stale", %{current: current} do
-      assert DayBucket.classify_freshness(current + 2) == :stale
-    end
-
-    test "pre-epoch (negative) bucket is :stale" do
-      assert DayBucket.classify_freshness(-1) == :stale
-      assert DayBucket.classify_freshness(-1000) == :stale
-    end
-
-    test "far-future bucket is :stale", %{current: current} do
-      assert DayBucket.classify_freshness(current + 365) == :stale
-    end
-  end
-
   describe "current/0" do
     test "returns today's bucket from the persistent_term cache" do
       expected = div(System.system_time(:microsecond), @microseconds_per_day)

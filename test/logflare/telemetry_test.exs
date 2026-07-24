@@ -69,13 +69,13 @@ defmodule Logflare.TelemetryTest do
       for metric <- metrics do
         assert metric.event_name == [:logflare, :backends, :pipeline, :handle_batch]
         assert metric.measurement == :batch_size
-        assert metric.tags == [:event_type, :freshness, :batch_trigger]
+        assert metric.tags == [:event_type, :batch_trigger]
         assert metric.keep.(%{backend_type: :clickhouse})
         refute metric.keep.(%{backend_type: :bigquery})
       end
     end
 
-    test "aggregates ClickHouse batches by event type, freshness, and trigger" do
+    test "aggregates ClickHouse batches by event type and trigger" do
       start_supervised!(
         {OtelMetricExporter,
          name: @clickhouse_batch_exporter,
@@ -88,9 +88,9 @@ defmodule Logflare.TelemetryTest do
       )
 
       event = [:logflare, :backends, :pipeline, :handle_batch]
-      log_tags = %{event_type: :log, freshness: :fresh, batch_trigger: :size}
-      metric_tags = %{event_type: :metric, freshness: :fresh, batch_trigger: :timeout}
-      trace_tags = %{event_type: :trace, freshness: :stale, batch_trigger: :timeout}
+      log_tags = %{event_type: :log, batch_trigger: :size}
+      metric_tags = %{event_type: :metric, batch_trigger: :timeout}
+      trace_tags = %{event_type: :trace, batch_trigger: :timeout}
 
       :telemetry.execute(
         event,

@@ -35,7 +35,6 @@ defmodule Logflare.LogEvent do
     field :event_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
     field :source_id, :integer, default: nil
     field :day_bucket, :integer
-    field :ingest_freshness, Ecto.Enum, values: [:fresh, :stale]
     # Indicates if the event was removed from ets during ingest
     field :is_popped, :boolean, virtual: true, default: false
 
@@ -67,7 +66,6 @@ defmodule Logflare.LogEvent do
       when is_integer(ingested_at_us) do
     ingested_at_dt = DateTime.from_unix!(ingested_at_us, :microsecond)
     day_bucket = body["timestamp"] && DayBucket.from_microseconds(body["timestamp"])
-    ingest_freshness = day_bucket && DayBucket.classify_freshness(day_bucket)
 
     %__MODULE__{
       id: id,
@@ -80,7 +78,6 @@ defmodule Logflare.LogEvent do
       valid: true,
       drop: false,
       day_bucket: day_bucket,
-      ingest_freshness: ingest_freshness,
       via_rule_id: Map.get(record, :via_rule_id)
     }
   end
@@ -96,7 +93,6 @@ defmodule Logflare.LogEvent do
       ) do
     {:ok, ingested_at_dt, _} = DateTime.from_iso8601(ingested_at)
     day_bucket = body["timestamp"] && DayBucket.from_microseconds(body["timestamp"])
-    ingest_freshness = day_bucket && DayBucket.classify_freshness(day_bucket)
 
     %__MODULE__{
       id: id,
@@ -109,7 +105,6 @@ defmodule Logflare.LogEvent do
       valid: true,
       drop: false,
       day_bucket: day_bucket,
-      ingest_freshness: ingest_freshness,
       via_rule_id: Map.get(record, "via_rule_id")
     }
   end
@@ -154,7 +149,6 @@ defmodule Logflare.LogEvent do
 
     body = changeset.changes.body
     day_bucket = DayBucket.from_microseconds(body["timestamp"])
-    ingest_freshness = DayBucket.classify_freshness(day_bucket)
 
     le_map =
       Map.merge(changeset.changes, %{
@@ -167,8 +161,7 @@ defmodule Logflare.LogEvent do
         id: body["id"],
         event_type: event_type,
         timestamp_inferred: mapped["timestamp_inferred"],
-        day_bucket: day_bucket,
-        ingest_freshness: ingest_freshness
+        day_bucket: day_bucket
       })
 
     Logflare.LogEvent
