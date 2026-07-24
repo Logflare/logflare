@@ -7,8 +7,6 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   Converts LogEvent's body into a valid dataframe struct for Explorer
   """
   def log_event_to_df_struct(%Logflare.LogEvent{body: body}) do
-    {:ok, bq_timestamp} = DateTime.from_unix(body["timestamp"], :microsecond)
-
     for {k, v} <- body, into: %{} do
       if is_map(v) do
         {k, prepare_for_ingest(v)}
@@ -16,9 +14,36 @@ defmodule Logflare.Google.BigQuery.EventUtils do
         {k, v}
       end
     end
-    |> Map.put("timestamp", bq_timestamp)
     |> Map.put("event_message", body["event_message"])
+    |> convert_to_seconds()
   end
+
+  @doc """
+  Recursively converts nanosecond/microsecond timestamps to seconds
+  https://docs.cloud.google.com/bigquery/docs/streaming-data-into-bigquery#send_date_and_time_data
+  """
+  @spec convert_to_seconds(map()) :: map()
+  def convert_to_seconds(%{"start_time" => ts} = data) when ts > 1_000_000_000_000_000_000 do
+    %{data | "start_time" => ts / :math.pow(1000, 3)}
+    |> convert_to_seconds()
+  end
+
+  def convert_to_seconds(%{"end_time" => ts} = data) when ts > 1_000_000_000_000_000_000 do
+    %{data | "end_time" => ts / :math.pow(1000, 3)}
+    |> convert_to_seconds()
+  end
+
+  def convert_to_seconds(%{"timestamp" => ts} = data) when ts > 1_000_000_000_000_000_000 do
+    %{data | "timestamp" => ts / :math.pow(1000, 3)}
+    |> convert_to_seconds()
+  end
+
+  def convert_to_seconds(%{"timestamp" => ts} = data) when ts > 1_000_000_000_000 do
+    %{data | "timestamp" => ts / :math.pow(1000, 2)}
+    |> convert_to_seconds()
+  end
+
+  def convert_to_seconds(data), do: data
 
   @doc """
   Checks for all maps fields from the dataframe list, then adds the missing fields to the
