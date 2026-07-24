@@ -464,4 +464,61 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert :ok = Ingester.insert(backend, table_name, [log_event], :log, opts)
     end
   end
+
+  describe "insert/4 with facade_url" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "routes inserts to facade_url host and its embedded port when set" do
+      {source, backend} =
+        setup_clickhouse_test(config: %{facade_url: "http://facade.internal:8124"})
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+      log_event = build_mapped_log_event(source: source, message: "Test facade")
+
+      Finch
+      |> expect(:request, fn request, _pool, _opts ->
+        assert request.host == "facade.internal"
+        assert request.port == 8124
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = Ingester.insert(backend, table_name, [log_event], :log)
+    end
+
+    test "falls back to the scheme default port when facade_url omits a port" do
+      {source, backend} =
+        setup_clickhouse_test(config: %{facade_url: "https://facade.internal"})
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+      log_event = build_mapped_log_event(source: source, message: "Test facade default port")
+
+      Finch
+      |> expect(:request, fn request, _pool, _opts ->
+        assert request.host == "facade.internal"
+        assert request.port == 8443
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = Ingester.insert(backend, table_name, [log_event], :log)
+    end
+
+    test "uses the primary url and config port when facade_url is not set" do
+      {source, backend} = setup_clickhouse_test()
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+      log_event = build_mapped_log_event(source: source, message: "Test no facade")
+
+      Finch
+      |> expect(:request, fn request, _pool, _opts ->
+        assert request.host == "localhost"
+        assert request.port == 8123
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = Ingester.insert(backend, table_name, [log_event], :log)
+    end
+  end
 end

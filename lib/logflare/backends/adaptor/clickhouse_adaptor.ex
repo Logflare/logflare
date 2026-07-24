@@ -41,6 +41,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @async_insert_busy_timeout_max_ms 3_000
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
+  @facade_ping_timeout_ms 5_000
+  @facade_ping_pool Logflare.FinchClickHouseIngest
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -139,6 +141,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        port: :integer,
        pool_size: :integer,
        read_only_url: :string,
+       facade_url: :string,
        insert_protocol: :string,
        native_port: :integer,
        native_pool_size: :integer
@@ -151,6 +154,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :port,
       :pool_size,
       :read_only_url,
+      :facade_url,
       :insert_protocol,
       :native_port,
       :native_pool_size
@@ -169,6 +173,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> validate_read_only_url()
+    |> validate_facade_url()
     |> validate_user_pass()
     |> validate_inclusion(:insert_protocol, ["http", "native"])
     |> validate_number(:pool_size,
@@ -186,6 +191,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   Always checks the ingest cluster (primary `url`) for full write permissions.
   When `read_only_url` is configured, additionally checks the read cluster for `SELECT` permission.
+  When `facade_url` is configured, additionally issues a `GET {facade_url}/ping` which the facade
+  proxies to the upstream ClickHouse it fronts, asserting the full ingest chain is healthy.
   """
   @impl Logflare.Backends.Adaptor
   @spec test_connection(Backend.t()) ::
@@ -193,9 +200,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           | {:error, :permissions_missing}
           | {:error, :read_permissions_missing}
           | {:error, :grant_check_unknown_failure}
+          | {:error, :facade_unreachable}
   def test_connection(%Backend{config: config} = backend) do
     with :ok <- check_ingest_grants(backend, config),
-         :ok <- maybe_check_read_grants(backend, config) do
+         :ok <- maybe_check_read_grants(backend, config),
+         :ok <- maybe_ping_facade(backend, config) do
       :ok
     end
   end
@@ -258,6 +267,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
         {:error, :grant_check_unknown_failure}
     end
+  end
+
+  @spec maybe_ping_facade(Backend.t(), map()) :: :ok | {:error, :facade_unreachable}
+  defp maybe_ping_facade(_backend, %{facade_url: url}) when not is_non_empty_binary(url), do: :ok
+
+  defp maybe_ping_facade(_backend, config) when not is_map_key(config, :facade_url), do: :ok
+
+  defp maybe_ping_facade(%Backend{} = backend, %{facade_url: facade_url}) do
+    ping_url = facade_ping_url(facade_url)
+    request = Finch.build(:get, ping_url)
+
+    case Finch.request(request, @facade_ping_pool, receive_timeout: @facade_ping_timeout_ms) do
+      {:ok, %Finch.Response{status: 200}} ->
+        :ok
+
+      {:ok, %Finch.Response{status: status}} ->
+        Logger.warning(
+          "ClickHouse facade ping failed with unexpected HTTP status #{status}",
+          backend_id: backend.id
+        )
+
+        {:error, :facade_unreachable}
+
+      {:error, reason} ->
+        Logger.warning(
+          "ClickHouse facade ping failed. Unexpected error #{inspect(reason)}",
+          backend_id: backend.id
+        )
+
+        {:error, :facade_unreachable}
+    end
+  end
+
+  @spec facade_ping_url(String.t()) :: String.t()
+  defp facade_ping_url(facade_url) do
+    String.trim_trailing(facade_url, "/") <> "/ping"
   end
 
   @doc """
@@ -732,6 +777,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     case Changeset.get_field(changeset, :read_only_url) do
       nil -> changeset
       _url -> Changeset.validate_format(changeset, :read_only_url, ~r/https?\:\/\/.+/)
+    end
+  end
+
+  @spec validate_facade_url(Changeset.t()) :: Changeset.t()
+  defp validate_facade_url(changeset) do
+    case Changeset.get_field(changeset, :facade_url) do
+      nil -> changeset
+      _url -> Changeset.validate_format(changeset, :facade_url, ~r/https?\:\/\/.+/)
     end
   end
 

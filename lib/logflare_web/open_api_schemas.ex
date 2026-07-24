@@ -382,6 +382,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       password: %Schema{type: :string, nullable: true},
       pool_size: %Schema{type: :integer, nullable: true},
       read_only_url: %Schema{type: :string, nullable: true},
+      facade_url: %Schema{type: :string, nullable: true},
       insert_protocol: %Schema{type: :string, nullable: true},
       native_port: %Schema{type: :integer, nullable: true},
       native_pool_size: %Schema{type: :integer, nullable: true}
