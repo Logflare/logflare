@@ -88,6 +88,23 @@ logflare:
     postgres:
       schema: "public" # POSTGRES_BACKEND_SCHEMA; url (POSTGRES_BACKEND_URL) comes from a Secret in logflare.secretRefs
 
+# Erlang VM flags. When set, rendered into a ConfigMap, mounted at
+# /etc/logflare/vm.args, and pointed at via RELEASE_VM_ARGS (overriding the
+# image's baked-in vm.args). Set to "" to use the image default instead.
+#
+# `+Q` caps the BEAM's preallocated port table and is effectively REQUIRED on
+# Kubernetes: containerd commonly runs pods with nofile=infinity, and without
+# +Q the VM sizes the table from that limit — ~2GB RSS at boot. Keep +Q set.
+vmArgs: |
+  +Q 1048576
+  +sbwt none
+  +sbwtdcpu none
+  +sbwtdio none
+  +swt very_low
+  +P 8000000
+  -kernel prevent_overlapping_partitions false
+  -kernel net_ticktime 45
+
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
 # This is to override the chart name.
