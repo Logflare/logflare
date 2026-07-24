@@ -5,6 +5,18 @@ defmodule Logflare.TelemetryTest do
   alias Logflare.SystemMetrics.Schedulers
   alias Logflare.Telemetry
   alias Logflare.TestUtils
+  alias OtelMetricExporter.MetricStore
+
+  @clickhouse_batch_exporter :logflare_clickhouse_batch_metrics_test
+  @clickhouse_batch_metric_name [
+    :logflare,
+    :backends,
+    :clickhouse,
+    :pipeline,
+    :handle_batch,
+    :batch_size
+  ]
+  @clickhouse_batch_metric_string "logflare.backends.clickhouse.pipeline.handle_batch.batch_size"
 
   describe "metrics/0" do
     test "returns only well-formed Telemetry.Metrics definitions" do
@@ -42,6 +54,73 @@ defmodule Logflare.TelemetryTest do
           ] do
         assert expected in names, "expected #{inspect(expected)} to be a defined metric"
       end
+    end
+
+    test "defines ClickHouse batch distribution and throughput metrics" do
+      metrics = clickhouse_batch_metrics()
+
+      assert length(metrics) == 2
+
+      assert Enum.sort(Enum.map(metrics, &to_string(&1.__struct__))) == [
+               "Elixir.Telemetry.Metrics.Distribution",
+               "Elixir.Telemetry.Metrics.Sum"
+             ]
+
+      for metric <- metrics do
+        assert metric.event_name == [:logflare, :backends, :pipeline, :handle_batch]
+        assert metric.measurement == :batch_size
+        assert metric.tags == [:event_type, :batch_trigger]
+        assert metric.keep.(%{backend_type: :clickhouse})
+        refute metric.keep.(%{backend_type: :bigquery})
+      end
+    end
+
+    test "aggregates ClickHouse batches by event type and trigger" do
+      start_supervised!(
+        {OtelMetricExporter,
+         name: @clickhouse_batch_exporter,
+         metrics: clickhouse_batch_metrics(),
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://localhost:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      event = [:logflare, :backends, :pipeline, :handle_batch]
+      log_tags = %{event_type: :log, batch_trigger: :size}
+      metric_tags = %{event_type: :metric, batch_trigger: :timeout}
+      trace_tags = %{event_type: :trace, batch_trigger: :timeout}
+
+      :telemetry.execute(
+        event,
+        %{batch_size: 20_000},
+        Map.put(log_tags, :backend_type, :clickhouse)
+      )
+
+      :telemetry.execute(
+        event,
+        %{batch_size: 500},
+        Map.put(metric_tags, :backend_type, :clickhouse)
+      )
+
+      :telemetry.execute(
+        event,
+        %{batch_size: 125},
+        Map.put(trace_tags, :backend_type, :clickhouse)
+      )
+
+      :telemetry.execute(event, %{batch_size: 999}, %{backend_type: :bigquery})
+
+      assert %{
+               {:distribution, @clickhouse_batch_metric_string} => distributions,
+               {:sum, @clickhouse_batch_metric_string} => sums
+             } = MetricStore.get_metrics(@clickhouse_batch_exporter)
+
+      assert sums == %{log_tags => 20_000, metric_tags => 500, trace_tags => 125}
+      assert [{_bucket, {1, 20_000}}] = distributions |> Map.fetch!(log_tags) |> Map.to_list()
+      assert [{_bucket, {1, 500}}] = distributions |> Map.fetch!(metric_tags) |> Map.to_list()
+      assert [{_bucket, {1, 125}}] = distributions |> Map.fetch!(trace_tags) |> Map.to_list()
     end
   end
 
@@ -261,5 +340,9 @@ defmodule Logflare.TelemetryTest do
 
       refute_received _anything_else
     end
+  end
+
+  defp clickhouse_batch_metrics do
+    Enum.filter(Telemetry.metrics(), &(&1.name == @clickhouse_batch_metric_name))
   end
 end

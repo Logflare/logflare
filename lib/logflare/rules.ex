@@ -30,6 +30,24 @@ defmodule Logflare.Rules do
     |> Repo.all()
   end
 
+  @doc "Lists rules owned by a user through their source."
+  @spec list_rules_by_user_id(pos_integer(), non_neg_integer() | nil) :: [Rule.t()]
+  def list_rules_by_user_id(user_id, backend_id \\ nil) do
+    from(r in Rule,
+      join: s in Source,
+      on: r.source_id == s.id,
+      where: s.user_id == ^user_id
+    )
+    |> maybe_filter_by_backend_id(backend_id)
+    |> Repo.all()
+  end
+
+  defp maybe_filter_by_backend_id(query, nil), do: query
+
+  defp maybe_filter_by_backend_id(query, backend_id) do
+    where(query, [r], r.backend_id == ^backend_id)
+  end
+
   def rules_tree_by_source_id(id) do
     rules = list_by_source_id(id)
     RulesTree.build(rules)

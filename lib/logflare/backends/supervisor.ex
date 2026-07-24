@@ -42,6 +42,7 @@ defmodule Logflare.Backends.Supervisor do
         Backends.IngestEventQueue,
         Backends.IngestEventQueue.BufferCacheWorker,
         Backends.IngestEventQueue.MapperJanitor,
+        Backends.IngestEventQueue.GenerationJanitor,
         Backends.Adaptor.PostgresAdaptor.Supervisor,
         Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore,
         Backends.Adaptor.ClickHouseAdaptor.NativeIngester.SchemaCache,

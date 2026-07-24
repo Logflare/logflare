@@ -111,7 +111,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     for _ <- 1..(Backends.max_buffer_queue_len() - 500) do
       le = build(:log_event, source: source)
       IngestEventQueue.add_to_table(table_key, [le])
-      IngestEventQueue.mark_ingested(table_key, [le])
+      IngestEventQueue.pop_pending(table_key, 1)
     end
 
     # get and cache the value

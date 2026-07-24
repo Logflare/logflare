@@ -85,6 +85,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert binary =~ "custom_field"
       assert binary =~ "custom_value"
     end
+
+    test "encodes a batch-constant mapping config without storing it in every body" do
+      event = build_mapped_log_event(message: "test message")
+      config_id = Ingester.encode_mapping_config_id(event.body["mapping_config_id"])
+      event_without_config = %{event | body: Map.delete(event.body, "mapping_config_id")}
+
+      assert IO.iodata_to_binary(Ingester.encode_row(event, :log)) ==
+               IO.iodata_to_binary(Ingester.encode_row(event_without_config, :log, config_id))
+    end
   end
 
   describe "encode_row/2 for metrics" do
@@ -94,6 +103,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       encoded = Ingester.encode_row(event, :metric)
       assert is_list(encoded)
       assert IO.iodata_length(encoded) > 0
+    end
+
+    test "encodes a batch-constant mapping config without storing it in every body" do
+      event = build_mapped_metric_event()
+      config_id = Ingester.encode_mapping_config_id(event.body["mapping_config_id"])
+      event_without_config = %{event | body: Map.delete(event.body, "mapping_config_id")}
+
+      assert IO.iodata_to_binary(Ingester.encode_row(event, :metric)) ==
+               IO.iodata_to_binary(Ingester.encode_row(event_without_config, :metric, config_id))
     end
 
     test "includes metric fields in encoded output" do
@@ -123,6 +141,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       encoded = Ingester.encode_row(event, :trace)
       assert is_list(encoded)
       assert IO.iodata_length(encoded) > 0
+    end
+
+    test "encodes a batch-constant mapping config without storing it in every body" do
+      event = build_mapped_trace_event()
+      config_id = Ingester.encode_mapping_config_id(event.body["mapping_config_id"])
+      event_without_config = %{event | body: Map.delete(event.body, "mapping_config_id")}
+
+      assert IO.iodata_to_binary(Ingester.encode_row(event, :trace)) ==
+               IO.iodata_to_binary(Ingester.encode_row(event_without_config, :trace, config_id))
     end
 
     test "includes trace fields in encoded output" do
@@ -288,6 +315,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
     end
   end
 
+  describe "too_many_parts?/1" do
+    test "matches only the exact ClickHouse error code" do
+      assert Ingester.too_many_parts?("Code: 252. DB::Exception: Too many parts in table.")
+      refute Ingester.too_many_parts?("Code: 2529. DB::Exception: A hypothetical future error.")
+    end
+  end
+
   describe "insert/4" do
     setup do
       insert(:plan, name: "Free")
@@ -323,6 +357,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       end)
 
       assert :ok = Ingester.insert(backend, table_name, [log_event], :log)
+    end
+
+    test "does not retry TOO_MANY_PARTS responses", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      response_body = "Code: 252. DB::Exception: Too many parts in table."
+
+      Finch
+      |> expect(:request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 500, body: response_body}}
+      end)
+
+      assert {:error, "HTTP 500: " <> ^response_body} =
+               Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
     end
 
     test "includes column list in INSERT query", %{

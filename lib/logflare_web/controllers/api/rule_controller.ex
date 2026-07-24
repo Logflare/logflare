@@ -3,35 +3,59 @@ defmodule LogflareWeb.Api.RuleController do
   use OpenApiSpex.ControllerSpecs
 
   alias Logflare.Backends
-  alias Logflare.Sources
   alias Logflare.Rules
+  alias Logflare.Sources
   alias LogflareWeb.OpenApi.Accepted
-  alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApi.Unauthorized
+  alias LogflareWeb.OpenApi.UnprocessableEntity
   alias LogflareWeb.OpenApiSchemas.RuleApiSchema
+  alias LogflareWeb.OpenApiSchemas.RuleBatchResponse
+  alias LogflareWeb.OpenApiSchemas.RuleCreateResponse
+  alias LogflareWeb.OpenApiSchemas.RuleParams
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
   tags(["management"])
 
   operation(:index,
-    summary: "List rules",
-    responses: %{200 => List.response(RuleApiSchema)}
+    summary: "List rules owned by the authenticated user",
+    parameters: [
+      backend_id: [
+        in: :query,
+        description: "Optional backend ID to filter the rule list",
+        type: :integer,
+        required: false
+      ],
+      backend_token: [
+        in: :query,
+        description: "Optional backend UUID to filter the rule list",
+        type: :string,
+        required: false
+      ]
+    ],
+    responses: %{
+      200 => List.response(RuleApiSchema),
+      401 => Unauthorized.response(),
+      404 => NotFound.response()
+    }
   )
 
-  def index(%{assigns: %{user: user}} = conn, filters)
-      when is_map_key(filters, "backend_id") or is_map_key(filters, "backend_token") do
-    kw =
-      case filters do
-        %{"backend_id" => bid} -> [id: bid]
-        %{"backend_token" => token} -> [token: token]
-      end
-
-    with {:ok, backend} <- Backends.fetch_backend_by([{:user_id, user.id} | kw]) do
-      rules = Rules.list_rules(backend)
-      json(conn, rules)
+  def index(%{assigns: %{user: user}} = conn, %{"backend_id" => backend_id}) do
+    with {:ok, backend} <- Backends.fetch_backend_by(user_id: user.id, id: backend_id) do
+      json(conn, Rules.list_rules_by_user_id(user.id, backend.id))
     end
+  end
+
+  def index(%{assigns: %{user: user}} = conn, %{"backend_token" => backend_token}) do
+    with {:ok, backend} <- Backends.fetch_backend_by(user_id: user.id, token: backend_token) do
+      json(conn, Rules.list_rules_by_user_id(user.id, backend.id))
+    end
+  end
+
+  def index(%{assigns: %{user: user}} = conn, _params) do
+    json(conn, Rules.list_rules_by_user_id(user.id))
   end
 
   operation(:show,
@@ -51,9 +75,11 @@ defmodule LogflareWeb.Api.RuleController do
 
   operation(:create,
     summary: "Create rule. Allows batch creation if as a list.",
-    request_body: RuleApiSchema.params(),
+    request_body: RuleParams.params(),
     responses: %{
-      201 => Created.response(RuleApiSchema),
+      201 => RuleCreateResponse.response(),
+      400 => RuleBatchResponse.response(),
+      422 => UnprocessableEntity.response(),
       404 => NotFound.response()
     }
   )
@@ -124,11 +150,12 @@ defmodule LogflareWeb.Api.RuleController do
   operation(:update,
     summary: "Update rule",
     parameters: [token: [in: :path, description: "Rule UUID", type: :string]],
-    request_body: RuleApiSchema.params(),
+    request_body: RuleParams.params(),
     responses: %{
       204 => Accepted.response(),
       200 => Accepted.response(RuleApiSchema),
-      404 => NotFound.response()
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 

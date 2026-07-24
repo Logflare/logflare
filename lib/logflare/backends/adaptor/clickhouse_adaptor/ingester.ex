@@ -17,6 +17,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @max_delay 5_000
   @pool_timeout 8_000
   @receive_timeout 20_000
+  @too_many_parts_marker "Code: 252."
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
@@ -75,6 +76,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     end
   end
 
+  @doc false
+  @spec too_many_parts?(term()) :: boolean()
+  def too_many_parts?(reason) when is_binary(reason),
+    do: String.contains?(reason, @too_many_parts_marker)
+
+  def too_many_parts?(_reason), do: false
+
   @spec build_client(Keyword.t()) :: Tesla.Client.t()
   defp build_client(connection_opts) do
     middleware = [
@@ -100,6 +108,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   @spec retriable?({:ok, Tesla.Env.t()} | {:error, term()}) :: boolean()
+  defp retriable?({:ok, %Tesla.Env{status: status, body: body}})
+       when status >= 500 and is_binary(body),
+       do: not too_many_parts?(body)
+
   defp retriable?({:ok, %Tesla.Env{status: status}}) when status >= 500, do: true
   defp retriable?({:ok, %Tesla.Env{status: 429}}), do: true
   defp retriable?({:ok, _env}), do: false

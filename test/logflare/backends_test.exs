@@ -447,6 +447,31 @@ defmodule Logflare.BackendsTest do
       refute forbidden_backend_id in backend_ids
     end
 
+    test "list_backends_by_user_access/2 filters team backends with sources or rules", %{
+      user: user
+    } do
+      team_user = insert(:team_user, email: user.email)
+      owner = team_user.team.user
+      source = insert(:source, user: owner)
+
+      backend_with_source = insert(:backend, user: owner, sources: [source])
+      backend_with_rule = insert(:backend, user: owner)
+      backend_with_both = insert(:backend, user: owner, sources: [source])
+      backend_without_sources_or_rules = insert(:backend, user: owner)
+      insert(:rule, source: source, backend: backend_with_rule, lql_string: "testing")
+      insert(:rule, source: source, backend: backend_with_both, lql_string: "testing")
+
+      backend_ids =
+        Backends.list_backends_by_user_access(user, has_sources_or_rules: true)
+        |> Enum.map(& &1.id)
+
+      assert backend_with_source.id in backend_ids
+      assert backend_with_rule.id in backend_ids
+      assert backend_with_both.id in backend_ids
+      assert Enum.count(backend_ids, &(&1 == backend_with_both.id)) == 1
+      refute backend_without_sources_or_rules.id in backend_ids
+    end
+
     test "get_backend_by_user_access/2" do
       owner = insert(:user)
       team_user = insert(:team_user, email: owner.email)
@@ -1711,11 +1736,11 @@ defmodule Logflare.BackendsTest do
       {:ok, source: source}
     end
 
-    test "drops events older than 72 hours", %{source: source} do
+    test "drops events older than 24 hours", %{source: source} do
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
 
       now_us = System.system_time(:microsecond)
-      old_timestamp = now_us - 73 * 3_600 * 1_000_000
+      old_timestamp = now_us - 25 * 3_600 * 1_000_000
 
       params = [%{"message" => "old event", "timestamp" => old_timestamp}]
 
@@ -1762,9 +1787,9 @@ defmodule Logflare.BackendsTest do
 
       params = [
         %{"message" => "valid now", "timestamp" => now_us},
-        %{"message" => "too old", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "too old", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
         %{"message" => "too future", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
-        %{"message" => "valid past", "timestamp" => now_us - 24 * 3_600 * 1_000_000}
+        %{"message" => "valid past", "timestamp" => now_us - 15 * 3_600 * 1_000_000}
       ]
 
       assert {:ok, 2} = Backends.ingest_logs(params, source)
@@ -1800,9 +1825,9 @@ defmodule Logflare.BackendsTest do
       refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future], _, _}
     end
 
-    test "accepts events at exact boundary (72 hours ago)", %{source: source} do
+    test "accepts events at exact boundary (24 hours ago)", %{source: source} do
       now_us = System.system_time(:microsecond)
-      boundary_timestamp = now_us - (71 * 3_600 + 59 * 60) * 1_000_000
+      boundary_timestamp = now_us - (23 * 3_600 + 59 * 60) * 1_000_000
 
       params = [%{"message" => "boundary event", "timestamp" => boundary_timestamp}]
 
@@ -1837,7 +1862,7 @@ defmodule Logflare.BackendsTest do
 
       params = [
         %{"message" => "valid event", "timestamp" => now_us},
-        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "old event 1", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
         %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
         %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
       ]
@@ -1847,7 +1872,7 @@ defmodule Logflare.BackendsTest do
           assert {:ok, 1} = Backends.ingest_logs(params, source)
         end)
 
-      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-72h, +1h] window"
+      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-24h, +1h] window"
     end
 
     test "does not log when no events are filtered", %{source: source} do
