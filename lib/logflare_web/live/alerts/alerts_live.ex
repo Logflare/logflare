@@ -55,10 +55,9 @@ defmodule LogflareWeb.AlertsLive do
       |> assign(:past_jobs_page, nil)
       # to be lazy loaded
       |> assign(:backend_options, [])
-      |> assign(:changeset, Alerting.change_alert_query(%AlertQuery{}))
+      |> assign(:changeset, Alerting.change_alert_query(new_alert_query(user)))
       |> assign(:base_url, LogflareWeb.Endpoint.url())
       |> assign(:parse_error_message, nil)
-      |> assign(:query_string, nil)
       |> assign(:show_add_backend_form, false)
       |> assign(:show_execution_history, false)
       |> assign(:triggering_alert, false)
@@ -79,7 +78,8 @@ defmodule LogflareWeb.AlertsLive do
 
     params = Map.put(params, "query", formatted_query)
 
-    changeset = Alerting.change_alert_query(%AlertQuery{}, params)
+    changeset =
+      Alerting.change_alert_query(new_alert_query(socket.assigns.user), params)
 
     verify_resource_access(socket)
     {:noreply, assign(socket, :changeset, changeset)}
@@ -122,6 +122,43 @@ defmodule LogflareWeb.AlertsLive do
 
   def handle_event(
         "save",
+        %{"action" => "format", "alert" => params},
+        socket
+      ) do
+    {:ok, formatted} = SqlFmt.format_query(Map.get(params, "query", ""))
+    alert_params = Map.put(params, "query", formatted)
+
+    changeset =
+      alert_query_for_changeset(socket)
+      |> Alerting.change_alert_query(alert_params)
+
+    socket =
+      socket
+      |> assign(:changeset, changeset)
+      |> assign(:parse_error_message, parse_alert_query(formatted, socket))
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "save",
+        %{"action" => "test-query", "alert" => params},
+        socket
+      ) do
+    changeset =
+      alert_query_for_changeset(socket)
+      |> Alerting.change_alert_query(params)
+
+    socket =
+      socket
+      |> assign(:changeset, changeset)
+      |> assign(:parse_error_message, parse_alert_query(params["query"], socket))
+
+    run_alert_query(params["query"], socket)
+  end
+
+  def handle_event(
+        "save",
         %{"alert" => params},
         %{assigns: %{user: user, alert: alert}} = socket
       ) do
@@ -149,6 +186,21 @@ defmodule LogflareWeb.AlertsLive do
          |> put_flash(:info, message)
          |> assign(:changeset, changeset)}
     end
+  end
+
+  def handle_event("validate", %{"alert" => params}, socket) do
+    changeset =
+      alert_query_for_changeset(socket)
+      |> Alerting.change_alert_query(params)
+
+    query = params["query"]
+
+    socket =
+      socket
+      |> assign(:changeset, changeset)
+      |> assign(:parse_error_message, parse_alert_query(query, socket))
+
+    {:noreply, socket}
   end
 
   def handle_event(
@@ -206,70 +258,10 @@ defmodule LogflareWeb.AlertsLive do
 
   def handle_event(
         "run-query",
-        params,
-        %{assigns: %{alert: alert, user: user}} = socket
-      ) do
-    query = get_in(params, ["query"]) || socket.assigns.query_string || (alert && alert.query)
-
-    test_alert =
-      if alert,
-        do: %{alert | query: query},
-        else: %AlertQuery{query: query, language: :bq_sql, user: user, user_id: user.id}
-
-    with {:ok, %QueryResult{rows: [_ | _]} = result} <-
-           Alerting.execute_alert_query(test_alert, use_query_cache: false) do
-      {:noreply,
-       socket
-       |> assign(:query_result_rows, result.rows)
-       |> assign(:total_bytes_processed, result.total_bytes_processed)
-       |> put_flash(:info, "Query executed successfully. Alert will fire.")}
-    else
-      {:ok, %QueryResult{rows: []} = result} ->
-        {:noreply,
-         socket
-         |> assign(:query_result_rows, [])
-         |> assign(:total_bytes_processed, result.total_bytes_processed)
-         |> put_flash(:info, "No results from query. Alert will not fire.")}
-
-      {:error, err} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Error when running query: #{format_query_error(err)}"
-         )}
-    end
-  end
-
-  def handle_event(
-        "run-query",
         _params,
         %{assigns: %{alert: %_{} = alert}} = socket
       ) do
-    with {:ok, %QueryResult{} = result} <-
-           Alerting.execute_alert_query(alert, use_query_cache: false) do
-      {:noreply,
-       socket
-       |> assign(:query_result_rows, result.rows)
-       |> assign(:total_bytes_processed, result.total_bytes_processed)
-       |> put_flash(:info, "Alert has been triggered. Notifications sent!")}
-    else
-      {:error, :no_results} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Alert has been triggered. No results from query, notifications not sent!"
-         )}
-
-      {:error, err} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Error when running query: #{format_query_error(err)}"
-         )}
-    end
+    run_alert_query(alert.query, socket)
   end
 
   def handle_event(
@@ -412,10 +404,6 @@ defmodule LogflareWeb.AlertsLive do
 
   defp format_query_error(_error), do: QueryErrorHelpers.generic_query_error_message()
 
-  def handle_info({:query_string_updated, query_string}, socket) do
-    {:noreply, assign(socket, :query_string, query_string)}
-  end
-
   def handle_info({:poll_job, job_id, attempt}, %{assigns: %{alert: alert}} = socket)
       when attempt < @poll_max_attempts do
     job = Repo.get(Oban.Job, job_id)
@@ -455,6 +443,37 @@ defmodule LogflareWeb.AlertsLive do
 
   def handle_info(:refresh_execution_history, socket) do
     {:noreply, socket}
+  end
+
+  defp run_alert_query(query, %{assigns: %{alert: alert, user: user}} = socket) do
+    test_alert =
+      if alert,
+        do: %{alert | query: query},
+        else: %AlertQuery{query: query, language: :bq_sql, user: user, user_id: user.id}
+
+    with {:ok, %QueryResult{rows: [_ | _]} = result} <-
+           Alerting.execute_alert_query(test_alert, use_query_cache: false) do
+      {:noreply,
+       socket
+       |> assign(:query_result_rows, result.rows)
+       |> assign(:total_bytes_processed, result.total_bytes_processed)
+       |> put_flash(:info, "Query executed successfully. Alert will fire.")}
+    else
+      {:ok, %QueryResult{rows: []} = result} ->
+        {:noreply,
+         socket
+         |> assign(:query_result_rows, [])
+         |> assign(:total_bytes_processed, result.total_bytes_processed)
+         |> put_flash(:info, "No results from query. Alert will not fire.")}
+
+      {:error, err} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "Error when running query: #{format_query_error(err)}"
+         )}
+    end
   end
 
   defp refresh(%{assigns: assigns} = socket) do
@@ -528,6 +547,37 @@ defmodule LogflareWeb.AlertsLive do
       nil -> Alerting.create_alert_query(user, params)
       %_{} -> Alerting.update_alert_query(alert, params)
     end
+  end
+
+  defp alert_query_for_changeset(%{assigns: %{alert: %AlertQuery{} = alert}}), do: alert
+  defp alert_query_for_changeset(%{assigns: %{user: user}}), do: new_alert_query(user)
+
+  defp new_alert_query(user), do: %AlertQuery{user: user, user_id: user.id}
+
+  defp parse_alert_query(query_string, _socket) when query_string in ["", nil], do: nil
+
+  defp parse_alert_query(query_string, socket) do
+    case Endpoints.parse_query_string(
+           :bq_sql,
+           query_string,
+           socket.assigns.endpoints,
+           socket.assigns.alerts
+         ) do
+      {:ok, _} ->
+        nil
+
+      {:error, "sql parser error: " <> message} ->
+        message
+
+      {:error, error} ->
+        error
+    end
+  end
+
+  defp alert_query_completions(sources, endpoints, alerts) do
+    [sources, endpoints, alerts]
+    |> List.flatten()
+    |> Enum.map(& &1.name)
   end
 
   defp paginate_past_jobs(alert_query_id, page_num) do
