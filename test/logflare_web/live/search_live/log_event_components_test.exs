@@ -13,6 +13,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
 
   @default_attrs %{
     search_op_log_events: nil,
+    log_events: [],
     last_query_completed_at: nil,
     loading: false,
     search_timezone: "Etc/UTC",
@@ -22,39 +23,6 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
     source: nil,
     search_op: nil
   }
-
-  defmodule TestLive do
-    use LogflareWeb, :live_view
-
-    def render(assigns) do
-      ~H"""
-      <div>
-        <LogEventComponents.results_list
-          search_op_log_events={@search_op_log_events}
-          search_op={@search_op}
-          last_query_completed_at={@last_query_completed_at}
-          loading={@loading}
-          search_timezone={@search_timezone}
-          tailing?={@tailing?}
-          querystring={@querystring}
-        />
-      </div>
-      """
-    end
-
-    def mount(_params, session, socket) do
-      {:ok,
-       assign(socket,
-         search_op_log_events: session["search_op_log_events"],
-         search_op: session["search_op"],
-         last_query_completed_at: session["last_query_completed_at"],
-         loading: session["loading"],
-         search_timezone: session["search_timezone"],
-         tailing?: session["tailing?"],
-         querystring: session["querystring"]
-       )}
-    end
-  end
 
   describe "results_list/1" do
     setup do
@@ -95,7 +63,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
           | search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            search_op_log_events: search_op_log_events
+            search_op_log_events: search_op_log_events,
+            log_events: stream_entries(search_op_log_events.rows)
         })
 
       assert html =~ "Log message 1"
@@ -110,7 +79,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
             search_op_log_events: %{rows: []}
         })
 
-      assert html =~ ~r|id="logs-list" class="(.*)blurred"|
+      assert html =~ ~r|id="logs-list".*class="(.*)blurred"|
     end
 
     test "renders empty state when no log events", %{source: source, lql_rules: lql_rules} do
@@ -147,7 +116,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
           | search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            search_op_log_events: search_op_log_events
+            search_op_log_events: search_op_log_events,
+            log_events: stream_entries(search_op_log_events.rows)
         })
 
       assert html =~ "(empty event message)"
@@ -183,7 +153,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
           | search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            search_op_log_events: search_op_log_events
+            search_op_log_events: search_op_log_events,
+            log_events: stream_entries(search_op_log_events.rows)
         })
 
       assert html =~ "Normal log message"
@@ -338,5 +309,11 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
 
              """
     end
+  end
+
+  defp stream_entries(log_events) do
+    log_events
+    |> Enum.with_index()
+    |> Enum.map(fn {log_event, index} -> {"log-events-#{index}", log_event} end)
   end
 end

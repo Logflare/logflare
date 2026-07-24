@@ -25,7 +25,6 @@ defmodule Logflare.LogEvent do
     field :body, :map, default: %{}
     field :valid, :boolean
     field :drop, :boolean, default: false
-    field :is_from_stale_query, :boolean
     field :timestamp_inferred, :boolean, default: false
     field :ingested_at, :utc_datetime_usec
     field :source_uuid, Ecto.UUID.Atom

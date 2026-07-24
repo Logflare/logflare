@@ -26,7 +26,7 @@ hooks.SourceLogsSearchList = {
     const hook = this
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
 
-    window.scrollTo(0, document.body.scrollHeight)
+    // window.scrollTo(0, document.body.scrollHeight)
 
     const observer =
       new IntersectionObserver((entries, observer) => {

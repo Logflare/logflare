@@ -35,7 +35,29 @@ defmodule Logflare.Logs.SearchOperation do
     field :chart_data_shape_id, atom(), default: nil, enforce: true
     field :type, :events | :aggregates
     field :status, {atom(), String.t() | [String.t()]}
+    field :event_page_request, event_page_request()
+    field :event_page_result, event_page_result()
+    field :has_more_events?, boolean(), default: false
   end
+
+  @type event_cursor :: %{timestamp: integer(), id: String.t()}
+  @type event_page_intent :: :within_range | :extend_previous | :extend_next
+  @type event_page_request :: %{
+          intent: event_page_intent(),
+          boundary: integer() | DateTime.t() | NaiveDateTime.t() | nil,
+          cursor: event_cursor() | nil
+        }
+  @type event_page_result :: %{
+          request: event_page_request(),
+          has_more?: boolean(),
+          cursor: event_cursor() | nil
+        }
+
+  @spec event_page_direction(event_page_intent()) :: :previous | :next
+  def event_page_direction(:extend_next), do: :next
+
+  def event_page_direction(intent) when intent in [:within_range, :extend_previous],
+    do: :previous
 
   def new(params) do
     so = struct(__MODULE__, params)

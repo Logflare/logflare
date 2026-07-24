@@ -1052,7 +1052,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
         |> render()
 
       assert link =~ ~r/phx-value-log-event-timestamp="\d+/
-      assert link =~ ~r/phx-value-lql="\w+/
     end
 
     @tag source_schema:
@@ -1563,6 +1562,43 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert get_view_assigns(view).tailing?
     end
 
+    test "closing context does not resume a paused search", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      render_click(view, "soft_pause", %{})
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "open_event_context", %{})
+
+      render_click(view, "close_event_context", %{})
+
+      refute get_view_assigns(view).tailing?
+    end
+
+    test "closing context resumes a search that was live", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      render_click(view, "open_event_context", %{})
+
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "close_event_context", %{})
+
+      assert get_view_assigns(view).tailing?
+    end
+
     test "datetime_update", %{conn: conn, source: source} do
       {:ok, view, _html} =
         live_with_redirect(conn, Routes.live_path(conn, SearchLV, source, querystring: "error"))
@@ -1764,7 +1800,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
-  describe "single tenant searching with postgres backend" do
+  describe "search tasks with postgres backend" do
     TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
 
     setup do
@@ -1822,6 +1858,113 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert view |> element("#logs-list-container") |> render() =~ matching_message
       refute view |> element("#logs-list-container") |> render() =~ non_matching_message
+    end
+
+    test "tailing retains rows on an empty result", %{conn: conn, source: source} do
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
+
+      events_op = get_view_assigns(view).search_op_log_events
+      initial_log_event_ids = log_event_ids(view)
+
+      send(view.pid, {:search_result, %{events: %{events_op | rows: []}}})
+
+      assert log_event_ids(view) == initial_log_event_ids
+    end
+
+    test "tailing inserts a late event at its timestamp position", %{
+      conn: conn,
+      source: source
+    } do
+      timestamp_a = DateTime.utc_now() |> DateTime.to_unix(:microsecond)
+      timestamp_b = timestamp_a + 1
+      timestamp_c = timestamp_a + 2
+      message_prefix = "postgres-tail-order-#{System.unique_integer([:positive])}"
+
+      event_a =
+        build(:log_event,
+          source: source,
+          id: "ordered-event-a",
+          timestamp: timestamp_a,
+          message: "#{message_prefix} A"
+        )
+
+      event_b =
+        build(:log_event,
+          source: source,
+          id: "ordered-event-b",
+          timestamp: timestamp_b,
+          message: "#{message_prefix} B"
+        )
+
+      event_c =
+        build(:log_event,
+          source: source,
+          id: "ordered-event-c",
+          timestamp: timestamp_c,
+          message: "#{message_prefix} C"
+        )
+
+      assert {:ok, 2} = Backends.ingest_logs([event_c, event_a], source)
+
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      render_change(view, :start_search, %{"querystring" => message_prefix})
+
+      view
+      |> TestUtils.wait_for_render("#log-events-ordered-event-a-#{timestamp_a}")
+
+      assert log_event_ids(view) ==
+               [
+                 "log-events-ordered-event-c-#{timestamp_c}",
+                 "log-events-ordered-event-a-#{timestamp_a}"
+               ]
+
+      assert {:ok, 1} = Backends.ingest_logs([event_b], source)
+
+      send(view.pid, :schedule_tail_search)
+
+      view
+      |> TestUtils.wait_for_render("#log-events-ordered-event-b-#{timestamp_b}")
+
+      assert log_event_ids(view) ==
+               [
+                 "log-events-ordered-event-c-#{timestamp_c}",
+                 "log-events-ordered-event-b-#{timestamp_b}",
+                 "log-events-ordered-event-a-#{timestamp_a}"
+               ]
+    end
+
+    test "changing timezone immediately clears displayed search results", %{
+      conn: conn,
+      source: source,
+      matching_message: matching_message
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      render_change(view, :start_search, %{"querystring" => matching_message})
+
+      assert view
+             |> TestUtils.wait_for_render("#logs-list > li")
+             |> has_element?("#logs-list > li", matching_message)
+
+      html =
+        view
+        |> element("#results-actions")
+        |> render_change(%{search_timezone: "Singapore"})
+
+      assert html
+             |> Floki.parse_document!()
+             |> Floki.find("#logs-list > li")
+             |> Enum.empty?()
     end
   end
 
@@ -2450,6 +2593,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   defp get_view_assigns(view) do
     :sys.get_state(view.pid).socket.assigns
+  end
+
+  defp log_event_ids(view) do
+    view
+    |> element("#logs-list")
+    |> render()
+    |> Floki.parse_document!()
+    |> Floki.find("#logs-list > li")
+    |> Floki.attribute("id")
   end
 
   defp find_search_form_value(html, selector) do
