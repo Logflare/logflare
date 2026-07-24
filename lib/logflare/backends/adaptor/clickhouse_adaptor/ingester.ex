@@ -371,15 +371,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     {:error, "Unable to build connection options"}
   end
 
+  @spec insert_origin(Keyword.t(), boolean()) :: {String.t(), String.t(), non_neg_integer()}
+  defp insert_origin(connection_opts, async?) do
+    case dedicated_async_url(connection_opts, async?) do
+      nil ->
+        # non-async request or no dedicated async cluster URL configured
+        # use the primary url / schema / port
+        uri = URI.parse(Keyword.get(connection_opts, :url))
+        scheme = uri.scheme || "http"
+        {scheme, uri.host, Keyword.get(connection_opts, :port, default_port(scheme))}
+
+      async_url ->
+        # async request with a dedicated async cluster URL configured
+        uri = URI.parse(async_url)
+        scheme = uri.scheme || "http"
+        {scheme, uri.host, dedicated_port(uri, connection_opts, scheme)}
+    end
+  end
+
+  @spec dedicated_async_url(Keyword.t(), boolean()) :: String.t() | nil
+  defp dedicated_async_url(connection_opts, true) do
+    case Keyword.get(connection_opts, :async_insert_cluster_url) do
+      url when is_non_empty_binary(url) -> url
+      _ -> nil
+    end
+  end
+
+  defp dedicated_async_url(_connection_opts, false), do: nil
+
+  @spec dedicated_port(URI.t(), Keyword.t(), String.t()) :: non_neg_integer()
+  defp dedicated_port(%URI{port: port}, connection_opts, scheme) when port in [nil, 80, 443],
+    do: Keyword.get(connection_opts, :port, default_port(scheme))
+
+  defp dedicated_port(%URI{port: port}, _connection_opts, _scheme), do: port
+
   @spec async_insert_request?(keyword()) :: boolean()
   defp async_insert_request?(opts), do: Keyword.get(opts, :async_insert) == 1
-
-  @spec insert_base_url(Keyword.t(), boolean()) :: String.t()
-  defp insert_base_url(connection_opts, false), do: Keyword.get(connection_opts, :url)
-
-  defp insert_base_url(connection_opts, true) do
-    Keyword.get(connection_opts, :async_insert_cluster_url) || Keyword.get(connection_opts, :url)
-  end
 
   @spec build_request_url(
           connection_opts :: Keyword.t(),
@@ -389,13 +416,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
           async? :: boolean()
         ) :: String.t()
   defp build_request_url(connection_opts, table, event_type, opts, async?) do
-    base_url = insert_base_url(connection_opts, async?)
+    {scheme, host, port} = insert_origin(connection_opts, async?)
     database = Keyword.get(connection_opts, :database)
-
-    uri = URI.parse(base_url)
-    scheme = uri.scheme || "http"
-    host = uri.host
-    port = Keyword.get(connection_opts, :port, default_port(scheme))
 
     columns = columns_for_type(event_type) |> Enum.join(", ")
     query = "INSERT INTO #{database}.#{table} (#{columns}) FORMAT RowBinary"
