@@ -1,26 +1,19 @@
 defmodule LogflareWeb.Helpers.BqSchemaTest do
   use LogflareWeb.ConnCase, async: true
 
-  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
-  alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias LogflareWeb.Helpers.BqSchema
 
   describe "format_bq_schema/2" do
-    test "formats a BigQuery schema as a markdown list" do
-      schema = %TS{
-        fields: [
-          %TFS{name: "event_message", type: "STRING", mode: "REQUIRED"},
-          %TFS{
-            name: "metadata",
-            type: "RECORD",
-            mode: "NULLABLE",
-            fields: [
-              %TFS{name: "tags", type: "STRING", mode: "REPEATED"},
-              %TFS{name: "user_id", type: "INTEGER", mode: "NULLABLE"}
-            ]
+    test "formats a BigQuery schema as a flat markdown list" do
+      schema =
+        TestUtils.build_bq_schema(%{
+          "event_message" => "human-readable event message",
+          "metadata" => %{
+            "tags" => ["tag"],
+            "user_id" => 1
           }
-        ]
-      }
+        })
 
       assert BqSchema.format_bq_schema(schema, type: :markdown) ==
                """
@@ -29,9 +22,39 @@ defmodule LogflareWeb.Helpers.BqSchemaTest do
                Use this schema when writing Logflare LQL (https://docs.logflare.app/concepts/lql/)
 
                - `event_message` STRING Human-readable event message.
+               - `id` STRING Event UUID.
                - `metadata` RECORD
-                 - `tags` ARRAY<STRING>
-                 - `user_id` INTEGER\
+               - `metadata.tags` ARRAY<STRING>
+               - `metadata.user_id` INTEGER
+               - `timestamp` DATETIME Ingest timestamp.\
+               """
+    end
+  end
+
+  describe "format_schema/2" do
+    test "formats a flatmap schema as a markdown list" do
+      schema_flatmap =
+        TestUtils.build_bq_schema(%{
+          "event_message" => "human-readable event message",
+          "metadata" => %{
+            "tags" => ["tag"],
+            "user_id" => 1
+          }
+        })
+        |> SchemaUtils.bq_schema_to_flat_typemap()
+
+      assert BqSchema.format_schema(schema_flatmap, type: :markdown) ==
+               """
+               # Logflare source schema
+
+               Use this schema when writing Logflare LQL (https://docs.logflare.app/concepts/lql/)
+
+               - `event_message` STRING Human-readable event message.
+               - `id` STRING Event UUID.
+               - `metadata` RECORD
+               - `metadata.tags` ARRAY<STRING>
+               - `metadata.user_id` INTEGER
+               - `timestamp` DATETIME Ingest timestamp.\
                """
     end
   end
