@@ -1,0 +1,54 @@
+suite: test vm.args wiring
+templates:
+  - vm-args-configmap.yaml
+  - deployment.yaml
+tests:
+  - it: renders the vm.args ConfigMap with +Q by default
+    template: vm-args-configmap.yaml
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - matchRegex:
+          path: data["vm.args"]
+          pattern: "\\+Q 1048576"
+
+  - it: sets RELEASE_VM_ARGS and mounts vm-args by default
+    template: deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RELEASE_VM_ARGS
+            value: /etc/logflare/vm.args
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: vm-args
+            mountPath: /etc/logflare/vm.args
+            subPath: vm.args
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: vm-args
+            configMap:
+              name: RELEASE-NAME-logflare-vm-args
+
+  - it: renders no ConfigMap when vmArgs is empty
+    set:
+      vmArgs: ""
+    template: vm-args-configmap.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: omits RELEASE_VM_ARGS when vmArgs is empty
+    set:
+      vmArgs: ""
+    template: deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RELEASE_VM_ARGS
+            value: /etc/logflare/vm.args
