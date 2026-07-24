@@ -2,9 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "logflare.fullname" . }}
-  {{- if .Values.logflare.reloader }}
+  {{- with .Values.deploymentAnnotations }}
   annotations:
-    reloader.stakater.com/auto: "true"
+    {{- toYaml . | nindent 4 }}
   {{- end }}
   labels:
     {{- include "logflare.labels" . | nindent 4 }}
