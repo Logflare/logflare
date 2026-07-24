@@ -47,6 +47,25 @@ logflare:
   secretRefs: []
   # - logflare-secrets
 
+  # Cert/key files (internal DB SSL and gRPC TLS) come from a mounted Secret
+  # rather than envFrom, because Logflare reads them from disk. Set to the name
+  # of a Secret you manage yourself whose keys are the cert filenames
+  # (db-server-ca.pem, db-client-cert.pem, db-client-key.pem, cert.pem,
+  # cert.key); empty disables the mount. The chart points the matching
+  # DB_SSL_*_PATH / LOGFLARE_TLS_*_PATH env vars at the mount for you.
+  certFilesSecret: ""
+  certFilesMountPath: /etc/logflare/certs
+
+  # Roll the Deployment automatically when its ConfigMap or referenced Secrets
+  # change. Requires the Stakater Reloader controller to be installed.
+  reloader: false
+
+  # Free-form non-secret environment variables rendered verbatim into the
+  # ConfigMap. Use this for configuration not modeled as first-class values
+  # above (e.g. LOGFLARE_LOG_LEVEL, LIBCLUSTER_TOPOLOGY, SPOOL_*, GOOGLE_*_SA).
+  extraConfig: {}
+    # LOGFLARE_LOG_LEVEL: info
+
   # Logflare's own metadata Postgres database (distinct from the optional
   # "postgres" event-storage backend below).
   db:

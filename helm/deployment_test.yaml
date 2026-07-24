@@ -92,3 +92,59 @@ tests:
           path: spec.template.spec.containers[0].ports[1].containerPort
           value: 50051
         template: deployment.yaml
+
+  - it: should not mount cert files or set cert paths by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.volumes
+        template: deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_SSL_CA_CERT_PATH
+            value: /etc/logflare/certs/db-server-ca.pem
+        template: deployment.yaml
+
+  - it: should mount the cert files Secret and point cert paths at it when set
+    set:
+      logflare.certFilesSecret: logflare-cert-files
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: cert-files
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.volumes[0].secret.secretName
+          value: logflare-cert-files
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /etc/logflare/certs
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_SSL_CA_CERT_PATH
+            value: /etc/logflare/certs/db-server-ca.pem
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LOGFLARE_TLS_CERT_PATH
+            value: /etc/logflare/certs/cert.pem
+        template: deployment.yaml
+
+  - it: should add the Reloader annotation only when enabled
+    asserts:
+      - notExists:
+          path: metadata.annotations["reloader.stakater.com/auto"]
+        template: deployment.yaml
+
+  - it: should add the Reloader annotation when reloader is true
+    set:
+      logflare.reloader: true
+    asserts:
+      - equal:
+          path: metadata.annotations["reloader.stakater.com/auto"]
+          value: "true"
+        template: deployment.yaml

@@ -39,3 +39,6 @@ data:
   {{- else }}
   {{- fail (printf "logflare.backend.type must be 'bigquery' or 'postgres', got %q" .Values.logflare.backend.type) }}
   {{- end }}
+  {{- range $key, $value := .Values.logflare.extraConfig }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
