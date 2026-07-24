@@ -160,7 +160,7 @@ You can list multiple Secret names in `secretRefs` (e.g. one per `ExternalSecret
 | `logflare.secretRefs` | see [Loading secrets](#loading-secrets) | |
 | `logflare.certFilesSecret` | — | Name of a Secret whose keys are cert filenames; mounted as files. See [Certificate files](#certificate-files) |
 | `logflare.certFilesMountPath` | `DB_SSL_*_PATH`, `LOGFLARE_TLS_*_PATH` | Mount path for `certFilesSecret`; the chart points the cert path env vars here |
-| `logflare.reloader` | — | When `true`, adds the Stakater Reloader annotation so the Deployment rolls on ConfigMap/Secret changes |
+| `deploymentAnnotations` | — | Annotations on the Deployment object. Set `reloader.stakater.com/auto: "true"` to roll pods on ConfigMap/Secret changes (requires Stakater Reloader) |
 | `logflare.extraConfig` | (any) | Map of non-secret env vars rendered verbatim into the ConfigMap |
 
 See `values.yaml` for the full set of generic chart values (image, service, ingress, resources, autoscaling, etc.).

@@ -134,15 +134,16 @@ tests:
             value: /etc/logflare/certs/cert.pem
         template: deployment.yaml
 
-  - it: should add the Reloader annotation only when enabled
+  - it: should set no Deployment annotations by default
     asserts:
       - notExists:
-          path: metadata.annotations["reloader.stakater.com/auto"]
+          path: metadata.annotations
         template: deployment.yaml
 
-  - it: should add the Reloader annotation when reloader is true
+  - it: should render deploymentAnnotations on the Deployment when set
     set:
-      logflare.reloader: true
+      deploymentAnnotations:
+        reloader.stakater.com/auto: "true"
     asserts:
       - equal:
           path: metadata.annotations["reloader.stakater.com/auto"]
