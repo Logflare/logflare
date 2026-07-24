@@ -211,26 +211,7 @@ hooks.SourceLogsSearch = {
         this.pushChartControlsUpdate()
       }
     }
-    this._handleSearchControlKeydown = (event) => {
-      if (
-        event.key !== "Enter" ||
-        event.isComposing ||
-        !event.target.matches('#recommended_fields input[name^="fields["]')
-      ) {
-        return
-      }
-
-      const editorHook = this.el.querySelector("#lql-editor-hook")
-
-      if (!editorHook) {
-        return
-      }
-
-      event.preventDefault()
-      editorHook.dispatchEvent(new CustomEvent("lql:submit"))
-    }
     this.el.addEventListener("change", this._handleSearchControlChange)
-    this.el.addEventListener("keydown", this._handleSearchControlKeydown)
 
     this.configureDateRangePicker()
 

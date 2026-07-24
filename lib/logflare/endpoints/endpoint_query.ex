@@ -172,18 +172,19 @@ defmodule Logflare.Endpoints.EndpointQuery do
       end
 
     validate_change(changeset, field, fn field, value ->
-      {:ok, expanded_query} =
-        Sql.expand_subqueries(
-          language,
-          value,
-          queries
-        )
-
-      case Sql.transform(language, expanded_query, user) do
-        {:ok, _} -> []
-        {:error, error} -> [{field, error}]
-      end
+      validate_query_change(language, user, queries, field, value)
     end)
+  end
+
+  @spec validate_query_change(atom(), User.t() | nil, list(), atom(), String.t()) ::
+          keyword(String.t())
+  defp validate_query_change(language, user, queries, field, value) do
+    with {:ok, expanded_query} <- Sql.expand_subqueries(language, value, queries),
+         {:ok, _} <- Sql.transform(language, expanded_query, user) do
+      []
+    else
+      {:error, error} -> [{field, error}]
+    end
   end
 
   # Only update source mapping if there are no errors

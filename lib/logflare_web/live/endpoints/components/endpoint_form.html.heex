@@ -45,19 +45,26 @@
           Declare parameters using <code>@parameter_name</code> and pass it to the endpoint via query parameters <code>?parameter_name=some-value</code>
         </p>
 
-        <.live_component
-          module={LogflareWeb.MonacoEditorComponent}
+        <LogflareWeb.MonacoEditorComponent.code_editor
           id="endpoint_query_editor"
           field={f[:query]}
-          endpoints={@endpoints}
-          alerts={@alerts}
-          sources={@sources}
-          on_query_change={
-            fn query_string ->
-              send(self(), {:query_string_updated, query_string})
-            end
-          }
+          language="sql"
+          opts={LogflareWeb.MonacoEditorComponent.default_opts(%{"minHeight" => 240})}
+          completions={endpoint_query_completions(@sources, @endpoints, @alerts)}
+          class="tw-mb-0"
+          editor_class="tw-w-full tw-min-h-[240px]"
         />
+        <div class="tw-flex tw-justify-end tw-mb-3">
+          <button type="submit" name="action" value="format" class="btn btn-secondary tw-mr-0 tw-mt-2">
+            Format
+          </button>
+        </div>
+        {error_tag(f, :query)}
+        <.alert :if={@parse_error_message} variant="warning">
+          <strong>SQL Parse error!</strong>
+          <br />
+          <span>{@parse_error_message}</span>
+        </.alert>
       </div>
 
       <div class="form-group">
