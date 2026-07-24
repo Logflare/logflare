@@ -363,6 +363,68 @@ defmodule Logflare.EndpointsTest do
       assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 3)
       assert nil == Endpoints.get_endpoint_query_version(endpoint.id + 1, 1)
     end
+
+    test "get_endpoint_query_at_version/2 returns the endpoint snapshot", %{
+      user: user
+    } do
+      source = insert(:source, user: user, name: "old_table")
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(
+                 user,
+                 %{
+                   name: "versioned-runnable",
+                   query: "select a from old_table",
+                   language: :bq_sql,
+                   labels: "environment",
+                   redact_pii: true,
+                   enable_dynamic_reservation: true,
+                   cache_duration_seconds: 123,
+                   proactive_requerying_seconds: 45
+                 },
+                 user
+               )
+
+      assert {:ok, updated_endpoint} =
+               Endpoints.update_query(endpoint, %{query: "select b from old_table"}, user)
+
+      source
+      |> Ecto.Changeset.change(name: "new_table")
+      |> Logflare.Repo.update!()
+
+      endpoint_id = updated_endpoint.id
+      token = updated_endpoint.token
+      user_id = user.id
+
+      assert {:ok,
+              %EndpointQuery{
+                id: ^endpoint_id,
+                user_id: ^user_id,
+                token: ^token,
+                version_number: 1,
+                labels: "environment",
+                redact_pii: true,
+                enable_dynamic_reservation: true,
+                cache_duration_seconds: 123,
+                proactive_requerying_seconds: 45,
+                query: query
+              }} =
+               Endpoints.get_endpoint_query_at_version(updated_endpoint, 1)
+
+      assert String.downcase(query) == "select a from new_table"
+    end
+
+    test "get_endpoint_query_at_version/2 rejects invalid version numbers", %{
+      user: user,
+      endpoint_params: endpoint_params
+    } do
+      assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, user)
+
+      for version <- [0, -1, "1", nil] do
+        assert {:error, :invalid_version} =
+                 Endpoints.get_endpoint_query_at_version(endpoint, version)
+      end
+    end
   end
 
   test "parse_query_string/1" do
@@ -520,9 +582,9 @@ defmodule Logflare.EndpointsTest do
 
       endpoint_id_label_value = Integer.to_string(endpoint_id)
 
-      assert_received %{
-        "endpoint_id" => ^endpoint_id_label_value
-      }
+      assert_received labels
+      assert labels["endpoint_id"] == endpoint_id_label_value
+      refute Map.has_key?(labels, "endpoint_version")
     end
 
     test "run an endpoint query with query composition" do
@@ -563,7 +625,9 @@ defmodule Logflare.EndpointsTest do
         )
 
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
-      assert_received %{"my_label" => "my_value"}
+      assert_received labels
+      assert labels["my_label"] == "my_value"
+      refute Map.has_key?(labels, "endpoint_version")
     end
 
     test "run_query_string/3" do
