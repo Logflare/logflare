@@ -6,7 +6,7 @@ defmodule LogflareWeb.UserController do
 
   require Logger
 
-  plug LogflareWeb.Plugs.AuthMustBeTeamAdmin
+  plug LogflareWeb.Plugs.AuthMustBeTeamAdmin when action != :api_show
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Billing.Stripe
