@@ -3,6 +3,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
 
   use LogflareWeb.ConnCase
 
+  alias Logflare.Endpoints
   alias PaperTrail.Version
 
   setup %{conn: conn} do
@@ -25,7 +26,47 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       {:ok, view, html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
       assert html =~ "No versions recorded for this endpoint."
-      refute has_element?(view, "#endpoint-versions a[id^='versions-']")
+
+      refute has_element?(
+               view,
+               "#endpoint-versions div[id^='versions-'] button[phx-click='show-version']"
+             )
+    end
+
+    test "omits relative timestamp when the version is older than a week", %{endpoint: endpoint} do
+      inserted_at =
+        DateTime.utc_now()
+        |> DateTime.add(-8, :day)
+        |> DateTime.truncate(:second)
+
+      current_version =
+        insert(:endpoint_version,
+          endpoint: endpoint,
+          version_number: 2,
+          item_changes: %{"description" => "current version"},
+          snapshot_overrides: %{"description" => "current version"}
+        )
+
+      version =
+        insert(:endpoint_version,
+          endpoint: endpoint,
+          version_number: 1,
+          inserted_at: inserted_at,
+          item_changes: %{"description" => "old version"},
+          snapshot_overrides: %{"description" => "old version"}
+        )
+
+      version_html =
+        render_component(&LogflareWeb.EndpointsVersionsLive.version_updated/1,
+          version: version,
+          current_version_id: current_version.id
+        )
+
+      date = Calendar.strftime(inserted_at, "%Y-%m-%d")
+
+      assert version_html =~ Calendar.strftime(inserted_at, "%Y-%m-%d %H:%M:%S UTC")
+      assert length(String.split(version_html, date)) - 1 == 1
+      assert version_html =~ "Restore"
     end
 
     test "lists versions, newest first", %{
@@ -80,6 +121,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       version_3_html = view |> element(endpoint_version_row(version_3)) |> render()
 
       assert version_3_html =~ "current"
+      assert version_3_html =~ "Just now"
       assert version_3_html =~ "latest description"
       assert version_3_html =~ "from endpoint_versions "
       assert html =~ user.email
@@ -123,7 +165,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
 
       view
-      |> element(endpoint_version_row(version))
+      |> element(endpoint_version_row_button(version))
       |> render_click()
 
       patched_uri = assert_patch(view) |> URI.parse()
@@ -191,6 +233,83 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       assert html =~ "version-1-description"
       assert html =~ ~s|id="versions-#{List.first(versions).id}"|
       refute has_element?(view, "button", "Load more")
+    end
+
+    test "restores a historical version by appending a new current version", %{
+      conn: conn,
+      endpoint: endpoint,
+      team: team,
+      user: user
+    } do
+      version_1 =
+        insert(:endpoint_version,
+          endpoint: endpoint,
+          version_number: 1,
+          origin: user.email,
+          item_changes: %{"description" => "first description"},
+          snapshot_overrides: %{
+            "description" => "first description",
+            "query" => "select 1 as restored_version"
+          }
+        )
+
+      version_2 =
+        insert(:endpoint_version,
+          endpoint: endpoint,
+          version_number: 2,
+          origin: user.email,
+          item_changes: %{"description" => "second description"},
+          snapshot_overrides: %{
+            "description" => "second description",
+            "query" => "select 2 as current_version"
+          }
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
+
+      assert has_element?(view, version_restore_button(version_1), "Restore")
+      refute has_element?(view, version_restore_button(version_2), "Restore")
+
+      view
+      |> element(version_restore_button(version_1), "Restore")
+      |> render_click()
+
+      assert render_async(view) =~ "Restored endpoint version 1 as new version 3."
+
+      restored_endpoint = Endpoints.get_endpoint_query(endpoint.id)
+
+      assert restored_endpoint.description == "first description"
+      assert restored_endpoint.query == "select 1 as restored_version"
+
+      [
+        %Version{
+          meta: %{
+            "version_number" => 3,
+            "endpoint_snapshot" => %{"description" => "first description"}
+          },
+          origin: latest_version_origin
+        } = latest_version
+        | _versions
+      ] =
+        PaperTrail.get_versions(Endpoints.EndpointQuery, endpoint.id)
+        |> Enum.sort_by(& &1.id, :desc)
+
+      assert latest_version_origin == user.email
+
+      latest_version_html = view |> element(endpoint_version_row(latest_version)) |> render()
+
+      assert latest_version_html =~ "current"
+      assert latest_version_html =~ "first description"
+      refute has_element?(view, version_restore_button(latest_version), "Restore")
+    end
+
+    test "restore errors are displayed", %{conn: conn, endpoint: endpoint, team: team} do
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
+
+      assert render_click(view, "restore-version", %{"version-number" => "abc"}) =~
+               "Unable to restore endpoint version."
+
+      assert Endpoints.get_endpoint_query(endpoint.id).query == endpoint.query
     end
 
     test "redirects when user cannot access endpoint versions", %{conn: conn} do
@@ -291,6 +410,12 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
   end
 
   defp endpoint_version_row(%Version{id: version_id}), do: "#versions-#{version_id}"
+
+  defp endpoint_version_row_button(%Version{} = version),
+    do: "#{endpoint_version_row(version)} button[phx-click='show-version']"
+
+  defp version_restore_button(%Version{} = version),
+    do: "#{endpoint_version_row(version)} button[phx-click][phx-value-version-number]"
 
   defp assert_query_displayed(view, query) do
     {:ok, formatted_query} = Logflare.Sql.format(query)
