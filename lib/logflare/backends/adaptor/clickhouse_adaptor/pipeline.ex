@@ -36,6 +36,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
+  alias Logflare.Mapper.PostProcess
   alias Logflare.Utils
 
   @producer_concurrency 1
@@ -317,8 +318,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         mapped_body =
           event.body
           |> Mapper.map(compiled)
-          |> maybe_compute_duration(event_type)
-          |> resolve_severity_number(event_type)
+          |> PostProcess.apply(event_type)
 
         row_chunk =
           :zlib.deflate(
@@ -480,26 +480,4 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
     end)
   end
-
-  @spec maybe_compute_duration(map(), TypeDetection.event_type()) :: map()
-  defp maybe_compute_duration(
-         %{"start_time" => start_time, "end_time" => end_time, "duration" => 0} = body,
-         :trace
-       )
-       when is_integer(start_time) and is_integer(end_time) and end_time > start_time do
-    %{body | "duration" => end_time - start_time}
-  end
-
-  defp maybe_compute_duration(body, _event_type), do: body
-
-  @spec resolve_severity_number(map(), TypeDetection.event_type()) :: map()
-  defp resolve_severity_number(
-         %{"severity_number_alt" => alt} = body,
-         :log
-       )
-       when is_integer(alt) and alt > 0 do
-    %{body | "severity_number" => alt}
-  end
-
-  defp resolve_severity_number(body, _event_type), do: body
 end
