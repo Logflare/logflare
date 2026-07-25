@@ -361,6 +361,34 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
              }
     end
 
+    test "sorts large compound maps in nested and flat-key inputs" do
+      large_map =
+        Map.new(1..80, fn index ->
+          key = "key_" <> String.pad_leading(Integer.to_string(81 - index), 3, "0")
+          {key, index}
+        end)
+
+      expected_object =
+        1..80
+        |> Enum.map_join(",", fn key_number ->
+          key = String.pad_leading(Integer.to_string(key_number), 3, "0")
+          ~s("key_#{key}":#{81 - key_number})
+        end)
+        |> then(&"{#{&1}}")
+
+      nested = compile([Field.flat_map("attrs", path: "$.attributes")])
+
+      assert Mapper.map(%{"attributes" => %{"compound" => [large_map]}}, nested) == %{
+               "attrs" => %{"compound" => "[#{expected_object}]"}
+             }
+
+      flat = compile([Field.flat_map("attrs", path: "$")])
+
+      assert Mapper.map(%{"compound" => large_map}, flat, flat_keys: true) == %{
+               "attrs" => %{"compound" => expected_object}
+             }
+    end
+
     test "borrowed numeric and boolean binaries handle valid, invalid, and boundary values" do
       compiled =
         compile([

@@ -1247,14 +1247,20 @@ impl Serialize for JsonTerm<'_> {
             return sequence.end();
         }
         if let Some(iter) = MapIterator::new(self.value) {
-            let mut map = serializer.serialize_map(None)?;
+            let mut entries = Vec::new();
             for (key, value) in iter {
                 let Ok(binary) = key.decode::<Binary>() else {
                     continue;
                 };
-                let Ok(key) = std::str::from_utf8(binary.as_slice()) else {
-                    continue;
-                };
+                if std::str::from_utf8(binary.as_slice()).is_ok() {
+                    entries.push((binary, value));
+                }
+            }
+            entries.sort_unstable_by(|(left, _), (right, _)| left.as_slice().cmp(right.as_slice()));
+
+            let mut map = serializer.serialize_map(Some(entries.len()))?;
+            for (binary, value) in entries {
+                let key = std::str::from_utf8(binary.as_slice()).expect("validated UTF-8 key");
                 map.serialize_entry(
                     key,
                     &JsonTerm {
