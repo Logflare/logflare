@@ -5,6 +5,9 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
   alias Logflare.Mapper
   alias Logflare.Mapper.MappingConfig
   alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
+  alias Logflare.Mapper.MappingConfig.InferCondition
+  alias Logflare.Mapper.MappingConfig.InferRule
+  alias Logflare.Mapper.Native
 
   @uint64_max 18_446_744_073_709_551_615
   @shared_keys ~w(a b c d e f g h)
@@ -111,6 +114,73 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
                "cluster" => ""
              }
     end
+
+    test "cached pick and inference paths remain isolated in nested and flat-key modes" do
+      fields =
+        Enum.map(@shared_keys, fn key ->
+          Field.string(key, path: "$.root.#{key}", default: "missing")
+        end) ++
+          [
+            Field.string("a_copy", path: "$.root.a", default: "missing"),
+            Field.json("picked",
+              path: "$.fallback",
+              pick: [
+                {"selected", ["$.root.pick.primary", "$.root.pick.secondary"]}
+              ]
+            ),
+            Field.enum8("kind",
+              paths: ["$.root.kind"],
+              values: %{"fallback" => 1, "inferred" => 2},
+              infer: [
+                %InferRule{
+                  result: "inferred",
+                  any: [
+                    %InferCondition{path: "$.root.marker", predicate: "exists"}
+                  ],
+                  all: []
+                }
+              ],
+              default: 0
+            )
+          ]
+
+      compiled = compile(fields)
+
+      nested_root =
+        Map.new(@shared_keys, &{&1, "nested-#{&1}"})
+        |> Map.merge(%{
+          "marker" => true,
+          "pick" => %{"primary" => nil, "secondary" => "nested-picked"}
+        })
+
+      nested_expected =
+        Map.new(@shared_keys, &{&1, "nested-#{&1}"})
+        |> Map.merge(%{
+          "a_copy" => "nested-a",
+          "kind" => 2,
+          "picked" => %{"selected" => "nested-picked"}
+        })
+
+      assert Mapper.map(%{"root" => nested_root}, compiled) == nested_expected
+
+      flat_document =
+        Map.new(@shared_keys, &{"root.#{&1}", "flat-#{&1}"})
+        |> Map.merge(%{
+          "root.marker" => true,
+          "root.pick.primary" => nil,
+          "root.pick.secondary" => "flat-picked"
+        })
+
+      flat_expected =
+        Map.new(@shared_keys, &{&1, "flat-#{&1}"})
+        |> Map.merge(%{
+          "a_copy" => "flat-a",
+          "kind" => 2,
+          "picked" => %{"selected" => "flat-picked"}
+        })
+
+      assert Mapper.map(flat_document, compiled, flat_keys: true) == flat_expected
+    end
   end
 
   describe "single-path wildcard array fast path" do
@@ -177,6 +247,41 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
       for document <- [%{}, %{"items" => []}, %{"items" => %{}}, %{"items" => nil}] do
         assert Mapper.map(document, compiled) == expected
       end
+    end
+
+    test "supports root, indexed, nested, and repeated wildcard shapes" do
+      root = compile([Field.array_string("names", path: "$[*].name", filter_nil: true)])
+      root_document = [%{"name" => "root-a"}, %{}, %{"name" => 2}]
+
+      assert Native.map(root_document, root) == %{"names" => ["root-a", "2"]}
+      assert Native.map(root_document, root, true) == %{"names" => []}
+
+      shaped =
+        compile([
+          Field.array_string("indexed", path: "$.groups[1].items[*].name", filter_nil: true),
+          Field.array_string("post_index", path: "$.groups[*].items[0].name", filter_nil: true),
+          Field.array_json("multiple", path: "$.groups[*].items[*].name")
+        ])
+
+      shaped_document = %{
+        "groups" => [
+          %{"items" => [%{"name" => "a"}, %{}]},
+          %{"items" => [%{"name" => "b"}]},
+          %{}
+        ]
+      }
+
+      assert Mapper.map(shaped_document, shaped) == %{
+               "indexed" => ["b"],
+               "post_index" => ["a", "b"],
+               "multiple" => [["a", nil], ["b"], %{}]
+             }
+
+      assert Mapper.map(shaped_document, shaped, flat_keys: true) == %{
+               "indexed" => [],
+               "post_index" => [],
+               "multiple" => []
+             }
     end
   end
 
@@ -262,6 +367,52 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
                  "only_first" => 1,
                  "only_second" => "top"
                }
+             }
+    end
+
+    test "multiple elevate keys preserve non-map parents and remove empty map parents" do
+      compiled =
+        compile([
+          Field.flat_map("attrs", path: "$", elevate_keys: ["first", "second"]),
+          Field.json("json", path: "$", elevate_keys: ["first", "second"])
+        ])
+
+      assert Mapper.map(%{"first" => "literal", "second" => %{}, "kept" => true}, compiled) == %{
+               "attrs" => %{"first" => "literal", "kept" => "true"},
+               "json" => %{"first" => "literal", "kept" => true}
+             }
+
+      assert Mapper.map(%{"first" => %{}, "second" => "literal", "kept" => true}, compiled) == %{
+               "attrs" => %{"kept" => "true", "second" => "literal"},
+               "json" => %{"kept" => true, "second" => "literal"}
+             }
+    end
+
+    test "overlapping flat elevate prefixes honor configuration order" do
+      compiled =
+        compile([
+          Field.flat_map("specific_first",
+            path: "$",
+            elevate_keys: ["first.child", "first"]
+          ),
+          Field.flat_map("broad_first",
+            path: "$",
+            elevate_keys: ["first", "first.child"]
+          )
+        ])
+
+      assert Mapper.map(
+               %{"first.child.value" => 1, "first.other" => 2},
+               compiled,
+               flat_keys: true
+             ) == %{
+               "specific_first" => %{"other" => "2", "value" => "1"},
+               "broad_first" => %{"child.value" => "1", "other" => "2"}
+             }
+
+      assert Mapper.map(%{"first" => "literal", "first.x" => 1}, compiled, flat_keys: true) == %{
+               "specific_first" => %{"first" => "literal", "x" => "1"},
+               "broad_first" => %{"first" => "literal", "x" => "1"}
              }
     end
 
@@ -481,6 +632,15 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
         assert Mapper.map(document, compiled) == reference_map(document)
       end
     end
+
+    test "matches a deterministic 1,000-document production-shaped corpus" do
+      compiled = compile(reference_fields())
+
+      for index <- 1..1_000 do
+        document = deterministic_reference_document(index)
+        assert Mapper.map(document, compiled) == reference_map(document)
+      end
+    end
   end
 
   defp compile(fields) do
@@ -629,6 +789,57 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
           )
       }
     end
+  end
+
+  defp deterministic_reference_document(index) do
+    preferred = if rem(index, 7) == 0, do: "", else: "service-#{rem(index, 13)}"
+
+    resource =
+      case rem(index, 3) do
+        0 -> %{"service" => %{"name" => preferred}}
+        1 -> %{"service" => %{"name" => nil}}
+        2 -> %{}
+      end
+
+    count =
+      case rem(index, 5) do
+        0 -> nil
+        1 -> index
+        2 -> Integer.to_string(index)
+        3 -> -index
+        4 -> "invalid"
+      end
+
+    sampled = Enum.at([true, false, 1, 0, "TRUE", "false", "1", "yes", nil], rem(index, 9))
+
+    events = [
+      %{"name" => "event-#{index}"},
+      %{"name" => rem(index, 17)},
+      %{"name" => nil},
+      %{},
+      "not-a-map"
+    ]
+
+    attributes =
+      if rem(index, 4) == 0 do
+        nil
+      else
+        %{
+          "label" => "label-#{rem(index, 11)}",
+          "nested" => %{"count" => rem(index, 23) - 11},
+          "values" => [rem(index, 5), rem(index, 2) == 0, "value-#{rem(index, 7)}"],
+          "ignored" => nil
+        }
+      end
+
+    %{
+      "resource" => resource,
+      "service" => "fallback-#{rem(index, 19)}",
+      "metrics" => %{"count" => count},
+      "sampled" => sampled,
+      "events" => events,
+      "attributes" => attributes
+    }
   end
 
   defp reference_map(document) do
