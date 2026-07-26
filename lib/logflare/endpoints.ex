@@ -147,32 +147,42 @@ defmodule Logflare.Endpoints do
     |> EndpointQuery.update_by_user_changeset(attrs)
   end
 
-  @spec update_query(EndpointQuery.t(), map(), origin()) ::
+  @spec update_query(User.t() | TeamUser.t(), EndpointQuery.t(), map(), origin()) ::
           {:ok, EndpointQuery.t()} | {:error, Ecto.Changeset.t()}
-  def update_query(%EndpointQuery{} = query, params, origin) when is_map(params) do
-    Repo.transact(fn ->
-      query = lock_endpoint_query(query)
-      version_number = next_endpoint_version_number(query.id)
-      changeset = EndpointQuery.update_by_user_changeset(query, params)
-      opts = paper_trail_opts(changeset, origin, version_number)
+  def update_query(user_or_team_user, %EndpointQuery{} = query, params, origin)
+      when is_map(params) do
+    with :ok <- authorize_backend_id(query, backend_id(params), user_or_team_user) do
+      Repo.transact(fn ->
+        query = lock_endpoint_query(query)
+        version_number = next_endpoint_version_number(query.id)
+        changeset = EndpointQuery.update_by_user_changeset(query, params)
+        opts = paper_trail_opts(changeset, origin, version_number)
 
-      PaperTrail.update(changeset, opts)
-    end)
-    |> case do
-      {:ok, %{model: updated_query}} ->
-        changeset = query |> Repo.preload(:user) |> EndpointQuery.update_by_user_changeset(params)
-        maybe_kill_endpoint_caches(updated_query, changeset.changes)
-        {:ok, updated_query}
+        PaperTrail.update(changeset, opts)
+      end)
+      |> case do
+        {:ok, %{model: updated_query}} ->
+          changeset =
+            query |> Repo.preload(:user) |> EndpointQuery.update_by_user_changeset(params)
 
-      {:error, changeset} ->
-        {:error, changeset}
+          maybe_kill_endpoint_caches(updated_query, changeset.changes)
+          {:ok, updated_query}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
     end
   end
 
-  @spec restore_query_version(EndpointQuery.t(), integer(), origin()) ::
+  @spec restore_query_version(User.t() | TeamUser.t(), EndpointQuery.t(), integer(), origin()) ::
           {:ok, EndpointQuery.t(), integer()}
           | {:error, Ecto.Changeset.t()}
-  def restore_query_version(%EndpointQuery{id: endpoint_id} = query, version_number, origin)
+  def restore_query_version(
+        user_or_team_user,
+        %EndpointQuery{id: endpoint_id} = query,
+        version_number,
+        origin
+      )
       when is_integer(version_number) do
     with {:version, %Version{id: version_id, meta: meta}} <-
            {:version, get_endpoint_query_version(endpoint_id, version_number)},
@@ -180,21 +190,21 @@ defmodule Logflare.Endpoints do
            {:restorable, version_id != current_endpoint_version_id(endpoint_id)},
          {:snapshot, snapshot} when is_map(snapshot) and map_size(snapshot) > 0 <-
            {:snapshot, endpoint_snapshot(meta)},
-         {:ok, endpoint} <-
-           update_query(query, EndpointQuery.version_snapshot_attrs(snapshot), origin) do
+         attrs = EndpointQuery.version_snapshot_attrs(snapshot),
+         {:ok, endpoint} <- update_query(user_or_team_user, query, attrs, origin) do
       {:ok, endpoint, version_number}
     else
       {:error, %Ecto.Changeset{}} = error ->
         error
 
       {:restorable, false} ->
-        {:error, invalid_restore_changeset(query, "Version is already current")}
+        {:error, invalid_query_changeset(query, "Version is already current")}
 
       {:snapshot, _} ->
-        {:error, invalid_restore_changeset(query, "Version snapshot is missing")}
+        {:error, invalid_query_changeset(query, "Version snapshot is missing")}
 
       {:version, nil} ->
-        {:error, invalid_restore_changeset(query, "Version not found")}
+        {:error, invalid_query_changeset(query, "Version not found")}
     end
   end
 
@@ -286,8 +296,30 @@ defmodule Logflare.Endpoints do
   defp endpoint_snapshot(%{"endpoint_snapshot" => snapshot}), do: snapshot
   defp endpoint_snapshot(_meta), do: nil
 
-  @spec invalid_restore_changeset(EndpointQuery.t(), String.t()) :: Ecto.Changeset.t()
-  defp invalid_restore_changeset(%EndpointQuery{} = query, message) do
+  @spec backend_id(map()) :: integer() | String.t() | nil
+  defp backend_id(%{backend_id: backend_id}), do: backend_id
+  defp backend_id(%{"backend_id" => backend_id}), do: backend_id
+  defp backend_id(_attrs), do: nil
+
+  @spec authorize_backend_id(
+          EndpointQuery.t(),
+          integer() | String.t() | nil,
+          User.t() | TeamUser.t()
+        ) ::
+          :ok | {:error, Ecto.Changeset.t()}
+  defp authorize_backend_id(_query, backend_id, _user_or_team_user) when backend_id in [nil, ""],
+    do: :ok
+
+  defp authorize_backend_id(query, backend_id, user_or_team_user) do
+    if Backends.get_backend_by_user_access(user_or_team_user, backend_id) do
+      :ok
+    else
+      {:error, invalid_query_changeset(query, "Backend not found")}
+    end
+  end
+
+  @spec invalid_query_changeset(EndpointQuery.t(), String.t()) :: Ecto.Changeset.t()
+  defp invalid_query_changeset(%EndpointQuery{} = query, message) do
     query
     |> change_query(%{})
     |> Ecto.Changeset.add_error(:base, message)

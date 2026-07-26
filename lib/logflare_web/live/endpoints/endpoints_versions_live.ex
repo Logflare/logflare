@@ -271,7 +271,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
         socket =
           socket
           |> start_async(:version_restored, fn ->
-            Endpoints.restore_query_version(endpoint, version_number, user)
+            Endpoints.restore_query_version(user, endpoint, version_number, user)
           end)
 
         {:noreply, socket}
