@@ -179,7 +179,7 @@ defmodule Logflare.Endpoints do
          {:restorable, true} <-
            {:restorable, version_id != current_endpoint_version_id(endpoint_id)},
          {:snapshot, snapshot} when is_map(snapshot) and map_size(snapshot) > 0 <-
-           {:snapshot, Map.get(meta, "endpoint_snapshot")},
+           {:snapshot, endpoint_snapshot(meta)},
          {:ok, endpoint} <-
            update_query(query, EndpointQuery.version_snapshot_attrs(snapshot), origin) do
       {:ok, endpoint, version_number}
@@ -281,6 +281,10 @@ defmodule Logflare.Endpoints do
        when is_non_empty_binary(description), do: "API: #{description}"
 
   defp version_origin(%OauthAccessToken{id: id}), do: "API: id #{id}"
+
+  @spec endpoint_snapshot(term()) :: term()
+  defp endpoint_snapshot(%{"endpoint_snapshot" => snapshot}), do: snapshot
+  defp endpoint_snapshot(_meta), do: nil
 
   @spec invalid_restore_changeset(EndpointQuery.t(), String.t()) :: Ecto.Changeset.t()
   defp invalid_restore_changeset(%EndpointQuery{} = query, message) do
