@@ -114,7 +114,7 @@ defmodule Logflare.LogEvent do
   def make_from_db(params, %{source: %Source{} = source}) do
     params =
       params
-      |> mapper(:log)
+      |> mapper_from_db(:log)
 
     %__MODULE__{}
     |> cast(params, [:valid, :id, :body])
@@ -129,7 +129,7 @@ defmodule Logflare.LogEvent do
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
   def make(params, %{source: source}, _opts \\ []) do
     event_type = TypeDetection.detect(params)
-    mapped = mapper(params, event_type, :ingest)
+    mapped = mapper_for_ingest(params, event_type)
 
     body = mapped["body"]
     day_bucket = DayBucket.from_microseconds(body["timestamp"])
@@ -150,8 +150,16 @@ defmodule Logflare.LogEvent do
     |> validate(source)
   end
 
-  @spec mapper(map(), TypeDetection.event_type(), :from_db | :ingest) :: %{String.t() => term}
-  defp mapper(params, event_type, mode \\ :from_db) do
+  @spec mapper_from_db(map(), TypeDetection.event_type()) :: %{String.t() => term}
+  defp mapper_from_db(params, event_type),
+    do: mapper(params, event_type, &MetadataCleaner.deep_reject_nil_and_empty/1)
+
+  @spec mapper_for_ingest(map(), TypeDetection.event_type()) :: %{String.t() => term}
+  defp mapper_for_ingest(params, event_type),
+    do: mapper(params, event_type, &clean_ingest_body/1)
+
+  @spec mapper(map(), TypeDetection.event_type(), (map() -> map())) :: %{String.t() => term}
+  defp mapper(params, event_type, clean_body) do
     # TODO: deprecate and remove `message`
     event_message = params["message"] || params["event_message"]
     id = id(params)
@@ -172,7 +180,7 @@ defmodule Logflare.LogEvent do
 
     body =
       params
-      |> clean_body(mode)
+      |> clean_body.()
       |> Map.merge(base_merge)
       |> case do
         %{"message" => m, "event_message" => em} = map when m == em ->
@@ -212,10 +220,8 @@ defmodule Logflare.LogEvent do
     end)
   end
 
-  @spec clean_body(map(), :from_db | :ingest) :: map()
-  defp clean_body(params, :from_db), do: MetadataCleaner.deep_reject_nil_and_empty(params)
-
-  defp clean_body(params, :ingest),
+  @spec clean_ingest_body(map()) :: map()
+  defp clean_ingest_body(params),
     do: IngestTransformers.transform(params, :clean_to_bigquery_column_spec)
 
   @spec transform(LE.t(), Source.t()) :: LE.t()
