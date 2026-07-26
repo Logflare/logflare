@@ -190,8 +190,6 @@ defmodule Logflare.LogEvent do
   end
 
   @spec validate(LE.t(), Source.t()) :: LE.t()
-  defp validate(%LE{valid: false} = le, _source), do: le
-
   defp validate(%LE{valid: true} = le, source) do
     @validators
     |> Enum.reduce_while(true, fn validator, _acc ->
