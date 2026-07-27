@@ -33,6 +33,7 @@ defmodule Logflare.LogEvent do
     field :via_rule_id, :id
     field :retries, :integer, default: 0
     field :event_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
+    field :otel_timestamps, :boolean, default: false
     field :source_id, :integer, default: nil
     field :day_bucket, :integer
     # Indicates if the event was removed from ets during ingest
@@ -74,6 +75,7 @@ defmodule Logflare.LogEvent do
       source_name: source.name,
       body: body,
       event_type: event_type,
+      otel_timestamps: TypeDetection.otel_timestamps?(body, event_type),
       ingested_at: ingested_at_dt,
       valid: true,
       drop: false,
@@ -93,6 +95,7 @@ defmodule Logflare.LogEvent do
       ) do
     {:ok, ingested_at_dt, _} = DateTime.from_iso8601(ingested_at)
     day_bucket = body["timestamp"] && DayBucket.from_microseconds(body["timestamp"])
+    event_type = String.to_existing_atom(event_type)
 
     %__MODULE__{
       id: id,
@@ -100,7 +103,8 @@ defmodule Logflare.LogEvent do
       source_uuid: source.token,
       source_name: source.name,
       body: body,
-      event_type: String.to_existing_atom(event_type),
+      event_type: event_type,
+      otel_timestamps: TypeDetection.otel_timestamps?(body, event_type),
       ingested_at: ingested_at_dt,
       valid: true,
       drop: false,
@@ -131,6 +135,7 @@ defmodule Logflare.LogEvent do
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
   def make(params, %{source: source}, _opts \\ []) do
     event_type = TypeDetection.detect(params)
+    otel_timestamps = TypeDetection.otel_timestamps?(params, event_type)
     mapped = mapper(params, event_type)
 
     changeset =
@@ -160,6 +165,7 @@ defmodule Logflare.LogEvent do
         ingested_at: DateTime.utc_now(),
         id: body["id"],
         event_type: event_type,
+        otel_timestamps: otel_timestamps,
         timestamp_inferred: mapped["timestamp_inferred"],
         day_bucket: day_bucket
       })

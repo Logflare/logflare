@@ -8,9 +8,7 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   @doc """
   Converts LogEvent's body into a valid dataframe struct for Explorer
   """
-  def log_event_to_df_struct(%Logflare.LogEvent{body: body}) do
-    otel_timestamps? = TypeDetection.otel_timestamps?(body)
-
+  def log_event_to_df_struct(%Logflare.LogEvent{body: body, otel_timestamps: otel_timestamps?}) do
     for {k, v} <- body, into: %{} do
       if is_map(v) do
         {k, prepare_for_ingest(v)}
@@ -27,10 +25,10 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   https://docs.cloud.google.com/bigquery/docs/streaming-data-into-bigquery#send_date_and_time_data
 
   `timestamp` is always converted. `start_time`/`end_time` are only converted
-  when the event carries OTel timestamps (`TypeDetection.otel_timestamps?/1`),
-  mirroring the `TIMESTAMP` column typing in `SchemaBuilder`. The predicate must
-  be computed on the raw event body — pass it explicitly via
-  `convert_to_seconds/2` when `data` has already been transformed for ingest.
+  when the event carries OTel timestamps, mirroring the `TIMESTAMP` column
+  typing in `SchemaBuilder`. The flag is detected at ingest and stored on
+  `Logflare.LogEvent` as `otel_timestamps` — pass it via `convert_to_seconds/2`;
+  `convert_to_seconds/1` falls back to detecting it from `data`.
   """
   @spec convert_to_seconds(map()) :: map()
   def convert_to_seconds(data) do
@@ -53,7 +51,7 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   defp ns_to_seconds(data, field) do
     case data do
       %{^field => ts} when is_integer(ts) and ts > 1_000_000_000_000_000_000 ->
-        %{data | field => ts / 1_000_000_000}
+        %{data | field => ts / :math.pow(1000, 3)}
 
       _ ->
         data
@@ -62,11 +60,11 @@ defmodule Logflare.Google.BigQuery.EventUtils do
 
   defp timestamp_to_seconds(%{"timestamp" => ts} = data)
        when is_integer(ts) and ts > 1_000_000_000_000_000_000,
-       do: %{data | "timestamp" => ts / 1_000_000_000}
+       do: %{data | "timestamp" => ts / :math.pow(1000, 3)}
 
   defp timestamp_to_seconds(%{"timestamp" => ts} = data)
        when is_integer(ts) and ts > 1_000_000_000_000,
-       do: %{data | "timestamp" => ts / 1_000_000}
+       do: %{data | "timestamp" => ts / :math.pow(1000, 2)}
 
   defp timestamp_to_seconds(data), do: data
 

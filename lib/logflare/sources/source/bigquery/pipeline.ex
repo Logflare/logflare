@@ -12,7 +12,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Google.BigQuery.EventUtils
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.LogEvent, as: LE
-  alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mailer
   alias Logflare.Sources
   alias Logflare.Backends.IngestEventQueue
@@ -339,9 +338,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     collect_batch_events(rest, [le | log_events], count + 1, bytes + size)
   end
 
-  def le_to_bq_row(%LE{body: body, id: id}) do
-    otel_timestamps? = TypeDetection.otel_timestamps?(body)
-
+  def le_to_bq_row(%LE{body: body, id: id, otel_timestamps: otel_timestamps?}) do
     body =
       for {k, v} <- body, into: %{} do
         if is_map(v) do

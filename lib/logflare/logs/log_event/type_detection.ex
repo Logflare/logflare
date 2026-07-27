@@ -38,7 +38,16 @@ defmodule Logflare.LogEvent.TypeDetection do
   """
   @spec otel_timestamps?(map()) :: boolean()
   def otel_timestamps?(params) when is_map(params) do
-    detect(params) in [:metric, :trace] or otel_shaped?(params)
+    otel_timestamps?(params, detect(params))
+  end
+
+  @doc """
+  Same as `otel_timestamps?/1`, reusing an already-computed event type to
+  avoid running detection twice.
+  """
+  @spec otel_timestamps?(map(), event_type()) :: boolean()
+  def otel_timestamps?(params, event_type) when is_map(params) do
+    event_type in [:metric, :trace] or otel_shaped?(params)
   end
 
   defp otel_shaped?(params) do

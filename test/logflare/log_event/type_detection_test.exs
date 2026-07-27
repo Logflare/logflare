@@ -240,5 +240,11 @@ defmodule Logflare.LogEvent.TypeDetectionTest do
     test "false for empty map" do
       refute TypeDetection.otel_timestamps?(%{})
     end
+
+    test "otel_timestamps?/2 reuses a precomputed event type" do
+      assert TypeDetection.otel_timestamps?(%{}, :metric)
+      assert TypeDetection.otel_timestamps?(%{}, :trace)
+      refute TypeDetection.otel_timestamps?(%{}, :log)
+    end
   end
 end

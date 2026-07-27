@@ -11,14 +11,10 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
       "event_message" => "test"
     }
 
-    @otel_body Map.merge(@base_body, %{
-                 "resource" => %{"service.name" => "svc"},
-                 "scope" => %{"name" => "scope"}
-               })
-
-    test "converts OTel start_time from nanoseconds to seconds (float)" do
+    test "converts start_time from nanoseconds to seconds (float) when otel_timestamps is set" do
       le = %Logflare.LogEvent{
-        body: Map.put(@otel_body, "start_time", 1_779_436_330_890_427_000)
+        body: Map.put(@base_body, "start_time", 1_779_436_330_890_427_000),
+        otel_timestamps: true
       }
 
       result = EventUtils.log_event_to_df_struct(le)
@@ -26,12 +22,13 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
       assert_in_delta result["start_time"], 1_779_436_330.890_427, 1.0e-6
     end
 
-    test "converts both OTel start_time and end_time from nanoseconds to seconds (float)" do
+    test "converts both start_time and end_time from nanoseconds to seconds (float)" do
       le = %Logflare.LogEvent{
         body:
-          @otel_body
+          @base_body
           |> Map.put("start_time", 1_779_436_330_890_427_000)
-          |> Map.put("end_time", 1_779_436_901_362_775_000)
+          |> Map.put("end_time", 1_779_436_901_362_775_000),
+        otel_timestamps: true
       }
 
       result = EventUtils.log_event_to_df_struct(le)
@@ -42,7 +39,8 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
 
     test "converts only end_time from nanoseconds to seconds (float)" do
       le = %Logflare.LogEvent{
-        body: Map.put(@otel_body, "end_time", 1_779_436_901_362_775_000)
+        body: Map.put(@base_body, "end_time", 1_779_436_901_362_775_000),
+        otel_timestamps: true
       }
 
       result = EventUtils.log_event_to_df_struct(le)
@@ -50,20 +48,7 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
       assert result["end_time"] == 1_779_436_901.362_775
     end
 
-    test "converts start_time for events tagged as metric/span via metadata.type" do
-      le = %Logflare.LogEvent{
-        body:
-          @base_body
-          |> Map.put("metadata", %{"type" => "metric"})
-          |> Map.put("start_time", 1_779_436_330_890_427_000)
-      }
-
-      result = EventUtils.log_event_to_df_struct(le)
-
-      assert_in_delta result["start_time"], 1_779_436_330.890_427, 1.0e-6
-    end
-
-    test "leaves non-OTel start_time unchanged even in the nanosecond range" do
+    test "leaves start_time unchanged when otel_timestamps is not set" do
       le = %Logflare.LogEvent{
         body: Map.put(@base_body, "start_time", 1_779_436_330_890_427_000)
       }
