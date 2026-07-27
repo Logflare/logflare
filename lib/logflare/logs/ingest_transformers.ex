@@ -5,12 +5,20 @@ defmodule Logflare.Logs.IngestTransformers do
   @alphanumeric_regex ~r/\W/
   @max_field_length 128
 
-  defguardp nil_or_empty(x) when x in [%{}, [], "", {}, nil]
+  @typep direct_transform :: :clean_to_bigquery_column_spec | :to_bigquery_column_spec
+  @typep transform_rule ::
+           :alphanumeric_only
+           | :alter_leading_numbers
+           | :dashes_to_underscores
+           | :strip_bq_prefixes
+           | {:field_length, max: pos_integer()}
+
+  defguardp nil_or_empty?(x) when x in [%{}, [], "", {}, nil]
 
   defguardp bq_safe_byte?(byte)
             when byte in ?0..?9 or byte in ?A..?Z or byte in ?a..?z or byte == ?_
 
-  @spec transform(map, list(atom) | atom) :: map
+  @spec transform(map(), direct_transform() | [transform_rule()]) :: map()
   def transform(log_params, :clean_to_bigquery_column_spec) when is_map(log_params) do
     clean_and_to_bigquery_column_spec(log_params)
   end
@@ -26,7 +34,7 @@ defmodule Logflare.Logs.IngestTransformers do
   defp clean_and_to_bigquery_column_spec(data) when is_map(data) do
     :maps.fold(
       fn
-        _k, v, acc when nil_or_empty(v) ->
+        _k, v, acc when nil_or_empty?(v) ->
           acc
 
         k, v, acc when is_map(v) or is_list(v) ->
@@ -35,11 +43,11 @@ defmodule Logflare.Logs.IngestTransformers do
           if nil_or_empty?(cleaned) do
             acc
           else
-            :maps.put(to_bigquery_column_spec(k), cleaned, acc)
+            Map.put(acc, to_bigquery_column_spec(k), cleaned)
           end
 
         k, v, acc ->
-          :maps.put(to_bigquery_column_spec(k), v, acc)
+          Map.put(acc, to_bigquery_column_spec(k), v)
       end,
       %{},
       data
@@ -49,7 +57,7 @@ defmodule Logflare.Logs.IngestTransformers do
   defp clean_and_to_bigquery_column_spec(data) when is_list(data) do
     data
     |> Enum.reduce([], fn
-      x, acc when nil_or_empty(x) ->
+      x, acc when nil_or_empty?(x) ->
         acc
 
       x, acc when is_map(x) or is_list(x) ->
@@ -61,9 +69,6 @@ defmodule Logflare.Logs.IngestTransformers do
     end)
     |> Enum.reverse()
   end
-
-  defp nil_or_empty?(x) when nil_or_empty(x), do: true
-  defp nil_or_empty?(_), do: false
 
   # Rewrites a map key into a valid BigQuery standard column name in a single
   # pass. Standard names allow only [A-Za-z0-9_], cannot start with a digit,
@@ -160,7 +165,7 @@ defmodule Logflare.Logs.IngestTransformers do
 
   defp enforce_field_length(key), do: key
 
-  @spec do_transform(map, atom) :: map
+  @spec do_transform(map(), transform_rule()) :: map()
   defp do_transform(log_params, {:field_length, max: max}) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       key when is_binary(key) and byte_size(key) > max ->

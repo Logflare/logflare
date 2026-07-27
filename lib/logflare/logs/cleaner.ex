@@ -31,10 +31,10 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
 
         k, v, acc when is_map(v) or is_list(v) ->
           cleaned = deep_reject_nil_and_empty(v)
-          if nil_or_empty?(cleaned), do: acc, else: :maps.put(k, cleaned, acc)
+          if nil_or_empty?(cleaned), do: acc, else: Map.put(acc, k, cleaned)
 
         k, v, acc ->
-          :maps.put(k, v, acc)
+          Map.put(acc, k, v)
       end,
       %{},
       map

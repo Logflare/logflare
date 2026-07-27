@@ -55,10 +55,10 @@ defmodule Logflare.EnumDeepUpdate do
     :maps.fold(
       fn
         k, v, acc when is_map(v) or is_list(v) ->
-          :maps.put(fun.(k), update_all_keys_deep(v, fun), acc)
+          Map.put(acc, fun.(k), update_all_keys_deep(v, fun))
 
         k, v, acc ->
-          :maps.put(fun.(k), v, acc)
+          Map.put(acc, fun.(k), v)
       end,
       %{},
       data

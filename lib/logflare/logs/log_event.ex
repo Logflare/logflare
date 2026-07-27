@@ -127,23 +127,31 @@ defmodule Logflare.LogEvent do
   Used to make log event from user-provided parameters, for ingestion.
   """
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
-  def make(params, %{source: source}, _opts \\ []) do
+  def make(
+        params,
+        %{
+          source: %Source{id: source_id, token: source_uuid, name: source_name} = source
+        }
+      ) do
     event_type = TypeDetection.detect(params)
-    mapped = mapper_for_ingest(params, event_type)
 
-    body = mapped["body"]
-    day_bucket = DayBucket.from_microseconds(body["timestamp"])
+    %{
+      "body" => %{"id" => id, "timestamp" => timestamp} = body,
+      "timestamp_inferred" => timestamp_inferred
+    } = mapper_for_ingest(params, event_type)
+
+    day_bucket = DayBucket.from_microseconds(timestamp)
 
     %__MODULE__{
       body: body,
-      source_id: source.id,
-      source_uuid: source.token,
-      source_name: source.name,
+      source_id: source_id,
+      source_uuid: source_uuid,
+      source_name: source_name,
       valid: true,
       ingested_at: DateTime.utc_now(),
-      id: body["id"],
+      id: id,
       event_type: event_type,
-      timestamp_inferred: mapped["timestamp_inferred"],
+      timestamp_inferred: timestamp_inferred,
       day_bucket: day_bucket
     }
     |> transform(source)
