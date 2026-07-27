@@ -1,7 +1,11 @@
 defmodule Logflare.Logs.IngestTransformerTest do
   @moduledoc false
   use ExUnit.Case
+  use ExUnitProperties
+
   import Logflare.Logs.IngestTransformers
+
+  alias Logflare.Logs.Ingest.MetadataCleaner
 
   describe "BQ spec transformations" do
     test "transformations order is correct" do
@@ -411,5 +415,64 @@ defmodule Logflare.Logs.IngestTransformerTest do
         assert once == twice, "#{inspect(key)} -> #{inspect(once)} -> #{inspect(twice)}"
       end
     end
+  end
+
+  describe ":clean_to_bigquery_column_spec fused pipeline" do
+    property "matches sequential cleaning and key normalization" do
+      check all input <- log_params_generator() do
+        assert transform(input, :clean_to_bigquery_column_spec) ==
+                 input
+                 |> MetadataCleaner.deep_reject_nil_and_empty()
+                 |> transform(:to_bigquery_column_spec)
+      end
+    end
+
+    test "preserves sequential behavior when cleaned keys collide" do
+      input =
+        1..33
+        |> Map.new(&{"empty#{&1}", nil})
+        |> Map.merge(%{"a!b" => 1, "a?b" => 2})
+
+      expected =
+        input
+        |> MetadataCleaner.deep_reject_nil_and_empty()
+        |> transform(:to_bigquery_column_spec)
+
+      assert transform(input, :clean_to_bigquery_column_spec) == expected
+    end
+  end
+
+  defp log_params_generator do
+    key =
+      StreamData.map(StreamData.integer(0..1_000_000), fn n ->
+        case rem(n, 6) do
+          0 -> "safe_#{n}"
+          1 -> "bad!#{n}"
+          2 -> "bad?#{n}"
+          3 -> "dashed-#{n}"
+          4 -> "_TABLE_#{n}"
+          5 -> "日本#{n}"
+        end
+      end)
+
+    scalar =
+      StreamData.one_of([
+        StreamData.constant(nil),
+        StreamData.constant(""),
+        StreamData.constant({}),
+        StreamData.boolean(),
+        StreamData.integer(),
+        StreamData.string(:printable, max_length: 32)
+      ])
+
+    value =
+      StreamData.tree(scalar, fn child ->
+        StreamData.one_of([
+          StreamData.list_of(child, max_length: 5),
+          StreamData.map_of(key, child, max_length: 5)
+        ])
+      end)
+
+    StreamData.map_of(key, value, max_length: 12)
   end
 end

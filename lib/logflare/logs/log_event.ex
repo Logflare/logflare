@@ -228,6 +228,8 @@ defmodule Logflare.LogEvent do
     end)
   end
 
+  defp validate(%LE{valid: false} = le, _source), do: le
+
   @spec clean_ingest_body(map()) :: map()
   defp clean_ingest_body(params),
     do: IngestTransformers.transform(params, :clean_to_bigquery_column_spec)
