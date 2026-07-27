@@ -661,13 +661,12 @@ defmodule Logflare.Bench.ClickHousePipelineData do
 
   defp base_event(type, i, body) do
     %LogEvent{
-      id: Ecto.UUID.generate(),
+      id: Ecto.UUID.cast!(<<i::128>>),
       source_uuid: @source_uuid,
       source_name: "bench source",
       event_type: type,
       day_bucket: div(1_700_000_000 + i, 86_400),
-      ingest_freshness: :fresh,
-      ingested_at: DateTime.utc_now(),
+      ingested_at: DateTime.from_unix!(1_700_000_000_000_000 + i, :microsecond),
       body: Map.put(body, "mapping_config_id", @mapping_config_id)
     }
   end
