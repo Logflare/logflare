@@ -22,6 +22,12 @@ defmodule Logflare.Backends.UserMonitoringTest do
     insert(:plan)
     user = insert(:user)
 
+    # Keep bigquery ingestion on the streaming-insert branch.
+    stub(Logflare.Utils, :flag, fn
+      "BigqueryStorageWriteApi", _identifier -> false
+      _feature, _identifier -> true
+    end)
+
     source = insert(:source, user: user)
     source_b = insert(:source, user: user)
 
