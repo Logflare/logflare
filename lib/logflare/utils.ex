@@ -13,7 +13,6 @@ defmodule Logflare.Utils do
 
   @sensitive_header_names ["authorization", "x-api-key", "Authorization", "X-API-Key"]
 
-  @test_disabled_features ["BigqueryStorageWriteApi"]
   @doc """
   Checks if a feature flag is enabled.
   If SDK key is not set, will always return false.
@@ -32,9 +31,6 @@ defmodule Logflare.Utils do
     test_env? = Application.get_env(:logflare, :env) == :test
 
     cond do
-      test_env? and feature in @test_disabled_features ->
-        Map.get(overrides, feature, "false") in ["true", true]
-
       test_env? ->
         true
 

@@ -20,6 +20,19 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.User
 
   @pipeline_name :test_pipeline
+
+  setup do
+    # Storage-write is gated behind the BigqueryStorageWriteApi flag; default all
+    # pipeline tests to the streaming-insert branch. Storage-write tests opt in via
+    # the source's bq_storage_write_api column or by re-stubbing this flag.
+    stub(Logflare.Utils, :flag, fn
+      "BigqueryStorageWriteApi", _identifier -> false
+      _feature, _identifier -> true
+    end)
+
+    :ok
+  end
+
   describe "pipeline" do
     setup do
       insert(:plan)
