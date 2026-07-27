@@ -18,8 +18,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.ConnectionManager
   alias __MODULE__.EndpointUtils
   alias __MODULE__.Ingester
-  alias __MODULE__.NativeIngester
-  alias __MODULE__.NativeIngester.PoolSup, as: NativePoolSup
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
   alias __MODULE__.QueryConnectionSup
@@ -140,9 +138,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        port: :integer,
        pool_size: :integer,
        read_only_url: :string,
-       insert_protocol: :string,
-       native_port: :integer,
-       native_pool_size: :integer,
        use_async_inserts_for_small_batches: :boolean,
        async_insert_cluster_url: :string,
        async_insert_max_rows: :integer
@@ -155,14 +150,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :port,
       :pool_size,
       :read_only_url,
-      :insert_protocol,
-      :native_port,
-      :native_pool_size,
       :use_async_inserts_for_small_batches,
       :async_insert_cluster_url,
       :async_insert_max_rows
     ])
-    |> Logflare.Utils.default_field_value(:insert_protocol, "http")
     |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
     |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
   end
@@ -172,8 +163,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def validate_config(%Changeset{} = changeset) do
     import Ecto.Changeset
 
-    {min_pool, max_pool} = NativeIngester.Pool.pool_size_range()
-
     changeset
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
@@ -181,14 +170,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_number(:async_insert_max_rows, greater_than: 0)
     |> validate_read_only_url()
     |> validate_user_pass()
-    |> validate_inclusion(:insert_protocol, ["http", "native"])
     |> validate_number(:pool_size,
       greater_than_or_equal_to: 1,
       less_than_or_equal_to: @max_read_pool_size
-    )
-    |> validate_number(:native_pool_size,
-      greater_than_or_equal_to: min_pool,
-      less_than_or_equal_to: max_pool
     )
   end
 
@@ -517,31 +501,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def insert_log_events(backend, events, event_type, opts \\ [])
 
   def insert_log_events(%Backend{}, [], _event_type, _opts), do: :ok
-
-  def insert_log_events(
-        %Backend{config: %{insert_protocol: "native"}} = backend,
-        [%LogEvent{} | _] = events,
-        event_type,
-        opts
-      )
-      when is_event_type(event_type) do
-    Logger.metadata(backend_id: backend.id)
-    table_name = clickhouse_ingest_table_name(backend, event_type)
-    insert_opts = build_insert_opts(opts)
-
-    with :ok <- NativePoolSup.ensure_started(backend),
-         :ok <- NativeIngester.insert(backend, table_name, events, event_type, insert_opts) do
-      :ok
-    else
-      {:error, reason} ->
-        Logger.warning("ClickHouse native insert error.",
-          host: EndpointUtils.host(backend.config[:url]),
-          error_string: inspect(reason)
-        )
-
-        {:error, reason}
-    end
-  end
 
   def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type, opts)
       when is_event_type(event_type) do

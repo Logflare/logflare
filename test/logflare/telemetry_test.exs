@@ -69,13 +69,13 @@ defmodule Logflare.TelemetryTest do
       for metric <- metrics do
         assert metric.event_name == [:logflare, :backends, :pipeline, :handle_batch]
         assert metric.measurement == :batch_size
-        assert metric.tags == [:event_type, :batch_trigger]
+        assert metric.tags == [:backend_id, :event_type, :batch_trigger]
         assert metric.keep.(%{backend_type: :clickhouse})
         refute metric.keep.(%{backend_type: :bigquery})
       end
     end
 
-    test "aggregates ClickHouse batches by event type and trigger" do
+    test "aggregates ClickHouse batches by backend, event type, and trigger" do
       start_supervised!(
         {OtelMetricExporter,
          name: @clickhouse_batch_exporter,
@@ -88,14 +88,21 @@ defmodule Logflare.TelemetryTest do
       )
 
       event = [:logflare, :backends, :pipeline, :handle_batch]
-      log_tags = %{event_type: :log, batch_trigger: :size}
-      metric_tags = %{event_type: :metric, batch_trigger: :timeout}
-      trace_tags = %{event_type: :trace, batch_trigger: :timeout}
+      log_tags = %{backend_id: 1, event_type: :log, batch_trigger: :size}
+      other_log_tags = %{backend_id: 2, event_type: :log, batch_trigger: :size}
+      metric_tags = %{backend_id: 1, event_type: :metric, batch_trigger: :timeout}
+      trace_tags = %{backend_id: 2, event_type: :trace, batch_trigger: :timeout}
 
       :telemetry.execute(
         event,
         %{batch_size: 20_000},
         Map.put(log_tags, :backend_type, :clickhouse)
+      )
+
+      :telemetry.execute(
+        event,
+        %{batch_size: 10_000},
+        Map.put(other_log_tags, :backend_type, :clickhouse)
       )
 
       :telemetry.execute(
@@ -117,8 +124,18 @@ defmodule Logflare.TelemetryTest do
                {:sum, @clickhouse_batch_metric_string} => sums
              } = MetricStore.get_metrics(@clickhouse_batch_exporter)
 
-      assert sums == %{log_tags => 20_000, metric_tags => 500, trace_tags => 125}
+      assert sums == %{
+               log_tags => 20_000,
+               other_log_tags => 10_000,
+               metric_tags => 500,
+               trace_tags => 125
+             }
+
       assert [{_bucket, {1, 20_000}}] = distributions |> Map.fetch!(log_tags) |> Map.to_list()
+
+      assert [{_bucket, {1, 10_000}}] =
+               distributions |> Map.fetch!(other_log_tags) |> Map.to_list()
+
       assert [{_bucket, {1, 500}}] = distributions |> Map.fetch!(metric_tags) |> Map.to_list()
       assert [{_bucket, {1, 125}}] = distributions |> Map.fetch!(trace_tags) |> Map.to_list()
     end
