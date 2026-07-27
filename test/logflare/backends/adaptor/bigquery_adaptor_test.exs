@@ -440,6 +440,31 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
 
       assert_received {:timeouts, 60_000, 60_000}
     end
+
+    test "uses a 60s timeout for :endpoint queries with a custom reservation" do
+      user = insert(:user, bigquery_dataset_id: "test_dataset")
+
+      BigQueryAdaptor.execute_query(
+        {"test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :endpoint,
+        reservation: "projects/p/locations/l/reservations/endpoint"
+      )
+
+      assert_received {:timeouts, 60_000, 60_000}
+    end
+
+    test "keeps the default timeout for :endpoint queries without a reservation" do
+      user = insert(:user, bigquery_dataset_id: "test_dataset")
+
+      BigQueryAdaptor.execute_query(
+        {"test-project", user.bigquery_dataset_id, user.id},
+        {"select 1", []},
+        query_type: :endpoint
+      )
+
+      assert_received {:timeouts, 25_000, 25_000}
+    end
   end
 
   describe "reservation error logging" do
