@@ -338,7 +338,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     collect_batch_events(rest, [le | log_events], count + 1, bytes + size)
   end
 
-  def le_to_bq_row(%LE{body: body, id: id}) do
+  def le_to_bq_row(%LE{body: body, id: id, otel_timestamps: otel_timestamps?}) do
     body =
       for {k, v} <- body, into: %{} do
         if is_map(v) do
@@ -348,7 +348,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         end
       end
       |> Map.put("event_message", body["event_message"])
-      |> EventUtils.convert_to_seconds()
+      |> EventUtils.convert_to_seconds(otel_timestamps?)
 
     %Model.TableDataInsertAllRequestRows{
       insertId: id,

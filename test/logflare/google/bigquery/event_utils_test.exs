@@ -11,9 +11,10 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
       "event_message" => "test"
     }
 
-    test "converts start_time from nanoseconds to seconds (float)" do
+    test "converts start_time from nanoseconds to seconds (float) when otel_timestamps is set" do
       le = %Logflare.LogEvent{
-        body: Map.put(@base_body, "start_time", 1_779_436_330_890_427_000)
+        body: Map.put(@base_body, "start_time", 1_779_436_330_890_427_000),
+        otel_timestamps: true
       }
 
       result = EventUtils.log_event_to_df_struct(le)
@@ -26,7 +27,8 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
         body:
           @base_body
           |> Map.put("start_time", 1_779_436_330_890_427_000)
-          |> Map.put("end_time", 1_779_436_901_362_775_000)
+          |> Map.put("end_time", 1_779_436_901_362_775_000),
+        otel_timestamps: true
       }
 
       result = EventUtils.log_event_to_df_struct(le)
@@ -37,7 +39,8 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
 
     test "converts only end_time from nanoseconds to seconds (float)" do
       le = %Logflare.LogEvent{
-        body: Map.put(@base_body, "end_time", 1_779_436_901_362_775_000)
+        body: Map.put(@base_body, "end_time", 1_779_436_901_362_775_000),
+        otel_timestamps: true
       }
 
       result = EventUtils.log_event_to_df_struct(le)
@@ -45,14 +48,14 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
       assert result["end_time"] == 1_779_436_901.362_775
     end
 
-    test "converts start_time from nanoseconds to seconds (float) regardless of event type" do
+    test "leaves start_time unchanged when otel_timestamps is not set" do
       le = %Logflare.LogEvent{
         body: Map.put(@base_body, "start_time", 1_779_436_330_890_427_000)
       }
 
       result = EventUtils.log_event_to_df_struct(le)
 
-      assert_in_delta result["start_time"], 1_779_436_330.890_427, 1.0e-6
+      assert result["start_time"] == 1_779_436_330_890_427_000
     end
 
     test "passes timestamp through as seconds (float)" do
@@ -64,31 +67,34 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
     end
   end
 
-  describe "convert_to_seconds/1" do
+  describe "convert_to_seconds/2" do
     @ns 1_779_436_330_890_427_000
     @us 1_779_436_901_362_775
 
-    test "converts nanosecond start_time and end_time to float seconds" do
+    test "converts nanosecond start_time and end_time to float seconds for OTel events" do
       body = %{"start_time" => @ns, "end_time" => 1_779_436_901_362_775_000}
 
-      result = EventUtils.convert_to_seconds(body)
+      result = EventUtils.convert_to_seconds(body, true)
 
       assert result["start_time"] == 1_779_436_330.8904269
       assert result["end_time"] == 1_779_436_901.362_775
     end
 
     test "converts microsecond timestamp to float seconds" do
-      body = %{"timestamp" => @us}
-
-      result = EventUtils.convert_to_seconds(body)
-
-      assert result["timestamp"] == 1_779_436_901.362_775
+      assert EventUtils.convert_to_seconds(%{"timestamp" => @us}, false) ==
+               %{"timestamp" => 1_779_436_901.362_775}
     end
 
     test "leaves start_time unchanged when not nanoseconds" do
       body = %{"start_time" => 1_234_567_890}
 
-      assert EventUtils.convert_to_seconds(body) == body
+      assert EventUtils.convert_to_seconds(body, true) == body
+    end
+
+    test "leaves non-OTel start_time and end_time unchanged even in the nanosecond range" do
+      body = %{"start_time" => @ns, "end_time" => 1_779_436_901_362_775_000}
+
+      assert EventUtils.convert_to_seconds(body, false) == body
     end
   end
 

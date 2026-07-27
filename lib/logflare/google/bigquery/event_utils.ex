@@ -3,10 +3,13 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   Event utils for BigQuery.
   """
 
+  @ns_threshold 1_000_000_000_000_000_000
+  @us_threshold 1_000_000_000_000
+
   @doc """
   Converts LogEvent's body into a valid dataframe struct for Explorer
   """
-  def log_event_to_df_struct(%Logflare.LogEvent{body: body}) do
+  def log_event_to_df_struct(%Logflare.LogEvent{body: body, otel_timestamps: otel_timestamps?}) do
     for {k, v} <- body, into: %{} do
       if is_map(v) do
         {k, prepare_for_ingest(v)}
@@ -15,34 +18,42 @@ defmodule Logflare.Google.BigQuery.EventUtils do
       end
     end
     |> Map.put("event_message", body["event_message"])
-    |> convert_to_seconds()
+    |> convert_to_seconds(otel_timestamps?)
   end
 
   @doc """
-  Recursively converts nanosecond/microsecond timestamps to seconds
+  Converts nanosecond/microsecond timestamps to seconds.
   https://docs.cloud.google.com/bigquery/docs/streaming-data-into-bigquery#send_date_and_time_data
   """
-  @spec convert_to_seconds(map()) :: map()
+  @spec convert_to_seconds(map(), boolean()) :: map()
+  def convert_to_seconds(data, false), do: timestamp_to_seconds(data)
 
-  def convert_to_seconds(data) do
+  def convert_to_seconds(data, true) do
     data
-    |> convert_to_seconds("timestamp")
-    |> convert_to_seconds("start_time")
-    |> convert_to_seconds("end_time")
+    |> timestamp_to_seconds()
+    |> ns_to_seconds("start_time")
+    |> ns_to_seconds("end_time")
   end
 
-  defp convert_to_seconds(data, field) do
+  defp ns_to_seconds(data, field) do
     case data do
-      %{^field => ts} when ts > 1_000_000_000_000_000_000 ->
+      %{^field => ts} when is_integer(ts) and ts > @ns_threshold ->
         %{data | field => ts / :math.pow(1000, 3)}
-
-      %{"timestamp" => ts} when ts > 1_000_000_000_000 ->
-        %{data | field => ts / :math.pow(1000, 2)}
 
       _ ->
         data
     end
   end
+
+  defp timestamp_to_seconds(%{"timestamp" => ts} = data) when is_integer(ts) do
+    cond do
+      ts > @ns_threshold -> %{data | "timestamp" => ts / :math.pow(1000, 3)}
+      ts > @us_threshold -> %{data | "timestamp" => ts / :math.pow(1000, 2)}
+      true -> data
+    end
+  end
+
+  defp timestamp_to_seconds(data), do: data
 
   @doc """
   Checks for all maps fields from the dataframe list, then adds the missing fields to the
