@@ -168,6 +168,32 @@ jobs:
       - name: Run ${{ matrix.commands.name }}
         run: ${{ matrix.commands.run }}
 
+  rust:
+    name: Rust unit tests
+    runs-on: ubuntu-latest
+    needs: versions
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ needs.versions.outputs.rust }}
+
+      - name: Restore Cargo cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-
+            cargo-${{ runner.os }}-
+
+      - name: Run mapper Rust unit tests
+        run: cargo test -p mapper_ex
+
   frontend:
     name: Frontend Tests
     runs-on: ubuntu-latest

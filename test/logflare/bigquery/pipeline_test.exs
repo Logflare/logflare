@@ -293,14 +293,12 @@ defmodule Logflare.BigQuery.PipelineTest do
                json: %{
                  "event_message" => "valid",
                  "top_level" => "top",
-                 "timestamp" => timestamp_seconds,
+                 "timestamp" => ^datetime,
                  "metadata" => [%{"a" => "nested"}],
                  "id" => ^id,
                  "project" => "my-project"
                }
              } = Pipeline.le_to_bq_row(le)
-
-      assert is_float(timestamp_seconds)
     end
   end
 
@@ -324,7 +322,6 @@ defmodule Logflare.BigQuery.PipelineTest do
     test "converts OTel timestamps from nanoseconds to microseconds", %{source: source} do
       json =
         make_le(source,
-          metadata: %{"type" => "span"},
           resource: %{"service.name" => "svc"},
           scope: %{"name" => "scope"},
           start_time: @start_ns,
@@ -332,14 +329,13 @@ defmodule Logflare.BigQuery.PipelineTest do
         )
         |> bq_json()
 
-      assert is_float(json["end_time"])
-      assert is_float(json["start_time"])
+      assert %DateTime{} = json["end_time"]
+      assert %DateTime{} = json["start_time"]
     end
 
     test "converts only start_time when end_time is missing", %{source: source} do
       json =
         make_le(source,
-          metadata: %{"type" => "span"},
           resource: %{"service.name" => "svc"},
           scope: %{"name" => "scope"},
           start_time: @start_ns
@@ -347,38 +343,23 @@ defmodule Logflare.BigQuery.PipelineTest do
         |> bq_json()
 
       assert is_nil(json["end_time"])
-      assert is_float(json["start_time"])
+      assert %DateTime{} = json["start_time"]
     end
 
-    test "converts recognized timestamp fields with unix nanosecond/microsecond values", %{
-      source: source
-    } do
-      json =
-        make_le(source,
-          metadata: %{"type" => "metric"},
-          metric_type: "gauge",
-          value: 1,
-          resource: %{"service.name" => "svc"},
-          start_time: @start_ns,
-          end_time: @end_ns
-        )
-        |> bq_json()
-
-      for field <- ["timestamp", "start_time", "end_time"], value = json[field] do
-        # value is unix fractional seconds
-        assert is_float(value)
-        assert round(value) |> Integer.to_string() |> String.length() == 10
-      end
-    end
-
-    test "does not convert non-nanosecond start_time for plain logs", %{source: source} do
-      json =
-        make_le(source, start_time: 1_234_567_890_123_456, end_time: 1_234_567_891_123_456)
-        |> bq_json()
-
-      for field <- ["start_time", "end_time"], value = json[field] do
-        refute is_float(value)
-        assert round(value) |> Integer.to_string() |> String.length() == 16
+    test "does not convert timestamps without both resource and scope", %{source: source} do
+      for attrs <- [
+            [
+              scope: %{"name" => "scope"}
+            ],
+            [
+              resource: %{"service.name" => "svc"}
+            ]
+          ],
+          attrs = attrs ++ [start_time: @start_ns, end_time: @end_ns] do
+        json = make_le(source, attrs) |> bq_json()
+        # should not be converted to microseconds
+        refute match?(%DateTime{}, json["start_time"])
+        refute match?(%DateTime{}, json["end_time"])
       end
     end
   end

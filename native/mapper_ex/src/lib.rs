@@ -5,7 +5,7 @@ mod path;
 mod query;
 mod string_filters;
 
-use rustler::{Encoder, Env, NifResult, Resource, ResourceArc, Term};
+use rustler::{Encoder, Env, NewBinary, NifResult, Resource, ResourceArc, Term};
 
 use mapping::CompiledMapping;
 
@@ -14,6 +14,19 @@ mod atoms {
         ok,
         error,
     }
+}
+
+#[inline]
+fn encode_string<'a>(env: Env<'a>, value: &str) -> Term<'a> {
+    let mut binary = NewBinary::new(env, value.len());
+    binary.as_mut_slice().copy_from_slice(value.as_bytes());
+    binary.into()
+}
+
+#[inline]
+fn encode_integer<'a>(env: Env<'a>, value: i64) -> Term<'a> {
+    let mut buffer = itoa::Buffer::new();
+    encode_string(env, buffer.format(value))
 }
 
 /// A compiled full mapping configuration stored as a Rustler Resource.
