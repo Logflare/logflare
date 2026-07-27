@@ -9,7 +9,7 @@ defmodule Logflare.Utils do
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.OauthAccessTokens.PartnerOauthAccessToken
   import Cachex.Spec
-  import Logflare.Utils.Guards, only: [is_atom_value: 1]
+  import Logflare.Utils.Guards, only: [is_atom_value: 1, is_non_empty_binary: 1]
 
   @sensitive_header_names ["authorization", "x-api-key", "Authorization", "X-API-Key"]
 
@@ -22,18 +22,18 @@ defmodule Logflare.Utils do
     iex> flag("my-feature")
     true
   """
-  def flag(feature, identifier \\ nil) when is_binary(feature) do
+  def flag(feature, identifier \\ nil) when is_non_empty_binary(feature) do
     config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
 
     overrides =
       Application.get_env(:logflare, :feature_flag_override) ||
         %{}
 
-    test_env? = Application.get_env(:logflare, :env) in [:test]
+    test_env? = Application.get_env(:logflare, :env) == :test
 
     cond do
       test_env? and feature in @test_disabled_features ->
-        false
+        Map.get(overrides, feature, "false") in ["true", true]
 
       test_env? ->
         true

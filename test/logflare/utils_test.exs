@@ -74,7 +74,7 @@ defmodule Logflare.Utils.FlagTest do
   end
 
   describe "flag/2 without ConfigCat SDK key (non-test env)" do
-    TestUtils.reset_feature_flag_overrides(setup: true)
+    TestUtils.restore_feature_flag_overrides_on_exit(setup: true)
 
     setup do
       prev_env = Application.get_env(:logflare, :env)
@@ -113,8 +113,6 @@ defmodule Logflare.Utils.FlagTest do
     end
 
     test "BigqueryStorageWriteApi can be enabled via feature_flag_override" do
-      prev = Application.get_env(:logflare, :feature_flag_override)
-
       Application.put_env(:logflare, :feature_flag_override, %{
         "BigqueryStorageWriteApi" => "true"
       })
@@ -124,7 +122,7 @@ defmodule Logflare.Utils.FlagTest do
   end
 
   describe "flag/2 without ConfigCat SDK key (:test env)" do
-    TestUtils.reset_feature_flag_overrides(setup: true)
+    TestUtils.restore_feature_flag_overrides_on_exit(setup: true)
 
     setup do
       prev_env = Application.get_env(:logflare, :env)
@@ -154,22 +152,13 @@ defmodule Logflare.Utils.FlagTest do
       assert Utils.flag("BigqueryStorageWriteApi", "some-id") == false
     end
 
-    test "does not consult feature_flag_override" do
-      prev = Application.get_env(:logflare, :feature_flag_override)
-
+    test "consults feature_flag_override for test-disabled features" do
       Application.put_env(:logflare, :feature_flag_override, %{
         "BigqueryStorageWriteApi" => "true",
         "other" => "false"
       })
 
-      on_exit(fn ->
-        case prev do
-          nil -> Application.delete_env(:logflare, :feature_flag_override)
-          val -> Application.put_env(:logflare, :feature_flag_override, val)
-        end
-      end)
-
-      assert Utils.flag("BigqueryStorageWriteApi", "some-id") == false
+      assert Utils.flag("BigqueryStorageWriteApi", "some-id") == true
       assert Utils.flag("other") == true
     end
   end
