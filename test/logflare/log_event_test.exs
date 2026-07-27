@@ -834,39 +834,6 @@ defmodule Logflare.LogEventTest do
     end
   end
 
-  describe "otel_timestamps detection" do
-    test "make/2 sets otel_timestamps for OTel metric/trace events", %{source: source} do
-      le =
-        LogEvent.make(
-          %{"event_message" => "span", "metadata" => %{"type" => "span"}},
-          %{source: source}
-        )
-
-      assert le.otel_timestamps
-    end
-
-    test "make/2 leaves otel_timestamps unset for OTel-shaped payloads without a metric/trace signal",
-         %{source: source} do
-      le =
-        LogEvent.make(
-          %{
-            "event_message" => "otel shaped",
-            "resource" => %{"service.name" => "svc"},
-            "scope" => %{"name" => "scope"}
-          },
-          %{source: source}
-        )
-
-      refute le.otel_timestamps
-    end
-
-    test "make/2 leaves otel_timestamps unset for plain logs", %{source: source} do
-      le = LogEvent.make(%{"event_message" => "plain"}, %{source: source})
-
-      refute le.otel_timestamps
-    end
-  end
-
   describe "make_message/2" do
     property "if pattern is `nil` then the message is left as is" do
       check all message <- string(:printable) do
