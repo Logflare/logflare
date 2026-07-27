@@ -5,6 +5,8 @@ defmodule Logflare.Google.BigQuery.EventUtils do
 
   @ns_threshold 1_000_000_000_000_000_000
   @us_threshold 1_000_000_000_000
+  @pow3 :math.pow(1_000, 3)
+  @pow2 :math.pow(1_000, 3)
 
   @doc """
   Converts LogEvent's body into a valid dataframe struct for Explorer
@@ -38,7 +40,7 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   defp ns_to_seconds(data, field) do
     case data do
       %{^field => ts} when is_integer(ts) and ts > @ns_threshold ->
-        %{data | field => ts / :math.pow(1000, 3)}
+        %{data | field => ts / @pow3}
 
       _ ->
         data
@@ -47,8 +49,8 @@ defmodule Logflare.Google.BigQuery.EventUtils do
 
   defp timestamp_to_seconds(%{"timestamp" => ts} = data) when is_integer(ts) do
     cond do
-      ts > @ns_threshold -> %{data | "timestamp" => ts / :math.pow(1000, 3)}
-      ts > @us_threshold -> %{data | "timestamp" => ts / :math.pow(1000, 2)}
+      ts > @ns_threshold -> %{data | "timestamp" => ts / @pow3}
+      ts > @us_threshold -> %{data | "timestamp" => ts / @pow2}
       true -> data
     end
   end
