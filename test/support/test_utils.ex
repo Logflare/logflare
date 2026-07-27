@@ -16,22 +16,10 @@ defmodule Logflare.TestUtils do
   alias Logflare.User
 
   @doc """
-  Sets a feature flag override.
-  Should be used with reset_feature_flag_overrides/0 to restore the previous value.
-  """
-  @spec put_feature_flag_overrides(String.t(), boolean()) :: :ok
-  def put_feature_flag_overrides(flag, value) when is_binary(flag) and is_boolean(value) do
-    prev = Application.get_env(:logflare, :feature_flag_override)
-    merged = Map.merge(prev || %{}, %{flag => value})
-    Application.put_env(:logflare, :feature_flag_override, merged)
-    :ok
-  end
-
-  @doc """
   restores the previous feature flag override. Should be used in a test or setup block.
   To use outside of a test or setup block, use `:setup` option to wrap in a setup block.
   """
-  defmacro reset_feature_flag_overrides(opts \\ [setup: false]) do
+  defmacro restore_feature_flag_overrides_on_exit(opts \\ [setup: false]) do
     setup = Keyword.get(opts, :setup, false)
 
     quote_body =
