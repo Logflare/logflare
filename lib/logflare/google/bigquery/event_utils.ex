@@ -6,7 +6,7 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   @ns_threshold 1_000_000_000_000_000_000
   @us_threshold 1_000_000_000_000
   @pow3 :math.pow(1_000, 3)
-  @pow2 :math.pow(1_000, 3)
+  @pow2 :math.pow(1_000, 2)
 
   @doc """
   Converts LogEvent's body into a valid dataframe struct for Explorer
