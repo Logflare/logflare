@@ -740,8 +740,9 @@ defmodule Logflare.Endpoints do
         end
 
       redact_pii = Keyword.get(opts, :redact_pii, endpoint_query.redact_pii)
+      query_opts = Keyword.put(opts, :query_type, :endpoint)
 
-      case adaptor.execute_query(backend, query_args, opts) do
+      case adaptor.execute_query(backend, query_args, query_opts) do
         {:ok, %QueryResult{rows: rows} = result} ->
           redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
           {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}

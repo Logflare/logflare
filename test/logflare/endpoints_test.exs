@@ -525,6 +525,41 @@ defmodule Logflare.EndpointsTest do
       }
     end
 
+    test "run_query/3 uses a 60s timeout when a custom reservation is provided" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:timeouts, opts[:body].jobTimeoutMs, opts[:body].timeoutMs})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} =
+               Endpoints.run_query(endpoint, %{},
+                 reservation: "projects/p/locations/l/reservations/endpoint"
+               )
+
+      assert_received {:timeouts, 60_000, 60_000}
+    end
+
+    test "run_query/3 keeps the default timeout when no reservation is provided" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:timeouts, opts[:body].jobTimeoutMs, opts[:body].timeoutMs})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+
+      assert_received {:timeouts, 25_000, 25_000}
+    end
+
     test "run an endpoint query with query composition" do
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
         assert opts[:body].query =~ "current_datetime"
