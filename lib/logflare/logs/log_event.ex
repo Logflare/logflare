@@ -75,7 +75,7 @@ defmodule Logflare.LogEvent do
       source_name: source.name,
       body: body,
       event_type: event_type,
-      otel_timestamps: TypeDetection.otel_timestamps?(body, event_type),
+      otel_timestamps: TypeDetection.otel_timestamps?(event_type),
       ingested_at: ingested_at_dt,
       valid: true,
       drop: false,
@@ -104,7 +104,7 @@ defmodule Logflare.LogEvent do
       source_name: source.name,
       body: body,
       event_type: event_type,
-      otel_timestamps: TypeDetection.otel_timestamps?(body, event_type),
+      otel_timestamps: TypeDetection.otel_timestamps?(event_type),
       ingested_at: ingested_at_dt,
       valid: true,
       drop: false,
@@ -135,7 +135,6 @@ defmodule Logflare.LogEvent do
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
   def make(params, %{source: source}, _opts \\ []) do
     event_type = TypeDetection.detect(params)
-    otel_timestamps = TypeDetection.otel_timestamps?(params, event_type)
     mapped = mapper(params, event_type)
 
     changeset =
@@ -165,7 +164,7 @@ defmodule Logflare.LogEvent do
         ingested_at: DateTime.utc_now(),
         id: body["id"],
         event_type: event_type,
-        otel_timestamps: otel_timestamps,
+        otel_timestamps: TypeDetection.otel_timestamps?(event_type),
         timestamp_inferred: mapped["timestamp_inferred"],
         day_bucket: day_bucket
       })

@@ -845,7 +845,8 @@ defmodule Logflare.LogEventTest do
       assert le.otel_timestamps
     end
 
-    test "make/2 sets otel_timestamps for OTel-shaped payloads", %{source: source} do
+    test "make/2 leaves otel_timestamps unset for OTel-shaped payloads without a metric/trace signal",
+         %{source: source} do
       le =
         LogEvent.make(
           %{
@@ -856,7 +857,7 @@ defmodule Logflare.LogEventTest do
           %{source: source}
         )
 
-      assert le.otel_timestamps
+      refute le.otel_timestamps
     end
 
     test "make/2 leaves otel_timestamps unset for plain logs", %{source: source} do

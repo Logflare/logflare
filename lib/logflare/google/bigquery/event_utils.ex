@@ -3,7 +3,8 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   Event utils for BigQuery.
   """
 
-  alias Logflare.LogEvent.TypeDetection
+  @ns_threshold 1_000_000_000_000_000_000
+  @us_threshold 1_000_000_000_000
 
   @doc """
   Converts LogEvent's body into a valid dataframe struct for Explorer
@@ -23,34 +24,20 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   @doc """
   Converts nanosecond/microsecond timestamps to seconds.
   https://docs.cloud.google.com/bigquery/docs/streaming-data-into-bigquery#send_date_and_time_data
-
-  `timestamp` is always converted. `start_time`/`end_time` are only converted
-  when the event carries OTel timestamps, mirroring the `TIMESTAMP` column
-  typing in `SchemaBuilder`. The flag is detected at ingest and stored on
-  `Logflare.LogEvent` as `otel_timestamps` — pass it via `convert_to_seconds/2`;
-  `convert_to_seconds/1` falls back to detecting it from `data`.
   """
-  @spec convert_to_seconds(map()) :: map()
-  def convert_to_seconds(data) do
-    convert_to_seconds(data, TypeDetection.otel_timestamps?(data))
-  end
-
   @spec convert_to_seconds(map(), boolean()) :: map()
-  def convert_to_seconds(data, otel_timestamps?) do
-    data = timestamp_to_seconds(data)
+  def convert_to_seconds(data, false), do: timestamp_to_seconds(data)
 
-    if otel_timestamps? do
-      data
-      |> ns_to_seconds("start_time")
-      |> ns_to_seconds("end_time")
-    else
-      data
-    end
+  def convert_to_seconds(data, true) do
+    data
+    |> timestamp_to_seconds()
+    |> ns_to_seconds("start_time")
+    |> ns_to_seconds("end_time")
   end
 
   defp ns_to_seconds(data, field) do
     case data do
-      %{^field => ts} when is_integer(ts) and ts > 1_000_000_000_000_000_000 ->
+      %{^field => ts} when is_integer(ts) and ts > @ns_threshold ->
         %{data | field => ts / :math.pow(1000, 3)}
 
       _ ->
@@ -58,13 +45,13 @@ defmodule Logflare.Google.BigQuery.EventUtils do
     end
   end
 
-  defp timestamp_to_seconds(%{"timestamp" => ts} = data)
-       when is_integer(ts) and ts > 1_000_000_000_000_000_000,
-       do: %{data | "timestamp" => ts / :math.pow(1000, 3)}
-
-  defp timestamp_to_seconds(%{"timestamp" => ts} = data)
-       when is_integer(ts) and ts > 1_000_000_000_000,
-       do: %{data | "timestamp" => ts / :math.pow(1000, 2)}
+  defp timestamp_to_seconds(%{"timestamp" => ts} = data) when is_integer(ts) do
+    cond do
+      ts > @ns_threshold -> %{data | "timestamp" => ts / :math.pow(1000, 3)}
+      ts > @us_threshold -> %{data | "timestamp" => ts / :math.pow(1000, 2)}
+      true -> data
+    end
+  end
 
   defp timestamp_to_seconds(data), do: data
 

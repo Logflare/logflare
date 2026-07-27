@@ -28,31 +28,13 @@ defmodule Logflare.LogEvent.TypeDetection do
   end
 
   @doc """
-  Whether `start_time`/`end_time` fields in the params hold OpenTelemetry
-  unix-nanosecond timestamps.
-
-  Single definition shared by BigQuery schema typing
-  (`Logflare.Sources.Source.BigQuery.SchemaBuilder`) and value conversion
-  (`Logflare.Google.BigQuery.EventUtils.convert_to_seconds/1`) so the column
-  type and the ingested value always agree.
+  Whether the event's `start_time`/`end_time` fields hold OpenTelemetry
+  unix-nanosecond timestamps. Accepts raw params or an already-detected
+  event type.
   """
-  @spec otel_timestamps?(map()) :: boolean()
-  def otel_timestamps?(params) when is_map(params) do
-    otel_timestamps?(params, detect(params))
-  end
-
-  @doc """
-  Same as `otel_timestamps?/1`, reusing an already-computed event type to
-  avoid running detection twice.
-  """
-  @spec otel_timestamps?(map(), event_type()) :: boolean()
-  def otel_timestamps?(params, event_type) when is_map(params) do
-    event_type in [:metric, :trace] or otel_shaped?(params)
-  end
-
-  defp otel_shaped?(params) do
-    Map.has_key?(params, "resource") and Map.has_key?(params, "scope")
-  end
+  @spec otel_timestamps?(map() | event_type()) :: boolean()
+  def otel_timestamps?(event_type) when is_atom(event_type), do: event_type in [:metric, :trace]
+  def otel_timestamps?(params) when is_map(params), do: otel_timestamps?(detect(params))
 
   defp trace?(params) do
     has_trace_id?(params) and has_span_id?(params) and has_span_field?(params)

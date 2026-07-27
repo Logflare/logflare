@@ -324,6 +324,7 @@ defmodule Logflare.BigQuery.PipelineTest do
     test "converts OTel timestamps from nanoseconds to microseconds", %{source: source} do
       json =
         make_le(source,
+          metadata: %{"type" => "span"},
           resource: %{"service.name" => "svc"},
           scope: %{"name" => "scope"},
           start_time: @start_ns,
@@ -338,6 +339,7 @@ defmodule Logflare.BigQuery.PipelineTest do
     test "converts only start_time when end_time is missing", %{source: source} do
       json =
         make_le(source,
+          metadata: %{"type" => "span"},
           resource: %{"service.name" => "svc"},
           scope: %{"name" => "scope"},
           start_time: @start_ns
