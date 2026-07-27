@@ -23,27 +23,26 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   https://docs.cloud.google.com/bigquery/docs/streaming-data-into-bigquery#send_date_and_time_data
   """
   @spec convert_to_seconds(map()) :: map()
-  def convert_to_seconds(%{"start_time" => ts} = data) when ts > 1_000_000_000_000_000_000 do
-    %{data | "start_time" => ts / :math.pow(1000, 3)}
-    |> convert_to_seconds()
+
+  def convert_to_seconds(data) do
+    data
+    |> convert_to_seconds("timestamp")
+    |> convert_to_seconds("start_time")
+    |> convert_to_seconds("end_time")
   end
 
-  def convert_to_seconds(%{"end_time" => ts} = data) when ts > 1_000_000_000_000_000_000 do
-    %{data | "end_time" => ts / :math.pow(1000, 3)}
-    |> convert_to_seconds()
-  end
+  defp convert_to_seconds(data, field) do
+    case data do
+      %{^field => ts} when ts > 1_000_000_000_000_000_000 ->
+        %{data | field => ts / :math.pow(1000, 3)}
 
-  def convert_to_seconds(%{"timestamp" => ts} = data) when ts > 1_000_000_000_000_000_000 do
-    %{data | "timestamp" => ts / :math.pow(1000, 3)}
-    |> convert_to_seconds()
-  end
+      %{"timestamp" => ts} when ts > 1_000_000_000_000 ->
+        %{data | field => ts / :math.pow(1000, 2)}
 
-  def convert_to_seconds(%{"timestamp" => ts} = data) when ts > 1_000_000_000_000 do
-    %{data | "timestamp" => ts / :math.pow(1000, 2)}
-    |> convert_to_seconds()
+      _ ->
+        data
+    end
   end
-
-  def convert_to_seconds(data), do: data
 
   @doc """
   Checks for all maps fields from the dataframe list, then adds the missing fields to the
