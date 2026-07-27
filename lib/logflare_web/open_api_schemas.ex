@@ -382,9 +382,6 @@ defmodule LogflareWeb.OpenApiSchemas do
       password: %Schema{type: :string, nullable: true},
       pool_size: %Schema{type: :integer, nullable: true},
       read_only_url: %Schema{type: :string, nullable: true},
-      insert_protocol: %Schema{type: :string, nullable: true},
-      native_port: %Schema{type: :integer, nullable: true},
-      native_pool_size: %Schema{type: :integer, nullable: true},
       use_async_inserts_for_small_batches: %Schema{type: :boolean, nullable: true},
       async_insert_cluster_url: %Schema{type: :string, nullable: true},
       async_insert_max_rows: %Schema{type: :integer, nullable: true}
