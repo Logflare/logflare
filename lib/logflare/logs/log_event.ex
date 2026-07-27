@@ -233,8 +233,6 @@ defmodule Logflare.LogEvent do
     end)
   end
 
-  defp validate(%LE{valid: false} = le, _source), do: le
-
   @spec clean_ingest_body(map()) :: map()
   defp clean_ingest_body(params),
     do: IngestTransformers.transform(params, :clean_to_bigquery_column_spec)
@@ -245,17 +243,6 @@ defmodule Logflare.LogEvent do
          {:ok, le} <- kv_enrich(le, source),
          {:ok, le} <- drop_fields(le, source) do
       le
-    else
-      {:error, message} ->
-        %{
-          le
-          | valid: false,
-            pipeline_error: %LE.PipelineError{
-              stage: "transform",
-              type: "transform",
-              message: message
-            }
-        }
     end
   end
 
