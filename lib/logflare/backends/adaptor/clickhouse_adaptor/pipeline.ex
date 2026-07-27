@@ -29,13 +29,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoder
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
-  alias Logflare.Mapper
   alias Logflare.Utils
 
   @producer_concurrency 1
@@ -265,10 +265,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
-  # Streams each message's event through the mapper + RowBinary encoder directly into
-  # a gzip zlib stream, so the full batch is never materialized as a flat binary.
-  # Returns the messages that encoded successfully, the ones missing from ETS, a count of
-  # successful messages that were compressed, and the finished compressed payload.
+  # Maps and encodes each event in one NIF call, then streams the RowBinary row
+  # into gzip so the full uncompressed batch is never materialized.
   @spec stream_compress([Message.t()], TypeDetection.event_type(), reference(), String.t()) ::
           {[Message.t()], [Message.t()], non_neg_integer(), binary()}
   defp stream_compress(messages, event_type, compiled, config_id) do
@@ -276,12 +274,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
     try do
       :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
-
-      # good/bad end up reversed relative to `messages`; that's fine — Broadway
-      # partitions and re-reverses handle_batch/4's return by status internally,
-      # and neither the acknowledger nor ClickHouse cares about row order.
-      # This value is constant for the batch. Keep it out of every mapped body and
-      # pass its already-encoded form directly to the row encoder.
       mapping_config_id = Ingester.encode_mapping_config_id(config_id)
 
       {good, bad, good_count, chunks} =
@@ -301,7 +293,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           term(),
           TypeDetection.event_type(),
           reference(),
-          iodata(),
+          binary(),
           Message.t(),
           {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
         ) :: {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
@@ -310,24 +302,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          event_type,
          compiled,
          mapping_config_id,
-         %{data: %LogEventPointer{event_type: msg_event_type} = pointer} = message,
+         %{data: %LogEventPointer{event_type: event_type} = pointer} = message,
          {good, bad, good_count, chunks}
-       )
-       when msg_event_type == event_type do
+       ) do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
       %LogEvent{} = event ->
-        mapped_body =
-          event.body
-          |> Mapper.map(compiled)
-          |> maybe_compute_duration(event_type)
-          |> resolve_severity_number(event_type)
-
-        row_chunk =
-          :zlib.deflate(
-            z,
-            Ingester.encode_row(%{event | body: mapped_body}, event_type, mapping_config_id)
-          )
-
+        row = NativeEncoder.map_and_encode_row(event, compiled, event_type, mapping_config_id)
+        row_chunk = :zlib.deflate(z, row)
         {[message | good], bad, good_count + 1, [row_chunk | chunks]}
 
       nil ->
@@ -498,26 +479,4 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
     end)
   end
-
-  @spec maybe_compute_duration(map(), TypeDetection.event_type()) :: map()
-  defp maybe_compute_duration(
-         %{"start_time" => start_time, "end_time" => end_time, "duration" => 0} = body,
-         :trace
-       )
-       when is_integer(start_time) and is_integer(end_time) and end_time > start_time do
-    %{body | "duration" => end_time - start_time}
-  end
-
-  defp maybe_compute_duration(body, _event_type), do: body
-
-  @spec resolve_severity_number(map(), TypeDetection.event_type()) :: map()
-  defp resolve_severity_number(
-         %{"severity_number_alt" => alt} = body,
-         :log
-       )
-       when is_integer(alt) and alt > 0 do
-    %{body | "severity_number" => alt}
-  end
-
-  defp resolve_severity_number(body, _event_type), do: body
 end

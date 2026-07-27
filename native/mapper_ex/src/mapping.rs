@@ -11,6 +11,105 @@ use crate::string_filters::{CharClass, StringFilters};
 
 const ROOT_CACHE_MIN_REFERENCES: usize = 8;
 
+const CLICKHOUSE_LOG_FIELDS: &[&str] = &[
+    "project",
+    "trace_id",
+    "span_id",
+    "trace_flags",
+    "severity_text",
+    "severity_number_alt",
+    "severity_number",
+    "service_name",
+    "event_message",
+    "scope_name",
+    "scope_version",
+    "scope_schema_url",
+    "resource_schema_url",
+    "resource_attributes",
+    "scope_attributes",
+    "log_attributes",
+    "timestamp",
+];
+
+const CLICKHOUSE_METRIC_FIELDS: &[&str] = &[
+    "project",
+    "time_unix",
+    "start_time_unix",
+    "metric_name",
+    "metric_description",
+    "metric_unit",
+    "metric_type",
+    "service_name",
+    "event_message",
+    "scope_name",
+    "scope_version",
+    "scope_schema_url",
+    "resource_schema_url",
+    "resource_attributes",
+    "scope_attributes",
+    "attributes",
+    "aggregation_temporality",
+    "is_monotonic",
+    "flags",
+    "value",
+    "count",
+    "sum",
+    "min",
+    "max",
+    "scale",
+    "zero_count",
+    "positive_offset",
+    "negative_offset",
+    "bucket_counts",
+    "explicit_bounds",
+    "positive_bucket_counts",
+    "negative_bucket_counts",
+    "quantile_values",
+    "quantiles",
+    "exemplars.filtered_attributes",
+    "exemplars.time_unix",
+    "exemplars.value",
+    "exemplars.span_id",
+    "exemplars.trace_id",
+    "timestamp",
+];
+
+const CLICKHOUSE_TRACE_FIELDS: &[&str] = &[
+    "project",
+    "trace_id",
+    "span_id",
+    "parent_span_id",
+    "trace_state",
+    "span_name",
+    "span_kind",
+    "service_name",
+    "event_message",
+    "duration",
+    "start_time",
+    "end_time",
+    "status_code",
+    "status_message",
+    "scope_name",
+    "scope_version",
+    "resource_attributes",
+    "span_attributes",
+    "events.timestamp",
+    "events.name",
+    "events.attributes",
+    "links.trace_id",
+    "links.span_id",
+    "links.trace_state",
+    "links.attributes",
+    "timestamp",
+];
+
+#[derive(Debug)]
+pub struct ClickHouseLayouts {
+    pub log: Option<Box<[usize]>>,
+    pub metric: Option<Box<[usize]>>,
+    pub trace: Option<Box<[usize]>>,
+}
+
 #[derive(Debug)]
 pub struct CompiledMapping {
     pub fields: Vec<CompiledField>,
@@ -18,6 +117,7 @@ pub struct CompiledMapping {
     pub root_cache_size: usize,
     pub root_cache_scan_limit: usize,
     pub root_cache_keys: HashMap<Vec<u8>, usize>,
+    pub clickhouse_layouts: ClickHouseLayouts,
 }
 
 #[derive(Debug)]
@@ -159,6 +259,7 @@ pub struct Enum8Data {
 
 pub fn decode_mapping<'a>(env: Env<'a>, config: Term<'a>) -> Result<CompiledMapping, String> {
     let mut fields = decode_fields(env, config)?;
+    let clickhouse_layouts = compile_clickhouse_layouts(&fields);
     let (path_cache_size, root_cache_size, root_cache_keys) =
         assign_path_cache_indices(&mut fields);
     Ok(CompiledMapping {
@@ -167,7 +268,29 @@ pub fn decode_mapping<'a>(env: Env<'a>, config: Term<'a>) -> Result<CompiledMapp
         root_cache_size,
         root_cache_scan_limit: root_cache_keys.len().max(ROOT_CACHE_MIN_REFERENCES),
         root_cache_keys,
+        clickhouse_layouts,
     })
+}
+
+fn compile_clickhouse_layouts(fields: &[CompiledField]) -> ClickHouseLayouts {
+    let indices: HashMap<&str, usize> = fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| (field.name.as_str(), index))
+        .collect();
+
+    let compile = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| indices.get(name).copied())
+            .collect::<Option<Box<[usize]>>>()
+    };
+
+    ClickHouseLayouts {
+        log: compile(CLICKHOUSE_LOG_FIELDS),
+        metric: compile(CLICKHOUSE_METRIC_FIELDS),
+        trace: compile(CLICKHOUSE_TRACE_FIELDS),
+    }
 }
 
 fn assign_path_cache_indices(

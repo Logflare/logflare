@@ -159,7 +159,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   @doc false
-  @spec encode_mapping_config_id(String.t()) :: iodata()
+  @spec encode_mapping_config_id(String.t()) :: binary()
   def encode_mapping_config_id(config_id), do: RowBinaryEncoder.uuid(config_id)
 
   @doc false
