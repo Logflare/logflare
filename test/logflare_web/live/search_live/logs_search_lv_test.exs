@@ -1487,6 +1487,42 @@ defmodule LogflareWeb.Source.SearchLVTest do
                "Query halted: Field &quot;notthere&quot; does not exist."
     end
 
+    test "shows timeout specific error for query timeouts", %{
+      conn: conn,
+      source: source
+    } do
+      assert {:ok, view, _html} =
+               live_with_redirect(
+                 conn,
+                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
+               )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      message = "Job execution was cancelled: Job timed out"
+
+      send_query_error(
+        view,
+        kind: :timeout,
+        backend: BigQueryAdaptor,
+        raw_error: %{
+          "code" => 499,
+          "errors" => [%{"domain" => "global", "message" => message, "reason" => "stopped"}],
+          "message" => message,
+          "status" => "CANCELLED"
+        }
+      )
+
+      html = render(view)
+
+      assert html =~ "Query timed out:"
+      assert html =~ "restricting the timestamp range"
+      assert html =~ "adding more filtering"
+      refute html =~ "Query halted:"
+      refute html =~ "Backend error!"
+    end
+
     test "shows generic backend error for unclassified query errors", %{
       conn: conn,
       source: source

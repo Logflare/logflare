@@ -33,6 +33,14 @@ defmodule LogflareWeb.QueryErrorHelpers do
       ...> }
       iex> LogflareWeb.QueryErrorHelpers.query_error_message(error)
       ~s(Field "notthere" does not exist.)
+
+      iex> error = %Logflare.Backends.QueryError{
+      ...>   kind: :timeout,
+      ...>   raw_error: %{"message" => "Job execution was cancelled: Job timed out"},
+      ...>   backend: Logflare.Backends.Adaptor.BigQueryAdaptor
+      ...> }
+      iex> LogflareWeb.QueryErrorHelpers.query_error_message(error)
+      "Query timed out. Retry your query or reduce the time range."
   """
   @spec query_error_message(QueryError.t()) :: String.t()
   def query_error_message(%QueryError{} = error) do
@@ -41,6 +49,16 @@ defmodule LogflareWeb.QueryErrorHelpers do
 
   @spec generic_query_error_message() :: String.t()
   def generic_query_error_message, do: @generic_query_error_message
+
+  @doc """
+  Whether a backend %QueryError{} was caused by a query timeout.
+
+  Lets callers substitute timeout guidance that suits their surface.
+  """
+  @spec timeout_query_error?(QueryError.t()) :: boolean()
+  def timeout_query_error?(%QueryError{kind: :timeout}), do: true
+  def timeout_query_error?(%QueryError{kind: :connection_error, raw_error: :timeout}), do: true
+  def timeout_query_error?(%QueryError{}), do: false
 
   defp classified_query_error_message(%QueryError{
          backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
@@ -55,13 +73,6 @@ defmodule LogflareWeb.QueryErrorHelpers do
   end
 
   defp classified_query_error_message(%QueryError{
-         kind: :connection_error,
-         raw_error: :timeout
-       }) do
-    @timeout_query_error_message
-  end
-
-  defp classified_query_error_message(%QueryError{
          kind: :invalid_query,
          backend: backend,
          raw_error: raw_error
@@ -72,7 +83,12 @@ defmodule LogflareWeb.QueryErrorHelpers do
     end
   end
 
-  defp classified_query_error_message(%QueryError{}), do: nil
+  defp classified_query_error_message(%QueryError{} = error) do
+    case timeout_query_error?(error) do
+      true -> @timeout_query_error_message
+      false -> nil
+    end
+  end
 
   defp invalid_query_message(Logflare.Backends.Adaptor.BigQueryAdaptor, message) do
     case message do
