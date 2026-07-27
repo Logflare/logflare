@@ -3,10 +3,14 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   Event utils for BigQuery.
   """
 
+  alias Logflare.LogEvent.TypeDetection
+
   @doc """
   Converts LogEvent's body into a valid dataframe struct for Explorer
   """
   def log_event_to_df_struct(%Logflare.LogEvent{body: body}) do
+    otel_timestamps? = TypeDetection.otel_timestamps?(body)
+
     for {k, v} <- body, into: %{} do
       if is_map(v) do
         {k, prepare_for_ingest(v)}
@@ -15,34 +19,56 @@ defmodule Logflare.Google.BigQuery.EventUtils do
       end
     end
     |> Map.put("event_message", body["event_message"])
-    |> convert_to_seconds()
+    |> convert_to_seconds(otel_timestamps?)
   end
 
   @doc """
-  Recursively converts nanosecond/microsecond timestamps to seconds
+  Converts nanosecond/microsecond timestamps to seconds.
   https://docs.cloud.google.com/bigquery/docs/streaming-data-into-bigquery#send_date_and_time_data
+
+  `timestamp` is always converted. `start_time`/`end_time` are only converted
+  when the event carries OTel timestamps (`TypeDetection.otel_timestamps?/1`),
+  mirroring the `TIMESTAMP` column typing in `SchemaBuilder`. The predicate must
+  be computed on the raw event body — pass it explicitly via
+  `convert_to_seconds/2` when `data` has already been transformed for ingest.
   """
   @spec convert_to_seconds(map()) :: map()
-
   def convert_to_seconds(data) do
-    data
-    |> convert_to_seconds("timestamp")
-    |> convert_to_seconds("start_time")
-    |> convert_to_seconds("end_time")
+    convert_to_seconds(data, TypeDetection.otel_timestamps?(data))
   end
 
-  defp convert_to_seconds(data, field) do
-    case data do
-      %{^field => ts} when ts > 1_000_000_000_000_000_000 ->
-        %{data | field => ts / :math.pow(1000, 3)}
+  @spec convert_to_seconds(map(), boolean()) :: map()
+  def convert_to_seconds(data, otel_timestamps?) do
+    data = timestamp_to_seconds(data)
 
-      %{"timestamp" => ts} when ts > 1_000_000_000_000 ->
-        %{data | field => ts / :math.pow(1000, 2)}
+    if otel_timestamps? do
+      data
+      |> ns_to_seconds("start_time")
+      |> ns_to_seconds("end_time")
+    else
+      data
+    end
+  end
+
+  defp ns_to_seconds(data, field) do
+    case data do
+      %{^field => ts} when is_integer(ts) and ts > 1_000_000_000_000_000_000 ->
+        %{data | field => ts / 1_000_000_000}
 
       _ ->
         data
     end
   end
+
+  defp timestamp_to_seconds(%{"timestamp" => ts} = data)
+       when is_integer(ts) and ts > 1_000_000_000_000_000_000,
+       do: %{data | "timestamp" => ts / 1_000_000_000}
+
+  defp timestamp_to_seconds(%{"timestamp" => ts} = data)
+       when is_integer(ts) and ts > 1_000_000_000_000,
+       do: %{data | "timestamp" => ts / 1_000_000}
+
+  defp timestamp_to_seconds(data), do: data
 
   @doc """
   Checks for all maps fields from the dataframe list, then adds the missing fields to the

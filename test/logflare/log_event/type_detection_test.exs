@@ -201,4 +201,44 @@ defmodule Logflare.LogEvent.TypeDetectionTest do
       assert TypeDetection.detect(params) == :log
     end
   end
+
+  describe "otel_timestamps?/1" do
+    test "true for events detected as metric" do
+      params = %{"metadata" => %{"type" => "metric"}}
+      assert TypeDetection.otel_timestamps?(params)
+    end
+
+    test "true for events detected as trace" do
+      params = %{"metadata" => %{"type" => "span"}}
+      assert TypeDetection.otel_timestamps?(params)
+    end
+
+    test "true for OTel-shaped payloads with resource and scope" do
+      params = %{
+        "resource" => %{"service.name" => "svc"},
+        "scope" => %{"name" => "scope"},
+        "start_time" => 1_779_436_330_890_427_000
+      }
+
+      assert TypeDetection.otel_timestamps?(params)
+    end
+
+    test "false for plain logs with integer start_time" do
+      params = %{
+        "event_message" => "Hello world",
+        "start_time" => 1_779_436_330_890_427_000
+      }
+
+      refute TypeDetection.otel_timestamps?(params)
+    end
+
+    test "false for resource without scope" do
+      params = %{"resource" => %{"service.name" => "svc"}}
+      refute TypeDetection.otel_timestamps?(params)
+    end
+
+    test "false for empty map" do
+      refute TypeDetection.otel_timestamps?(%{})
+    end
+  end
 end

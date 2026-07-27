@@ -12,6 +12,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Google.BigQuery.EventUtils
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.LogEvent, as: LE
+  alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mailer
   alias Logflare.Sources
   alias Logflare.Backends.IngestEventQueue
@@ -339,6 +340,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   def le_to_bq_row(%LE{body: body, id: id}) do
+    otel_timestamps? = TypeDetection.otel_timestamps?(body)
+
     body =
       for {k, v} <- body, into: %{} do
         if is_map(v) do
@@ -348,7 +351,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         end
       end
       |> Map.put("event_message", body["event_message"])
-      |> EventUtils.convert_to_seconds()
+      |> EventUtils.convert_to_seconds(otel_timestamps?)
 
     %Model.TableDataInsertAllRequestRows{
       insertId: id,

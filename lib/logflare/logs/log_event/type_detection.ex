@@ -27,6 +27,24 @@ defmodule Logflare.LogEvent.TypeDetection do
     end
   end
 
+  @doc """
+  Whether `start_time`/`end_time` fields in the params hold OpenTelemetry
+  unix-nanosecond timestamps.
+
+  Single definition shared by BigQuery schema typing
+  (`Logflare.Sources.Source.BigQuery.SchemaBuilder`) and value conversion
+  (`Logflare.Google.BigQuery.EventUtils.convert_to_seconds/1`) so the column
+  type and the ingested value always agree.
+  """
+  @spec otel_timestamps?(map()) :: boolean()
+  def otel_timestamps?(params) when is_map(params) do
+    detect(params) in [:metric, :trace] or otel_shaped?(params)
+  end
+
+  defp otel_shaped?(params) do
+    Map.has_key?(params, "resource") and Map.has_key?(params, "scope")
+  end
+
   defp trace?(params) do
     has_trace_id?(params) and has_span_id?(params) and has_span_field?(params)
   end

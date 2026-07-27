@@ -266,7 +266,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
   end
 
   defp otel_data?(params) do
-    TypeDetection.detect(params) in [:metric, :trace]
+    TypeDetection.otel_timestamps?(params)
   end
 
   defimpl DeepMerge.Resolver, for: Model.TableFieldSchema do
