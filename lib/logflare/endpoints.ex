@@ -24,6 +24,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.Teams
+  alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
@@ -151,26 +152,26 @@ defmodule Logflare.Endpoints do
           {:ok, EndpointQuery.t()} | {:error, Ecto.Changeset.t()}
   def update_query(user_or_team_user, %EndpointQuery{} = query, params, origin)
       when is_map(params) do
-    with :ok <- authorize_backend_id(query, backend_id(params), user_or_team_user) do
-      Repo.transact(fn ->
+    Repo.transact(fn ->
+      with {:ok, query} <- authorize_update(user_or_team_user, query, params) do
         query = lock_endpoint_query(query)
         version_number = next_endpoint_version_number(query.id)
         changeset = EndpointQuery.update_by_user_changeset(query, params)
         opts = paper_trail_opts(changeset, origin, version_number)
 
         PaperTrail.update(changeset, opts)
-      end)
-      |> case do
-        {:ok, %{model: updated_query}} ->
-          changeset =
-            query |> Repo.preload(:user) |> EndpointQuery.update_by_user_changeset(params)
-
-          maybe_kill_endpoint_caches(updated_query, changeset.changes)
-          {:ok, updated_query}
-
-        {:error, changeset} ->
-          {:error, changeset}
       end
+    end)
+    |> case do
+      {:ok, %{model: updated_query}} ->
+        changeset =
+          query |> Repo.preload(:user) |> EndpointQuery.update_by_user_changeset(params)
+
+        maybe_kill_endpoint_caches(updated_query, changeset.changes)
+        {:ok, updated_query}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -301,18 +302,38 @@ defmodule Logflare.Endpoints do
   defp backend_id(%{"backend_id" => backend_id}), do: backend_id
   defp backend_id(_attrs), do: nil
 
-  @spec authorize_backend_id(
+  @spec authorize_update(User.t() | TeamUser.t(), EndpointQuery.t(), map()) ::
+          {:ok, EndpointQuery.t()} | {:error, Ecto.Changeset.t()}
+  defp authorize_update(user_or_team_user, query, params) do
+    user_or_team_user =
+      case user_or_team_user do
+        # Reload in case access changed
+        %TeamUser{id: team_user_id} -> TeamUsers.get_team_user_by(id: team_user_id)
+        %User{} = user -> user
+      end
+
+    with %_{} = user_or_team_user <- user_or_team_user,
+         %EndpointQuery{} = authorized_query <-
+           get_endpoint_query_by_user_access(user_or_team_user, query.id) do
+      authorize_backend(user_or_team_user, query, backend_id(params), authorized_query)
+    else
+      nil -> {:error, invalid_query_changeset(query, "Endpoint not found")}
+    end
+  end
+
+  @spec authorize_backend(
+          User.t() | TeamUser.t(),
           EndpointQuery.t(),
           integer() | String.t() | nil,
-          User.t() | TeamUser.t()
-        ) ::
-          :ok | {:error, Ecto.Changeset.t()}
-  defp authorize_backend_id(_query, backend_id, _user_or_team_user) when backend_id in [nil, ""],
-    do: :ok
+          EndpointQuery.t()
+        ) :: {:ok, EndpointQuery.t()} | {:error, Ecto.Changeset.t()}
+  defp authorize_backend(_user_or_team_user, _query, backend_id, authorized_query)
+       when backend_id in [nil, ""],
+       do: {:ok, authorized_query}
 
-  defp authorize_backend_id(query, backend_id, user_or_team_user) do
+  defp authorize_backend(user_or_team_user, query, backend_id, authorized_query) do
     if Backends.get_backend_by_user_access(user_or_team_user, backend_id) do
-      :ok
+      {:ok, authorized_query}
     else
       {:error, invalid_query_changeset(query, "Backend not found")}
     end

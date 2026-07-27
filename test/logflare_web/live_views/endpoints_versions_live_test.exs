@@ -4,6 +4,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Endpoints
+  alias Logflare.TeamUsers
   alias PaperTrail.Version
 
   setup %{conn: conn} do
@@ -310,6 +311,45 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
                "Unable to restore endpoint version."
 
       assert Endpoints.get_endpoint_query(endpoint.id).query == endpoint.query
+    end
+
+    test "restore rejects a team member removed after mount", %{
+      conn: conn,
+      endpoint: endpoint,
+      team: team,
+      user: user
+    } do
+      team_user = insert(:team_user, team: team)
+
+      version_1 =
+        insert(:endpoint_version,
+          endpoint: endpoint,
+          version_number: 1,
+          origin: user.email,
+          snapshot_overrides: %{"query" => "select 1 as restored_version"}
+        )
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 2,
+        origin: user.email,
+        snapshot_overrides: %{"query" => "select 2 as current_version"}
+      )
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
+
+      assert {:ok, _team_user} = TeamUsers.delete_team_user(team_user)
+
+      view
+      |> element(version_restore_button(version_1), "Restore")
+      |> render_click()
+
+      assert render_async(view) =~ "Unable to restore endpoint version."
+      assert Endpoints.get_endpoint_query(endpoint.id).query == endpoint.query
+      assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 3)
     end
 
     test "redirects when user cannot access endpoint versions", %{conn: conn} do
