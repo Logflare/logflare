@@ -663,6 +663,7 @@ defmodule LogflareWeb.LogControllerTest do
       "BigqueryStorageWriteApi", _identifier -> false
       _feature, _identifier -> true
     end)
+
     start_supervised!({SourceSup, source})
     :timer.sleep(500)
 
