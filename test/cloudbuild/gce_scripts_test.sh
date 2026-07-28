@@ -47,7 +47,9 @@ test_startup_script_contract() {
     "--log-driver=json-file" \
     "--log-opt max-size=500m" \
     "--log-opt max-file=3" \
-    "--env-file"; do
+    "--env-file" \
+    "gce-startup[+\${SECONDS}s]" \
+    "trap 'report_failure \"\$?\" \"\$LINENO\" \"\$BASH_COMMAND\"' ERR"; do
     assert_contains "${STARTUP_SCRIPT}" "${required}"
   done
 }
