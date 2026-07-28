@@ -666,6 +666,7 @@ defmodule LogflareWeb.LogControllerTest do
       "BigqueryStorageWriteApi", _identifier -> false
       _feature, _identifier -> true
     end)
+
     start_supervised!({SourceSup, source})
 
     {:ok, source: source, user: user, conn: conn}
