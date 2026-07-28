@@ -49,7 +49,7 @@ test_startup_script_contract() {
     "--log-opt max-file=3" \
     "--env-file" \
     "gce-startup[+\${SECONDS}s]" \
-    "trap report_failure ERR"; do
+    "trap 'report_failure \"\$?\" \"\$LINENO\" \"\$BASH_COMMAND\"' ERR"; do
     assert_contains "${STARTUP_SCRIPT}" "${required}"
   done
 }

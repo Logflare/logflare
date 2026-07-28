@@ -23,10 +23,14 @@ phase() {
 }
 
 report_failure() {
-  log "FAILED during phase: ${CURRENT_PHASE}" >&2
+  local status="$1"
+  local line="$2"
+  local command="$3"
+
+  log "FAILED during phase: ${CURRENT_PHASE} (line ${line}, exit ${status}): ${command}" >&2
 }
 
-trap report_failure ERR
+trap 'report_failure "$?" "$LINENO" "$BASH_COMMAND"' ERR
 
 metadata() {
   local key="$1"
