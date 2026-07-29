@@ -245,7 +245,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
 
     assert %{
              "source_id" => source.id,
-             "source_uuid" => Atom.to_string(source.token),
+             "source_uuid" => source.token,
              "backend_id" => backend.id,
              "backend_uuid" => backend.token,
              "user_id" => source.user_id,
