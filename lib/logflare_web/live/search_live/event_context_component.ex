@@ -14,18 +14,19 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     %{
       params: %{
         "log-event-timestamp" => log_timestamp,
-        "log-event-id" => log_event_id,
-        "querystring" => query_string,
-        "source-id" => source_id,
-        "timezone" => timezone
-      }
+        "log-event-id" => log_event_id
+      },
+      querystring: query_string,
+      search_timezone: timezone,
+      source: source
     } = assigns
+
+    source_id = source.id
 
     event_timestamp = log_timestamp |> String.to_integer() |> Timex.from_unix(:microsecond)
 
     lql_rules =
-      Sources.get_source_for_lv_param(source_id)
-      |> prepare_lql_rules(query_string, event_timestamp)
+      prepare_lql_rules(source, query_string, event_timestamp)
 
     {:ok,
      socket
@@ -33,7 +34,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
      |> assign(target_event_id: log_event_id, timezone: timezone)
      |> assign(is_truncated_before: false)
      |> assign(is_truncated_after: false)
-     |> assign(source: Sources.get_source_for_lv_param(source_id))
+     |> assign(source: source)
      |> assign(:logs, AsyncResult.loading())
      |> start_async(:logs, fn ->
        search_logs(log_event_id, event_timestamp, source_id, lql_rules)
