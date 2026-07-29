@@ -15,6 +15,12 @@ defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
   `Logflare.Backends.IngestEventQueue.reinsert_pointer/1`) without going through
   round-robin redistribution — the producer that owns `queue_tid` just proved itself
   alive by claiming this.
+
+  `ingested_at_ms` and `taken_at_ms` carry the dwell-time clocks (Unix ms) so
+  `ack/3` can emit dwell telemetry without resolving the event body — the same
+  reason `size`, `event_type` and `day_bucket` ride along. `ingested_at_ms` is
+  copied off the event at insert; `taken_at_ms` is stamped when the pointer is
+  claimed, which is the moment the event leaves the pending queue.
   """
 
   alias Logflare.LogEvent.TypeDetection
@@ -37,7 +43,9 @@ defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
     :size,
     :retries,
     :event_type,
-    :day_bucket
+    :day_bucket,
+    :ingested_at_ms,
+    :taken_at_ms
   ]
 
   @type t :: %__MODULE__{
@@ -48,6 +56,8 @@ defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
           size: non_neg_integer(),
           retries: non_neg_integer(),
           event_type: TypeDetection.event_type(),
-          day_bucket: integer()
+          day_bucket: integer(),
+          ingested_at_ms: integer() | nil,
+          taken_at_ms: integer() | nil
         }
 end

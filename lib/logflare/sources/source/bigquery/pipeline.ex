@@ -138,6 +138,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     finalize_acked_events({sid, bid}, successful)
     maybe_requeue_failed({sid, bid}, failed, config)
 
+    acked_pointers = Enum.map(successful, & &1.data)
+    IngestEventQueue.emit_dwell_telemetry(acked_pointers, :bigquery)
+    IngestEventQueue.emit_pipeline_telemetry(acked_pointers, :bigquery)
+
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :ack],
       %{successful: length(successful), failed: length(failed)},

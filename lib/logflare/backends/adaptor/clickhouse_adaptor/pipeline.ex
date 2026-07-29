@@ -183,6 +183,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
     end)
 
+    acked_pointers = Enum.map(successful, & &1.data)
+    IngestEventQueue.emit_dwell_telemetry(acked_pointers, :clickhouse)
+    IngestEventQueue.emit_pipeline_telemetry(acked_pointers, :clickhouse)
+
     if failed != [] do
       failed
       |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} -> ack_data.backend_id end)

@@ -32,7 +32,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @max_queue_size 30_000
   @consolidated_max_queue_size 120_000
   @pointer_batch_key_match_spec (for event_type <- [:log, :metric, :trace] do
-                                   {{:_, :_, :_, :_, :_, event_type, :"$1"},
+                                   {{:_, :_, :_, :_, :_, event_type, :"$1", :_},
                                     [{:is_integer, :"$1"}], [{{event_type, :"$1"}}]}
                                  end)
 
@@ -682,7 +682,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   # `gen_event_id` makes this row independent from any duplicate event id. If insert_new/2
   # rejects the pointer or the queue disappears during publication, only this insertion's
   # generation row is removed.
-  # Pointer row shape: {event_id, generation_tid, gen_event_id, size, retries, event_type, day_bucket}.
+  # Pointer row shape: {event_id, generation_tid, gen_event_id, size, retries, event_type,
+  # day_bucket, ingested_at_ms}.
   defp insert_pointer_batch(sid_bid_pid, queue_tid, batch) do
     queues_key = pointer_queues_key(sid_bid_pid)
     gen_tid = current_generation_tid(queues_key)
@@ -692,7 +693,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
       row =
         {id, gen_tid, gen_event_id, :erlang.external_size(event.body), event.retries || 0,
-         event.event_type, event.day_bucket}
+         event.event_type, event.day_bucket, event.ingested_at_ms}
 
       :ets.insert(gen_tid, {gen_event_id, event})
 
@@ -909,8 +910,8 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   def pop_pending_pointers(sid_bid_pid, n) when is_integer(n) do
     ms = [
-      {{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}, [],
-       [{{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}}]}
+      {{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7", :"$8"}, [],
+       [{{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7", :"$8"}}]}
     ]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
@@ -966,8 +967,8 @@ defmodule Logflare.Backends.IngestEventQueue do
       when event_type in [:log, :metric, :trace] and is_integer(day_bucket) and
              is_integer(n) and n > 0 do
     ms = [
-      {{:"$1", :"$2", :"$3", :"$4", :"$5", event_type, day_bucket}, [],
-       [{{:"$1", :"$2", :"$3", :"$4", :"$5", event_type, day_bucket}}]}
+      {{:"$1", :"$2", :"$3", :"$4", :"$5", event_type, day_bucket, :"$6"}, [],
+       [{{:"$1", :"$2", :"$3", :"$4", :"$5", event_type, day_bucket, :"$6"}}]}
     ]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
@@ -988,7 +989,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp take_pointer(tid, id) do
     case :ets.take(tid, id) do
-      [{^id, gen_tid, gen_event_id, size, retries, event_type, day_bucket}] ->
+      [{^id, gen_tid, gen_event_id, size, retries, event_type, day_bucket, ingested_at_ms}] ->
         [
           %LogEventPointer{
             id: id,
@@ -998,7 +999,9 @@ defmodule Logflare.Backends.IngestEventQueue do
             size: size,
             retries: retries,
             event_type: event_type,
-            day_bucket: day_bucket
+            day_bucket: day_bucket,
+            ingested_at_ms: ingested_at_ms,
+            taken_at_ms: System.system_time(:millisecond)
           }
         ]
 
@@ -1020,7 +1023,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def reinsert_pointer(%LogEventPointer{} = pointer) do
     row =
       {pointer.id, pointer.tid, pointer.gen_event_id, pointer.size, pointer.retries,
-       pointer.event_type, pointer.day_bucket}
+       pointer.event_type, pointer.day_bucket, pointer.ingested_at_ms}
 
     :ets.insert(pointer.queue_tid, row)
     :ok
@@ -1041,7 +1044,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending(_, 0), do: {:ok, []}
 
   def pop_pending(sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :"$2", :"$3", :_, :_, :_, :_}, [], [{{:"$1", :"$2", :"$3"}}]}]
+    ms = [{{:"$1", :"$2", :"$3", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2", :"$3"}}]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          size when is_integer(size) <- :ets.info(tid, :size),
@@ -1065,51 +1068,52 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Emits one `[:logflare, :backends, :ingest_event_queue, :dwell]` event
-  per LogEvent measuring total dwell time (HTTP request arrival → ack).
+  Emits one `[:logflare, :backends, :ingest_event_queue, :dwell]` event per
+  item measuring total dwell time (HTTP request arrival → ack).
 
   Measurements: `%{duration_ms: non_neg_integer()}`.
   Metadata: `%{backend_type: atom(), stage: :total}`.
 
-  Intended to be called from Broadway ack callbacks.
+  Accepts `LogEvent`s or `LogEventPointer`s — both carry `:ingested_at_ms`, so
+  pointer-based pipelines (ClickHouse, BigQuery, spool) can emit from `ack/3`
+  without resolving event bodies. Items without the clock set are skipped.
   """
-  @spec emit_dwell_telemetry([LogEvent.t()], atom()) :: :ok
+  @spec emit_dwell_telemetry([LogEvent.t() | LogEventPointer.t()], atom()) :: :ok
   def emit_dwell_telemetry(events, backend_type) when is_atom(backend_type) do
     emit_stage(events, backend_type, :total, :ingested_at_ms)
   end
 
   @doc """
-  Emits one `[..., :dwell]` event per LogEvent measuring the HTTP request
-  arrival → IngestEventQueue handoff sub-stage.
+  Emits one `[..., :dwell]` event per item measuring the HTTP request arrival →
+  IngestEventQueue handoff sub-stage.
 
-  Metadata: `%{backend_type: atom(), stage: :handoff}`. Intended to be
-  called from `Backends.dispatch_to_backends/3` immediately after
-  `add_to_table/2`.
+  Metadata: `%{backend_type: atom(), stage: :handoff}`. Intended to be called
+  from the `dispatch_to_backends/3` clauses immediately after `add_to_table/2`.
   """
-  @spec emit_handoff_telemetry([LogEvent.t()], atom()) :: :ok
+  @spec emit_handoff_telemetry([LogEvent.t() | LogEventPointer.t()], atom()) :: :ok
   def emit_handoff_telemetry(events, backend_type) when is_atom(backend_type) do
     emit_stage(events, backend_type, :handoff, :ingested_at_ms)
   end
 
   @doc """
-  Emits one `[..., :dwell]` event per LogEvent measuring the queue exit →
-  ack sub-stage (time spent in the Broadway pipeline).
+  Emits one `[..., :dwell]` event per item measuring the queue exit → ack
+  sub-stage (time spent in the Broadway pipeline).
 
-  Metadata: `%{backend_type: atom(), stage: :pipeline}`. Intended to be
-  called from Broadway ack callbacks. Relies on `:taken_at_ms` being
-  stamped by `take_pending/2` / `pop_pending/2`.
+  Metadata: `%{backend_type: atom(), stage: :pipeline}`. Intended to be called
+  from Broadway ack callbacks. Relies on `:taken_at_ms`, stamped on queue exit
+  by `pop_pending/2` and `take_pointer/2`.
   """
-  @spec emit_pipeline_telemetry([LogEvent.t()], atom()) :: :ok
+  @spec emit_pipeline_telemetry([LogEvent.t() | LogEventPointer.t()], atom()) :: :ok
   def emit_pipeline_telemetry(events, backend_type) when is_atom(backend_type) do
     emit_stage(events, backend_type, :pipeline, :taken_at_ms)
   end
 
-  @spec emit_stage([LogEvent.t()], atom(), atom(), atom()) :: :ok
+  @spec emit_stage([LogEvent.t() | LogEventPointer.t()], atom(), atom(), atom()) :: :ok
   defp emit_stage(events, backend_type, stage, ts_field) do
     now_ms = System.system_time(:millisecond)
     metadata = %{backend_type: backend_type, stage: stage}
 
-    for %LogEvent{} = e <- events,
+    for %{} = e <- events,
         ts = Map.get(e, ts_field),
         is_integer(ts) do
       d = now_ms - ts
@@ -1226,7 +1230,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   def truncate_tid(tid, status, n) when status in [:all, :pending] do
-    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$_"]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$_"]}]
 
     with size when is_integer(size) <- :ets.info(tid, :size) do
       to_keep = select_to_insert(tid, ms, size, n)
@@ -1359,7 +1363,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @spec drop_pending(source_backend_pid() | consolidated_table_key(), non_neg_integer()) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
   def drop_pending({_, _, _} = sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :"$2", :"$3", :_, :_, :_, :_}, [], [{{:"$1", :"$2", :"$3"}}]}]
+    ms = [{{:"$1", :"$2", :"$3", :_, :_, :_, :_, :_}, [], [{{:"$1", :"$2", :"$3"}}]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {taken, _cont} <- :ets.select(tid, ms, n) do

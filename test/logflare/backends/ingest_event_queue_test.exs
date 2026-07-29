@@ -1955,6 +1955,68 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       refute_received {:dwell, _, _}
     end
 
+    test "pop_pending_pointers/2 carries both dwell clocks on the pointer", %{
+      source: source,
+      sbp: sbp
+    } do
+      ingested_at = DateTime.add(DateTime.utc_now(), -400, :millisecond)
+      event = build(:log_event, source: source, ingested_at: ingested_at)
+      :ok = IngestEventQueue.add_to_table(sbp, [event])
+
+      before_ms = System.system_time(:millisecond)
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+      after_ms = System.system_time(:millisecond)
+
+      # copied off the event at insert, so total dwell survives the pointer hop
+      assert pointer.ingested_at_ms == DateTime.to_unix(ingested_at, :millisecond)
+
+      # stamped at claim time — the moment the event leaves the pending queue
+      assert pointer.taken_at_ms >= before_ms
+      assert pointer.taken_at_ms <= after_ms
+    end
+
+    test "emit_dwell_telemetry/2 and emit_pipeline_telemetry/2 work off pointers", %{
+      source: source,
+      sbp: sbp
+    } do
+      ingested_at = DateTime.add(DateTime.utc_now(), -300, :millisecond)
+      :ok =
+        IngestEventQueue.add_to_table(sbp, [
+          build(:log_event, source: source, ingested_at: ingested_at)
+        ])
+
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+
+      attach_dwell_handler!()
+
+      assert :ok = IngestEventQueue.emit_dwell_telemetry([pointer], :bigquery)
+      assert_received {:dwell, %{duration_ms: total}, %{backend_type: :bigquery, stage: :total}}
+      assert total >= 250
+
+      assert :ok = IngestEventQueue.emit_pipeline_telemetry([pointer], :bigquery)
+      assert_received {:dwell, %{duration_ms: pipe}, %{backend_type: :bigquery, stage: :pipeline}}
+
+      # pipeline stage starts at the claim, so it is strictly shorter than total
+      assert pipe <= total
+    end
+
+    test "reinsert_pointer/1 preserves :ingested_at_ms across a retry", %{
+      source: source,
+      sbp: sbp
+    } do
+      ingested_at = DateTime.add(DateTime.utc_now(), -200, :millisecond)
+      :ok =
+        IngestEventQueue.add_to_table(sbp, [
+          build(:log_event, source: source, ingested_at: ingested_at)
+        ])
+
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+      assert :ok = IngestEventQueue.reinsert_pointer(pointer)
+
+      assert {:ok, [reclaimed], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+      assert reclaimed.ingested_at_ms == pointer.ingested_at_ms
+    end
+
     test "pop_pending/2 stamps :taken_at_ms on returned events", %{source: source, sbp: sbp} do
       :ok = IngestEventQueue.add_to_table(sbp, build_list(2, :log_event, source: source))
 
