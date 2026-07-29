@@ -1716,8 +1716,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       {redirect_path, _flash} = assert_redirect(view)
       assert redirect_path =~ "/query?q=SELECT"
-      assert redirect_path =~ "something123"
-      assert redirect_path =~ source.name
+
+      %{"q" => query} = URI.new!(redirect_path) |> Map.get(:query) |> URI.decode_query()
+
+      assert query =~ "something123"
+      assert query =~ source.name
+      assert query =~ "LIMIT 100"
     end
 
     test "create new alert, endpoint from search", %{
@@ -1749,6 +1753,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         assert query =~ "SELECT t0.timestamp, t0.id, t0.event_message FROM `#{source.name}`"
         assert query =~ "something123"
         assert query =~ source.name
+        assert query =~ "LIMIT 100"
         assert name == source.name
       end)
     end

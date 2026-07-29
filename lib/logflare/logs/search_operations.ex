@@ -114,7 +114,7 @@ defmodule Logflare.Logs.SearchOperations do
     |> LoggerMetadata.with_metadata(fn ->
       backend = postgres_backend(so)
 
-      PostgresAdaptor.execute_query(backend, so.query, query_type: :search)
+      PostgresAdaptor.execute_query(backend, query_for_execution(so), query_type: :search)
     end)
   end
 
@@ -126,11 +126,20 @@ defmodule Logflare.Logs.SearchOperations do
     |> LoggerMetadata.with_metadata(fn ->
       BigQueryAdaptor.execute_query(
         {bq_project_id, dataset_id, so.source.user.id},
-        so.query,
+        query_for_execution(so),
         query_type: :search
       )
     end)
   end
+
+  @spec query_for_execution(SO.t()) :: Ecto.Query.t()
+  defp query_for_execution(%SO{
+         type: :events,
+         query: %Ecto.Query{limit: %Ecto.Query.LimitExpr{}} = query
+       }),
+       do: limit(query, ^fetch_limit())
+
+  defp query_for_execution(%SO{query: query}), do: query
 
   @spec source_logger_metadata(SO.t()) :: Keyword.t()
   defp source_logger_metadata(%SO{} = so) do
@@ -140,6 +149,13 @@ defmodule Logflare.Logs.SearchOperations do
   @spec put_sql_string(SO.t(), QueryResult.t()) :: SO.t()
   defp put_sql_string(%{sql_string: sql_string} = so, _response) when is_binary(sql_string),
     do: so
+
+  defp put_sql_string(%SO{backend_type: :bigquery, type: :events} = so, _response) do
+    case BigQueryAdaptor.ecto_to_sql(so.query, []) do
+      {:ok, {query_string, params}} -> %{so | sql_string: query_string, sql_params: params}
+      {:error, _reason} -> so
+    end
+  end
 
   defp put_sql_string(%SO{backend_type: :bigquery} = so, %QueryResult{
          query_string: query_string,
@@ -171,7 +187,7 @@ defmodule Logflare.Logs.SearchOperations do
       from(table_name(so))
       |> select(%{})
       |> order_events(direction)
-      |> limit(^fetch_limit())
+      |> limit(^default_limit())
 
     %{so | query: query}
   end
