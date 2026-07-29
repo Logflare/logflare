@@ -298,9 +298,18 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       {:via, module, {registry, new_identifier}}
     end
 
-    def handle_message(_processor_name, message, _context) do
+    def handle_message(_processor_name, message, context) do
+      ack_data = %{
+        source_id: context.source_id,
+        source_uuid: context.source_token,
+        backend_id: context.backend_id,
+        backend_uuid: context.backend_token,
+        user_id: context.user_id
+      }
+
       message
       |> Message.put_batcher(:http)
+      |> put_ack_data(ack_data)
     end
 
     def handle_batch(:http, messages, batch_info, context) do
@@ -312,7 +321,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         }
       )
 
-      backend = Backends.Cache.get_backend(context.backend_id)
+      %{metadata: backend_metadata} = backend = Backends.Cache.get_backend(context.backend_id)
       config = Backends.Adaptor.get_backend_config(backend)
 
       # convert this to a custom format if needed
@@ -325,7 +334,13 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         end
 
       process_data(payload, config, context)
-      messages
+
+      for message <- messages do
+        put_ack_data(message, %{
+          size: event_size(message.data),
+          backend_metadata: backend_metadata || %{}
+        })
+      end
     end
 
     defp process_data(payload, config, _context) do
@@ -340,11 +355,21 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       )
     end
 
+    defp event_size(log_event) do
+      log_event.body
+      |> Jason.encode_to_iodata!()
+      |> IO.iodata_length()
+    end
+
+    defp put_ack_data(%Message{acknowledger: {mod, ref, ack_data}} = message, additions) do
+      %{message | acknowledger: {mod, ref, Map.merge(ack_data, additions)}}
+    end
+
     # Broadway transformer for custom producer
     def transform(event, _opts) do
       %Message{
         data: event,
-        acknowledger: {__MODULE__, :ack_id, :ack_data}
+        acknowledger: {__MODULE__, :ack_id, %{}}
       }
     end
 
@@ -391,8 +416,50 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       end)
     end
 
-    def ack(_ack_ref, _successful, _failed) do
+    def ack(_ack_ref, successful, _failed) do
       # TODO: re-queue failed
+      Enum.each(successful, &emit_ack_telemetry/1)
+    end
+
+    defp emit_ack_telemetry(%Message{acknowledger: {_mod, _ref, ack_data}}) do
+      %{
+        source_id: source_id,
+        source_uuid: source_uuid,
+        backend_id: backend_id,
+        backend_uuid: backend_uuid,
+        user_id: user_id,
+        size: size,
+        backend_metadata: backend_metadata
+      } = ack_data
+
+      base_metadata = %{
+        "source_id" => source_id,
+        "source_uuid" => Utils.stringify(source_uuid),
+        "backend_id" => backend_id,
+        "user_id" => user_id
+      }
+
+      :telemetry.execute(
+        [:logflare, :backends, :ingest],
+        %{ingested_bytes: size},
+        base_metadata
+      )
+
+      backend_meta =
+        for {k, v} <- backend_metadata || %{}, into: %{} do
+          {"backend.#{k}", v}
+        end
+
+      egress_metadata =
+        base_metadata
+        |> Map.put("backend_uuid", Utils.stringify(backend_uuid))
+        |> Map.merge(backend_meta)
+
+      :telemetry.execute(
+        [:logflare, :backends, :ingest, :egress],
+        %{request_bytes: size},
+        egress_metadata
+      )
     end
   end
 end

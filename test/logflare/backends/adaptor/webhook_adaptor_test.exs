@@ -382,14 +382,15 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       user = insert(:user)
       source = insert(:source, user: user)
 
-      insert(:backend,
-        type: :webhook,
-        sources: [source],
-        config: %{http: "http1", url: "https://example.com"}
-      )
+      backend =
+        insert(:backend,
+          type: :webhook,
+          sources: [source],
+          config: %{http: "http1", url: "https://example.com"}
+        )
 
       start_supervised!({SourceSup, source})
-      [source: source]
+      [source: source, backend: backend]
     end
 
     test "emits handle_batch telemetry on ingest", %{source: source} do
@@ -417,6 +418,56 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       assert_receive {^ref, [:logflare, :backends, :pipeline, :handle_batch],
                        %{batch_size: 1, batch_trigger: _}, %{backend_type: :webhook}},
                      2000
+    end
+
+    test "emits ingest and egress telemetry from ack", %{source: source, backend: backend} do
+      pid = self()
+      ref = make_ref()
+      ingest_id = "ack-ingest-#{inspect(ref)}"
+      egress_id = "ack-egress-#{inspect(ref)}"
+
+      :telemetry.attach(
+        ingest_id,
+        [:logflare, :backends, :ingest],
+        fn _event, measurements, metadata, {p, r} ->
+          send(p, {r, :ingest, measurements, metadata})
+        end,
+        {pid, ref}
+      )
+
+      :telemetry.attach(
+        egress_id,
+        [:logflare, :backends, :ingest, :egress],
+        fn _event, measurements, metadata, {p, r} ->
+          send(p, {r, :egress, measurements, metadata})
+        end,
+        {pid, ref}
+      )
+
+      on_exit(fn ->
+        :telemetry.detach(ingest_id)
+        :telemetry.detach(egress_id)
+      end)
+
+      @subject.Client
+      |> stub(:send, fn _ -> {:ok, %Tesla.Env{status: 200}} end)
+
+      le = build(:log_event, source: source)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
+
+      assert_receive {^ref, :ingest, %{ingested_bytes: bytes}, ingest_metadata}, 2000
+      assert bytes > 0
+      assert ingest_metadata["source_id"] == source.id
+      assert ingest_metadata["backend_id"] == backend.id
+      assert ingest_metadata["source_uuid"] == Atom.to_string(source.token)
+      assert ingest_metadata["user_id"] == source.user_id
+
+      assert_receive {^ref, :egress, %{request_bytes: ^bytes}, egress_metadata}, 2000
+      assert egress_metadata["source_id"] == source.id
+      assert egress_metadata["backend_id"] == backend.id
+      assert egress_metadata["source_uuid"] == Atom.to_string(source.token)
+      assert egress_metadata["backend_uuid"] == Atom.to_string(backend.token)
+      assert egress_metadata["user_id"] == source.user_id
     end
   end
 
