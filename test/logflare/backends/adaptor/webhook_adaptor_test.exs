@@ -387,7 +387,8 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
           user: user,
           type: :webhook,
           sources: [source],
-          config: %{http: "http1", url: "https://example.com"}
+          config: %{http: "http1", url: "https://example.com"},
+          metadata: %{"environment" => "test"}
         )
 
       start_supervised!({SourceSup, source})
@@ -421,11 +422,13 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
                      2000
     end
 
-    test "emits ingest and egress telemetry from ack", %{source: source, backend: backend} do
+    test "emits ingest telemetry with backend metadata from ack", %{
+      source: source,
+      backend: backend
+    } do
       pid = self()
       ref = make_ref()
       ingest_id = "ack-ingest-#{inspect(ref)}"
-      egress_id = "ack-egress-#{inspect(ref)}"
 
       :telemetry.attach(
         ingest_id,
@@ -436,19 +439,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
         {pid, ref}
       )
 
-      :telemetry.attach(
-        egress_id,
-        [:logflare, :backends, :ingest, :egress],
-        fn _event, measurements, metadata, {p, r} ->
-          send(p, {r, :egress, measurements, metadata})
-        end,
-        {pid, ref}
-      )
-
-      on_exit(fn ->
-        :telemetry.detach(ingest_id)
-        :telemetry.detach(egress_id)
-      end)
+      on_exit(fn -> :telemetry.detach(ingest_id) end)
 
       @subject.Client
       |> stub(:send, fn _ -> {:ok, %Tesla.Env{status: 200}} end)
@@ -461,14 +452,9 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       assert ingest_metadata["source_id"] == source.id
       assert ingest_metadata["backend_id"] == backend.id
       assert ingest_metadata["source_uuid"] == Atom.to_string(source.token)
+      assert ingest_metadata["backend_uuid"] == Atom.to_string(backend.token)
       assert ingest_metadata["user_id"] == source.user_id
-
-      assert_receive {^ref, :egress, %{request_bytes: ^bytes}, egress_metadata}, 2000
-      assert egress_metadata["source_id"] == source.id
-      assert egress_metadata["backend_id"] == backend.id
-      assert egress_metadata["source_uuid"] == Atom.to_string(source.token)
-      assert egress_metadata["backend_uuid"] == Atom.to_string(backend.token)
-      assert egress_metadata["user_id"] == source.user_id
+      assert ingest_metadata["backend.environment"] == "test"
     end
   end
 

@@ -209,6 +209,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # HTTP Client
   defmodule Client do
     @moduledoc false
+    alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
     alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
     use Tesla, docs: false
 
@@ -241,7 +242,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           Tesla.Middleware.Telemetry,
           Tesla.Middleware.JSON,
           if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
-          SSRFProtection
+          SSRFProtection,
+          EgressTracer
         ]
         |> Enum.filter(& &1),
         adaptor
@@ -312,7 +314,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         }
       )
 
-      backend = Backends.Cache.get_backend(context.backend_id)
+      %{metadata: backend_metadata} = backend = Backends.Cache.get_backend(context.backend_id)
       config = Backends.Adaptor.get_backend_config(backend)
 
       # convert this to a custom format if needed
@@ -324,11 +326,16 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           for %{data: le} <- messages, do: le.body
         end
 
-      process_data(payload, config, context)
+      process_data(payload, config, backend_metadata, context)
       messages
     end
 
-    defp process_data(payload, config, _context) do
+    defp process_data(payload, config, backend_metadata, context) do
+      backend_meta =
+        for {k, v} <- backend_metadata || %{}, into: %{} do
+          {"backend.#{k}", v}
+        end
+
       Client.send(
         # if a `url_override` key is available in the merged config, use that before falling back to `url`
         url: Map.get(config, :url_override, config.url),
@@ -336,6 +343,18 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),
+        opts: [
+          # metadata map will get set as OTEL attributes in EgressTracer
+          metadata:
+            %{
+              "source_id" => context[:source_id],
+              "source_uuid" => context[:source_token],
+              "backend_id" => context[:backend_id],
+              "backend_uuid" => context[:backend_token],
+              "user_id" => context[:user_id]
+            }
+            |> Map.merge(backend_meta)
+        ],
         http: config[:http]
       )
     end
@@ -345,6 +364,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       |> Jason.encode_to_iodata!()
       |> IO.iodata_length()
     end
+
+    defp stringify_or_nil(nil), do: nil
+    defp stringify_or_nil(value), do: Utils.stringify(value)
 
     # Broadway transformer for custom producer
     def transform(event, opts) do
@@ -417,33 +439,25 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
       backend = Backends.Cache.get_backend(backend_id)
 
-      base_metadata = %{
-        "source_id" => source_id,
-        "source_uuid" => Utils.stringify(source_uuid),
-        "backend_id" => backend_id,
-        "user_id" => backend.user_id
-      }
-
-      :telemetry.execute(
-        [:logflare, :backends, :ingest],
-        %{ingested_bytes: total_size},
-        base_metadata
-      )
-
       backend_meta =
         for {k, v} <- backend.metadata || %{}, into: %{} do
           {"backend.#{k}", v}
         end
 
-      egress_metadata =
-        base_metadata
-        |> Map.put("backend_uuid", Utils.stringify(backend.token))
+      metadata =
+        %{
+          "source_id" => source_id,
+          "source_uuid" => stringify_or_nil(source_uuid),
+          "backend_id" => backend_id,
+          "backend_uuid" => stringify_or_nil(backend.token),
+          "user_id" => backend.user_id
+        }
         |> Map.merge(backend_meta)
 
       :telemetry.execute(
-        [:logflare, :backends, :ingest, :egress],
-        %{request_bytes: total_size},
-        egress_metadata
+        [:logflare, :backends, :ingest],
+        %{ingested_bytes: total_size},
+        metadata
       )
     end
   end

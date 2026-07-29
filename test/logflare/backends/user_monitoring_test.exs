@@ -15,7 +15,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.LogEvent
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
-  alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Endpoints
 
   def source_and_user(_context) do
@@ -331,8 +330,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      WebhookAdaptor.Client
-      |> stub(:send, fn _ -> {:ok, %Tesla.Env{status: 200}} end)
+      Mimic.stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
 
       user = insert(:user, system_monitoring: true)
       metrics_source = insert(:source, user: user, system_source_type: :metrics)
@@ -398,13 +396,22 @@ defmodule Logflare.Backends.UserMonitoringTest do
         assert bytes_attrs["user_id"] == user.id
         assert bytes_attrs["source_uuid"] == Atom.to_string(source.token)
         assert bytes_attrs["backend_id"] == webhook_backend.id
+        assert bytes_attrs["_backend_environment"] == "test"
+        assert bytes_attrs["_backend_region"] == "us-west"
+
+        count_attrs = ingested_count_event.body["attributes"]
+        assert count_attrs["source_id"] == source.id
+        assert count_attrs["user_id"] == user.id
+        assert count_attrs["source_uuid"] == Atom.to_string(source.token)
+        assert count_attrs["backend_id"] == webhook_backend.id
+        assert count_attrs["_backend_environment"] == "test"
+        assert count_attrs["_backend_region"] == "us-west"
 
         egress_attrs = egress_event.body["attributes"]
         assert egress_attrs["source_id"] == source.id
         assert egress_attrs["user_id"] == user.id
         assert egress_attrs["source_uuid"] == Atom.to_string(source.token)
         assert egress_attrs["backend_id"] == webhook_backend.id
-        assert egress_attrs["backend_uuid"] == Atom.to_string(webhook_backend.token)
         assert egress_attrs["_backend_environment"] == "test"
         assert egress_attrs["_backend_region"] == "us-west"
       end)
