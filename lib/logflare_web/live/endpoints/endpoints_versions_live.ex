@@ -7,7 +7,6 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   import LogflareWeb.Utils, only: [time_ago: 1]
 
   alias Logflare.Endpoints
-  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Repo
   alias LogflareWeb.Endpoints.Components
   alias LogflareWeb.Endpoints.SnapshotModalComponent
@@ -161,10 +160,12 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     socket =
       with {version_number, ""} <- Integer.parse(version_number),
            selected_version when is_struct(selected_version) <-
-             Endpoints.get_endpoint_query_version(endpoint.id, version_number) do
+             Endpoints.get_endpoint_query_version(endpoint.id, version_number),
+           {:ok, endpoint_snapshot} <-
+             Endpoints.get_endpoint_query_at_version(endpoint, version_number) do
         socket
         |> assign(:selected_version, selected_version)
-        |> assign(:endpoint_snapshot, snapshot_to_endpoint(selected_version))
+        |> assign(:endpoint_snapshot, endpoint_snapshot)
       else
         _ ->
           socket
@@ -312,15 +313,6 @@ defmodule LogflareWeb.EndpointsVersionsLive do
 
   defp version_number(%Version{meta: %{"version_number" => version_number}}), do: version_number
   defp version_number(_version), do: nil
-
-  @spec snapshot_to_endpoint(Version.t()) :: EndpointQuery.t()
-  defp snapshot_to_endpoint(version) do
-    snapshot = Map.get(version.meta, "endpoint_snapshot", %{})
-
-    %EndpointQuery{}
-    |> Ecto.Changeset.cast(snapshot, EndpointQuery.version_snapshot_fields())
-    |> Ecto.Changeset.apply_changes()
-  end
 
   defp maybe_assign_team_context(socket, %{"t" => _team_id}, _endpoint), do: socket
 

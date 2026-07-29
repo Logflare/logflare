@@ -12,8 +12,8 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
-  alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.EndpointQuery
+  alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.Resolver
   alias Logflare.Endpoints.ResultsCache
   alias Logflare.Lql
@@ -30,6 +30,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Utils
   alias PaperTrail.Version
 
+  @endpoint_version_label "endpoint_version"
   @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
 
   @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
@@ -99,6 +100,31 @@ defmodule Logflare.Endpoints do
   @spec get_endpoint_query(query_id :: integer() | String.t()) :: EndpointQuery.t() | nil
   def get_endpoint_query(query_id) when is_integer_or_string(query_id),
     do: Repo.get(EndpointQuery, query_id)
+
+  @spec get_endpoint_query_at_version(EndpointQuery.t() | integer() | String.t(), integer()) ::
+          {:ok, EndpointQuery.t()} | {:error, :invalid_version | :version_not_found}
+  def get_endpoint_query_at_version(%EndpointQuery{} = endpoint, version_number)
+      when is_integer(version_number) and version_number > 0 do
+    case get_endpoint_query_version(endpoint.id, version_number) do
+      %Version{} = version ->
+        {:ok, endpoint_from_version(endpoint, version, version_number)}
+
+      nil ->
+        {:error, :version_not_found}
+    end
+  end
+
+  def get_endpoint_query_at_version(%EndpointQuery{}, _version_number),
+    do: {:error, :invalid_version}
+
+  def get_endpoint_query_at_version(nil, _version_number), do: {:error, :version_not_found}
+
+  def get_endpoint_query_at_version(query_id, version_number)
+      when is_integer_or_string(query_id) do
+    query_id
+    |> get_endpoint_query()
+    |> get_endpoint_query_at_version(version_number)
+  end
 
   @doc """
   Retrieves a mapped endpoint `EndpointQuery` by token
@@ -312,9 +338,26 @@ defmodule Logflare.Endpoints do
     from(version in Version,
       where:
         version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id and
-          fragment("(?->>'version_number')::integer = ?", version.meta, ^version_number)
+          fragment("?->>'version_number' = ?", version.meta, ^Integer.to_string(version_number))
     )
     |> Repo.one()
+  end
+
+  @spec endpoint_from_version(EndpointQuery.t(), Version.t(), pos_integer()) :: EndpointQuery.t()
+  defp endpoint_from_version(%EndpointQuery{} = endpoint, %Version{meta: meta}, version_number)
+       when is_map(meta) do
+    snapshot = Map.get(meta, "endpoint_snapshot", %{})
+
+    %EndpointQuery{}
+    |> Ecto.Changeset.cast(snapshot, EndpointQuery.version_snapshot_fields())
+    |> Ecto.Changeset.apply_changes()
+    |> Map.merge(%{
+      id: endpoint.id,
+      user_id: endpoint.user_id,
+      token: endpoint.token,
+      version_number: version_number
+    })
+    |> map_query_sources()
   end
 
   @spec delete_query(EndpointQuery.t(), origin()) :: {:ok, EndpointQuery.t()} | {:error, any()}
@@ -443,6 +486,8 @@ defmodule Logflare.Endpoints do
         opts \\ []
       )
       when is_map(params) and is_list(opts) do
+    endpoint_query = put_endpoint_version_label(endpoint_query)
+
     %EndpointQuery{query: query_string, user_id: user_id, sandboxable: sandboxable} =
       endpoint_query
 
@@ -493,6 +538,18 @@ defmodule Logflare.Endpoints do
       )
     end
   end
+
+  @spec put_endpoint_version_label(EndpointQuery.t()) :: EndpointQuery.t()
+  defp put_endpoint_version_label(%EndpointQuery{version_number: version_number} = endpoint_query)
+       when is_integer(version_number) do
+    parsed_labels =
+      (endpoint_query.parsed_labels || %{})
+      |> Map.put(@endpoint_version_label, Integer.to_string(version_number))
+
+    %{endpoint_query | parsed_labels: parsed_labels}
+  end
+
+  defp put_endpoint_version_label(%EndpointQuery{} = endpoint_query), do: endpoint_query
 
   @spec emit_query_telemetry(result :: run_query_return(), endpoint_query :: EndpointQuery.t()) ::
           {run_query_return(), map()}
