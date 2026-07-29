@@ -54,6 +54,18 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.list_queues({source.id, backend.id}) |> length() == 3
     end
 
+    test "list_source_ids/0 returns unique integer source_ids and skips consolidated keys",
+         %{source: source, backend: backend} do
+      IngestEventQueue.upsert_tid({source.id, backend.id, :erlang.list_to_pid(~c"<0.12.34>")})
+      IngestEventQueue.upsert_tid({source.id, nil, :erlang.list_to_pid(~c"<0.12.35>")})
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.36>")})
+
+      ids = IngestEventQueue.list_source_ids()
+      assert source.id in ids
+      refute Enum.any?(ids, &match?({:consolidated, _}, &1))
+      assert Enum.uniq(ids) == ids
+    end
+
     test "list_pending_counts/1 returns list of counts", %{source: source, backend: backend} do
       key = {source.id, backend.id, self()}
       IngestEventQueue.upsert_tid(key)

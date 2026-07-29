@@ -496,7 +496,8 @@ config :logflare, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"* * * * *", Logflare.Alerting.AlertSchedulerWorker},
-       {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker}
+       {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker},
+       {"0 * * * *", Logflare.Sources.IdleShutdownWorker}
      ]}
   ]
 

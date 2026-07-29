@@ -6,6 +6,7 @@ defmodule Logflare.Sources do
   import Ecto.Query
 
   alias Logflare.Backends
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Billing
   alias Logflare.Billing.Plan
   alias Logflare.Cluster
@@ -550,20 +551,14 @@ defmodule Logflare.Sources do
   """
   @spec shutdown_idle_sources() :: :ok
   def shutdown_idle_sources do
-    Sources.Cache
-    |> Cachex.stream!()
-    |> Stream.filter(fn
-      # Filter for get_by calls that return a Source struct with an id
-      {:entry, {:get_by, _args}, {:cached, %Source{id: id} = source}, _ts, _ttl}
-      when is_integer(id) ->
-        Backends.source_sup_started?(id) and source_idle?(source)
-
-      _val ->
-        false
+    IngestEventQueue.list_source_ids()
+    |> Enum.filter(fn source_id ->
+      Backends.source_sup_started?(source_id) and
+        case Sources.Cache.get_by_id(source_id) do
+          %Source{} = source -> source_idle?(source)
+          _ -> false
+        end
     end)
-    |> Stream.map(fn {:entry, {:get_by, _}, {:cached, %Source{id: id}}, _ts, _ttl} -> id end)
-    |> Stream.uniq()
-    |> Enum.to_list()
     |> then(fn
       [] ->
         []
@@ -628,12 +623,14 @@ defmodule Logflare.Sources do
     |> Map.new()
   end
 
-  defp source_idle?(source) do
-    metrics = get_source_metrics_for_ingest(source)
+  defp source_idle?(%Source{token: token} = source) do
+    rates = PubSubRates.Cache.get_cluster_rates(token)
     total_pending = calculate_total_pending(source)
-    has_recent_logs = has_recent_logs_within?(source, 5)
 
-    metrics.avg == 0 and total_pending == 0 and not has_recent_logs
+    rates.average_rate == 0 and
+      rates.last_rate == 0 and
+      total_pending == 0 and
+      not has_recent_logs_within?(source, 5)
   end
 
   @spec calculate_total_pending(Source.t()) :: non_neg_integer()

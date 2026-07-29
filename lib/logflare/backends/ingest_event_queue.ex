@@ -1346,6 +1346,24 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Returns the distinct integer source_ids that currently have at least one mapping
+  row in `@ets_table_mapper`. Skips `{:consolidated, _}` and `{:spool_producer, _}`
+  entries since those are not tied to a specific source.
+  """
+  @spec list_source_ids() :: [pos_integer()]
+  def list_source_ids do
+    :ets.foldl(
+      fn
+        {{sid, _bid}, _pid, _tid}, acc when is_integer(sid) -> MapSet.put(acc, sid)
+        _other, acc -> acc
+      end,
+      MapSet.new(),
+      @ets_table_mapper
+    )
+    |> MapSet.to_list()
+  end
+
+  @doc """
   Select queues by source-backend combination or consolidated queue.
   """
   @spec list_queues(queues_key() | consolidated_queues_key() | spool_producer_queues_key()) ::
