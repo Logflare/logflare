@@ -19,7 +19,7 @@ defmodule LogflareWeb do
 
   def controller do
     quote do
-      use Phoenix.Controller, namespace: LogflareWeb
+      use Phoenix.Controller, formats: [html: "View", json: "View"]
       use Gettext, backend: LogflareWeb.Gettext
 
       import Plug.Conn
@@ -29,14 +29,7 @@ defmodule LogflareWeb do
 
       # define global controller functions
 
-      @doc """
-      plug helper function for controller level assings setting.
-      It will set the assigns for each controller action.
-      ```
-      plug :assign {:banner, @some_value}
-      ```
-      """
-      def assign(conn, {key, value}), do: assign(conn, key, value)
+      plug :put_layout, html: {LogflareWeb.LayoutView, :app}
     end
   end
 
