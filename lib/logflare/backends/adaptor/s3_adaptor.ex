@@ -162,16 +162,20 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
           }
         end)
 
-      event_rows
-      |> DataFrame.new(
-        dtypes: [
-          {:id, :string},
-          {:event_message, :string},
-          {:body, :string},
-          {:timestamp, {:datetime, :microsecond, "Etc/UTC"}}
-        ]
-      )
-      |> DataFrame.to_parquet(s3_file_path,
+      df =
+        DataFrame.new(event_rows,
+          dtypes: [
+            {:id, :string},
+            {:event_message, :string},
+            {:body, :string},
+            {:timestamp, {:datetime, :microsecond, "Etc/UTC"}}
+          ]
+        )
+
+      request_bytes = df |> DataFrame.dump_parquet!() |> byte_size()
+      emit_egress_telemetry(source, backend, request_bytes)
+
+      DataFrame.to_parquet(df, s3_file_path,
         streaming: true,
         config: [
           access_key_id: config.access_key_id,
@@ -180,6 +184,25 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
         ]
       )
     end
+  end
+
+  defp emit_egress_telemetry(%Source{} = source, %Backend{} = backend, request_bytes) do
+    backend_meta =
+      for {k, v} <- backend.metadata || %{}, into: %{} do
+        {"backend.#{k}", v}
+      end
+
+    :telemetry.execute(
+      [:logflare, :backends, :ingest, :egress],
+      %{request_bytes: request_bytes},
+      Map.merge(backend_meta, %{
+        "source_id" => source.id,
+        "source_uuid" => source.token,
+        "backend_id" => backend.id,
+        "backend_uuid" => backend.token,
+        "user_id" => source.user_id
+      })
+    )
   end
 
   @doc false
