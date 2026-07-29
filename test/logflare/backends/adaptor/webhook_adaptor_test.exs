@@ -389,7 +389,6 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       )
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
       [source: source]
     end
 
@@ -401,7 +400,9 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       :telemetry.attach(
         attach_id,
         [:logflare, :backends, :pipeline, :handle_batch],
-        fn _event, _measurements, _meta, {p, r} -> send(p, {r, :handle_batch}) end,
+        fn event, measurements, metadata, {p, r} ->
+          send(p, {r, event, measurements, metadata})
+        end,
         {pid, ref}
       )
 
@@ -412,7 +413,10 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
       le = build(:log_event, source: source)
       assert {:ok, _} = Backends.ingest_logs([le], source)
-      assert_receive {^ref, :handle_batch}, 2000
+
+      assert_receive {^ref, [:logflare, :backends, :pipeline, :handle_batch],
+                       %{batch_size: 1, batch_trigger: _}, %{backend_type: :webhook}},
+                     2000
     end
   end
 
