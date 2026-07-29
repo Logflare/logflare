@@ -207,7 +207,22 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   end
 
   test "emits egress telemetry for every batch sent" do
-    {source, backend} = start_syslog(%{host: "localhost", port: 6514})
+    start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
+    insert(:plan)
+
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    backend =
+      insert(:backend,
+        type: :syslog,
+        sources: [source],
+        config: %{host: "localhost", port: 6514},
+        user: user,
+        metadata: %{"environment" => "test", "region" => "us-west"}
+      )
+
+    start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
 
     test_ref = make_ref()
     pid = self()
@@ -233,7 +248,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
              "source_uuid" => Atom.to_string(source.token),
              "backend_id" => backend.id,
              "backend_uuid" => backend.token,
-             "user_id" => source.user_id
+             "user_id" => source.user_id,
+             "backend.environment" => "test",
+             "backend.region" => "us-west"
            } == metadata
   end
 

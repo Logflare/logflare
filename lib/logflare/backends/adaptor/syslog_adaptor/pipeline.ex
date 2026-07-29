@@ -45,7 +45,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
   @impl Broadway
   def handle_batch(:syslog, messages, _batch_info, context) do
     %{pool: pool, backend_id: backend_id} = context
-    config = lookup_backend_config(backend_id)
+    %{config: config, metadata: backend_metadata} = lookup_backend(backend_id)
 
     content =
       for %Broadway.Message{data: log_event} <- messages do
@@ -54,16 +54,21 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
 
     request_bytes = Enum.reduce(content, 0, fn frame, acc -> acc + IO.iodata_length(frame) end)
 
+    backend_meta =
+      for {k, v} <- backend_metadata || %{}, into: %{} do
+        {"backend.#{k}", v}
+      end
+
     :telemetry.execute(
       [:logflare, :backends, :ingest, :egress],
       %{request_bytes: request_bytes},
-      %{
+      Map.merge(backend_meta, %{
         "source_id" => context.source_id,
         "source_uuid" => context.source_token,
         "backend_id" => context.backend_id,
         "backend_uuid" => context.backend_token,
         "user_id" => context.user_id
-      }
+      })
     )
 
     case Pool.send(pool, content) do
@@ -92,14 +97,17 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
     %Message{data: event, acknowledger: {__MODULE__, _ref = nil, _meta = []}}
   end
 
-  defp lookup_backend_config(backend_id) do
-    %{config: config} =
-      Backends.Cache.get_backend(backend_id) || raise "missing backend #{backend_id}"
+  defp lookup_backend(backend_id) do
+    backend = Backends.Cache.get_backend(backend_id) || raise "missing backend #{backend_id}"
+    %{config: config} = backend
 
-    if cipher_key = config[:cipher_key] do
-      Map.put(config, :cipher_key, Base.decode64!(cipher_key))
-    else
-      config
-    end
+    config =
+      if cipher_key = config[:cipher_key] do
+        Map.put(config, :cipher_key, Base.decode64!(cipher_key))
+      else
+        config
+      end
+
+    %{backend | config: config}
   end
 end
