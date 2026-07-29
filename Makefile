@@ -272,6 +272,11 @@ grpc.protoc:
 	dir=./priv/test_protobuf; \
 	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/test/support/test_protobuf/ $$(find $$dir -iname '*.proto')
 
+# For the gRPC health checking protocol (grpc.health.v1.Health)
+# proto source is checked in at priv/protos/grpc/health/v1/health.proto
+grpc.protoc.health:
+	protoc -I=$(PWD)/priv/protos --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $(PWD)/priv/protos/grpc/health/v1/health.proto
+
 # For Google BigQuery
 # if you have encoding issues make sure to run the terminal as latin1
 # eg: LC_CTYPE=en_US.iso88591 luit make grpc.protoc.bq
