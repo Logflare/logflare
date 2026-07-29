@@ -764,6 +764,7 @@ defmodule Logflare.Backends do
     :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
       log_events = maybe_pre_ingest(source, backend, log_events)
       IngestEventQueue.add_to_table({:consolidated, backend.id}, log_events)
+      IngestEventQueue.emit_handoff_telemetry(log_events, backend.type)
 
       :telemetry.execute(
         [:logflare, :backends, :ingest, :count],
@@ -787,6 +788,7 @@ defmodule Logflare.Backends do
           else: {source.id, backend.id}
 
       IngestEventQueue.add_to_table(queue_key, log_events)
+      IngestEventQueue.emit_handoff_telemetry(log_events, backend.type)
 
       :telemetry.execute(
         [:logflare, :backends, :ingest, :count],
@@ -831,6 +833,7 @@ defmodule Logflare.Backends do
         if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
 
       IngestEventQueue.add_to_table(queue_key, log_events)
+      IngestEventQueue.emit_handoff_telemetry(log_events, backend_type)
 
       :telemetry.execute(
         [:logflare, :backends, :ingest, :dispatch],

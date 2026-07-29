@@ -9,6 +9,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   alias Logflare.Backends.IngestEventQueue.GenerationJanitor
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.TestUtils
 
   setup do
     insert(:plan)
@@ -1345,6 +1346,33 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
   end
 
+  test "BufferCacheWorker emits depth telemetry aggregated by backend_type" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user)
+    table = {source.id, backend.id, self()}
+
+    IngestEventQueue.upsert_tid(table)
+    IngestEventQueue.add_to_table(table, build_list(3, :log_event, source: source))
+
+    test_pid = self()
+    handler = "depth-#{TestUtils.random_string()}"
+
+    :telemetry.attach(
+      handler,
+      [:logflare, :backends, :ingest_event_queue, :depth],
+      fn _e, m, md, _ -> send(test_pid, {:depth, m, md}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    start_supervised!({BufferCacheWorker, interval: 50})
+
+    assert_receive {:depth, %{count: count}, %{backend_type: :bigquery}}, 1_000
+    assert count >= 3
+  end
+
   test "QueueJanitor purges if exceeds max" do
     user = insert(:user)
     source = insert(:source, user: user)
@@ -1852,5 +1880,109 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
       )
     end
+  end
+
+  describe "dwell telemetry" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      sbp = {source.id, insert(:backend, user: user).id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      [source: source, sbp: sbp]
+    end
+
+    test "emit_dwell_telemetry/2 emits one :total-stage event per LogEvent" do
+      attach_dwell_handler!()
+
+      ts = DateTime.add(DateTime.utc_now(), -250, :millisecond)
+      events = for _ <- 1..3, do: build(:log_event, ingested_at: ts)
+
+      assert :ok = IngestEventQueue.emit_dwell_telemetry(events, :bigquery)
+
+      for _ <- 1..3 do
+        assert_received {:dwell, %{duration_ms: d}, %{backend_type: :bigquery, stage: :total}}
+        assert d >= 200
+      end
+
+      refute_received {:dwell, _, _}
+    end
+
+    test "emit_handoff_telemetry/2 uses :ingested_at_ms and tags stage :handoff" do
+      attach_dwell_handler!()
+
+      ts = DateTime.add(DateTime.utc_now(), -50, :millisecond)
+      events = for _ <- 1..2, do: build(:log_event, ingested_at: ts)
+
+      assert :ok = IngestEventQueue.emit_handoff_telemetry(events, :clickhouse)
+
+      for _ <- 1..2 do
+        assert_received {:dwell, %{duration_ms: d}, %{backend_type: :clickhouse, stage: :handoff}}
+        assert d >= 0
+      end
+
+      refute_received {:dwell, _, _}
+    end
+
+    test "emit_pipeline_telemetry/2 uses :taken_at_ms and tags stage :pipeline" do
+      attach_dwell_handler!()
+
+      taken_at = System.system_time(:millisecond) - 150
+      events = for _ <- 1..2, do: %{build(:log_event) | taken_at_ms: taken_at}
+
+      assert :ok = IngestEventQueue.emit_pipeline_telemetry(events, :bigquery)
+
+      for _ <- 1..2 do
+        assert_received {:dwell, %{duration_ms: d}, %{backend_type: :bigquery, stage: :pipeline}}
+        assert d >= 100
+      end
+
+      refute_received {:dwell, _, _}
+    end
+
+    test "emit_pipeline_telemetry/2 skips events without :taken_at_ms" do
+      attach_dwell_handler!()
+
+      assert :ok = IngestEventQueue.emit_pipeline_telemetry(build_list(3, :log_event), :bigquery)
+
+      refute_received {:dwell, _, _}
+    end
+
+    test "emit_dwell_telemetry/2 with empty list emits nothing" do
+      attach_dwell_handler!()
+
+      assert :ok = IngestEventQueue.emit_dwell_telemetry([], :bigquery)
+
+      refute_received {:dwell, _, _}
+    end
+
+    test "pop_pending/2 stamps :taken_at_ms on returned events", %{source: source, sbp: sbp} do
+      :ok = IngestEventQueue.add_to_table(sbp, build_list(2, :log_event, source: source))
+
+      before_ms = System.system_time(:millisecond)
+      assert {:ok, popped} = IngestEventQueue.pop_pending(sbp, 10)
+      after_ms = System.system_time(:millisecond)
+
+      assert length(popped) == 2
+
+      for e <- popped do
+        assert is_integer(e.taken_at_ms)
+        assert e.taken_at_ms >= before_ms
+        assert e.taken_at_ms <= after_ms
+      end
+    end
+  end
+
+  defp attach_dwell_handler! do
+    test_pid = self()
+    handler = "dwell-#{TestUtils.random_string()}"
+
+    :telemetry.attach(
+      handler,
+      [:logflare, :backends, :ingest_event_queue, :dwell],
+      fn _e, m, md, _ -> send(test_pid, {:dwell, m, md}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
   end
 end

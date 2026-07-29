@@ -26,6 +26,8 @@ defmodule Logflare.LogEvent do
     field :is_from_stale_query, :boolean
     field :timestamp_inferred, :boolean, default: false
     field :ingested_at, :utc_datetime_usec
+    field :ingested_at_ms, :integer
+    field :taken_at_ms, :integer
     field :source_uuid, Ecto.UUID.Atom
     field :source_name, :string
     field :via_rule_id, :id
@@ -73,6 +75,7 @@ defmodule Logflare.LogEvent do
       body: body,
       event_type: event_type,
       ingested_at: ingested_at_dt,
+      ingested_at_ms: div(ingested_at_us, 1_000),
       valid: true,
       drop: false,
       day_bucket: day_bucket,
@@ -100,6 +103,7 @@ defmodule Logflare.LogEvent do
       body: body,
       event_type: String.to_existing_atom(event_type),
       ingested_at: ingested_at_dt,
+      ingested_at_ms: DateTime.to_unix(ingested_at_dt, :millisecond),
       valid: true,
       drop: false,
       day_bucket: day_bucket,
@@ -149,6 +153,7 @@ defmodule Logflare.LogEvent do
       source_name: source_name,
       valid: true,
       ingested_at: DateTime.utc_now(),
+      ingested_at_ms: System.system_time(:millisecond),
       id: id,
       event_type: event_type,
       timestamp_inferred: timestamp_inferred,

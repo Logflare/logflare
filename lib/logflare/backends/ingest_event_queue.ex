@@ -1051,11 +1051,78 @@ defmodule Logflare.Backends.IngestEventQueue do
         |> Enum.map(&resolve_and_delete_pending(tid, &1))
         |> Enum.reject(&is_nil/1)
 
-      {:ok, events}
+      {:ok, stamp_taken(events)}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, []}
     end
+  end
+
+  @spec stamp_taken([LogEvent.t()]) :: [LogEvent.t()]
+  defp stamp_taken(events) do
+    now_ms = System.system_time(:millisecond)
+    for %LogEvent{} = e <- events, do: %{e | taken_at_ms: now_ms}
+  end
+
+  @doc """
+  Emits one `[:logflare, :backends, :ingest_event_queue, :dwell]` event
+  per LogEvent measuring total dwell time (HTTP request arrival → ack).
+
+  Measurements: `%{duration_ms: non_neg_integer()}`.
+  Metadata: `%{backend_type: atom(), stage: :total}`.
+
+  Intended to be called from Broadway ack callbacks.
+  """
+  @spec emit_dwell_telemetry([LogEvent.t()], atom()) :: :ok
+  def emit_dwell_telemetry(events, backend_type) when is_atom(backend_type) do
+    emit_stage(events, backend_type, :total, :ingested_at_ms)
+  end
+
+  @doc """
+  Emits one `[..., :dwell]` event per LogEvent measuring the HTTP request
+  arrival → IngestEventQueue handoff sub-stage.
+
+  Metadata: `%{backend_type: atom(), stage: :handoff}`. Intended to be
+  called from `Backends.dispatch_to_backends/3` immediately after
+  `add_to_table/2`.
+  """
+  @spec emit_handoff_telemetry([LogEvent.t()], atom()) :: :ok
+  def emit_handoff_telemetry(events, backend_type) when is_atom(backend_type) do
+    emit_stage(events, backend_type, :handoff, :ingested_at_ms)
+  end
+
+  @doc """
+  Emits one `[..., :dwell]` event per LogEvent measuring the queue exit →
+  ack sub-stage (time spent in the Broadway pipeline).
+
+  Metadata: `%{backend_type: atom(), stage: :pipeline}`. Intended to be
+  called from Broadway ack callbacks. Relies on `:taken_at_ms` being
+  stamped by `take_pending/2` / `pop_pending/2`.
+  """
+  @spec emit_pipeline_telemetry([LogEvent.t()], atom()) :: :ok
+  def emit_pipeline_telemetry(events, backend_type) when is_atom(backend_type) do
+    emit_stage(events, backend_type, :pipeline, :taken_at_ms)
+  end
+
+  @spec emit_stage([LogEvent.t()], atom(), atom(), atom()) :: :ok
+  defp emit_stage(events, backend_type, stage, ts_field) do
+    now_ms = System.system_time(:millisecond)
+    metadata = %{backend_type: backend_type, stage: stage}
+
+    for %LogEvent{} = e <- events,
+        ts = Map.get(e, ts_field),
+        is_integer(ts) do
+      d = now_ms - ts
+      duration_ms = if d < 0, do: 0, else: d
+
+      :telemetry.execute(
+        [:logflare, :backends, :ingest_event_queue, :dwell],
+        %{duration_ms: duration_ms},
+        metadata
+      )
+    end
+
+    :ok
   end
 
   defp resolve_and_delete_pending(tid, {id, gen_tid, gen_event_id}) do
