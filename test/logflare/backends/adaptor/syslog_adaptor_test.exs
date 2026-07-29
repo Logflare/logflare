@@ -206,6 +206,37 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     assert String.starts_with?(telegraf_message, ~s[{"event_message":])
   end
 
+  test "emits egress telemetry for every batch sent" do
+    {source, backend} = start_syslog(%{host: "localhost", port: 6514})
+
+    test_ref = make_ref()
+    pid = self()
+
+    :telemetry.attach(
+      {__MODULE__, test_ref},
+      [:logflare, :backends, :ingest, :egress],
+      fn _event, measurements, metadata, _config ->
+        send(pid, {test_ref, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach({__MODULE__, test_ref}) end)
+
+    ingest_syslog([build(:log_event, message: "telemetry check")], source)
+
+    assert_receive {^test_ref, %{request_bytes: request_bytes}, metadata}, 5_000
+    assert request_bytes > 0
+
+    assert %{
+             "source_id" => source.id,
+             "source_uuid" => Atom.to_string(source.token),
+             "backend_id" => backend.id,
+             "backend_uuid" => backend.token,
+             "user_id" => source.user_id
+           } == metadata
+  end
+
   test "sends message over mTLS" do
     {source, _backend} =
       start_syslog(%{
