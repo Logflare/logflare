@@ -161,3 +161,24 @@ tests:
           path: metadata.annotations["reloader.stakater.com/auto"]
           value: "true"
         template: deployment.yaml
+
+  - it: should not render initContainers by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+        template: deployment.yaml
+
+  - it: should render initContainers when set
+    set:
+      initContainers:
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+          args: ["--structured-logs", "my-project:my-region:my-instance"]
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers
+          content:
+            name: cloud-sql-proxy
+            image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+            args: ["--structured-logs", "my-project:my-region:my-instance"]
+        template: deployment.yaml

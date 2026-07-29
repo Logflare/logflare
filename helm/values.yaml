@@ -311,6 +311,12 @@ volumeMounts: []
   #   mountPath: "/etc/foo"
   #   readOnly: true
 
+# Additional init containers on the output Deployment definition.
+initContainers: []
+  # - name: cloud-sql-proxy
+  #   image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+  #   args: ["--structured-logs", "<instance-connection-name>"]
+
 nodeSelector: {}
 
 tolerations: []
