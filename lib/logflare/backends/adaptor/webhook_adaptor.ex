@@ -272,7 +272,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
                backend_id: Map.get(args.backend || %{}, :id),
                source_id: args.source.id
              ]},
-          transformer: {__MODULE__, :transform, []},
+          transformer: {__MODULE__, :transform, [backend_id: Map.get(args.backend || %{}, :id)]},
           concurrency: 1
         ],
         processors: [
@@ -298,18 +298,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       {:via, module, {registry, new_identifier}}
     end
 
-    def handle_message(_processor_name, message, context) do
-      ack_data = %{
-        source_id: context.source_id,
-        source_uuid: context.source_token,
-        backend_id: context.backend_id,
-        backend_uuid: context.backend_token,
-        user_id: context.user_id
-      }
-
+    def handle_message(_processor_name, message, _context) do
       message
       |> Message.put_batcher(:http)
-      |> put_ack_data(ack_data)
     end
 
     def handle_batch(:http, messages, batch_info, context) do
@@ -321,7 +312,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         }
       )
 
-      %{metadata: backend_metadata} = backend = Backends.Cache.get_backend(context.backend_id)
+      backend = Backends.Cache.get_backend(context.backend_id)
       config = Backends.Adaptor.get_backend_config(backend)
 
       # convert this to a custom format if needed
@@ -334,13 +325,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         end
 
       process_data(payload, config, context)
-
-      for message <- messages do
-        put_ack_data(message, %{
-          size: event_size(message.data),
-          backend_metadata: backend_metadata || %{}
-        })
-      end
+      messages
     end
 
     defp process_data(payload, config, _context) do
@@ -361,15 +346,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       |> IO.iodata_length()
     end
 
-    defp put_ack_data(%Message{acknowledger: {mod, ref, ack_data}} = message, additions) do
-      %{message | acknowledger: {mod, ref, Map.merge(ack_data, additions)}}
-    end
-
     # Broadway transformer for custom producer
-    def transform(event, _opts) do
+    def transform(event, opts) do
       %Message{
         data: event,
-        acknowledger: {__MODULE__, :ack_id, %{}}
+        acknowledger: {__MODULE__, opts[:backend_id], %{size: event_size(event)}}
       }
     end
 
@@ -418,46 +399,50 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
     def ack(_ack_ref, successful, _failed) do
       # TODO: re-queue failed
-      Enum.each(successful, &emit_ack_telemetry/1)
+      emit_ack_telemetry(successful)
     end
 
-    defp emit_ack_telemetry(%Message{acknowledger: {_mod, _ref, ack_data}}) do
-      %{
-        source_id: source_id,
-        source_uuid: source_uuid,
-        backend_id: backend_id,
-        backend_uuid: backend_uuid,
-        user_id: user_id,
-        size: size,
-        backend_metadata: backend_metadata
-      } = ack_data
+    defp emit_ack_telemetry([]), do: :ok
+
+    defp emit_ack_telemetry([first | _] = successful) do
+      %Message{
+        acknowledger: {_mod, backend_id, _},
+        data: %{source_id: source_id, source_uuid: source_uuid}
+      } = first
+
+      total_size =
+        Enum.reduce(successful, 0, fn %Message{acknowledger: {_, _, %{size: size}}}, acc ->
+          acc + size
+        end)
+
+      backend = Backends.Cache.get_backend(backend_id)
 
       base_metadata = %{
         "source_id" => source_id,
         "source_uuid" => Utils.stringify(source_uuid),
         "backend_id" => backend_id,
-        "user_id" => user_id
+        "user_id" => backend.user_id
       }
 
       :telemetry.execute(
         [:logflare, :backends, :ingest],
-        %{ingested_bytes: size},
+        %{ingested_bytes: total_size},
         base_metadata
       )
 
       backend_meta =
-        for {k, v} <- backend_metadata || %{}, into: %{} do
+        for {k, v} <- backend.metadata || %{}, into: %{} do
           {"backend.#{k}", v}
         end
 
       egress_metadata =
         base_metadata
-        |> Map.put("backend_uuid", Utils.stringify(backend_uuid))
+        |> Map.put("backend_uuid", Utils.stringify(backend.token))
         |> Map.merge(backend_meta)
 
       :telemetry.execute(
         [:logflare, :backends, :ingest, :egress],
-        %{request_bytes: size},
+        %{request_bytes: total_size},
         egress_metadata
       )
     end

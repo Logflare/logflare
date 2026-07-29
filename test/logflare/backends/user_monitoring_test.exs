@@ -15,6 +15,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.LogEvent
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Endpoints
 
   def source_and_user(_context) do
@@ -308,6 +309,105 @@ defmodule Logflare.Backends.UserMonitoringTest do
         refute attr["source_id"] in [source_id, metrics_source_id]
         refute attr["my_label"] == "test"
       end
+    end
+  end
+
+  describe "webhook ingestion metrics" do
+    setup :start_otel_exporter
+
+    setup do
+      start_supervised!(AllLogsLogged)
+      insert(:plan)
+      :ok
+    end
+
+    test "ingested_bytes, ingested_count, and egress.request_bytes are emitted" do
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 _dataset_id,
+                                                 _table_name,
+                                                 _opts ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      WebhookAdaptor.Client
+      |> stub(:send, fn _ -> {:ok, %Tesla.Env{status: 200}} end)
+
+      user = insert(:user, system_monitoring: true)
+      metrics_source = insert(:source, user: user, system_source_type: :metrics)
+
+      webhook_backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://127.0.0.1:9999/webhook"},
+          metadata: %{"environment" => "test", "region" => "us-west"}
+        )
+
+      source = insert(:source, user: user)
+
+      start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      {:ok, _} = Backends.update_source_backends(source, [webhook_backend])
+      Backends.Cache.get_backend(webhook_backend.id)
+
+      :timer.sleep(1000)
+
+      assert {:ok, _} = Backends.ingest_logs([%{"message" => "test webhook ingest"}], source)
+
+      TestUtils.retry_assert(fn ->
+        events = Backends.list_recent_logs_local(metrics_source)
+
+        ingested_bytes_event =
+          Enum.find(
+            events,
+            &match?(
+              %LogEvent{body: %{"event_message" => "logflare.backends.ingest.ingested_bytes"}},
+              &1
+            )
+          )
+
+        ingested_count_event =
+          Enum.find(
+            events,
+            &match?(
+              %LogEvent{body: %{"event_message" => "logflare.backends.ingest.ingested_count"}},
+              &1
+            )
+          )
+
+        egress_event =
+          Enum.find(
+            events,
+            &match?(
+              %LogEvent{
+                body: %{"event_message" => "logflare.backends.ingest.egress.request_bytes"}
+              },
+              &1
+            )
+          )
+
+        assert ingested_bytes_event, "Expected ingested_bytes metric to be present"
+        assert ingested_count_event, "Expected ingested_count metric to be present"
+        assert egress_event, "Expected egress metric to be present"
+
+        bytes_attrs = ingested_bytes_event.body["attributes"]
+        assert bytes_attrs["source_id"] == source.id
+        assert bytes_attrs["user_id"] == user.id
+        assert bytes_attrs["source_uuid"] == Atom.to_string(source.token)
+        assert bytes_attrs["backend_id"] == webhook_backend.id
+
+        egress_attrs = egress_event.body["attributes"]
+        assert egress_attrs["source_id"] == source.id
+        assert egress_attrs["user_id"] == user.id
+        assert egress_attrs["source_uuid"] == Atom.to_string(source.token)
+        assert egress_attrs["backend_id"] == webhook_backend.id
+        assert egress_attrs["backend_uuid"] == Atom.to_string(webhook_backend.token)
+        assert egress_attrs["_backend_environment"] == "test"
+        assert egress_attrs["_backend_region"] == "us-west"
+      end)
     end
   end
 

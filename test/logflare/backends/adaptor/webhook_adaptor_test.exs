@@ -384,6 +384,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
       backend =
         insert(:backend,
+          user: user,
           type: :webhook,
           sources: [source],
           config: %{http: "http1", url: "https://example.com"}
