@@ -11,6 +11,7 @@ defmodule Logflare.Mixfile do
       aliases: aliases(),
       deps: deps(),
       dialyzer: dialyzer(),
+      listeners: [Phoenix.CodeReloader],
       test_coverage: [tool: ExCoveralls],
       test_ignore_filters: [~r|test/profiling|, "test/bq_logs_search_seed.exs"],
       releases: [
@@ -85,7 +86,7 @@ defmodule Logflare.Mixfile do
   defp deps do
     [
       # Phoenix stuff
-      {:phoenix, "~> 1.7.14"},
+      {:phoenix, "~> 1.8.0", override: true},
       {:phoenix_html, "~> 4.0"},
       {:phoenix_html_helpers, "~> 1.0"},
       {:phoenix_live_view, "~> 1.0.0"},
