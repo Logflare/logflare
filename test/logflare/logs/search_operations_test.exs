@@ -331,7 +331,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert sql =~ ~s|FROM "#{PostgresAdaptor.table_name(so.source)}"|
       assert sql =~ ~s|ORDER BY l0."timestamp" DESC|
       assert sql =~ ~s|LIMIT $1|
-      assert params == [SearchOperations.fetch_limit()]
+      assert params == [SearchOperations.default_limit()]
     end
 
     test "apply_select_rules/1 uses postgres dialect defaults", %{so: so} do
@@ -361,7 +361,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
       {:ok, {sql, params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
 
       assert sql =~ ~s|l0."event_message"|
-      assert params == ["error", SearchOperations.fetch_limit()]
+      assert params == ["error", SearchOperations.default_limit()]
     end
   end
 
@@ -922,7 +922,9 @@ defmodule Logflare.Logs.SearchOperationsTest do
       [base_so: base_so]
     end
 
-    test "do_query/1 uses BigQuery backend adaptor", %{base_so: base_so} do
+    test "do_query/1 fetches the sentinel row but stores canonical page SQL", %{base_so: base_so} do
+      base_so = SearchOperations.apply_query_defaults(base_so)
+
       Mimic.stub(BigQueryAdaptor, :execute_query, fn identifier, query, opts ->
         Process.put(:captured_identifier, identifier)
         Process.put(:captured_query, query)
@@ -931,8 +933,8 @@ defmodule Logflare.Logs.SearchOperationsTest do
         {:ok,
          QueryResult.new([%{"test" => "data"}], %{
            total_rows: 1,
-           query_string: "",
-           bq_params: []
+           query_string: "SELECT * FROM test_table LIMIT ?",
+           bq_params: [SearchOperations.fetch_limit()]
          })}
       end)
 
@@ -949,6 +951,18 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert user_id == base_so.source.user.id
       assert %Ecto.Query{} = captured_query
       assert captured_opts == [query_type: :search]
+
+      assert {:ok, {executed_sql, executed_params}} =
+               BigQueryAdaptor.ecto_to_sql(captured_query, [])
+
+      assert executed_sql =~ "LIMIT ?"
+      assert List.last(executed_params).parameterValue.value == SearchOperations.fetch_limit()
+
+      assert result_so.sql_string =~ "LIMIT ?"
+
+      assert List.last(result_so.sql_params).parameterValue.value ==
+               SearchOperations.default_limit()
+
       assert result_so.rows == [%{"test" => "data"}]
       refute result_so.error
     end
