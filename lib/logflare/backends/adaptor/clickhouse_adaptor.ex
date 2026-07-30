@@ -164,7 +164,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     ])
     |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
     |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
+    |> strip_url_credentials()
   end
+
+  @spec strip_url_credentials(Changeset.t()) :: Changeset.t()
+  defp strip_url_credentials(%Changeset{types: types} = changeset) do
+    types
+    |> Map.keys()
+    |> Enum.filter(&url_field?/1)
+    |> Enum.reduce(changeset, fn field, acc ->
+      Changeset.update_change(acc, field, &strip_credentials/1)
+    end)
+  end
+
+  @spec url_field?(atom()) :: boolean()
+  defp url_field?(field), do: field |> Atom.to_string() |> String.contains?("url")
+
+  @spec strip_credentials(term()) :: term()
+  defp strip_credentials(urls) when is_map(urls) do
+    Map.new(urls, fn {label, url} -> {label, EndpointUtils.strip_credentials(url)} end)
+  end
+
+  defp strip_credentials(url), do: EndpointUtils.strip_credentials(url)
 
   @doc false
   @impl Logflare.Backends.Adaptor

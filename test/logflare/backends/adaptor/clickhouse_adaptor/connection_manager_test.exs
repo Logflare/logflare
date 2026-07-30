@@ -257,4 +257,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
       end
     end
   end
+
+  describe "read_host/2" do
+    test "resolves the hostname for a labeled read cluster" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{read_only_urls: %{"api" => "https://api-read.local:8443"}}
+        )
+
+      assert ConnectionManager.read_host(backend, "api") == "api-read.local"
+    end
+
+    test "returns nil for a malformed read cluster URL" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{read_only_urls: %{"api" => "not-a-url"}})
+
+      assert ConnectionManager.read_host(backend, "api") == nil
+    end
+
+    test "returns nil when no backend is given" do
+      assert ConnectionManager.read_host(nil, "api") == nil
+    end
+  end
 end

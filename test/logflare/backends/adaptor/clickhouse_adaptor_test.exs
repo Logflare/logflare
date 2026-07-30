@@ -277,6 +277,48 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Keyword.has_key?(changeset.errors, :read_only_urls)
     end
 
+    test "strips basic auth credentials from every URL config field" do
+      changeset =
+        cast_and_validate_config(
+          url: "http://ingest_user:ingest_pa55@ingest.local:8123",
+          read_only_url: "http://legacy_user:legacy_pa55@legacy-read.local:8123",
+          read_only_urls: %{
+            "dashboard_logs" => "http://logs_user:logs_pa55@logs-read.local:8123",
+            "api" => "https://api_user@api-read.local:8443"
+          },
+          async_insert_cluster_url: "http://async_user:async_pa55@async.local:8123"
+        )
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :url) == "http://ingest.local:8123"
+
+      assert Ecto.Changeset.get_field(changeset, :read_only_url) ==
+               "http://legacy-read.local:8123"
+
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == %{
+               "dashboard_logs" => "http://logs-read.local:8123",
+               "api" => "https://api-read.local:8443"
+             }
+
+      assert Ecto.Changeset.get_field(changeset, :async_insert_cluster_url) ==
+               "http://async.local:8123"
+    end
+
+    test "leaves URLs without basic auth credentials untouched" do
+      changeset =
+        cast_and_validate_config(
+          url: "http://localhost:8123",
+          read_only_urls: %{"dashboard_logs" => "https://logs-read.local:8443/db"}
+        )
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :url) == "http://localhost:8123"
+
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == %{
+               "dashboard_logs" => "https://logs-read.local:8443/db"
+             }
+    end
+
     test "casts default_read_cluster when it names a configured label" do
       changeset =
         cast_and_validate_config(
