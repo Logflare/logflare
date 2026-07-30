@@ -504,14 +504,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
     test "routes an unknown read cluster to the default and warns", %{backend: backend} do
       log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, {[%{"test" => 1}], _bytes}} =
-                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
-                     read_cluster: "nope"
-                   )
-        end)
+        ExUnit.CaptureLog.capture_log(
+          [format: "$metadata$message", metadata: [:user_id]],
+          fn ->
+            assert {:ok, {[%{"test" => 1}], _bytes}} =
+                     ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                       read_cluster: "nope"
+                     )
+          end
+        )
 
       assert log =~ "read cluster not configured"
+      assert log =~ "user_id=#{backend.user_id}"
       assert ConnectionManager.pool_active?(backend, "dashboard_logs")
       refute ConnectionManager.pool_active?(backend, "api")
     end
@@ -571,14 +575,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       start_supervised!({ClickHouseAdaptor, backend})
 
       log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, {[%{"test" => 1}], _bytes}} =
-                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
-                     read_cluster: "api"
-                   )
-        end)
+        ExUnit.CaptureLog.capture_log(
+          [format: "$metadata$message", metadata: [:user_id]],
+          fn ->
+            assert {:ok, {[%{"test" => 1}], _bytes}} =
+                     ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                       read_cluster: "api"
+                     )
+          end
+        )
 
       assert log =~ "read cluster unhealthy"
+      assert log =~ "user_id=#{backend.user_id}"
       assert ConnectionManager.pool_active?(backend, "dashboard_logs")
     end
 

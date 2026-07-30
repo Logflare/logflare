@@ -481,6 +481,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        when is_non_empty_binary(requested) and requested != label do
     Logger.warning(
       "ClickHouse read cluster not configured, falling back to resolved read cluster",
+      user_id: backend.user_id,
       backend_id: backend.id,
       requested_read_cluster: requested,
       resolved_read_cluster: label
@@ -504,6 +505,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     if is_non_empty_binary(default) and default != label do
       Logger.warning(
         "ClickHouse read cluster unhealthy, falling back to default read cluster",
+        user_id: backend.user_id,
         backend_id: backend.id,
         read_cluster: label,
         default_read_cluster: default
