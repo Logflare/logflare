@@ -61,6 +61,10 @@ defmodule LogflareWeb.CoreComponents do
 
   attr :id, :string, required: false
   attr :disabled, :boolean, default: false
+  attr :button_class, :any, default: "btn btn-primary"
+  attr :placement, :string, default: "below", values: ["above", "below"]
+  attr :pin, :string, default: "left", values: ["left", "right"]
+
   slot :inner_block, required: true
 
   slot :menu_item, required: true do
@@ -68,14 +72,20 @@ defmodule LogflareWeb.CoreComponents do
   end
 
   def button_dropdown(assigns) do
-    assigns = assigns |> assign_new(:id, fn -> "button-dropdown-#{UUID.uuid4()}" end)
+    assigns =
+      assigns
+      |> assign_new(:id, fn -> "button-dropdown-#{UUID.uuid4()}" end)
+      |> assign_new(:menu_class, fn
+        %{placement: placement, pin: pin} ->
+          [button_dropdown_placement_class(placement), button_dropdown_pin_class(pin)]
+      end)
 
     ~H"""
     <div class="tw-relative" id={@id}>
-      <button type="button" class="btn btn-primary" phx-click={JS.toggle(to: "##{@id} ul")} disabled={@disabled}>
+      <button type="button" class={@button_class} phx-click={JS.toggle(to: "##{@id} ul")} disabled={@disabled}>
         {render_slot(@inner_block)}
       </button>
-      <ul phx-click-away={JS.hide()} style="display: none;" class="tw-absolute tw-left-0 tw-m-0 tw-px-0 tw-bottom-full tw-bg-white tw-rounded-md tw-border tw-border-gray-300 tw-shadow tw-py-2 tw-min-w-[11rem] tw-list-none tw-z-10">
+      <ul phx-click-away={JS.hide()} style="display: none;" class={[@menu_class, "tw-absolute tw-m-0 tw-px-0 tw-bg-white tw-rounded-md tw-border tw-border-gray-300 tw-shadow tw-py-2 tw-min-w-[11rem] tw-list-none tw-z-10"]}>
         <%= for menu_item <- @menu_item do %>
           <li :if={menu_item[:heading]} class="tw-mt-2 first:tw-mt-0 tw-border-0 tw-border-t first:tw-border-t-0 tw-border-solid tw-border-gray-200 tw-px-3 tw-pt-2 tw-pb-1 tw-text-xs tw-font-semibold tw-text-gray-500 tw-uppercase">
             {menu_item.heading}
@@ -86,6 +96,42 @@ defmodule LogflareWeb.CoreComponents do
         <% end %>
       </ul>
     </div>
+    """
+  end
+
+  defp button_dropdown_placement_class("above"), do: "tw-mb-2 tw-bottom-full"
+  defp button_dropdown_placement_class("below"), do: "tw-mt-2 tw-top-full"
+
+  defp button_dropdown_pin_class("left"), do: "tw-left-0"
+  defp button_dropdown_pin_class("right"), do: "tw-right-0"
+
+  attr :href, :string, default: "#"
+  attr :class, :any, default: "tw-block tw-text-gray-500"
+  attr :rest, :global
+
+  slot :inner_block, required: true
+
+  def button_dropdown_menu_link(assigns) do
+    ~H"""
+    <a href={@href} class={["tw-no-underline", @class]} {@rest}>
+      {render_slot(@inner_block)}
+    </a>
+    """
+  end
+
+  attr :class, :any,
+    default:
+      "tw-block tw-text-gray-500 tw-w-full tw-border-0 tw-bg-transparent tw-p-0 tw-text-left"
+
+  attr :rest, :global, include: ~w(type)
+
+  slot :inner_block, required: true
+
+  def button_dropdown_menu_button(assigns) do
+    ~H"""
+    <button type="button" class={@class} {@rest}>
+      {render_slot(@inner_block)}
+    </button>
     """
   end
 

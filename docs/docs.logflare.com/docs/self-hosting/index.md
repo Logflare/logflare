@@ -143,6 +143,14 @@ To enable SSL for the internal Logflare database:
 
 All three files must be present for SSL to be enabled.
 
+The default filenames above are resolved relative to the working directory. To
+load them from another location (for example a mounted secret volume), override
+the paths with environment variables:
+
+- `DB_SSL_CA_CERT_PATH` - defaults to `db-server-ca.pem`
+- `DB_SSL_CLIENT_CERT_PATH` - defaults to `db-client-cert.pem`
+- `DB_SSL_CLIENT_KEY_PATH` - defaults to `db-client-key.pem`
+
 ### Configuration Details
 
 The SSL connection is configured with:
@@ -211,6 +219,20 @@ Thereafter, click on "Add Key" to create a new key. The key will be in a JSON fo
 ![Add Key Button](add-key.png)
 
 You can also obtain the key via the `gcloud` CLI by following the [official documentation](https://cloud.google.com/iam/docs/keys-create-delete).
+
+#### Providing the Service Account Key
+
+By default Logflare reads the service account key from a `gcloud.json` file in
+the working directory on server startup. You can supply the key in two other
+ways instead:
+
+- `GOOGLE_APPLICATION_CREDENTIALS` - path to the service account key file.
+  Defaults to `gcloud.json`. Use this to load the key from a different location,
+  such as a mounted secret volume.
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON` - the service account key JSON provided
+  inline as an environment variable. When set (and non-empty), it takes
+  precedence over the file, so no file needs to be mounted. Useful for
+  environments where secrets are injected as environment variables.
 
 ## Deployment with Docker Compose
 

@@ -52,15 +52,17 @@ defmodule Logflare.EnumDeepUpdate do
   @typep string_map_data :: string_map() | [string_map()]
   @spec update_all_keys_deep(string_map_data(), fun()) :: string_map_data()
   def update_all_keys_deep(data, fun) when is_map(data) do
-    data
-    |> Enum.map(fn
-      {k, v} when is_map(v) or is_list(v) ->
-        {fun.(k), update_all_keys_deep(v, fun)}
+    :maps.fold(
+      fn
+        k, v, acc when is_map(v) or is_list(v) ->
+          Map.put(acc, fun.(k), update_all_keys_deep(v, fun))
 
-      {k, v} ->
-        {fun.(k), v}
-    end)
-    |> Map.new()
+        k, v, acc ->
+          Map.put(acc, fun.(k), v)
+      end,
+      %{},
+      data
+    )
   end
 
   def update_all_keys_deep(data, fun) when is_list(data) do

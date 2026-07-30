@@ -309,14 +309,12 @@ defmodule Logflare.Backends.BufferProducerTest do
           build(:log_event, source: source)
           |> Map.put(:event_type, :log)
           |> Map.put(:day_bucket, 12_345)
-          |> Map.put(:ingest_freshness, :fresh)
         end
 
       partial =
         build(:log_event, source: source)
         |> Map.put(:event_type, :metric)
         |> Map.put(:day_bucket, 12_345)
-        |> Map.put(:ingest_freshness, :fresh)
 
       :ok = IngestEventQueue.add_to_table(startup_key, complete_group ++ [partial])
 
@@ -334,11 +332,11 @@ defmodule Logflare.Backends.BufferProducerTest do
       own_key = {:consolidated, backend.id, producer}
 
       assert IngestEventQueue.pending_batch_key_counts(own_key) == %{
-               {:fresh, :log, 12_345} => 2
+               {:log, 12_345} => 2
              }
 
       assert IngestEventQueue.pending_batch_key_counts(startup_key) == %{
-               {:fresh, :metric, 12_345} => 1
+               {:metric, 12_345} => 1
              }
     end
 
@@ -354,7 +352,6 @@ defmodule Logflare.Backends.BufferProducerTest do
           build(:log_event, source: source)
           |> Map.put(:event_type, event_type)
           |> Map.put(:day_bucket, 12_345)
-          |> Map.put(:ingest_freshness, :fresh)
         end
 
       :ok = IngestEventQueue.add_to_table(startup_key, events)
@@ -380,7 +377,7 @@ defmodule Logflare.Backends.BufferProducerTest do
       backend: backend
     } do
       startup_key = {:consolidated, backend.id, nil}
-      batch_key = {:fresh, :log, 12_345}
+      batch_key = {:log, 12_345}
       IngestEventQueue.upsert_tid(startup_key)
 
       events =
@@ -388,7 +385,6 @@ defmodule Logflare.Backends.BufferProducerTest do
           build(:log_event, source: source)
           |> Map.put(:event_type, :log)
           |> Map.put(:day_bucket, 12_345)
-          |> Map.put(:ingest_freshness, :fresh)
         end
 
       :ok = IngestEventQueue.add_to_table(startup_key, events)
@@ -510,7 +506,6 @@ defmodule Logflare.Backends.BufferProducerTest do
         build(:log_event, source: source)
         |> Map.put(:event_type, :trace)
         |> Map.put(:day_bucket, 123_456)
-        |> Map.put(:ingest_freshness, :stale)
 
       :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
 
@@ -523,7 +518,6 @@ defmodule Logflare.Backends.BufferProducerTest do
                size: size,
                event_type: :trace,
                day_bucket: 123_456,
-               ingest_freshness: :stale,
                retries: 0
              } = pointer
 

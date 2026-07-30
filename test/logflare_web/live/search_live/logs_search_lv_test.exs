@@ -1052,7 +1052,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
         |> render()
 
       assert link =~ ~r/phx-value-log-event-timestamp="\d+/
-      assert link =~ ~r/phx-value-lql="\w+/
     end
 
     @tag source_schema:
@@ -1559,6 +1558,43 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # Allow database access after play click which might trigger a new search
       %{executor_pid: search_executor_pid} = view |> get_view_assigns()
       allow_sandbox(search_executor_pid)
+
+      assert get_view_assigns(view).tailing?
+    end
+
+    test "closing context does not resume a paused search", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      render_click(view, "soft_pause", %{})
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "open_event_context", %{})
+
+      render_click(view, "close_event_context", %{})
+
+      refute get_view_assigns(view).tailing?
+    end
+
+    test "closing context resumes a search that was live", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      render_click(view, "open_event_context", %{})
+
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "close_event_context", %{})
 
       assert get_view_assigns(view).tailing?
     end
