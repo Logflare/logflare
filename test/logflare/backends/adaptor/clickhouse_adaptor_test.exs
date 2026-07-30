@@ -598,6 +598,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                  read_cluster: "dashboard_logs"
                )
     end
+
+    test "attributes the query error to the read cluster that was actually queried" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_url: "http://legacy-read.local:19999",
+            read_only_urls: %{"adhoc" => "http://adhoc-read.local:19999"},
+            default_read_cluster: "adhoc"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      log =
+        ExUnit.CaptureLog.capture_log(
+          [format: "$metadata$message", metadata: [:host, :read_cluster]],
+          fn ->
+            assert {:error, %QueryError{}} =
+                     ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                       read_cluster: "adhoc"
+                     )
+          end
+        )
+
+      assert log =~ "host=adhoc-read.local"
+      assert log =~ "read_cluster=adhoc"
+      refute log =~ "legacy-read.local"
+    end
   end
 
   describe "test_connection/1 with dual cluster config" do

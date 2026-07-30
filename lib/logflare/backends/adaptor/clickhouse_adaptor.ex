@@ -469,9 +469,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
              user_id: backend.user_id,
              backend_id: backend.id,
              backend_token: backend.token,
-             host:
-               EndpointUtils.host(backend.config[:read_only_url]) ||
-                 EndpointUtils.host(backend.config[:url])
+             read_cluster: label,
+             host: ConnectionManager.read_host(backend, label)
            )}
       end
     end

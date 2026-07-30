@@ -195,6 +195,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     |> GenServer.call(:get_next_recycle_at)
   end
 
+  @doc """
+  Resolves the host for a given `label`.
+
+  Falls back to the `default_read_cluster` entry, then to the deprecated
+  `read_only_url`, and finally to the primary `url`.
+  """
+  @spec read_host(Backend.t() | nil, String.t() | nil) :: String.t() | nil
+  def read_host(%Backend{config: config}, label) do
+    case extract_url_components(read_url(config, label)) do
+      {:ok, {_scheme, hostname, _port}} -> hostname
+      _ -> nil
+    end
+  end
+
+  def read_host(_backend, _label), do: nil
+
   @impl true
   def init({backend_id, label}) do
     resolve_timer_ref = resolve_timer_send_after()
@@ -348,7 +364,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         Logger.error(
           "Failed to start ClickHouse connection pool",
           backend_id: backend_id,
-          host: host_from_backend(backend, label),
+          host: read_host(backend, label),
           reason: reason
         )
 
@@ -508,18 +524,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   defp connection_host(backend_id, label) do
     backend_id
     |> Backends.Cache.get_backend()
-    |> host_from_backend(label)
+    |> read_host(label)
   end
-
-  @spec host_from_backend(Backend.t() | nil, String.t() | nil) :: String.t() | nil
-  defp host_from_backend(%Backend{config: config}, label) do
-    case extract_url_components(read_url(config, label)) do
-      {:ok, {_scheme, hostname, _port}} -> hostname
-      _ -> nil
-    end
-  end
-
-  defp host_from_backend(_backend, _label), do: nil
 
   @spec extract_url_components(String.t()) ::
           {:ok, {String.t(), String.t(), non_neg_integer() | nil}} | {:error, String.t()}
