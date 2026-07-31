@@ -148,29 +148,36 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :ok
   end
 
+  # Scan messages as contiguous runs of the same in-flight reference.
+  # `current_ref` and `run_count` describe the run immediately preceding `messages`.
+  # When the reference changes, subtract the completed run and begin a new one.
+  # A reference appearing again later is handled as another run.
   @spec decrement_in_flight([Message.t()]) :: :ok
   defp decrement_in_flight(messages), do: decrement_in_flight(messages, nil, 0)
 
   defp decrement_in_flight([], nil, 0), do: :ok
-  defp decrement_in_flight([], ref, count), do: decrement_in_flight_ref(ref, count)
+
+  # Flush the final run after consuming all messages.
+  defp decrement_in_flight([], ref, run_count),
+    do: decrement_in_flight_ref(ref, run_count)
 
   defp decrement_in_flight(
          [%{acknowledger: {_, _, ack_data}} | messages],
          current_ref,
-         count
+         run_count
        ) do
     ref = Map.get(ack_data, :in_flight_ref)
 
     if ref == current_ref do
-      decrement_in_flight(messages, current_ref, count + 1)
+      decrement_in_flight(messages, current_ref, run_count + 1)
     else
-      decrement_in_flight_ref(current_ref, count)
+      decrement_in_flight_ref(current_ref, run_count)
       decrement_in_flight(messages, ref, 1)
     end
   end
 
-  defp decrement_in_flight_ref(nil, _count), do: :ok
-  defp decrement_in_flight_ref(ref, count), do: :atomics.sub(ref, 1, count)
+  defp decrement_in_flight_ref(nil, _run_count), do: :ok
+  defp decrement_in_flight_ref(ref, run_count), do: :atomics.sub(ref, 1, run_count)
 
   # Always deletes the generation-store row. If the source's ingest rate is low, also
   # keeps an independent copy in the recent-events cache first, so "recent logs" reads
