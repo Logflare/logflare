@@ -4,6 +4,7 @@ defmodule Logflare.LogEventTest do
   use ExUnitProperties
 
   alias Logflare.LogEvent
+  alias Logflare.LogEvent.DayBucket
   alias Logflare.Sources.Source
   alias Logflare.Utils
 
@@ -32,6 +33,28 @@ defmodule Logflare.LogEventTest do
     assert id == body["id"]
     assert body["metadata"]["my"] == "key"
     assert source_id == source.id
+  end
+
+  describe "mapper fields" do
+    test "preserves explicit IDs and normalizes legacy message fields", %{source: source} do
+      id = Ecto.UUID.generate()
+      timestamp = "2024-01-01T00:00:00.123456Z"
+
+      for {message_fields, expected_message} <- [
+            {%{"message" => "legacy"}, "legacy"},
+            {%{"event_message" => "current"}, "current"},
+            {%{"message" => "same", "event_message" => "same"}, "same"},
+            {%{"message" => "legacy wins", "event_message" => "current"}, "legacy wins"}
+          ] do
+        params = Map.merge(message_fields, %{"id" => id, "timestamp" => timestamp})
+        le = LogEvent.make(params, %{source: source})
+
+        assert le.id == id
+        assert le.body["id"] == id
+        assert le.body["event_message"] == expected_message
+        refute Map.has_key?(le.body, "message")
+      end
+    end
   end
 
   describe "bigquery_spec" do
@@ -702,6 +725,23 @@ defmodule Logflare.LogEventTest do
     assert body["metadata"] == "some string"
   end
 
+  test "make_from_db/2 preserves mapper fields and normalizes legacy messages", %{source: source} do
+    id = Ecto.UUID.generate()
+    timestamp = 1_713_268_565_764_892
+
+    le =
+      LogEvent.make_from_db(
+        %{"id" => id, "message" => "legacy", "timestamp" => timestamp},
+        %{source: source}
+      )
+
+    assert le.id == id
+    assert le.body["id"] == id
+    assert le.body["timestamp"] == timestamp
+    assert le.body["event_message"] == "legacy"
+    refute Map.has_key?(le.body, "message")
+  end
+
   test "apply_custom_event_message/1 generates custom event message from source setting", %{
     source: source
   } do
@@ -732,6 +772,84 @@ defmodule Logflare.LogEventTest do
       assert le.timestamp_inferred == false
     end
 
+    test "preserves microseconds for common UTC ISO 8601 timestamps", %{source: source} do
+      for timestamp <- [
+            "1970-01-01T00:00:00.000001Z",
+            "1972-02-29T12:34:56.654321Z",
+            "2000-02-29T23:59:59.123456Z",
+            "2024-12-31T12:34:56.999999Z",
+            "2096-02-29T00:00:00.000000Z",
+            "2099-12-31T23:59:59.000001Z"
+          ] do
+        {:ok, datetime, _offset} = DateTime.from_iso8601(timestamp)
+        expected = DateTime.to_unix(datetime, :microsecond)
+
+        le = LogEvent.make(Map.put(@vallog_event_ids, "timestamp", timestamp), %{source: source})
+
+        assert le.timestamp_inferred == false
+        assert le.body["timestamp"] == expected
+        assert le.day_bucket == DayBucket.from_microseconds(expected)
+      end
+    end
+
+    property "common UTC ISO 8601 fast path matches DateTime", %{source: source} do
+      max_date_offset = Date.diff(~D[2099-12-31], ~D[1970-01-01])
+
+      check all date_offset <- integer(0..max_date_offset),
+                hour <- integer(0..23),
+                minute <- integer(0..59),
+                second <- integer(0..59),
+                microsecond <- integer(0..999_999) do
+        datetime =
+          ~D[1970-01-01]
+          |> Date.add(date_offset)
+          |> DateTime.new!(Time.new!(hour, minute, second, {microsecond, 6}), "Etc/UTC")
+
+        timestamp = DateTime.to_iso8601(datetime)
+        expected = DateTime.to_unix(datetime, :microsecond)
+        le = LogEvent.make(Map.put(@vallog_event_ids, "timestamp", timestamp), %{source: source})
+
+        refute le.timestamp_inferred
+        assert le.body["timestamp"] == expected
+        assert le.day_bucket == DayBucket.from_microseconds(expected)
+      end
+    end
+
+    test "standard parser fallback preserves other valid ISO 8601 forms", %{source: source} do
+      for timestamp <- [
+            "1969-12-31T23:59:59.123456Z",
+            "2100-03-01T00:00:00.123456Z",
+            "2024-01-01T12:34:56.123Z",
+            "2024-01-01T12:34:56Z",
+            "2024-01-01T12:34:56.123456+05:30"
+          ] do
+        {:ok, datetime, _offset} = DateTime.from_iso8601(timestamp)
+        expected = DateTime.to_unix(datetime, :microsecond)
+        le = LogEvent.make(Map.put(@vallog_event_ids, "timestamp", timestamp), %{source: source})
+
+        refute le.timestamp_inferred
+        assert le.body["timestamp"] == expected
+      end
+    end
+
+    test "rejects invalid common-shape ISO 8601 timestamps", %{source: source} do
+      for timestamp <- [
+            "2025-02-29T12:34:56.123456Z",
+            "2100-02-29T12:34:56.123456Z",
+            "2024-00-01T12:34:56.123456Z",
+            "2024-13-01T12:34:56.123456Z",
+            "2024-01-00T12:34:56.123456Z",
+            "2024-04-31T12:34:56.123456Z",
+            "2024-01-01T24:00:00.123456Z",
+            "2024-01-01T12:60:00.123456Z",
+            "2024-01-01T12:34:60.123456Z",
+            "2024-01-01T12:34:56.12345xZ"
+          ] do
+        le = LogEvent.make(Map.put(@vallog_event_ids, "timestamp", timestamp), %{source: source})
+        assert le.timestamp_inferred == true
+      end
+    end
+
     test "is true when an unparsable string timestamp is provided", %{source: source} do
       params = Map.put(@vallog_event_ids, "timestamp", "not-a-timestamp")
       le = LogEvent.make(params, %{source: source})
@@ -742,6 +860,58 @@ defmodule Logflare.LogEventTest do
       params = Map.put(@vallog_event_ids, "timestamp", 1_713_268_565_764_892)
       le = LogEvent.make(params, %{source: source})
       assert le.timestamp_inferred == false
+    end
+
+    test "preserves integer timestamp unit conversion", %{source: source} do
+      for timestamp <- [
+            0,
+            999_999,
+            1_000_000,
+            9_999_999,
+            10_000_000,
+            100_000_000,
+            1_000_000_000,
+            9_999_999_999,
+            10_000_000_000,
+            100_000_000_000,
+            1_000_000_000_000,
+            9_999_999_999_999,
+            10_000_000_000_000,
+            100_000_000_000_000,
+            1_000_000_000_000_000,
+            9_999_999_999_999_999,
+            10_000_000_000_000_000,
+            100_000_000_000_000_000,
+            1_000_000_000_000_000_000,
+            9_999_999_999_999_999_999,
+            10_000_000_000_000_000_000
+          ] do
+        le = LogEvent.make(Map.put(@vallog_event_ids, "timestamp", timestamp), %{source: source})
+        assert le.body["timestamp"] == Utils.to_microseconds(timestamp)
+      end
+    end
+
+    property "generated integer and float timestamps match the reference conversion" do
+      source = build(:source, user: build(:user), validate_schema: false)
+
+      check all timestamp <-
+                  one_of([
+                    integer(1_713_268_565_764_892..1_713_268_565_764_999),
+                    integer(1_713_268_565_764..1_713_268_565_999),
+                    integer(1_713_268_565..1_713_268_999),
+                    float(min: 1_713_268_565.1, max: 1_713_268_999.9),
+                    float(min: 1_713_268_000_000.1, max: 1_713_268_000_999.9),
+                    float(min: 1_713_268_565_000_000.1, max: 1_713_268_565_000_999.9)
+                  ]) do
+        rounded = if is_float(timestamp), do: round(timestamp), else: timestamp
+        expected = Utils.to_microseconds(rounded)
+        params = Map.put(@vallog_event_ids, "timestamp", timestamp)
+        le = LogEvent.make(params, %{source: source})
+
+        refute le.timestamp_inferred
+        assert le.body["timestamp"] == expected
+        assert le.day_bucket == DayBucket.from_microseconds(expected)
+      end
     end
 
     test "is false when a valid float timestamp is provided", %{source: source} do
@@ -788,17 +958,36 @@ defmodule Logflare.LogEventTest do
       assert le.body["timestamp"] == start_time_us
     end
 
-    test "honors `start_time_unix_nano` (OTEL processor key)", %{source: source} do
+    test "honors every supported trace start-time key", %{source: source} do
+      start_time_ns = System.system_time(:nanosecond) - 1_000_000_000
+
+      for key <- ~w(start_time startTime start_time_unix_nano startTimeUnixNano) do
+        params = %{
+          "event_message" => "trace from otel processor",
+          "metadata" => %{"type" => "span"},
+          key => start_time_ns
+        }
+
+        le = LogEvent.make(params, %{source: source})
+
+        assert le.timestamp_inferred
+        assert le.body["timestamp"] == Utils.to_microseconds(start_time_ns)
+      end
+    end
+
+    test "uses trace start time when an explicit timestamp is invalid", %{source: source} do
       start_time_ns = System.system_time(:nanosecond) - 1_000_000_000
 
       params = %{
-        "event_message" => "trace from otel processor",
+        "event_message" => "trace with invalid timestamp",
         "metadata" => %{"type" => "span"},
+        "timestamp" => "not-a-timestamp",
         "start_time_unix_nano" => start_time_ns
       }
 
       le = LogEvent.make(params, %{source: source})
 
+      assert le.timestamp_inferred
       assert le.body["timestamp"] == Utils.to_microseconds(start_time_ns)
     end
 
@@ -913,23 +1102,6 @@ defmodule Logflare.LogEventTest do
         le = event_with_message("#{first}.#{second}", metadata)
 
         assert Jason.encode!(metadata[first][second]) == le.body["event_message"]
-      end
-    end
-
-    property "timestamp unix conversions" do
-      source = build(:source, user: build(:user))
-
-      check all ts <-
-                  one_of([
-                    integer(1_713_268_565_764_892..1_713_268_565_764_999),
-                    integer(1_713_268_565_764..1_713_268_565_999),
-                    integer(1_713_268_565..1_713_268_999),
-                    float(min: 1_713_268_565.1, max: 1_713_268_999.9),
-                    float(min: 1_713_268_000_000.1, max: 1_713_268_000_999.9),
-                    float(min: 1_713_268_565_000_000.1, max: 1_713_268_565_000_999.9)
-                  ]) do
-        params = Map.put(@vallog_event_ids, "timestamp", ts)
-        LogEvent.make(params, %{source: source})
       end
     end
 

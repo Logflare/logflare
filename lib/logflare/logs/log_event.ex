@@ -16,8 +16,6 @@ defmodule Logflare.LogEvent do
   alias Logflare.Sources.Source
   alias Logflare.Utils
 
-  @validators [BigQuerySchemaChange]
-
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
     field :body, :map, default: %{}
@@ -135,12 +133,12 @@ defmodule Logflare.LogEvent do
       ) do
     event_type = TypeDetection.detect(params)
 
-    %{
-      "body" => %{"id" => id, "timestamp" => timestamp} = body,
-      "timestamp_inferred" => timestamp_inferred
-    } = mapper_for_ingest(params, event_type)
+    {%{"id" => id, "timestamp" => timestamp} = body, timestamp_inferred} =
+      mapper_for_ingest(params, event_type)
 
     day_bucket = DayBucket.from_microseconds(timestamp)
+    ingested_at = DateTime.utc_now()
+    body = transform_body(body, source)
 
     %__MODULE__{
       body: body,
@@ -148,55 +146,25 @@ defmodule Logflare.LogEvent do
       source_uuid: source_uuid,
       source_name: source_name,
       valid: true,
-      ingested_at: DateTime.utc_now(),
+      ingested_at: ingested_at,
       id: id,
       event_type: event_type,
       timestamp_inferred: timestamp_inferred,
       day_bucket: day_bucket
     }
-    |> transform(source)
     |> validate(source)
   end
 
   @spec mapper_from_db(map(), TypeDetection.event_type()) :: %{String.t() => term}
-  defp mapper_from_db(params, event_type),
-    do: mapper(params, event_type, &MetadataCleaner.deep_reject_nil_and_empty/1)
-
-  @spec mapper_for_ingest(map(), TypeDetection.event_type()) :: %{String.t() => term}
-  defp mapper_for_ingest(params, event_type),
-    do: mapper(params, event_type, &clean_ingest_body/1)
-
-  @spec mapper(map(), TypeDetection.event_type(), (map() -> map())) :: %{String.t() => term}
-  defp mapper(params, event_type, clean_body) do
-    # TODO: deprecate and remove `message`
-    event_message = params["message"] || params["event_message"]
+  defp mapper_from_db(params, event_type) do
+    event_message = event_message(params)
     id = id(params)
-
     {timestamp, timestamp_inferred} = determine_timestamp(params, event_type)
-
-    base_merge = %{
-      "timestamp" => timestamp,
-      "id" => id
-    }
-
-    base_merge =
-      if event_message != nil do
-        Map.put(base_merge, "event_message", event_message)
-      else
-        base_merge
-      end
 
     body =
       params
-      |> clean_body.()
-      |> Map.merge(base_merge)
-      |> case do
-        %{"message" => m, "event_message" => em} = map when m == em ->
-          Map.delete(map, "message")
-
-        other ->
-          other
-      end
+      |> MetadataCleaner.deep_reject_nil_and_empty()
+      |> put_mapper_fields(event_message, id, timestamp)
 
     %{
       "body" => body,
@@ -205,88 +173,126 @@ defmodule Logflare.LogEvent do
     }
   end
 
-  @spec validate(LE.t(), Source.t()) :: LE.t()
-  defp validate(%LE{valid: true} = le, source) do
-    @validators
-    |> Enum.reduce_while(true, fn validator, _acc ->
-      case validator.validate(le, source) do
-        :ok ->
-          {:cont, %{le | valid: true, pipeline_error: nil}}
+  @spec mapper_for_ingest(map(), TypeDetection.event_type()) :: {map(), boolean()}
+  defp mapper_for_ingest(params, event_type) do
+    event_message = event_message(params)
+    id = id(params)
+    {timestamp, timestamp_inferred} = determine_timestamp(params, event_type)
 
-        {:error, message} ->
-          {:halt,
-           %{
-             le
-             | valid: false,
-               pipeline_error: %LE.PipelineError{
-                 stage: "validators",
-                 type: "validate",
-                 message: message
-               }
-           }}
-      end
-    end)
+    body =
+      params
+      |> IngestTransformers.transform(:clean_to_bigquery_column_spec)
+      |> put_mapper_fields(event_message, id, timestamp)
+
+    {body, timestamp_inferred}
   end
 
-  @spec clean_ingest_body(map()) :: map()
-  defp clean_ingest_body(params),
-    do: IngestTransformers.transform(params, :clean_to_bigquery_column_spec)
+  @spec put_mapper_fields(map(), term(), String.t(), integer()) :: map()
+  defp put_mapper_fields(body, event_message, id, timestamp) do
+    mapped_fields = %{"id" => id, "timestamp" => timestamp}
 
-  @spec transform(LE.t(), Source.t()) :: LE.t()
-  defp transform(%LE{} = le, %Source{} = source) do
-    with {:ok, le} <- copy_fields(le, source),
-         {:ok, le} <- kv_enrich(le, source),
-         {:ok, le} <- drop_fields(le, source) do
-      le
+    mapped_fields =
+      if event_message != nil do
+        Map.put(mapped_fields, "event_message", event_message)
+      else
+        mapped_fields
+      end
+
+    body = Map.merge(body, mapped_fields)
+
+    case body do
+      %{"message" => m, "event_message" => em} = body when m == em ->
+        Map.delete(body, "message")
+
+      body ->
+        body
     end
   end
 
-  @spec copy_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
-  defp copy_fields(%LE{} = le, %Source{
+  @spec validate(LE.t(), Source.t()) :: LE.t()
+  defp validate(%LE{} = le, source) do
+    case BigQuerySchemaChange.validate(le, source) do
+      :ok ->
+        le
+
+      {:error, message} ->
+        %{
+          le
+          | valid: false,
+            pipeline_error: %LE.PipelineError{
+              stage: "validators",
+              type: "validate",
+              message: message
+            }
+        }
+    end
+  end
+
+  @spec transform_body(map(), Source.t()) :: map()
+  defp transform_body(body, %Source{
+         transform_copy_fields: copy_config,
+         transform_copy_fields_parsed: copy_parsed,
+         transform_key_values: kv_config,
+         transform_key_values_parsed: kv_parsed,
+         transform_drop_fields: drop_config,
+         transform_drop_fields_parsed: drop_parsed
+       })
+       when (copy_parsed == [] or (is_nil(copy_parsed) and copy_config in [nil, ""])) and
+              (kv_parsed == [] or (is_nil(kv_parsed) and kv_config in [nil, ""])) and
+              (drop_parsed == [] or (is_nil(drop_parsed) and drop_config in [nil, ""])),
+       do: body
+
+  defp transform_body(body, %Source{} = source) do
+    body
+    |> copy_fields(source)
+    |> kv_enrich(source)
+    |> drop_fields(source)
+  end
+
+  @spec copy_fields(map(), Source.t()) :: map()
+  defp copy_fields(body, %Source{
          transform_copy_fields_parsed: nil,
          transform_copy_fields: blank
        })
        when blank in [nil, ""],
-       do: {:ok, le}
+       do: body
 
-  defp copy_fields(%LE{} = le, %Source{transform_copy_fields_parsed: []}), do: {:ok, le}
+  defp copy_fields(body, %Source{transform_copy_fields_parsed: []}), do: body
 
-  defp copy_fields(%LE{} = le, %Source{transform_copy_fields_parsed: parsed})
+  defp copy_fields(body, %Source{transform_copy_fields_parsed: parsed})
        when is_list(parsed) do
-    new_body =
-      Enum.reduce(parsed, le.body, fn %{from_path: from_path, to_path: to_path}, acc ->
-        case get_in(acc, from_path) do
-          nil -> acc
-          value -> put_at_path(acc, to_path, value)
-        end
-      end)
-
-    {:ok, %{le | body: new_body}}
+    Enum.reduce(parsed, body, fn %{from_path: from_path, to_path: to_path}, acc ->
+      case get_at_path(acc, from_path) do
+        nil -> acc
+        value -> put_at_path(acc, to_path, value)
+      end
+    end)
   end
 
-  defp copy_fields(%LE{} = le, %Source{} = source) do
-    copy_fields(le, Source.parse_copy_fields_config(source))
+  defp copy_fields(body, %Source{} = source) do
+    copy_fields(body, Source.parse_copy_fields_config(source))
   end
 
-  @spec kv_enrich(LE.t(), Source.t()) :: {:ok, LE.t()}
-  defp kv_enrich(%LE{} = le, %Source{transform_key_values: nil, transform_key_values_parsed: nil}),
-       do: {:ok, le}
+  @spec kv_enrich(map(), Source.t()) :: map()
+  defp kv_enrich(body, %Source{
+         transform_key_values: blank,
+         transform_key_values_parsed: nil
+       })
+       when blank in [nil, ""],
+       do: body
 
-  defp kv_enrich(%LE{} = le, %Source{transform_key_values_parsed: []}), do: {:ok, le}
+  defp kv_enrich(body, %Source{transform_key_values_parsed: []}), do: body
 
-  defp kv_enrich(%LE{} = le, %Source{transform_key_values_parsed: parsed, user_id: user_id})
+  defp kv_enrich(body, %Source{transform_key_values_parsed: parsed, user_id: user_id})
        when is_list(parsed) do
-    new_body =
-      Enum.reduce(parsed, le.body, fn instruction, acc ->
-        apply_kv_instruction(acc, instruction, user_id)
-      end)
-
-    {:ok, %{le | body: new_body}}
+    Enum.reduce(parsed, body, fn instruction, acc ->
+      apply_kv_instruction(acc, instruction, user_id)
+    end)
   end
 
   # Fallback: parse at ingestion time when parsed field is not populated
-  defp kv_enrich(%LE{} = le, %Source{} = source) do
-    kv_enrich(le, Source.parse_key_values_config(source))
+  defp kv_enrich(body, %Source{} = source) do
+    kv_enrich(body, Source.parse_key_values_config(source))
   end
 
   @spec apply_kv_instruction(map(), map(), integer()) :: map()
@@ -297,7 +303,7 @@ defmodule Logflare.LogEvent do
        ) do
     accessor_path = Map.get(instruction, :accessor_path)
 
-    with raw when not is_nil(raw) <- get_in(body, from_path),
+    with raw when not is_nil(raw) <- get_at_path(body, from_path),
          raw_string <- to_string(raw),
          true <- Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-
@@ -308,6 +314,16 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  defp get_at_path(nil, _path), do: nil
+
+  defp get_at_path(map, [key]) when is_map(map) and is_binary(key),
+    do: Map.get(map, key)
+
+  defp get_at_path(map, [head | tail]) when is_map(map) and is_binary(head),
+    do: get_at_path(Map.get(map, head), tail)
+
+  defp get_at_path(data, path), do: get_in(data, path)
+
   @spec put_at_path(map(), [String.t()], term()) :: map()
   defp put_at_path(map, [leaf], value) when is_map(map), do: Map.put(map, leaf, value)
 
@@ -316,24 +332,23 @@ defmodule Logflare.LogEvent do
     Map.put(map, head, put_at_path(child, rest, value))
   end
 
-  @spec drop_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
-  defp drop_fields(%LE{} = le, %Source{
+  @spec drop_fields(map(), Source.t()) :: map()
+  defp drop_fields(body, %Source{
          transform_drop_fields_parsed: nil,
          transform_drop_fields: blank
        })
        when blank in [nil, ""],
-       do: {:ok, le}
+       do: body
 
-  defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: []}), do: {:ok, le}
+  defp drop_fields(body, %Source{transform_drop_fields_parsed: []}), do: body
 
-  defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: parsed})
+  defp drop_fields(body, %Source{transform_drop_fields_parsed: parsed})
        when is_list(parsed) do
-    new_body = Enum.reduce(parsed, le.body, fn keys, acc -> drop_field_at(acc, keys) end)
-    {:ok, %{le | body: new_body}}
+    Enum.reduce(parsed, body, fn keys, acc -> drop_field_at(acc, keys) end)
   end
 
-  defp drop_fields(%LE{} = le, %Source{} = source) do
-    drop_fields(le, Source.parse_drop_fields_config(source))
+  defp drop_fields(body, %Source{} = source) do
+    drop_fields(body, Source.parse_drop_fields_config(source))
   end
 
   @spec drop_field_at(term(), [String.t()]) :: term()
@@ -341,8 +356,14 @@ defmodule Logflare.LogEvent do
 
   defp drop_field_at(body, [head | rest]) when is_map(body) do
     case Map.fetch(body, head) do
-      {:ok, child} when is_map(child) -> Map.put(body, head, drop_field_at(child, rest))
-      _ -> body
+      {:ok, child} when is_map(child) ->
+        case drop_field_at(child, rest) do
+          ^child -> body
+          updated_child -> Map.put(body, head, updated_child)
+        end
+
+      _ ->
+        body
     end
   end
 
@@ -427,6 +448,10 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  # TODO: deprecate and remove `message`
+  @compile {:inline, event_message: 1}
+  defp event_message(params), do: params["message"] || params["event_message"]
+
   @spec id(map()) :: String.t()
   defp id(params) do
     params["id"] || params[:id] || Ecto.UUID.generate()
@@ -444,17 +469,14 @@ defmodule Logflare.LogEvent do
     do: {default_timestamp(), true}
 
   defp determine_timestamp(%{"timestamp" => x}) when is_non_empty_binary(x) do
-    case DateTime.from_iso8601(x) do
-      {:ok, udt, _} ->
-        {DateTime.to_unix(udt, :microsecond), false}
-
-      {:error, _} ->
-        {default_timestamp(), true}
+    case iso8601_to_microseconds(x) do
+      {:ok, timestamp} -> {timestamp, false}
+      {:error, _} -> {default_timestamp(), true}
     end
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_non_negative_integer(x) do
-    {Utils.to_microseconds(x), false}
+    {timestamp_to_microseconds(x), false}
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_float(x) do
@@ -479,18 +501,110 @@ defmodule Logflare.LogEvent do
 
   @spec extract_trace_start_time(params :: map()) :: pos_integer() | nil
   defp extract_trace_start_time(%{"start_time" => n}) when is_pos_integer(n),
-    do: Utils.to_microseconds(n)
+    do: timestamp_to_microseconds(n)
 
   defp extract_trace_start_time(%{"startTime" => n}) when is_pos_integer(n),
-    do: Utils.to_microseconds(n)
+    do: timestamp_to_microseconds(n)
 
   defp extract_trace_start_time(%{"start_time_unix_nano" => n}) when is_pos_integer(n),
-    do: Utils.to_microseconds(n)
+    do: timestamp_to_microseconds(n)
 
   defp extract_trace_start_time(%{"startTimeUnixNano" => n}) when is_pos_integer(n),
-    do: Utils.to_microseconds(n)
+    do: timestamp_to_microseconds(n)
 
   defp extract_trace_start_time(_params), do: nil
+
+  defp iso8601_to_microseconds(
+         <<y1, y2, y3, y4, ?-, mo1, mo2, ?-, d1, d2, ?T, h1, h2, ?:, mi1, mi2, ?:, s1, s2, ?., u1,
+           u2, u3, u4, u5, u6, ?Z>> = timestamp
+       )
+       when y1 in ?0..?9 and y2 in ?0..?9 and y3 in ?0..?9 and y4 in ?0..?9 and
+              mo1 in ?0..?9 and mo2 in ?0..?9 and d1 in ?0..?9 and d2 in ?0..?9 and
+              h1 in ?0..?9 and h2 in ?0..?9 and mi1 in ?0..?9 and mi2 in ?0..?9 and
+              s1 in ?0..?9 and s2 in ?0..?9 and u1 in ?0..?9 and u2 in ?0..?9 and
+              u3 in ?0..?9 and u4 in ?0..?9 and u5 in ?0..?9 and u6 in ?0..?9 do
+    year = decimal4(y1, y2, y3, y4)
+    month = decimal2(mo1, mo2)
+    day = decimal2(d1, d2)
+    hour = decimal2(h1, h2)
+    minute = decimal2(mi1, mi2)
+    second = decimal2(s1, s2)
+
+    days_before_month =
+      if year in 1970..2099 do
+        days_before_month(year, month, day)
+      end
+
+    if is_integer(days_before_month) and hour < 24 and minute < 60 and second < 60 do
+      microsecond = decimal6(u1, u2, u3, u4, u5, u6)
+
+      days =
+        (year - 1970) * 365 + div(year - 1969, 4) + days_before_month + day - 1
+
+      {:ok, (((days * 24 + hour) * 60 + minute) * 60 + second) * 1_000_000 + microsecond}
+    else
+      parse_iso8601(timestamp)
+    end
+  end
+
+  defp iso8601_to_microseconds(timestamp), do: parse_iso8601(timestamp)
+
+  defp parse_iso8601(timestamp) do
+    case DateTime.from_iso8601(timestamp) do
+      {:ok, datetime, _offset} -> {:ok, DateTime.to_unix(datetime, :microsecond)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp days_before_month(_year, 1, day) when day in 1..31, do: 0
+  defp days_before_month(_year, 2, day) when day in 1..28, do: 31
+  defp days_before_month(year, 2, 29) when rem(year, 4) == 0, do: 31
+  defp days_before_month(year, 3, day) when day in 1..31, do: 59 + leap_day(year)
+  defp days_before_month(year, 4, day) when day in 1..30, do: 90 + leap_day(year)
+  defp days_before_month(year, 5, day) when day in 1..31, do: 120 + leap_day(year)
+  defp days_before_month(year, 6, day) when day in 1..30, do: 151 + leap_day(year)
+  defp days_before_month(year, 7, day) when day in 1..31, do: 181 + leap_day(year)
+  defp days_before_month(year, 8, day) when day in 1..31, do: 212 + leap_day(year)
+  defp days_before_month(year, 9, day) when day in 1..30, do: 243 + leap_day(year)
+  defp days_before_month(year, 10, day) when day in 1..31, do: 273 + leap_day(year)
+  defp days_before_month(year, 11, day) when day in 1..30, do: 304 + leap_day(year)
+  defp days_before_month(year, 12, day) when day in 1..31, do: 334 + leap_day(year)
+  defp days_before_month(_year, _month, _day), do: nil
+
+  defp leap_day(year) when rem(year, 4) == 0, do: 1
+  defp leap_day(_year), do: 0
+
+  @compile {:inline, decimal2: 2, decimal4: 4, decimal6: 6}
+  defp decimal2(a, b), do: (a - ?0) * 10 + b - ?0
+  defp decimal4(a, b, c, d), do: (a - ?0) * 1_000 + (b - ?0) * 100 + decimal2(c, d)
+
+  defp decimal6(a, b, c, d, e, f),
+    do:
+      (a - ?0) * 100_000 + (b - ?0) * 10_000 + (c - ?0) * 1_000 + (d - ?0) * 100 +
+        (e - ?0) * 10 + f - ?0
+
+  defp timestamp_to_microseconds(raw)
+       when raw >= 1_000_000_000_000_000_000 and
+              raw < 10_000_000_000_000_000_000,
+       do: div(raw, 1_000)
+
+  defp timestamp_to_microseconds(raw)
+       when raw >= 1_000_000_000_000_000 and
+              raw < 10_000_000_000_000_000,
+       do: raw
+
+  defp timestamp_to_microseconds(raw)
+       when raw >= 1_000_000_000_000 and
+              raw < 10_000_000_000_000,
+       do: raw * 1_000
+
+  defp timestamp_to_microseconds(raw) when raw >= 1_000_000_000 and raw < 10_000_000_000,
+    do: raw * 1_000_000
+
+  defp timestamp_to_microseconds(raw) when raw >= 1_000_000 and raw < 10_000_000,
+    do: raw * 1_000_000_000
+
+  defp timestamp_to_microseconds(raw), do: raw
 
   @spec default_timestamp() :: integer()
   defp default_timestamp do
