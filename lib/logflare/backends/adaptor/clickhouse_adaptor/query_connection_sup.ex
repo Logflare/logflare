@@ -45,6 +45,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
 
   import Logflare.Utils.Guards
 
+  require Ex2ms
   require Logger
 
   alias Logflare.Backends
@@ -99,10 +100,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   """
   @spec list_query_connection_managers() :: [{backend_id :: integer(), pid()}]
   def list_query_connection_managers do
-    Registry.select(BackendRegistry, [
-      {{{ConnectionManager, :"$1"}, :"$2", :_}, [], [{{:"$1", :"$2"}}]},
-      {{{ConnectionManager, :"$1", :_}, :"$2", :_}, [], [{{:"$1", :"$2"}}]}
-    ])
+    manager = ConnectionManager
+
+    ms =
+      Ex2ms.fun do
+        {{^manager, backend_id}, pid, _} -> {backend_id, pid}
+        {{^manager, backend_id, _}, pid, _} -> {backend_id, pid}
+      end
+
+    Registry.select(BackendRegistry, ms)
   end
 
   @doc """
@@ -239,10 +245,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
 
   @spec lookup_managers(pos_integer()) :: [pid()]
   defp lookup_managers(backend_id) when is_pos_integer(backend_id) do
-    Registry.select(BackendRegistry, [
-      {{{ConnectionManager, backend_id}, :"$1", :_}, [], [:"$1"]},
-      {{{ConnectionManager, backend_id, :_}, :"$1", :_}, [], [:"$1"]}
-    ])
+    manager = ConnectionManager
+
+    ms =
+      Ex2ms.fun do
+        {{^manager, ^backend_id}, pid, _} -> pid
+        {{^manager, ^backend_id, _}, pid, _} -> pid
+      end
+
+    Registry.select(BackendRegistry, ms)
   end
 
   @spec aggregate_results([:ok | {:error, term()}]) :: :ok | {:error, term()}
