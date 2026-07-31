@@ -1,7 +1,6 @@
 defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.AdaptorSupervisor
@@ -110,7 +109,6 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
 
     setup %{source: source, backend: backend} do
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(250)
       :ok
     end
 
@@ -130,7 +128,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
 
       log_events = build_list(3, :log_event, source: source)
 
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert {:ok, _} = enqueue_backend_logs(log_events, source)
       assert_receive {^ref, body}, 5000
       assert request = Protobuf.decode(body, ExportLogsServiceRequest)
       assert %{resource_logs: [%{scope_logs: [%{log_records: [_, _, _]}]}]} = request
