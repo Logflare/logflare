@@ -134,7 +134,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   def ack({queue, config}, successful, failed) do
     {sid, bid, _pipeline_ref} = queue
 
-    decrement_in_flight(successful ++ failed)
+    decrement_in_flight(successful)
+    decrement_in_flight(failed)
     finalize_acked_events({sid, bid}, successful)
     maybe_requeue_failed({sid, bid}, failed, config)
 
@@ -148,16 +149,28 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   @spec decrement_in_flight([Message.t()]) :: :ok
-  defp decrement_in_flight(messages) do
-    messages
-    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} ->
-      Map.get(ack_data, :in_flight_ref)
-    end)
-    |> Enum.each(fn
-      {nil, _msgs} -> :ok
-      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
-    end)
+  defp decrement_in_flight(messages), do: decrement_in_flight(messages, nil, 0)
+
+  defp decrement_in_flight([], nil, 0), do: :ok
+  defp decrement_in_flight([], ref, count), do: decrement_in_flight_ref(ref, count)
+
+  defp decrement_in_flight(
+         [%{acknowledger: {_, _, ack_data}} | messages],
+         current_ref,
+         count
+       ) do
+    ref = Map.get(ack_data, :in_flight_ref)
+
+    if ref == current_ref do
+      decrement_in_flight(messages, current_ref, count + 1)
+    else
+      decrement_in_flight_ref(current_ref, count)
+      decrement_in_flight(messages, ref, 1)
+    end
   end
+
+  defp decrement_in_flight_ref(nil, _count), do: :ok
+  defp decrement_in_flight_ref(ref, count), do: :atomics.sub(ref, 1, count)
 
   # Always deletes the generation-store row. If the source's ingest rate is low, also
   # keeps an independent copy in the recent-events cache first, so "recent logs" reads
