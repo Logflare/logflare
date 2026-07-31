@@ -48,8 +48,8 @@ jobs:
           echo "erlang=$(grep '^erlang '  .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
           echo "rust=$(grep   '^rust '    .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
-  check:
-    name: Checks
+  quality:
+    name: Checks (${{ matrix.commands.name }}, ${{ matrix.commands.run }})
     runs-on: ubuntu-latest
     needs: versions
     strategy:
@@ -59,15 +59,149 @@ jobs:
             run: mix lint.all
           - name: Code Quality - Formatting
             run: mix test.format
-          - name: Compilation Warnings
-            run: mix test.compile
-          - name: Tests
-            # we start epmd for clustered tests
-            run: epmd -daemon; mix do ecto.create + ecto.migrate + test.coverage.ci
-          # - name: Security - Sobelow Code Scan
-          #   run: mix test.security
-          - name: Typing check
-            run: mix test.typings
+    env:
+      MIX_ENV: test
+      SHELL: /bin/bash
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - name: Restore Mix cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+            priv/native
+          key: mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock', '**/Cargo.lock', 'native/**') }}
+          restore-keys: |
+            mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
+            mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+
+      - name: Install dependencies
+        run: mix do deps.get + deps.compile
+
+      - name: Run ${{ matrix.commands.name }}
+        run: ${{ matrix.commands.run }}
+
+  compile:
+    name: Checks (Compilation Warnings, mix test.compile)
+    runs-on: ubuntu-latest
+    needs: versions
+    env:
+      MIX_ENV: test
+      SHELL: /bin/bash
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ needs.versions.outputs.rust }}
+
+      - name: Restore Cargo cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-
+            cargo-${{ runner.os }}-
+
+      - name: Restore Mix cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+            priv/native
+          key: mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock', '**/Cargo.lock', 'native/**') }}
+          restore-keys: |
+            mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
+            mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+
+      - name: Install dependencies
+        run: mix do deps.get + deps.compile
+
+      - name: Run compilation checks
+        run: mix test.compile
+
+  typing:
+    name: Checks (Typing check, mix test.typings)
+    runs-on: ubuntu-latest
+    needs: versions
+    env:
+      MIX_ENV: test
+      SHELL: /bin/bash
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ needs.versions.outputs.rust }}
+
+      - name: Restore Cargo cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-
+            cargo-${{ runner.os }}-
+
+      - name: Restore Mix cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+            priv/native
+          key: mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock', '**/Cargo.lock', 'native/**') }}
+          restore-keys: |
+            mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
+            mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+
+      - name: Restore Dialyzer PLT cache
+        uses: actions/cache@v5
+        with:
+          path: dialyzer
+          key: plt-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            plt-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
+            plt-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+
+      - name: Install dependencies
+        run: mix do deps.get + deps.compile
+
+      - name: Run typing checks
+        run: mix test.typings
+
+  test:
+    name: Checks (Tests, epmd -daemon; mix do ecto.create + ecto.migrate + test.coverage.ci)
+    runs-on: ubuntu-latest
+    needs: versions
     services:
       postgres:
         image: bitnamilegacy/postgresql:15
@@ -78,7 +212,6 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: logflare_test
           POSTGRESQL_WAL_LEVEL: logical
-        # Set health checks to wait until postgres has started
         options: >-
           --health-cmd "pg_isready -d logflare_test -U postgres -p 5432"
           --health-interval 10s
@@ -109,7 +242,7 @@ jobs:
       MIX_ENV: test
       SHELL: /bin/bash
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      COVERALLS_SERVICE_JOB_ID: ${{ github.sha }}-${{ strategy.job-index }}-${{ github.run_id }}
+      COVERALLS_SERVICE_JOB_ID: ${{ github.sha }}-tests-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v6
 
@@ -156,21 +289,11 @@ jobs:
             mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
             mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
 
-      - name: Restore Dialyzer PLT cache
-        if: matrix.commands.name == 'Typing check'
-        uses: actions/cache@v5
-        with:
-          path: dialyzer
-          key: plt-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock') }}
-          restore-keys: |
-            plt-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
-            plt-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
-
       - name: Install dependencies
         run: mix do deps.get + deps.compile
 
-      - name: Run ${{ matrix.commands.name }}
-        run: ${{ matrix.commands.run }}
+      - name: Run tests
+        run: epmd -daemon; mix do ecto.create + ecto.migrate + test.coverage.ci
 
   rust:
     name: Rust unit tests
