@@ -2,7 +2,6 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -120,7 +119,6 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
       [backend: backend, source: source]
     end
 
@@ -136,7 +134,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
 
       le = build(:log_event, source: source)
 
-      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert {:ok, _} = enqueue_backend_logs([le], source)
       assert_receive ^ref, 2000
     end
 
@@ -152,7 +150,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
 
       le = build(:log_event, source: source)
 
-      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert {:ok, _} = enqueue_backend_logs([le], source)
       assert_receive {^ref, log_entry}, 2000
 
       assert %{streams: [%{stream: %{source: "supabase", service: ^source_name}}]} = log_entry
@@ -170,7 +168,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
 
       le = build(:log_event, source: source)
 
-      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert {:ok, _} = enqueue_backend_logs([le], source)
       assert_receive {^ref, payload}, 2000
 
       assert %{

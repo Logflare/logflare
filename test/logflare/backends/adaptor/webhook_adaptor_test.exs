@@ -8,6 +8,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.SourceSup
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
 
@@ -29,12 +30,11 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
           config: %{http: "http1", url: "https://example.com"}
         )
 
-      start_supervised!({SourceSup, source})
-      :timer.sleep(500)
       [source: source, backend: backend]
     end
 
-    test "ingest", %{source: source} do
+    test "ingest through the full source supervision tree", %{source: source} do
+      start_supervised!({SourceSup, source})
       this = self()
       ref = make_ref()
 
@@ -52,7 +52,9 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       assert_receive ^ref, 2000
     end
 
-    test "uses cache for config fetching", %{source: source} do
+    test "uses cache for config fetching", %{source: source, backend: backend} do
+      start_supervised!({AdaptorSupervisor, {source, backend}})
+
       Logflare.Repo.update_all(Backend,
         set: [config_encrypted: %{http: "http1", url: "https://other-email.com"}]
       )
@@ -71,7 +73,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
       le = build(:log_event, source: source)
 
-      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert {:ok, _} = enqueue_backend_logs([le], source)
       assert_receive ^ref, 2000
     end
   end
