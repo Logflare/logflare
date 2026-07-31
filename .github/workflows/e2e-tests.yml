@@ -7,13 +7,16 @@ on:
   pull_request:
     branches: ["**"]
     paths:
+      - "assets/**"
       - "lib/**"
       - "config/**"
       - "*.exs"
       - "*.lock"
       - "native/**"
       - "priv/**"
-      - "test/**"
+      - "test/e2e/features/**"
+      - "test/support/**"
+      - "test/test_helper.exs"
       # Run suite when this file is changed
       - ".github/workflows/e2e-tests.yml"
 
