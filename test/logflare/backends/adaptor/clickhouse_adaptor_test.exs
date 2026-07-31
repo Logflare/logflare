@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
@@ -373,20 +374,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert :ok = ClickHouseAdaptor.test_connection(backend)
     end
 
-    test "fails when ingest URL is unreachable" do
-      {_source, backend} =
-        setup_clickhouse_test(config: %{url: "http://localhost:19999"})
+    test "fails when the ingest cluster returns a connection error" do
+      {_source, backend} = setup_clickhouse_test(cleanup?: false)
 
-      start_supervised!({ClickHouseAdaptor, backend})
-      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+      stub(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+      end)
+
+      assert {:error, :grant_check_unknown_failure} = ClickHouseAdaptor.test_connection(backend)
     end
 
-    test "fails when read_only_url is unreachable" do
+    test "fails when the read cluster returns a connection error" do
       {_source, backend} =
-        setup_clickhouse_test(config: %{read_only_url: "http://localhost:19999"})
+        setup_clickhouse_test(
+          config: %{read_only_url: "http://localhost:8123"},
+          cleanup?: false
+        )
 
-      start_supervised!({ClickHouseAdaptor, backend})
-      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+      read_grant_statement = QueryTemplates.read_grant_check_statement()
+
+      stub(Ch, :query, fn pool, statement, params, opts ->
+        if statement == read_grant_statement do
+          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+        else
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+        end
+      end)
+
+      assert {:error, :grant_check_unknown_failure} = ClickHouseAdaptor.test_connection(backend)
+      QueryConnectionSup.terminate_backend_local(backend.id)
     end
 
     test "passes when async is enabled and async_insert_cluster_url points to a valid cluster" do
@@ -485,8 +501,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       result = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log, async: true)
       assert :ok = result
 
-      Process.sleep(500)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       query_result =
@@ -518,8 +532,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       result = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
       assert :ok = result
-
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -587,8 +599,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
 
-      Process.sleep(100)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       {:ok, {[row], _bytes}} =
@@ -618,8 +628,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, [metric_event], :metric)
 
-      Process.sleep(100)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
       {:ok, {[row], _bytes}} =
@@ -646,8 +654,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, [trace_event], :trace)
-
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
@@ -677,8 +683,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
         :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], event_type)
 
-        Process.sleep(100)
-
         table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
         {:ok, {query_result, _bytes}} =
@@ -707,8 +711,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "executes a query with query-level SETTINGS", %{source: source, backend: backend} do
       log_event = build_mapped_log_event(source: source, message: "settings exec test")
       assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
-
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -786,7 +788,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       ]
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -863,7 +864,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         end
 
       assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
-      Process.sleep(200)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -1032,7 +1032,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
-      Process.sleep(100)
       [source: source, backend: backend]
     end
 
@@ -1100,7 +1099,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
-      Process.sleep(100)
       [source: source, backend: backend]
     end
 
