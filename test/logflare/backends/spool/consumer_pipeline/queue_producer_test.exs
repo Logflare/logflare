@@ -35,7 +35,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     )
 
     start_supervised!(MemoryMonitor)
-    Process.sleep(50)
+    :sys.get_state(MemoryMonitor)
 
     :ok
   end
@@ -117,7 +117,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       spool_max_ets_percent: 0.0
     )
 
-    Process.sleep(1_100)
+    send(MemoryMonitor, :refresh)
+    :sys.get_state(MemoryMonitor)
     assert MemoryMonitor.throttled?() == true
   end
 
@@ -127,7 +128,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       spool_max_ets_percent: 1.0
     )
 
-    Process.sleep(1_100)
+    send(MemoryMonitor, :refresh)
+    :sys.get_state(MemoryMonitor)
     assert MemoryMonitor.throttled?() == false
   end
 
@@ -190,12 +192,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
-      Process.sleep(50)
-
-      poll_timer = :sys.get_state(pid).state.poll_timer
-
-      refute is_nil(poll_timer)
-      assert Process.read_timer(poll_timer)
+      TestUtils.retry_assert(fn ->
+        poll_timer = :sys.get_state(pid).state.poll_timer
+        refute is_nil(poll_timer)
+        assert Process.read_timer(poll_timer)
+      end)
     end
 
     test "recovers automatically once memory pressure drops, without any new demand arriving" do
@@ -229,12 +230,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
-      Process.sleep(50)
-
-      poll_timer = :sys.get_state(pid).state.poll_timer
-
-      refute is_nil(poll_timer)
-      assert Process.read_timer(poll_timer)
+      TestUtils.retry_assert(fn ->
+        poll_timer = :sys.get_state(pid).state.poll_timer
+        refute is_nil(poll_timer)
+        assert Process.read_timer(poll_timer)
+      end)
     end
 
     test "recovers automatically once consumer backlog clears, without any new demand arriving" do

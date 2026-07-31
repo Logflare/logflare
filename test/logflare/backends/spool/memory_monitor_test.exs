@@ -27,7 +27,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
     )
 
     start_supervised!(MemoryMonitor)
-    Process.sleep(50)
+    :sys.get_state(MemoryMonitor)
 
     assert MemoryMonitor.throttled?() == true
   end
@@ -39,9 +39,29 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
     )
 
     start_supervised!(MemoryMonitor)
-    Process.sleep(50)
+    :sys.get_state(MemoryMonitor)
 
     assert MemoryMonitor.throttled?() == false
+  end
+
+  test "periodically refreshes cached memory pressure without an explicit message" do
+    Application.put_env(:logflare, :spool,
+      spool_memory_limit_percent: 1.0,
+      spool_max_ets_percent: 1.0
+    )
+
+    start_supervised!(MemoryMonitor)
+    :sys.get_state(MemoryMonitor)
+    assert MemoryMonitor.throttled?() == false
+
+    Application.put_env(:logflare, :spool,
+      spool_memory_limit_percent: 0.0,
+      spool_max_ets_percent: 0.0
+    )
+
+    TestUtils.retry_assert([duration: 1_500, sleep: 25], fn ->
+      assert MemoryMonitor.throttled?() == true
+    end)
   end
 
   test "refresh/0 emits a [:logflare, :backends, :spool, :throttled] telemetry event on every refresh" do
@@ -82,7 +102,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       )
 
       pid = start_supervised!(MemoryMonitor)
-      Process.sleep(50)
+      :sys.get_state(pid)
 
       {:ok, user: user, source: source, table_key: table_key, pid: pid}
     end
