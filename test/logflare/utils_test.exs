@@ -14,6 +14,8 @@ defmodule Logflare.Utils.FlagTest do
   alias Logflare.User
   alias Logflare.Utils
 
+  setup :set_mimic_global
+
   setup do
     start_supervised!(ConfigCatCache)
 
@@ -338,7 +340,7 @@ defmodule Logflare.UtilsSyncTest do
 
           ref = Process.monitor(pid)
           assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
-          Process.sleep(500)
+          Logger.flush()
         end)
 
       refute log =~ "secret_bearer_token_789"
@@ -361,7 +363,7 @@ defmodule Logflare.UtilsSyncTest do
 
           ref = Process.monitor(pid)
           assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
-          Process.sleep(500)
+          Logger.flush()
         end)
 
       assert log =~ "UndefinedError"
