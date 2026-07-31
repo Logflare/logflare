@@ -504,7 +504,9 @@ defmodule Logflare.Sources do
   @spec preload_for_dashboard(list(Source.t())) :: list(Source.t())
   def preload_for_dashboard(sources) do
     sources
-    |> Enum.map(&preload_defaults/1)
+    |> Repo.preload([:backends, [user: :team]])
+    |> Enum.map(&refresh_source_metrics/1)
+    |> Enum.map(&put_bq_table_id/1)
     |> Enum.map(&put_schema_field_count/1)
     |> Enum.sort_by(&{!&1.favorite, &1.name})
   end

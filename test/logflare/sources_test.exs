@@ -264,6 +264,10 @@ defmodule Logflare.SourcesTest do
       [user: insert(:user)]
     end
 
+    test "returns an empty list for empty input" do
+      assert Sources.preload_for_dashboard([]) == []
+    end
+
     test "preloads only the required fields", %{user: user} do
       sources = insert_list(3, :source, %{user_id: user.id})
       assocs = Sources.Source.__schema__(:associations)
@@ -271,6 +275,8 @@ defmodule Logflare.SourcesTest do
       sources = Sources.preload_for_dashboard(sources)
 
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user))
+      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.backends))
+      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user.team))
 
       refute Enum.any?(sources, &Ecto.assoc_loaded?(&1.rules))
     end
@@ -282,6 +288,44 @@ defmodule Logflare.SourcesTest do
       sources = Sources.preload_for_dashboard([source_1, source_2, source_3])
 
       assert Enum.map(sources, & &1.name) == Enum.map([source_2, source_3, source_1], & &1.name)
+    end
+
+    test "association query count does not scale with source count", %{user: user} do
+      assocs = Sources.Source.__schema__(:associations)
+
+      count_queries = fn sources ->
+        sources = Enum.map(sources, &Ecto.reset_fields(&1, assocs))
+
+        {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+        handler_id = {:preload_for_dashboard_query_count, make_ref()}
+
+        :telemetry.attach(
+          handler_id,
+          [:logflare, :repo, :query],
+          fn _event, _measurements, metadata, _config ->
+            if metadata.source in ["users", "teams", "backends"] do
+              Agent.update(counter, &(&1 + 1))
+            end
+          end,
+          nil
+        )
+
+        Sources.preload_for_dashboard(sources)
+
+        count = Agent.get(counter, & &1)
+        :telemetry.detach(handler_id)
+        Agent.stop(counter)
+        count
+      end
+
+      one_source = insert_list(1, :source, %{user_id: user.id})
+      many_sources = insert_list(20, :source, %{user_id: user.id})
+
+      one_source_query_count = count_queries.(one_source)
+      many_sources_query_count = count_queries.(many_sources)
+
+      assert one_source_query_count == many_sources_query_count
     end
   end
 
