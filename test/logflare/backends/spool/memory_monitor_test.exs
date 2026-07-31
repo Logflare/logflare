@@ -92,6 +92,17 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       :sys.get_state(pid)
     end
 
+    defp fill_queue(table_key) do
+      event = build(:log_event)
+
+      events =
+        for id <- 1..(Backends.max_buffer_queue_len() + 500) do
+          %{event | id: {event.id, id}}
+        end
+
+      IngestEventQueue.add_to_table(table_key, events)
+    end
+
     test "is true once a registered source's destination buffer is full", %{
       source: source,
       table_key: table_key,
@@ -99,10 +110,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
     } do
       assert MemoryMonitor.consumer_throttled?() == false
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue(table_key)
 
       MemoryMonitor.register_source(source.id)
       force_refresh(pid)
@@ -115,10 +123,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       table_key: table_key,
       pid: pid
     } do
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue(table_key)
 
       MemoryMonitor.register_source(source.id)
       force_refresh(pid)
@@ -134,10 +139,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       table_key: table_key,
       pid: pid
     } do
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue(table_key)
 
       # never registered
       force_refresh(pid)
@@ -164,10 +166,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       MemoryMonitor.register_source(source.id)
       MemoryMonitor.register_source(source.id)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue(table_key)
 
       force_refresh(pid)
 
@@ -189,10 +188,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       backend_table_key = {source.id, backend.id, self()}
       IngestEventQueue.upsert_tid(backend_table_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(backend_table_key, [le])
-      end
+      fill_queue(backend_table_key)
 
       MemoryMonitor.register_source(source.id)
       force_refresh(pid)
