@@ -906,7 +906,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   def pop_pending_pointers(sid_bid_pid, n) when is_integer(n) do
     ms = [
-      {{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}, [], [:"$1"]}
+      {{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}
     ]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
@@ -962,7 +962,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       when event_type in [:log, :metric, :trace] and is_integer(day_bucket) and
              is_integer(n) and n > 0 do
     ms = [
-      {{:"$1", :"$2", :"$3", :"$4", :"$5", event_type, day_bucket}, [], [:"$1"]}
+      {{:"$1", :_, :_, :_, :_, event_type, day_bucket}, [], [:"$1"]}
     ]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
