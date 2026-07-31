@@ -71,7 +71,7 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :edit}} = socket
       ) do
-    with {:ok, params} <- assemble_read_clusters(transform_params(params)) do
+    with {:ok, params} <- transform_params(params) do
       socket =
         case Backends.update_backend(socket.assigns.backend, params) do
           {:ok, backend} ->
@@ -98,7 +98,7 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :new}} = socket
       ) do
-    with {:ok, params} <- assemble_read_clusters(transform_params(params)) do
+    with {:ok, params} <- transform_params(params) do
       socket =
         case Logflare.Backends.create_backend(socket.assigns.user, params) do
           {:ok, backend} ->
@@ -445,28 +445,12 @@ defmodule LogflareWeb.BackendsLive do
     |> assign(:available_sources, available_sources)
   end
 
-  @spec assemble_read_clusters(map()) :: {:ok, map()} | {:error, String.t()}
-  defp assemble_read_clusters(%{"config" => config} = params) when is_map(config) do
-    if has_read_cluster_fields?(config) do
-      with {:ok, config} <- ReadClusterUrlsComponent.assemble_read_only_urls(config) do
-        {:ok, %{params | "config" => config}}
-      end
-    else
-      {:ok, params}
-    end
-  end
-
-  defp assemble_read_clusters(params), do: {:ok, params}
-
-  @spec has_read_cluster_fields?(map()) :: boolean()
-  defp has_read_cluster_fields?(config) do
-    Enum.any?(config, fn {key, _value} -> String.starts_with?(key, "read_cluster_label_") end)
-  end
-
+  @spec transform_params(map()) :: {:ok, map()} | {:error, String.t()}
   defp transform_params(params) do
     type = params["type"]
 
-    Map.update(params, "config", nil, fn config ->
+    params
+    |> Map.update("config", nil, fn config ->
       headers_form_keys =
         for i <- 1..2 do
           ["header#{i}_key", "header#{i}_value"]
@@ -487,6 +471,25 @@ defmodule LogflareWeb.BackendsLive do
       |> Map.put("headers", headers)
       |> transform_config_for_type(type)
     end)
+    |> assemble_read_clusters()
+  end
+
+  @spec assemble_read_clusters(map()) :: {:ok, map()} | {:error, String.t()}
+  defp assemble_read_clusters(%{"config" => config} = params) when is_map(config) do
+    if has_read_cluster_fields?(config) do
+      with {:ok, config} <- ReadClusterUrlsComponent.assemble_read_only_urls(config) do
+        {:ok, %{params | "config" => config}}
+      end
+    else
+      {:ok, params}
+    end
+  end
+
+  defp assemble_read_clusters(params), do: {:ok, params}
+
+  @spec has_read_cluster_fields?(map()) :: boolean()
+  defp has_read_cluster_fields?(config) do
+    Enum.any?(config, fn {key, _value} -> String.starts_with?(key, "read_cluster_label_") end)
   end
 
   defp transform_config_for_type(%{"metadata" => metadata_str} = config, "incidentio")
