@@ -29,6 +29,12 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     ]
   end
 
+  defp wait_for_stop do
+    receive do
+      :stop -> :ok
+    end
+  end
+
   test "add_pipeline/1 can scale up pipelines", %{name: name, pipeline_args: pipeline_args} do
     start_supervised!(
       {DynamicPipeline,
@@ -84,10 +90,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
 
   test ":resolve_count and :resolve_interval option will determine number of pipelines to start periodically",
        %{name: name, pipeline_args: pipeline_args} do
-    pid =
-      spawn(fn ->
-        :timer.sleep(400)
-      end)
+    pid = spawn(&wait_for_stop/0)
 
     start_supervised!(
       {DynamicPipeline,
@@ -116,6 +119,10 @@ defmodule Logflare.Backends.DynamicPipelineTest do
       assert DynamicPipeline.pipeline_count(name) == 5
     end)
 
+    ref = Process.monitor(pid)
+    send(pid, :stop)
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+
     TestUtils.retry_assert(fn ->
       assert DynamicPipeline.pipeline_count(name) == 10
     end)
@@ -136,7 +143,9 @@ defmodule Logflare.Backends.DynamicPipelineTest do
                   resolve_interval: 100}
                )
 
-             :timer.sleep(300)
+             coordinator = DynamicPipeline.find_coordinator_name(name)
+             send(coordinator, :check)
+             :sys.get_state(coordinator)
              assert Process.alive?(pid)
            end) =~ "some error"
   end
@@ -190,10 +199,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
         [:logflare, :backends, :dynamic_pipeline, :decrement]
       ])
 
-    pid =
-      spawn(fn ->
-        :timer.sleep(400)
-      end)
+    pid = spawn(&wait_for_stop/0)
 
     start_supervised!(
       {DynamicPipeline,
@@ -221,6 +227,10 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     TestUtils.retry_assert(fn ->
       assert DynamicPipeline.pipeline_count(name) == 10
     end)
+
+    ref = Process.monitor(pid)
+    send(pid, :stop)
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
 
     TestUtils.retry_assert(fn ->
       assert DynamicPipeline.pipeline_count(name) == 5

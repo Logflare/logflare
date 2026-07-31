@@ -1343,11 +1343,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     le = build(:log_event, source: source)
     IngestEventQueue.add_to_table(table, [le])
     IngestEventQueue.add_to_table(other_table, [le])
-    :timer.sleep(300)
 
     # Verify worker cached the values automatically (without manual cache calls)
-    assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
-    assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
+    TestUtils.retry_assert(fn ->
+      assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
+      assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
+    end)
   end
 
   test "QueueJanitor purges if exceeds max" do
@@ -1364,7 +1365,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       {QueueJanitor, source: source, backend: backend, interval: 50, max: 100, purge_ratio: 1.0}
     )
 
-    :timer.sleep(550)
     assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == 0
   end
 
@@ -1382,7 +1382,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       {QueueJanitor, source: source, backend: backend, interval: 50, max: 90, purge_ratio: 0.5}
     )
 
-    :timer.sleep(550)
     assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == 50
   end
 
@@ -1421,7 +1420,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
          consolidated_key: queues_key}
       )
 
-      :timer.sleep(550)
       assert IngestEventQueue.get_table_size(consolidated_key) == 0
       assert IngestEventQueue.list_recent_events(queues_key, 10) == []
     end
@@ -1453,7 +1451,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
          consolidated_key: {:consolidated, backend.id}}
       )
 
-      :timer.sleep(550)
       # Events should remain because 150 < 1000 (consolidated max = 100 * 10)
       assert IngestEventQueue.get_table_size(consolidated_key) == 150
     end
@@ -1517,9 +1514,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     tid = IngestEventQueue.get_tid({source.id, backend.id, pid})
     :ets.delete(tid)
     start_supervised!({MapperJanitor, interval: 100})
-    :timer.sleep(500)
-    assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == nil
-    assert :ets.info(:ingest_event_queue_mapping, :size) == 0
+
+    TestUtils.retry_assert(fn ->
+      assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == nil
+      assert :ets.info(:ingest_event_queue_mapping, :size) == 0
+    end)
   end
 
   describe "recent-events cache" do
