@@ -924,7 +924,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(available_queue)
 
       max_size = IngestEventQueue.max_queue_size()
-      full_batch = build_list(max_size, :log_event, source: source)
+      full_batch = build_queue_events(max_size, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
       assert IngestEventQueue.get_table_size(full_queue) == max_size
@@ -1019,13 +1019,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         for n <- 1..3 do
           queue = {source.id, backend.id, :erlang.list_to_pid(~c"<0.200.#{n}>")}
           IngestEventQueue.upsert_tid(queue)
-          :ok = IngestEventQueue.add_to_table(queue, build_list(max_size, :log_event))
+          :ok = IngestEventQueue.add_to_table(queue, build_queue_events(max_size))
           queue
         end
 
       # every existing queue is at the hard cap — nothing eligible remains, so the
       # whole new batch falls through to the startup queue instead
-      new_events = build_list(10_000, :log_event)
+      new_events = build_queue_events(10_000)
       :ok = IngestEventQueue.add_to_table({source.id, backend.id}, new_events)
 
       assert IngestEventQueue.get_table_size(startup_key) == 10_000
@@ -1124,7 +1124,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(available_queue)
 
       max_size = IngestEventQueue.max_consolidated_queue_size()
-      full_batch = build_list(max_size, :log_event, source: source)
+      full_batch = build_queue_events(max_size, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
       assert IngestEventQueue.get_table_size(full_queue) == max_size
@@ -1168,10 +1168,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(queue1)
       IngestEventQueue.upsert_tid(queue2)
 
-      :ok = IngestEventQueue.add_to_table(queue1, build_list(1_000, :log_event))
-      :ok = IngestEventQueue.add_to_table(queue2, build_list(1_010, :log_event))
+      :ok = IngestEventQueue.add_to_table(queue1, build_queue_events(1_000))
+      :ok = IngestEventQueue.add_to_table(queue2, build_queue_events(1_010))
 
-      new_events = build_list(200, :log_event)
+      new_events = build_queue_events(200)
 
       :ok =
         IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events, chunk_size: 50)
@@ -1194,16 +1194,21 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         for n <- 1..3 do
           queue = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.200.#{n}>")}
           IngestEventQueue.upsert_tid(queue)
-          :ok = IngestEventQueue.add_to_table(queue, build_list(max_size, :log_event))
+          :ok = IngestEventQueue.add_to_table(queue, build_queue_events(max_size))
           queue
         end
 
-      new_events = build_list(10_000, :log_event)
+      new_events = build_queue_events(10_000)
       :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events)
 
       assert IngestEventQueue.get_table_size(startup_key) == 10_000
       for queue <- queues, do: assert(IngestEventQueue.get_table_size(queue) == max_size)
     end
+  end
+
+  defp build_queue_events(count, attrs \\ []) do
+    event = build(:log_event, attrs)
+    for id <- 1..count, do: %{event | id: {event.id, id}}
   end
 
   describe "pop_pending/2" do

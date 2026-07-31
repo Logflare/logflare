@@ -916,6 +916,17 @@ defmodule Logflare.BackendsTest do
       assert Backends.fetch_latest_timestamp(source) != 0
     end
 
+    defp fill_queue_over_limit(table_key) do
+      event = build(:log_event)
+
+      events =
+        for id <- 1..(Backends.max_buffer_queue_len() + 500) do
+          %{event | id: {event.id, id}}
+        end
+
+      IngestEventQueue.add_to_table(table_key, events)
+    end
+
     test "any_ingest_queue_over_limit?/1 is false when no queues exist for the source", %{
       source: source
     } do
@@ -927,10 +938,7 @@ defmodule Logflare.BackendsTest do
       table_key = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(table_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue_over_limit(table_key)
 
       assert Backends.any_ingest_queue_over_limit?(source.id)
     end
@@ -944,10 +952,7 @@ defmodule Logflare.BackendsTest do
       table_key = {source.id, backend.id, self()}
       IngestEventQueue.upsert_tid(table_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue_over_limit(table_key)
 
       assert Backends.any_ingest_queue_over_limit?(source.id)
     end
