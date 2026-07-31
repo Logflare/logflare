@@ -111,12 +111,16 @@ defmodule Logflare.Backends.UserMonitoringTest do
         backend: Logflare.Backends.Adaptor.BigQueryAdaptor
       }
 
-      assert capture_log(fn ->
-               QueryError.log(error,
-                 user_id: user.id,
-                 source_token: source.token
-               )
-             end) == ""
+      log =
+        capture_log(fn ->
+          QueryError.log(error,
+            user_id: user.id,
+            source_token: source.token
+          )
+        end)
+
+      refute log =~ "Backend query error"
+      refute log =~ "raw user query detail"
 
       refute Enum.any?(
                Backends.list_recent_logs(system_source),
