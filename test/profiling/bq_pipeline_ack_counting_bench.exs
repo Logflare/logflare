@@ -5,13 +5,17 @@
 # Isolates the in-flight reference accounting performed by BigQuery acknowledgement.
 # Both jobs operate on the same 500 messages: the old implementation concatenates and
 # groups them, while the new implementation counts contiguous reference runs. The
-# alternating input verifies the cost when each reference appears in multiple runs.
+# single-reference input represents steady state. The restart-handoff input models two
+# producer lifetimes arriving in processor-demand-sized runs; fully alternating refs
+# remain an adversarial comparison.
 #
-# Recorded in the same six-scheduler Linux container with BENCH_TIME=2:
+# Median of three runs in the same six-scheduler Linux container with BENCH_TIME=2:
 #
 #   input              median (old -> new)   memory (old -> new)   reductions
-#   contiguous refs       9.71 -> 4.13 us      44.61 -> 0.00 KB    6.31 -> 2.03 K
-#   alternating refs     13.58 -> 7.08 us      50.26 -> 0.00 KB    5.45 -> 4.01 K
+#   single producer        8.79 -> 4.00 us      38.47 -> 0.00 KB    6.28 -> 2.02 K
+#   restart handoff       10.04 -> 4.04 us      41.68 -> 0.00 KB    6.29 -> 2.03 K
+#   contiguous refs        9.79 -> 4.04 us      44.61 -> 0.00 KB    6.31 -> 2.03 K
+#   alternating refs      14.00 -> 7.17 us      50.26 -> 0.00 KB    5.45 -> 4.01 K
 
 batch_size = 500
 bench_time = System.get_env("BENCH_TIME", "3") |> String.to_integer()
@@ -28,7 +32,18 @@ build_input = fn ref_index ->
   Enum.split(messages, 450)
 end
 
+restart_handoff_ref = fn index ->
+  cond do
+    index < 200 -> 0
+    index < 300 -> 1
+    index < 400 -> 0
+    true -> 1
+  end
+end
+
 inputs = %{
+  "single producer ref" => build_input.(fn _index -> 0 end),
+  "producer restart handoff" => build_input.(restart_handoff_ref),
   "contiguous producer refs" => build_input.(fn index -> div(index, 125) end),
   "alternating producer refs" => build_input.(fn index -> rem(index, 4) end)
 }
