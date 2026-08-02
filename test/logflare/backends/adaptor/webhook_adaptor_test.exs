@@ -9,6 +9,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Backends.SourceSup
+  alias Tesla.Middleware.JSON
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
 
   setup do
@@ -213,6 +214,134 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "Client.send/1 header handling" do
+    # A literal public IP keeps SSRFProtection happy without a DNS lookup; the
+    # Finch adapter is stubbed so we can inspect the fully-built request headers.
+    @public_url "https://172.32.0.1/"
+
+    defp capture_request_headers do
+      this = self()
+      ref = make_ref()
+
+      Tesla.Adapter.Finch
+      |> expect(:call, fn env, _opts ->
+        send(this, {ref, env.headers})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      ref
+    end
+
+    # Tesla.get_headers/2 matches header names case-sensitively, so it would not
+    # see a user-supplied "Content-Type" alongside the middleware's lowercase
+    # "content-type". Match case-insensitively to detect duplicates.
+    defp header_values(headers, name) do
+      for {key, value} <- headers, String.downcase(key) == name, do: value
+    end
+
+    test "does not emit a duplicate Content-Type when the user supplies one" do
+      ref = capture_request_headers()
+
+      @subject.Client.send(
+        url: @public_url,
+        body: [%{"message" => "hello"}],
+        headers: %{"Content-Type" => "application/json"},
+        http: "http1",
+        gzip: false
+      )
+
+      assert_receive {^ref, headers}, 2000
+      assert header_values(headers, "content-type") == ["application/json"]
+    end
+
+    test "drops a user content-type regardless of casing" do
+      ref = capture_request_headers()
+
+      @subject.Client.send(
+        url: @public_url,
+        body: [%{"message" => "hello"}],
+        headers: %{"content-TYPE" => "text/plain"},
+        http: "http1",
+        gzip: false
+      )
+
+      assert_receive {^ref, headers}, 2000
+      assert header_values(headers, "content-type") == ["application/json"]
+    end
+
+    test "still sets a single Content-Type when the user supplies none" do
+      ref = capture_request_headers()
+
+      @subject.Client.send(
+        url: @public_url,
+        body: [%{"message" => "hello"}],
+        headers: %{"x-key" => "v"},
+        http: "http1",
+        gzip: false
+      )
+
+      assert_receive {^ref, headers}, 2000
+      assert header_values(headers, "content-type") == ["application/json"]
+      assert Tesla.get_header(%Tesla.Env{headers: headers}, "x-key") == "v"
+    end
+
+    test "preserves a user content-type for a binary body the JSON middleware skips" do
+      ref = capture_request_headers()
+
+      @subject.Client.send(
+        url: @public_url,
+        body: ~s({"index":{}}\n{"message":"hello"}\n),
+        headers: %{"Content-Type" => "application/x-ndjson"},
+        http: "http1",
+        gzip: false
+      )
+
+      assert_receive {^ref, headers}, 2000
+      assert header_values(headers, "content-type") == ["application/x-ndjson"]
+    end
+
+    test "does not emit a duplicate Content-Encoding when gzip is enabled" do
+      ref = capture_request_headers()
+
+      @subject.Client.send(
+        url: @public_url,
+        body: [%{"message" => "hello"}],
+        headers: %{"Content-Encoding" => "identity"},
+        http: "http1",
+        gzip: true
+      )
+
+      assert_receive {^ref, headers}, 2000
+      assert header_values(headers, "content-encoding") == ["gzip"]
+    end
+  end
+
+  describe "json_encodable?/1 mirrors Tesla.Middleware.JSON" do
+    # Client.reserved_header_names/1 predicts whether the JSON middleware will
+    # encode the body (and thus own content-type) via a private json_encodable?/1
+    # that mirrors Tesla.Middleware.JSON's own encodable? clauses. Tesla exposes no
+    # public predicate, so this pins Tesla's actual encode/2 behavior: if an upgrade
+    # changes which bodies get a content-type, this fails and we update the mirror,
+    # rather than silently regressing the duplicate-header fix.
+    test "encode/2 sets content-type for exactly the bodies the mirror treats as encodable" do
+      cases = [
+        {nil, false},
+        {"already-a-binary", false},
+        {%Tesla.Multipart{}, false},
+        {[%{"message" => "hello"}], true},
+        {%{"message" => "hello"}, true}
+      ]
+
+      for {body, expected_encodable} <- cases do
+        {:ok, env} = JSON.encode(%Tesla.Env{body: body}, [])
+        tesla_set_content_type? = Tesla.get_header(env, "content-type") != nil
+
+        assert tesla_set_content_type? == expected_encodable,
+               "Tesla content-type behavior for #{inspect(body)} diverged from json_encodable?/1"
+      end
+    end
+  end
+
   describe "SSRF middleware integration" do
     test "Client.send/1 blocks private IPs at request time" do
       # Call Client.send/1 directly without mocking to verify SSRFProtection is
@@ -311,6 +440,8 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
       changeset = @subject.cast_config(params, @existing)
 
+      # Restored headers equal the stored config, so Ecto records no change and the
+      # stored casing passes through unnormalized (normalization acts on changes).
       assert Ecto.Changeset.get_field(changeset, :headers) == %{
                "Authorization" => "Bearer secret-token-123",
                "Content-Type" => "application/json"
@@ -330,9 +461,23 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       changeset = @subject.cast_config(params, @existing)
 
       assert Ecto.Changeset.get_field(changeset, :headers) == %{
-               "Authorization" => "Bearer secret-token-123",
-               "Content-Type" => "application/json",
+               "authorization" => "Bearer secret-token-123",
+               "content-type" => "application/json",
                "x-custom" => "new-value"
+             }
+    end
+
+    test "restores the stored secret when stored casing differs from the submitted key" do
+      params = %{
+        url: "https://example.com",
+        headers: %{"authorization" => "REDACTED", "x-custom" => "v"}
+      }
+
+      changeset = @subject.cast_config(params, @existing)
+
+      assert Ecto.Changeset.get_field(changeset, :headers) == %{
+               "authorization" => "Bearer secret-token-123",
+               "x-custom" => "v"
              }
     end
 
@@ -345,7 +490,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       changeset = @subject.cast_config(params, @existing)
 
       assert Ecto.Changeset.get_field(changeset, :headers) == %{
-               "Authorization" => "Bearer new-token-456"
+               "authorization" => "Bearer new-token-456"
              }
     end
 
@@ -374,6 +519,33 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       changeset = @subject.cast_config(params, %{url: "https://example.com", headers: %{}})
 
       assert Ecto.Changeset.get_field(changeset, :headers) == %{}
+    end
+  end
+
+  describe "cast_config/2 header key normalization" do
+    test "downcases submitted header names" do
+      params = %{
+        url: "https://example.com",
+        headers: %{"Content-Type" => "application/json", "X-Custom" => "v"}
+      }
+
+      changeset = @subject.cast_config(params, %{})
+
+      assert Ecto.Changeset.get_field(changeset, :headers) == %{
+               "content-type" => "application/json",
+               "x-custom" => "v"
+             }
+    end
+
+    test "collapses case-variant duplicates into a single entry" do
+      params = %{
+        url: "https://example.com",
+        headers: %{"X-Foo" => "a", "x-foo" => "b"}
+      }
+
+      changeset = @subject.cast_config(params, %{})
+
+      assert Ecto.Changeset.get_field(changeset, :headers) |> Map.keys() == ["x-foo"]
     end
   end
 
