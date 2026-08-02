@@ -87,25 +87,30 @@ fn map_and_encode_clickhouse<'a>(
     let encoded = (|| {
         let (layout, row_type) = if event_type == atoms::log() {
             (
-                compiled.mapping.clickhouse_layouts.log.as_deref(),
+                &compiled.mapping.clickhouse_layouts.log,
                 ClickHouseRowType::Log,
             )
         } else if event_type == atoms::metric() {
             (
-                compiled.mapping.clickhouse_layouts.metric.as_deref(),
+                &compiled.mapping.clickhouse_layouts.metric,
                 ClickHouseRowType::Metric,
             )
         } else if event_type == atoms::trace() {
             (
-                compiled.mapping.clickhouse_layouts.trace.as_deref(),
+                &compiled.mapping.clickhouse_layouts.trace,
                 ClickHouseRowType::Trace,
             )
         } else {
             return Err("unsupported ClickHouse event type".to_string());
         };
-        let layout = layout.ok_or_else(|| {
-            "compiled mapping does not contain the required ClickHouse fields".to_string()
-        })?;
+        let layout = match layout {
+            Ok(layout) => layout.as_ref(),
+            Err(field) => {
+                return Err(format!(
+                    "compiled mapping is missing required ClickHouse field '{field}'"
+                ));
+            }
+        };
 
         let (body, envelope): (Term<'a>, Term<'a>) = document
             .decode()

@@ -256,9 +256,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoderTest do
 
     incomplete = Mapper.compile!(MappingConfig.new([Field.string("project", path: "$.project")]))
 
-    assert_raise ArgumentError, ~r/required ClickHouse fields/, fn ->
-      NativeEncoder.map_and_encode_row(event, incomplete, :log, config_id)
-    end
+    assert_raise ArgumentError,
+                 "failed to encode ClickHouse row: compiled mapping is missing required ClickHouse field 'trace_id'",
+                 fn ->
+                   NativeEncoder.map_and_encode_row(event, incomplete, :log, config_id)
+                 end
   end
 
   test "row errors return an actionable reason" do
