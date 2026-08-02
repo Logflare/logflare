@@ -114,7 +114,7 @@ fn map_and_encode_clickhouse<'a>(
         let nil = atoms::nil().encode(env);
         let mut scratch = mapper::MapScratch::new(&compiled.mapping, nil);
         mapper::map_values_into(env, body, &compiled.mapping, false, nil, &mut scratch);
-        let mut output = clickhouse_rowbinary::BinaryBuilder::new(row_type.initial_capacity())?;
+        let mut output = clickhouse_rowbinary::BinaryBuilder::new()?;
 
         match row_type {
             ClickHouseRowType::Log => clickhouse_rowbinary::append_log(
@@ -154,16 +154,6 @@ enum ClickHouseRowType {
     Log,
     Metric,
     Trace,
-}
-
-impl ClickHouseRowType {
-    fn initial_capacity(self) -> usize {
-        match self {
-            Self::Log => 2048,
-            Self::Metric => 2560,
-            Self::Trace => 2304,
-        }
-    }
 }
 
 fn decode_clickhouse_envelope<'a>(

@@ -4,7 +4,7 @@ use rustler::{Binary, OwnedBinary, Term};
 
 pub type EncodeResult<T> = Result<T, String>;
 
-const MIN_ROW_CAPACITY: usize = 2048;
+const INITIAL_ROW_CAPACITY: usize = 3072;
 const UUID_BYTE_OFFSETS: [usize; 16] = [0, 2, 4, 6, 9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 32, 34];
 
 #[derive(Clone, Copy)]
@@ -21,8 +21,8 @@ pub struct BinaryBuilder {
 }
 
 impl BinaryBuilder {
-    pub fn new(initial_capacity: usize) -> EncodeResult<Self> {
-        let binary = OwnedBinary::new(initial_capacity)
+    pub fn new() -> EncodeResult<Self> {
+        let binary = OwnedBinary::new(INITIAL_ROW_CAPACITY)
             .ok_or_else(|| "failed to allocate ClickHouse row output".to_string())?;
         Ok(Self { binary, len: 0 })
     }
@@ -60,7 +60,7 @@ impl BinaryBuilder {
             .len()
             .saturating_mul(2)
             .max(required)
-            .max(MIN_ROW_CAPACITY);
+            .max(INITIAL_ROW_CAPACITY);
         self.binary.realloc_or_copy(capacity);
     }
 }
