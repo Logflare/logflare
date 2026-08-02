@@ -32,27 +32,31 @@ impl BinaryBuilder {
             return OwnedBinary::new(0)
                 .ok_or_else(|| "failed to allocate empty ClickHouse row output".to_string());
         }
-        self.binary.realloc_or_copy(self.len);
+        self.resize(self.len)?;
         Ok(self.binary)
     }
 
-    fn push(&mut self, value: u8) {
-        self.reserve(1);
+    fn push(&mut self, value: u8) -> EncodeResult<()> {
+        let end = self.reserve(1)?;
         self.binary.as_mut_slice()[self.len] = value;
-        self.len += 1;
+        self.len = end;
+        Ok(())
     }
 
-    fn extend_from_slice(&mut self, value: &[u8]) {
-        self.reserve(value.len());
-        let end = self.len + value.len();
+    fn extend_from_slice(&mut self, value: &[u8]) -> EncodeResult<()> {
+        let end = self.reserve(value.len())?;
         self.binary.as_mut_slice()[self.len..end].copy_from_slice(value);
         self.len = end;
+        Ok(())
     }
 
-    fn reserve(&mut self, additional: usize) {
-        let required = self.len.saturating_add(additional);
+    fn reserve(&mut self, additional: usize) -> EncodeResult<usize> {
+        let required = self
+            .len
+            .checked_add(additional)
+            .ok_or_else(|| "ClickHouse row output size overflow".to_string())?;
         if required <= self.binary.len() {
-            return;
+            return Ok(required);
         }
 
         let capacity = self
@@ -61,7 +65,22 @@ impl BinaryBuilder {
             .saturating_mul(2)
             .max(required)
             .max(INITIAL_ROW_CAPACITY);
-        self.binary.realloc_or_copy(capacity);
+        self.resize(capacity)?;
+        Ok(required)
+    }
+
+    fn resize(&mut self, size: usize) -> EncodeResult<()> {
+        if self.binary.realloc(size) {
+            return Ok(());
+        }
+
+        let copy_len = self.len.min(size);
+        let mut replacement = OwnedBinary::new(size)
+            .ok_or_else(|| "failed to resize ClickHouse row output".to_string())?;
+        let initialized = &self.binary.as_mut_slice()[..copy_len];
+        replacement.as_mut_slice()[..copy_len].copy_from_slice(initialized);
+        self.binary = replacement;
+        Ok(())
     }
 }
 
@@ -121,7 +140,7 @@ pub fn append_log(
     } else {
         decode_u64(mapped_severity)?
     };
-    output.push(to_u8(severity, "severity_number")?);
+    output.push(to_u8(severity, "severity_number")?)?;
 
     encode_string(output, values.next("service_name")?)?;
     encode_string(output, values.next("event_message")?)?;
@@ -239,7 +258,7 @@ pub fn append_trace(
             }
         }
     }
-    output.extend_from_slice(&duration.to_le_bytes());
+    output.extend_from_slice(&duration.to_le_bytes())?;
 
     encode_string(output, values.next("status_code")?)?;
     encode_string(output, values.next("status_message")?)?;
@@ -270,8 +289,8 @@ fn encode_envelope(
     source_name: Binary,
 ) -> EncodeResult<()> {
     encode_uuid(output, id.as_slice())?;
-    encode_bytes(output, source_uuid.as_slice());
-    encode_bytes(output, source_name.as_slice());
+    encode_bytes(output, source_uuid.as_slice())?;
+    encode_bytes(output, source_name.as_slice())?;
     Ok(())
 }
 
@@ -284,13 +303,13 @@ fn encode_suffix(
     if mapping_config_id.len() != 16 {
         return Err("mapping config ID must be a 16-byte encoded UUID".to_string());
     }
-    output.extend_from_slice(mapping_config_id.as_slice());
+    output.extend_from_slice(mapping_config_id.as_slice())?;
     match ingested_at {
         Some(value) => {
-            output.push(0);
-            output.extend_from_slice(&value.to_le_bytes());
+            output.push(0)?;
+            output.extend_from_slice(&value.to_le_bytes())?;
         }
-        None => output.push(1),
+        None => output.push(1)?,
     }
     encode_int64(output, timestamp)
 }
@@ -317,8 +336,7 @@ fn encode_uuid(output: &mut BinaryBuilder, value: &[u8]) -> EncodeResult<()> {
 
     raw[..8].reverse();
     raw[8..].reverse();
-    output.extend_from_slice(&raw);
-    Ok(())
+    output.extend_from_slice(&raw)
 }
 
 fn decode_uuid_flexible(value: &[u8], raw: &mut [u8; 16]) -> EncodeResult<()> {
@@ -369,25 +387,24 @@ fn encode_string(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let binary = value
         .decode::<Binary>()
         .map_err(|_| "mapped string field is not a binary".to_string())?;
-    encode_bytes(output, binary.as_slice());
-    Ok(())
+    encode_bytes(output, binary.as_slice())
 }
 
-fn encode_bytes(output: &mut BinaryBuilder, value: &[u8]) {
-    encode_varuint(output, value.len() as u64);
-    output.extend_from_slice(value);
+fn encode_bytes(output: &mut BinaryBuilder, value: &[u8]) -> EncodeResult<()> {
+    encode_varuint(output, value.len() as u64)?;
+    output.extend_from_slice(value)
 }
 
-fn encode_varuint(output: &mut BinaryBuilder, mut value: u64) {
+fn encode_varuint(output: &mut BinaryBuilder, mut value: u64) -> EncodeResult<()> {
     loop {
         let mut byte = (value & 0x7f) as u8;
         value >>= 7;
         if value != 0 {
             byte |= 0x80;
         }
-        output.push(byte);
+        output.push(byte)?;
         if value == 0 {
-            break;
+            return Ok(());
         }
     }
 }
@@ -396,60 +413,49 @@ fn encode_bool(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let value = value
         .decode::<bool>()
         .map_err(|_| "mapped boolean field is not a boolean".to_string())?;
-    output.push(u8::from(value));
-    Ok(())
+    output.push(u8::from(value))
 }
 
 fn encode_uint8(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let value = decode_u64(value)?;
-    output.push(to_u8(value, "UInt8")?);
-    Ok(())
+    output.push(to_u8(value, "UInt8")?)
 }
 
 fn encode_uint32(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let value = decode_u64(value)?;
     let value =
         u32::try_from(value).map_err(|_| "mapped UInt32 field is out of range".to_string())?;
-    output.extend_from_slice(&value.to_le_bytes());
-    Ok(())
+    output.extend_from_slice(&value.to_le_bytes())
 }
 
 fn encode_uint64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
-    output.extend_from_slice(&decode_u64(value)?.to_le_bytes());
-    Ok(())
+    output.extend_from_slice(&decode_u64(value)?.to_le_bytes())
 }
 
 fn encode_int8(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let value = decode_i64(value)?;
     let value = i8::try_from(value).map_err(|_| "mapped Int8 field is out of range".to_string())?;
-    output.push(value as u8);
-    Ok(())
+    output.push(value as u8)
 }
 
 fn encode_int32(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let value = decode_i64(value)?;
     let value =
         i32::try_from(value).map_err(|_| "mapped Int32 field is out of range".to_string())?;
-    output.extend_from_slice(&value.to_le_bytes());
-    Ok(())
+    output.extend_from_slice(&value.to_le_bytes())
 }
 
 fn encode_int64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
-    output.extend_from_slice(&decode_i64(value)?.to_le_bytes());
-    Ok(())
+    output.extend_from_slice(&decode_i64(value)?.to_le_bytes())
 }
 
 fn encode_nullable_int64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     match value.decode::<Option<i64>>() {
         Ok(Some(value)) => {
-            output.push(0);
-            output.extend_from_slice(&value.to_le_bytes());
-            Ok(())
+            output.push(0)?;
+            output.extend_from_slice(&value.to_le_bytes())
         }
-        Ok(None) => {
-            output.push(1);
-            Ok(())
-        }
+        Ok(None) => output.push(1),
         Err(_) => Err("mapped nullable Int64 field is neither nil nor an integer".to_string()),
     }
 }
@@ -462,8 +468,7 @@ fn encode_float64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     } else {
         return Err("mapped Float64 field is not numeric".to_string());
     };
-    output.extend_from_slice(&value.to_le_bytes());
-    Ok(())
+    output.extend_from_slice(&value.to_le_bytes())
 }
 
 fn decode_u64(value: Term) -> EncodeResult<u64> {
@@ -490,7 +495,7 @@ fn encode_map_string_string(output: &mut BinaryBuilder, value: Term) -> EncodeRe
     let size = value
         .map_size()
         .map_err(|_| "mapped Map(String, String) field is not a map".to_string())?;
-    encode_varuint(output, size as u64);
+    encode_varuint(output, size as u64)?;
     let entries = MapIterator::new(value)
         .ok_or_else(|| "mapped Map(String, String) field is not a map".to_string())?;
 
@@ -513,7 +518,7 @@ fn list<'a>(value: Term<'a>) -> EncodeResult<(usize, ListIterator<'a>)> {
 
 fn encode_array_string(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let (length, values) = list(value)?;
-    encode_varuint(output, length as u64);
+    encode_varuint(output, length as u64)?;
     for value in values {
         encode_string(output, value)?;
     }
@@ -522,7 +527,7 @@ fn encode_array_string(output: &mut BinaryBuilder, value: Term) -> EncodeResult<
 
 fn encode_array_uint64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let (length, values) = list(value)?;
-    encode_varuint(output, length as u64);
+    encode_varuint(output, length as u64)?;
     for value in values {
         encode_uint64(output, value)?;
     }
@@ -531,7 +536,7 @@ fn encode_array_uint64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<
 
 fn encode_array_int64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let (length, values) = list(value)?;
-    encode_varuint(output, length as u64);
+    encode_varuint(output, length as u64)?;
     for value in values {
         encode_int64(output, value)?;
     }
@@ -540,7 +545,7 @@ fn encode_array_int64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<(
 
 fn encode_array_float64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let (length, values) = list(value)?;
-    encode_varuint(output, length as u64);
+    encode_varuint(output, length as u64)?;
     for value in values {
         encode_float64(output, value)?;
     }
@@ -549,7 +554,7 @@ fn encode_array_float64(output: &mut BinaryBuilder, value: Term) -> EncodeResult
 
 fn encode_array_map_string_string(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
     let (length, values) = list(value)?;
-    encode_varuint(output, length as u64);
+    encode_varuint(output, length as u64)?;
     for value in values {
         encode_map_string_string(output, value)?;
     }
