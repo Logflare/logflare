@@ -105,9 +105,9 @@ const CLICKHOUSE_TRACE_FIELDS: &[&str] = &[
 
 #[derive(Debug)]
 pub struct ClickHouseLayouts {
-    pub log: Option<Box<[usize]>>,
-    pub metric: Option<Box<[usize]>>,
-    pub trace: Option<Box<[usize]>>,
+    pub log: Result<Box<[usize]>, &'static str>,
+    pub metric: Result<Box<[usize]>, &'static str>,
+    pub trace: Result<Box<[usize]>, &'static str>,
 }
 
 #[derive(Debug)]
@@ -279,11 +279,11 @@ fn compile_clickhouse_layouts(fields: &[CompiledField]) -> ClickHouseLayouts {
         .map(|(index, field)| (field.name.as_str(), index))
         .collect();
 
-    let compile = |names: &[&str]| {
+    let compile = |names: &'static [&'static str]| {
         names
             .iter()
-            .map(|name| indices.get(name).copied())
-            .collect::<Option<Box<[usize]>>>()
+            .map(|name| indices.get(name).copied().ok_or(*name))
+            .collect::<Result<Box<[usize]>, &'static str>>()
     };
 
     ClickHouseLayouts {
