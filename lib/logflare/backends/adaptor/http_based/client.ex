@@ -2,6 +2,12 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
   @moduledoc """
   A helper module for building HTTP Based Adaptors based on `Tesla`,
   designed for `Logflare.Backends.Adaptor.HttpBased.Pipeline`.
+
+  A module-based formatter that sets request headers should export
+  `reserved_headers/0` with the header names it owns. `new/1` removes
+  user-supplied copies of those headers case-insensitively before building the
+  client. Adaptors that forward user headers must use this contract or remove
+  their transport-owned headers per request.
   """
 
   alias Logflare.LogEvent
@@ -46,6 +52,9 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
   * `:headers` - Sets headers to be added to all requests.
   * `:basic_auth` - Sets basic authentication credentials.
   * `:formatter` - A custom formatter for the request body. Defaults to `#{inspect(LogEventTransformer)}`.
+    Formatters that set request headers should export `reserved_headers/0` so
+    user-supplied copies are removed. In particular, a formatter that owns
+    `content-type` should return `["content-type"]`.
   * `:pool_name` - An override for the name of the Finch pool to use for requests.
   * `:http2` - Whether to use HTTP/2. Defaults to `true`.
   """
