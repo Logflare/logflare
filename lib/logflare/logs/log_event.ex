@@ -16,8 +16,6 @@ defmodule Logflare.LogEvent do
   alias Logflare.Sources.Source
   alias Logflare.Utils
 
-  @validators [BigQuerySchemaChange]
-
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
     field :body, :map, default: %{}
@@ -135,10 +133,8 @@ defmodule Logflare.LogEvent do
       ) do
     event_type = TypeDetection.detect(params)
 
-    %{
-      "body" => %{"id" => id, "timestamp" => timestamp} = body,
-      "timestamp_inferred" => timestamp_inferred
-    } = mapper_for_ingest(params, event_type)
+    {%{"id" => id, "timestamp" => timestamp} = body, timestamp_inferred} =
+      mapper_for_ingest(params, event_type)
 
     day_bucket = DayBucket.from_microseconds(timestamp)
 
@@ -159,44 +155,15 @@ defmodule Logflare.LogEvent do
   end
 
   @spec mapper_from_db(map(), TypeDetection.event_type()) :: %{String.t() => term}
-  defp mapper_from_db(params, event_type),
-    do: mapper(params, event_type, &MetadataCleaner.deep_reject_nil_and_empty/1)
-
-  @spec mapper_for_ingest(map(), TypeDetection.event_type()) :: %{String.t() => term}
-  defp mapper_for_ingest(params, event_type),
-    do: mapper(params, event_type, &clean_ingest_body/1)
-
-  @spec mapper(map(), TypeDetection.event_type(), (map() -> map())) :: %{String.t() => term}
-  defp mapper(params, event_type, clean_body) do
-    # TODO: deprecate and remove `message`
-    event_message = params["message"] || params["event_message"]
+  defp mapper_from_db(params, event_type) do
+    event_message = event_message(params)
     id = id(params)
-
     {timestamp, timestamp_inferred} = determine_timestamp(params, event_type)
-
-    base_merge = %{
-      "timestamp" => timestamp,
-      "id" => id
-    }
-
-    base_merge =
-      if event_message != nil do
-        Map.put(base_merge, "event_message", event_message)
-      else
-        base_merge
-      end
 
     body =
       params
-      |> clean_body.()
-      |> Map.merge(base_merge)
-      |> case do
-        %{"message" => m, "event_message" => em} = map when m == em ->
-          Map.delete(map, "message")
-
-        other ->
-          other
-      end
+      |> MetadataCleaner.deep_reject_nil_and_empty()
+      |> put_mapper_fields(event_message, id, timestamp)
 
     %{
       "body" => body,
@@ -205,32 +172,60 @@ defmodule Logflare.LogEvent do
     }
   end
 
-  @spec validate(LE.t(), Source.t()) :: LE.t()
-  defp validate(%LE{valid: true} = le, source) do
-    @validators
-    |> Enum.reduce_while(true, fn validator, _acc ->
-      case validator.validate(le, source) do
-        :ok ->
-          {:cont, %{le | valid: true, pipeline_error: nil}}
+  @spec mapper_for_ingest(map(), TypeDetection.event_type()) :: {map(), boolean()}
+  defp mapper_for_ingest(params, event_type) do
+    event_message = event_message(params)
+    id = id(params)
+    {timestamp, timestamp_inferred} = determine_timestamp(params, event_type)
 
-        {:error, message} ->
-          {:halt,
-           %{
-             le
-             | valid: false,
-               pipeline_error: %LE.PipelineError{
-                 stage: "validators",
-                 type: "validate",
-                 message: message
-               }
-           }}
-      end
-    end)
+    body =
+      params
+      |> IngestTransformers.transform(:clean_to_bigquery_column_spec)
+      |> put_mapper_fields(event_message, id, timestamp)
+
+    {body, timestamp_inferred}
   end
 
-  @spec clean_ingest_body(map()) :: map()
-  defp clean_ingest_body(params),
-    do: IngestTransformers.transform(params, :clean_to_bigquery_column_spec)
+  @spec put_mapper_fields(map(), term(), String.t(), integer()) :: map()
+  defp put_mapper_fields(body, event_message, id, timestamp) do
+    mapped_fields = %{"id" => id, "timestamp" => timestamp}
+
+    mapped_fields =
+      if event_message != nil do
+        Map.put(mapped_fields, "event_message", event_message)
+      else
+        mapped_fields
+      end
+
+    body = Map.merge(body, mapped_fields)
+
+    case body do
+      %{"message" => m, "event_message" => em} = body when m == em ->
+        Map.delete(body, "message")
+
+      body ->
+        body
+    end
+  end
+
+  @spec validate(LE.t(), Source.t()) :: LE.t()
+  defp validate(%LE{} = le, source) do
+    case BigQuerySchemaChange.validate(le, source) do
+      :ok ->
+        le
+
+      {:error, message} ->
+        %{
+          le
+          | valid: false,
+            pipeline_error: %LE.PipelineError{
+              stage: "validators",
+              type: "validate",
+              message: message
+            }
+        }
+    end
+  end
 
   @spec transform(LE.t(), Source.t()) :: LE.t()
   defp transform(%LE{} = le, %Source{} = source) do
@@ -426,6 +421,10 @@ defmodule Logflare.LogEvent do
         "json_path_query_error"
     end
   end
+
+  # TODO: deprecate and remove `message`
+  @compile {:inline, event_message: 1}
+  defp event_message(params), do: params["message"] || params["event_message"]
 
   @spec id(map()) :: String.t()
   defp id(params) do
