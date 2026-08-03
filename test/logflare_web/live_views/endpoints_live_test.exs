@@ -294,24 +294,49 @@ defmodule LogflareWeb.EndpointsLiveTest do
     } do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
 
-      # triggering event handler directly since Monaco does this via JavaScript
       assert view
-             |> with_target("#endpoint_query_editor")
-             |> render_hook("parse-query", %{"value" => invalid_query}) =~ "SQL Parse error!"
+             |> element("form#endpoint")
+             |> render_change(%{
+               endpoint: %{
+                 query: invalid_query
+               }
+             }) =~ "SQL Parse error!"
 
       refute view
-             |> with_target("#endpoint_query_editor")
-             |> render_hook("parse-query", %{"value" => valid_query}) =~ "SQL Parse error!"
+             |> element("form#endpoint")
+             |> render_change(%{
+               endpoint: %{
+                 query: valid_query
+               }
+             }) =~ "SQL Parse error!"
 
       # Run form is updated with query and declared params
       assert view
-             |> with_target("#endpoint_query_editor")
-             |> render_hook("parse-query", %{"value" => valid_query <> " where id = @id"})
+             |> element("form#endpoint")
+             |> render_change(%{
+               endpoint: %{
+                 query: valid_query <> " where id = @id"
+               }
+             })
 
       assert view |> element(~s|input#run_query[value="#{valid_query}]"|)
 
       assert view |> render =~
                ~s|<input id="run_params_0_id" name="run[params][id]" type="text" value=""/>|
+
+      unformatted_query = "select @my_param as valid"
+      {:ok, formatted_query} = SqlFmt.format_query(unformatted_query)
+
+      assert view
+             |> element("form#endpoint")
+             |> render_submit(%{
+               action: "format",
+               endpoint: %{
+                 query: unformatted_query
+               }
+             }) =~ formatted_query
+
+      refute render(view) =~ "can't be blank"
 
       # saves the change
       assert view
@@ -360,7 +385,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       view
       |> change_editor_query("select @test as changed")
 
-      assert view |> element("#endpoint_query") |> render() =~ "select @test as changed"
+      assert view |> element(~s|#endpoint_query_editor-input[value="select @test as changed"]|)
 
       view
       |> element("form#endpoint")
@@ -371,7 +396,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       })
 
       # should not reset the hidden input
-      assert view |> element("#endpoint_query") |> render() =~ "select @test as changed"
+      assert view |> element(~s|#endpoint_query_editor-input[value="select @test as changed"]|)
 
       assert view
              |> form("#endpoint")
@@ -545,12 +570,13 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   defp change_editor_query(view, query) do
-    result =
-      view
-      |> with_target("#endpoint_query_editor")
-      |> render_hook("parse-query", %{"value" => query})
-
-    result
+    view
+    |> element("form#endpoint")
+    |> render_change(%{
+      endpoint: %{
+        query: query
+      }
+    })
   end
 
   describe "backend selection" do
