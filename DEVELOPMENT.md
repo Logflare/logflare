@@ -53,7 +53,7 @@ docker-compose up -d db clickhouse telegraf
 # install dependencies
 make setup
 
-# start in single tenant postgres backend (logflare_dev)
+# start in single tenant postgres backend (logflare_dev). See [Developing for Single Tenant](#developing-for-single-tenant) for other backends.
 make start.st.pg
 
 # run tests
@@ -73,17 +73,49 @@ To configure the BigQuery backend, please follow the [BigQuery setup documentati
 
 ### Developing for Single Tenant
 
-Use the single tenant `make start.*` variations. This works by switching out the `LOGFLARE_SINGLE_TENANT` env var.
+Use a backend-specific single tenant target. Each target loads its corresponding
+`.single_tenant_*.env` file and enables `LOGFLARE_SINGLE_TENANT`.
 
 ```bash
 make start.st.pg
 make start.st.bq
+make start.st.ch
 ```
+
+#### ClickHouse
+
+Start the application PostgreSQL database and ClickHouse service, then start Logflare:
+
+```bash
+docker compose up -d db clickhouse telegraf
+make start.st.ch
+```
+
+`make start.st.ch` loads `.single_tenant_ch.env`. The main settings are:
+
+- `CLICKHOUSE_BACKEND_URL` - the ClickHouse HTTP connection URL, including the database name
+- `CLICKHOUSE_BACKEND_POOL_SIZE` - optional connection pool size
+- `LOGFLARE_PUBLIC_ACCESS_TOKEN` and `LOGFLARE_PRIVATE_ACCESS_TOKEN` - local API tokens
+
+PostgreSQL is still required for Logflare application data. ClickHouse becomes the default
+log backend and uses one shared ingestion pipeline configured from `CLICKHOUSE_BACKEND_URL`; the
+default ClickHouse backend is not stored as a database record.
+
+The local URL is typically:
+
+```text
+http://logflare:logflare@localhost:8123/logflare_test
+```
+
+If both `POSTGRES_BACKEND_URL` and `CLICKHOUSE_BACKEND_URL` are present in the effective
+environment, PostgreSQL takes precedence. Unset `POSTGRES_BACKEND_URL` when using
+`make start.st.ch`.
 
 To develop with Supabase mode:
 
 ```bash
 make start.sb.bq
+make start.sb.ch
 make start.sb.pg
 ```
 
@@ -164,7 +196,8 @@ bin/compose down -v
 make setup
 make start
 make start.{orange|pink}
-make start.{st|sb}.{bq|pg}
+make start.st.{bq|ch|pg}
+make start.sb.{bq|ch|pg}
 make decrypt.{dev|staging|prod}
 make encrypt.{dev|staging|prod}
 make reset
