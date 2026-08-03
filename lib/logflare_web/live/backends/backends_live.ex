@@ -391,6 +391,7 @@ defmodule LogflareWeb.BackendsLive do
       {"Sentry", :sentry},
       {"Axiom", :axiom},
       {"OTLP", :otlp},
+      {"Elastic OTLP", :elastic_otlp},
       {"Last9", :last9},
       {"SigNoz", :signoz},
       {"Syslog", :syslog},
