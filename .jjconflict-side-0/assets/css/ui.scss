@@ -1,0 +1,27 @@
+body.experimental-ui {
+  & nav.navbar {
+    max-height: 7vh;
+    align-items: baseline;
+    min-height: 55px;
+
+    & .source-name {
+      margin-top: 0;
+      color: $brand-black;
+    }
+
+    & .live-tail-search {
+      padding-left: 1vw;
+      font-weight: 400;
+      color: $brand-black;
+    }
+  }
+
+  & main {
+    margin-top: 110px;
+  }
+}
+
+.navbar-collapse {
+  background: #5eeb8f;
+  padding: 10px;
+}

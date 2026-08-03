@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package logflare.test_protobuf.mock;
+
+message EmptyRequest {}
+message EmptyResponse {}
+
+service MockService {
+  rpc DoNothing(EmptyRequest) returns (EmptyResponse) {}
+}

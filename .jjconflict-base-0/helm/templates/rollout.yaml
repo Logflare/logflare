@@ -1,0 +1,28 @@
+{{- if .Values.rollout.enabled }}
+{{- if not .Values.rollout.strategy }}
+{{- fail "rollout.enabled is set but rollout.strategy is empty: supply a blueGreen or canary strategy, referencing the Services named in the chart README" }}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ include "logflare.fullname" . }}
+  {{- with .Values.deploymentAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "logflare.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  progressDeadlineSeconds: {{ .Values.rollout.progressDeadlineSeconds }}
+  revisionHistoryLimit: {{ .Values.rollout.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "logflare.selectorLabels" . | nindent 6 }}
+  strategy:
+    {{- toYaml .Values.rollout.strategy | nindent 4 }}
+  template:
+    {{- include "logflare.podTemplate" . | nindent 4 }}
+{{- end }}

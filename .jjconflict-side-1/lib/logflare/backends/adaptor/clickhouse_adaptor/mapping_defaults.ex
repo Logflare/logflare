@@ -1,0 +1,626 @@
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
+  @moduledoc """
+  Default OTEL-aligned mapping configurations for ClickHouse event types.
+
+  Defines how raw log event bodies are transformed into structured schemas
+  before RowBinary encoding. Each event type (log, metric, trace) has its own
+  field mapping with coalesced path resolution, defaults, and transforms.
+
+  ## `resource_attributes` contract
+
+  All three event types build `resource_attributes` with `pick_mode: :merge`, so the
+  column receives the curated `:pick` entries unioned with every remaining key under
+  `$.resource`. Uncurated resource keys pass through untouched, but the column is
+  intentionally *not* a lossless copy of the input when values disagree:
+
+    * **One canonical value per key.** On a key collision the curated pick wins over the
+      raw resource value. For example, when `metadata.environment` and
+      `resource.environment` are both present, `environment` holds the `metadata` value
+      and the raw `resource.environment` value is dropped.
+    * **Aliases are normalized, not preserved.** `_project_region` and `_service_name`
+      are read as fallbacks for the `region` and `service_name` picks and then removed via
+      `:exclude_keys`, so only the normalized key reaches the column.
+
+  This trade-off is deliberate: downstream queries get a stable, predictable key set
+  rather than having to reconcile aliases and duplicate keys per row.
+
+  ## Root-level `source` contract
+
+  Every attribute map (`log_attributes`, `attributes`, `span_attributes`) excludes the
+  root-level `source` key. Ingest resolves the target source from `params["source"]`, and
+  `Plug.Parsers` merges the parsed request body into `conn.params`, so a caller may pass
+  the source token in the JSON body rather than the query string. The ingest controller
+  drops only `timestamp` and `id` from that body, so a body-supplied token survives into
+  the event body as a source UUID under `$.source`.
+
+  Because `:exclude_keys` is applied before `:elevate_keys`, dropping the key lets a
+  caller-supplied `metadata.source` elevate into `source` instead of being overwritten by
+  the UUID.
+
+  ## `severity_number` contract
+
+  A supplied `severity_number` is stored only when it is an integer (or a string holding
+  one) inside the OTEL 1-24 range. `severity_number_alt` uses `coercion: :strict`, so a
+  float or boolean resolves to `0` instead of being truncated to a plausible severity, and
+  the RowBinary encoder rejects anything outside 1-24. Both cases fall back to the
+  `severity_number` derived from `severity_text`.
+  """
+
+  alias Logflare.LogEvent.TypeDetection
+  alias Logflare.Mapper.MappingConfig
+  alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
+  alias Logflare.Mapper.MappingConfig.InferCondition
+  alias Logflare.Mapper.MappingConfig.InferRule
+  alias Logflare.Mapper.MappingConfig.OutputFormat
+
+  @log_config_id "00000000-0000-0000-0001-000000000005"
+  @metric_config_id "00000000-0000-0000-0002-000000000005"
+  @trace_config_id "00000000-0000-0000-0003-000000000006"
+
+  @attributes_exclude_keys ["id", "event_message", "source", "timestamp"]
+
+  @spec config_id(TypeDetection.event_type()) :: String.t()
+  def config_id(:log), do: @log_config_id
+  def config_id(:metric), do: @metric_config_id
+  def config_id(:trace), do: @trace_config_id
+
+  @spec for_type(TypeDetection.event_type()) :: MappingConfig.t()
+  def for_type(:log), do: for_log()
+  def for_type(:metric), do: for_metric()
+  def for_type(:trace), do: for_trace()
+
+  @spec for_log() :: MappingConfig.t()
+  def for_log do
+    fields = [
+      Field.string("project",
+        paths: [
+          "$.project",
+          "$.project_ref",
+          "$.project_id",
+          "$.metadata.project",
+          "$.metadata.tenant",
+          "$.metadata.tenantId"
+        ]
+      ),
+      Field.string("trace_id",
+        paths: ["$.trace_id", "$.traceId", "$.otel_trace_id", "$.metadata.otel_trace_id"]
+      ),
+      Field.string("span_id",
+        paths: ["$.span_id", "$.spanId", "$.otel_span_id", "$.metadata.otel_span_id"]
+      ),
+      Field.uint8("trace_flags",
+        paths: ["$.trace_flags", "$.traceFlags", "$.flags", "$.metadata.otel_trace_flags"],
+        default: 0
+      ),
+      Field.string("severity_text",
+        paths: [
+          "$.severity_text",
+          "$.severityText",
+          "$.metadata.level",
+          "$.level",
+          "$.metadata.parsed.error_severity"
+        ],
+        default: "INFO",
+        transform: "upcase",
+        allowed_values:
+          ~w(TRACE DEBUG INFO NOTICE WARN WARNING ERROR FATAL CRITICAL EMERGENCY ALERT LOG PANIC)
+      ),
+      Field.uint8("severity_number_alt",
+        paths: ["$.severity_number", "$.severityNumber"],
+        coercion: :strict,
+        default: 0
+      ),
+      Field.uint8("severity_number",
+        from_output: "severity_text",
+        value_map: %{
+          "TRACE" => 1,
+          "DEBUG" => 5,
+          "INFO" => 9,
+          "NOTICE" => 11,
+          "WARN" => 13,
+          "WARNING" => 13,
+          "ERROR" => 17,
+          "LOG" => 9,
+          "FATAL" => 21,
+          "CRITICAL" => 21,
+          "EMERGENCY" => 21,
+          "ALERT" => 21,
+          "PANIC" => 21
+        },
+        default: 0
+      ),
+      Field.string("service_name",
+        paths: [
+          "$.resource.service.name",
+          "$.resource._service_name",
+          "$.service_name",
+          "$.resource.name",
+          "$.metadata.context.application",
+          "$.metadata.context.service",
+          "$.SYSLOG_IDENTIFIER",
+          "$._SYSTEMD_UNIT"
+        ]
+      ),
+      Field.string("event_message",
+        paths: ["$.event_message", "$.message", "$.body", "$.msg"]
+      ),
+      Field.string("scope_name",
+        paths: [
+          "$.scope.name",
+          "$.metadata.context.module",
+          "$.metadata.context.application",
+          "$.instrumentation_library.name",
+          "$.metadata.namespace",
+          "$.metadata.module_path"
+        ]
+      ),
+      Field.string("scope_version",
+        paths: [
+          "$.scope.version",
+          "$.instrumentation_library.version"
+        ]
+      ),
+      Field.string("scope_schema_url",
+        paths: ["$.scope.schema_url"]
+      ),
+      Field.string("resource_schema_url",
+        paths: ["$.resource.schema_url"]
+      ),
+      resource_attributes_field(:log),
+      Field.flat_map("scope_attributes",
+        paths: ["$.scope.attributes", "$.scope"],
+        default: %{}
+      ),
+      Field.flat_map("log_attributes",
+        path: "$",
+        exclude_keys: @attributes_exclude_keys ++ ["resource", "scope"],
+        elevate_keys: ["metadata", "attributes"]
+      ),
+      Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
+    ]
+
+    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:log))
+  end
+
+  @spec for_metric() :: MappingConfig.t()
+  def for_metric do
+    fields = [
+      Field.string("project",
+        paths: [
+          "$.project",
+          "$.project_ref",
+          "$.project_id",
+          "$.metadata.project",
+          "$.metadata.tenant",
+          "$.metadata.tenantId"
+        ]
+      ),
+      Field.string("metric_name",
+        paths: ["$.metric_name", "$.name", "$.event_message"]
+      ),
+      Field.string("metric_description",
+        paths: ["$.metric_description", "$.description", "$.event_message"]
+      ),
+      Field.string("metric_unit",
+        paths: ["$.metric_unit", "$.unit"]
+      ),
+      Field.enum8("metric_type",
+        paths: ["$.metric_type"],
+        values: %{
+          "gauge" => 1,
+          "sum" => 2,
+          "histogram" => 3,
+          "exponential_histogram" => 4,
+          "summary" => 5
+        },
+        infer: [
+          %InferRule{
+            result: "gauge",
+            any: [%InferCondition{path: "$.gauge", predicate: "exists"}]
+          },
+          %InferRule{
+            result: "sum",
+            any: [%InferCondition{path: "$.sum", predicate: "exists"}]
+          },
+          %InferRule{
+            result: "histogram",
+            any: [%InferCondition{path: "$.histogram", predicate: "exists"}]
+          },
+          %InferRule{
+            result: "exponential_histogram",
+            any: [
+              %InferCondition{path: "$.exponential_histogram", predicate: "exists"}
+            ]
+          },
+          %InferRule{
+            result: "summary",
+            any: [%InferCondition{path: "$.summary", predicate: "exists"}]
+          }
+        ],
+        default: 1
+      ),
+      Field.string("service_name",
+        paths: [
+          "$.resource.service.name",
+          "$.resource._service_name",
+          "$.service_name",
+          "$.resource.name",
+          "$.metadata.context.application",
+          "$.metadata.context.service",
+          "$.SYSLOG_IDENTIFIER",
+          "$._SYSTEMD_UNIT"
+        ]
+      ),
+      Field.string("event_message",
+        paths: ["$.event_message", "$.message", "$.body", "$.msg"]
+      ),
+      Field.string("scope_name",
+        paths: [
+          "$.scope.name",
+          "$.metadata.context.module",
+          "$.metadata.context.application",
+          "$.instrumentation_library.name",
+          "$.metadata.namespace"
+        ]
+      ),
+      Field.string("scope_version",
+        paths: [
+          "$.scope.version",
+          "$.instrumentation_library.version"
+        ]
+      ),
+      Field.string("scope_schema_url",
+        paths: ["$.scope.schema_url"]
+      ),
+      Field.string("resource_schema_url",
+        paths: ["$.resource.schema_url"]
+      ),
+      resource_attributes_field(:metric),
+      Field.flat_map("scope_attributes",
+        paths: ["$.scope.attributes", "$.scope"],
+        default: %{}
+      ),
+      Field.flat_map("attributes",
+        path: "$",
+        exclude_keys: @attributes_exclude_keys ++ ["resource", "scope"],
+        elevate_keys: ["metadata", "attributes"]
+      ),
+      Field.string("aggregation_temporality",
+        paths: ["$.aggregation_temporality", "$.aggregationTemporality"]
+      ),
+      Field.bool("is_monotonic",
+        paths: ["$.is_monotonic", "$.isMonotonic"],
+        default: false
+      ),
+      Field.uint32("flags",
+        paths: ["$.flags"],
+        default: 0
+      ),
+      Field.float64("value",
+        paths: ["$.value", "$.gauge.value", "$.sum.value", "$.as_double", "$.as_int"],
+        default: 0
+      ),
+      Field.uint64("count",
+        paths: [
+          "$.count",
+          "$.histogram.count",
+          "$.summary.count",
+          "$.exponential_histogram.count"
+        ],
+        default: 0
+      ),
+      Field.float64("sum",
+        paths: ["$.sum", "$.sum.value", "$.histogram.sum", "$.exponential_histogram.sum"],
+        default: 0
+      ),
+      Field.float64("min",
+        paths: ["$.min", "$.histogram.min", "$.exponential_histogram.min"],
+        default: 0
+      ),
+      Field.float64("max",
+        paths: ["$.max", "$.histogram.max", "$.exponential_histogram.max"],
+        default: 0
+      ),
+      Field.int32("scale",
+        paths: ["$.scale", "$.exponential_histogram.scale"],
+        default: 0
+      ),
+      Field.uint64("zero_count",
+        paths: ["$.zero_count", "$.exponential_histogram.zero_count"],
+        default: 0
+      ),
+      Field.int32("positive_offset",
+        paths: [
+          "$.positive_offset",
+          "$.positive.offset",
+          "$.exponential_histogram.positive.offset"
+        ],
+        default: 0
+      ),
+      Field.int32("negative_offset",
+        paths: [
+          "$.negative_offset",
+          "$.negative.offset",
+          "$.exponential_histogram.negative.offset"
+        ],
+        default: 0
+      ),
+      Field.array_uint64("bucket_counts",
+        path: "$.bucket_counts"
+      ),
+      Field.array_float64("explicit_bounds",
+        path: "$.explicit_bounds"
+      ),
+      Field.array_uint64("positive_bucket_counts",
+        paths: [
+          "$.positive_bucket_counts",
+          "$.positive.bucket_counts",
+          "$.exponential_histogram.positive.bucket_counts"
+        ]
+      ),
+      Field.array_uint64("negative_bucket_counts",
+        paths: [
+          "$.negative_bucket_counts",
+          "$.negative.bucket_counts",
+          "$.exponential_histogram.negative.bucket_counts"
+        ]
+      ),
+      Field.array_float64("quantile_values",
+        paths: ["$.quantile_values", "$.summary.quantile_values"]
+      ),
+      Field.array_float64("quantiles",
+        paths: ["$.quantiles", "$.summary.quantiles"]
+      ),
+      Field.array_flat_map("exemplars.filtered_attributes",
+        path: "$.exemplars[*].filtered_attributes"
+      ),
+      Field.array_datetime64("exemplars.time_unix",
+        path: "$.exemplars[*].time_unix_nano",
+        precision: 9
+      ),
+      Field.array_float64("exemplars.value",
+        paths: ["$.exemplars[*].value", "$.exemplars[*].as_double"]
+      ),
+      Field.array_string("exemplars.span_id",
+        path: "$.exemplars[*].span_id"
+      ),
+      Field.array_string("exemplars.trace_id",
+        path: "$.exemplars[*].trace_id"
+      ),
+      Field.datetime64("time_unix",
+        paths: ["$.time_unix_nano", "$.timeUnixNano", "$.time_unix", "$.timestamp"],
+        precision: 9
+      ),
+      Field.datetime64("start_time_unix",
+        paths: [
+          "$.start_time_unix_nano",
+          "$.startTimeUnixNano",
+          "$.start_time_unix",
+          "$.start_time",
+          "$.startTime"
+        ],
+        precision: 9
+      ),
+      Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
+    ]
+
+    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:metric))
+  end
+
+  @spec for_trace() :: MappingConfig.t()
+  def for_trace do
+    fields = [
+      Field.string("project",
+        paths: [
+          "$.project",
+          "$.project_ref",
+          "$.project_id",
+          "$.metadata.project",
+          "$.metadata.tenant",
+          "$.metadata.tenantId"
+        ]
+      ),
+      Field.string("trace_id",
+        paths: ["$.trace_id", "$.traceId", "$.otel_trace_id"]
+      ),
+      Field.string("span_id",
+        paths: ["$.span_id", "$.spanId", "$.otel_span_id"]
+      ),
+      Field.string("parent_span_id",
+        paths: ["$.parent_span_id", "$.parentSpanId"]
+      ),
+      Field.string("trace_state",
+        paths: ["$.trace_state", "$.traceState"]
+      ),
+      Field.string("span_name",
+        paths: ["$.span_name", "$.name", "$.operationName", "$.event_message"]
+      ),
+      Field.string("span_kind",
+        paths: ["$.span_kind", "$.kind", "$.spanKind"],
+        default: "Unspecified",
+        value_map: %{
+          "Unspecified" => "Unspecified",
+          "Internal" => "Internal",
+          "Server" => "Server",
+          "Client" => "Client",
+          "Producer" => "Producer",
+          "Consumer" => "Consumer",
+          "SPAN_KIND_UNSPECIFIED" => "Unspecified",
+          "SPAN_KIND_INTERNAL" => "Internal",
+          "SPAN_KIND_SERVER" => "Server",
+          "SPAN_KIND_CLIENT" => "Client",
+          "SPAN_KIND_PRODUCER" => "Producer",
+          "SPAN_KIND_CONSUMER" => "Consumer"
+        }
+      ),
+      Field.string("service_name",
+        paths: [
+          "$.resource.service.name",
+          "$.resource._service_name",
+          "$.service_name",
+          "$.resource.name",
+          "$.metadata.context.application",
+          "$.metadata.context.service",
+          "$.SYSLOG_IDENTIFIER",
+          "$._SYSTEMD_UNIT"
+        ]
+      ),
+      Field.string("event_message",
+        paths: ["$.event_message", "$.message", "$.body", "$.msg"]
+      ),
+      Field.datetime64("start_time",
+        paths: [
+          "$.start_time",
+          "$.startTime",
+          "$.start_time_unix_nano",
+          "$.startTimeUnixNano"
+        ],
+        precision: 9
+      ),
+      Field.datetime64("end_time",
+        paths: [
+          "$.end_time",
+          "$.endTime",
+          "$.end_time_unix_nano",
+          "$.endTimeUnixNano"
+        ],
+        precision: 9
+      ),
+      Field.uint64("duration",
+        paths: ["$.duration", "$.duration_ns", "$.duration_ms", "$.duration_us"],
+        default: 0
+      ),
+      Field.string("status_code",
+        paths: ["$.status.code", "$.status_code", "$.statusCode"]
+      ),
+      Field.string("status_message",
+        paths: ["$.status.message", "$.status_message", "$.statusMessage"]
+      ),
+      Field.string("scope_name",
+        paths: [
+          "$.scope.name",
+          "$.metadata.context.module",
+          "$.metadata.context.application",
+          "$.instrumentation_library.name",
+          "$.metadata.namespace"
+        ]
+      ),
+      Field.string("scope_version",
+        paths: [
+          "$.scope.version",
+          "$.instrumentation_library.version"
+        ]
+      ),
+      resource_attributes_field(:trace),
+      # `scope` is deliberately not excluded here and must stay that way.
+      # otel_traces has no scope_attributes column and will not be getting one,
+      # so span_attributes is the permanent home for scope.schema_url and
+      # scope.attributes.*. Adding "scope" here would drop them entirely.
+      Field.flat_map("span_attributes",
+        path: "$",
+        exclude_keys: @attributes_exclude_keys ++ ["resource"],
+        elevate_keys: ["metadata", "attributes"]
+      ),
+      Field.array_datetime64("events.timestamp",
+        path: "$.events[*].time_unix_nano",
+        precision: 9
+      ),
+      Field.array_string("events.name",
+        path: "$.events[*].name"
+      ),
+      Field.array_flat_map("events.attributes",
+        path: "$.events[*].attributes"
+      ),
+      Field.array_string("links.trace_id",
+        path: "$.links[*].trace_id"
+      ),
+      Field.array_string("links.span_id",
+        path: "$.links[*].span_id"
+      ),
+      Field.array_string("links.trace_state",
+        path: "$.links[*].trace_state"
+      ),
+      Field.array_flat_map("links.attributes",
+        path: "$.links[*].attributes"
+      ),
+      Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
+    ]
+
+    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:trace))
+  end
+
+  @spec resource_attributes_field(TypeDetection.event_type()) :: Field.t()
+  defp resource_attributes_field(event_type) do
+    Field.flat_map("resource_attributes",
+      paths: ["$.resource"],
+      exclude_keys: ["_project_region", "_service_name"],
+      pick_mode: :merge,
+      pick: resource_attributes_pick(event_type),
+      default: %{}
+    )
+  end
+
+  @spec resource_attributes_pick(TypeDetection.event_type()) :: [{String.t(), [String.t()]}]
+  defp resource_attributes_pick(event_type) do
+    [
+      {"application_id", ["$.app_id", "$.application_id", "$.metadata.app_id"]},
+      {application_key(event_type),
+       [
+         "$.metadata.context.application",
+         "$.app_name",
+         "$.application_name",
+         "$.metadata.app_name",
+         "$.metadata.parsed.application_name"
+       ]},
+      {"cluster",
+       [
+         "$.metadata.cluster",
+         "$.metadata.context.cluster",
+         "$.cluster",
+         "$.resource.cluster"
+       ]},
+      {"environment",
+       [
+         "$.metadata.environment",
+         "$.metadata.context.environment",
+         "$.environment",
+         "$.resource.environment"
+       ]},
+      {"host", ["$.metadata.host", "$.metadata.context.host", "$.host", "$.resource.host"]},
+      {"instance_id", ["$.metadata.instance_id"]},
+      {"machine_id", ["$.machine_id"]},
+      {"node",
+       [
+         "$.metadata.node",
+         "$.metadata.context.vm.node",
+         "$.node",
+         "$.resource.node"
+       ]},
+      {"organization_id", ["$.organization_id", "$.org_id"]},
+      {"organization_slug", ["$.organization_slug"]},
+      {"project",
+       [
+         "$.project",
+         "$.project_ref",
+         "$.project_id",
+         "$.metadata.project",
+         "$.metadata.tenant",
+         "$.metadata.tenantId"
+       ]},
+      {"region",
+       [
+         "$.metadata.region",
+         "$.region",
+         "$.resource.region",
+         "$.resource._project_region"
+       ]},
+      {"service_name", ["$.resource.service.name", "$.resource._service_name", "$.service_name"]},
+      {"vector_file", ["$.metadata.vector_file"]},
+      {"vector_host", ["$.metadata.vector_host"]}
+    ]
+  end
+
+  @spec application_key(TypeDetection.event_type()) :: String.t()
+  defp application_key(:log), do: "application_name"
+  defp application_key(_event_type), do: "application"
+end

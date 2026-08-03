@@ -1,0 +1,115 @@
+name: Deploy PR to Dev Cluster
+
+on:
+  workflow_dispatch:
+    inputs:
+      dev_number:
+        description: 'Dev cluster number to deploy to (instance-group-staging-dev-<N>-producer/-consumer). Must already exist — see cloudbuild/staging/deploy-dev.yaml bootstrap notes.'
+        required: false
+        default: '1'
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# Standalone from docker-ci-amd-and-arm.yml / trigger-cloudbuild.yml on
+# purpose: it never calls either, so it can never cascade into a
+# staging-versioned or prod deploy (see trigger-cloudbuild.yml's
+# workflow_dispatch handling). This only ever builds the dispatched ref and
+# rolls instance-group-staging-dev-<dev_number>-producer/-consumer.
+#
+# Requires an open PR for the dispatched branch — images are tagged
+# supabase/logflare:pr<number>-<sha> to keep them clearly separate from the
+# dev-<sha> tags docker-ci-amd-and-arm.yml produces for main.
+jobs:
+  settings:
+    runs-on: ubuntu-latest
+    outputs:
+      short_sha: ${{ steps.env.outputs.short_sha }}
+      pr_number: ${{ steps.pr.outputs.number }}
+    steps:
+      - uses: actions/checkout@v3
+      - id: env
+        run: echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+      - id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          number=$(gh pr list --repo "${{ github.repository }}" --head "${{ github.ref_name }}" --json number --jq '.[0].number')
+          if [ -z "$number" ]; then
+            echo "No open PR found for branch ${{ github.ref_name }} — open one first." >&2
+            exit 1
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: settings
+    strategy:
+      matrix:
+        include:
+          - runner: blacksmith-4vcpu-ubuntu-2404
+            arch: amd64
+          - runner: blacksmith-4vcpu-ubuntu-2404-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+      - run: docker context create builders
+      - uses: docker/setup-buildx-action@v2
+        with:
+          endpoint: builders
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v3
+        with:
+          push: true
+          tags: supabase/logflare:pr${{ needs.settings.outputs.pr_number }}-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            COMMIT_SHA=${{ needs.settings.outputs.short_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  merge_publish:
+    needs:
+      - settings
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Merge multi-arch manifests
+        run: |
+          tag=supabase/logflare:pr${{ needs.settings.outputs.pr_number }}-${{ needs.settings.outputs.short_sha }}
+          docker buildx imagetools create -t "$tag" \
+            "${tag}-amd64" "${tag}-arm64"
+
+  deploy:
+    needs:
+      - settings
+      - merge_publish
+    runs-on: ubuntu-latest
+    concurrency:
+      # Different dev numbers deploy independently; same dev number serializes.
+      group: deploy-pr-to-dev-${{ inputs.dev_number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v3
+      - uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_STAGING_CREDENTIALS }}
+          create_credentials_file: true
+          export_environment_variables: true
+      - uses: google-github-actions/setup-gcloud@v1
+        with:
+          version: "449.0.0"
+          project_id: logflare-staging
+      - name: Deploy to dev-${{ inputs.dev_number }} producer + consumer instance groups
+        run: make deploy.staging.dev DEV_NUMBER=${{ inputs.dev_number }} SHA_IMAGE_TAG=pr${{ needs.settings.outputs.pr_number }}-${{ needs.settings.outputs.short_sha }}

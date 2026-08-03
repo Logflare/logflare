@@ -1,0 +1,390 @@
+defmodule Logflare.Google.CloudResourceManagerTest do
+  use Logflare.DataCase
+
+  alias Logflare.Google.CloudResourceManager
+  alias GoogleApi.CloudResourceManager.V1.Model
+  alias GoogleApi.CloudResourceManager.V1.Model.Binding
+
+  setup do
+    google_configs = Map.new(Application.get_env(:logflare, Logflare.Google))
+    expected_members = setup_test_state()
+
+    on_exit(fn ->
+      Application.put_env(:logflare, Logflare.Google, Map.to_list(google_configs))
+    end)
+
+    %{
+      google_configs: google_configs,
+      expected_members: expected_members
+    }
+  end
+
+  describe "set_iam_policy/0" do
+    setup do
+      # Mock IAM API calls for listing existing service accounts
+      stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok, %{accounts: [], nextPageToken: nil}}
+      end)
+
+      :ok
+    end
+
+    test "request body sends expected roles for paying users, paying team users and service accounts",
+         %{
+           google_configs: google_configs,
+           expected_members: expected_members
+         } do
+      pid = self()
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, project_number, [body: body] ->
+          assert project_number == google_configs.project_number
+          send(pid, body.policy.bindings)
+          {:ok, ""}
+        end
+      )
+
+      CloudResourceManager.set_iam_policy(async: false)
+
+      assert_received [_ | _] = bindings
+
+      assert Enum.all?(bindings, fn binding ->
+               %Binding{members: [_ | _], role: "" <> _} = binding
+             end)
+
+      members_list = Enum.flat_map(bindings, & &1.members)
+
+      for member <- expected_members do
+        assert Enum.member?(members_list, member)
+      end
+
+      viewer_binding =
+        Enum.find(bindings, fn %Binding{role: role} -> role == "roles/viewer" end)
+
+      assert viewer_binding
+      assert ("user:" <> google_configs.project_viewer) in viewer_binding.members
+
+      cloud_sql_client_binding =
+        Enum.find(bindings, fn %Binding{role: role} -> role == "roles/cloudsql.client" end)
+
+      assert cloud_sql_client_binding
+
+      assert ("serviceAccount:" <> google_configs.cloud_sql_client_sa) in cloud_sql_client_binding.members
+    end
+
+    test "uses group: prefix as-is for project viewer binding", %{
+      google_configs: google_configs
+    } do
+      Application.put_env(
+        :logflare,
+        Logflare.Google,
+        Map.to_list(%{google_configs | project_viewer: "group:support@mile.cloud"})
+      )
+
+      pid = self()
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: body] ->
+          send(pid, body.policy.bindings)
+          {:ok, ""}
+        end
+      )
+
+      CloudResourceManager.set_iam_policy(async: false)
+
+      assert_received [_ | _] = bindings
+
+      viewer_binding =
+        Enum.find(bindings, fn %Binding{role: role} -> role == "roles/viewer" end)
+
+      assert viewer_binding
+      assert "group:support@mile.cloud" in viewer_binding.members
+      refute "user:support@mile.cloud" in viewer_binding.members
+    end
+
+    test "omits cloudsql.client binding when cloud_sql_client_sa is not configured", %{
+      google_configs: google_configs
+    } do
+      Application.put_env(
+        :logflare,
+        Logflare.Google,
+        Map.to_list(%{google_configs | cloud_sql_client_sa: nil})
+      )
+
+      pid = self()
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: body] ->
+          send(pid, body.policy.bindings)
+          {:ok, ""}
+        end
+      )
+
+      CloudResourceManager.set_iam_policy(async: false)
+
+      assert_received [_ | _] = bindings
+
+      refute Enum.any?(bindings, fn %Binding{role: role} -> role == "roles/cloudsql.client" end)
+    end
+
+    test "sets user as invalid google account if user does not exist" do
+      user = insert(:user, valid_google_account: true)
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:error,
+           %Tesla.Env{
+             status: 404,
+             body: Jason.encode!(%{error: %{message: "User #{user.email} does not exist."}})
+           }}
+        end
+      )
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               CloudResourceManager.set_iam_policy(async: false)
+             end) =~ "marked as invalid"
+
+      user = Logflare.Repo.get!(Logflare.User, user.id)
+      refute user.valid_google_account
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:ok,
+           %Tesla.Env{
+             status: 200,
+             body: ""
+           }}
+        end
+      )
+
+      refute ExUnit.CaptureLog.capture_log(fn ->
+               CloudResourceManager.set_iam_policy(async: false)
+             end) =~ "marked as invalid"
+    end
+
+    test "sets team_user as invalid google account if user does not exist" do
+      team_user = insert(:team_user, valid_google_account: true)
+
+      GoogleApi.CloudResourceManager.V1.Api.Projects
+      |> expect(
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:error,
+           %Tesla.Env{
+             status: 404,
+             body: Jason.encode!(%{error: %{message: "User #{team_user.email} does not exist."}})
+           }}
+        end
+      )
+      |> stub(:cloudresourcemanager_projects_set_iam_policy, fn conn, project_number, opts ->
+        call_original(
+          GoogleApi.CloudResourceManager.V1.Api.Projects,
+          :cloudresourcemanager_projects_set_iam_policy,
+          [conn, project_number, opts]
+        )
+      end)
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               CloudResourceManager.set_iam_policy(async: false)
+             end) =~ "marked as invalid"
+
+      team_user = Logflare.Repo.get!(Logflare.TeamUsers.TeamUser, team_user.id)
+      refute team_user.valid_google_account
+
+      # attempting to re-set the policy should not raise an error
+      refute ExUnit.CaptureLog.capture_log(fn ->
+               CloudResourceManager.set_iam_policy(async: false)
+             end) =~ "marked as invalid"
+    end
+  end
+
+  describe "append_managed_sa_to_all_iam_projects/1" do
+    setup do
+      original_pool_size =
+        Application.get_env(:logflare, :bigquery_backend_adaptor)[
+          :managed_service_account_pool_size
+        ]
+
+      Application.put_env(:logflare, :bigquery_backend_adaptor,
+        managed_service_account_pool_size: 1
+      )
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :bigquery_backend_adaptor,
+          managed_service_account_pool_size: original_pool_size
+        )
+      end)
+
+      stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok,
+           %{
+             accounts: [
+               %GoogleApi.IAM.V1.Model.ServiceAccount{
+                 email: "logflare-managed-0@some-project.iam.gserviceaccount.com",
+                 name:
+                   "projects/some-project/serviceAccounts/logflare-managed-0@some-project.iam.gserviceaccount.com"
+               }
+             ],
+             nextPageToken: nil
+           }}
+      end)
+
+      :ok
+    end
+
+    test "calls set_iam_policy for primary project and each additional project" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_additional_projects: "extra-a, extra-b"
+        )
+
+      pid = self()
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, project_id, [body: _body] ->
+          send(pid, {:get_policy, project_id})
+          {:ok, %Model.Policy{bindings: []}}
+        end
+      )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, project_id, [body: body] ->
+          send(pid, {:set_policy, project_id})
+          {:ok, body.policy}
+        end
+      )
+
+      result = CloudResourceManager.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:ok, _} = result.primary
+      assert length(result.additional) == 2
+      assert Enum.all?(result.additional, fn {_, res} -> match?({:ok, _}, res) end)
+
+      assert_receive {:set_policy, "primary-project"}
+      assert_receive {:set_policy, "extra-a"}
+      assert_receive {:set_policy, "extra-b"}
+    end
+
+    test "with nil additional_projects only processes primary" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_additional_projects: nil
+        )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _project_id, [body: _body] ->
+          {:ok, %Model.Policy{bindings: []}}
+        end
+      )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_id, [body: body] ->
+          {:ok, body.policy}
+        end
+      )
+
+      result = CloudResourceManager.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:ok, _} = result.primary
+      assert [] = result.additional
+    end
+
+    test "with empty string additional_projects only processes primary" do
+      user =
+        insert(:user,
+          bigquery_project_id: "primary-project",
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_additional_projects: "  ,  "
+        )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _project_id, [body: _body] ->
+          {:ok, %Model.Policy{bindings: []}}
+        end
+      )
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_id, [body: body] ->
+          {:ok, body.policy}
+        end
+      )
+
+      result = CloudResourceManager.append_managed_sa_to_all_iam_projects(user)
+
+      assert {:ok, _} = result.primary
+      assert [] = result.additional
+    end
+  end
+
+  defp setup_test_state do
+    stripe_id = "testing"
+    insert(:plan, name: "Free")
+    insert(:plan, name: "Legacy")
+    insert(:plan, name: "Lifetime")
+    insert(:plan, name: "Stripe", stripe_id: stripe_id)
+
+    insert(:user_without_billing_account)
+    insert(:user_without_stripe_subscription)
+    insert(:user_with_wrong_stripe_sub_content)
+    insert(:user_with_lifetime_account_non_google)
+    user_with_lifetime_account = insert(:user_with_lifetime_account)
+    user_with_legacy_account = insert(:user_with_legacy_account)
+    user_with_stripe_subscription = insert(:user_with_stripe_subscription, stripe_id: stripe_id)
+
+    team = insert(:team)
+
+    team_owner_user =
+      insert(:user,
+        provider: "google",
+        valid_google_account: true,
+        billing_account: insert(:billing_account, lifetime_plan: true),
+        team: team
+      )
+
+    user_non_owner_paid_account =
+      insert(:team_user,
+        team: team,
+        email: insert(:user).email,
+        provider: "google",
+        valid_google_account: true
+      )
+
+    [
+      user_with_lifetime_account,
+      user_with_legacy_account,
+      user_with_stripe_subscription,
+      team_owner_user,
+      user_non_owner_paid_account
+    ]
+    |> Enum.sort_by(& &1.updated_at, {:desc, Date})
+    |> Enum.map(&"user:#{&1.email}")
+  end
+end
