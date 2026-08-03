@@ -10,7 +10,7 @@ defmodule Logflare.ClickHouseMappedEvents do
   import Logflare.Factory
   import Logflare.Utils.Guards, only: [is_empty_map: 1]
 
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
   alias Logflare.Mapper
 
   @doc """
@@ -46,11 +46,10 @@ defmodule Logflare.ClickHouseMappedEvents do
       }
       |> deep_merge_opts(opts[:body] || %{})
 
-    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:log)
+    {mapped_body, config_id} = map_body(input_body, :log)
 
     mapped_body =
-      input_body
-      |> Mapper.map(compiled)
+      mapped_body
       |> Map.put("mapping_config_id", config_id)
       |> resolve_severity_number()
 
@@ -86,12 +85,8 @@ defmodule Logflare.ClickHouseMappedEvents do
       }
       |> deep_merge_opts(opts[:body] || %{})
 
-    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:metric)
-
-    mapped_body =
-      input_body
-      |> Mapper.map(compiled)
-      |> Map.put("mapping_config_id", config_id)
+    {mapped_body, config_id} = map_body(input_body, :metric)
+    mapped_body = Map.put(mapped_body, "mapping_config_id", config_id)
 
     %{event | body: mapped_body}
   end
@@ -127,14 +122,16 @@ defmodule Logflare.ClickHouseMappedEvents do
       }
       |> deep_merge_opts(opts[:body] || %{})
 
-    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:trace)
-
-    mapped_body =
-      input_body
-      |> Mapper.map(compiled)
-      |> Map.put("mapping_config_id", config_id)
+    {mapped_body, config_id} = map_body(input_body, :trace)
+    mapped_body = Map.put(mapped_body, "mapping_config_id", config_id)
 
     %{event | body: mapped_body}
+  end
+
+  defp map_body(input_body, event_type) do
+    config = MappingDefaults.for_type(event_type)
+    compiled = Mapper.compile!(%{config | output: nil})
+    {Mapper.map(input_body, compiled), MappingDefaults.config_id(event_type)}
   end
 
   @spec deep_merge_opts(map(), map()) :: map()
