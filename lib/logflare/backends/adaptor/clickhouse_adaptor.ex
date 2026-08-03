@@ -512,8 +512,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   - `:log`    -> `otel_logs_<token>`
   - `:metric` -> `otel_metrics_<token>`
   - `:trace`  -> `otel_traces_<token>`
+
+  Single-tenant defaults use `single_tenant` suffix in place of `<token>`
   """
   @spec clickhouse_ingest_table_name(Backend.t(), TypeDetection.event_type()) :: String.t()
+  def clickhouse_ingest_table_name(%Backend{single_tenant_default?: true}, :log),
+    do: "otel_logs_single_tenant"
+
+  def clickhouse_ingest_table_name(%Backend{single_tenant_default?: true}, :metric),
+    do: "otel_metrics_single_tenant"
+
+  def clickhouse_ingest_table_name(%Backend{single_tenant_default?: true}, :trace),
+    do: "otel_traces_single_tenant"
+
   def clickhouse_ingest_table_name(%Backend{} = backend, :log),
     do: build_otel_table_name(backend, "otel_logs")
 
@@ -1229,7 +1240,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  @spec maybe_start_query_connection_manager(pid() | nil, pos_integer(), String.t() | nil) ::
+  @spec maybe_start_query_connection_manager(pid() | nil, non_neg_integer(), String.t() | nil) ::
           :ok | {:error, term()}
   defp maybe_start_query_connection_manager(nil, backend_id, label)
        when is_pos_integer(backend_id) do

@@ -120,7 +120,7 @@ setup: check-tools check-version-manager setup.node
 setup.node:
 	@echo -e "$(BOLD)$(BLUE)📦 Installing Node.js dependencies...$(NC)"
 	@echo ""
-	npm --prefix ./assets ci 
+	npm --prefix ./assets ci
 	@echo ""
 
 reset:
@@ -157,6 +157,9 @@ start.green: __start__
 start.sb.bq: LOGFLARE_SUPABASE_MODE = true
 start.sb.bq: start.st.bq
 
+start.sb.ch: LOGFLARE_SUPABASE_MODE = true
+start.sb.ch: start.st.ch
+
 # SPOOL_MODE (producer|consumer|both), SPOOL_PROVIDER (aws|gcp), and related
 # SPOOL_* vars pass straight through to the app via __start__ (see config/runtime.exs).
 # To run a producer + consumer pair side by side, override PORT/ERL_NAME/LOGFLARE_GRPC_PORT
@@ -168,6 +171,12 @@ start.st.bq: PORT ?= 4000
 start.st.bq: ENV_FILE = .single_tenant_bq.env
 start.st.bq: LOGFLARE_GRPC_PORT ?= 50051
 start.st.bq: __start__
+
+start.st.ch: ERL_NAME ?= st_
+start.st.ch: PORT ?= 4000
+start.st.ch: ENV_FILE = .single_tenant_ch.env
+start.st.ch: LOGFLARE_GRPC_PORT ?= 50051
+start.st.ch: __start__
 
 start.sb.pg: LOGFLARE_SUPABASE_MODE = true
 start.sb.pg: start.st.pg
@@ -195,7 +204,7 @@ migrate:
 stripe:
 	stripe listen --forward-to localhost:4000/webhooks/stripe
 
-.PHONY: __start__ migrate stripe start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink
+.PHONY: __start__ migrate stripe start.sb.pg start.sb.ch start.sb.bq start.st.pg start.st.ch start.st.bq start.orange start.pink
 
 # Encryption and decryption of secrets
 # Usage:
@@ -426,12 +435,12 @@ $(TELEGRAF_KEYS_SENTINEL):
 
 	# Server (Telegraf)
 	@echo "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:telegraf" > $(TELEGRAF_KEYS_DIR)/server.ext
-	
+
 	@openssl genrsa -out $(TELEGRAF_KEYS_DIR)/server.key 2048
 	@openssl req -new -key $(TELEGRAF_KEYS_DIR)/server.key \
 		-subj "/CN=localhost" \
 		-out $(TELEGRAF_KEYS_DIR)/server.csr
-	
+
 	@openssl x509 -req -days 3650 -in $(TELEGRAF_KEYS_DIR)/server.csr \
 		-CA $(TELEGRAF_KEYS_DIR)/ca.crt -CAkey $(TELEGRAF_KEYS_DIR)/ca.key -set_serial 01 \
 		-out $(TELEGRAF_KEYS_DIR)/server.crt \
