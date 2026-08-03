@@ -72,14 +72,14 @@ defmodule Logflare.Mixfile do
       plt_local_path: "dialyzer",
       plt_core_path: "dialyzer",
       plt_add_deps: :apps_tree,
-      plt_add_apps: [:ex_unit, :mix],
+      plt_add_apps: [:ex_unit, :mix, :phoenix_test, :phoenix_test_playwright, :playwright_ex],
       ignore_warnings: ".dialyzer_ignore.exs"
     ]
   end
 
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:dev), do: ["lib", "priv/tasks", "test/support"]
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:test), do: ["lib", "test/support", "test/e2e"]
   defp elixirc_paths(_), do: ["lib", "priv/tasks"]
 
   defp deps do
@@ -263,8 +263,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
       {:otel_metric_exporter,
-       git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "2a6de91"},
-      {:live_monaco_editor, "~> 0.2"}
+       git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "2a6de91"}
     ]
   end
 

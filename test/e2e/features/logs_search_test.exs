@@ -170,7 +170,7 @@ defmodule E2e.Features.LogsSearchTest do
           expression: """
           ({ expectedFragment }) => {
             const querystring =
-              document.querySelector("#lql-editor-hook")?.dataset.querystring ?? ""
+              document.querySelector("#lql-editor-hook [data-editor-input]")?.value ?? ""
 
             if (expectedFragment === "") return querystring !== ""
 
@@ -185,7 +185,8 @@ defmodule E2e.Features.LogsSearchTest do
       {:ok, querystring} =
         Frame.evaluate(
           frame_id,
-          expression: ~S|document.querySelector("#lql-editor-hook")?.dataset.querystring ?? ""|,
+          expression:
+            ~S|document.querySelector("#lql-editor-hook [data-editor-input]")?.value ?? ""|,
           timeout: 5_000
         )
 
