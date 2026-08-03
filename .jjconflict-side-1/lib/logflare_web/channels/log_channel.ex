@@ -1,0 +1,105 @@
+defmodule LogflareWeb.LogChannel do
+  @moduledoc false
+  use LogflareWeb, :channel
+
+  alias Logflare.Backends
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
+  alias LogflareWeb.Endpoint
+  alias LogflareWeb.Router.Helpers, as: Routes
+
+  def join("logs:" <> source_uuid, _payload, socket),
+    do: join(source_uuid, socket)
+
+  def join("logs:elixir:" <> source_uuid, _payload, socket),
+    do: join(source_uuid, socket)
+
+  def join("logs:elixir:logger:" <> source_uuid, _payload, socket),
+    do: join(source_uuid, socket)
+
+  def join("logs:erlang:" <> source_uuid, _payload, socket),
+    do: join(source_uuid, socket)
+
+  def join("logs:erlang:logger:" <> source_uuid, _payload, socket),
+    do: join(source_uuid, socket)
+
+  def join("logs:erlang:lager:" <> source_uuid, _payload, socket),
+    do: join(source_uuid, socket)
+
+  def join("logs:javascript:node:" <> source_uuid, _payload, socket),
+    do: join(source_uuid, socket)
+
+  def join(source_uuid, socket) do
+    user = socket.assigns[:user]
+
+    case Sources.Cache.get_by_and_preload_rules(token: source_uuid) do
+      %Source{} when is_nil(user) ->
+        {:error, %{reason: "Not authorized!"}}
+
+      %Source{} = source ->
+        if user.id == source.user_id do
+          url = Routes.source_url(Endpoint, :show, source.id)
+          socket = assign(socket, :source, source)
+
+          send(
+            self(),
+            {:notify,
+             %{
+               message: "Connected to Logflare",
+               source: %{
+                 name: source.name,
+                 token: source.token,
+                 url: url
+               }
+             }}
+          )
+
+          {:ok, socket}
+        else
+          {:error, %{reason: "Not authorized!"}}
+        end
+
+      nil ->
+        {:error, socket}
+    end
+  end
+
+  def handle_in("batch", %{"batch" => batch}, socket) when is_list(batch) do
+    source = socket.assigns.source |> Sources.refresh_source_metrics_for_ingest()
+
+    # allow_spooling: true — a genuine client-submitted entry point, same as
+    # the HTTP/gRPC controllers routed through Logflare.Logs.Processor.
+    case Backends.ingest_logs(batch, source, nil, true) do
+      {:ok, _count} ->
+        push(socket, "batch", %{message: "Handled batch"})
+        {:noreply, socket}
+
+      {:error, errors} ->
+        push(socket, "batch", %{message: "Batch error", errors: errors})
+        {:noreply, socket}
+    end
+  end
+
+  def handle_in("ping", _payload, socket) do
+    push(socket, "pong", %{message: "Pong"})
+    {:noreply, socket}
+  end
+
+  def handle_in(_event, payload, socket) do
+    send(
+      self(),
+      {:notify,
+       %{
+         message: "Unhandled event type. Please verify.",
+         echo_payload: inspect(payload)
+       }}
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:notify, payload}, socket) do
+    push(socket, "notify", payload)
+    {:noreply, socket}
+  end
+end

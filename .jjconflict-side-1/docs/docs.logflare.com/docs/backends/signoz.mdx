@@ -1,0 +1,33 @@
+---
+sidebar_position: 13
+---
+
+# SigNoz
+
+The SigNoz backend is **ingest-only**, and sends logs to [SigNoz](https://signoz.io) via OTLP/HTTP.
+
+## Behaviour and configurations
+
+### Configuration
+
+The backend can be configured with the following options:
+
+- `:endpoint` (string, required) - The ingestion URL, such as `https://ingest.us.signoz.cloud:443`. The `/v1/logs` path is appended automatically, so it must not be included here.
+- `:ingestion_key` (string) - The ingestion key used for authentication. Required by SigNoz Cloud, and typically unset for self-managed deployments.
+
+You can obtain the ingestion URL and ingestion key under **Settings > Ingestion** in SigNoz Cloud. See the [SigNoz ingestion docs](https://signoz.io/docs/ingestion/signoz-cloud/overview/) for details. For a self-managed deployment, use the OTLP/HTTP address of your collector, such as `https://otel.example.com:4318`.
+
+### Implementation Details
+
+- The adaptor sends logs to `<endpoint>/v1/logs`.
+- It uses OTLP over HTTP with Protobuf encoding.
+- Authentication is handled via the `signoz-ingestion-key` header, which is omitted when no ingestion key is configured.
+
+### Log record mapping
+
+SigNoz indexes the OTLP log record body and attributes, and does not read `event_name`. The adaptor therefore always sends flattened records:
+
+- `event_message` becomes the record body, so it shows as the log message in SigNoz.
+- Every other field is flattened into individual attributes using dotted keys, for example `metadata.parsed.error_severity`, so each one is filterable.
+- Severity is derived from the source's own level fields when the event carries no explicit `severity_number`.
+- The source name is sent as the `service.name` resource attribute.

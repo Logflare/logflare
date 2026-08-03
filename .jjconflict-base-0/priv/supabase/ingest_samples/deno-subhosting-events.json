@@ -1,0 +1,14 @@
+{
+  "event_message": "2d37e398c3 some textn",
+  "metadata": {
+    "deployment_id": "default-4f98-4706-b7a7-10e3af844ace_773",
+    "event_type": "log",
+    "execution_id": "fac2b2e9-86f2-4b30-9913-8b6fc1728419",
+    "function_id": "09f74752-4f98-4706-b7a7-10e3af844ace",
+    "level": "info",
+    "project_ref": "default",
+    "region": "aws-eu-central-1",
+    "timestamp": "2023-03-23T14:34:17.643993277+00:00",
+    "version": "773"
+  }
+}

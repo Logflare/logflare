@@ -1,0 +1,1103 @@
+use std::collections::HashMap;
+use std::collections::HashSet;
+
+use rustler::types::map::MapIterator;
+use rustler::{Encoder, Env, Term};
+
+use crate::path::{self, CompiledPath, PathSegment};
+use crate::string_filters::{CharClass, StringFilters};
+
+// ── Data structures ────────────────────────────────────────────────────────
+
+const ROOT_CACHE_MIN_REFERENCES: usize = 8;
+
+#[derive(Debug)]
+pub enum CompiledOutput {
+    Map,
+    ClickHouseRowBinary(crate::clickhouse_rowbinary::CompiledLayout),
+}
+
+#[derive(Debug)]
+pub struct CompiledMapping {
+    pub fields: Vec<CompiledField>,
+    pub path_cache_size: usize,
+    pub root_cache_size: usize,
+    pub root_cache_scan_limit: usize,
+    pub root_cache_keys: HashMap<Vec<u8>, usize>,
+    pub output: CompiledOutput,
+}
+
+#[derive(Debug)]
+pub struct CompiledField {
+    pub name: String,
+    pub path_source: PathSource,
+    pub field_type: FieldType,
+    pub default: DefaultValue,
+    pub transform: Option<FieldTransform>,
+    pub allowed_values: HashSet<Vec<u8>>,
+    pub value_map: HashMap<String, i64>,
+    pub value_map_str: HashMap<String, String>,
+    pub exclude_keys: Vec<Vec<u8>>,
+    pub elevate_keys: Vec<Vec<u8>>,
+    pub pick: Vec<PickEntry>,
+    /// When true, a resolved pick map is unioned over the path/paths value
+    /// (pick winning on collision) instead of replacing it.
+    pub pick_merge: bool,
+    /// When true (`coercion: :strict` on a uint field), only integer terms and
+    /// binaries holding an integer resolve; floats and booleans are unresolved.
+    pub strict_uint: bool,
+    pub enum8_data: Option<Enum8Data>,
+    pub filter_nil: bool,
+    pub flat_map_value_type: FlatMapValueType,
+    pub filters: Option<StringFilters>,
+}
+
+#[derive(Debug)]
+pub enum PathSource {
+    Root,
+    Single(CompiledPath),
+    Coalesce(Vec<CompiledPath>),
+    /// Index into the output values vector (resolved at compile time from field name).
+    FromOutput(usize),
+    /// Temporary: unresolved field name, converted to FromOutput(usize) during compilation.
+    FromOutputName(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FieldType {
+    String,
+    UInt8,
+    UInt32,
+    UInt64,
+    Int32,
+    Float64,
+    Bool,
+    Enum8 {
+        precision: u8, // unused, placeholder to keep enum variant distinct
+    },
+    DateTime64 {
+        precision: u8,
+    },
+    Json,
+    ArrayString,
+    ArrayUInt64,
+    ArrayFloat64,
+    ArrayDateTime64 {
+        precision: u8,
+    },
+    ArrayJson,
+    ArrayMap,
+    FlatMap,
+    ArrayFlatMap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FlatMapValueType {
+    String,
+}
+
+#[derive(Debug, Clone)]
+pub enum DefaultValue {
+    Nil,
+    Str(String),
+    Int(i64),
+    Uint(u64),
+    Flt(f64),
+    Bool(bool),
+    EmptyList,
+    EmptyMap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FieldTransform {
+    Upcase,
+    Downcase,
+}
+
+#[derive(Debug)]
+pub struct PickEntry {
+    pub key: String,
+    pub paths: Vec<CompiledPath>,
+}
+
+/// Inference rule for Enum8 structural inference.
+#[derive(Debug)]
+pub struct InferRule {
+    pub any: Vec<InferCondition>,
+    pub all: Vec<InferCondition>,
+    pub result: String,
+}
+
+#[derive(Debug)]
+pub struct InferCondition {
+    pub path: CompiledPath,
+    pub predicate: Predicate,
+}
+
+#[derive(Debug)]
+pub enum Predicate {
+    Exists,
+    NotExists,
+    NotZero,
+    IsZero,
+    GreaterThan(f64),
+    LessThan(f64),
+    NotEmpty,
+    IsEmpty,
+    Equals(PredicateValue),
+    NotEquals(PredicateValue),
+    In(Vec<PredicateValue>),
+    IsString,
+    IsNumber,
+    IsList,
+    IsMap,
+}
+
+#[derive(Debug, Clone)]
+pub enum PredicateValue {
+    Str(String),
+    Int(i64),
+    Flt(f64),
+    Bool(bool),
+}
+
+/// Enum8-specific compiled data stored alongside CompiledField.
+#[derive(Debug)]
+pub struct Enum8Data {
+    pub value_map: HashMap<String, i8>,
+    pub infer_rules: Vec<InferRule>,
+}
+
+// ── Config decoder ─────────────────────────────────────────────────────────
+
+pub fn decode_mapping<'a>(env: Env<'a>, config: Term<'a>) -> Result<CompiledMapping, String> {
+    let mut fields = decode_fields(env, config)?;
+    let output = decode_output(env, config, &fields)?;
+    let (path_cache_size, root_cache_size, root_cache_keys) =
+        assign_path_cache_indices(&mut fields);
+    Ok(CompiledMapping {
+        fields,
+        path_cache_size,
+        root_cache_size,
+        root_cache_scan_limit: root_cache_keys.len().max(ROOT_CACHE_MIN_REFERENCES),
+        root_cache_keys,
+        output,
+    })
+}
+
+fn decode_output<'a>(
+    env: Env<'a>,
+    config: Term<'a>,
+    fields: &[CompiledField],
+) -> Result<CompiledOutput, String> {
+    let Some(output) = get_term_key(env, config, "output") else {
+        return Ok(CompiledOutput::Map);
+    };
+    let format = get_string_key(env, output, "format")?
+        .ok_or_else(|| "output format is required".to_string())?;
+
+    match format.as_str() {
+        "clickhouse_row_binary" => {
+            let row_type = get_string_key(env, output, "row_type")?
+                .ok_or_else(|| "ClickHouse RowBinary output row_type is required".to_string())?;
+            let fields_by_name = fields
+                .iter()
+                .enumerate()
+                .map(|(index, field)| (field.name.as_str(), (index, field.field_type)))
+                .collect();
+            let layout = crate::clickhouse_rowbinary::compile_layout(&row_type, &fields_by_name)?;
+            Ok(CompiledOutput::ClickHouseRowBinary(layout))
+        }
+        _ => Err(format!("unsupported mapping output format '{format}'")),
+    }
+}
+
+fn assign_path_cache_indices(
+    fields: &mut [CompiledField],
+) -> (usize, usize, HashMap<Vec<u8>, usize>) {
+    let mut counts = HashMap::new();
+    visit_paths(fields, |path| collect_cached_prefixes(path, &mut counts));
+    let root_reference_count: usize = counts
+        .iter()
+        .filter(|(prefix, _)| prefix.len() == 1 && matches!(prefix[0], PathSegment::Key(_)))
+        .map(|(_, count)| count)
+        .sum();
+    let preload_root = root_reference_count >= ROOT_CACHE_MIN_REFERENCES;
+
+    let mut indices = HashMap::new();
+    if preload_root {
+        for prefix in counts.keys().filter(|prefix| {
+            prefix.len() == 1 && matches!(prefix.first(), Some(PathSegment::Key(_)))
+        }) {
+            let index = indices.len();
+            indices.insert(prefix.clone(), index);
+        }
+    }
+    let root_cache_size = indices.len();
+
+    visit_paths_mut(fields, |path| {
+        assign_cached_prefixes(path, &counts, &mut indices, preload_root)
+    });
+
+    let root_cache_keys = if preload_root {
+        indices
+            .iter()
+            .filter_map(|(prefix, index)| match prefix.as_slice() {
+                [PathSegment::Key(key)] => Some((key.as_bytes().to_vec(), *index)),
+                _ => None,
+            })
+            .collect()
+    } else {
+        HashMap::new()
+    };
+
+    (indices.len(), root_cache_size, root_cache_keys)
+}
+
+fn visit_paths(fields: &[CompiledField], mut visitor: impl FnMut(&CompiledPath)) {
+    for field in fields {
+        match &field.path_source {
+            PathSource::Single(path) => visitor(path),
+            PathSource::Coalesce(paths) => paths.iter().for_each(&mut visitor),
+            PathSource::Root | PathSource::FromOutput(_) | PathSource::FromOutputName(_) => {}
+        }
+        for entry in &field.pick {
+            entry.paths.iter().for_each(&mut visitor);
+        }
+        if let Some(enum8) = &field.enum8_data {
+            for rule in &enum8.infer_rules {
+                rule.any
+                    .iter()
+                    .for_each(|condition| visitor(&condition.path));
+                rule.all
+                    .iter()
+                    .for_each(|condition| visitor(&condition.path));
+            }
+        }
+    }
+}
+
+fn visit_paths_mut(fields: &mut [CompiledField], mut visitor: impl FnMut(&mut CompiledPath)) {
+    for field in fields {
+        match &mut field.path_source {
+            PathSource::Single(path) => visitor(path),
+            PathSource::Coalesce(paths) => paths.iter_mut().for_each(&mut visitor),
+            PathSource::Root | PathSource::FromOutput(_) | PathSource::FromOutputName(_) => {}
+        }
+        for entry in &mut field.pick {
+            entry.paths.iter_mut().for_each(&mut visitor);
+        }
+        if let Some(enum8) = &mut field.enum8_data {
+            for rule in &mut enum8.infer_rules {
+                rule.any
+                    .iter_mut()
+                    .for_each(|condition| visitor(&mut condition.path));
+                rule.all
+                    .iter_mut()
+                    .for_each(|condition| visitor(&mut condition.path));
+            }
+        }
+    }
+}
+
+fn collect_cached_prefixes(path: &CompiledPath, counts: &mut HashMap<Vec<PathSegment>, usize>) {
+    let mut prefix = Vec::new();
+    for segment in &path.segments {
+        if matches!(segment, PathSegment::Wildcard) {
+            break;
+        }
+        prefix.push(segment.clone());
+        *counts.entry(prefix.clone()).or_default() += 1;
+    }
+}
+
+fn assign_cached_prefixes(
+    path: &mut CompiledPath,
+    counts: &HashMap<Vec<PathSegment>, usize>,
+    indices: &mut HashMap<Vec<PathSegment>, usize>,
+    preload_root: bool,
+) {
+    let mut prefix = Vec::new();
+    for (offset, segment) in path.segments.iter().enumerate() {
+        if matches!(segment, PathSegment::Wildcard) {
+            break;
+        }
+        prefix.push(segment.clone());
+        let repeated = counts.get(&prefix).copied().unwrap_or(0) > 1;
+        let preloaded = preload_root
+            && prefix.len() == 1
+            && matches!(prefix.first(), Some(PathSegment::Key(_)));
+        if repeated || preloaded {
+            let next_index = indices.len();
+            let index = *indices.entry(prefix.clone()).or_insert(next_index);
+            path.cache_indices[offset] = Some(index);
+        }
+    }
+    path.cached = path.cache_indices.iter().any(Option::is_some);
+    if path.flat_key.is_some() {
+        path.flat_cache_index = path.cache_indices.last().copied().flatten();
+    }
+}
+
+fn decode_fields<'a>(env: Env<'a>, config: Term<'a>) -> Result<Vec<CompiledField>, String> {
+    let fields_term = get_term_key(env, config, "fields")
+        .ok_or_else(|| "missing 'fields' key in config".to_string())?;
+
+    let field_list: Vec<Term> = fields_term
+        .decode()
+        .map_err(|_| "fields must be a list".to_string())?;
+
+    let mut compiled_fields = Vec::with_capacity(field_list.len());
+    let mut name_to_index: HashMap<String, usize> = HashMap::with_capacity(field_list.len());
+
+    for field_term in field_list {
+        let mut field = decode_field(env, field_term)?;
+
+        if name_to_index.contains_key(&field.name) {
+            return Err(format!("duplicate field name: '{}'", field.name));
+        }
+
+        // Resolve from_output field name to index
+        if let PathSource::FromOutputName(ref name) = field.path_source {
+            let idx = name_to_index.get(name).ok_or_else(|| {
+                format!("from_output '{}' references unknown or later field", name)
+            })?;
+            field.path_source = PathSource::FromOutput(*idx);
+        }
+
+        let idx = compiled_fields.len();
+        name_to_index.insert(field.name.clone(), idx);
+        compiled_fields.push(field);
+    }
+    Ok(compiled_fields)
+}
+
+fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, String> {
+    let name =
+        get_string_key(env, field, "name")?.ok_or_else(|| "field missing 'name'".to_string())?;
+
+    let type_str = get_string_key(env, field, "type")?.unwrap_or_else(|| "string".to_string());
+    let type_lower = type_str.to_lowercase();
+
+    let field_type = parse_field_type(env, field, &type_lower)?;
+    let default = decode_default(env, field, &field_type)?;
+    let path_source = decode_path_source(env, field)?;
+    let transform = decode_transform(env, field)?;
+    let allowed_values = decode_allowed_values(env, field);
+    // Resolve which value_map variant this field uses once, here at compile
+    // time: string fields get a string->string remap, all non-string fields get
+    // a string->integer lookup. The unused variant stays empty so the per-event
+    // path in `map_single` only has to check which map is populated.
+    let (value_map, value_map_str) = if matches!(field_type, FieldType::String) {
+        (HashMap::new(), decode_value_map_str(env, field)?)
+    } else {
+        (decode_value_map(env, field)?, HashMap::new())
+    };
+    let exclude_keys = decode_string_list_bytes(env, field, "exclude_keys");
+    let elevate_keys = decode_string_list_bytes(env, field, "elevate_keys");
+    let pick = decode_pick(env, field)?;
+    let pick_merge = decode_pick_merge(env, field)?;
+    let strict_uint = decode_coercion(env, field, &field_type)?;
+    if strict_uint && !value_map.is_empty() {
+        return Err(
+            "coercion \"strict\" cannot be combined with value_map: the map's string keys \
+             would never pass the integer check, so the field would always resolve to its \
+             default"
+                .to_string(),
+        );
+    }
+
+    let enum8_data = if matches!(field_type, FieldType::Enum8 { .. }) {
+        Some(decode_enum8_data(env, field)?)
+    } else {
+        None
+    };
+
+    let filter_nil = decode_filter_nil(env, field);
+    let flat_map_value_type = decode_flat_map_value_type(env, field)?;
+    let filters = decode_filters(env, field)?;
+
+    Ok(CompiledField {
+        name,
+        path_source,
+        field_type,
+        default,
+        transform,
+        allowed_values,
+        value_map,
+        value_map_str,
+        exclude_keys,
+        elevate_keys,
+        pick,
+        pick_merge,
+        strict_uint,
+        enum8_data,
+        filter_nil,
+        flat_map_value_type,
+        filters,
+    })
+}
+
+fn parse_field_type<'a>(env: Env<'a>, field: Term<'a>, s: &str) -> Result<FieldType, String> {
+    match s {
+        "string" => Ok(FieldType::String),
+        "uint8" => Ok(FieldType::UInt8),
+        "uint32" => Ok(FieldType::UInt32),
+        "uint64" => Ok(FieldType::UInt64),
+        "int32" => Ok(FieldType::Int32),
+        "float64" => Ok(FieldType::Float64),
+        "bool" | "boolean" => Ok(FieldType::Bool),
+        "enum8" => Ok(FieldType::Enum8 { precision: 0 }),
+        "datetime64" => {
+            let precision = decode_precision(env, field)?;
+            Ok(FieldType::DateTime64 { precision })
+        }
+        "json" => Ok(FieldType::Json),
+        "array_string" => Ok(FieldType::ArrayString),
+        "array_uint64" => Ok(FieldType::ArrayUInt64),
+        "array_float64" => Ok(FieldType::ArrayFloat64),
+        "array_datetime64" => {
+            let precision = decode_precision(env, field)?;
+            Ok(FieldType::ArrayDateTime64 { precision })
+        }
+        "array_json" => Ok(FieldType::ArrayJson),
+        "array_map" => Ok(FieldType::ArrayMap),
+        "flat_map" => Ok(FieldType::FlatMap),
+        "array_flat_map" => Ok(FieldType::ArrayFlatMap),
+        other => Err(format!("unknown field type: {}", other)),
+    }
+}
+
+fn decode_default<'a>(
+    env: Env<'a>,
+    field: Term<'a>,
+    field_type: &FieldType,
+) -> Result<DefaultValue, String> {
+    let val = match get_term_key(env, field, "default") {
+        Some(t) => t,
+        None => {
+            return Ok(match field_type {
+                FieldType::String => DefaultValue::Str(String::new()),
+                FieldType::Json | FieldType::FlatMap => DefaultValue::EmptyMap,
+                FieldType::ArrayString
+                | FieldType::ArrayUInt64
+                | FieldType::ArrayFloat64
+                | FieldType::ArrayDateTime64 { .. }
+                | FieldType::ArrayJson
+                | FieldType::ArrayMap
+                | FieldType::ArrayFlatMap => DefaultValue::EmptyList,
+                _ => DefaultValue::Nil,
+            });
+        }
+    };
+
+    // Check for nil atom
+    if val.is_atom() {
+        if let Ok(a) = rustler::types::atom::Atom::from_term(val) {
+            if a == rustler::types::atom::nil() {
+                return Ok(DefaultValue::Nil);
+            }
+        }
+        if let Ok(b) = val.decode::<bool>() {
+            return Ok(DefaultValue::Bool(b));
+        }
+    }
+
+    if let Ok(i) = val.decode::<i64>() {
+        if i >= 0 {
+            return Ok(DefaultValue::Uint(i as u64));
+        }
+        return Ok(DefaultValue::Int(i));
+    }
+
+    if let Ok(f) = val.decode::<f64>() {
+        return Ok(DefaultValue::Flt(f));
+    }
+
+    if let Ok(s) = val.decode::<String>() {
+        // Handle special string defaults
+        match s.as_str() {
+            "{}" => return Ok(DefaultValue::EmptyMap),
+            "[]" => return Ok(DefaultValue::EmptyList),
+            _ => return Ok(DefaultValue::Str(s)),
+        }
+    }
+
+    if val.is_map() {
+        // Check if it's an empty map
+        if let Ok(iter) = val.decode::<Vec<(Term, Term)>>() {
+            if iter.is_empty() {
+                return Ok(DefaultValue::EmptyMap);
+            }
+        }
+        return Ok(DefaultValue::EmptyMap);
+    }
+
+    if val.is_list() {
+        if let Ok(list) = val.decode::<Vec<Term>>() {
+            if list.is_empty() {
+                return Ok(DefaultValue::EmptyList);
+            }
+        }
+        return Ok(DefaultValue::EmptyList);
+    }
+
+    Ok(DefaultValue::Nil)
+}
+
+fn decode_path_source<'a>(env: Env<'a>, field: Term<'a>) -> Result<PathSource, String> {
+    // Check from_output first (resolved to index in decode_fields)
+    if let Some(from) = get_string_key(env, field, "from_output")? {
+        return Ok(PathSource::FromOutputName(from));
+    }
+
+    // Check "paths" (coalesce)
+    if let Some(paths_term) = get_term_key(env, field, "paths") {
+        if let Ok(paths_list) = paths_term.decode::<Vec<String>>() {
+            if !paths_list.is_empty() {
+                let mut compiled_paths = Vec::with_capacity(paths_list.len());
+                for p in &paths_list {
+                    let path = path::compile(p)
+                        .map_err(|e| format!("failed to compile path '{}': {}", p, e))?;
+                    compiled_paths.push(path);
+                }
+                return Ok(PathSource::Coalesce(compiled_paths));
+            }
+        }
+    }
+
+    // Check "path" (single)
+    if let Some(path_str) = get_string_key(env, field, "path")? {
+        if path_str == "$" {
+            return Ok(PathSource::Root);
+        }
+        let path = path::compile(&path_str)
+            .map_err(|e| format!("failed to compile path '{}': {}", path_str, e))?;
+        return Ok(PathSource::Single(path));
+    }
+
+    // Default to root
+    Ok(PathSource::Root)
+}
+
+fn decode_transform<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<FieldTransform>, String> {
+    match get_string_key(env, field, "transform")? {
+        None => Ok(None),
+        Some(s) => match s.to_lowercase().as_str() {
+            "upcase" => Ok(Some(FieldTransform::Upcase)),
+            "downcase" => Ok(Some(FieldTransform::Downcase)),
+            other => Err(format!("unknown transform: {}", other)),
+        },
+    }
+}
+
+fn decode_allowed_values<'a>(env: Env<'a>, map: Term<'a>) -> HashSet<Vec<u8>> {
+    match get_term_key(env, map, "allowed_values") {
+        Some(t) => t
+            .decode::<Vec<String>>()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.into_bytes())
+            .collect(),
+        None => HashSet::new(),
+    }
+}
+
+fn decode_value_map<'a>(env: Env<'a>, field: Term<'a>) -> Result<HashMap<String, i64>, String> {
+    let term = match get_term_key(env, field, "value_map") {
+        Some(t) if t.is_map() => t,
+        _ => return Ok(HashMap::new()),
+    };
+
+    decode_string_int_map(env, term)
+}
+
+fn decode_value_map_str<'a>(
+    env: Env<'a>,
+    field: Term<'a>,
+) -> Result<HashMap<String, String>, String> {
+    let term = match get_term_key(env, field, "value_map") {
+        Some(t) if t.is_map() => t,
+        _ => return Ok(HashMap::new()),
+    };
+
+    let iter = MapIterator::new(term).ok_or_else(|| "value_map must be a map".to_string())?;
+
+    let mut result = HashMap::new();
+    for (k, v) in iter {
+        let key = k
+            .decode::<String>()
+            .map_err(|_| "value_map keys must be strings".to_string())?;
+        let val = v
+            .decode::<String>()
+            .map_err(|_| "value_map values must be strings".to_string())?;
+        // Pre-normalize keys to lowercase for case-insensitive lookups at map time
+        result.insert(key.to_lowercase(), val);
+    }
+    Ok(result)
+}
+
+fn decode_pick_merge<'a>(env: Env<'a>, field: Term<'a>) -> Result<bool, String> {
+    match get_string_key(env, field, "pick_mode")?.as_deref() {
+        None | Some("replace") => Ok(false),
+        Some("merge") => Ok(true),
+        Some(other) => Err(format!(
+            "pick_mode must be \"replace\" or \"merge\", got {:?}",
+            other
+        )),
+    }
+}
+
+fn decode_coercion<'a>(
+    env: Env<'a>,
+    field: Term<'a>,
+    field_type: &FieldType,
+) -> Result<bool, String> {
+    match get_string_key(env, field, "coercion")?.as_deref() {
+        None | Some("lenient") => Ok(false),
+        Some("strict") => match field_type {
+            FieldType::UInt8 | FieldType::UInt32 | FieldType::UInt64 => Ok(true),
+            _ => Err(
+                "coercion \"strict\" is only supported on uint8, uint32, and uint64 fields"
+                    .to_string(),
+            ),
+        },
+        Some(other) => Err(format!(
+            "coercion must be \"lenient\" or \"strict\", got {:?}",
+            other
+        )),
+    }
+}
+
+fn decode_pick<'a>(env: Env<'a>, field: Term<'a>) -> Result<Vec<PickEntry>, String> {
+    let pick_term = match get_term_key(env, field, "pick") {
+        Some(t) => t,
+        None => return Ok(vec![]),
+    };
+
+    let pick_list: Vec<Term> = pick_term
+        .decode()
+        .map_err(|_| "pick must be a list".to_string())?;
+
+    let mut entries = Vec::with_capacity(pick_list.len());
+    for item in pick_list {
+        let key = get_string_key(env, item, "key")?
+            .ok_or_else(|| "pick entry missing 'key'".to_string())?;
+
+        let paths_term = get_term_key(env, item, "paths")
+            .ok_or_else(|| "pick entry missing 'paths'".to_string())?;
+
+        let paths_list: Vec<String> = paths_term
+            .decode()
+            .map_err(|_| "pick paths must be a list of strings".to_string())?;
+
+        let mut compiled_paths = Vec::with_capacity(paths_list.len());
+        for p in &paths_list {
+            let path = path::compile(p)
+                .map_err(|e| format!("failed to compile pick path '{}': {}", p, e))?;
+            compiled_paths.push(path);
+        }
+
+        entries.push(PickEntry {
+            key,
+            paths: compiled_paths,
+        });
+    }
+
+    Ok(entries)
+}
+
+fn decode_string_list_bytes<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Vec<Vec<u8>> {
+    match get_term_key(env, map, key) {
+        Some(t) => t
+            .decode::<Vec<String>>()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.into_bytes())
+            .collect(),
+        None => vec![],
+    }
+}
+
+fn decode_filter_nil<'a>(env: Env<'a>, field: Term<'a>) -> bool {
+    match get_term_key(env, field, "filter_nil") {
+        Some(t) => t.decode::<bool>().unwrap_or(false),
+        None => false,
+    }
+}
+
+fn decode_flat_map_value_type<'a>(
+    env: Env<'a>,
+    field: Term<'a>,
+) -> Result<FlatMapValueType, String> {
+    match get_string_key(env, field, "value_type")? {
+        None => Ok(FlatMapValueType::String),
+        Some(s) => match s.to_lowercase().as_str() {
+            "string" => Ok(FlatMapValueType::String),
+            other => Err(format!(
+                "unsupported value_type: '{}' (supported: string)",
+                other
+            )),
+        },
+    }
+}
+
+/// Decode a string length filter. A negative value would wrap to a huge
+/// `usize` and silently make the filter unsatisfiable, so it is rejected.
+fn decode_filter_len<'a>(
+    env: Env<'a>,
+    filters: Term<'a>,
+    key: &str,
+) -> Result<Option<usize>, String> {
+    match get_int_key(env, filters, key)? {
+        None => Ok(None),
+        Some(v) => usize::try_from(v)
+            .map(Some)
+            .map_err(|_| format!("filter '{}' must not be negative, got {}", key, v)),
+    }
+}
+
+fn decode_filters<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<StringFilters>, String> {
+    let Some(filters_term) = get_term_key(env, field, "filters") else {
+        return Ok(None);
+    };
+
+    let len_eq = decode_filter_len(env, filters_term, "len_eq")?;
+    let len_gt = decode_filter_len(env, filters_term, "len_gt")?;
+    let len_gte = decode_filter_len(env, filters_term, "len_gte")?;
+    let len_lt = decode_filter_len(env, filters_term, "len_lt")?;
+    let len_lte = decode_filter_len(env, filters_term, "len_lte")?;
+
+    let char_class = get_string_key(env, filters_term, "char_class")
+        .ok()
+        .flatten()
+        .and_then(|s| match s.to_lowercase().as_str() {
+            "alpha" => Some(CharClass::Alpha),
+            "numeric" => Some(CharClass::Numeric),
+            "alphanumeric" => Some(CharClass::Alphanumeric),
+            _ => None,
+        });
+
+    // Return None if no filter options were set
+    if len_eq.is_none()
+        && len_gt.is_none()
+        && len_gte.is_none()
+        && len_lt.is_none()
+        && len_lte.is_none()
+        && char_class.is_none()
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(StringFilters {
+        len_eq,
+        len_gt,
+        len_gte,
+        len_lt,
+        len_lte,
+        char_class,
+    }))
+}
+
+// ── Enum8-specific decoders ────────────────────────────────────────────────
+
+pub fn decode_enum8_data<'a>(env: Env<'a>, field: Term<'a>) -> Result<Enum8Data, String> {
+    let value_map = decode_enum_values(env, field)?;
+    let infer_rules = decode_infer_rules(env, field)?;
+    Ok(Enum8Data {
+        value_map,
+        infer_rules,
+    })
+}
+
+/// Decode a `DateTime64` precision. ClickHouse allows 0-9; anything else would
+/// truncate or wrap when narrowed to `u8` and silently produce a column with
+/// the wrong scale.
+fn decode_precision<'a>(env: Env<'a>, field: Term<'a>) -> Result<u8, String> {
+    match get_int_key(env, field, "precision")? {
+        None => Ok(9),
+        Some(v) if (0..=9).contains(&v) => Ok(v as u8),
+        Some(v) => Err(format!("precision must be between 0 and 9, got {}", v)),
+    }
+}
+
+fn decode_enum_values<'a>(_env: Env<'a>, field: Term<'a>) -> Result<HashMap<String, i8>, String> {
+    let term = match get_term_key(_env, field, "enum_values") {
+        Some(t) if t.is_map() => t,
+        _ => return Ok(HashMap::new()),
+    };
+
+    let iter = MapIterator::new(term).ok_or_else(|| "enum_values must be a map".to_string())?;
+
+    let mut result = HashMap::new();
+    for (k, v) in iter {
+        let key = k
+            .decode::<String>()
+            .map_err(|_| "enum_values keys must be strings".to_string())?;
+        let val = v
+            .decode::<i64>()
+            .map_err(|_| "enum_values values must be integers".to_string())?;
+
+        // ClickHouse Enum8 is i8-backed, so anything outside that range would
+        // wrap silently and store the wrong value.
+        let val = i8::try_from(val).map_err(|_| {
+            format!(
+                "enum_values values must be between -128 and 127, got {} for '{}'",
+                val, key
+            )
+        })?;
+
+        // Pre-normalize to lowercase for case-insensitive lookups at map time
+        result.insert(key.to_lowercase(), val);
+    }
+    Ok(result)
+}
+
+fn decode_infer_rules<'a>(env: Env<'a>, field: Term<'a>) -> Result<Vec<InferRule>, String> {
+    let term = match get_term_key(env, field, "infer") {
+        Some(t) => t,
+        None => return Ok(vec![]),
+    };
+
+    let rule_list: Vec<Term> = term
+        .decode()
+        .map_err(|_| "infer must be a list".to_string())?;
+
+    let mut rules = Vec::with_capacity(rule_list.len());
+    for rule_term in rule_list {
+        rules.push(decode_infer_rule(env, rule_term)?);
+    }
+    Ok(rules)
+}
+
+fn decode_infer_rule<'a>(env: Env<'a>, rule: Term<'a>) -> Result<InferRule, String> {
+    let result = get_string_key(env, rule, "result")?
+        .ok_or_else(|| "infer rule missing 'result'".to_string())?;
+
+    let any = match get_term_key(env, rule, "any") {
+        Some(t) => decode_conditions(env, t)?,
+        None => vec![],
+    };
+
+    let all = match get_term_key(env, rule, "all") {
+        Some(t) => decode_conditions(env, t)?,
+        None => vec![],
+    };
+
+    // Pre-normalize to lowercase for case-insensitive lookup against enum_values
+    Ok(InferRule {
+        any,
+        all,
+        result: result.to_lowercase(),
+    })
+}
+
+fn decode_conditions<'a>(env: Env<'a>, term: Term<'a>) -> Result<Vec<InferCondition>, String> {
+    let list: Vec<Term> = term
+        .decode()
+        .map_err(|_| "conditions must be a list".to_string())?;
+
+    let mut conditions = Vec::with_capacity(list.len());
+    for item in list {
+        conditions.push(decode_condition(env, item)?);
+    }
+    Ok(conditions)
+}
+
+fn decode_condition<'a>(env: Env<'a>, cond: Term<'a>) -> Result<InferCondition, String> {
+    let path_str =
+        get_string_key(env, cond, "path")?.ok_or_else(|| "condition missing 'path'".to_string())?;
+
+    let path = path::compile(&path_str)
+        .map_err(|e| format!("failed to compile condition path '{}': {}", path_str, e))?;
+
+    let pred_str = get_string_key(env, cond, "predicate")?
+        .ok_or_else(|| "condition missing 'predicate'".to_string())?;
+
+    let predicate = parse_predicate(env, cond, &pred_str)?;
+
+    Ok(InferCondition { path, predicate })
+}
+
+fn parse_predicate<'a>(env: Env<'a>, cond: Term<'a>, pred_str: &str) -> Result<Predicate, String> {
+    match pred_str.to_lowercase().as_str() {
+        "exists" => Ok(Predicate::Exists),
+        "not_exists" => Ok(Predicate::NotExists),
+        "not_zero" => Ok(Predicate::NotZero),
+        "is_zero" => Ok(Predicate::IsZero),
+        "not_empty" => Ok(Predicate::NotEmpty),
+        "is_empty" => Ok(Predicate::IsEmpty),
+        "is_string" => Ok(Predicate::IsString),
+        "is_number" => Ok(Predicate::IsNumber),
+        "is_list" => Ok(Predicate::IsList),
+        "is_map" => Ok(Predicate::IsMap),
+        "greater_than" => {
+            let val = get_comparison_f64(env, cond)?;
+            Ok(Predicate::GreaterThan(val))
+        }
+        "less_than" => {
+            let val = get_comparison_f64(env, cond)?;
+            Ok(Predicate::LessThan(val))
+        }
+        "equals" => {
+            let val = get_comparison_value(env, cond)?;
+            Ok(Predicate::Equals(val))
+        }
+        "not_equals" => {
+            let val = get_comparison_value(env, cond)?;
+            Ok(Predicate::NotEquals(val))
+        }
+        "in" => {
+            let vals = get_comparison_values(env, cond)?;
+            Ok(Predicate::In(vals))
+        }
+        other => Err(format!("unknown predicate: {}", other)),
+    }
+}
+
+fn get_comparison_f64<'a>(env: Env<'a>, cond: Term<'a>) -> Result<f64, String> {
+    let term = get_term_key(env, cond, "comparison_value")
+        .ok_or_else(|| "predicate requires 'comparison_value'".to_string())?;
+
+    if let Ok(i) = term.decode::<i64>() {
+        return Ok(i as f64);
+    }
+    if let Ok(f) = term.decode::<f64>() {
+        return Ok(f);
+    }
+    if let Ok(s) = term.decode::<String>() {
+        return s
+            .parse::<f64>()
+            .map_err(|_| format!("invalid comparison_value: {}", s));
+    }
+    Err("comparison_value must be numeric".to_string())
+}
+
+fn get_comparison_value<'a>(env: Env<'a>, cond: Term<'a>) -> Result<PredicateValue, String> {
+    let term = get_term_key(env, cond, "comparison_value")
+        .ok_or_else(|| "predicate requires 'comparison_value'".to_string())?;
+
+    decode_predicate_value(term)
+}
+
+fn get_comparison_values<'a>(env: Env<'a>, cond: Term<'a>) -> Result<Vec<PredicateValue>, String> {
+    let term = get_term_key(env, cond, "comparison_values")
+        .ok_or_else(|| "predicate requires 'comparison_values'".to_string())?;
+
+    let list: Vec<Term> = term
+        .decode()
+        .map_err(|_| "comparison_values must be a list".to_string())?;
+
+    let mut vals = Vec::with_capacity(list.len());
+    for item in list {
+        vals.push(decode_predicate_value(item)?);
+    }
+    Ok(vals)
+}
+
+fn decode_predicate_value(term: Term) -> Result<PredicateValue, String> {
+    if let Ok(b) = term.decode::<bool>() {
+        return Ok(PredicateValue::Bool(b));
+    }
+    if let Ok(i) = term.decode::<i64>() {
+        return Ok(PredicateValue::Int(i));
+    }
+    if let Ok(f) = term.decode::<f64>() {
+        return Ok(PredicateValue::Flt(f));
+    }
+    if let Ok(s) = term.decode::<String>() {
+        return Ok(PredicateValue::Str(s));
+    }
+    Err("comparison value must be string, integer, float, or boolean".to_string())
+}
+
+fn decode_string_int_map<'a>(
+    _env: Env<'a>,
+    term: Term<'a>,
+) -> Result<HashMap<String, i64>, String> {
+    let iter = MapIterator::new(term).ok_or_else(|| "value_map must be a map".to_string())?;
+
+    let mut result = HashMap::new();
+    for (k, v) in iter {
+        let key = k
+            .decode::<String>()
+            .map_err(|_| "value_map keys must be strings".to_string())?;
+        let val = v
+            .decode::<i64>()
+            .map_err(|_| "value_map values must be integers".to_string())?;
+        // Pre-normalize to lowercase for case-insensitive lookups at map time
+        result.insert(key.to_lowercase(), val);
+    }
+    Ok(result)
+}
+
+// ── Helper functions for reading Elixir map keys ───────────────────────────
+
+pub fn get_term_key<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Option<Term<'a>> {
+    let str_key = key.encode(env);
+    if let Ok(val) = map.map_get(str_key) {
+        if val.is_atom() {
+            if let Ok(a) = rustler::types::atom::Atom::from_term(val) {
+                if a == rustler::types::atom::nil() {
+                    return None;
+                }
+            }
+        }
+        return Some(val);
+    }
+
+    // Try atom key
+    if let Ok(atom) = rustler::types::atom::Atom::from_str(env, key) {
+        if let Ok(val) = map.map_get(atom.encode(env)) {
+            if val.is_atom() {
+                if let Ok(a) = rustler::types::atom::Atom::from_term(val) {
+                    if a == rustler::types::atom::nil() {
+                        return None;
+                    }
+                }
+            }
+            return Some(val);
+        }
+    }
+
+    None
+}
+
+pub fn get_string_key<'a>(
+    env: Env<'a>,
+    map: Term<'a>,
+    key: &str,
+) -> Result<Option<String>, String> {
+    match get_term_key(env, map, key) {
+        Some(t) => {
+            if let Ok(s) = t.decode::<String>() {
+                Ok(Some(s))
+            } else if t.is_atom() {
+                if let Ok(s) = t.atom_to_string() {
+                    Ok(Some(s))
+                } else {
+                    Ok(None)
+                }
+            } else {
+                Ok(None)
+            }
+        }
+        None => Ok(None),
+    }
+}
+
+/// Read an optional integer key. An absent key is `Ok(None)`. A key that is
+/// present but does not decode as `i64` (wrong type, or an integer too large to
+/// fit) is an error, so a misconfigured value can never be mistaken for "not
+/// set" and silently replaced by a default.
+pub fn get_int_key<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Result<Option<i64>, String> {
+    match get_term_key(env, map, key) {
+        None => Ok(None),
+        Some(t) => t.decode::<i64>().map(Some).map_err(|_| {
+            format!(
+                "'{}' must be an integer that fits in 64 bits, got {:?}",
+                key, t
+            )
+        }),
+    }
+}

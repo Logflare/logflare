@@ -1,0 +1,7 @@
+{
+  "event_message": "S-0xaaab05948260: postgres/postgres@127.0.0.1:5432 new connection to server (from 127.0.0.1:42762)",
+  "metadata": {
+    "host": "db-default"
+  },
+  "project": "default"
+}

@@ -1,0 +1,376 @@
+defmodule Logflare.Backends.Adaptor.S3Adaptor do
+  @moduledoc """
+  Backend adaptor that writes batches of logs to S3.
+  """
+
+  use Supervisor
+
+  require Logger
+
+  import Logflare.Utils.Guards
+
+  alias __MODULE__.HttpClient
+  alias __MODULE__.Pipeline
+  alias Ecto.Changeset
+  alias ExAws.S3
+  alias Explorer.DataFrame
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Backend
+  alias Logflare.LogEvent
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
+
+  @behaviour Adaptor
+
+  @trusted_endpoint_suffixes [
+    ".supabase.co",
+    ".amazonaws.com",
+    "storage.googleapis.com",
+    ".r2.cloudflarestorage.com",
+    ".backblazeb2.com",
+    ".digitaloceanspaces.com",
+    "t3.storage.dev"
+  ]
+
+  @type source_backend_tuple :: {Source.t(), Backend.t()}
+  @type source_id_backend_id_tuple :: {source_id :: pos_integer(), backend_id :: pos_integer()}
+  @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
+
+  @http_opts [
+    pool_timeout: :timer.seconds(5),
+    receive_timeout: :timer.seconds(30),
+    request_timeout: :timer.seconds(30)
+  ]
+  @request_retries [
+    max_attempts: 3,
+    base_backoff_in_ms: 2_000,
+    max_backoff_in_ms: 10_000
+  ]
+  @connection_test_http_opts [
+    pool_timeout: :timer.seconds(5),
+    receive_timeout: :timer.seconds(15),
+    request_timeout: :timer.seconds(15)
+  ]
+  @connection_test_retries [max_attempts: 1]
+  @min_batch_timeout 1_000
+  @max_batch_timeout 5_000
+  @connection_test_key "_connection_test.parquet"
+  @parquet_content_type "application/vnd.apache.parquet"
+
+  @doc false
+  def child_spec(arg) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [arg]}
+    }
+  end
+
+  @doc false
+  @impl Adaptor
+  @spec start_link(source_backend_tuple()) :: Supervisor.on_start()
+  def start_link({%Source{}, %Backend{}} = args) do
+    Supervisor.start_link(__MODULE__, args, name: adaptor_via(args))
+  end
+
+  @doc false
+  @impl Adaptor
+  def cast_config(%{} = params, existing_config \\ %{}) do
+    types = %{
+      endpoint: :string,
+      s3_bucket: :string,
+      storage_region: :string,
+      access_key_id: :string,
+      secret_access_key: :string,
+      batch_timeout: :integer
+    }
+
+    {existing_config, types}
+    |> Changeset.cast(params, Map.keys(types))
+  end
+
+  @doc false
+  @impl Adaptor
+  def validate_config(%Changeset{} = changeset) do
+    import Ecto.Changeset
+
+    changeset
+    |> validate_required([:s3_bucket, :storage_region, :access_key_id, :secret_access_key])
+    |> validate_number(:batch_timeout,
+      greater_than_or_equal_to: @min_batch_timeout,
+      less_than_or_equal_to: @max_batch_timeout
+    )
+    |> Changeset.validate_change(:endpoint, &endpoint_validator/2)
+  end
+
+  defp endpoint_validator(field, endpoint) do
+    host = URI.parse(endpoint).host
+
+    cond do
+      String.trim(endpoint) != endpoint ->
+        [
+          {field,
+           {"Endpoint must not have leading or trailing whitespace",
+            validation: :endpoint_malformed}}
+        ]
+
+      malformed_host?(host) ->
+        [
+          {field, {"Endpoint host is malformed", validation: :endpoint_malformed}}
+        ]
+
+      ssrf_check_disabled?() ->
+        []
+
+      trusted_endpoint_host?(host) ->
+        []
+
+      true ->
+        [
+          {field,
+           {"Endpoint host is not on the list of trusted S3-compatible providers",
+            validation: :endpoint_not_allowed}}
+        ]
+    end
+  end
+
+  defp malformed_host?(nil), do: false
+  defp malformed_host?(host), do: String.match?(host, ~r/\s/)
+
+  defp ssrf_check_disabled? do
+    !!Application.get_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check)
+  end
+
+  defp trusted_endpoint_host?(nil), do: false
+
+  defp trusted_endpoint_host?(host) do
+    Enum.any?(@trusted_endpoint_suffixes, fn suffix ->
+      host == suffix or String.ends_with?(host, suffix)
+    end)
+  end
+
+  @impl Adaptor
+  def redact_config(config) do
+    if config.secret_access_key do
+      Map.put(config, :secret_access_key, "REDACTED")
+    else
+      config
+    end
+  end
+
+  @impl Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:s3_bucket, :storage_region, :batch_timeout])
+  end
+
+  @doc """
+  Probes write access by uploading a tiny sentinel parquet file to a fixed
+  key at the bucket root. Subsequent probes overwrite the same key, so at
+  most one ~1 KB artifact ever exists.
+
+  The probe only requires `s3:PutObject`, so it proves write access — not
+  read or list access, which the adaptor does not need.
+
+  Note: on buckets with versioning enabled, each probe creates a new
+  non-current version.
+  """
+  @impl Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, :s3_write_failed}
+  def test_connection(%Backend{} = backend) do
+    config = Adaptor.get_backend_config(backend)
+    df = DataFrame.new([%{probe: "connection-test"}], dtypes: [{:probe, :string}])
+
+    case put_parquet(df, config, @connection_test_key,
+           http_opts: @connection_test_http_opts,
+           retries: @connection_test_retries
+         ) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("S3 backend connection test failed",
+          backend_id: backend.id,
+          user_id: backend.user_id,
+          error_string: inspect(reason)
+        )
+
+        {:error, :s3_write_failed}
+    end
+  end
+
+  @impl Adaptor
+  def supports_default_ingest?, do: true
+
+  @doc """
+  Generates a via tuple based on a `Source` and `Backend` pair for this adaptor instance.
+
+  See `Backends.via_source/3` for more details.
+  """
+  @spec adaptor_via(source_backend_tuple()) :: via_tuple()
+  def adaptor_via({%Source{} = source, %Backend{} = backend}) do
+    Backends.via_source(source, __MODULE__, backend)
+  end
+
+  @doc """
+  Generates a unique Broadway pipeline via tuple based on a `Source` and `Backend` pair.
+
+  See `Backends.via_source/3` for more details.
+  """
+  @spec pipeline_via(source_backend_tuple()) :: via_tuple()
+  def pipeline_via({%Source{} = source, %Backend{} = backend}) do
+    Backends.via_source(source, Pipeline, backend)
+  end
+
+  @doc """
+  Returns the pid for the Broadway pipeline related to a specific `Source` and `Backend` pair.
+
+  If the process is not located in the registry or does not exist, this will return `nil`.
+  """
+  @spec pipeline_pid(source_backend_tuple()) :: pid() | nil
+  def pipeline_pid({%Source{}, %Backend{}} = args) do
+    args
+    |> pipeline_via()
+    |> GenServer.whereis()
+  end
+
+  @doc """
+  Determines if a particular Broadway pipeline process is alive based on a `Source` and `Backend` pair.
+  """
+  @spec pipeline_alive?(source_backend_tuple()) :: boolean()
+  def pipeline_alive?(args), do: !!pipeline_pid(args)
+
+  @doc """
+  Generates the S3 object key for a new parquet file based on a `Source`.
+  """
+  @spec new_s3_key(Source.t()) :: String.t()
+  def new_s3_key(%Source{} = source) do
+    source_token = s3_source_token(source)
+    now = DateTime.utc_now(:microsecond) |> DateTime.to_unix(:microsecond)
+
+    "#{source_token}/#{now}.parquet"
+  end
+
+  @doc """
+  Converts a list of `LogEvent` structs to a parquet file and uploads it to S3.
+  """
+  @spec push_log_events_to_s3(source_id_backend_id_tuple(), [LogEvent.t()]) ::
+          :ok | {:error, any()}
+  def push_log_events_to_s3({source_id, backend_id}, events)
+      when is_pos_integer(source_id) and is_pos_integer(backend_id) and is_list(events) do
+    with %Source{} = source <- Sources.Cache.get_by_id(source_id),
+         %Backend{} = backend <- Backends.Cache.get_backend(backend_id),
+         config <- Adaptor.get_backend_config(backend),
+         s3_key <- new_s3_key(source) do
+      event_rows =
+        Enum.map(events, fn %LogEvent{} = log_event ->
+          flattened_body =
+            log_event.body
+            |> Map.drop(["id", "event_message", "timestamp"])
+            |> Iteraptor.to_flatmap()
+
+          %{
+            id: log_event.body["id"],
+            event_message: log_event.body["event_message"],
+            body: Jason.encode!(flattened_body),
+            timestamp: DateTime.from_unix!(log_event.body["timestamp"], :microsecond)
+          }
+        end)
+
+      df =
+        DataFrame.new(event_rows,
+          dtypes: [
+            {:id, :string},
+            {:event_message, :string},
+            {:body, :string},
+            {:timestamp, {:datetime, :microsecond, "Etc/UTC"}}
+          ]
+        )
+
+      try do
+        put_parquet(df, config, s3_key)
+      rescue
+        error -> {:error, error}
+      end
+    end
+  end
+
+  @doc false
+  @impl Supervisor
+  def init({%Source{} = source, %Backend{} = backend}) do
+    config = Adaptor.get_backend_config(backend)
+
+    pipeline_args = [
+      pipeline_name: pipeline_via({source, backend}),
+      source_id: source.id,
+      backend_id: backend.id,
+      batch_timeout: config.batch_timeout
+    ]
+
+    children = [
+      Pipeline.child_spec(pipeline_args)
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  @spec s3_source_token(Source.t()) :: String.t()
+  defp s3_source_token(%Source{token: token}) do
+    token
+    |> Atom.to_string()
+    |> String.replace("-", "_")
+  end
+
+  @spec put_parquet(DataFrame.t(), map(), key :: String.t(), keyword()) ::
+          :ok | {:error, term()}
+  defp put_parquet(%DataFrame{} = df, config, key, opts \\ []) when is_non_empty_binary(key) do
+    with {:ok, body} <- DataFrame.dump_parquet(df),
+         content_md5 <- Base.encode64(:crypto.hash(:md5, body)),
+         {:ok, _resp} <-
+           config
+           |> request_bucket()
+           |> S3.put_object(key, body,
+             content_type: @parquet_content_type,
+             content_md5: content_md5
+           )
+           |> ExAws.request(request_opts(config, opts)) do
+      :ok
+    end
+  end
+
+  @spec request_bucket(map()) :: String.t()
+  defp request_bucket(config), do: prefix_bucket(config.s3_bucket, config[:endpoint])
+
+  @spec prefix_bucket(String.t(), String.t() | nil) :: String.t()
+  defp prefix_bucket(bucket, nil), do: bucket
+
+  defp prefix_bucket(bucket, endpoint) when is_non_empty_binary(endpoint) do
+    case URI.parse(endpoint).path do
+      nil -> bucket
+      "/" -> bucket
+      path -> String.trim(path, "/") <> "/" <> bucket
+    end
+  end
+
+  @spec request_opts(map(), keyword()) :: keyword()
+  defp request_opts(config, opts) do
+    http_opts = Keyword.get(opts, :http_opts, @http_opts)
+    retries = Keyword.get(opts, :retries, @request_retries)
+
+    [
+      access_key_id: config.access_key_id,
+      secret_access_key: config.secret_access_key,
+      region: config.storage_region,
+      http_client: HttpClient,
+      http_opts: http_opts,
+      retries: retries
+    ] ++ endpoint_opts(config[:endpoint])
+  end
+
+  @spec endpoint_opts(String.t() | nil) :: keyword()
+  defp endpoint_opts(nil), do: []
+
+  defp endpoint_opts(endpoint) when is_non_empty_binary(endpoint) do
+    %URI{scheme: scheme, host: host, port: port} = URI.parse(endpoint)
+    [scheme: "#{scheme}://", host: host, port: port]
+  end
+end

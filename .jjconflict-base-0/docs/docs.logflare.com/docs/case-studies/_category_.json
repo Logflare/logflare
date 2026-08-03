@@ -1,0 +1,9 @@
+{
+  "label": "Case Studies",
+  "collapsible": false,
+  "collapsed": false,
+  "position": 7,
+  "link": {
+    "type": "generated-index"
+  }
+}

@@ -1,0 +1,111 @@
+steps:
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./cloudbuild/.staging.gcloud.json.enc
+      - --plaintext-file=gcloud.json
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./cloudbuild/.staging.env.enc
+      - --plaintext-file=./.secrets.env
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./cloudbuild/.staging.cert.pem.enc
+      - --plaintext-file=./cert.pem
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./cloudbuild/.staging.cert.key.enc
+      - --plaintext-file=./cert.key
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./cloudbuild/.staging.db-client-cert.pem.enc
+      - --plaintext-file=./db-client-cert.pem
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./cloudbuild/.staging.db-client-key.pem.enc
+      - --plaintext-file=./db-client-key.pem
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
+      - --ciphertext-file=./cloudbuild/.staging.db-server-ca.pem.enc
+      - --plaintext-file=./db-server-ca.pem
+      - --location=us-central1
+      - --keyring=logflare-keyring-us-central1
+      - --key=logflare-secrets-key
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "build",
+        "--build-arg",
+        "TAG_VERSION=${_IMAGE_TAG}",
+        "-f",
+        "./cloudbuild/secret_setup.Dockerfile",
+        "-t",
+        "${_CONTAINER_IMAGE}",
+        ".",
+      ]
+  # Only the main-branch auto-deploy passes _TAG_LATEST=true (see Makefile
+  # deploy.staging.main) — versioned releases and dev/PR test builds leave it
+  # at the default false, so ad-hoc branch builds can't clobber what
+  # gcr.io/logflare-staging/logflare_app:latest points at.
+  - name: "gcr.io/cloud-builders/docker"
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if [[ "$$1" == "true" ]]; then
+          docker tag "$$2" "gcr.io/$$3/logflare_app:latest"
+          docker push "gcr.io/$$3/logflare_app:latest"
+        else
+          echo "_TAG_LATEST=$$1 — skipping gcr.io/$$3/logflare_app:latest"
+        fi
+      - --
+      - ${_TAG_LATEST}
+      - ${_CONTAINER_IMAGE}
+      - $PROJECT_ID
+
+substitutions:
+    # override this manually with cli as we aren't using cloud trigger anymore
+    _ENV: staging
+    _IMAGE_TAG: $SHORT_SHA
+    _CONTAINER_IMAGE: gcr.io/${PROJECT_ID}/logflare_app:${_IMAGE_TAG}
+    _TAG_LATEST: "false"
+
+images:
+  - "${_CONTAINER_IMAGE}"
+
+timeout: 1800s
+
+options:
+    dynamicSubstitutions: true
+    substitutionOption: 'ALLOW_LOOSE'

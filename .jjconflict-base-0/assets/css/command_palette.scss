@@ -1,0 +1,167 @@
+.lf-cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 6rem;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.lf-cmdk-card {
+  width: 100%;
+  max-width: 36rem;
+  background-color: $brand-black;
+  color: $brand-gray;
+  border: 1px solid $brand-light-black;
+  border-radius: 0.25rem;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.lf-cmdk-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: $brand-black;
+  color: $whitecolor;
+  border: 0;
+  border-bottom: 1px solid $brand-light-black;
+  font-size: 1rem;
+  outline: none;
+
+  &::placeholder {
+    color: $brand-gray;
+  }
+
+  &:focus {
+    outline: none;
+    border-bottom-color: $brand-green;
+  }
+}
+
+.lf-cmdk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.lf-cmdk-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  color: $brand-gray;
+
+  &:hover {
+    background-color: rgba($brand-green, 0.08);
+    color: $whitecolor;
+  }
+
+  &.lf-cmdk-active {
+    background-color: rgba($brand-green, 0.16);
+    color: $whitecolor;
+    box-shadow: inset 3px 0 0 0 $brand-green;
+  }
+}
+
+.lf-cmdk-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lf-cmdk-service,
+.lf-cmdk-team {
+  font-size: 0.75rem;
+  color: $brand-gray;
+}
+
+.lf-cmdk-favorite {
+  color: $brand-yellow;
+}
+
+.lf-cmdk-command-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.lf-cmdk-hint {
+  font-size: 0.75rem;
+  color: $brand-gray;
+}
+
+.lf-cmdk-group-header {
+  padding: 0.4rem 1rem 0.2rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: $brand-gray;
+  opacity: 0.7;
+  border-top: 1px solid $brand-light-black;
+  margin-top: 0.25rem;
+}
+
+.lf-cmdk-tz-main {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.lf-cmdk-tz-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lf-cmdk-secondary {
+  font-size: 0.8rem;
+  color: $brand-gray;
+  white-space: nowrap;
+}
+
+.lf-cmdk-offset {
+  margin-left: auto;
+  padding-left: 0.75rem;
+  font-size: 0.8rem;
+  color: $brand-gray;
+  font-variant-numeric: tabular-nums;
+}
+
+.lf-cmdk-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid $brand-light-black;
+  font-size: 0.75rem;
+}
+
+.lf-cmdk-back {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: $brand-green;
+  cursor: pointer;
+  font-size: 0.75rem;
+
+  &:hover {
+    color: $whitecolor;
+  }
+}
+
+.lf-cmdk-breadcrumb-label {
+  color: $brand-gray;
+}
+
+.lf-cmdk-empty {
+  padding: 0.75rem 1rem;
+  color: $brand-gray;
+  font-style: italic;
+}

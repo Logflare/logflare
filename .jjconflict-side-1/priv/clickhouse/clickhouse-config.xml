@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!-- Server-wide memory limit (1.3GB to stay under Docker's 1.5GB limit) -->
+    <max_server_memory_usage>1395864371</max_server_memory_usage>
+    
+    <!-- Reduce cache sizes for low-memory environment -->
+    <mark_cache_size>134217728</mark_cache_size>
+    <uncompressed_cache_size>134217728</uncompressed_cache_size>
+</clickhouse>
