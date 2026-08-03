@@ -24,6 +24,8 @@ defmodule Logflare.TestUtils do
   Options:
   - :seed_user - boolean - enable to seed default plan and user
   - :supabase_mode - enable to seed supabase data
+  - :backend_type - the selected single-tenant backend
+  - :clickhouse_backend_adapter_opts - ClickHouse connection options
   """
   defmacro setup_single_tenant(opts \\ []) do
     opts =
@@ -32,7 +34,12 @@ defmodule Logflare.TestUtils do
         supabase_mode: false,
         bigquery_project_id: random_string(),
         backend_type: :bigquery,
-        pg_schema: nil
+        pg_schema: nil,
+        clickhouse_backend_adapter_opts: [
+          url: "http://localhost:8123",
+          database: "logflare_test",
+          port: 8123
+        ]
       })
 
     quote do
@@ -40,7 +47,17 @@ defmodule Logflare.TestUtils do
 
       setup do
         initial_single_tenant = Application.get_env(:logflare, :single_tenant)
+
+        initial_single_tenant_backend =
+          Application.get_env(:logflare, :single_tenant_backend)
+
         Application.put_env(:logflare, :single_tenant, true)
+
+        Application.put_env(
+          :logflare,
+          :single_tenant_backend,
+          unquote(opts.backend_type)
+        )
 
         if unquote(opts.seed_user) do
           {:ok, _} = SingleTenant.create_default_plan()
@@ -65,6 +82,13 @@ defmodule Logflare.TestUtils do
 
         on_exit(fn ->
           Application.put_env(:logflare, :single_tenant, initial_single_tenant)
+
+          Application.put_env(
+            :logflare,
+            :single_tenant_backend,
+            initial_single_tenant_backend
+          )
+
           Application.put_env(:logflare, :public_access_token, initial_public_access_token)
           Application.put_env(:logflare, :private_access_token, initial_private_access_token)
         end)
@@ -108,6 +132,21 @@ defmodule Logflare.TestUtils do
 
         on_exit(fn -> Application.put_env(:logflare, Logflare.Google, initial_google_config) end)
 
+        :ok
+      end
+    end
+  end
+
+  defp setup_single_tenant_backend(%{
+         backend_type: :clickhouse,
+         clickhouse_backend_adapter_opts: opts
+       }) do
+    quote do
+      setup do
+        previous = Application.get_env(:logflare, :clickhouse_backend_adapter)
+        Application.put_env(:logflare, :clickhouse_backend_adapter, unquote(opts))
+
+        on_exit(fn -> Application.put_env(:logflare, :clickhouse_backend_adapter, previous) end)
         :ok
       end
     end

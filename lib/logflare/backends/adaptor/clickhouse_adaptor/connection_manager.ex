@@ -46,7 +46,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @telemetry_listener __MODULE__.TelemetryListener
 
   typedstruct do
-    field :backend_id, pos_integer(), enforce: true
+    field :backend_id, non_neg_integer(), enforce: true
     field :label, String.t() | nil, default: nil
     field :pool_pid, pid() | nil, default: nil
     field :last_activity, integer() | nil, default: nil
@@ -573,7 +573,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     urls = Map.get(config, :read_only_urls) || %{}
     default = Map.get(config, :default_read_cluster)
 
-    labeled_url(urls, label) || labeled_url(urls, default) || Map.get(config, :url)
+    labeled_url(urls, label) || labeled_url(urls, default) || legacy_read_url(config)
   end
 
   @spec labeled_url(map(), String.t() | nil) :: String.t() | nil
@@ -585,6 +585,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   defp labeled_url(_urls, _label), do: nil
+
+  @spec legacy_read_url(map()) :: String.t() | nil
+  defp legacy_read_url(config) do
+    read_only_url = Map.get(config, :read_only_url)
+    if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
+  end
 
   @spec connection_host(pos_integer(), String.t() | nil) :: String.t() | nil
   defp connection_host(backend_id, label) do

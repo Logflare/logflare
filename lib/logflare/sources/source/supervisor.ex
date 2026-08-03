@@ -11,12 +11,9 @@ defmodule Logflare.Sources.Source.Supervisor do
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Google.BigQuery
-  alias Logflare.ContextCache
-  alias Logflare.SourceSchemas
-  alias Logflare.Backends
-  alias Logflare.Utils.Tasks
   alias Logflare.Sources.Source
+  alias Logflare.Utils.Tasks
+
   require Logger
 
   # TODO: Move all manager fns into a manager server so errors in manager fns don't kill the whole supervision tree
@@ -108,7 +105,7 @@ defmodule Logflare.Sources.Source.Supervisor do
   def delete_source(source_token) do
     GenServer.abcast(__MODULE__, {:stop, source_token})
     # TODO: move to adaptor callback
-    unless do_pg_ops?() do
+    if Backends.bigquery_default_backend?() do
       BigQuery.delete_table(source_token)
     end
 
@@ -121,7 +118,7 @@ defmodule Logflare.Sources.Source.Supervisor do
   end
 
   def reset_source(source_token) do
-    unless do_pg_ops?() do
+    if Backends.bigquery_default_backend?() do
       GenServer.abcast(__MODULE__, {:restart, source_token})
     end
 
@@ -140,14 +137,9 @@ defmodule Logflare.Sources.Source.Supervisor do
     |> Enum.each(fn s -> reset_source(s.token) end)
   end
 
-  defp do_pg_ops? do
-    !!Application.get_env(:logflare, :single_tenant) &&
-      !!Application.get_env(:logflare, :postgres_backend_adapter)
-  end
-
   defp create_source(%Source{} = source) do
     with {:ok, _pid} = res <- do_start_source_sup(source),
-         :ok <- init_table(source.token) do
+         :ok <- maybe_init_table(source.token) do
       res
     else
       {:error, :already_started} = err ->
@@ -159,6 +151,10 @@ defmodule Logflare.Sources.Source.Supervisor do
       {:error} = err ->
         err
     end
+  end
+
+  defp maybe_init_table(source_token) do
+    if Backends.bigquery_default_backend?(), do: init_table(source_token), else: :ok
   end
 
   @spec ensure_started(Source.t()) :: :ok
