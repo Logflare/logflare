@@ -2,8 +2,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   @moduledoc """
   This supervisor only manages read/query `ConnectionManager` instances. Write/ingest
   traffic does not flow through these pools — HTTP inserts use the
-  `Logflare.FinchClickHouseIngest` Finch pool and native protocol inserts use the
-  `NativeIngester` connection pools.
+  `Logflare.FinchClickHouseIngest` Finch pool, and async inserts (when configured)
+  use the `Logflare.FinchClickHouseAsyncIngest` Finch pool.
 
   ## Supervision Hierarchy
 

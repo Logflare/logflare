@@ -22,7 +22,8 @@ defmodule Logflare.NetworkingTest do
                Logflare.FinchIngest,
                Logflare.FinchQuery,
                Logflare.FinchDefault,
-               Logflare.FinchClickHouseIngest
+               Logflare.FinchClickHouseIngest,
+               Logflare.FinchClickHouseAsyncIngest
              ]
     end
   end
@@ -63,6 +64,11 @@ defmodule Logflare.NetworkingTest do
                 name: Logflare.FinchClickHouseIngest,
                 pools: %{
                   :default => _config
+                }},
+               {Finch,
+                name: Logflare.FinchClickHouseAsyncIngest,
+                pools: %{
+                  :default => _async_config
                 }}
              ] = Networking.pools()
     end

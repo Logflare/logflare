@@ -36,8 +36,7 @@ config :logflare, :bigquery_pipeline, max_retries: 0
 
 config :logflare, :clickhouse_backend_adaptor,
   engine: "MergeTree",
-  pool_size: 3,
-  native_pool_size: 10
+  pool_size: 3
 
 config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
 
@@ -46,7 +45,7 @@ config :logflare, LogflareWeb.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   http: [
     http_options: [log_protocol_errors: :short, log_client_closures: false],
-    http_1_options: [gc_every_n_keepalive_requests: 3],
+    http_1_options: [gc_every_n_keepalive_requests: 1],
     thousand_island_options: [
       num_acceptors: 1250,
       # default backend keepalive timeout is fixed at 600 seconds

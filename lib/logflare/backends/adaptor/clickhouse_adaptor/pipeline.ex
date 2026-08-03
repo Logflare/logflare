@@ -6,10 +6,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   consolidated queue and inserting them into the backend's type-specific
   ingest tables (otel_logs, otel_metrics, otel_traces).
 
-  Events are routed to one of two batchers (`:ch_fresh` or `:ch_stale`)
-  based on `LogEvent.ingest_freshness`, and batched by a composite key of
-  `{event_type, day_bucket}` so each insert targets a single ClickHouse
-  partition. Multiple sources are processed together in a single pipeline.
+  Events are batched by a composite key of `{event_type, day_bucket}` so each
+  insert targets a single ClickHouse partition.
 
   Uses ID-passing: the producer emits `LogEventPointer`s (id + routing metadata)
   while the full events live in a separate generation store (see
@@ -20,7 +18,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @behaviour Broadway.Acknowledger
 
-  import Logflare.Utils.Guards, only: [is_event_type: 1]
+  import Logflare.Utils.Guards, only: [is_event_type: 1, is_pos_integer: 1]
 
   require Logger
   require OpenTelemetry.Tracer
@@ -44,21 +42,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @processor_concurrency 6
   @processor_min_demand 100
   @processor_max_demand 1_000
-  @fresh_batch_size 60_000
-  @fresh_batch_timeout 5_000
-  @fresh_batcher_concurrency 1
-  @stale_batch_size 60_000
-  @stale_batch_timeout 12_000
-  @stale_batcher_concurrency 1
+  @batch_size 60_000
+  @batch_timeout 5_000
+  @batcher_concurrency 32
   @max_retries 1
-  # Generous safety valve (2x total batcher capacity across ch_fresh + ch_stale), not a
-  # fine-grained flow-control knob — see BufferProducer's capped_fetch_amount/2. Should
-  # never engage during healthy operation; only caps genuinely runaway backlog.
-  @max_in_flight 2 * (@fresh_batch_size * @fresh_batcher_concurrency)
+  # Two full batches across every batcher, used as a generous safety valve rather
+  # than a fine-grained flow-control knob — see BufferProducer.capped_fetch_amount/2.
+  # It should only cap genuinely runaway backlog during healthy operation.
+  @max_in_flight 2 * @batch_size * @batcher_concurrency
 
   @doc false
   @spec max_retries() :: non_neg_integer()
   def max_retries, do: @max_retries
+
+  @doc false
+  @spec max_batch_size() :: pos_integer()
+  def max_batch_size, do: @batch_size
+
+  @doc false
+  @spec max_in_flight() :: pos_integer()
+  def max_in_flight, do: @max_in_flight
 
   @doc false
   @spec child_spec(arg :: term()) :: Supervisor.child_spec()
@@ -87,7 +90,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
              backend_id: backend.id,
              consolidated: true,
              id_passing: true,
-             max_in_flight: @max_in_flight
+             max_in_flight: @max_in_flight,
+             seed_batch_size: @batch_size
            ]},
         transformer: {__MODULE__, :transform, [backend_id: backend.id]},
         concurrency: @producer_concurrency
@@ -100,15 +104,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         ]
       ],
       batchers: [
-        ch_fresh: [
-          concurrency: @fresh_batcher_concurrency,
-          batch_size: @fresh_batch_size,
-          batch_timeout: @fresh_batch_timeout
-        ],
-        ch_stale: [
-          concurrency: @stale_batcher_concurrency,
-          batch_size: @stale_batch_size,
-          batch_timeout: @stale_batch_timeout
+        ch: [
+          concurrency: @batcher_concurrency,
+          batch_size: @batch_size,
+          batch_timeout: @batch_timeout
         ]
       ],
       context: %{backend_id: backend.id}
@@ -141,27 +140,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           Message.t()
   def handle_message(
         _processor_name,
-        %Message{data: %LogEventPointer{event_type: event_type, ingest_freshness: freshness}} =
-          message,
+        %Message{data: %LogEventPointer{event_type: event_type, day_bucket: day_bucket}} = message,
         _context
       )
-      when is_event_type(event_type) and freshness in [:fresh, :stale] do
+      when is_event_type(event_type) do
     message
-    |> Message.put_batcher(ingest_freshness_to_batcher(freshness))
-    |> Message.put_batch_key({event_type, message.data.day_bucket})
+    |> Message.put_batcher(:ch)
+    |> Message.put_batch_key({event_type, day_bucket})
   end
 
   def handle_message(_processor_name, message, _context) do
     Message.failed(message, :not_found)
   end
-
-  @spec ingest_freshness_to_batcher(:fresh | :stale) :: :ch_fresh | :ch_stale
-  defp ingest_freshness_to_batcher(:fresh), do: :ch_fresh
-  defp ingest_freshness_to_batcher(:stale), do: :ch_stale
-
-  @spec batcher_async?(:ch_fresh | :ch_stale) :: boolean()
-  defp batcher_async?(:ch_stale), do: true
-  defp batcher_async?(:ch_fresh), do: false
 
   @spec handle_batch(
           batcher :: atom(),
@@ -172,22 +162,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   def handle_batch(_batcher, [], _batch_info, _context), do: []
 
   def handle_batch(
-        batcher,
+        :ch,
         messages,
         %{batch_key: {event_type, day_bucket}} = batch_info,
         %{backend_id: backend_id}
       )
-      when batcher in [:ch_fresh, :ch_stale] and is_event_type(event_type) do
-    emit_batch_telemetry(batch_info, backend_id, event_type, batcher, day_bucket)
+      when is_event_type(event_type) do
+    emit_batch_telemetry(batch_info, backend_id, event_type, day_bucket)
 
     backend = Backends.Cache.get_backend(backend_id)
 
-    encode_and_insert(backend, messages, event_type, batcher, batch_info, day_bucket)
+    encode_and_insert(backend, messages, event_type, batch_info, day_bucket)
   end
 
   @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
   def ack(_ack_ref, successful, failed) do
-    decrement_in_flight(successful ++ failed)
+    decrement_in_flight(successful, failed)
 
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
@@ -209,15 +199,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   # cross-process call. By the time ack/3 fires for a message, Broadway has already
   # finished handle_batch/4 for it, so it's no longer sitting in BatcherStage's
   # (effectively unbounded) buffer regardless of what happens to it next.
-  @spec decrement_in_flight([Message.t()]) :: :ok
-  defp decrement_in_flight(messages) do
-    messages
-    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} ->
-      Map.get(ack_data, :in_flight_ref)
-    end)
-    |> Enum.each(fn
-      {nil, _msgs} -> :ok
-      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
+  @spec decrement_in_flight([Message.t()], [Message.t()]) :: :ok
+  defp decrement_in_flight(successful, failed) do
+    counts = count_in_flight(successful, %{})
+    counts = count_in_flight(failed, counts)
+
+    Enum.each(counts, fn {ref, count} -> :atomics.sub(ref, 1, count) end)
+  end
+
+  defp count_in_flight(messages, counts) do
+    Enum.reduce(messages, counts, fn %{acknowledger: {_, _, ack_data}}, counts ->
+      case Map.get(ack_data, :in_flight_ref) do
+        nil -> counts
+        ref -> Map.update(counts, ref, 1, &(&1 + 1))
+      end
     end)
   end
 
@@ -225,10 +220,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           Broadway.BatchInfo.t(),
           pos_integer(),
           TypeDetection.event_type(),
-          atom(),
           integer()
         ) :: :ok
-  defp emit_batch_telemetry(batch_info, backend_id, event_type, batcher, day_bucket) do
+  defp emit_batch_telemetry(batch_info, backend_id, event_type, day_bucket) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
@@ -236,7 +230,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         backend_type: :clickhouse,
         backend_id: backend_id,
         event_type: event_type,
-        batcher: batcher,
+        batch_trigger: batch_info.trigger,
         day_bucket: day_bucket
       }
     )
@@ -246,25 +240,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           Backend.t(),
           [Message.t()],
           TypeDetection.event_type(),
-          atom(),
           Broadway.BatchInfo.t(),
           integer()
         ) :: [Message.t()]
-  defp encode_and_insert(backend, messages, event_type, batcher, batch_info, day_bucket) do
+  defp encode_and_insert(backend, messages, event_type, batch_info, day_bucket) do
     OpenTelemetry.Tracer.with_span :clickhouse_pipeline, %{
       attributes: %{
         backend_id: backend.id,
         ingest_batch_size: batch_info.size,
         ingest_batch_trigger: batch_info.trigger,
         event_type: event_type,
-        batcher: batcher,
         day_bucket: day_bucket
       }
     } do
       with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(event_type) do
-        {good, bad, compressed} = stream_compress(messages, event_type, compiled, config_id)
+        {good, bad, good_count, compressed} =
+          stream_compress(messages, event_type, compiled, config_id)
+
         emit_missing_ids_telemetry(bad, backend, event_type)
-        finalize_insert(backend, event_type, batcher, compressed, good, bad)
+        finalize_insert(backend, event_type, compressed, good_count, good, bad)
       else
         {:error, reason} -> Enum.map(messages, &Message.failed(&1, reason))
       end
@@ -273,10 +267,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   # Streams each message's event through the mapper + RowBinary encoder directly into
   # a gzip zlib stream, so the full batch is never materialized as a flat binary.
-  # Returns the messages that encoded successfully, the ones missing from ETS, and the
-  # finished compressed payload.
+  # Returns the messages that encoded successfully, the ones missing from ETS, a count of
+  # successful messages that were compressed, and the finished compressed payload.
   @spec stream_compress([Message.t()], TypeDetection.event_type(), reference(), String.t()) ::
-          {[Message.t()], [Message.t()], binary()}
+          {[Message.t()], [Message.t()], non_neg_integer(), binary()}
   defp stream_compress(messages, event_type, compiled, config_id) do
     z = :zlib.open()
 
@@ -286,15 +280,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       # good/bad end up reversed relative to `messages`; that's fine — Broadway
       # partitions and re-reverses handle_batch/4's return by status internally,
       # and neither the acknowledger nor ClickHouse cares about row order.
+      # This value is constant for the batch. Keep it out of every mapped body and
+      # pass its already-encoded form directly to the row encoder.
       mapping_config_id = Ingester.encode_mapping_config_id(config_id)
 
-      {good, bad, chunks} =
-        Enum.reduce(messages, {[], [], []}, fn message, acc ->
-          encode_message(z, event_type, compiled, config_id, mapping_config_id, message, acc)
+      {good, bad, good_count, chunks} =
+        Enum.reduce(messages, {[], [], 0, []}, fn message, acc ->
+          encode_message(z, event_type, compiled, mapping_config_id, message, acc)
         end)
 
       final_chunk = :zlib.deflate(z, "", :finish)
-      {good, bad, IO.iodata_to_binary([chunks, final_chunk])}
+      {good, bad, good_count, IO.iodata_to_binary([Enum.reverse(chunks), final_chunk])}
     after
       :zlib.deflateEnd(z)
       :zlib.close(z)
@@ -305,19 +301,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           term(),
           TypeDetection.event_type(),
           reference(),
-          String.t(),
           iodata(),
           Message.t(),
-          {[Message.t()], [Message.t()], iodata()}
-        ) :: {[Message.t()], [Message.t()], iodata()}
+          {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
+        ) :: {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
   defp encode_message(
          z,
          event_type,
          compiled,
-         config_id,
          mapping_config_id,
          %{data: %LogEventPointer{event_type: msg_event_type} = pointer} = message,
-         {good, bad, chunks}
+         {good, bad, good_count, chunks}
        )
        when msg_event_type == event_type do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
@@ -325,7 +319,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         mapped_body =
           event.body
           |> Mapper.map(compiled)
-          |> Map.put("mapping_config_id", config_id)
           |> maybe_compute_duration(event_type)
           |> resolve_severity_number(event_type)
 
@@ -335,10 +328,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
             Ingester.encode_row(%{event | body: mapped_body}, event_type, mapping_config_id)
           )
 
-        {[message | good], bad, [chunks, row_chunk]}
+        {[message | good], bad, good_count + 1, [row_chunk | chunks]}
 
       nil ->
-        {good, [message | bad], chunks}
+        {good, [message | bad], good_count, chunks}
     end
   end
 
@@ -346,12 +339,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          _z,
          _event_type,
          _compiled,
-         _config_id,
          _mapping_config_id,
          message,
-         {good, bad, chunks}
+         {good, bad, good_count, chunks}
        ) do
-    {good, [message | bad], chunks}
+    {good, [message | bad], good_count, chunks}
   end
 
   @spec emit_missing_ids_telemetry([Message.t()], Backend.t(), TypeDetection.event_type()) :: :ok
@@ -361,31 +353,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     :telemetry.execute(
       [:logflare, :ingest_event_queue, :missing_ids],
       %{count: length(bad)},
-      %{backend_id: backend.id, event_type: event_type}
+      %{backend_type: :clickhouse, backend_id: backend.id, event_type: event_type}
     )
   end
 
   @spec finalize_insert(
           Backend.t(),
           TypeDetection.event_type(),
-          atom(),
           binary(),
+          non_neg_integer(),
           [Message.t()],
           [Message.t()]
         ) :: [Message.t()]
-  defp finalize_insert(_backend, _event_type, _batcher, _compressed, [] = _good, bad) do
+  defp finalize_insert(_backend, _event_type, _compressed, _good_count, [] = _good, bad) do
     # No rows encoded (every event was missing from ETS by batch time), so the
     # compressed payload carries zero RowBinary rows. Skip the empty ClickHouse
     # insert and fail the missing messages, mirroring Ingester.insert/5's empty guard.
     Enum.map(bad, &Message.failed(&1, :not_found))
   end
 
-  defp finalize_insert(backend, event_type, batcher, compressed, good, bad) do
+  defp finalize_insert(backend, event_type, compressed, good_count, good, bad) do
+    insert_opts = [async: async_insert?(backend, good_count)]
+
     case ClickHouseAdaptor.insert_log_events_compressed(
            backend,
            event_type,
            compressed,
-           async: batcher_async?(batcher)
+           insert_opts
          ) do
       :ok ->
         # `bad` (rare, typically empty) goes on the left of `++` so the cons cells
@@ -394,8 +388,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         Enum.map(bad, &Message.failed(&1, :not_found)) ++ good
 
       {:error, reason} ->
-        CircuitBreaker.record_failure(backend)
+        record_insert_failure(backend, reason)
         Enum.map(bad, &Message.failed(&1, reason)) ++ Enum.map(good, &Message.failed(&1, reason))
+    end
+  end
+
+  @spec async_insert?(Backend.t(), non_neg_integer()) :: boolean()
+  defp async_insert?(
+         %Backend{
+           config: %{use_async_inserts_for_small_batches: true, async_insert_max_rows: max_rows}
+         },
+         row_count
+       )
+       when is_pos_integer(max_rows) and is_pos_integer(row_count) and row_count < max_rows,
+       do: true
+
+  defp async_insert?(_backend, _row_count), do: false
+
+  @spec record_insert_failure(Backend.t(), term()) :: :ok
+  defp record_insert_failure(backend, reason) do
+    if Ingester.too_many_parts?(reason) do
+      CircuitBreaker.trip(backend)
+    else
+      CircuitBreaker.record_failure(backend)
     end
   end
 

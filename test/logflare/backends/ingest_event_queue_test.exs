@@ -99,6 +99,27 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert [] == IngestEventQueue.list_counts({source.id, nil})
     end
 
+    test "add_to_table/2 removes the backing row when a duplicate pointer is rejected", %{
+      source: %{id: source_id} = source,
+      backend: %{id: backend_id}
+    } do
+      key = {source_id, backend_id, self()}
+      queues_key = {source_id, backend_id}
+      assert {:ok, _pointer_tid} = IngestEventQueue.upsert_tid(key)
+
+      first = build(:log_event, source: source)
+      duplicate = %{first | body: Map.put(first.body, "event_message", "duplicate")}
+
+      assert :ok = IngestEventQueue.add_to_table(key, [first])
+      assert :ok = IngestEventQueue.add_to_table(key, [duplicate])
+
+      gen_tid = IngestEventQueue.current_generation_tid(queues_key)
+      assert :ets.info(gen_tid, :size) == 1
+
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(key, 1)
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == first
+    end
+
     test "add_to_table/2 falls back to the startup queue when a producer table died mid-dispatch",
          %{source: %{id: source_id} = source, backend: %{id: backend_id}} do
       pid = self()
@@ -117,6 +138,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert :ok = IngestEventQueue.add_to_table({producer_key, producer_tid}, [le])
 
       assert IngestEventQueue.total_pending(startup_key) == 1
+
+      gen_tid = IngestEventQueue.current_generation_tid({source_id, backend_id})
+      assert :ets.info(gen_tid, :size) == 1
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(startup_key, 1)
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == le
     end
 
     test "add_to_table/2 does not raise when the current generation was dropped before an insert",
@@ -404,7 +430,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       rows_before = pointer_tid |> :ets.tab2list()
 
       gen_event_id_by_id =
-        Map.new(rows_before, fn {id, _gen_tid, gen_event_id, _, _, _, _, _} ->
+        Map.new(rows_before, fn {id, _gen_tid, gen_event_id, _, _, _, _} ->
           {id, gen_event_id}
         end)
 
@@ -549,39 +575,112 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     test "pointers carry routing metadata and can resolve the full event via lookup_event/2",
          %{source: source, sbp: sbp} do
-      fresh =
+      log_ev =
         build(:log_event, source: source)
         |> Map.put(:event_type, :log)
         |> Map.put(:day_bucket, 12_345)
-        |> Map.put(:ingest_freshness, :fresh)
 
-      stale =
+      trace_ev =
         build(:log_event, source: source)
         |> Map.put(:event_type, :trace)
         |> Map.put(:day_bucket, 54_321)
-        |> Map.put(:ingest_freshness, :stale)
 
-      assert :ok = IngestEventQueue.add_to_table(sbp, [fresh, stale])
+      assert :ok = IngestEventQueue.add_to_table(sbp, [log_ev, trace_ev])
 
       assert {:ok, pointers, tid} = IngestEventQueue.pop_pending_pointers(sbp, 2)
       assert tid != nil
 
       by_id = Map.new(pointers, &{&1.id, &1})
 
-      fresh_pointer = Map.fetch!(by_id, fresh.id)
-      assert fresh_pointer.event_type == :log
-      assert fresh_pointer.day_bucket == 12_345
-      assert fresh_pointer.ingest_freshness == :fresh
-      assert fresh_pointer.size == :erlang.external_size(fresh.body)
+      log_pointer = Map.fetch!(by_id, log_ev.id)
+      assert log_pointer.event_type == :log
+      assert log_pointer.day_bucket == 12_345
+      assert log_pointer.size == :erlang.external_size(log_ev.body)
 
-      assert IngestEventQueue.lookup_event(fresh_pointer.tid, fresh_pointer.gen_event_id).id ==
-               fresh.id
+      assert IngestEventQueue.lookup_event(log_pointer.tid, log_pointer.gen_event_id).id ==
+               log_ev.id
 
-      stale_pointer = Map.fetch!(by_id, stale.id)
-      assert stale_pointer.event_type == :trace
-      assert stale_pointer.day_bucket == 54_321
-      assert stale_pointer.ingest_freshness == :stale
+      trace_pointer = Map.fetch!(by_id, trace_ev.id)
+      assert trace_pointer.event_type == :trace
+      assert trace_pointer.day_bucket == 54_321
 
+      assert IngestEventQueue.total_pending(sbp) == 0
+    end
+
+    test "counts and claims pointers by exact ClickHouse batch key", %{
+      source: source,
+      sbp: sbp
+    } do
+      events =
+        for {event_type, day_bucket, count} <- [
+              {:log, 12_345, 3},
+              {:metric, 12_345, 2},
+              {:log, 54_321, 1}
+            ],
+            _ <- 1..count do
+          build(:log_event, source: source)
+          |> Map.put(:event_type, event_type)
+          |> Map.put(:day_bucket, day_bucket)
+        end
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      assert IngestEventQueue.pending_batch_key_counts(sbp) == %{
+               {:log, 12_345} => 3,
+               {:metric, 12_345} => 2,
+               {:log, 54_321} => 1
+             }
+
+      assert {:ok, pointers, _tid} =
+               IngestEventQueue.pop_pending_pointers_by_batch_key(
+                 sbp,
+                 {:log, 12_345},
+                 2
+               )
+
+      assert length(pointers) == 2
+      assert Enum.all?(pointers, &match?(%{event_type: :log, day_bucket: 12_345}, &1))
+      assert IngestEventQueue.total_pending(sbp) == 4
+
+      assert IngestEventQueue.pending_batch_key_counts(sbp) == %{
+               {:log, 12_345} => 1,
+               {:metric, 12_345} => 2,
+               {:log, 54_321} => 1
+             }
+    end
+
+    @tag :race
+    test "concurrent batch-key claims never claim a pointer twice", %{
+      source: source,
+      sbp: sbp
+    } do
+      events =
+        for _ <- 1..500 do
+          build(:log_event, source: source)
+          |> Map.put(:event_type, :log)
+          |> Map.put(:day_bucket, 12_345)
+        end
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      claimed_ids =
+        for _ <- 1..4 do
+          Task.async(fn ->
+            {:ok, pointers, _tid} =
+              IngestEventQueue.pop_pending_pointers_by_batch_key(
+                sbp,
+                {:log, 12_345},
+                500
+              )
+
+            Enum.map(pointers, & &1.id)
+          end)
+        end
+        |> Task.await_many(10_000)
+        |> List.flatten()
+
+      assert length(claimed_ids) == 500
+      assert length(Enum.uniq(claimed_ids)) == 500
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
@@ -608,7 +707,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         build(:log_event, source: source)
         |> Map.put(:event_type, nil)
         |> Map.put(:day_bucket, nil)
-        |> Map.put(:ingest_freshness, nil)
 
       assert :ok = IngestEventQueue.add_to_table(sbp, [event])
 
@@ -618,7 +716,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert pointer.size == :erlang.external_size(event.body)
       assert pointer.event_type == nil
       assert pointer.day_bucket == nil
-      assert pointer.ingest_freshness == nil
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
@@ -742,8 +839,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         size: 0,
         retries: 0,
         event_type: :log,
-        day_bucket: 0,
-        ingest_freshness: :fresh
+        day_bucket: 0
       }
 
       assert :ok = IngestEventQueue.reinsert_pointer(pointer)
@@ -783,6 +879,23 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert active1_size + active2_size == 200
       assert active1_size > 0
       assert active2_size > 0
+    end
+
+    test "sends a sub-cycle burst to the least-loaded active queue first", %{
+      source: source,
+      backend: backend
+    } do
+      loaded_queue = {source.id, backend.id, :erlang.list_to_pid(~c"<0.100.3>")}
+      empty_queue = {source.id, backend.id, :erlang.list_to_pid(~c"<0.100.4>")}
+
+      IngestEventQueue.upsert_tid(loaded_queue)
+      IngestEventQueue.upsert_tid(empty_queue)
+      :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(101, :log_event))
+
+      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, [build(:log_event)])
+
+      assert IngestEventQueue.get_table_size(loaded_queue) == 101
+      assert IngestEventQueue.get_table_size(empty_queue) == 1
     end
 
     test "falls back to startup queue when no active queues exist", %{
@@ -920,6 +1033,36 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "`add_to_table/3` distribution with spool queues" do
+    setup do
+      for key <- IngestEventQueue.list_queues({:spool_producer, nil}) do
+        IngestEventQueue.delete_queue(key)
+      end
+
+      on_exit(fn ->
+        for key <- IngestEventQueue.list_queues({:spool_producer, nil}) do
+          IngestEventQueue.delete_queue(key)
+        end
+      end)
+
+      :ok
+    end
+
+    test "sends a sub-cycle burst to the least-loaded spool queue first" do
+      loaded_queue = {:spool_producer, nil, :erlang.list_to_pid(~c"<0.110.1>")}
+      empty_queue = {:spool_producer, nil, :erlang.list_to_pid(~c"<0.110.2>")}
+
+      IngestEventQueue.upsert_tid(loaded_queue)
+      IngestEventQueue.upsert_tid(empty_queue)
+      :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(101, :log_event))
+
+      :ok = IngestEventQueue.add_to_table({:spool_producer, nil}, [build(:log_event)])
+
+      assert IngestEventQueue.get_table_size(loaded_queue) == 101
+      assert IngestEventQueue.get_table_size(empty_queue) == 1
+    end
+  end
+
   describe "`add_to_table/3` distribution with consolidated queues_key" do
     setup do
       user = insert(:user)
@@ -980,7 +1123,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(full_queue)
       IngestEventQueue.upsert_tid(available_queue)
 
-      max_size = IngestEventQueue.max_queue_size()
+      max_size = IngestEventQueue.max_consolidated_queue_size()
       full_batch = build_list(max_size, :log_event, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
@@ -1015,33 +1158,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert size1 + size2 == 10
     end
 
-    test "weights round-robin toward the less-loaded consolidated queue once the spread exceeds the noise floor",
-         %{backend: backend} do
-      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
-      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
-      loaded_queue = {:consolidated, backend.id, pid1}
-      empty_queue = {:consolidated, backend.id, pid2}
-
-      IngestEventQueue.upsert_tid(loaded_queue)
-      IngestEventQueue.upsert_tid(empty_queue)
-
-      # pre-load one queue well past the noise floor (chunk_size, 100 here) so
-      # weight_by_load/2 kicks in instead of falling back to plain round-robin
-      :ok = IngestEventQueue.add_to_table(loaded_queue, build_list(40_000, :log_event))
-
-      new_events = build_list(6_000, :log_event)
-
-      :ok =
-        IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events, chunk_size: 50)
-
-      loaded_added = IngestEventQueue.get_table_size(loaded_queue) - 40_000
-      empty_added = IngestEventQueue.get_table_size(empty_queue)
-
-      assert loaded_added + empty_added == 6_000
-      assert empty_added > loaded_added * 3
-    end
-
-    test "falls back to plain round-robin for consolidated queues when the spread is within the noise floor",
+    test "splits evenly across consolidated queues regardless of their current load",
          %{backend: backend} do
       pid1 = :erlang.list_to_pid(~c"<0.100.1>")
       pid2 = :erlang.list_to_pid(~c"<0.100.2>")
@@ -1051,7 +1168,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(queue1)
       IngestEventQueue.upsert_tid(queue2)
 
-      # a 10-event difference is far below the noise floor (chunk_size, 100 here)
       :ok = IngestEventQueue.add_to_table(queue1, build_list(1_000, :log_event))
       :ok = IngestEventQueue.add_to_table(queue2, build_list(1_010, :log_event))
 
