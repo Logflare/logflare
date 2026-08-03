@@ -139,5 +139,21 @@ defmodule Logflare.Backends.BackendTest do
                "Backend type webhook does not support default ingest"
              ]
     end
+
+    test "does not allow the single-tenant default marker changeset", %{
+      user: user
+    } do
+      attrs = %{
+        name: "Test ClickHouse Backend",
+        type: :clickhouse,
+        config: %{url: "http://localhost:8123", database: "default", port: 8123},
+        single_tenant_default?: true
+      }
+
+      changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
+
+      assert changeset.valid?
+      refute get_field(changeset, :single_tenant_default?)
+    end
   end
 end

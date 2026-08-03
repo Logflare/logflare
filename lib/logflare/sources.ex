@@ -15,7 +15,6 @@ defmodule Logflare.Sources do
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.PubSubRates
   alias Logflare.Repo
-  alias Logflare.SingleTenant
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Sources.Source
@@ -132,7 +131,7 @@ defmodule Logflare.Sources do
            |> Ecto.build_assoc(:sources)
            |> Source.update_by_user_changeset(source_params)
            |> Repo.insert() do
-      if !SingleTenant.postgres_backend?() do
+      if Backends.bigquery_default_backend?() do
         create_big_query_schema_and_start_source(source)
       end
 
@@ -249,7 +248,8 @@ defmodule Logflare.Sources do
     source = put_retention_days(source)
     updated = put_retention_days(updated)
 
-    if source.retention_days != updated.retention_days and not SingleTenant.postgres_backend?() do
+    if source.retention_days != updated.retention_days and
+         Backends.bigquery_default_backend?() do
       user = Users.Cache.get(updated.user_id)
 
       BigQuery.patch_table_ttl(
@@ -261,7 +261,7 @@ defmodule Logflare.Sources do
     end
 
     if source.bigquery_clustering_fields != updated.bigquery_clustering_fields and
-         not SingleTenant.postgres_backend?() do
+         Backends.bigquery_default_backend?() do
       user = Users.Cache.get(updated.user_id)
 
       fields = String.split(updated.bigquery_clustering_fields || "", ",") ++ ["timestamp"]
@@ -673,26 +673,24 @@ defmodule Logflare.Sources do
   end
 
   @spec calculate_total_pending(Source.t()) :: non_neg_integer()
-  defp calculate_total_pending(%Source{id: source_id} = source) do
-    # Get all backends for this source, including default backend
-    user = Users.Cache.get(source.user_id)
-    default_backend = Backends.get_default_backend(user)
-
+  defp calculate_total_pending(%Source{} = source) do
     ingest_backends = Backends.Cache.list_backends(source_id: source.id)
 
     rules_backends =
       Backends.Cache.list_backends(rules_source_id: source.id)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
-    all_backends = [default_backend | ingest_backends] ++ rules_backends
+    backend_queue_keys =
+      (ingest_backends ++ rules_backends)
+      |> Enum.map(&Backends.ingest_queue_key(source, &1))
+
+    queue_keys = [Backends.system_default_ingest_queue_key(source) | backend_queue_keys]
 
     # Sum pending items across all backends
-    all_backends
-    |> Enum.reduce(0, fn backend, acc ->
-      case Backends.IngestEventQueue.total_pending({source_id, backend.id}) do
-        count -> acc + count
-      end
-    end)
+    queue_keys
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.reduce(0, &(Backends.IngestEventQueue.total_pending(&1) + &2))
   end
 
   @spec has_recent_logs_within?(Source.t(), non_neg_integer()) :: boolean()

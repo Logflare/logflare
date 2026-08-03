@@ -22,7 +22,7 @@ defmodule Logflare.Backends.BufferProducer do
           demand: non_neg_integer(),
           source_id: pos_integer() | nil,
           source_token: atom() | nil,
-          backend_id: pos_integer(),
+          backend_id: non_neg_integer(),
           last_discard_log_dt: DateTime.t() | nil,
           interval: pos_integer(),
           in_flight_ref: :atomics.atomics_ref() | nil,
@@ -47,7 +47,7 @@ defmodule Logflare.Backends.BufferProducer do
 
   @type state :: standard_state() | spool_producer_state()
 
-  @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
+  @type table_key :: {pos_integer() | atom(), non_neg_integer() | nil, pid() | nil}
 
   @in_flight_registry Logflare.Backends.BufferProducer.InFlightRegistry
 
@@ -233,7 +233,7 @@ defmodule Logflare.Backends.BufferProducer do
     reschedule(state, false, false)
   end
 
-  @spec init_consolidated_state(pos_integer(), pos_integer(), keyword()) :: state()
+  @spec init_consolidated_state(non_neg_integer(), pos_integer(), keyword()) :: state()
   defp init_consolidated_state(backend_id, interval, opts) do
     id_passing = Keyword.get(opts, :id_passing, false)
     {in_flight_ref, max_in_flight} = init_in_flight(id_passing, Keyword.get(opts, :max_in_flight))

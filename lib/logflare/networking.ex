@@ -4,7 +4,7 @@ defmodule Logflare.Networking do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Adaptor.DatadogAdaptor
-  alias Logflare.SingleTenant
+  alias Logflare.Backends
 
   # Finch bounds only connect and receive. Without `send_timeout` a peer that accepts
   # the connection and then stops reading blocks the insert inside `:gen_tcp.send`
@@ -20,14 +20,14 @@ defmodule Logflare.Networking do
   @spool_pool_size 150
 
   def pools do
-    if SingleTenant.postgres_backend?() do
-      finch_pools(true)
+    if Backends.bigquery_default_backend?() do
+      bigquery_finch_pools() ++ grpc_pools()
     else
-      finch_pools(false) ++ grpc_pools()
+      base_finch_pools_with_default()
     end
   end
 
-  defp finch_pools(true = _postgres_backend?) do
+  defp base_finch_pools_with_default do
     [
       {Finch,
        name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
@@ -43,7 +43,7 @@ defmodule Logflare.Networking do
     ]
   end
 
-  defp finch_pools(false = _postgres_backend?) do
+  defp bigquery_finch_pools do
     base = System.schedulers_online()
     http1_count = max(div(base, 4), 1)
 
