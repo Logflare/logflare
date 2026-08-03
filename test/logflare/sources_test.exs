@@ -277,6 +277,7 @@ defmodule Logflare.SourcesTest do
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user))
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.backends))
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user.team))
+      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.source_schema))
 
       refute Enum.any?(sources, &Ecto.assoc_loaded?(&1.rules))
     end
@@ -304,7 +305,7 @@ defmodule Logflare.SourcesTest do
           handler_id,
           [:logflare, :repo, :query],
           fn _event, _measurements, metadata, _config ->
-            if metadata.source in ["users", "teams", "backends"] do
+            if metadata.source in ["users", "teams", "backends", "source_schemas"] do
               Agent.update(counter, &(&1 + 1))
             end
           end,
