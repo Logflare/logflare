@@ -549,8 +549,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         )
         |> Map.put(:ingested_at, nil)
 
-      compiled = MappingDefaults.for_log() |> Mapper.compile!()
-      mapped_body = Mapper.map(event.body, compiled)
+      map_config = MappingDefaults.for_log()
+      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
 
@@ -669,8 +670,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:event_type, :metric)
         |> Map.put(:ingested_at, nil)
 
-      compiled = MappingDefaults.for_metric() |> Mapper.compile!()
-      mapped_body = Mapper.map(event.body, compiled)
+      map_config = MappingDefaults.for_metric()
+      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
 
@@ -815,8 +817,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:event_type, :trace)
         |> Map.put(:ingested_at, nil)
 
-      compiled = MappingDefaults.for_trace() |> Mapper.compile!()
-      mapped_body = Mapper.map(event.body, compiled)
+      map_config = MappingDefaults.for_trace()
+      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
 

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rustler::types::list::ListIterator;
 use rustler::types::map::MapIterator;
 use rustler::{Binary, OwnedBinary, Term};
@@ -6,6 +8,137 @@ pub type EncodeResult<T> = Result<T, String>;
 
 const INITIAL_ROW_CAPACITY: usize = 3072;
 const UUID_BYTE_OFFSETS: [usize; 16] = [0, 2, 4, 6, 9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 32, 34];
+
+const LOG_FIELDS: &[&str] = &[
+    "project",
+    "trace_id",
+    "span_id",
+    "trace_flags",
+    "severity_text",
+    "severity_number_alt",
+    "severity_number",
+    "service_name",
+    "event_message",
+    "scope_name",
+    "scope_version",
+    "scope_schema_url",
+    "resource_schema_url",
+    "resource_attributes",
+    "scope_attributes",
+    "log_attributes",
+    "timestamp",
+];
+
+const METRIC_FIELDS: &[&str] = &[
+    "project",
+    "time_unix",
+    "start_time_unix",
+    "metric_name",
+    "metric_description",
+    "metric_unit",
+    "metric_type",
+    "service_name",
+    "event_message",
+    "scope_name",
+    "scope_version",
+    "scope_schema_url",
+    "resource_schema_url",
+    "resource_attributes",
+    "scope_attributes",
+    "attributes",
+    "aggregation_temporality",
+    "is_monotonic",
+    "flags",
+    "value",
+    "count",
+    "sum",
+    "min",
+    "max",
+    "scale",
+    "zero_count",
+    "positive_offset",
+    "negative_offset",
+    "bucket_counts",
+    "explicit_bounds",
+    "positive_bucket_counts",
+    "negative_bucket_counts",
+    "quantile_values",
+    "quantiles",
+    "exemplars.filtered_attributes",
+    "exemplars.time_unix",
+    "exemplars.value",
+    "exemplars.span_id",
+    "exemplars.trace_id",
+    "timestamp",
+];
+
+const TRACE_FIELDS: &[&str] = &[
+    "project",
+    "trace_id",
+    "span_id",
+    "parent_span_id",
+    "trace_state",
+    "span_name",
+    "span_kind",
+    "service_name",
+    "event_message",
+    "duration",
+    "start_time",
+    "end_time",
+    "status_code",
+    "status_message",
+    "scope_name",
+    "scope_version",
+    "resource_attributes",
+    "span_attributes",
+    "events.timestamp",
+    "events.name",
+    "events.attributes",
+    "links.trace_id",
+    "links.span_id",
+    "links.trace_state",
+    "links.attributes",
+    "timestamp",
+];
+
+#[derive(Debug, Clone, Copy)]
+enum RowType {
+    Log,
+    Metric,
+    Trace,
+}
+
+#[derive(Debug)]
+pub struct CompiledLayout {
+    row_type: RowType,
+    field_indices: Box<[usize]>,
+}
+
+pub fn compile_layout(
+    row_type: &str,
+    indices: &HashMap<&str, usize>,
+) -> EncodeResult<CompiledLayout> {
+    let (row_type, fields) = match row_type {
+        "log" => (RowType::Log, LOG_FIELDS),
+        "metric" => (RowType::Metric, METRIC_FIELDS),
+        "trace" => (RowType::Trace, TRACE_FIELDS),
+        _ => return Err(format!("unsupported ClickHouse row type '{row_type}'")),
+    };
+
+    let field_indices = fields
+        .iter()
+        .map(|name| {
+            indices.get(*name).copied().ok_or_else(|| {
+                format!("compiled mapping is missing required ClickHouse field '{name}'")
+            })
+        })
+        .collect::<EncodeResult<Box<[usize]>>>()?;
+
+    Ok(CompiledLayout {
+        row_type,
+        field_indices,
+    })
+}
 
 #[derive(Clone, Copy)]
 pub struct RowEnvelope<'a> {
@@ -112,7 +245,39 @@ impl<'values, 'env> RowValues<'values, 'env> {
     }
 }
 
-pub fn append_log(
+pub fn append_row(
+    output: &mut BinaryBuilder,
+    layout: &CompiledLayout,
+    values: &[Term],
+    envelope: RowEnvelope,
+    mapping_config_id: Binary,
+) -> EncodeResult<()> {
+    match layout.row_type {
+        RowType::Log => append_log(
+            output,
+            &layout.field_indices,
+            values,
+            envelope,
+            mapping_config_id,
+        ),
+        RowType::Metric => append_metric(
+            output,
+            &layout.field_indices,
+            values,
+            envelope,
+            mapping_config_id,
+        ),
+        RowType::Trace => append_trace(
+            output,
+            &layout.field_indices,
+            values,
+            envelope,
+            mapping_config_id,
+        ),
+    }
+}
+
+fn append_log(
     output: &mut BinaryBuilder,
     layout: &[usize],
     values: &[Term],
@@ -160,7 +325,7 @@ pub fn append_log(
     )
 }
 
-pub fn append_metric(
+fn append_metric(
     output: &mut BinaryBuilder,
     layout: &[usize],
     values: &[Term],
@@ -223,7 +388,7 @@ pub fn append_metric(
     )
 }
 
-pub fn append_trace(
+fn append_trace(
     output: &mut BinaryBuilder,
     layout: &[usize],
     values: &[Term],

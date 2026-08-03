@@ -13,7 +13,6 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
   @moduledoc false
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoder
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
   alias Logflare.Mapper
@@ -37,9 +36,11 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
   end
 
   @spec encode_fused([LogEvent.t()], atom(), reference(), binary()) :: binary()
-  def encode_fused(events, type, compiled, mapping_config_id) do
+  def encode_fused(events, _type, compiled, mapping_config_id) do
+    mapper_opts = [mapping_config_id: mapping_config_id]
+
     events
-    |> Enum.map(&NativeEncoder.map_and_encode_row(&1, compiled, type, mapping_config_id))
+    |> Enum.map(&Mapper.map(&1, compiled, mapper_opts))
     |> IO.iodata_to_binary()
   end
 
@@ -75,11 +76,13 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
     end)
   end
 
-  defp encode_ets_chunks(z, id_tid_pairs, type, compiled, mapping_config_id, :fused) do
+  defp encode_ets_chunks(z, id_tid_pairs, _type, compiled, mapping_config_id, :fused) do
+    mapper_opts = [mapping_config_id: mapping_config_id]
+
     Enum.map(id_tid_pairs, fn {id, tid} ->
       case IngestEventQueue.lookup_event(tid, id) do
         %LogEvent{} = event ->
-          row = NativeEncoder.map_and_encode_row(event, compiled, type, mapping_config_id)
+          row = Mapper.map(event, compiled, mapper_opts)
           :zlib.deflate(z, row)
 
         nil ->
@@ -124,14 +127,15 @@ inputs =
   for type <- event_types,
       batch_size <- batch_sizes,
       into: %{} do
-    {compiled, config_id} = Data.compiled(type)
+    {map_compiled, config_id} = Data.compiled(type)
+    {output_compiled, ^config_id} = Data.compiled_output(type)
     mapping_config_id = Ingester.encode_mapping_config_id(config_id)
     events = Data.batch(type, batch_size, :realistic)
     processing_tid = Data.setup_processing_ets(events)
     id_tid_pairs = Enum.map(events, &{&1.id, processing_tid})
 
-    expected = Fusion.encode_separate(events, type, compiled, mapping_config_id)
-    actual = Fusion.encode_fused(events, type, compiled, mapping_config_id)
+    expected = Fusion.encode_separate(events, type, map_compiled, mapping_config_id)
+    actual = Fusion.encode_fused(events, type, output_compiled, mapping_config_id)
 
     if actual != expected do
       raise "fused RowBinary differs for #{type}/batch=#{batch_size}"
@@ -143,7 +147,8 @@ inputs =
      %{
        events: events,
        type: type,
-       compiled: compiled,
+       map_compiled: map_compiled,
+       output_compiled: output_compiled,
        mapping_config_id: mapping_config_id,
        id_tid_pairs: id_tid_pairs
      }}
@@ -154,7 +159,7 @@ pipeline_scenarios = %{
     Fusion.compress_ets(
       input.id_tid_pairs,
       input.type,
-      input.compiled,
+      input.output_compiled,
       input.mapping_config_id,
       :fused
     )
@@ -163,7 +168,7 @@ pipeline_scenarios = %{
     Fusion.compress_ets(
       input.id_tid_pairs,
       input.type,
-      input.compiled,
+      input.map_compiled,
       input.mapping_config_id,
       :separate
     )
@@ -175,7 +180,7 @@ encoding_scenarios = %{
     Fusion.encode_fused(
       input.events,
       input.type,
-      input.compiled,
+      input.output_compiled,
       input.mapping_config_id
     )
   end,
@@ -183,7 +188,7 @@ encoding_scenarios = %{
     Fusion.encode_separate(
       input.events,
       input.type,
-      input.compiled,
+      input.map_compiled,
       input.mapping_config_id
     )
   end
@@ -220,7 +225,7 @@ case System.get_env("FIXED_SCENARIO") do
             Fusion.compress_ets(
               input.id_tid_pairs,
               input.type,
-              input.compiled,
+              input.map_compiled,
               input.mapping_config_id,
               :separate
             )
@@ -231,7 +236,7 @@ case System.get_env("FIXED_SCENARIO") do
             Fusion.compress_ets(
               input.id_tid_pairs,
               input.type,
-              input.compiled,
+              input.output_compiled,
               input.mapping_config_id,
               :fused
             )

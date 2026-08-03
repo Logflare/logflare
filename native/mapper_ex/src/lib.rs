@@ -6,18 +6,15 @@ mod path;
 mod query;
 mod string_filters;
 
-use rustler::{Atom, Binary, Encoder, Env, NewBinary, NifResult, Resource, ResourceArc, Term};
+use rustler::{Binary, Encoder, Env, NewBinary, NifResult, Resource, ResourceArc, Term};
 
-use mapping::CompiledMapping;
+use mapping::{CompiledMapping, CompiledOutput};
 
 mod atoms {
     rustler::atoms! {
         ok,
         error,
         nil,
-        log,
-        metric,
-        trace,
     }
 }
 
@@ -57,112 +54,88 @@ fn compile_mapping<'a>(env: Env<'a>, config: Term<'a>) -> NifResult<Term<'a>> {
     }
 }
 
-/// Maps a single document using a pre-compiled mapping.
+/// Maps a single document using a pre-compiled mapping and its configured output.
 ///
-/// Returns the mapped Elixir map directly (no ok/error tuple).
-///
-/// When `flat_keys` is `true`, dotted paths like `$.resource.service.name`
-/// are resolved as literal key lookups on the input map instead of nested
-/// map navigation. This allows mapping against pre-flattened input.
+/// Map output returns the mapped Elixir map directly. ClickHouse RowBinary
+/// output returns `{:ok, binary}` or `{:error, reason}`.
 #[rustler::nif]
 fn map<'a>(
     env: Env<'a>,
-    body: Term<'a>,
-    compiled: ResourceArc<CompiledMappingResource>,
-    flat_keys: bool,
-) -> Term<'a> {
-    mapper::map_single(env, body, &compiled.mapping, flat_keys)
-}
-
-/// Maps one document and directly encodes a complete ClickHouse RowBinary row.
-/// This avoids materializing the mapped output as an intermediate BEAM map.
-#[rustler::nif]
-fn map_and_encode_clickhouse<'a>(
-    env: Env<'a>,
     document: Term<'a>,
     compiled: ResourceArc<CompiledMappingResource>,
-    event_type: Atom,
-    mapping_config_id: Binary<'a>,
+    options: Term<'a>,
 ) -> Term<'a> {
-    let encoded = (|| {
-        let (layout, row_type) = if event_type == atoms::log() {
-            (
-                &compiled.mapping.clickhouse_layouts.log,
-                ClickHouseRowType::Log,
-            )
-        } else if event_type == atoms::metric() {
-            (
-                &compiled.mapping.clickhouse_layouts.metric,
-                ClickHouseRowType::Metric,
-            )
-        } else if event_type == atoms::trace() {
-            (
-                &compiled.mapping.clickhouse_layouts.trace,
-                ClickHouseRowType::Trace,
-            )
-        } else {
-            return Err("unsupported ClickHouse event type".to_string());
-        };
-        let layout = match layout {
-            Ok(layout) => layout.as_ref(),
-            Err(field) => {
-                return Err(format!(
-                    "compiled mapping is missing required ClickHouse field '{field}'"
-                ));
+    match &compiled.mapping.output {
+        CompiledOutput::Map => match decode_flat_keys(options) {
+            Ok(flat_keys) => {
+                let body = decode_document_body(document);
+                mapper::map_single(env, body, &compiled.mapping, flat_keys)
             }
-        };
-
-        let (body, envelope): (Term<'a>, Term<'a>) = document
-            .decode()
-            .map_err(|_| "document must contain a body and row envelope".to_string())?;
-        let envelope = decode_clickhouse_envelope(env, envelope)?;
-        let nil = atoms::nil().encode(env);
-        let mut scratch = mapper::MapScratch::new(&compiled.mapping, nil);
-        mapper::map_values_into(env, body, &compiled.mapping, false, nil, &mut scratch);
-        let mut output = clickhouse_rowbinary::BinaryBuilder::new()?;
-
-        match row_type {
-            ClickHouseRowType::Log => clickhouse_rowbinary::append_log(
-                &mut output,
-                layout,
-                scratch.values(),
-                envelope,
-                mapping_config_id,
-            )?,
-            ClickHouseRowType::Metric => clickhouse_rowbinary::append_metric(
-                &mut output,
-                layout,
-                scratch.values(),
-                envelope,
-                mapping_config_id,
-            )?,
-            ClickHouseRowType::Trace => clickhouse_rowbinary::append_trace(
-                &mut output,
-                layout,
-                scratch.values(),
-                envelope,
-                mapping_config_id,
-            )?,
+            Err(reason) => (atoms::error(), reason).encode(env),
+        },
+        CompiledOutput::ClickHouseRowBinary(layout) => {
+            match map_clickhouse_output(env, document, &compiled.mapping, layout, options) {
+                Ok(binary) => (atoms::ok(), binary.release(env)).encode(env),
+                Err(reason) => (atoms::error(), reason).encode(env),
+            }
         }
-
-        output.finish()
-    })();
-
-    match encoded {
-        Ok(binary) => (atoms::ok(), binary.release(env)).encode(env),
-        Err(reason) => (atoms::error(), reason).encode(env),
     }
 }
 
-#[derive(Clone, Copy)]
-enum ClickHouseRowType {
-    Log,
-    Metric,
-    Trace,
+fn decode_flat_keys(options: Term) -> Result<bool, String> {
+    if let Ok(flat_keys) = options.decode::<bool>() {
+        return Ok(flat_keys);
+    }
+    options
+        .decode::<(bool, Term)>()
+        .map(|(flat_keys, _)| flat_keys)
+        .map_err(|_| "mapper options must contain flat_keys".to_string())
+}
+
+fn decode_document_body(document: Term) -> Term {
+    document
+        .decode::<(Term, Term)>()
+        .map(|(body, _)| body)
+        .unwrap_or(document)
+}
+
+fn map_clickhouse_output<'a>(
+    env: Env<'a>,
+    document: Term<'a>,
+    mapping: &CompiledMapping,
+    layout: &clickhouse_rowbinary::CompiledLayout,
+    options: Term<'a>,
+) -> Result<rustler::OwnedBinary, String> {
+    let (flat_keys, mapping_config_id) = decode_clickhouse_options(options)?;
+    let (body, envelope): (Term<'a>, Term<'a>) = document
+        .decode()
+        .map_err(|_| "ClickHouse RowBinary output requires a LogEvent".to_string())?;
+    let envelope = decode_clickhouse_envelope(envelope)?;
+    let nil = atoms::nil().encode(env);
+    let mut scratch = mapper::MapScratch::new(mapping, nil);
+    mapper::map_values_into(env, body, mapping, flat_keys, nil, &mut scratch);
+    let mut output = clickhouse_rowbinary::BinaryBuilder::new()?;
+    clickhouse_rowbinary::append_row(
+        &mut output,
+        layout,
+        scratch.values(),
+        envelope,
+        mapping_config_id,
+    )?;
+    output.finish()
+}
+
+fn decode_clickhouse_options<'a>(options: Term<'a>) -> Result<(bool, Binary<'a>), String> {
+    let (flat_keys, mapping_config_id): (bool, Term<'a>) = options
+        .decode()
+        .map_err(|_| "mapper options must contain flat_keys and mapping_config_id".to_string())?;
+    let mapping_config_id = mapping_config_id
+        .decode::<Binary>()
+        .map_err(|_| "mapping_config_id must be a pre-encoded 16-byte UUID binary".to_string())?;
+    Ok((flat_keys, mapping_config_id))
 }
 
 fn decode_clickhouse_envelope<'a>(
-    env: Env<'a>,
     envelope: Term<'a>,
 ) -> Result<clickhouse_rowbinary::RowEnvelope<'a>, String> {
     let (id, source_uuid, source_name, ingested_at): (
@@ -173,15 +146,9 @@ fn decode_clickhouse_envelope<'a>(
     ) = envelope.decode().map_err(|_| {
         "row envelope must contain ID, source UUID, source name, and ingested_at".to_string()
     })?;
-    let ingested_at = if ingested_at == atoms::nil().encode(env) {
-        None
-    } else {
-        Some(
-            ingested_at
-                .decode::<i64>()
-                .map_err(|_| "ingested_at must be nil or Unix microseconds".to_string())?,
-        )
-    };
+    let ingested_at = ingested_at
+        .decode::<Option<i64>>()
+        .map_err(|_| "ingested_at must be nil or Unix microseconds".to_string())?;
 
     Ok(clickhouse_rowbinary::RowEnvelope {
         id,
