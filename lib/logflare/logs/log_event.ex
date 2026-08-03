@@ -157,25 +157,21 @@ defmodule Logflare.LogEvent do
 
   @spec mapper_from_db(map(), TypeDetection.event_type()) :: %{String.t() => term}
   defp mapper_from_db(params, event_type) do
-    event_message = event_message(params)
+    event_message = event_message_from_params(params)
     id = id(params)
-    {timestamp, timestamp_inferred} = determine_timestamp(params, event_type)
+    {timestamp, _timestamp_inferred} = determine_timestamp(params, event_type)
 
     body =
       params
       |> MetadataCleaner.deep_reject_nil_and_empty()
       |> put_mapper_fields(event_message, id, timestamp)
 
-    %{
-      "body" => body,
-      "id" => id,
-      "timestamp_inferred" => timestamp_inferred
-    }
+    %{"body" => body, "id" => id}
   end
 
   @spec mapper_for_ingest(map(), TypeDetection.event_type()) :: {map(), boolean()}
   defp mapper_for_ingest(params, event_type) do
-    event_message = event_message(params)
+    event_message = event_message_from_params(params)
     id = id(params)
     {timestamp, timestamp_inferred} = determine_timestamp(params, event_type)
 
@@ -210,7 +206,7 @@ defmodule Logflare.LogEvent do
   end
 
   @spec validate(LE.t(), Source.t()) :: LE.t()
-  defp validate(%LE{} = le, source) do
+  defp validate(%LE{valid: true} = le, source) do
     case BigQuerySchemaChange.validate(le, source) do
       :ok ->
         le
@@ -449,8 +445,9 @@ defmodule Logflare.LogEvent do
   end
 
   # TODO: deprecate and remove `message`
-  @compile {:inline, event_message: 1}
-  defp event_message(params), do: params["message"] || params["event_message"]
+  @spec event_message_from_params(map()) :: term()
+  @compile {:inline, event_message_from_params: 1}
+  defp event_message_from_params(params), do: params["message"] || params["event_message"]
 
   @spec id(map()) :: String.t()
   defp id(params) do
