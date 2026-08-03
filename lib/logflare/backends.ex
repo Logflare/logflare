@@ -44,14 +44,41 @@ defmodule Logflare.Backends do
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
   @default_source_sup_start_timeout :timer.seconds(30)
   @max_pipeline_swap_delay_ms 5_000
+  @single_tenant_clickhouse_backend_id 0
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
+  @type ingest_queue_key ::
+          IngestEventQueue.queues_key() | IngestEventQueue.consolidated_queues_key()
+  @type queue_owner :: non_neg_integer() | :consolidated
 
   @doc """
   Retrieves the hardcoded max pending buffer length of an individual queue
   """
   @spec max_buffer_queue_len() :: non_neg_integer()
   def max_buffer_queue_len, do: @max_pending_buffer_len_per_queue
+
+  @doc "Returns whether BigQuery is the deployment's default backend"
+  @spec bigquery_default_backend?() :: boolean()
+  def bigquery_default_backend?,
+    do: not SingleTenant.single_tenant?() or SingleTenant.bigquery_backend?()
+
+  @doc false
+  @spec ingest_queue_key(Source.t(), Backend.t() | nil) :: ingest_queue_key()
+  def ingest_queue_key(%Source{}, %Backend{consolidated_ingest?: true, id: backend_id}) do
+    {:consolidated, backend_id}
+  end
+
+  def ingest_queue_key(%Source{id: source_id}, %Backend{id: backend_id}) do
+    {source_id, backend_id}
+  end
+
+  def ingest_queue_key(%Source{id: source_id}, nil), do: {source_id, nil}
+
+  @doc false
+  @spec system_default_ingest_queue_key(Source.t()) :: ingest_queue_key()
+  def system_default_ingest_queue_key(%Source{} = source) do
+    ingest_queue_key(source, lookup_system_default_backend(source))
+  end
 
   @doc """
   Returns the maximum time, in microseconds, that an event's timestamp may be in
@@ -250,29 +277,53 @@ defmodule Logflare.Backends do
     end
   end
 
+  @spec get_single_tenant_default_backend() :: Backend.t() | nil
+  def get_single_tenant_default_backend do
+    user = SingleTenant.get_default_user()
+
+    if SingleTenant.clickhouse_backend?() && user,
+      do: single_tenant_clickhouse_backend(user)
+  end
+
+  defp single_tenant_clickhouse_backend(%User{} = user) do
+    %Backend{
+      id: @single_tenant_clickhouse_backend_id,
+      token: "00000000-0000-0000-0000-000000000000",
+      type: :clickhouse,
+      config: Map.new(SingleTenant.clickhouse_backend_adapter_opts()),
+      user_id: user.id,
+      name: "Default ClickHouse backend",
+      consolidated_ingest?: true,
+      single_tenant_default?: true
+    }
+  end
+
+  @spec get_default_backend(User.t()) :: Backend.t() | nil
   def get_default_backend(%User{} = user) do
-    if SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() do
-      opts = SingleTenant.postgres_backend_adapter_opts()
+    cond do
+      SingleTenant.clickhouse_backend?() ->
+        single_tenant_clickhouse_backend(user)
 
-      %Backend{
-        type: :postgres,
-        config: Map.new(opts),
-        user_id: user.id,
-        name: "Default PostgreSQL backend"
-      }
-    else
-      project_id = user.bigquery_project_id || User.bq_project_id()
-      dataset_id = user.bigquery_dataset_id || User.generate_bq_dataset_id(user.id)
+      SingleTenant.postgres_backend?() ->
+        opts = SingleTenant.postgres_backend_adapter_opts()
 
-      %Backend{
-        type: :bigquery,
-        config: %{
-          project_id: project_id,
-          dataset_id: dataset_id
-        },
-        user_id: user.id,
-        name: "Default BigQuery backend"
-      }
+        %Backend{
+          type: :postgres,
+          config: Map.new(opts),
+          user_id: user.id,
+          name: "Default PostgreSQL backend"
+        }
+
+      true ->
+        project_id = user.bigquery_project_id || User.bq_project_id()
+        dataset_id = user.bigquery_dataset_id || User.generate_bq_dataset_id(user.id)
+
+        %Backend{
+          type: :bigquery,
+          config: %{project_id: project_id, dataset_id: dataset_id},
+          user_id: user.id,
+          name: "Default BigQuery backend"
+        }
     end
   end
 
@@ -590,6 +641,8 @@ defmodule Logflare.Backends do
   Retrieves a Backend by id.
   """
   @spec get_backend(integer()) :: Backend.t() | nil
+  def get_backend(@single_tenant_clickhouse_backend_id), do: get_single_tenant_default_backend()
+
   def get_backend(id) do
     backend = Repo.get(Backend, id)
 
@@ -1050,8 +1103,14 @@ defmodule Logflare.Backends do
   defp dispatch_to_backends(source, nil, log_events) do
     backends = list_dispatch_backends(source)
 
-    for backend <- [nil | backends] do
+    for backend <- [lookup_system_default_backend(source) | backends] do
       dispatch_to_default_backend(source, backend, log_events)
+    end
+  end
+
+  defp lookup_system_default_backend(%Source{user_id: user_id}) do
+    if SingleTenant.clickhouse_backend?() do
+      get_default_backend(%User{id: user_id})
     end
   end
 
@@ -1061,17 +1120,8 @@ defmodule Logflare.Backends do
           log_events :: [LogEvent.t()]
         ) :: any()
   defp dispatch_to_default_backend(source, backend, log_events) do
-    {queue_key, backend_type} =
-      case backend do
-        nil ->
-          {{source.id, nil}, SingleTenant.backend_type()}
-
-        %Backend{consolidated_ingest?: true} ->
-          {{:consolidated, backend.id}, backend.type}
-
-        %Backend{} ->
-          {{source.id, backend.id}, backend.type}
-      end
+    queue_key = ingest_queue_key(source, backend)
+    backend_type = if backend, do: backend.type, else: SingleTenant.backend_type()
 
     telemetry_metadata = %{backend_type: backend_type}
 
@@ -1146,7 +1196,7 @@ defmodule Logflare.Backends do
 
   def via_backend(backend_id, mod, nil), do: via_backend(backend_id, mod)
 
-  def via_backend(backend_id, mod, label) when is_pos_integer(backend_id) do
+  def via_backend(backend_id, mod, label) when is_non_negative_integer(backend_id) do
     {:via, Registry, {BackendRegistry, {mod, backend_id, label}}}
   end
 
@@ -1467,15 +1517,15 @@ defmodule Logflare.Backends do
   def cached_local_pending_buffer_full?(
         %Source{id: source_id, default_ingest_backend_enabled?: true} = source
       ) do
-    buffer_full_for_backend?(source_id, nil) or
+    buffer_full_for_backend?(source_id, lookup_system_default_backend(source)) or
       source
       |> list_dispatch_backends()
       |> Enum.filter(& &1.default_ingest?)
       |> Enum.any?(&buffer_full_for_backend?(source_id, &1))
   end
 
-  def cached_local_pending_buffer_full?(%Source{id: source_id}) do
-    buffer_full_for_backend?(source_id, nil)
+  def cached_local_pending_buffer_full?(%Source{id: source_id} = source) do
+    buffer_full_for_backend?(source_id, lookup_system_default_backend(source))
   end
 
   @spec buffer_full_for_backend?(non_neg_integer(), Backend.t() | pos_integer() | nil) ::
@@ -1515,7 +1565,10 @@ defmodule Logflare.Backends do
   """
   @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
   def any_ingest_queue_over_limit?(source_id) when is_pos_integer(source_id) do
-    queue_over_limit_for_backend?(source_id, nil) or
+    source = Sources.Cache.get_by_id(source_id)
+    system_backend = if source, do: lookup_system_default_backend(source)
+
+    queue_over_limit_for_backend?(source_id, system_backend) or
       source_id
       |> backends_for_queue_limit()
       |> Enum.any?(&queue_over_limit_for_backend?(source_id, &1))
@@ -1553,29 +1606,30 @@ defmodule Logflare.Backends do
   @doc """
   Caches total buffer len. Includes ingested events that are awaiting cleanup.
   """
-  @spec cache_local_buffer_lens(non_neg_integer() | :consolidated, non_neg_integer() | nil) ::
+  @spec cache_local_buffer_lens(queue_owner(), non_neg_integer() | nil) ::
           {:ok,
            %{
              len: non_neg_integer(),
-             queues: [{Logflare.Backends.IngestEventQueue.table_key(), non_neg_integer()}]
+             queues: [{tuple(), non_neg_integer()}]
            }}
-  def cache_local_buffer_lens(source_id, backend_id \\ nil) do
-    queues = IngestEventQueue.list_counts({source_id, backend_id})
+  def cache_local_buffer_lens(queue_owner, backend_id \\ nil) do
+    queues = IngestEventQueue.list_counts({queue_owner, backend_id})
 
     len = for({_k, v} <- queues, do: v) |> Enum.sum()
 
     stats = %{len: len, queues: queues}
     payload = %{Node.self() => stats}
-    PubSubRates.Cache.cache_buffers(source_id, backend_id, payload)
+    PubSubRates.Cache.cache_buffers(queue_owner, backend_id, payload)
     {:ok, stats}
   end
 
   @doc """
   Get local pending buffer len of a source/backend combination.
   """
-  @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: map()
-  def cached_local_pending_buffer_len(source_id, backend_id \\ nil) when is_integer(source_id) do
-    PubSubRates.Cache.get_local_buffer(source_id, backend_id)
+  @spec cached_local_pending_buffer_len(queue_owner(), non_neg_integer() | nil) :: map()
+  def cached_local_pending_buffer_len(queue_owner, backend_id \\ nil)
+      when is_integer(queue_owner) or queue_owner == :consolidated do
+    PubSubRates.Cache.get_local_buffer(queue_owner, backend_id)
   end
 
   @doc """
@@ -1583,7 +1637,12 @@ defmodule Logflare.Backends do
   """
   @spec cached_pending_buffer_len(Source.t(), Backend.t() | nil) :: non_neg_integer()
   def cached_pending_buffer_len(%Source{} = source, backend \\ nil) do
-    PubSubRates.Cache.get_cluster_buffers(source.id, Map.get(backend || %{}, :id))
+    {queue_owner, backend_id} =
+      if backend,
+        do: ingest_queue_key(source, backend),
+        else: system_default_ingest_queue_key(source)
+
+    PubSubRates.Cache.get_cluster_buffers(queue_owner, backend_id)
   end
 
   @doc """
