@@ -143,6 +143,17 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+  vector:
+    image: timberio/vector:0.49.0-alpine
+    depends_on:
+      - logflare
+    environment:
+      LOGFLARE_GRPC_ENDPOINT: http://logflare:50051
+      LOGFLARE_SOURCE_TOKEN: ${LOGFLARE_SOURCE_TOKEN:-}
+      LOGFLARE_API_KEY: ${LOGFLARE_API_KEY:-}
+    volumes:
+      - ./test/vector/vector.toml:/etc/vector/vector.toml:ro
+    command: ["--config", "/etc/vector/vector.toml"]
   telegraf:
     image: telegraf:1.36
     volumes:
