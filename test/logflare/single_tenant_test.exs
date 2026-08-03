@@ -2,19 +2,53 @@ defmodule Logflare.SingleTenantTest do
   @moduledoc false
   use Logflare.DataCase
   import Logflare.Utils.Guards
-  alias Logflare.SingleTenant
-  alias Logflare.Billing
-  alias Logflare.Users
-  alias Logflare.User
-  alias Logflare.Billing.Plan
-  alias Logflare.Sources
-  alias Logflare.Endpoints
-  alias Logflare.Sources.Source.BigQuery.Schema
-  alias Logflare.Sources.Source
   alias Logflare.Auth
-  alias Logflare.Backends.Backend
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.ConsolidatedSup
+  alias Logflare.Billing
+  alias Logflare.Billing.Plan
+  alias Logflare.Endpoints
+  alias Logflare.SingleTenant
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.User
+  alias Logflare.Users
+
+  describe "ClickHouse connection URL" do
+    test "builds adapter options from a URL" do
+      for {url, expected} <- [
+            {
+              "https://logflare%40example.com:s%3Acret@clickhouse.example.com:9440/otel%5Flogs",
+              [
+                url: "https://clickhouse.example.com:9440",
+                username: "logflare@example.com",
+                password: "s:cret",
+                database: "otel_logs",
+                port: 9440
+              ]
+            },
+            {
+              "https://localhost/logs",
+              [url: "https://localhost", database: "logs", port: 8443]
+            },
+            {
+              "http://localhost",
+              [url: "http://localhost", database: "default", port: 8123]
+            }
+          ] do
+        assert SingleTenant.clickhouse_backend_adapter_opts_from_url!(url) == expected
+      end
+    end
+
+    test "requires a hostname" do
+      assert_raise RuntimeError, ~r/must include a hostname/, fn ->
+        SingleTenant.clickhouse_backend_adapter_opts_from_url!("not-a-url")
+      end
+    end
+  end
 
   describe "single tenant mode using Big Query" do
     TestUtils.setup_single_tenant()
@@ -105,10 +139,13 @@ defmodule Logflare.SingleTenantTest do
       url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
 
       prev = Application.get_env(:logflare, :postgres_backend_adapter)
+      previous_backend = Application.get_env(:logflare, :single_tenant_backend)
       Application.put_env(:logflare, :postgres_backend_adapter, url: url)
+      Application.put_env(:logflare, :single_tenant_backend, :postgres)
 
       on_exit(fn ->
         Application.put_env(:logflare, :postgres_backend_adapter, prev)
+        Application.put_env(:logflare, :single_tenant_backend, previous_backend)
       end)
 
       [url: url, password: password]
@@ -138,6 +175,8 @@ defmodule Logflare.SingleTenantTest do
 
   test "single_tenant? returns false when not in single tenant mode" do
     refute SingleTenant.single_tenant?()
+    refute SingleTenant.bigquery_backend?()
+    assert Backends.bigquery_default_backend?()
   end
 
   describe "supabase_mode=true using Big Query" do
@@ -229,6 +268,56 @@ defmodule Logflare.SingleTenantTest do
 
       assert [_] = Billing.list_plans()
       assert 1 = Users.count_users()
+    end
+  end
+
+  describe "single tenant mode using ClickHouse" do
+    TestUtils.setup_single_tenant(
+      backend_type: :clickhouse,
+      clickhouse_backend_adapter_opts: [
+        url: "http://localhost:8123",
+        database: "logflare_test",
+        port: 8123
+      ]
+    )
+
+    test "startup uses a synthetic backend and skips BigQuery side effects" do
+      reject(BigQueryAdaptor, :create_managed_service_accounts, 0)
+      reject(BigQueryAdaptor, :update_iam_policy, 0)
+      reject(Schema, :update, 3)
+
+      expect(SingleTenant, :create_supabase_sources, fn -> {:ok, []} end)
+      expect(SingleTenant, :create_supabase_endpoints, fn -> {:ok, []} end)
+      expect(SingleTenant, :ensure_supabase_sources_started, fn -> :ok end)
+
+      previous_supabase_mode = Application.get_env(:logflare, :supabase_mode)
+      Application.put_env(:logflare, :supabase_mode, true)
+
+      on_exit(fn -> Application.put_env(:logflare, :supabase_mode, previous_supabase_mode) end)
+
+      Logflare.Application.startup_tasks()
+
+      user = SingleTenant.get_default_user()
+
+      assert %Backend{
+               id: 0,
+               token: "00000000-0000-0000-0000-000000000000",
+               user_id: user_id,
+               type: :clickhouse,
+               single_tenant_default?: true,
+               config: %{
+                 url: "http://localhost:8123",
+                 database: "logflare_test",
+                 port: 8123
+               }
+             } = backend = Backends.get_default_backend(user)
+
+      assert user.id == user_id
+      assert SingleTenant.get_default_backend() == backend
+      assert Backends.get_backend(0) == backend
+      assert Backends.list_backends(user_id: user_id) == []
+
+      on_exit(fn -> ConsolidatedSup.stop_pipeline(backend.id) end)
     end
   end
 

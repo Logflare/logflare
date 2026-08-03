@@ -223,7 +223,11 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       # completely backlogged and it would report "not full" regardless.
       backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: false)
       {:ok, _source} = Backends.update_source_backends(source, [backend])
-      backend_table_key = {source.id, backend.id, self()}
+
+      {queue_owner, backend_id} =
+        Backends.ingest_queue_key(source, Backends.get_backend(backend.id))
+
+      backend_table_key = {queue_owner, backend_id, self()}
       IngestEventQueue.upsert_tid(backend_table_key)
 
       fill_queue(backend_table_key)
