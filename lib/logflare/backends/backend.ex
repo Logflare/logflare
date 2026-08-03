@@ -26,6 +26,8 @@ defmodule Logflare.Backends.Backend do
     s3: Adaptor.S3Adaptor,
     axiom: Adaptor.AxiomAdaptor,
     otlp: Adaptor.OtlpAdaptor,
+    # Branded Elastic Observability drain; reuses OTLP delivery.
+    elastic_otlp: Adaptor.OtlpAdaptor,
     last9: Adaptor.Last9Adaptor,
     syslog: Adaptor.SyslogAdaptor
   }
