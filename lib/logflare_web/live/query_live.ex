@@ -340,6 +340,10 @@ defmodule LogflareWeb.QueryLive do
     {:noreply, assign_form(socket, params)}
   end
 
+  def handle_event("set_backend", _params, socket) do
+    {:noreply, socket}
+  end
+
   defp run_query(socket, user, query_string) do
     backend = get_selected_backend(socket)
     language = EndpointQuery.map_backend_to_language(backend, false)
