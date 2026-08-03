@@ -4,101 +4,188 @@ use rustler::types::list::ListIterator;
 use rustler::types::map::MapIterator;
 use rustler::{Binary, OwnedBinary, Term};
 
+use crate::mapping::FieldType;
+
 pub type EncodeResult<T> = Result<T, String>;
 
 const INITIAL_ROW_CAPACITY: usize = 3072;
 const UUID_BYTE_OFFSETS: [usize; 16] = [0, 2, 4, 6, 9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 32, 34];
 
-const LOG_FIELDS: &[&str] = &[
-    "project",
-    "trace_id",
-    "span_id",
-    "trace_flags",
-    "severity_text",
-    "severity_number_alt",
-    "severity_number",
-    "service_name",
-    "event_message",
-    "scope_name",
-    "scope_version",
-    "scope_schema_url",
-    "resource_schema_url",
-    "resource_attributes",
-    "scope_attributes",
-    "log_attributes",
-    "timestamp",
+#[derive(Debug, Clone, Copy)]
+enum WireType {
+    String,
+    UInt8,
+    UInt32,
+    UInt64,
+    Int32,
+    Float64,
+    Bool,
+    Enum8,
+    DateTime64,
+    ArrayString,
+    ArrayUInt64,
+    ArrayFloat64,
+    ArrayDateTime64,
+    FlatMap,
+    ArrayFlatMap,
+}
+
+impl WireType {
+    fn matches(self, field_type: FieldType) -> bool {
+        matches!(
+            (self, field_type),
+            (Self::String, FieldType::String)
+                | (Self::UInt8, FieldType::UInt8)
+                | (Self::UInt32, FieldType::UInt32)
+                | (Self::UInt64, FieldType::UInt64)
+                | (Self::Int32, FieldType::Int32)
+                | (Self::Float64, FieldType::Float64)
+                | (Self::Bool, FieldType::Bool)
+                | (Self::Enum8, FieldType::Enum8 { .. })
+                | (Self::DateTime64, FieldType::DateTime64 { .. })
+                | (Self::ArrayString, FieldType::ArrayString)
+                | (Self::ArrayUInt64, FieldType::ArrayUInt64)
+                | (Self::ArrayFloat64, FieldType::ArrayFloat64)
+                | (Self::ArrayDateTime64, FieldType::ArrayDateTime64 { .. })
+                | (Self::FlatMap, FieldType::FlatMap)
+                | (Self::ArrayFlatMap, FieldType::ArrayFlatMap)
+        )
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::String => "string",
+            Self::UInt8 => "uint8",
+            Self::UInt32 => "uint32",
+            Self::UInt64 => "uint64",
+            Self::Int32 => "int32",
+            Self::Float64 => "float64",
+            Self::Bool => "bool",
+            Self::Enum8 => "enum8",
+            Self::DateTime64 => "datetime64",
+            Self::ArrayString => "array_string",
+            Self::ArrayUInt64 => "array_uint64",
+            Self::ArrayFloat64 => "array_float64",
+            Self::ArrayDateTime64 => "array_datetime64",
+            Self::FlatMap => "flat_map",
+            Self::ArrayFlatMap => "array_flat_map",
+        }
+    }
+}
+
+fn field_type_name(field_type: FieldType) -> &'static str {
+    match field_type {
+        FieldType::String => "string",
+        FieldType::UInt8 => "uint8",
+        FieldType::UInt32 => "uint32",
+        FieldType::UInt64 => "uint64",
+        FieldType::Int32 => "int32",
+        FieldType::Float64 => "float64",
+        FieldType::Bool => "bool",
+        FieldType::Enum8 { .. } => "enum8",
+        FieldType::DateTime64 { .. } => "datetime64",
+        FieldType::Json => "json",
+        FieldType::ArrayString => "array_string",
+        FieldType::ArrayUInt64 => "array_uint64",
+        FieldType::ArrayFloat64 => "array_float64",
+        FieldType::ArrayDateTime64 { .. } => "array_datetime64",
+        FieldType::ArrayJson => "array_json",
+        FieldType::ArrayMap => "array_map",
+        FieldType::FlatMap => "flat_map",
+        FieldType::ArrayFlatMap => "array_flat_map",
+    }
+}
+
+const LOG_FIELDS: &[(&str, WireType)] = &[
+    ("project", WireType::String),
+    ("trace_id", WireType::String),
+    ("span_id", WireType::String),
+    ("trace_flags", WireType::UInt8),
+    ("severity_text", WireType::String),
+    ("severity_number_alt", WireType::UInt8),
+    ("severity_number", WireType::UInt8),
+    ("service_name", WireType::String),
+    ("event_message", WireType::String),
+    ("scope_name", WireType::String),
+    ("scope_version", WireType::String),
+    ("scope_schema_url", WireType::String),
+    ("resource_schema_url", WireType::String),
+    ("resource_attributes", WireType::FlatMap),
+    ("scope_attributes", WireType::FlatMap),
+    ("log_attributes", WireType::FlatMap),
+    ("timestamp", WireType::DateTime64),
 ];
 
-const METRIC_FIELDS: &[&str] = &[
-    "project",
-    "time_unix",
-    "start_time_unix",
-    "metric_name",
-    "metric_description",
-    "metric_unit",
-    "metric_type",
-    "service_name",
-    "event_message",
-    "scope_name",
-    "scope_version",
-    "scope_schema_url",
-    "resource_schema_url",
-    "resource_attributes",
-    "scope_attributes",
-    "attributes",
-    "aggregation_temporality",
-    "is_monotonic",
-    "flags",
-    "value",
-    "count",
-    "sum",
-    "min",
-    "max",
-    "scale",
-    "zero_count",
-    "positive_offset",
-    "negative_offset",
-    "bucket_counts",
-    "explicit_bounds",
-    "positive_bucket_counts",
-    "negative_bucket_counts",
-    "quantile_values",
-    "quantiles",
-    "exemplars.filtered_attributes",
-    "exemplars.time_unix",
-    "exemplars.value",
-    "exemplars.span_id",
-    "exemplars.trace_id",
-    "timestamp",
+const METRIC_FIELDS: &[(&str, WireType)] = &[
+    ("project", WireType::String),
+    ("time_unix", WireType::DateTime64),
+    ("start_time_unix", WireType::DateTime64),
+    ("metric_name", WireType::String),
+    ("metric_description", WireType::String),
+    ("metric_unit", WireType::String),
+    ("metric_type", WireType::Enum8),
+    ("service_name", WireType::String),
+    ("event_message", WireType::String),
+    ("scope_name", WireType::String),
+    ("scope_version", WireType::String),
+    ("scope_schema_url", WireType::String),
+    ("resource_schema_url", WireType::String),
+    ("resource_attributes", WireType::FlatMap),
+    ("scope_attributes", WireType::FlatMap),
+    ("attributes", WireType::FlatMap),
+    ("aggregation_temporality", WireType::String),
+    ("is_monotonic", WireType::Bool),
+    ("flags", WireType::UInt32),
+    ("value", WireType::Float64),
+    ("count", WireType::UInt64),
+    ("sum", WireType::Float64),
+    ("min", WireType::Float64),
+    ("max", WireType::Float64),
+    ("scale", WireType::Int32),
+    ("zero_count", WireType::UInt64),
+    ("positive_offset", WireType::Int32),
+    ("negative_offset", WireType::Int32),
+    ("bucket_counts", WireType::ArrayUInt64),
+    ("explicit_bounds", WireType::ArrayFloat64),
+    ("positive_bucket_counts", WireType::ArrayUInt64),
+    ("negative_bucket_counts", WireType::ArrayUInt64),
+    ("quantile_values", WireType::ArrayFloat64),
+    ("quantiles", WireType::ArrayFloat64),
+    ("exemplars.filtered_attributes", WireType::ArrayFlatMap),
+    ("exemplars.time_unix", WireType::ArrayDateTime64),
+    ("exemplars.value", WireType::ArrayFloat64),
+    ("exemplars.span_id", WireType::ArrayString),
+    ("exemplars.trace_id", WireType::ArrayString),
+    ("timestamp", WireType::DateTime64),
 ];
 
-const TRACE_FIELDS: &[&str] = &[
-    "project",
-    "trace_id",
-    "span_id",
-    "parent_span_id",
-    "trace_state",
-    "span_name",
-    "span_kind",
-    "service_name",
-    "event_message",
-    "duration",
-    "start_time",
-    "end_time",
-    "status_code",
-    "status_message",
-    "scope_name",
-    "scope_version",
-    "resource_attributes",
-    "span_attributes",
-    "events.timestamp",
-    "events.name",
-    "events.attributes",
-    "links.trace_id",
-    "links.span_id",
-    "links.trace_state",
-    "links.attributes",
-    "timestamp",
+const TRACE_FIELDS: &[(&str, WireType)] = &[
+    ("project", WireType::String),
+    ("trace_id", WireType::String),
+    ("span_id", WireType::String),
+    ("parent_span_id", WireType::String),
+    ("trace_state", WireType::String),
+    ("span_name", WireType::String),
+    ("span_kind", WireType::String),
+    ("service_name", WireType::String),
+    ("event_message", WireType::String),
+    ("duration", WireType::UInt64),
+    ("start_time", WireType::DateTime64),
+    ("end_time", WireType::DateTime64),
+    ("status_code", WireType::String),
+    ("status_message", WireType::String),
+    ("scope_name", WireType::String),
+    ("scope_version", WireType::String),
+    ("resource_attributes", WireType::FlatMap),
+    ("span_attributes", WireType::FlatMap),
+    ("events.timestamp", WireType::ArrayDateTime64),
+    ("events.name", WireType::ArrayString),
+    ("events.attributes", WireType::ArrayFlatMap),
+    ("links.trace_id", WireType::ArrayString),
+    ("links.span_id", WireType::ArrayString),
+    ("links.trace_state", WireType::ArrayString),
+    ("links.attributes", WireType::ArrayFlatMap),
+    ("timestamp", WireType::DateTime64),
 ];
 
 #[derive(Debug, Clone, Copy)]
@@ -116,7 +203,7 @@ pub struct CompiledLayout {
 
 pub fn compile_layout(
     row_type: &str,
-    indices: &HashMap<&str, usize>,
+    fields_by_name: &HashMap<&str, (usize, FieldType)>,
 ) -> EncodeResult<CompiledLayout> {
     let (row_type, fields) = match row_type {
         "log" => (RowType::Log, LOG_FIELDS),
@@ -127,10 +214,20 @@ pub fn compile_layout(
 
     let field_indices = fields
         .iter()
-        .map(|name| {
-            indices.get(*name).copied().ok_or_else(|| {
+        .map(|(name, expected_type)| {
+            let (index, actual_type) = fields_by_name.get(*name).copied().ok_or_else(|| {
                 format!("compiled mapping is missing required ClickHouse field '{name}'")
-            })
+            })?;
+
+            if !expected_type.matches(actual_type) {
+                return Err(format!(
+                    "compiled mapping field '{name}' has type '{}'; ClickHouse RowBinary requires '{}'",
+                    field_type_name(actual_type),
+                    expected_type.name()
+                ));
+            }
+
+            Ok(index)
         })
         .collect::<EncodeResult<Box<[usize]>>>()?;
 

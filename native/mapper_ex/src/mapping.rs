@@ -194,12 +194,13 @@ fn decode_output<'a>(
         "clickhouse_row_binary" => {
             let row_type = get_string_key(env, output, "row_type")?
                 .ok_or_else(|| "ClickHouse RowBinary output row_type is required".to_string())?;
-            let indices = fields
+            let fields_by_name = fields
                 .iter()
                 .enumerate()
-                .map(|(index, field)| (field.name.as_str(), index))
+                .map(|(index, field)| (field.name.as_str(), (index, field.field_type)))
                 .collect();
-            let layout = crate::clickhouse_rowbinary::compile_layout(&row_type, &indices)?;
+            let layout =
+                crate::clickhouse_rowbinary::compile_layout(&row_type, &fields_by_name)?;
             Ok(CompiledOutput::ClickHouseRowBinary(layout))
         }
         _ => Err(format!("unsupported mapping output format '{format}'")),

@@ -12,6 +12,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
   alias Logflare.Mapper.MappingConfig.OutputFormat
   alias Logflare.Mapper.Native
+  alias Logflare.Mapper.OutputContext
 
   test "fused log output is byte-identical and applies explicit severity numbers" do
     event =
@@ -99,17 +100,36 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     assert_fused_matches_separate(event, :trace)
   end
 
-  test "fused output preserves nullable ingested_at and the generic mapper interface" do
+  test "map output preserves LogEvent structure while fused output uses its body and envelope" do
     event =
       :log
       |> raw_event(%{"event_message" => "message", "timestamp" => 1_700_000_000_000_004})
       |> Map.put(:ingested_at, nil)
 
-    map_compiled = compile_map_output(:log)
-    mapped_body = Mapper.map(event.body, map_compiled)
-    assert is_map(mapped_body)
-    assert Mapper.map(event, map_compiled) == mapped_body
+    event_mapping =
+      [Field.json("event", path: "$")]
+      |> MappingConfig.new()
+      |> Mapper.compile!()
+
+    assert Mapper.map(event, event_mapping) == %{"event" => event}
     assert_fused_matches_separate(event, :log)
+  end
+
+  test "compiled output selects the representation and map output ignores output context" do
+    event = raw_event(:log, %{"event_message" => "message", "timestamp" => 1_700_000_000_000_005})
+
+    map_compiled =
+      Mapper.compile!(MappingConfig.new([Field.string("message", path: "$.message")]))
+
+    output_compiled = Mapper.compile!(MappingDefaults.for_log())
+    output_context = OutputContext.clickhouse_row_binary(event, encoded_config_id(:log))
+
+    assert Mapper.map(%{"message" => "mapped"}, map_compiled, output_context: output_context) ==
+             %{"message" => "mapped"}
+
+    assert_raise ArgumentError, ~r/requires a clickhouse_row_binary output_context/, fn ->
+      Mapper.map(event.body, output_compiled)
+    end
   end
 
   test "independently fused rows concatenate to byte-identical output for every event type" do
@@ -131,11 +151,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
         |> Enum.map(&separate_row(&1, event_type, map_compiled, config_id))
         |> IO.iodata_to_binary()
 
-      mapper_opts = [mapping_config_id: config_id]
-
       actual =
         events
-        |> Enum.map(&Mapper.map(&1, output_compiled, mapper_opts))
+        |> Enum.map(fn event ->
+          output_context = OutputContext.clickhouse_row_binary(event, config_id)
+          Mapper.map(event.body, output_compiled, output_context: output_context)
+        end)
         |> IO.iodata_to_binary()
 
       assert actual == expected
@@ -250,16 +271,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     compiled = Mapper.compile!(MappingDefaults.for_log())
     config_id = encoded_config_id(:log)
     event = raw_event(:log, %{"event_message" => "valid", "timestamp" => 1_700_000_000_000_301})
-    document = native_document(event)
 
-    assert {:error, "ClickHouse RowBinary output requires a LogEvent"} =
-             Native.map(event.body, compiled, {false, config_id})
+    assert {:error, "ClickHouse RowBinary output requires a clickhouse_row_binary output_context"} =
+             Native.map(event.body, compiled, {false, nil})
 
     assert {:error, "row envelope must contain ID, source UUID, source name, and ingested_at"} =
-             Native.map({event.body, :invalid_envelope}, compiled, {false, config_id})
+             Native.map(
+               event.body,
+               compiled,
+               {false, {:clickhouse_row_binary, config_id, :invalid_envelope}}
+             )
 
     assert {:error, "mapping_config_id must be a pre-encoded 16-byte UUID binary"} =
-             Native.map(document, compiled, {false, nil})
+             Native.map(
+               event.body,
+               compiled,
+               {false, {:clickhouse_row_binary, nil, native_envelope(event)}}
+             )
 
     invalid_output = %{
       "fields" => [%{"name" => "project", "type" => "string"}],
@@ -282,6 +310,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     assert_raise ArgumentError,
                  "failed to compile mapping: compiled mapping is missing required ClickHouse field 'trace_id'",
                  fn -> Mapper.compile!(output_config) end
+
+    incompatible_fields =
+      MappingDefaults.for_log().fields
+      |> Enum.map(fn
+        %Field{name: "trace_flags"} -> Field.string("trace_flags", path: "$.trace_flags")
+        field -> field
+      end)
+
+    incompatible_output_config =
+      MappingConfig.new(incompatible_fields,
+        output: OutputFormat.clickhouse_row_binary(:log)
+      )
+
+    assert_raise ArgumentError,
+                 "failed to compile mapping: compiled mapping field 'trace_flags' has type 'string'; ClickHouse RowBinary requires 'uint8'",
+                 fn -> Mapper.compile!(incompatible_output_config) end
   end
 
   test "row errors return an actionable reason" do
@@ -289,30 +333,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     config_id = encoded_config_id(:log)
     valid = raw_event(:log, %{"event_message" => "valid", "timestamp" => 1_700_000_000_000_401})
 
-    assert_raise ArgumentError, ~r/mapping_config_id must be a pre-encoded 16-byte UUID/, fn ->
-      Mapper.map(valid, compiled)
+    assert_raise ArgumentError, ~r/requires a clickhouse_row_binary output_context/, fn ->
+      Mapper.map(valid.body, compiled)
     end
 
+    invalid_config_context = OutputContext.clickhouse_row_binary(valid, <<0::120>>)
+
     assert_raise ArgumentError, ~r/mapping config ID must be a 16-byte encoded UUID/, fn ->
-      Mapper.map(valid, compiled, mapping_config_id: <<0::120>>)
+      Mapper.map(valid.body, compiled, output_context: invalid_config_context)
     end
 
     invalid_uuid = %{valid | id: "not-a-uuid"}
 
     assert_raise ArgumentError, ~r/invalid event UUID/, fn ->
-      Mapper.map(invalid_uuid, compiled, mapping_config_id: config_id)
+      context = OutputContext.clickhouse_row_binary(invalid_uuid, config_id)
+      Mapper.map(invalid_uuid.body, compiled, output_context: context)
     end
 
     malformed_canonical_uuid = %{valid | id: "0011223--4455-6677-8899-aabbccddeeff"}
 
     assert_raise ArgumentError, ~r/invalid event UUID/, fn ->
-      Mapper.map(malformed_canonical_uuid, compiled, mapping_config_id: config_id)
+      context = OutputContext.clickhouse_row_binary(malformed_canonical_uuid, config_id)
+      Mapper.map(malformed_canonical_uuid.body, compiled, output_context: context)
     end
 
     missing_timestamp = %{valid | body: %{"event_message" => "missing timestamp"}}
 
     assert_raise ArgumentError, ~r/mapped signed field is not an integer/, fn ->
-      Mapper.map(missing_timestamp, compiled, mapping_config_id: config_id)
+      context = OutputContext.clickhouse_row_binary(missing_timestamp, config_id)
+      Mapper.map(missing_timestamp.body, compiled, output_context: context)
     end
   end
 
@@ -341,7 +390,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     config_id = config_id || encoded_config_id(event_type)
     expected = separate_row(event, event_type, map_compiled, config_id) |> IO.iodata_to_binary()
 
-    assert Mapper.map(event, output_compiled, mapping_config_id: config_id) == expected
+    output_context = OutputContext.clickhouse_row_binary(event, config_id)
+    assert Mapper.map(event.body, output_compiled, output_context: output_context) == expected
   end
 
   defp compile_map_output(event_type) do
@@ -349,11 +399,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     Mapper.compile!(%{config | output: nil})
   end
 
-  defp native_document(event) do
+  defp native_envelope(event) do
     ingested_at = if event.ingested_at, do: DateTime.to_unix(event.ingested_at, :microsecond)
-
-    {event.body,
-     {event.id, Atom.to_string(event.source_uuid), event.source_name || "", ingested_at}}
+    {event.id, Atom.to_string(event.source_uuid), event.source_name || "", ingested_at}
   end
 
   defp separate_row(event, event_type, compiled, config_id) do

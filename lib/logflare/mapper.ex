@@ -17,7 +17,6 @@ defmodule Logflare.Mapper do
   resolved as direct key lookups instead of nested map traversal.
   """
 
-  alias Logflare.LogEvent
   alias __MODULE__.MappingConfig
   alias __MODULE__.Native
 
@@ -58,47 +57,23 @@ defmodule Logflare.Mapper do
       map navigation. Use this when passing pre-flattened input. Defaults to
       `false`.
 
-    * `:mapping_config_id` - the pre-encoded mapping configuration UUID required
-      by ClickHouse RowBinary output. The value can be prepared once and reused
-      across calls.
+    * `:output_context` - per-document runtime context required by some compiled
+      output formats. Build this with `Logflare.Mapper.OutputContext`; map output
+      ignores it.
 
-  Mapping configurations without an output format return maps. A configuration
-  with ClickHouse RowBinary output accepts a `LogEvent`, maps its `body`, and
-  returns one encoded row binary.
+  The compiled mapping configuration selects the output representation. Map
+  output returns a map; ClickHouse RowBinary output maps the supplied document
+  and returns one encoded row binary without constructing an intermediate
+  Elixir map.
   """
   @spec map(map(), reference(), keyword()) :: map() | binary()
-  def map(document, compiled_mapping, opts \\ [])
-
-  def map(%LogEvent{} = event, compiled_mapping, opts) do
-    event
-    |> encode_log_event()
-    |> map_document(compiled_mapping, opts)
-  end
-
-  def map(document, compiled_mapping, opts) when is_map(document) do
-    map_document(document, compiled_mapping, opts)
-  end
-
-  defp map_document(document, compiled_mapping, opts) do
+  def map(document, compiled_mapping, opts \\ []) when is_map(document) do
     flat_keys = Keyword.get(opts, :flat_keys, false)
-    mapping_config_id = Keyword.get(opts, :mapping_config_id)
+    output_context = Keyword.get(opts, :output_context)
 
     document
-    |> Native.map(compiled_mapping, {flat_keys, mapping_config_id})
+    |> Native.map(compiled_mapping, {flat_keys, output_context})
     |> unwrap_result()
-  end
-
-  defp encode_log_event(%LogEvent{
-         body: body,
-         id: id,
-         source_uuid: source_uuid,
-         source_name: source_name,
-         ingested_at: ingested_at
-       })
-       when is_map(body) do
-    ingested_at = if ingested_at, do: DateTime.to_unix(ingested_at, :microsecond)
-    source_uuid = if is_atom(source_uuid), do: Atom.to_string(source_uuid), else: source_uuid
-    {body, {id, source_uuid, source_name || "", ingested_at}}
   end
 
   defp unwrap_result({:ok, output}), do: output

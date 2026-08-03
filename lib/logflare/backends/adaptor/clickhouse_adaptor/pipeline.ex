@@ -36,6 +36,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
+  alias Logflare.Mapper.OutputContext
   alias Logflare.Utils
 
   @producer_concurrency 1
@@ -274,11 +275,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
     try do
       :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
-      mapper_opts = [mapping_config_id: Ingester.encode_mapping_config_id(config_id)]
+      mapping_config_id = Ingester.encode_mapping_config_id(config_id)
 
       {good, bad, good_count, chunks} =
         Enum.reduce(messages, {[], [], 0, []}, fn message, acc ->
-          encode_message(z, event_type, compiled, mapper_opts, message, acc)
+          encode_message(z, event_type, compiled, mapping_config_id, message, acc)
         end)
 
       final_chunk = :zlib.deflate(z, "", :finish)
@@ -293,7 +294,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           term(),
           TypeDetection.event_type(),
           reference(),
-          keyword(),
+          binary(),
           Message.t(),
           {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
         ) :: {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
@@ -301,13 +302,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          z,
          event_type,
          compiled,
-         mapper_opts,
+         mapping_config_id,
          %{data: %LogEventPointer{event_type: event_type} = pointer} = message,
          {good, bad, good_count, chunks}
        ) do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
       %LogEvent{} = event ->
-        row = Mapper.map(event, compiled, mapper_opts)
+        output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+        row = Mapper.map(event.body, compiled, output_context: output_context)
         row_chunk = :zlib.deflate(z, row)
         {[message | good], bad, good_count + 1, [row_chunk | chunks]}
 
@@ -320,7 +322,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          _z,
          _event_type,
          _compiled,
-         _mapper_opts,
+         _mapping_config_id,
          message,
          {good, bad, good_count, chunks}
        ) do

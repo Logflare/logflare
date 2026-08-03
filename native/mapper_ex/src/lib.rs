@@ -15,6 +15,7 @@ mod atoms {
         ok,
         error,
         nil,
+        clickhouse_row_binary,
     }
 }
 
@@ -55,9 +56,6 @@ fn compile_mapping<'a>(env: Env<'a>, config: Term<'a>) -> NifResult<Term<'a>> {
 }
 
 /// Maps a single document using a pre-compiled mapping and its configured output.
-///
-/// Map output returns the mapped Elixir map directly. ClickHouse RowBinary
-/// output returns `{:ok, binary}` or `{:error, reason}`.
 #[rustler::nif]
 fn map<'a>(
     env: Env<'a>,
@@ -67,10 +65,7 @@ fn map<'a>(
 ) -> Term<'a> {
     match &compiled.mapping.output {
         CompiledOutput::Map => match decode_flat_keys(options) {
-            Ok(flat_keys) => {
-                let body = decode_document_body(document);
-                mapper::map_single(env, body, &compiled.mapping, flat_keys)
-            }
+            Ok(flat_keys) => mapper::map_single(env, document, &compiled.mapping, flat_keys),
             Err(reason) => (atoms::error(), reason).encode(env),
         },
         CompiledOutput::ClickHouseRowBinary(layout) => {
@@ -92,13 +87,6 @@ fn decode_flat_keys(options: Term) -> Result<bool, String> {
         .map_err(|_| "mapper options must contain flat_keys".to_string())
 }
 
-fn decode_document_body(document: Term) -> Term {
-    document
-        .decode::<(Term, Term)>()
-        .map(|(body, _)| body)
-        .unwrap_or(document)
-}
-
 fn map_clickhouse_output<'a>(
     env: Env<'a>,
     document: Term<'a>,
@@ -106,14 +94,11 @@ fn map_clickhouse_output<'a>(
     layout: &clickhouse_rowbinary::CompiledLayout,
     options: Term<'a>,
 ) -> Result<rustler::OwnedBinary, String> {
-    let (flat_keys, mapping_config_id) = decode_clickhouse_options(options)?;
-    let (body, envelope): (Term<'a>, Term<'a>) = document
-        .decode()
-        .map_err(|_| "ClickHouse RowBinary output requires a LogEvent".to_string())?;
+    let (flat_keys, mapping_config_id, envelope) = decode_clickhouse_options(options)?;
     let envelope = decode_clickhouse_envelope(envelope)?;
     let nil = atoms::nil().encode(env);
     let mut scratch = mapper::MapScratch::new(mapping, nil);
-    mapper::map_values_into(env, body, mapping, flat_keys, nil, &mut scratch);
+    mapper::map_values_into(env, document, mapping, flat_keys, nil, &mut scratch);
     let mut output = clickhouse_rowbinary::BinaryBuilder::new()?;
     clickhouse_rowbinary::append_row(
         &mut output,
@@ -125,14 +110,27 @@ fn map_clickhouse_output<'a>(
     output.finish()
 }
 
-fn decode_clickhouse_options<'a>(options: Term<'a>) -> Result<(bool, Binary<'a>), String> {
-    let (flat_keys, mapping_config_id): (bool, Term<'a>) = options
+fn decode_clickhouse_options<'a>(
+    options: Term<'a>,
+) -> Result<(bool, Binary<'a>, Term<'a>), String> {
+    let (flat_keys, output_context): (bool, Term<'a>) = options
         .decode()
-        .map_err(|_| "mapper options must contain flat_keys and mapping_config_id".to_string())?;
+        .map_err(|_| "mapper options must contain flat_keys and output_context".to_string())?;
+    let (format, mapping_config_id, envelope): (rustler::types::atom::Atom, Term<'a>, Term<'a>) =
+        output_context.decode().map_err(|_| {
+            "ClickHouse RowBinary output requires a clickhouse_row_binary output_context"
+                .to_string()
+        })?;
+    if format != atoms::clickhouse_row_binary() {
+        return Err(
+            "ClickHouse RowBinary output requires a clickhouse_row_binary output_context"
+                .to_string(),
+        );
+    }
     let mapping_config_id = mapping_config_id
         .decode::<Binary>()
         .map_err(|_| "mapping_config_id must be a pre-encoded 16-byte UUID binary".to_string())?;
-    Ok((flat_keys, mapping_config_id))
+    Ok((flat_keys, mapping_config_id, envelope))
 }
 
 fn decode_clickhouse_envelope<'a>(

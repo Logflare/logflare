@@ -16,6 +16,7 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
   alias Logflare.Mapper
+  alias Logflare.Mapper.OutputContext
 
   @spec separate_row(LogEvent.t(), atom(), reference(), binary()) :: iodata()
   def separate_row(%LogEvent{} = event, type, compiled, mapping_config_id) do
@@ -37,10 +38,11 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
 
   @spec encode_fused([LogEvent.t()], atom(), reference(), binary()) :: binary()
   def encode_fused(events, _type, compiled, mapping_config_id) do
-    mapper_opts = [mapping_config_id: mapping_config_id]
-
     events
-    |> Enum.map(&Mapper.map(&1, compiled, mapper_opts))
+    |> Enum.map(fn event ->
+      output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+      Mapper.map(event.body, compiled, output_context: output_context)
+    end)
     |> IO.iodata_to_binary()
   end
 
@@ -77,12 +79,11 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
   end
 
   defp encode_ets_chunks(z, id_tid_pairs, _type, compiled, mapping_config_id, :fused) do
-    mapper_opts = [mapping_config_id: mapping_config_id]
-
     Enum.map(id_tid_pairs, fn {id, tid} ->
       case IngestEventQueue.lookup_event(tid, id) do
         %LogEvent{} = event ->
-          row = Mapper.map(event, compiled, mapper_opts)
+          output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+          row = Mapper.map(event.body, compiled, output_context: output_context)
           :zlib.deflate(z, row)
 
         nil ->
