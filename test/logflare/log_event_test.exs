@@ -735,6 +735,7 @@ defmodule Logflare.LogEventTest do
       )
 
     assert le.id == id
+    refute le.timestamp_inferred
     assert le.body["id"] == id
     assert le.body["timestamp"] == timestamp
     assert le.body["event_message"] == "legacy"
