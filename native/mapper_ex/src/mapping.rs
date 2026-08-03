@@ -11,103 +11,10 @@ use crate::string_filters::{CharClass, StringFilters};
 
 const ROOT_CACHE_MIN_REFERENCES: usize = 8;
 
-const CLICKHOUSE_LOG_FIELDS: &[&str] = &[
-    "project",
-    "trace_id",
-    "span_id",
-    "trace_flags",
-    "severity_text",
-    "severity_number_alt",
-    "severity_number",
-    "service_name",
-    "event_message",
-    "scope_name",
-    "scope_version",
-    "scope_schema_url",
-    "resource_schema_url",
-    "resource_attributes",
-    "scope_attributes",
-    "log_attributes",
-    "timestamp",
-];
-
-const CLICKHOUSE_METRIC_FIELDS: &[&str] = &[
-    "project",
-    "time_unix",
-    "start_time_unix",
-    "metric_name",
-    "metric_description",
-    "metric_unit",
-    "metric_type",
-    "service_name",
-    "event_message",
-    "scope_name",
-    "scope_version",
-    "scope_schema_url",
-    "resource_schema_url",
-    "resource_attributes",
-    "scope_attributes",
-    "attributes",
-    "aggregation_temporality",
-    "is_monotonic",
-    "flags",
-    "value",
-    "count",
-    "sum",
-    "min",
-    "max",
-    "scale",
-    "zero_count",
-    "positive_offset",
-    "negative_offset",
-    "bucket_counts",
-    "explicit_bounds",
-    "positive_bucket_counts",
-    "negative_bucket_counts",
-    "quantile_values",
-    "quantiles",
-    "exemplars.filtered_attributes",
-    "exemplars.time_unix",
-    "exemplars.value",
-    "exemplars.span_id",
-    "exemplars.trace_id",
-    "timestamp",
-];
-
-const CLICKHOUSE_TRACE_FIELDS: &[&str] = &[
-    "project",
-    "trace_id",
-    "span_id",
-    "parent_span_id",
-    "trace_state",
-    "span_name",
-    "span_kind",
-    "service_name",
-    "event_message",
-    "duration",
-    "start_time",
-    "end_time",
-    "status_code",
-    "status_message",
-    "scope_name",
-    "scope_version",
-    "resource_attributes",
-    "span_attributes",
-    "events.timestamp",
-    "events.name",
-    "events.attributes",
-    "links.trace_id",
-    "links.span_id",
-    "links.trace_state",
-    "links.attributes",
-    "timestamp",
-];
-
 #[derive(Debug)]
-pub struct ClickHouseLayouts {
-    pub log: Result<Box<[usize]>, &'static str>,
-    pub metric: Result<Box<[usize]>, &'static str>,
-    pub trace: Result<Box<[usize]>, &'static str>,
+pub enum CompiledOutput {
+    Map,
+    ClickHouseRowBinary(crate::clickhouse_rowbinary::CompiledLayout),
 }
 
 #[derive(Debug)]
@@ -117,7 +24,7 @@ pub struct CompiledMapping {
     pub root_cache_size: usize,
     pub root_cache_scan_limit: usize,
     pub root_cache_keys: HashMap<Vec<u8>, usize>,
-    pub clickhouse_layouts: ClickHouseLayouts,
+    pub output: CompiledOutput,
 }
 
 #[derive(Debug)]
@@ -259,7 +166,7 @@ pub struct Enum8Data {
 
 pub fn decode_mapping<'a>(env: Env<'a>, config: Term<'a>) -> Result<CompiledMapping, String> {
     let mut fields = decode_fields(env, config)?;
-    let clickhouse_layouts = compile_clickhouse_layouts(&fields);
+    let output = decode_output(env, config, &fields)?;
     let (path_cache_size, root_cache_size, root_cache_keys) =
         assign_path_cache_indices(&mut fields);
     Ok(CompiledMapping {
@@ -268,28 +175,34 @@ pub fn decode_mapping<'a>(env: Env<'a>, config: Term<'a>) -> Result<CompiledMapp
         root_cache_size,
         root_cache_scan_limit: root_cache_keys.len().max(ROOT_CACHE_MIN_REFERENCES),
         root_cache_keys,
-        clickhouse_layouts,
+        output,
     })
 }
 
-fn compile_clickhouse_layouts(fields: &[CompiledField]) -> ClickHouseLayouts {
-    let indices: HashMap<&str, usize> = fields
-        .iter()
-        .enumerate()
-        .map(|(index, field)| (field.name.as_str(), index))
-        .collect();
-
-    let compile = |names: &'static [&'static str]| {
-        names
-            .iter()
-            .map(|name| indices.get(name).copied().ok_or(*name))
-            .collect::<Result<Box<[usize]>, &'static str>>()
+fn decode_output<'a>(
+    env: Env<'a>,
+    config: Term<'a>,
+    fields: &[CompiledField],
+) -> Result<CompiledOutput, String> {
+    let Some(output) = get_term_key(env, config, "output") else {
+        return Ok(CompiledOutput::Map);
     };
+    let format = get_string_key(env, output, "format")?
+        .ok_or_else(|| "output format is required".to_string())?;
 
-    ClickHouseLayouts {
-        log: compile(CLICKHOUSE_LOG_FIELDS),
-        metric: compile(CLICKHOUSE_METRIC_FIELDS),
-        trace: compile(CLICKHOUSE_TRACE_FIELDS),
+    match format.as_str() {
+        "clickhouse_row_binary" => {
+            let row_type = get_string_key(env, output, "row_type")?
+                .ok_or_else(|| "ClickHouse RowBinary output row_type is required".to_string())?;
+            let indices = fields
+                .iter()
+                .enumerate()
+                .map(|(index, field)| (field.name.as_str(), index))
+                .collect();
+            let layout = crate::clickhouse_rowbinary::compile_layout(&row_type, &indices)?;
+            Ok(CompiledOutput::ClickHouseRowBinary(layout))
+        }
+        _ => Err(format!("unsupported mapping output format '{format}'")),
     }
 }
 

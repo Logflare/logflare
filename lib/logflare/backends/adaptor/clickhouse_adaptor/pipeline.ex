@@ -29,13 +29,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoder
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
+  alias Logflare.Mapper
   alias Logflare.Utils
 
   @producer_concurrency 1
@@ -274,11 +274,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
     try do
       :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
-      mapping_config_id = Ingester.encode_mapping_config_id(config_id)
+      mapper_opts = [mapping_config_id: Ingester.encode_mapping_config_id(config_id)]
 
       {good, bad, good_count, chunks} =
         Enum.reduce(messages, {[], [], 0, []}, fn message, acc ->
-          encode_message(z, event_type, compiled, mapping_config_id, message, acc)
+          encode_message(z, event_type, compiled, mapper_opts, message, acc)
         end)
 
       final_chunk = :zlib.deflate(z, "", :finish)
@@ -293,7 +293,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           term(),
           TypeDetection.event_type(),
           reference(),
-          binary(),
+          keyword(),
           Message.t(),
           {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
         ) :: {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
@@ -301,13 +301,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          z,
          event_type,
          compiled,
-         mapping_config_id,
+         mapper_opts,
          %{data: %LogEventPointer{event_type: event_type} = pointer} = message,
          {good, bad, good_count, chunks}
        ) do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
       %LogEvent{} = event ->
-        row = NativeEncoder.map_and_encode_row(event, compiled, event_type, mapping_config_id)
+        row = Mapper.map(event, compiled, mapper_opts)
         row_chunk = :zlib.deflate(z, row)
         {[message | good], bad, good_count + 1, [row_chunk | chunks]}
 
@@ -320,7 +320,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          _z,
          _event_type,
          _compiled,
-         _mapping_config_id,
+         _mapper_opts,
          message,
          {good, bad, good_count, chunks}
        ) do

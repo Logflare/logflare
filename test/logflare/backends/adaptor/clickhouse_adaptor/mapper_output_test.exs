@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoderTest do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   use Logflare.DataCase, async: true
   use ExUnitProperties
 
@@ -6,11 +6,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoderTest do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoder
   alias Logflare.LogEvent
   alias Logflare.Mapper
   alias Logflare.Mapper.MappingConfig
   alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
+  alias Logflare.Mapper.MappingConfig.OutputFormat
   alias Logflare.Mapper.Native
 
   test "fused log output is byte-identical and applies explicit severity numbers" do
@@ -105,9 +105,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoderTest do
       |> raw_event(%{"event_message" => "message", "timestamp" => 1_700_000_000_000_004})
       |> Map.put(:ingested_at, nil)
 
-    compiled = Mapper.compile!(MappingDefaults.for_log())
-    assert is_map(Mapper.map(event.body, compiled))
-    assert_fused_matches_separate(event, :log, compiled)
+    map_compiled = compile_map_output(:log)
+    mapped_body = Mapper.map(event.body, map_compiled)
+    assert is_map(mapped_body)
+    assert Mapper.map(event, map_compiled) == mapped_body
+    assert_fused_matches_separate(event, :log)
   end
 
   test "independently fused rows concatenate to byte-identical output for every event type" do
@@ -120,17 +122,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoderTest do
           })
         end)
 
-      compiled = Mapper.compile!(MappingDefaults.for_type(event_type))
+      output_compiled = Mapper.compile!(MappingDefaults.for_type(event_type))
+      map_compiled = compile_map_output(event_type)
       config_id = encoded_config_id(event_type)
 
       expected =
         events
-        |> Enum.map(&separate_row(&1, event_type, compiled, config_id))
+        |> Enum.map(&separate_row(&1, event_type, map_compiled, config_id))
         |> IO.iodata_to_binary()
+
+      mapper_opts = [mapping_config_id: config_id]
 
       actual =
         events
-        |> Enum.map(&NativeEncoder.map_and_encode_row(&1, compiled, event_type, config_id))
+        |> Enum.map(&Mapper.map(&1, output_compiled, mapper_opts))
         |> IO.iodata_to_binary()
 
       assert actual == expected
@@ -138,7 +143,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoderTest do
   end
 
   property "fused log rows match the separate encoder for varied scalar and map values" do
-    compiled = Mapper.compile!(MappingDefaults.for_log())
+    output_compiled = Mapper.compile!(MappingDefaults.for_log())
+    map_compiled = compile_map_output(:log)
     config_id = encoded_config_id(:log)
 
     check all(
@@ -165,7 +171,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoderTest do
           "timestamp" => timestamp
         })
 
-      assert_fused_matches_separate(event, :log, compiled, config_id)
+      assert_fused_matches_separate(
+        event,
+        :log,
+        output_compiled,
+        map_compiled,
+        config_id
+      )
     end
   end
 
@@ -240,27 +252,36 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoderTest do
     event = raw_event(:log, %{"event_message" => "valid", "timestamp" => 1_700_000_000_000_301})
     document = native_document(event)
 
-    assert {:error, "unsupported ClickHouse event type"} =
-             Native.map_and_encode_clickhouse(document, compiled, :unsupported, config_id)
-
-    assert {:error, "document must contain a body and row envelope"} =
-             Native.map_and_encode_clickhouse(event.body, compiled, :log, config_id)
+    assert {:error, "ClickHouse RowBinary output requires a LogEvent"} =
+             Native.map(event.body, compiled, {false, config_id})
 
     assert {:error, "row envelope must contain ID, source UUID, source name, and ingested_at"} =
-             Native.map_and_encode_clickhouse(
-               {event.body, :invalid_envelope},
-               compiled,
-               :log,
-               config_id
-             )
+             Native.map({event.body, :invalid_envelope}, compiled, {false, config_id})
 
-    incomplete = Mapper.compile!(MappingConfig.new([Field.string("project", path: "$.project")]))
+    assert {:error, "mapping_config_id must be a pre-encoded 16-byte UUID binary"} =
+             Native.map(document, compiled, {false, nil})
+
+    invalid_output = %{
+      "fields" => [%{"name" => "project", "type" => "string"}],
+      "output" => %{"format" => "clickhouse_row_binary", "row_type" => "unsupported"}
+    }
+
+    assert {:error, "unsupported ClickHouse row type 'unsupported'"} =
+             Native.compile_mapping(invalid_output)
+
+    map_config = MappingConfig.new([Field.string("project", path: "$.project")])
+
+    assert {:ok, %{"project" => "project-ref"}} =
+             Mapper.run(%{"project" => "project-ref"}, map_config)
+
+    output_config =
+      MappingConfig.new(map_config.fields,
+        output: OutputFormat.clickhouse_row_binary(:log)
+      )
 
     assert_raise ArgumentError,
-                 "failed to encode ClickHouse row: compiled mapping is missing required ClickHouse field 'trace_id'",
-                 fn ->
-                   NativeEncoder.map_and_encode_row(event, incomplete, :log, config_id)
-                 end
+                 "failed to compile mapping: compiled mapping is missing required ClickHouse field 'trace_id'",
+                 fn -> Mapper.compile!(output_config) end
   end
 
   test "row errors return an actionable reason" do
@@ -268,26 +289,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoderTest do
     config_id = encoded_config_id(:log)
     valid = raw_event(:log, %{"event_message" => "valid", "timestamp" => 1_700_000_000_000_401})
 
+    assert_raise ArgumentError, ~r/mapping_config_id must be a pre-encoded 16-byte UUID/, fn ->
+      Mapper.map(valid, compiled)
+    end
+
     assert_raise ArgumentError, ~r/mapping config ID must be a 16-byte encoded UUID/, fn ->
-      NativeEncoder.map_and_encode_row(valid, compiled, :log, <<0::120>>)
+      Mapper.map(valid, compiled, mapping_config_id: <<0::120>>)
     end
 
     invalid_uuid = %{valid | id: "not-a-uuid"}
 
     assert_raise ArgumentError, ~r/invalid event UUID/, fn ->
-      NativeEncoder.map_and_encode_row(invalid_uuid, compiled, :log, config_id)
+      Mapper.map(invalid_uuid, compiled, mapping_config_id: config_id)
     end
 
     malformed_canonical_uuid = %{valid | id: "0011223--4455-6677-8899-aabbccddeeff"}
 
     assert_raise ArgumentError, ~r/invalid event UUID/, fn ->
-      NativeEncoder.map_and_encode_row(malformed_canonical_uuid, compiled, :log, config_id)
+      Mapper.map(malformed_canonical_uuid, compiled, mapping_config_id: config_id)
     end
 
     missing_timestamp = %{valid | body: %{"event_message" => "missing timestamp"}}
 
     assert_raise ArgumentError, ~r/mapped signed field is not an integer/, fn ->
-      NativeEncoder.map_and_encode_row(missing_timestamp, compiled, :log, config_id)
+      Mapper.map(missing_timestamp, compiled, mapping_config_id: config_id)
     end
   end
 
@@ -307,14 +332,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeEncoderTest do
   defp assert_fused_matches_separate(
          event,
          event_type,
-         compiled \\ nil,
+         output_compiled \\ nil,
+         map_compiled \\ nil,
          config_id \\ nil
        ) do
-    compiled = compiled || Mapper.compile!(MappingDefaults.for_type(event_type))
+    output_compiled = output_compiled || Mapper.compile!(MappingDefaults.for_type(event_type))
+    map_compiled = map_compiled || compile_map_output(event_type)
     config_id = config_id || encoded_config_id(event_type)
-    expected = separate_row(event, event_type, compiled, config_id) |> IO.iodata_to_binary()
+    expected = separate_row(event, event_type, map_compiled, config_id) |> IO.iodata_to_binary()
 
-    assert NativeEncoder.map_and_encode_row(event, compiled, event_type, config_id) == expected
+    assert Mapper.map(event, output_compiled, mapping_config_id: config_id) == expected
+  end
+
+  defp compile_map_output(event_type) do
+    config = MappingDefaults.for_type(event_type)
+    Mapper.compile!(%{config | output: nil})
   end
 
   defp native_document(event) do
