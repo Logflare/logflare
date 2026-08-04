@@ -1006,6 +1006,12 @@ defmodule Logflare.BackendsTest do
       # for system default
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
                       %{count: ^log_count}, %{backend_type: :bigquery}}
+
+      # for direct dispatch, including the path used by backend-routing rules
+      assert {:ok, ^log_count} = Backends.ingest_logs(events, source, backend)
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
+                      %{count: ^log_count}, %{backend_type: :postgres}}
     end
   end
 
