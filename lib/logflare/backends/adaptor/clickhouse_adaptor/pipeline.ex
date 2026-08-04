@@ -10,10 +10,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   insert targets a single ClickHouse partition.
 
   Uses ID-passing: the producer emits `LogEventPointer`s (id + routing metadata)
-  while the full events live in a separate generation store (see
-  `Logflare.Backends.IngestEventQueue`). Each batcher resolves the pointer to its event
-  lazily and streams it through zlib deflate to build a gzip-compressed RowBinary
-  payload without holding the full batch in process memory.
+  while full events live in a separate generation store (see
+  `Logflare.Backends.IngestEventQueue`). Processors resolve and replace each full event
+  with a fused mapper-produced `EncodedRow`; batch processors only stream those
+  reference-counted RowBinary rows through gzip and insert the compressed payload.
   """
 
   @behaviour Broadway.Acknowledger
@@ -27,6 +27,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodedRow
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
   alias Logflare.Backends.Backend
@@ -39,17 +40,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.Mapper.OutputContext
   alias Logflare.Utils
 
+  @event_types [:log, :metric, :trace]
   @producer_concurrency 1
   @processor_concurrency 6
   @processor_min_demand 100
   @processor_max_demand 1_000
   @batch_size 60_000
   @batch_timeout 5_000
-  @batcher_concurrency 32
+  # Bound each backend to four concurrent gzip/HTTP inserts. Higher concurrency can
+  # monopolize the shared Finch pools and amplify ClickHouse timeouts under backlog.
+  @batcher_concurrency 4
   @max_retries 1
-  # Two full batches across every batcher, used as a generous safety valve rather
-  # than a fine-grained flow-control knob — see BufferProducer.capped_fetch_amount/2.
-  # It should only cap genuinely runaway backlog during healthy operation.
+  # Two full batches across every batch processor, used as a generous safety valve
+  # rather than a fine-grained flow-control knob — see
+  # BufferProducer.capped_fetch_amount/2.
   @max_in_flight 2 * @batch_size * @batcher_concurrency
 
   @doc false
@@ -111,8 +115,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           batch_timeout: @batch_timeout
         ]
       ],
-      context: %{backend_id: backend.id}
+      context: processor_context(backend.id)
     )
+  end
+
+  @doc false
+  @spec processor_context(pos_integer()) :: map()
+  def processor_context(backend_id) do
+    mapper_configs =
+      Map.new(@event_types, fn event_type ->
+        {:ok, compiled, config_id} = MappingConfigStore.get_compiled(event_type)
+
+        {event_type,
+         %{
+           compiled: compiled,
+           mapping_config_id: Ingester.encode_mapping_config_id(config_id)
+         }}
+      end)
+
+    %{backend_id: backend_id, mapper_configs: mapper_configs}
   end
 
   @spec process_name(via_tuple :: {:via, module(), {module(), term()}}, base_name :: term()) ::
@@ -141,17 +162,52 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           Message.t()
   def handle_message(
         _processor_name,
-        %Message{data: %LogEventPointer{event_type: event_type, day_bucket: day_bucket}} = message,
-        _context
+        %Message{data: %LogEventPointer{event_type: event_type, day_bucket: day_bucket} = pointer} =
+          message,
+        %{mapper_configs: mapper_configs}
       )
       when is_event_type(event_type) do
-    message
-    |> Message.put_batcher(:ch)
-    |> Message.put_batch_key({event_type, day_bucket})
+    message =
+      message
+      |> Message.put_batcher(:ch)
+      |> Message.put_batch_key({event_type, day_bucket})
+
+    case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
+      %LogEvent{} = event ->
+        %{compiled: compiled, mapping_config_id: mapping_config_id} =
+          Map.fetch!(mapper_configs, event_type)
+
+        output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+
+        case Mapper.map_result(event.body, compiled, output_context: output_context) do
+          {:ok, row} ->
+            encoded = %EncodedRow{pointer: pointer, row: row}
+            replace_event_with_encoded_row(message, encoded)
+
+          {:error, reason} ->
+            Message.failed(message, reason)
+        end
+
+      %EncodedRow{} = encoded ->
+        replace_event_with_encoded_row(message, %{encoded | pointer: pointer})
+
+      nil ->
+        Message.failed(message, :not_found)
+    end
   end
 
   def handle_message(_processor_name, message, _context) do
     Message.failed(message, :not_found)
+  end
+
+  @spec replace_event_with_encoded_row(Message.t(), EncodedRow.t()) :: Message.t()
+  defp replace_event_with_encoded_row(message, %EncodedRow{pointer: pointer} = encoded) do
+    encoded_message = %{message | data: encoded}
+
+    case IngestEventQueue.replace_event(pointer.tid, pointer.gen_event_id, encoded) do
+      :ok -> encoded_message
+      {:error, :not_found} -> Message.failed(message, :not_found)
+    end
   end
 
   @spec handle_batch(
@@ -173,14 +229,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
     backend = Backends.Cache.get_backend(backend_id)
 
-    encode_and_insert(backend, messages, event_type, batch_info, day_bucket)
+    compress_and_insert(backend, messages, event_type, batch_info, day_bucket)
   end
 
   @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
   def ack(_ack_ref, successful, failed) do
     decrement_in_flight(successful, failed)
 
-    Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
+    Enum.each(successful, fn message ->
+      pointer = message_pointer(message)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
     end)
 
@@ -237,14 +294,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     )
   end
 
-  @spec encode_and_insert(
+  @spec compress_and_insert(
           Backend.t(),
           [Message.t()],
           TypeDetection.event_type(),
           Broadway.BatchInfo.t(),
           integer()
         ) :: [Message.t()]
-  defp encode_and_insert(backend, messages, event_type, batch_info, day_bucket) do
+  defp compress_and_insert(backend, messages, event_type, batch_info, day_bucket) do
     OpenTelemetry.Tracer.with_span :clickhouse_pipeline, %{
       attributes: %{
         backend_id: backend.id,
@@ -254,32 +311,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         day_bucket: day_bucket
       }
     } do
-      with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(event_type) do
-        {good, rejected, good_count, compressed} =
-          stream_compress(messages, event_type, compiled, config_id)
+      {good, rejected, good_count, compressed} = stream_compress(messages, event_type)
 
-        emit_missing_ids_telemetry(rejected, backend, event_type)
-        finalize_insert(backend, event_type, compressed, good_count, good, rejected)
-      else
-        {:error, reason} -> Enum.map(messages, &Message.failed(&1, reason))
-      end
+      emit_missing_ids_telemetry(rejected, backend, event_type)
+      finalize_insert(backend, event_type, compressed, good_count, good, rejected)
     end
   end
 
-  # Maps and encodes each event in one NIF call, then streams the RowBinary row
-  # into gzip so the full uncompressed batch is never materialized.
-  @spec stream_compress([Message.t()], TypeDetection.event_type(), reference(), String.t()) ::
+  # RowBinary production is complete before batching. This stage owns only the one
+  # gzip stream that requires a complete batch.
+  @spec stream_compress([Message.t()], TypeDetection.event_type()) ::
           {[Message.t()], [Message.t()], non_neg_integer(), binary()}
-  defp stream_compress(messages, event_type, compiled, config_id) do
+  defp stream_compress(messages, event_type) do
     z = :zlib.open()
 
     try do
       :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
-      mapping_config_id = Ingester.encode_mapping_config_id(config_id)
 
       {good, rejected, good_count, chunks} =
         Enum.reduce(messages, {[], [], 0, []}, fn message, acc ->
-          encode_message(z, event_type, compiled, mapping_config_id, message, acc)
+          compress_message(z, event_type, message, acc)
         end)
 
       final_chunk = :zlib.deflate(z, "", :finish)
@@ -290,49 +341,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
-  @spec encode_message(
+  @spec compress_message(
           term(),
           TypeDetection.event_type(),
-          reference(),
-          binary(),
           Message.t(),
           {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
         ) :: {[Message.t()], [Message.t()], non_neg_integer(), iodata()}
-  defp encode_message(
+  defp compress_message(
          z,
          event_type,
-         compiled,
-         mapping_config_id,
-         %{data: %LogEventPointer{event_type: event_type} = pointer} = message,
+         %{
+           data: %EncodedRow{
+             pointer: %LogEventPointer{event_type: event_type},
+             row: row
+           }
+         } = message,
          {good, rejected, good_count, chunks}
        ) do
-    case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
-      %LogEvent{} = event ->
-        output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
-
-        case Mapper.map_result(event.body, compiled, output_context: output_context) do
-          {:ok, row} ->
-            row_chunk = :zlib.deflate(z, row)
-            {[message | good], rejected, good_count + 1, [row_chunk | chunks]}
-
-          {:error, reason} ->
-            {good, [Message.failed(message, reason) | rejected], good_count, chunks}
-        end
-
-      nil ->
-        {good, [Message.failed(message, :not_found) | rejected], good_count, chunks}
-    end
+    row_chunk = :zlib.deflate(z, row)
+    {[message | good], rejected, good_count + 1, [row_chunk | chunks]}
   end
 
-  defp encode_message(
+  defp compress_message(
          _z,
          _event_type,
-         _compiled,
-         _mapping_config_id,
          message,
          {good, rejected, good_count, chunks}
        ) do
-    {good, [Message.failed(message, :not_found) | rejected], good_count, chunks}
+    {good, [message | rejected], good_count, chunks}
   end
 
   @spec emit_missing_ids_telemetry([Message.t()], Backend.t(), TypeDetection.event_type()) :: :ok
@@ -358,7 +394,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           [Message.t()],
           [Message.t()]
         ) :: [Message.t()]
-  defp finalize_insert(_backend, _event_type, _compressed, _good_count, [] = _good, rejected) do
+  defp finalize_insert(
+         _backend,
+         _event_type,
+         _compressed,
+         _good_count,
+         [] = _good,
+         rejected
+       ) do
     # No rows encoded, so skip the empty ClickHouse insert. Rejected messages
     # already carry their mapping failure or missing-event reason.
     rejected
@@ -407,17 +450,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @spec maybe_requeue_failed(backend_id :: pos_integer(), messages :: [Message.t()]) :: :ok
   defp maybe_requeue_failed(backend_id, messages) do
+    payloads = Enum.map(messages, & &1.data)
+
     {retriable, exhausted} =
-      messages
-      |> Enum.map(fn %{data: %LogEventPointer{} = pointer} -> pointer end)
-      |> Enum.split_with(&(&1.retries < @max_retries))
+      Enum.split_with(payloads, &(message_pointer(&1).retries < @max_retries))
 
     drop_failed(exhausted, backend_id, "exhausted #{@max_retries} retries")
 
     requeue_or_shed(backend_id, retriable)
   end
 
-  @spec requeue_or_shed(backend_id :: pos_integer(), retriable :: [LogEventPointer.t()]) :: :ok
+  @spec requeue_or_shed(
+          backend_id :: pos_integer(),
+          retriable :: [EncodedRow.t() | LogEventPointer.t()]
+        ) :: :ok
   defp requeue_or_shed(_backend_id, []), do: :ok
 
   defp requeue_or_shed(backend_id, retriable) do
@@ -430,26 +476,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
-  @spec requeue_retriable(backend_id :: pos_integer(), retriable :: [LogEventPointer.t()]) :: :ok
+  @spec requeue_retriable(
+          backend_id :: pos_integer(),
+          retriable :: [EncodedRow.t() | LogEventPointer.t()]
+        ) :: :ok
   defp requeue_retriable(backend_id, retriable) do
     Logger.info(
       "Requeuing #{length(retriable)} ClickHouse events for retry",
       backend_id: backend_id
     )
 
-    events =
-      for pointer <- retriable,
-          event = IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id),
-          not is_nil(event) do
-        IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
-        %{event | retries: pointer.retries + 1}
-      end
-
-    emit_requeue_lookup_miss_telemetry(backend_id, length(retriable) - length(events))
-
-    if events != [], do: IngestEventQueue.add_to_table({:consolidated, backend_id}, events)
+    requeued = Enum.count(retriable, &requeue_payload/1)
+    emit_requeue_lookup_miss_telemetry(backend_id, length(retriable) - requeued)
 
     :ok
+  end
+
+  @spec requeue_payload(EncodedRow.t() | LogEventPointer.t()) :: boolean()
+  defp requeue_payload(%EncodedRow{pointer: pointer} = encoded) do
+    pointer = %{pointer | retries: pointer.retries + 1}
+    encoded = %{encoded | pointer: pointer}
+
+    case IngestEventQueue.replace_event(pointer.tid, pointer.gen_event_id, encoded) do
+      :ok ->
+        IngestEventQueue.reinsert_pointer(pointer)
+        true
+
+      {:error, :not_found} ->
+        false
+    end
+  end
+
+  defp requeue_payload(%LogEventPointer{} = pointer) do
+    case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
+      nil ->
+        false
+
+      _event_or_encoded_row ->
+        IngestEventQueue.reinsert_pointer(%{pointer | retries: pointer.retries + 1})
+        true
+    end
   end
 
   # A miss here means the pointer's generation was already dropped by
@@ -473,20 +539,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   end
 
   @spec drop_failed(
-          pointers :: [LogEventPointer.t()],
+          payloads :: [EncodedRow.t() | LogEventPointer.t()],
           backend_id :: pos_integer(),
           reason :: String.t()
         ) :: :ok
   defp drop_failed([], _backend_id, _reason), do: :ok
 
-  defp drop_failed(pointers, backend_id, reason) do
+  defp drop_failed(payloads, backend_id, reason) do
     Logger.warning(
-      "Dropping #{length(pointers)} ClickHouse events: #{reason}",
+      "Dropping #{length(payloads)} ClickHouse events: #{reason}",
       backend_id: backend_id
     )
 
-    Enum.each(pointers, fn pointer ->
+    Enum.each(payloads, fn payload ->
+      pointer = message_pointer(payload)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
     end)
   end
+
+  @spec message_pointer(Message.t() | EncodedRow.t() | LogEventPointer.t()) :: LogEventPointer.t()
+  defp message_pointer(%Message{data: data}), do: message_pointer(data)
+  defp message_pointer(%EncodedRow{pointer: pointer}), do: pointer
+  defp message_pointer(%LogEventPointer{} = pointer), do: pointer
 end

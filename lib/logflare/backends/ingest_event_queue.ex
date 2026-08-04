@@ -7,9 +7,11 @@ defmodule Logflare.Backends.IngestEventQueue do
   Every queue uses the same storage model: a small per-pipeline "pointer" table (this
   module's main tables, one per `{sid,bid,pid}` / `{:consolidated,bid,pid}` /
   `{:spool_producer,nil,pid}`) holding lightweight pointer rows, plus a shared,
-  generationally-rotated event store per `queues_key` holding the actual `LogEvent`
-  bodies (see `current_generation_tid/1`, `new_generations/1`,
-  `Logflare.Backends.IngestEventQueue.GenerationJanitor`). `add_to_table/3` always
+  generationally-rotated event store per `queues_key` initially holding the actual
+  `LogEvent` bodies (see `current_generation_tid/1`, `new_generations/1`,
+  `Logflare.Backends.IngestEventQueue.GenerationJanitor`). A consumer may replace a
+  claimed value with a backend-specific encoded representation while retaining the
+  same pointer for retries. `add_to_table/3` always
   writes both; which read function a caller uses decides whether it gets back
   lightweight pointers (`pop_pending_pointers/2` — ID-passing pipelines: ClickHouse,
   BigQuery, spool) or fully-resolved `LogEvent` structs (`pop_pending/2` — every other
@@ -275,7 +277,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Looks up a single event directly in a generation table.
+  Looks up a single event or its encoded replacement directly in a generation table.
 
   `tid` here is a generation's tid (e.g. a claimed `LogEventPointer.tid`) — a direct
   `:ets.lookup_element/4`, no separate id-to-table resolution needed. Returns `nil` on a miss,
@@ -283,13 +285,30 @@ defmodule Logflare.Backends.IngestEventQueue do
   `drop_generation/2`) — callers should treat that the same as any other lookup miss,
   not as an error.
   """
-  @spec lookup_event(:ets.tid(), term()) :: LogEvent.t() | nil
+  @spec lookup_event(:ets.tid(), term()) :: term() | nil
   def lookup_event(tid, id) do
     :ets.lookup_element(tid, id, 2, nil)
   rescue
     ArgumentError ->
       emit_stale_ets_table_telemetry()
       nil
+  end
+
+  @doc """
+  Replaces an existing generation-store value without recreating a row that was
+  concurrently removed or whose generation was dropped.
+  """
+  @spec replace_event(:ets.tid(), term(), term()) :: :ok | {:error, :not_found}
+  def replace_event(tid, id, replacement) do
+    if :ets.update_element(tid, id, {2, replacement}) do
+      :ok
+    else
+      {:error, :not_found}
+    end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_found}
   end
 
   # --- recent-events cache ---
@@ -1102,7 +1121,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     ms = [{{:_, :"$1"}, [], [:"$1"]}]
 
     case :ets.select(tid, ms, n) do
-      {events, _cont} -> events
+      {events, _cont} -> Enum.filter(events, &match?(%LogEvent{}, &1))
       :"$end_of_table" -> []
     end
   rescue

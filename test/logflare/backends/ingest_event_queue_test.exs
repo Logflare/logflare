@@ -41,6 +41,26 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert nil == IngestEventQueue.get_tid({source.id, backend.id, pid})
   end
 
+  describe "replace_event/3" do
+    test "replaces an existing generation value" do
+      tid = :ets.new(:replace_event_test, [:set, :public])
+      :ets.insert(tid, {:id, :original})
+
+      assert :ok = IngestEventQueue.replace_event(tid, :id, :replacement)
+      assert IngestEventQueue.lookup_event(tid, :id) == :replacement
+    end
+
+    test "does not recreate a missing or stale generation row" do
+      tid = :ets.new(:replace_event_test, [:set, :public])
+
+      assert {:error, :not_found} = IngestEventQueue.replace_event(tid, :id, :replacement)
+      assert IngestEventQueue.lookup_event(tid, :id) == nil
+
+      :ets.delete(tid)
+      assert {:error, :not_found} = IngestEventQueue.replace_event(tid, :id, :replacement)
+    end
+  end
+
   describe "with user, source, backend" do
     setup do
       user = insert(:user)
