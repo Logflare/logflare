@@ -3,19 +3,37 @@ sidebar_position: 4
 ---
 # Elastic
 
-The Elastic backend is **ingest-only** to a Filebeat HTTP server endpoint.
+The Elastic backend is **ingest-only**. Delivery is selected via a `transport` config field so one backend type can support multiple Elastic ingest paths over time.
+
+## Transports
+
+### `filebeat` (default)
+
+Sends events to a Filebeat HTTP input endpoint.
 
 See Filebeat HTTP input [configuration](https://www.elastic.co/guide/en/beats/filebeat/current/filebeat-input-http_endpoint.html) for details on setting up the input server.
 
-## Behaviour and configurations
-### Configuration
+**Configuration**
 
-The following values are required when creating a webhook backend:
-
-- `url`: (`string`, required) a valid HTTP(S) endpoint.
-- `username`: (`string`, optional) used for basic auth.
-- `password`: (`string`, optional) used for basic auth.
-
-### Implementation Details
+- `transport`: (`string`) `"filebeat"` (default when omitted — preserves existing backends)
+- `url`: (`string`, required) a valid HTTP(S) endpoint
+- `username`: (`string`, optional) used for basic auth
+- `password`: (`string`, optional) used for basic auth
 
 Implementation is based on the [webhook backend](/backends/webhook).
+
+### `otlp`
+
+Exports logs via [OTLP](https://opentelemetry.io/docs/specs/otel/protocol/) HTTP/protobuf — the same delivery path as the [OTLP](/backends/otlp) adaptor. Use this for Elastic managed OTLP ingest (e.g. Supabase log drains).
+
+**Configuration**
+
+- `transport`: (`string`, required) `"otlp"`
+- `endpoint`: (`string`, required) OTLP HTTP endpoint, e.g. `https://abc.ingest.us-central1.gcp.elastic.cloud:443/supabase/v1/logs`
+- `protocol`: (`string`) fixed to `"http/protobuf"` for now
+- `gzip`: (`boolean`) enables gzip compression; defaults to `true`
+- `headers`: (`map`) additional HTTP headers (auth, content-type, etc.)
+
+
+
+
