@@ -16,18 +16,51 @@ defmodule Logflare.Sources.SourceRouter do
   @spec route_to_sinks_and_ingest(LE.t() | [LE.t()], Source.t(), module()) :: LE.t() | [LE.t()]
   def route_to_sinks_and_ingest(events, source, router \\ @default_router)
 
-  def route_to_sinks_and_ingest(events, source, router) when is_list(events),
-    do: Enum.map(events, &route_to_sinks_and_ingest(&1, source, router))
+  def route_to_sinks_and_ingest(events, source, router) when is_list(events) do
+    {events, measurements} =
+      Enum.map_reduce(events, {0, 0}, fn event, totals ->
+        {event, measurements} = route_event(event, source, router)
+        {event, add_measurements(totals, measurements)}
+      end)
 
-  def route_to_sinks_and_ingest(%LE{via_rule_id: id} = le, _source, _router) when id != nil,
-    do: le
+    emit_rule_match_telemetry(measurements)
+    events
+  end
 
-  def route_to_sinks_and_ingest(%LE{via_rule_id: nil} = le, source, router) do
-    for rule <- router.matching_rules(le, source) do
-      do_routing(rule, le, source)
-    end
-
+  def route_to_sinks_and_ingest(%LE{} = le, source, router) do
+    {le, measurements} = route_event(le, source, router)
+    emit_rule_match_telemetry(measurements)
     le
+  end
+
+  defp route_event(%LE{via_rule_id: id} = le, _source, _router) when id != nil,
+    do: {le, {0, 0}}
+
+  defp route_event(%LE{via_rule_id: nil} = le, source, router) do
+    started_at = System.monotonic_time()
+    rules = router.matching_rules(le, source)
+    duration = System.monotonic_time() - started_at
+
+    Enum.each(rules, &do_routing(&1, le, source))
+
+    {le, {duration, 1}}
+  end
+
+  defp add_measurements(
+         {total_duration, total_event_count},
+         {duration, event_count}
+       ) do
+    {total_duration + duration, total_event_count + event_count}
+  end
+
+  defp emit_rule_match_telemetry({_duration, 0}), do: :ok
+
+  defp emit_rule_match_telemetry({duration, event_count}) do
+    :telemetry.execute(
+      [:logflare, :sources, :rules, :match],
+      %{duration: duration, event_count: event_count},
+      %{}
+    )
   end
 
   defp do_routing(%Rule{backend_id: backend_id} = rule, %LE{} = le, source)

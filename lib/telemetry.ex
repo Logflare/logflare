@@ -185,6 +185,16 @@ defmodule Logflare.Telemetry do
         tags: [:processor],
         unit: {:native, :millisecond}
       ),
+      distribution("logflare.sources.rules.match.duration",
+        unit: {:native, :microsecond},
+        reporter_options: rules_duration_reporter_opts(),
+        description: "Total routing-rule matching time for an evaluated batch"
+      ),
+      sum("logflare.sources.rules.match.evaluated_events.count",
+        event_name: [:logflare, :sources, :rules, :match],
+        measurement: :event_count,
+        description: "Total events evaluated against routing rules"
+      ),
       counter("logflare.total_http_requests",
         measurement: :duration,
         event_name: "bandit.request.stop.duration"
@@ -605,5 +615,26 @@ defmodule Logflare.Telemetry do
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]
+  end
+
+  defp rules_duration_reporter_opts do
+    [
+      buckets: [
+        0,
+        10,
+        25,
+        50,
+        100,
+        250,
+        500,
+        1_000,
+        2_500,
+        5_000,
+        10_000,
+        25_000,
+        50_000,
+        100_000
+      ]
+    ]
   end
 end

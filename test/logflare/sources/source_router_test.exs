@@ -9,6 +9,15 @@ defmodule Logflare.Sources.SourceRouterTest do
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
 
+  defmodule TelemetryRouter do
+    alias Logflare.LogEvent
+    alias Logflare.Rules.Rule
+
+    def matching_rules(%LogEvent{body: %{"match_count" => count}}, _source) do
+      List.duplicate(%Rule{}, count)
+    end
+  end
+
   @routers [SourceRouter.Sequential, SourceRouter.RulesTree]
 
   setup do
@@ -16,6 +25,48 @@ defmodule Logflare.Sources.SourceRouterTest do
     insert(:plan)
     user = insert(:user)
     [user: user, backend: insert(:backend, user: user)]
+  end
+
+  describe "routing telemetry" do
+    test "aggregates matching measurements once per batch", %{user: user} do
+      event_name = [:logflare, :sources, :rules, :match]
+      TestUtils.attach_forwarder(event_name)
+
+      source = insert(:source, user: user)
+
+      events = [
+        %{build(:log_event, source: source) | body: %{"match_count" => 2}},
+        %{build(:log_event, source: source) | body: %{"match_count" => 1}},
+        %{
+          build(:log_event, source: source)
+          | body: %{"match_count" => 5},
+            via_rule_id: 123
+        }
+      ]
+
+      assert SourceRouter.route_to_sinks_and_ingest(events, source, TelemetryRouter) == events
+
+      assert_receive {:telemetry_event, ^event_name, %{duration: duration, event_count: 2}, %{}}
+
+      assert is_integer(duration)
+      assert duration >= 0
+      refute_receive {:telemetry_event, ^event_name, _, _}
+    end
+
+    test "emits matching measurements for a single event", %{user: user} do
+      event_name = [:logflare, :sources, :rules, :match]
+      TestUtils.attach_forwarder(event_name)
+
+      source = insert(:source, user: user)
+      event = %{build(:log_event, source: source) | body: %{"match_count" => 0}}
+
+      assert SourceRouter.route_to_sinks_and_ingest(event, source, TelemetryRouter) == event
+
+      assert_receive {:telemetry_event, ^event_name, %{duration: duration, event_count: 1}, %{}}
+
+      assert is_integer(duration)
+      assert duration >= 0
+    end
   end
 
   for router <- @routers do

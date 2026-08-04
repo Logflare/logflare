@@ -39,6 +39,32 @@ defmodule Logflare.TelemetryTest do
              end)
     end
 
+    test "defines untagged routing-rule matching metrics" do
+      metrics =
+        Telemetry.metrics()
+        |> Enum.filter(&(&1.event_name == [:logflare, :sources, :rules, :match]))
+
+      assert Enum.map(metrics, & &1.name) |> Enum.sort() == [
+               [:logflare, :sources, :rules, :match, :duration],
+               [:logflare, :sources, :rules, :match, :evaluated_events, :count]
+             ]
+
+      assert Enum.all?(metrics, &(&1.tags == []))
+
+      duration =
+        Enum.find(metrics, &(&1.name == [:logflare, :sources, :rules, :match, :duration]))
+
+      event_count = Enum.find(metrics, &(&1.name != duration.name))
+
+      assert to_string(duration.__struct__) == "Elixir.Telemetry.Metrics.Distribution"
+      assert duration.unit == :microsecond
+      assert hd(duration.reporter_options[:buckets]) == 0
+      assert List.last(duration.reporter_options[:buckets]) == 100_000
+
+      assert to_string(event_count.__struct__) == "Elixir.Telemetry.Metrics.Sum"
+      assert event_count.measurement == :event_count
+    end
+
     test "includes the spool telemetry metrics added for throttling/storage/queue observability" do
       names = Telemetry.metrics() |> Enum.map(& &1.name)
 
