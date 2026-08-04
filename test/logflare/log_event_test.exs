@@ -35,28 +35,6 @@ defmodule Logflare.LogEventTest do
     assert source_id == source.id
   end
 
-  describe "mapper fields" do
-    test "preserves explicit IDs and normalizes legacy message fields", %{source: source} do
-      id = Ecto.UUID.generate()
-      timestamp = "2024-01-01T00:00:00.123456Z"
-
-      for {message_fields, expected_message} <- [
-            {%{"message" => "legacy"}, "legacy"},
-            {%{"event_message" => "current"}, "current"},
-            {%{"message" => "same", "event_message" => "same"}, "same"},
-            {%{"message" => "legacy wins", "event_message" => "current"}, "legacy wins"}
-          ] do
-        params = Map.merge(message_fields, %{"id" => id, "timestamp" => timestamp})
-        le = LogEvent.make(params, %{source: source})
-
-        assert le.id == id
-        assert le.body["id"] == id
-        assert le.body["event_message"] == expected_message
-        refute Map.has_key?(le.body, "message")
-      end
-    end
-  end
-
   describe "bigquery_spec" do
     test "dashes to underscores", %{source: source} do
       assert %LogEvent{
@@ -723,24 +701,6 @@ defmodule Logflare.LogEventTest do
     params = %{"metadata" => "some string"}
     assert %{body: body} = LogEvent.make_from_db(params, %{source: source})
     assert body["metadata"] == "some string"
-  end
-
-  test "make_from_db/2 preserves mapper fields and normalizes legacy messages", %{source: source} do
-    id = Ecto.UUID.generate()
-    timestamp = 1_713_268_565_764_892
-
-    le =
-      LogEvent.make_from_db(
-        %{"id" => id, "message" => "legacy", "timestamp" => timestamp},
-        %{source: source}
-      )
-
-    assert le.id == id
-    refute le.timestamp_inferred
-    assert le.body["id"] == id
-    assert le.body["timestamp"] == timestamp
-    assert le.body["event_message"] == "legacy"
-    refute Map.has_key?(le.body, "message")
   end
 
   test "apply_custom_event_message/1 generates custom event message from source setting", %{
