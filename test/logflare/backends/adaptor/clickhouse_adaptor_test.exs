@@ -14,6 +14,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.LogEvent
   alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
   alias Logflare.Lql.Rules.FilterRule
 
@@ -406,6 +407,138 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :async_insert_cluster_url)
     end
+
+    test "max_event_age_hours defaults to 24 when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :max_event_age_hours) == 24
+    end
+
+    test "casts a custom max_event_age_hours" do
+      changeset = cast_and_validate_config(max_event_age_hours: 72)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :max_event_age_hours) == 72
+    end
+
+    test "accepts a max_event_age_hours of zero to disable age filtering" do
+      changeset = cast_and_validate_config(max_event_age_hours: 0)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :max_event_age_hours) == 0
+    end
+
+    test "rejects a negative max_event_age_hours" do
+      changeset = cast_and_validate_config(max_event_age_hours: -1)
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :max_event_age_hours)
+    end
+  end
+
+  describe "pre_ingest/3 event age filtering" do
+    setup do
+      [source: build(:source)]
+    end
+
+    test "drops events older than the default max event age", %{source: source} do
+      backend = clickhouse_backend()
+      recent = log_event_aged_hours(source, 1)
+      stale = log_event_aged_hours(source, 25)
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [recent, stale]) == [recent]
+    end
+
+    test "keeps every event when all are within the default max event age", %{source: source} do
+      backend = clickhouse_backend()
+      events = [log_event_aged_hours(source, 0), log_event_aged_hours(source, 23)]
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, events) == events
+    end
+
+    test "honors a custom max_event_age_hours", %{source: source} do
+      backend = clickhouse_backend(max_event_age_hours: 72)
+      within = log_event_aged_hours(source, 48)
+      stale = log_event_aged_hours(source, 96)
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [within, stale]) == [within]
+    end
+
+    test "does no filtering when max_event_age_hours is zero", %{source: source} do
+      backend = clickhouse_backend(max_event_age_hours: 0)
+      events = [log_event_aged_hours(source, 1), log_event_aged_hours(source, 5_000)]
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, events) == events
+    end
+
+    test "falls back to the default when max_event_age_hours is absent", %{source: source} do
+      backend = build(:backend, type: :clickhouse, config: %{url: "http://localhost"})
+      recent = log_event_aged_hours(source, 1)
+      stale = log_event_aged_hours(source, 25)
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [recent, stale]) == [recent]
+    end
+
+    test "emits drop_stale telemetry tagged with the backend", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
+
+      backend = clickhouse_backend()
+      events = [log_event_aged_hours(source, 25), log_event_aged_hours(source, 30)]
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, events) == []
+
+      source_id = source.id
+      source_token = source.token
+      backend_id = backend.id
+
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale],
+                      %{count: 2},
+                      %{
+                        source_id: ^source_id,
+                        source_token: ^source_token,
+                        backend_id: ^backend_id,
+                        backend_type: :clickhouse
+                      }}
+    end
+
+    test "does not emit drop_stale telemetry when nothing is dropped", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
+
+      backend = clickhouse_backend()
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [log_event_aged_hours(source, 2)]) !=
+               []
+
+      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale], _, _}
+    end
+
+    test "keeps events without an integer timestamp", %{source: source} do
+      backend = clickhouse_backend()
+      event = %LogEvent{body: %{"timestamp" => nil}}
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [event]) == [event]
+    end
+
+    test "handles an empty event list", %{source: source} do
+      assert ClickHouseAdaptor.pre_ingest(source, clickhouse_backend(), []) == []
+    end
+  end
+
+  defp clickhouse_backend(config_overrides \\ []) do
+    config =
+      Enum.into(config_overrides, %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123
+      })
+
+    build(:backend, type: :clickhouse, config: config)
+  end
+
+  defp log_event_aged_hours(source, hours) do
+    timestamp = System.system_time(:microsecond) - hours * 3_600 * 1_000_000
+    build(:log_event, source: source, timestamp: timestamp)
   end
 
   defp cast_and_validate_config(attrs \\ []) do
