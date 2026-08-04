@@ -12,6 +12,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
   alias Logflare.Mapper.MappingConfig.InferCondition
   alias Logflare.Mapper.MappingConfig.InferRule
+  alias Logflare.Mapper.MappingConfig.OutputFormat
 
   @log_config_id "00000000-0000-0000-0001-000000000003"
   @metric_config_id "00000000-0000-0000-0002-000000000003"
@@ -29,7 +30,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
 
   @spec for_log() :: MappingConfig.t()
   def for_log do
-    MappingConfig.new([
+    fields = [
       Field.string("project",
         paths: [
           "$.project",
@@ -167,12 +168,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         elevate_keys: ["metadata"]
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
-    ])
+    ]
+
+    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:log))
   end
 
   @spec for_metric() :: MappingConfig.t()
   def for_metric do
-    MappingConfig.new([
+    fields = [
       Field.string("project",
         paths: [
           "$.project",
@@ -404,12 +407,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         precision: 9
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
-    ])
+    ]
+
+    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:metric))
   end
 
   @spec for_trace() :: MappingConfig.t()
   def for_trace do
-    MappingConfig.new([
+    fields = [
       Field.string("project",
         paths: [
           "$.project",
@@ -554,6 +559,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         path: "$.links[*].attributes"
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
-    ])
+    ]
+
+    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:trace))
   end
 end

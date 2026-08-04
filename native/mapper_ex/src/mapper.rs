@@ -32,6 +32,28 @@ fn is_array_type(field_type: &FieldType) -> bool {
     )
 }
 
+pub struct MapScratch<'a> {
+    values: Vec<Term<'a>>,
+    query_cache: query::QueryCache<'a>,
+}
+
+impl<'a> MapScratch<'a> {
+    pub fn new(mapping: &CompiledMapping, nil: Term<'a>) -> Self {
+        Self {
+            values: Vec::with_capacity(mapping.fields.len()),
+            query_cache: query::QueryCache::new(
+                mapping.path_cache_size,
+                mapping.root_cache_size,
+                nil,
+            ),
+        }
+    }
+
+    pub fn values(&self) -> &[Term<'a>] {
+        &self.values
+    }
+}
+
 /// Execute the mapping on a single document, returning the mapped output map.
 ///
 /// When `flat_keys` is true, dotted paths are resolved as literal flat-key
@@ -43,12 +65,35 @@ pub fn map_single<'a>(
     flat_keys: bool,
 ) -> Term<'a> {
     let nil = atoms::nil().encode(env);
-    let field_count = mapping.fields.len();
+    let mut scratch = MapScratch::new(mapping, nil);
+    map_values_into(env, body, mapping, flat_keys, nil, &mut scratch);
 
-    let mut keys: Vec<Term<'a>> = Vec::with_capacity(field_count);
-    let mut values: Vec<Term<'a>> = Vec::with_capacity(field_count);
-    let mut query_cache =
-        query::QueryCache::new(mapping.path_cache_size, mapping.root_cache_size, nil);
+    let keys: Vec<Term<'a>> = mapping
+        .fields
+        .iter()
+        .map(|field| crate::encode_string(env, &field.name))
+        .collect();
+
+    // Build the output map in a single allocation via enif_make_map_from_arrays.
+    // Duplicate field names are rejected at compile time so this should not fail.
+    Term::map_from_term_arrays(env, &keys, scratch.values()).unwrap_or_else(|_| Term::map_new(env))
+}
+
+/// Execute the shared mapping core into field-order storage.
+///
+/// ClickHouse's fused encoder consumes these values directly, avoiding an
+/// intermediate output map.
+pub fn map_values_into<'a>(
+    env: Env<'a>,
+    body: Term<'a>,
+    mapping: &CompiledMapping,
+    flat_keys: bool,
+    nil: Term<'a>,
+    scratch: &mut MapScratch<'a>,
+) {
+    let values = &mut scratch.values;
+    let query_cache = &mut scratch.query_cache;
+
     if !flat_keys
         && !mapping.root_cache_keys.is_empty()
         && body.map_size().unwrap_or(usize::MAX) <= mapping.root_cache_scan_limit
@@ -68,7 +113,7 @@ pub fn map_single<'a>(
                     path,
                     nil,
                     flat_keys,
-                    &mut query_cache,
+                    query_cache,
                     |elem| {
                         coerce::coerce_array_element(
                             env,
@@ -80,7 +125,6 @@ pub fn map_single<'a>(
                         )
                     },
                 ) {
-                    keys.push(crate::encode_string(env, &field.name));
                     values.push(value);
                     continue;
                 }
@@ -92,15 +136,14 @@ pub fn map_single<'a>(
         let is_enum8 = matches!(&field.field_type, FieldType::Enum8 { .. });
 
         let value = if is_enum8 {
-            resolve_value_raw(env, body, field, &values, nil, flat_keys, &mut query_cache)
+            resolve_value_raw(env, body, field, values, nil, flat_keys, query_cache)
         } else {
-            resolve_value(env, body, field, &values, nil, flat_keys, &mut query_cache)
+            resolve_value(env, body, field, values, nil, flat_keys, query_cache)
         };
 
         // Array types skip transform, allowed_values, value_map, enum8, and json operations
         if is_array {
             let value = coerce::coerce_array(env, value, &field.field_type, field.filter_nil, nil);
-            keys.push(crate::encode_string(env, &field.name));
             values.push(value);
             continue;
         }
@@ -153,7 +196,7 @@ pub fn map_single<'a>(
 
         // For Enum8 fields, handle enum resolution (string->int lookup + inference + default)
         let value = if is_enum8 {
-            resolve_enum8(env, body, field, value, nil, flat_keys, &mut query_cache)
+            resolve_enum8(env, body, field, value, nil, flat_keys, query_cache)
         } else {
             value
         };
@@ -161,30 +204,25 @@ pub fn map_single<'a>(
         let value = match field.field_type {
             FieldType::Json => {
                 if flat_keys {
-                    apply_json_operations_flat(env, body, field, value, nil, &mut query_cache)
+                    apply_json_operations_flat(env, body, field, value, nil, query_cache)
                 } else {
-                    apply_json_operations(env, body, field, value, nil, false, &mut query_cache)
+                    apply_json_operations(env, body, field, value, nil, false, query_cache)
                 }
             }
             FieldType::FlatMap => {
                 if flat_keys {
                     let value =
-                        apply_json_operations_flat(env, body, field, value, nil, &mut query_cache);
+                        apply_json_operations_flat(env, body, field, value, nil, query_cache);
                     stringify_values(env, value, nil)
                 } else {
-                    flatten_field(env, body, field, value, nil, &mut query_cache)
+                    flatten_field(env, body, field, value, nil, query_cache)
                 }
             }
             _ => coerce::coerce(env, value, &field.field_type, nil),
         };
 
-        keys.push(crate::encode_string(env, &field.name));
         values.push(value);
     }
-
-    // Build the output map in a single allocation via enif_make_map_from_arrays.
-    // Duplicate field names are rejected at compile time so this should not fail.
-    Term::map_from_term_arrays(env, &keys, &values).unwrap_or_else(|_| Term::map_new(env))
 }
 
 /// Resolve the source value without applying defaults (for enum8 fields).
