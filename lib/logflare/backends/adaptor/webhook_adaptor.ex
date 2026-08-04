@@ -327,7 +327,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           http: [concurrency: 6, batch_size: 250]
         ],
         context: %{
-          backend_type: :webhook,
+          backend_type: (args.backend && args.backend.type) || :webhook,
           startup_config: args.config,
           source_id: args.source.id,
           backend_id: Map.get(args.backend || %{}, :id),
@@ -354,7 +354,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         [:logflare, :backends, :pipeline, :handle_batch],
         %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
         %{
-          backend_type: :webhook
+          backend_type: context.backend_type
         }
       )
 

@@ -119,6 +119,8 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       this = self()
       ref = make_ref()
 
+      TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
+
       mock_adapter(fn env ->
         # Based on https://axiom.co/docs/restapi/endpoints/ingestIntoDataset?playground=open
         assert Tesla.build_url(env) ==
@@ -143,6 +145,10 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
       assert_receive {^ref, gzipped}, 5000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
+                      _measurements, %{backend_type: :axiom}}
+
       assert json = :zlib.gunzip(gzipped)
       assert [log] = Jason.decode!(json)
       assert log["event_message"] == log_event.body["event_message"]

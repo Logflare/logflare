@@ -87,7 +87,7 @@ defmodule Logflare.Backends.BroadwayContextTest do
       })
     end)
 
-    assert_backend_type(:http_based, tag_values, fn ->
+    assert_backend_type(:axiom, tag_values, fn ->
       HttpPipeline.start_link(source, axiom, __MODULE__)
     end)
 
@@ -109,8 +109,12 @@ defmodule Logflare.Backends.BroadwayContextTest do
       )
     end)
 
-    assert_backend_type(:webhook, tag_values, fn ->
+    assert_backend_type(:datadog, tag_values, fn ->
       WebhookPipeline.start_link(%{source: source, backend: datadog, config: %{}})
+    end)
+
+    assert_backend_type(:webhook, tag_values, fn ->
+      WebhookPipeline.start_link(%{source: source, backend: nil, config: %{}})
     end)
 
     assert_backend_type(:spool_consumer, tag_values, fn ->
