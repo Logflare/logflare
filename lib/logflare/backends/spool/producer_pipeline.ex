@@ -65,7 +65,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         ]
       ],
       context: %{
-        backend_type: :internal,
+        backend_type: :spool_producer,
         bucket: bucket,
         partitions: partitions,
         compress: compress,

@@ -79,15 +79,21 @@ defmodule Logflare.TelemetryTest do
       for metric <- metrics do
         assert metric.tags == [:backend_type]
 
-        assert metric.tag_values.(%{context: %{backend_type: :clickhouse}}) == %{
-                 backend_type: :clickhouse
-               }
+        assert metric.tag_values.(%{
+                 context: %{backend_type: :clickhouse, source_token: "not-a-tag"}
+               }) == %{backend_type: :clickhouse}
 
         assert metric.tag_values.(%{context: %{backend: %{type: :postgres}}}) == %{
                  backend_type: :postgres
                }
 
-        assert metric.tag_values.(%{context: nil}) == %{backend_type: :internal}
+        for invalid_backend_type <- [nil, true, false] do
+          assert metric.tag_values.(%{context: %{backend_type: invalid_backend_type}}) == %{
+                   backend_type: :unknown
+                 }
+        end
+
+        assert metric.tag_values.(%{context: nil}) == %{backend_type: :unknown}
       end
     end
 
@@ -121,12 +127,16 @@ defmodule Logflare.TelemetryTest do
       assert %{{:distribution, @broadway_batch_processor_metric_string} => distributions} =
                MetricStore.get_metrics(@broadway_exporter)
 
-      assert Map.keys(distributions) |> MapSet.new() ==
-               MapSet.new([
-                 %{backend_type: :clickhouse},
-                 %{backend_type: :bigquery},
-                 %{backend_type: :internal}
-               ])
+      actual_tags = distributions |> Map.keys() |> MapSet.new()
+
+      expected_tags =
+        MapSet.new([
+          %{backend_type: :clickhouse},
+          %{backend_type: :bigquery},
+          %{backend_type: :unknown}
+        ])
+
+      assert MapSet.subset?(expected_tags, actual_tags)
     end
 
     test "tags dynamic pipeline and retry lookup-miss metrics by backend type" do

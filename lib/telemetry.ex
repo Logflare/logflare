@@ -3,7 +3,7 @@ defmodule Logflare.Telemetry do
 
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
-  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
+  import Logflare.Utils.Guards, only: [is_atom_value: 1, is_non_empty_binary: 1]
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -300,7 +300,8 @@ defmodule Logflare.Telemetry do
       ),
       sum("logflare.backends.ingest.dispatch.count",
         tags: [:backend_type],
-        description: "Ingest counts by backend type"
+        description:
+          "Log events dispatched to backend queues by backend type; counts fan-out copies, not unique ingested events"
       ),
       distribution("logflare.backends.ingest.dispatch.stop.duration",
         tags: [:backend_type],
@@ -622,16 +623,16 @@ defmodule Logflare.Telemetry do
     |> String.replace(@number_suffix_regex, "")
   end
 
-  @spec broadway_backend_tags(map()) :: map()
-  defp broadway_backend_tags(%{context: %{backend_type: backend_type} = context})
-       when is_atom(backend_type),
-       do: context
-
-  defp broadway_backend_tags(%{context: %{backend: %{type: backend_type}}})
-       when is_atom(backend_type),
+  @spec broadway_backend_tags(map()) :: %{backend_type: atom()}
+  defp broadway_backend_tags(%{context: %{backend_type: backend_type}})
+       when is_atom_value(backend_type),
        do: %{backend_type: backend_type}
 
-  defp broadway_backend_tags(_metadata), do: %{backend_type: :internal}
+  defp broadway_backend_tags(%{context: %{backend: %{type: backend_type}}})
+       when is_atom_value(backend_type),
+       do: %{backend_type: backend_type}
+
+  defp broadway_backend_tags(_metadata), do: %{backend_type: :unknown}
 
   defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
   defp clickhouse_batch?(_metadata), do: false

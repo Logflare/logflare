@@ -46,7 +46,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
           concurrency: 1
         ]
       ],
-      context: %{backend_type: :internal}
+      context: %{backend_type: :spool_consumer}
     )
   end
 
