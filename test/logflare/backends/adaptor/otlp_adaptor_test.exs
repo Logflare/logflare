@@ -205,26 +205,6 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
     end
   end
 
-  describe "elastic_otlp type alias" do
-    test "maps elastic_otlp to OtlpAdaptor" do
-      assert Logflare.Backends.Backend.adaptor_mapping()[:elastic_otlp] == @subject
-    end
-
-    test "validates elastic_otlp backends with OTLP config" do
-      user = insert(:user)
-
-      changeset =
-        Logflare.Backends.Backend.changeset(%Logflare.Backends.Backend{user_id: user.id}, %{
-          name: "elastic otlp drain",
-          type: :elastic_otlp,
-          config: @valid_config_input
-        })
-
-      assert changeset.valid?, inspect(changeset)
-      assert Ecto.Changeset.get_field(changeset, :type) == :elastic_otlp
-    end
-  end
-
   defp mock_adapter(calls_num \\ 1, function) do
     stub(@tesla_adapter)
 

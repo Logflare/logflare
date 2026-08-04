@@ -35,6 +35,7 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:show_alert_form?, false)
       |> assign(:alert_options, [])
       |> assign(:form_type, nil)
+      |> assign(:elastic_transport, "filebeat")
       |> assign(:show_default_ingest_form?, false)
       |> assign(:default_ingest_sources, [])
       |> assign(:flag_multibackend, Logflare.Utils.flag("multibackend", user))
@@ -138,7 +139,26 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   def handle_event("change_form_type", %{"backend" => %{"type" => type}}, socket) do
-    {:noreply, assign(socket, form_type: type)}
+    socket =
+      socket
+      |> assign(:form_type, type)
+      |> then(fn s ->
+        if type == "elastic" do
+          assign(s, :elastic_transport, "filebeat")
+        else
+          s
+        end
+      end)
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "change_elastic_transport",
+        %{"backend" => %{"config" => %{"transport" => transport}}},
+        socket
+      ) do
+    {:noreply, assign(socket, :elastic_transport, transport)}
   end
 
   def handle_event(
@@ -381,7 +401,6 @@ defmodule LogflareWeb.BackendsLive do
       {"Sentry", :sentry},
       {"Axiom", :axiom},
       {"OTLP", :otlp},
-      {"Elastic OTLP", :elastic_otlp},
       {"Last9", :last9},
       {"Syslog", :syslog}
     ])
@@ -401,6 +420,7 @@ defmodule LogflareWeb.BackendsLive do
     |> assign(:backend, nil)
     |> assign(:connection_status, nil)
     |> assign(:form_type, nil)
+    |> assign(:elastic_transport, "filebeat")
   end
 
   defp refresh_backend(socket, id) do
@@ -433,10 +453,18 @@ defmodule LogflareWeb.BackendsLive do
       end)
       |> Enum.sort_by(& &1.name)
 
+    elastic_transport =
+      if backend.type == :elastic do
+        Logflare.Backends.Adaptor.ElasticAdaptor.transport(backend.config || %{})
+      else
+        "filebeat"
+      end
+
     socket
     |> assign(:backend, backend)
     |> assign(:connection_status, nil)
     |> assign(:form_type, Atom.to_string(backend.type))
+    |> assign(:elastic_transport, elastic_transport)
     |> assign(:default_ingest_sources, default_ingest_sources)
     |> assign(:available_sources, available_sources)
   end
