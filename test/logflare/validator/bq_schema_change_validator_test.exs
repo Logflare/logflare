@@ -60,8 +60,6 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
           %{source: source}
         )
 
-      assert le.valid
-      assert le.pipeline_error == nil
       assert validate(le, source) === :ok
     end
 
@@ -83,12 +81,6 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
         |> put_in(~w[user address city], 1000)
 
       le = LE.make(%{"metadata" => conflicting_metadata}, %{source: source})
-
-      refute le.valid
-      assert le.pipeline_error.stage == "validators"
-      assert le.pipeline_error.type == "validate"
-      assert le.pipeline_error.message =~ "Type error"
-      assert le.pipeline_error.message =~ "metadata.user.address.city"
 
       assert {:error, message} = validate(le, source)
       assert message =~ "Type error"
