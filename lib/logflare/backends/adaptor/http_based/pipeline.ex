@@ -38,6 +38,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
         http: [concurrency: 6, batch_size: 250]
       ],
       context: %{
+        backend_type: :http_based,
         source_id: source.id,
         backend_id: backend.id,
         source_token: source.token,

@@ -82,7 +82,10 @@ defmodule Logflare.BigQuery.PipelineTest do
         end)
 
       assert log =~ "Dropped 1 BigQuery event(s) during retry requeue"
-      assert_receive {^event, ^ref, %{count: 1}, %{source_id: sid, backend_id: nil}}
+
+      assert_receive {^event, ^ref, %{count: 1},
+                      %{source_id: sid, backend_id: nil, backend_type: :bigquery}}
+
       assert sid == source.id
 
       # nothing left to requeue — the event was already gone at lookup time

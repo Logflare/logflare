@@ -969,7 +969,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
 
         assert log =~ "Dropped 1 ClickHouse event(s) during retry requeue"
-        assert_receive {^telemetry_event, ^ref, %{count: 1}, %{backend_id: backend_id}}
+
+        assert_receive {^telemetry_event, ^ref, %{count: 1},
+                        %{backend_id: backend_id, backend_type: :clickhouse}}
+
         assert backend_id == backend.id
 
         # nothing landed in the current generation — the event was already gone at
