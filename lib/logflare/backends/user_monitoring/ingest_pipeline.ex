@@ -35,7 +35,8 @@ defmodule Logflare.Backends.UserMonitoring.IngestPipeline do
           batch_size: batch_size,
           batch_timeout: batch_timeout
         ]
-      ]
+      ],
+      context: %{backend_type: :internal}
     )
   end
 

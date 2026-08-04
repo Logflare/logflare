@@ -62,7 +62,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
           batch_timeout: 200,
           concurrency: concurrency
         ]
-      ]
+      ],
+      context: %{backend_type: :internal}
     )
   end
 

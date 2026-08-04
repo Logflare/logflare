@@ -273,6 +273,8 @@ defmodule Logflare.Telemetry do
         1 ->
           [
             distribution("broadway.processor.message.stop.duration",
+              tags: [:backend_type],
+              tag_values: &broadway_backend_tags/1,
               unit: {:native, :millisecond}
             )
           ]
@@ -280,6 +282,8 @@ defmodule Logflare.Telemetry do
         denominator ->
           [
             distribution("broadway.processor.message.stop.duration",
+              tags: [:backend_type],
+              tag_values: &broadway_backend_tags/1,
               unit: {:native, :millisecond},
               keep: &sample_broadway_processor_message_duration?(&1, denominator)
             )
@@ -288,11 +292,25 @@ defmodule Logflare.Telemetry do
 
     broadway_metrics =
       [
-        distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
-        distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond})
+        distribution("broadway.batcher.stop.duration",
+          tags: [:backend_type],
+          tag_values: &broadway_backend_tags/1,
+          unit: {:native, :millisecond}
+        ),
+        distribution("broadway.batch_processor.stop.duration",
+          tags: [:backend_type],
+          tag_values: &broadway_backend_tags/1,
+          unit: {:native, :millisecond}
+        )
       ] ++
         broadway_processor_message_metrics ++
-        [distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})]
+        [
+          distribution("broadway.processor.stop.duration",
+            tags: [:backend_type],
+            tag_values: &broadway_backend_tags/1,
+            unit: {:native, :millisecond}
+          )
+        ]
 
     application_metrics = [
       distribution("logflare.goth.fetch.stop.duration",
@@ -519,7 +537,9 @@ defmodule Logflare.Telemetry do
           "Ingest requests rejected (429) — pending buffer full (per request, not per event)"
       ),
       last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
-      distribution("logflare.backends.dynamic_pipeline.pipeline_count"),
+      distribution("logflare.backends.dynamic_pipeline.pipeline_count",
+        tags: [:backend_type]
+      ),
       distribution("logflare.ingest.pipeline.stream_batch.stop.duration",
         unit: {:native, :millisecond}
       ),
@@ -779,6 +799,7 @@ defmodule Logflare.Telemetry do
       sum("logflare.ingest_event_queue.requeue_lookup_miss.count",
         event_name: [:logflare, :ingest_event_queue, :requeue_lookup_miss],
         measurement: :count,
+        tags: [:backend_type],
         description:
           "Count of retriable events whose generation-store row was already gone by requeue lookup time"
       ),
@@ -1112,6 +1133,17 @@ defmodule Logflare.Telemetry do
     |> inspect()
     |> String.replace(@number_suffix_regex, "")
   end
+
+  @spec broadway_backend_tags(map()) :: map()
+  defp broadway_backend_tags(%{context: %{backend_type: backend_type} = context})
+       when is_atom(backend_type),
+       do: context
+
+  defp broadway_backend_tags(%{context: %{backend: %{type: backend_type}}})
+       when is_atom(backend_type),
+       do: %{backend_type: backend_type}
+
+  defp broadway_backend_tags(_metadata), do: %{backend_type: :internal}
 
   defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
   defp clickhouse_batch?(_metadata), do: false

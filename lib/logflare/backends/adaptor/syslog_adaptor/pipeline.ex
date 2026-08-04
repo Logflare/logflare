@@ -29,6 +29,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
       context: %{
         source_id: source.id,
         backend_id: backend.id,
+        backend_type: :syslog,
         pool: pool
       }
     )
