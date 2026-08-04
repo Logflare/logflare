@@ -33,7 +33,7 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_event_age_us 72 * 3_600 * 1_000_000
+  @max_event_age_us 24 * 3_600 * 1_000_000
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
 
@@ -697,7 +697,7 @@ defmodule Logflare.Backends do
 
     if dropped_total > 0 do
       Logger.warning(
-        "Dropping #{dropped_total} of #{total} event(s): timestamps outside [-72h, +1h] window",
+        "Dropping #{dropped_total} of #{total} event(s): timestamps outside [-24h, +1h] window",
         source_id: source.token,
         old_events_dropped: dropped_old,
         future_events_dropped: dropped_future,

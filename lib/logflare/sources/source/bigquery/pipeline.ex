@@ -265,7 +265,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         :telemetry.execute(
           [:logflare, :ingest_event_queue, :missing_ids],
           %{count: length(missing)},
-          %{source_id: context.source_id}
+          %{backend_type: :bigquery, source_id: context.source_id}
         )
       end
 

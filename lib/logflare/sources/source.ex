@@ -325,7 +325,7 @@ defmodule Logflare.Sources.Source do
       user = Users.get(source.user_id)
       plan = Billing.get_plan_by_user(user)
 
-      validate_change(changeset, :bigquery_table_ttl, fn :bigquery_table_ttl, ttl ->
+      validate_change(changeset, :retention_days, fn :retention_days, ttl ->
         days = round(plan.limit_source_ttl / :timer.hours(24))
 
         cond do
@@ -333,7 +333,7 @@ defmodule Logflare.Sources.Source do
             []
 
           ttl > days ->
-            [bigquery_table_ttl: "ttl is over your plan limit"]
+            [retention_days: "ttl is over your plan limit"]
 
           true ->
             []

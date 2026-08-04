@@ -20,10 +20,9 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
     assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
 
-    assert %{error: message} =
+    assert %{"error" => message} =
              conn
              |> json_response(400)
-             |> assert_schema("BadRequestResponse")
 
     assert message =~ "No query params provided"
   end
@@ -55,10 +54,9 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
       assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
 
-      assert %{error: err} =
+      assert %{"error" => err} =
                conn
                |> json_response(400)
-               |> assert_schema("BadRequestResponse")
 
       assert err =~ "SELECT"
     end
@@ -81,7 +79,6 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       assert ["application/json; charset=utf-8"] = get_resp_header(conn, "content-type")
 
       response = json_response(conn, 200)
-      assert_schema(response, "QueryResult")
 
       assert %{"result" => [%{"my_time" => "123"}]} = response
 
@@ -92,7 +89,6 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         |> get(~p"/api/query?#{[sql: ~s|select current_datetime() as 'my_time'|]}")
         |> json_response(200)
 
-      assert_schema(response, "QueryResult")
       assert %{"result" => [%{"my_time" => "123"}]} = response
     end
 

@@ -42,8 +42,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @managed_service_account_partition_count 5
   @service_account_prefix "logflare-managed"
-  @reservation_error_regex ~r/reservation/i
   @search_query_timeout_ms 60_000
+  @endpoint_query_timeout_ms 60_000
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
@@ -584,7 +584,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       dryRun: Keyword.get(opts, :dry_run, false),
       query_type: query_type,
       reservation: reservation
-    ] ++ query_timeout_opts(query_type)
+    ] ++ query_timeout_opts(query_type, reservation)
   end
 
   @spec resolve_reservation(
@@ -601,15 +601,23 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defp resolve_reservation(%User{}, _query_type, nil), do: nil
   defp resolve_reservation(%User{}, _query_type, override), do: override
 
-  @spec query_timeout_opts(query_type :: atom() | nil) :: Keyword.t()
-  defp query_timeout_opts(:search) do
+  @spec query_timeout_opts(query_type :: atom() | nil, reservation :: String.t() | nil) ::
+          Keyword.t()
+  defp query_timeout_opts(:search, _reservation) do
     [
       jobTimeoutMs: @search_query_timeout_ms,
       timeoutMs: @search_query_timeout_ms
     ]
   end
 
-  defp query_timeout_opts(_query_type), do: []
+  defp query_timeout_opts(:endpoint, reservation) when is_non_empty_binary(reservation) do
+    [
+      jobTimeoutMs: @endpoint_query_timeout_ms,
+      timeoutMs: @endpoint_query_timeout_ms
+    ]
+  end
+
+  defp query_timeout_opts(_query_type, _reservation), do: []
 
   @spec execute_query_with_context(
           user_id :: integer(),
@@ -716,8 +724,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
             bigquery_project_id: project_id
           )
 
-        maybe_warn_reservation_error(query_error, user, project_id, query_opts)
-
         {:error, query_error}
     end
   end
@@ -799,42 +805,4 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       parameterValue: %Value{value: param}
     }
   end
-
-  @spec maybe_warn_reservation_error(
-          error :: QueryError.t(),
-          user :: User.t(),
-          project_id :: String.t(),
-          query_opts :: Keyword.t()
-        ) :: :ok
-  defp maybe_warn_reservation_error(
-         %QueryError{raw_error: error},
-         %User{} = user,
-         project_id,
-         query_opts
-       ) do
-    with true <- reservation_error?(error),
-         false <- caller_logs_own_errors?(query_opts) do
-      Logger.warning("Possible BigQuery reservation error",
-        user_id: user.id,
-        project_id: project_id,
-        reservation: Keyword.get(query_opts, :reservation),
-        query_type: Keyword.get(query_opts, :query_type),
-        bq_error_message: error["message"]
-      )
-    end
-
-    :ok
-  end
-
-  @spec caller_logs_own_errors?(query_opts :: Keyword.t()) :: boolean()
-  defp caller_logs_own_errors?(query_opts) do
-    Keyword.get(query_opts, :query_type) == :alerts
-  end
-
-  @spec reservation_error?(error :: any()) :: boolean()
-  def reservation_error?(%{"message" => msg}) when is_non_empty_binary(msg) do
-    Regex.match?(@reservation_error_regex, msg)
-  end
-
-  def reservation_error?(_), do: false
 end

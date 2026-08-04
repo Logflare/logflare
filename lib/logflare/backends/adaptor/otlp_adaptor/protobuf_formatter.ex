@@ -23,7 +23,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
 
     response =
       env
-      |> Tesla.put_header("content-type", @protobuf_content_type)
+      |> put_content_type_header()
       |> Tesla.put_body(transform_batch(env.body, source))
       |> Tesla.run(next)
 
@@ -36,6 +36,23 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
       end
     end
   end
+
+  # Strips any pre-existing content-type header case-insensitively before setting ours,
+  # since Tesla.put_header/3 matches keys case-sensitively and would otherwise leave a
+  # user-configured "Content-Type" header alongside this one, sending two content-type
+  # header lines that some receivers (e.g. Envoy-fronted ingests) reject outright.
+  defp put_content_type_header(env) do
+    headers = Enum.reject(env.headers, fn {k, _v} -> String.downcase(k) == "content-type" end)
+    Tesla.put_header(%{env | headers: headers}, "content-type", @protobuf_content_type)
+  end
+
+  @doc """
+  Header names this formatter sets, so `HttpBased.Client` can drop any
+  user-supplied copies and keep itself the single source (see
+  `Logflare.Backends.Adaptor.HttpBased.Headers.drop_reserved/2`).
+  """
+  @spec reserved_headers() :: [String.t()]
+  def reserved_headers, do: ["content-type"]
 
   defp transform_batch(events, source) do
     %ExportLogsServiceRequest{
@@ -112,9 +129,25 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   defp build_log_record_fields({"severity_text", msg}) when is_binary(msg),
     do: [severity_text: msg]
 
-  defp build_log_record_fields({"trace_id", id}) when is_binary(id), do: [trace_id: id]
-  defp build_log_record_fields({"span_id", id}) when is_binary(id), do: [span_id: id]
+  defp build_log_record_fields({"trace_id", id}) when is_binary(id),
+    do: build_id_field(:trace_id, id)
+
+  defp build_log_record_fields({"span_id", id}) when is_binary(id),
+    do: build_id_field(:span_id, id)
+
   defp build_log_record_fields(_unmatched), do: []
+
+  # trace_id/span_id arrive as hex-encoded strings (the standard OTel textual
+  # representation); the protobuf fields require raw bytes, so this must decode
+  # them first or the receiver sees a hex-length-instead-of-byte-length value.
+  # Falls back to sending the raw value as-is if it isn't valid hex, matching
+  # prior behavior rather than dropping the field outright.
+  defp build_id_field(field, hex_id) do
+    case Base.decode16(hex_id, case: :mixed) do
+      {:ok, decoded} -> [{field, decoded}]
+      :error -> [{field, hex_id}]
+    end
+  end
 
   defp make_value(v) when is_binary(v), do: %AnyValue{value: {:string_value, v}}
   defp make_value(v) when is_boolean(v), do: %AnyValue{value: {:bool_value, v}}

@@ -1,11 +1,19 @@
 defmodule LogflareWeb.SourceView do
+  use LogflareWeb, :view
+
   import LogflareWeb.Helpers.Forms
 
+  alias Logflare.Billing.Plan
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias LogflareWeb.Helpers.BqSchema
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Utils
 
-  use LogflareWeb, :view
+  @spec default_source_retention_days(Plan.t()) :: integer()
+  def default_source_retention_days(plan) do
+    Sources.source_ttl_to_days(%Source{}, plan)
+  end
 
   def log_url(route) do
     url = Routes.log_url(LogflareWeb.Endpoint, route) |> URI.parse()

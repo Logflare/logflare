@@ -91,6 +91,24 @@ defmodule Logflare.Networking do
              transport_opts: [timeout: 10_000]
            ]
          ]
+       }},
+      # Dedicated pool for async inserts, isolated from the primary ingest pool. Sized
+      # for a small async cluster: same per-pool connection size, but a
+      # lower pool count since size * count connections all target one load-balanced
+      # endpoint fronting far fewer replicas than a primary.
+      {Finch,
+       name: Logflare.FinchClickHouseAsyncIngest,
+       pools: %{
+         default: [
+           protocols: [:http1],
+           size: min(base * 2, 15),
+           count: min(max(div(base, 4), 1), 2),
+           conn_max_idle_time: 5_000,
+           start_pool_metrics?: true,
+           conn_opts: [
+             transport_opts: [timeout: 10_000]
+           ]
+         ]
        }}
     ]
   end

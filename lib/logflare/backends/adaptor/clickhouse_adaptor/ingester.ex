@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder
   alias Logflare.Backends.Backend
@@ -12,11 +13,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   alias Logflare.LogEvent.TypeDetection
 
   @finch_pool Logflare.FinchClickHouseIngest
+  @async_finch_pool Logflare.FinchClickHouseAsyncIngest
   @max_retries 1
   @initial_delay 2_500
   @max_delay 5_000
   @pool_timeout 8_000
   @receive_timeout 20_000
+  @too_many_parts_marker "Code: 252."
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
@@ -60,8 +63,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @spec do_insert(Keyword.t(), String.t(), TypeDetection.event_type(), iodata(), keyword()) ::
           :ok | {:error, String.t()}
   defp do_insert(connection_opts, table, event_type, request_body, opts) do
-    client = build_client(connection_opts)
-    url = build_request_url(connection_opts, table, event_type, opts)
+    async? = Keyword.get(opts, :async, false)
+    settings = Keyword.delete(opts, :async)
+    client = build_client(connection_opts, async?)
+    url = build_request_url(connection_opts, table, event_type, settings, async?)
 
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
@@ -75,8 +80,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     end
   end
 
-  @spec build_client(Keyword.t()) :: Tesla.Client.t()
-  defp build_client(connection_opts) do
+  @doc false
+  @spec too_many_parts?(term()) :: boolean()
+  def too_many_parts?(reason) when is_binary(reason),
+    do: String.contains?(reason, @too_many_parts_marker)
+
+  def too_many_parts?(_reason), do: false
+
+  @spec build_client(Keyword.t(), boolean()) :: Tesla.Client.t()
+  defp build_client(connection_opts, async?) do
     middleware = [
       {Tesla.Middleware.Headers,
        [{"content-type", "application/octet-stream"}, {"content-encoding", "gzip"}]},
@@ -94,12 +106,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
     adapter =
       {Tesla.Adapter.Finch,
-       name: @finch_pool, pool_timeout: @pool_timeout, receive_timeout: @receive_timeout}
+       name: finch_pool(async?), pool_timeout: @pool_timeout, receive_timeout: @receive_timeout}
 
     Tesla.client(middleware, adapter)
   end
 
+  @spec finch_pool(boolean()) :: module()
+  defp finch_pool(false), do: @finch_pool
+  defp finch_pool(true), do: @async_finch_pool
+
   @spec retriable?({:ok, Tesla.Env.t()} | {:error, term()}) :: boolean()
+  defp retriable?({:ok, %Tesla.Env{status: status, body: body}})
+       when status >= 500 and is_binary(body),
+       do: not too_many_parts?(body)
+
   defp retriable?({:ok, %Tesla.Env{status: status}}) when status >= 500, do: true
   defp retriable?({:ok, %Tesla.Env{status: 429}}), do: true
   defp retriable?({:ok, _env}), do: false
@@ -344,7 +364,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
        port: port,
        database: database,
        username: username,
-       password: password
+       password: password,
+       async_insert_cluster_url: Map.get(config, :async_insert_cluster_url)
      ]}
   end
 
@@ -352,20 +373,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     {:error, "Unable to build connection options"}
   end
 
+  @spec insert_origin(Keyword.t(), boolean()) ::
+          {String.t(), String.t() | nil, pos_integer() | nil}
+  defp insert_origin(connection_opts, async?) do
+    # async inserts with a configured dedicated cluster URL target it; everything else
+    # (sync, or async with no dedicated URL) targets the primary URL.
+    url = dedicated_async_url(connection_opts, async?) || Keyword.get(connection_opts, :url)
+    EndpointUtils.origin(url, Keyword.get(connection_opts, :port))
+  end
+
+  @spec dedicated_async_url(Keyword.t(), boolean()) :: String.t() | nil
+  defp dedicated_async_url(connection_opts, true) do
+    case Keyword.get(connection_opts, :async_insert_cluster_url) do
+      url when is_non_empty_binary(url) -> url
+      _ -> nil
+    end
+  end
+
+  defp dedicated_async_url(_connection_opts, false), do: nil
+
   @spec build_request_url(
           connection_opts :: Keyword.t(),
           table :: String.t(),
           TypeDetection.event_type(),
-          opts :: keyword()
+          opts :: keyword(),
+          async? :: boolean()
         ) :: String.t()
-  defp build_request_url(connection_opts, table, event_type, opts) do
-    base_url = Keyword.get(connection_opts, :url)
+  defp build_request_url(connection_opts, table, event_type, opts, async?) do
+    {scheme, host, port} = insert_origin(connection_opts, async?)
     database = Keyword.get(connection_opts, :database)
-
-    uri = URI.parse(base_url)
-    scheme = uri.scheme || "http"
-    host = uri.host
-    port = Keyword.get(connection_opts, :port, default_port(scheme))
 
     columns = columns_for_type(event_type) |> Enum.join(", ")
     query = "INSERT INTO #{database}.#{table} (#{columns}) FORMAT RowBinary"
@@ -390,7 +426,4 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       Map.put(acc, to_string(key), to_string(value))
     end)
   end
-
-  defp default_port("https"), do: 8443
-  defp default_port(_), do: 8123
 end

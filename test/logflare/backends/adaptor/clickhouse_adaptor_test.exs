@@ -8,12 +8,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup, as: NativePoolSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
@@ -209,38 +205,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  describe "clickhouse_cloud?/1" do
-    test "returns true for ClickHouse Cloud URLs" do
-      backend = %Backend{config: %{url: "https://abc123.eu-central-1.aws.clickhouse.cloud"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns true for GCP Cloud URLs" do
-      backend = %Backend{config: %{url: "https://xyz.europe-west4.gcp.clickhouse.cloud"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns true regardless of port in URL" do
-      backend = %Backend{config: %{url: "https://foo.clickhouse.cloud:8443"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false for self-hosted URLs" do
-      backend = %Backend{config: %{url: "http://localhost:8123"}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false for similar but non-Cloud domains" do
-      backend = %Backend{config: %{url: "https://clickhouse.cloud.example.com"}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false when config has no url" do
-      backend = %Backend{config: %{}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-  end
-
   describe "redact_config/1" do
     test "redacts password field" do
       config = %{password: "secret123", database: "logs"}
@@ -284,6 +248,65 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         cast_and_validate_config(read_only_url: "https://read-cluster.clickhouse.cloud:8443")
 
       assert changeset.valid?
+    end
+
+    test "use_async_inserts_for_small_batches defaults to false when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_for_small_batches) == false
+    end
+
+    test "casts use_async_inserts_for_small_batches when provided" do
+      changeset = cast_and_validate_config(use_async_inserts_for_small_batches: true)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_for_small_batches) == true
+    end
+
+    test "async_insert_max_rows defaults to 1000 when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_max_rows) == 1_000
+    end
+
+    test "casts a custom async_insert_max_rows" do
+      changeset = cast_and_validate_config(async_insert_max_rows: 500)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_max_rows) == 500
+    end
+
+    test "rejects a non-positive async_insert_max_rows" do
+      changeset = cast_and_validate_config(async_insert_max_rows: 0)
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :async_insert_max_rows)
+    end
+
+    test "async_insert_cluster_url defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_cluster_url) == nil
+    end
+
+    test "casts a valid async_insert_cluster_url" do
+      changeset =
+        cast_and_validate_config(async_insert_cluster_url: "https://async.clickhouse.cloud:8443")
+
+      assert changeset.valid?
+
+      assert Ecto.Changeset.get_field(changeset, :async_insert_cluster_url) ==
+               "https://async.clickhouse.cloud:8443"
+    end
+
+    test "rejects an invalid async_insert_cluster_url format" do
+      changeset = cast_and_validate_config(async_insert_cluster_url: "not-a-url")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :async_insert_cluster_url)
     end
   end
 
@@ -364,6 +387,80 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "passes when async is enabled and async_insert_cluster_url points to a valid cluster" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://localhost:8123"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when async is enabled but async_insert_cluster_url is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://localhost:19999"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "skips the async check when async is disabled even if the cluster URL is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: false,
+            async_insert_cluster_url: "http://localhost:19999"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+  end
+
+  describe "insert_log_events_compressed/4 failure logging" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "logs the dedicated async cluster host when an async insert fails" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://async-cluster.local:9000"
+          }
+        )
+
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 400, body: "boom"}}
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log([format: "$metadata$message", metadata: [:host]], fn ->
+          assert {:error, _} =
+                   ClickHouseAdaptor.insert_log_events_compressed(
+                     backend,
+                     :log,
+                     :zlib.gzip(""),
+                     async: true
+                   )
+        end)
+
+      assert log =~ "host=async-cluster.local"
+      refute log =~ "localhost"
     end
   end
 
@@ -475,45 +572,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "handles empty event list", %{backend: backend} do
       result = ClickHouseAdaptor.insert_log_events(backend, [], :log)
       assert :ok = result
-    end
-
-    test "insert_log_events/3 routes through native pool when enabled", %{
-      source: source,
-      backend: query_backend
-    } do
-      {_source, native_backend} =
-        setup_clickhouse_test(
-          source: source,
-          config: %{insert_protocol: "native", native_port: 9000}
-        )
-
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(native_backend, :log)
-
-      ddl = QueryTemplates.create_table_statement(table_name, :log, ttl_days: 0)
-      {:ok, {_, _}} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
-
-      log_event = build_mapped_log_event(source: source, message: "native route test")
-
-      assert :ok = ClickHouseAdaptor.insert_log_events(native_backend, [log_event], :log)
-
-      pool_pid = GenServer.whereis(NativeIngester.Pool.via(native_backend))
-      assert is_pid(pool_pid)
-
-      {:ok, {rows, bytes}} =
-        ClickHouseAdaptor.execute_ch_query(
-          query_backend,
-          "SELECT event_message, ingested_at FROM #{table_name}"
-        )
-
-      assert length(rows) == 1
-      assert bytes > 0
-      assert Enum.at(rows, 0)["event_message"] == "native route test"
-      assert %NaiveDateTime{} = Enum.at(rows, 0)["ingested_at"]
-
-      on_exit(fn ->
-        NativePoolSup.stop_pool(native_backend)
-        ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
-      end)
     end
 
     test "insert_log_events/3 inserts logs with Map attributes", %{
@@ -1109,20 +1167,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  describe "resolve_pipeline_count/3" do
-    test "scales up when startup contains a complete batch-key group" do
+  describe "resolve_pipeline_count/2" do
+    test "scales up when every queue is above the scaling threshold" do
       state = %{pipeline_count: 3, last_count_decrease: nil}
-      batch_size = Pipeline.max_batch_size()
 
       lens = [
-        {{:consolidated, 1, nil}, batch_size},
-        {{:consolidated, 1, self()}, batch_size},
-        {{:consolidated, 1, self()}, batch_size},
-        {{:consolidated, 1, self()}, batch_size}
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 16_000},
+        {{:consolidated, 1, self()}, 16_000},
+        {{:consolidated, 1, self()}, 16_000}
       ]
 
-      counts = %{{:fresh, :log, 20_594} => batch_size}
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, counts) == 4
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 4
     end
 
     test "does not scale up when only one queue is over threshold and the rest are idle" do
@@ -1136,22 +1192,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         {{:consolidated, 1, self()}, 0}
       ]
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 4
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 4
     end
 
     test "does not scale up on a single outlier even when it drags the fleet average over threshold" do
       state = %{pipeline_count: 2, last_count_decrease: nil}
 
+      # [30_000, 0] averages to exactly @scaling_threshold despite one queue being
+      # completely idle — averaging alone would incorrectly scale up here.
       lens = [
         {{:consolidated, 1, nil}, 0},
         {{:consolidated, 1, self()}, 30_000},
         {{:consolidated, 1, self()}, 0}
       ]
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 2
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 2
     end
 
-    test "does not scale up for a startup burst smaller than one full batch" do
+    test "scales up when the startup queue has events, regardless of the average" do
       state = %{pipeline_count: 2, last_count_decrease: nil}
 
       lens = [
@@ -1159,8 +1217,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         {{:consolidated, 1, self()}, 0}
       ]
 
-      counts = %{{:fresh, :log, 20_594} => 500}
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, counts) == 2
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
     end
 
     test "scales down when every queue is well below threshold and enough time has passed" do
@@ -1175,7 +1232,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         {{:consolidated, 1, self()}, 0}
       ]
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 2
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 2
     end
 
     test "does not scale down again within 30 seconds of the last decrease" do
@@ -1187,29 +1244,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         {{:consolidated, 1, self()}, 0}
       ]
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 3
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
     end
 
     test "holds steady when nothing warrants scaling up or down" do
       state = %{pipeline_count: 3, last_count_decrease: nil}
 
-      # each queue must sit above @scaling_threshold / 10 (the scale-down cutoff) to
-      # avoid scaling down, and total pending must stay under @scaling_threshold to
-      # avoid scaling up
       lens = [
         {{:consolidated, 1, nil}, 0},
-        {{:consolidated, 1, self()}, 10_000},
-        {{:consolidated, 1, self()}, 10_000},
-        {{:consolidated, 1, self()}, 10_000}
+        {{:consolidated, 1, self()}, 2_000},
+        {{:consolidated, 1, self()}, 2_000},
+        {{:consolidated, 1, self()}, 2_000}
       ]
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 3
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
     end
 
     test "handles an empty lens list without dividing by zero" do
       state = %{pipeline_count: 1, last_count_decrease: nil}
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, [], %{}) == 1
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, []) == 1
     end
   end
 

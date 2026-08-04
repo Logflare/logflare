@@ -74,6 +74,19 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert %{gzip: false, headers: %{"x-test" => "true"}} =
                Ecto.Changeset.apply_changes(changeset)
     end
+
+    test "downcases submitted header names" do
+      changeset =
+        Adaptor.cast_and_validate_config(@subject, %{
+          @valid_config_input
+          | "headers" => %{"Content-Type" => "application/json", "X-Custom" => "v"}
+        })
+
+      assert changeset.valid?
+
+      assert %{headers: %{"content-type" => "application/json", "x-custom" => "v"}} =
+               Ecto.Changeset.apply_changes(changeset)
+    end
   end
 
   describe "test_connection/1" do
@@ -181,6 +194,144 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert_receive {^ref, body}, 5000
       assert request = Protobuf.decode(body, ExportLogsServiceRequest)
       assert %{resource_logs: [%{scope_logs: [%{log_records: [_, _, _]}]}]} = request
+    end
+
+    test "hex-decodes trace_id and span_id into raw protobuf bytes", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, IO.iodata_to_binary(env.body)})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      trace_id = "0102030405060708090a0b0c0d0e0f10"
+      span_id = "0102030405060708"
+
+      log_event =
+        build(:log_event,
+          source: source,
+          trace_id: trace_id,
+          span_id: span_id,
+          timestamp: System.system_time(:microsecond)
+        )
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+      assert_receive {^ref, body}, 5000
+
+      assert %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+               Protobuf.decode(body, ExportLogsServiceRequest)
+
+      assert log_record.trace_id == Base.decode16!(trace_id, case: :mixed)
+      assert byte_size(log_record.trace_id) == 16
+      assert log_record.span_id == Base.decode16!(span_id, case: :mixed)
+      assert byte_size(log_record.span_id) == 8
+    end
+
+    test "falls back to the raw value rather than raising when not valid hex", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, IO.iodata_to_binary(env.body)})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      log_event =
+        build(:log_event,
+          source: source,
+          trace_id: "not-valid-hex",
+          timestamp: System.system_time(:microsecond)
+        )
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+      assert_receive {^ref, body}, 5000
+
+      assert %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+               Protobuf.decode(body, ExportLogsServiceRequest)
+
+      assert log_record.trace_id == "not-valid-hex"
+    end
+  end
+
+  describe "content-type header handling" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: %{@valid_config | headers: %{"Content-Type" => "application/x-protobuf"}}
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}})
+      :timer.sleep(250)
+
+      [source: source]
+    end
+
+    test "does not duplicate content-type header when one is already configured", %{
+      source: source
+    } do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, env.headers})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      log_event = build(:log_event, source: source, timestamp: System.system_time(:microsecond))
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+      assert_receive {^ref, headers}, 5000
+
+      content_type_headers =
+        Enum.filter(headers, fn {k, _v} -> String.downcase(k) == "content-type" end)
+
+      assert content_type_headers == [{"content-type", "application/x-protobuf"}]
+    end
+  end
+
+  describe "reserved headers" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: %{@valid_config | headers: %{"Content-Type" => "application/json"}}
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}})
+      :timer.sleep(250)
+      [source: source]
+    end
+
+    test "drops a user-supplied content-type so the formatter's is the only one", %{
+      source: source
+    } do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, env.headers})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      log_event = build(:log_event, source: source, timestamp: System.system_time(:microsecond))
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+      assert_receive {^ref, headers}, 5000
+
+      content_types =
+        for {key, value} <- headers, String.downcase(key) == "content-type", do: value
+
+      assert content_types == ["application/x-protobuf"]
     end
   end
 
