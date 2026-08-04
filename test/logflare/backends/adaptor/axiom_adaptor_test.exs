@@ -119,6 +119,14 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       this = self()
       ref = make_ref()
 
+      broadway_duration_events = [
+        [:broadway, :batcher, :stop],
+        [:broadway, :batch_processor, :stop],
+        [:broadway, :processor, :message, :stop],
+        [:broadway, :processor, :stop]
+      ]
+
+      Enum.each(broadway_duration_events, &TestUtils.attach_forwarder/1)
       TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
 
       mock_adapter(fn env ->
@@ -148,6 +156,18 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
 
       assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
                       _measurements, %{backend_type: :axiom}}
+
+      metrics = Logflare.Telemetry.metrics()
+
+      for event <- broadway_duration_events do
+        assert_receive {:telemetry_event, ^event, %{duration: duration},
+                        %{context: %{backend_type: :axiom}} = metadata},
+                       5_000
+
+        assert is_integer(duration)
+        assert %{tag_values: tag_values} = Enum.find(metrics, &(&1.event_name == event))
+        assert tag_values.(metadata) == %{backend_type: :axiom}
+      end
 
       assert json = :zlib.gunzip(gzipped)
       assert [log] = Jason.decode!(json)
