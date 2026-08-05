@@ -12,7 +12,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
     access_key_id: "aws_key_id",
     secret_access_key: "aws_secret_key",
     namespace: "my_namespace",
-    batch_timeout: 1_000
+    batch_timeout: 5_000
   }
 
   describe "cast_config/2 and validate_config/1" do
@@ -43,7 +43,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
 
       assert %Ecto.Changeset{valid?: false} = cs
 
-      assert {_message, [validation: :number, kind: :greater_than_or_equal_to, number: 1_000]} =
+      assert {_message, [validation: :number, kind: :greater_than_or_equal_to, number: 5_000]} =
                cs.errors[:batch_timeout]
     end
 
@@ -51,12 +51,12 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
       cs =
         Adaptor.cast_and_validate_config(
           S3TablesAdaptor,
-          Map.put(@valid_config, :batch_timeout, 5_001)
+          Map.put(@valid_config, :batch_timeout, 60_001)
         )
 
       assert %Ecto.Changeset{valid?: false} = cs
 
-      assert {_message, [validation: :number, kind: :less_than_or_equal_to, number: 5_000]} =
+      assert {_message, [validation: :number, kind: :less_than_or_equal_to, number: 60_000]} =
                cs.errors[:batch_timeout]
     end
   end

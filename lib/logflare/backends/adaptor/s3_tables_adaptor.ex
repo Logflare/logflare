@@ -19,8 +19,8 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor do
 
   @behaviour Adaptor
 
-  @min_batch_timeout 1_000
-  @max_batch_timeout 5_000
+  @min_batch_timeout 5_000
+  @max_batch_timeout 60_000
 
   @doc false
   def child_spec(arg) do
