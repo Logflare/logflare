@@ -23,7 +23,6 @@ defmodule Logflare.Backends.BroadwayContextTest do
   defmodule StorageStub do
   end
 
-  setup :set_mimic_global
   setup :verify_on_exit!
 
   setup do

@@ -299,9 +299,13 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   defmodule Pipeline do
     @moduledoc false
     use Broadway
+
+    import Logflare.Utils.Guards, only: [is_atom_value: 1]
+
     alias Broadway.Message
-    alias Logflare.Backends.BufferProducer
     alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
+    alias Logflare.Backends.Backend
+    alias Logflare.Backends.BufferProducer
 
     def start_link(args) do
       Broadway.start_link(__MODULE__,
@@ -327,7 +331,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           http: [concurrency: 6, batch_size: 250]
         ],
         context: %{
-          backend_type: (args.backend && args.backend.type) || :webhook,
+          backend_type: backend_type(args.backend),
           startup_config: args.config,
           source_id: args.source.id,
           backend_id: Map.get(args.backend || %{}, :id),
@@ -337,6 +341,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         }
       )
     end
+
+    @spec backend_type(Backend.t() | nil) :: atom()
+    defp backend_type(%Backend{type: type}) when is_atom_value(type), do: type
+    defp backend_type(_backend), do: :webhook
 
     # see the implementation for Backends.via_source/2 for how tuples are used to identify child processes
     def process_name({:via, module, {registry, identifier}}, base_name) do
