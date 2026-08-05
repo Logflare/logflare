@@ -28,6 +28,19 @@ defmodule Logflare.BigQuery.PipelineTest do
       {:ok, source: source}
     end
 
+    test "configures BigQuery telemetry tags", %{source: source} do
+      backend = build(:backend, id: 301, type: :bigquery)
+
+      TestUtils.assert_broadway_telemetry_tags(%{backend_type: :bigquery}, fn ->
+        Pipeline.start_link(
+          name: :bigquery_telemetry_tags_test,
+          source: source,
+          backend: backend,
+          pipeline_ref: make_ref()
+        )
+      end)
+    end
+
     test "ack will requeue failed events", %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)

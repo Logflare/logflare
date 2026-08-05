@@ -106,6 +106,16 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     end
   end
 
+  describe "pipeline telemetry tags" do
+    setup :backend_data
+
+    test "uses the concrete backend type", %{source: source, backend: backend} do
+      TestUtils.assert_broadway_telemetry_tags(%{backend_type: :axiom}, fn ->
+        HttpBased.Pipeline.start_link(source, backend, HttpBased.Client)
+      end)
+    end
+  end
+
   describe "logs ingestion" do
     setup :backend_data
 

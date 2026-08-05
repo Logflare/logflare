@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.S3Adaptor
+  alias Logflare.Backends.Adaptor.S3Adaptor.Pipeline
 
   doctest S3Adaptor
 
@@ -13,6 +14,17 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
     secret_access_key: "SECRET",
     batch_timeout: 1_000
   }
+
+  test "configures S3 telemetry tags" do
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :s3}, fn ->
+      Pipeline.start_link(
+        pipeline_name: :s3_telemetry_tags_test,
+        source_id: 101,
+        backend_id: 301,
+        batch_timeout: 1_000
+      )
+    end)
+  end
 
   describe "validate_config/1 endpoint allowlist (check enabled, default)" do
     setup do

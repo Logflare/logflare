@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor.SyslogAdaptor
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline
   alias Logflare.Backends.IngestEventQueue
 
   @moduletag :telegraf
@@ -13,6 +14,20 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
       if File.exists?(@telegraf_output_path) do
         File.write!(@telegraf_output_path, _empty = "")
       end
+    end)
+  end
+
+  test "configures Syslog telemetry tags" do
+    source = build(:source, id: 101)
+    backend = build(:backend, id: 301, type: :syslog)
+
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :syslog}, fn ->
+      Pipeline.start_link(
+        name: :syslog_telemetry_tags_test,
+        source: source,
+        backend: backend,
+        pool: :test_pool
+      )
     end)
   end
 

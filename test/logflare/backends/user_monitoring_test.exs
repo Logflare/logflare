@@ -11,6 +11,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Backends.QueryError
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring
+  alias Logflare.Backends.UserMonitoring.IngestPipeline
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
@@ -37,6 +38,12 @@ defmodule Logflare.Backends.UserMonitoringTest do
     |> Enum.each(&start_supervised!/1)
 
     :ok
+  end
+
+  test "configures user-monitoring telemetry tags" do
+    TestUtils.assert_broadway_telemetry_tags(%{pipeline: IngestPipeline}, fn ->
+      IngestPipeline.start_link(metric_store_name: :user_monitoring_telemetry_tags_test)
+    end)
   end
 
   describe "logs" do
