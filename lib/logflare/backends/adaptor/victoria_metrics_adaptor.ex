@@ -68,7 +68,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
       headers: headers,
       format_batch: &format_batch/1,
       gzip: false,
-      http: "http1"
+      http: "http1",
+      allow_private_destinations: Map.get(config, :allow_private_destinations, false)
     }
   end
 

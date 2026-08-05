@@ -240,11 +240,15 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       source =
         insert(:source, user: user, name: "vm_e2e_#{System.unique_integer([:positive])}")
 
+      # The vm service is on loopback, which SSRFProtection blocks by default.
+      # `allow_private_destinations` opts this pipeline out. It is absent from
+      # cast_config/2, so it cannot be set through normal backend creation —
+      # the factory reaches it only because it bypasses Backend.changeset/2.
       backend =
         insert(:backend,
           type: :victoria_metrics,
           sources: [source],
-          config: %{url: @vm_remote_write_url}
+          config: %{url: @vm_remote_write_url, allow_private_destinations: true}
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})

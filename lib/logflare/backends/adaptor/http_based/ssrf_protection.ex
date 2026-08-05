@@ -1,11 +1,30 @@
 defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtection do
-  @moduledoc false
+  @moduledoc """
+  Rejects requests targeting private or reserved IP addresses.
+
+  Accepts an `:allow_private` middleware option so individual pipelines can opt
+  out of the check — used by backends whose destination is legitimately on a
+  private network (e.g. a self-hosted service reachable only over the internal
+  network, or a docker-compose service on loopback during integration tests).
+
+  Defaults to enforcing. Only disable it for pipelines whose destination is not
+  user-controlled, since the check is what prevents a user-supplied URL from
+  reaching internal services.
+  """
   @behaviour Tesla.Middleware
 
   alias Logflare.Utils.SSRF
 
   @impl Tesla.Middleware
-  def call(env, next, _opts) do
+  def call(env, next, opts) do
+    if Keyword.get(List.wrap(opts), :allow_private, false) do
+      Tesla.run(env, next)
+    else
+      enforce(env, next)
+    end
+  end
+
+  defp enforce(env, next) do
     uri = URI.parse(env.url)
 
     case SSRF.safe_resolve(uri.host) do
