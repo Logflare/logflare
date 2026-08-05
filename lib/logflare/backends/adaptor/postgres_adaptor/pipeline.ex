@@ -13,6 +13,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
 
   @spec start_link(PostgresAdaptor.t()) :: {:ok, pid()}
   def start_link(adaptor_state) do
+    context = %{
+      adaptor_state
+      | telemetry_tags: %{backend_type: adaptor_state.backend.type}
+    }
+
     Broadway.start_link(__MODULE__,
       name: adaptor_state.pipeline_name,
       producer: [
@@ -28,7 +33,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
       batchers: [
         pg: [concurrency: 5, batch_size: 350]
       ],
-      context: adaptor_state
+      context: context
     )
   end
 

@@ -1,3 +1,34 @@
+defmodule Logflare.Backends.Adaptor.WebhookAdaptorPipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline
+  alias Logflare.Backends.Backend
+  alias Logflare.Sources.Source
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  setup do
+    source = %Source{id: 101, user_id: 201}
+    backend = %Backend{id: 301, type: :datadog}
+    [source: source, backend: backend]
+  end
+
+  test "uses the concrete backend type", %{source: source, backend: backend} do
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :datadog}, fn ->
+      Pipeline.start_link(%{source: source, backend: backend, config: %{}})
+    end)
+  end
+
+  test "falls back to webhook without a backend", %{source: source} do
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :webhook}, fn ->
+      Pipeline.start_link(%{source: source, backend: nil, config: %{}})
+    end)
+  end
+end
+
 defmodule Logflare.Backends.WebhookAdaptorTest do
   @moduledoc false
   use Logflare.DataCase

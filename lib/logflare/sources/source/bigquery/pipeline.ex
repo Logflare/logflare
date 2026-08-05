@@ -87,6 +87,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             ]
           ],
           context: %{
+            telemetry_tags: %{backend_type: :bigquery},
             bigquery_project_id: args[:bigquery_project_id],
             bigquery_dataset_id: args[:bigquery_dataset_id],
             source_token: source.token,
@@ -607,7 +608,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :telemetry.execute(
       [:logflare, :ingest_event_queue, :requeue_lookup_miss],
       %{count: missing_count},
-      %{source_id: sid, backend_id: bid}
+      %{source_id: sid, backend_id: bid, backend_type: :bigquery}
     )
   end
 

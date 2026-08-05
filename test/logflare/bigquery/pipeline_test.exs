@@ -1,3 +1,30 @@
+defmodule Logflare.BigQuery.PipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Backend
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "configures BigQuery telemetry tags" do
+    source = %Source{id: 101}
+    backend = %Backend{id: 301, type: :bigquery}
+
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :bigquery}, fn ->
+      Pipeline.start_link(
+        name: :bigquery_telemetry_tags_test,
+        source: source,
+        backend: backend,
+        pipeline_ref: make_ref()
+      )
+    end)
+  end
+end
+
 defmodule Logflare.BigQuery.PipelineTest do
   @moduledoc false
   use Logflare.DataCase
@@ -82,7 +109,10 @@ defmodule Logflare.BigQuery.PipelineTest do
         end)
 
       assert log =~ "Dropped 1 BigQuery event(s) during retry requeue"
-      assert_receive {^event, ^ref, %{count: 1}, %{source_id: sid, backend_id: nil}}
+
+      assert_receive {^event, ^ref, %{count: 1},
+                      %{source_id: sid, backend_id: nil, backend_type: :bigquery}}
+
       assert sid == source.id
 
       # nothing left to requeue — the event was already gone at lookup time
