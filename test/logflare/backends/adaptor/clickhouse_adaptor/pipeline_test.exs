@@ -1,3 +1,23 @@
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
+  alias Logflare.Backends.Backend
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "configures ClickHouse telemetry tags" do
+    backend = %Backend{id: 301, type: :clickhouse}
+
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :clickhouse}, fn ->
+      Pipeline.start_link(name: :clickhouse_telemetry_tags_test, backend: backend)
+    end)
+  end
+end
+
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   use Logflare.DataCase, async: false
 
@@ -232,12 +252,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     test "retains 64 batches of in-flight capacity independently of insert concurrency" do
       assert Pipeline.max_in_flight() == 64 * Pipeline.max_batch_size()
       assert Pipeline.max_in_flight() == 3_840_000
-    end
-
-    test "configures ClickHouse telemetry tags", %{backend: backend} do
-      TestUtils.assert_broadway_telemetry_tags(%{backend_type: :clickhouse}, fn ->
-        Pipeline.start_link(name: :clickhouse_telemetry_tags_test, backend: backend)
-      end)
     end
   end
 
