@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Tesla.MockAdapter
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsPartialSuccess
@@ -134,9 +135,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
   describe "logs ingestion" do
     setup :backend_data
 
-    setup %{source: source, backend: backend} do
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(250)
+    setup %{source: source} do
+      start_supervised!({SourceSup, source})
       :ok
     end
 
