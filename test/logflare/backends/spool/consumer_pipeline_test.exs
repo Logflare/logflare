@@ -11,7 +11,37 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.TestUtils
 
-  setup :set_mimic_global
+  defmodule QueueStub do
+    def resolve(name), do: {:ok, name}
+  end
+
+  defmodule StorageStub do
+  end
+
+  setup :verify_on_exit!
+
+  test "configures spool-consumer telemetry tags" do
+    previous_spool_config = Application.get_env(:logflare, :spool)
+
+    Application.put_env(:logflare, :spool,
+      bucket: "test-bucket",
+      queue_name: "test-queue",
+      queue_mod: QueueStub,
+      storage_mod: StorageStub
+    )
+
+    on_exit(fn ->
+      if previous_spool_config do
+        Application.put_env(:logflare, :spool, previous_spool_config)
+      else
+        Application.delete_env(:logflare, :spool)
+      end
+    end)
+
+    TestUtils.assert_broadway_telemetry_tags(%{pipeline: ConsumerPipeline}, fn ->
+      ConsumerPipeline.start_link(name: :spool_consumer_telemetry_tags_test)
+    end)
+  end
 
   defp record(source_id, event_id, extra_body \\ %{}) do
     body =

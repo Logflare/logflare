@@ -233,6 +233,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert Pipeline.max_in_flight() == 64 * Pipeline.max_batch_size()
       assert Pipeline.max_in_flight() == 3_840_000
     end
+
+    test "configures ClickHouse telemetry tags", %{backend: backend} do
+      TestUtils.assert_broadway_telemetry_tags(%{backend_type: :clickhouse}, fn ->
+        Pipeline.start_link(name: :clickhouse_telemetry_tags_test, backend: backend)
+      end)
+    end
   end
 
   describe "process_name/2" do

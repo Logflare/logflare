@@ -467,6 +467,23 @@ defmodule Logflare.TestUtils do
   def random_pos_integer(limit \\ 1000), do: :rand.uniform(limit)
 
   @doc """
+  Asserts that a pipeline configures the expected static Broadway telemetry tags.
+
+  The Broadway start is mocked in the calling test process, so no topology is started.
+  """
+  @spec assert_broadway_telemetry_tags(map(), (-> term())) :: :ok
+  def assert_broadway_telemetry_tags(expected_tags, start_pipeline) do
+    Mimic.expect(Broadway, :start_link, fn _module, opts ->
+      context = Keyword.fetch!(opts, :context)
+      assert Map.fetch!(context, :telemetry_tags) == expected_tags
+      {:ok, self()}
+    end)
+
+    assert {:ok, _pid} = start_pipeline.()
+    :ok
+  end
+
+  @doc """
   Sends a message and waits until the receiver handles it.
 
   Messages from this process are delivered in order, so the synchronous state request acts as a
