@@ -441,10 +441,27 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
       value -> String.to_float(value)
     end
 
+  # A JSON array of `{"endpoint": "https://...", "headers": {"x-api-key": "..."}}`
+  # objects, sent to in addition to LOGFLARE_OTEL_ENDPOINT for metrics only
+  # (see Logflare.Telemetry.MultiEndpointMetricsExporter).
+  otel_metrics_extra_endpoints =
+    case System.get_env("LOGFLARE_OTEL_METRICS_EXTRA_ENDPOINTS") do
+      nil ->
+        []
+
+      json ->
+        json
+        |> Jason.decode!()
+        |> Enum.map(fn %{"endpoint" => endpoint} = entry ->
+          %{otlp_endpoint: endpoint, otlp_headers: Map.get(entry, "headers", %{})}
+        end)
+    end
+
   config :logflare,
     opentelemetry_enabled?: true,
     ingest_sample_ratio: ingest_sample_ratio,
-    endpoint_sample_ratio: endpoint_sample_ratio
+    endpoint_sample_ratio: endpoint_sample_ratio,
+    otel_metrics_extra_endpoints: otel_metrics_extra_endpoints
 
   logflare_trace_metadata =
     ["service.cluster": System.get_env("LOGFLARE_METADATA_CLUSTER")]

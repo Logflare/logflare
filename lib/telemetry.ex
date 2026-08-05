@@ -5,6 +5,8 @@ defmodule Logflare.Telemetry do
   import Logflare.Utils, only: [ets_info: 1]
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
+  alias Logflare.Telemetry.MultiEndpointMetricsExporter
+
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
   context_caches_with_metrics = Logflare.ContextCache.Supervisor.list_caches_with_metrics()
@@ -43,6 +45,7 @@ defmodule Logflare.Telemetry do
           |> Keyword.put(:otlp_concurrent_requests, max(base * 4, 50))
           |> Keyword.put(:spawn_opt, fullsweep_after: 10_000)
           |> Keyword.put(:hibernate_after, 5_000)
+          |> put_multi_endpoint_export_callback()
 
         [{OtelMetricExporter, otel_exporter_opts}]
       else
@@ -55,6 +58,20 @@ defmodule Logflare.Telemetry do
       ] ++ otel_exporter
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  # Only overrides the exporter's default single-endpoint HTTP export when
+  # extra endpoints are configured, so the common case is unaffected.
+  @spec put_multi_endpoint_export_callback(keyword()) :: keyword()
+  defp put_multi_endpoint_export_callback(otel_exporter_opts) do
+    case Application.get_env(:logflare, :otel_metrics_extra_endpoints, []) do
+      [] ->
+        otel_exporter_opts
+
+      extra_endpoints ->
+        callback = &MultiEndpointMetricsExporter.export_metrics(&1, &2, extra_endpoints)
+        Keyword.put(otel_exporter_opts, :export_callback, callback)
+    end
   end
 
   @spec resource() :: map()
