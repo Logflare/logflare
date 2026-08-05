@@ -1,9 +1,10 @@
 defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
-  alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Tesla.MockAdapter
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
@@ -107,8 +108,8 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
   describe "logs ingestion" do
     setup :backend_data
 
-    setup %{source: source, backend: backend} do
-      start_supervised!({AdaptorSupervisor, {source, backend}})
+    setup %{source: source} do
+      start_supervised!({SourceSup, source})
       :ok
     end
 
@@ -128,7 +129,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
 
       log_events = build_list(3, :log_event, source: source)
 
-      assert {:ok, _} = enqueue_backend_logs(log_events, source)
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
       assert_receive {^ref, body}, 5000
       assert request = Protobuf.decode(body, ExportLogsServiceRequest)
       assert %{resource_logs: [%{scope_logs: [%{log_records: [_, _, _]}]}]} = request

@@ -1,9 +1,10 @@
 defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Backends.AdaptorSupervisor
 
   @subject Logflare.Backends.Adaptor.ElasticAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
@@ -63,7 +64,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
           config: %{url: "http://localhost:1234"}
         )
 
-      start_supervised!({AdaptorSupervisor, {source, backend}})
+      start_supervised!({SourceSup, source})
       [backend: backend, source: source]
     end
 
@@ -79,7 +80,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
 
       le = build(:log_event, source: source)
 
-      assert {:ok, _} = enqueue_backend_logs([le], source)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive ^ref, 2000
     end
 
@@ -95,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
 
       le = build(:log_event, source: source, some: "key")
 
-      assert {:ok, _} = enqueue_backend_logs([le], source)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [event]}, 2000
       assert event["some"] == "key"
     end
@@ -117,7 +118,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
           }
         )
 
-      pid = start_supervised!({AdaptorSupervisor, {source, backend}})
+      pid = start_supervised!({SourceSup, source})
       [pid: pid, backend: backend, source: source]
     end
 
@@ -134,7 +135,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
 
       le = build(:log_event, source: source, some: "key")
 
-      assert {:ok, _} = enqueue_backend_logs([le], source)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [event]}, 2000
       assert event["some"] == "key"
     end

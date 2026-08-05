@@ -15,11 +15,8 @@ defmodule Logflare.DataCase do
   use ExUnit.CaseTemplate
 
   alias Ecto.Adapters.SQL
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
-  alias Logflare.Backends.Cache, as: BackendsCache
   alias Logflare.Backends.ConsolidatedSup
-  alias Logflare.Backends.IngestEventQueue
 
   using do
     quote do
@@ -119,32 +116,6 @@ defmodule Logflare.DataCase do
         String.replace(acc, "%{#{key}}", to_string(value))
       end)
     end)
-  end
-
-  @doc """
-  Enqueues already-built log events directly into a source's configured backend pipeline.
-
-  Adaptor tests use this to exercise the adaptor without starting the unrelated full
-  source supervision tree through `Backends.ingest_logs/2`.
-  """
-  def enqueue_backend_logs(events, source) do
-    [backend | _] = BackendsCache.list_backends(source_id: source.id)
-    adaptor = Adaptor.get_adaptor(backend)
-
-    events =
-      if function_exported?(adaptor, :pre_ingest, 3) do
-        adaptor.pre_ingest(source, backend, events)
-      else
-        events
-      end
-
-    queue_key =
-      if backend.consolidated_ingest?,
-        do: {:consolidated, backend.id},
-        else: {source.id, backend.id}
-
-    :ok = IngestEventQueue.add_to_table(queue_key, events)
-    {:ok, length(events)}
   end
 
   @doc """

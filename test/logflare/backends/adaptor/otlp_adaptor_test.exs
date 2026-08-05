@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Tesla.MockAdapter
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsPartialSuccess
@@ -134,8 +135,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
   describe "logs ingestion" do
     setup :backend_data
 
-    setup %{source: source, backend: backend} do
-      start_supervised!({AdaptorSupervisor, {source, backend}})
+    setup %{source: source} do
+      start_supervised!({SourceSup, source})
       :ok
     end
 
@@ -164,7 +165,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
           timestamp: ts_us
         )
 
-      assert {:ok, _} = enqueue_backend_logs([log_event], source)
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
       assert_receive {^ref, body}, 5000
       assert request = Protobuf.decode(body, ExportLogsServiceRequest)
       assert %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} = request
@@ -189,7 +190,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
           timestamp: System.system_time(:microsecond)
         )
 
-      assert {:ok, _} = enqueue_backend_logs(log_events, source)
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
       assert_receive {^ref, body}, 5000
       assert request = Protobuf.decode(body, ExportLogsServiceRequest)
       assert %{resource_logs: [%{scope_logs: [%{log_records: [_, _, _]}]}]} = request

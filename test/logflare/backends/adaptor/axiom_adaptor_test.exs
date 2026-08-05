@@ -1,9 +1,10 @@
 defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Adaptor.HttpBased
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Tesla.MockAdapter
 
@@ -108,8 +109,8 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
   describe "logs ingestion" do
     setup :backend_data
 
-    setup %{source: source, backend: backend} do
-      start_supervised!({AdaptorSupervisor, {source, backend}})
+    setup %{source: source} do
+      start_supervised!({SourceSup, source})
       :ok
     end
 
@@ -139,7 +140,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
           timestamp: System.system_time(:microsecond)
         )
 
-      assert {:ok, _} = enqueue_backend_logs([log_event], source)
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
       assert_receive {^ref, gzipped}, 5000
       assert json = :zlib.gunzip(gzipped)
       assert [log] = Jason.decode!(json)
@@ -163,7 +164,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
           timestamp: System.system_time(:microsecond)
         )
 
-      assert {:ok, _} = enqueue_backend_logs(log_events, source)
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
       assert_receive {^ref, gzipped}, 5000
       assert json = :zlib.gunzip(gzipped)
       assert [_, _, _] = Jason.decode!(json)
