@@ -745,7 +745,7 @@ defmodule Logflare.Backends.IngestEventQueue do
          to_tid when to_tid != nil <- get_tid(to) do
       moved =
         :ets.foldl(
-          fn {id, _, _, _, _, _, _}, acc -> acc + take_and_insert(from_tid, to_tid, id) end,
+          fn {id, _, _, _, _, _, _, _}, acc -> acc + take_and_insert(from_tid, to_tid, id) end,
           0,
           from_tid
         )
@@ -978,7 +978,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {selected, _cont} <- :ets.select(tid, ms, n) do
       confirmed =
-        Enum.flat_map(selected, fn {id, _, _, _, _, _, _} -> take_pointer(tid, id) end)
+        Enum.flat_map(selected, fn {id, _, _, _, _, _, _, _} -> take_pointer(tid, id) end)
 
       {:ok, confirmed, tid}
     else
@@ -1061,10 +1061,13 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
+  # Enum.map rather than a `for %LogEvent{} <- events` comprehension on purpose: a
+  # filtering comprehension would silently drop anything unexpected, turning a shape
+  # mismatch into lost events on the ingest path rather than a loud failure.
   @spec stamp_taken([LogEvent.t()]) :: [LogEvent.t()]
   defp stamp_taken(events) do
     now_ms = System.system_time(:millisecond)
-    for %LogEvent{} = e <- events, do: %{e | taken_at_ms: now_ms}
+    Enum.map(events, fn %LogEvent{} = e -> %{e | taken_at_ms: now_ms} end)
   end
 
   @doc """
