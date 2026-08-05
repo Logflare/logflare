@@ -70,30 +70,36 @@ defmodule Logflare.TelemetryTest do
       end
     end
 
-    test "tags Broadway duration metrics by backend type" do
+    test "tags Broadway duration metrics by explicit backend or pipeline metadata" do
       metrics = broadway_duration_metrics()
 
       assert Enum.map(metrics, & &1.name) |> Enum.sort() ==
                Enum.sort(@broadway_duration_metric_names)
 
       for metric <- metrics do
-        assert metric.tags == [:backend_type]
+        assert metric.tags == [:backend_type, :pipeline]
 
         assert metric.tag_values.(%{
-                 context: %{backend_type: :clickhouse, source_token: "not-a-tag"}
+                 context: %{
+                   telemetry_tags: %{backend_type: :clickhouse, source_token: "not-a-tag"}
+                 }
                }) == %{backend_type: :clickhouse}
 
-        assert metric.tag_values.(%{context: %{backend: %{type: :postgres}}}) == %{
-                 backend_type: :postgres
-               }
+        assert metric.tag_values.(%{
+                 context: %{telemetry_tags: %{pipeline: Logflare.Backends.Spool.ProducerPipeline}}
+               }) == %{pipeline: Logflare.Backends.Spool.ProducerPipeline}
 
-        for invalid_backend_type <- [nil, true, false] do
-          assert metric.tag_values.(%{context: %{backend_type: invalid_backend_type}}) == %{
-                   backend_type: :unknown
-                 }
+        for invalid_value <- [nil, true, false] do
+          assert metric.tag_values.(%{
+                   context: %{telemetry_tags: %{backend_type: invalid_value}}
+                 }) == %{pipeline: :unknown}
         end
 
-        assert metric.tag_values.(%{context: nil}) == %{backend_type: :unknown}
+        assert metric.tag_values.(%{context: %{backend: %{type: :postgres}}}) == %{
+                 pipeline: :unknown
+               }
+
+        assert metric.tag_values.(%{context: nil}) == %{pipeline: :unknown}
       end
     end
 
@@ -115,11 +121,17 @@ defmodule Logflare.TelemetryTest do
       duration = System.convert_time_unit(10, :millisecond, :native)
 
       :telemetry.execute(event, %{duration: duration}, %{
-        context: %{backend_type: :clickhouse}
+        context: %{telemetry_tags: %{backend_type: :clickhouse}}
       })
 
       :telemetry.execute(event, %{duration: duration}, %{
-        context: %{backend_type: :bigquery}
+        context: %{telemetry_tags: %{backend_type: :bigquery}}
+      })
+
+      :telemetry.execute(event, %{duration: duration}, %{
+        context: %{
+          telemetry_tags: %{pipeline: Logflare.Backends.UserMonitoring.IngestPipeline}
+        }
       })
 
       :telemetry.execute(event, %{duration: duration}, %{context: nil})
@@ -133,10 +145,22 @@ defmodule Logflare.TelemetryTest do
         MapSet.new([
           %{backend_type: :clickhouse},
           %{backend_type: :bigquery},
-          %{backend_type: :unknown}
+          %{pipeline: Logflare.Backends.UserMonitoring.IngestPipeline},
+          %{pipeline: :unknown}
         ])
 
       assert MapSet.subset?(expected_tags, actual_tags)
+    end
+
+    test "tags generic pipeline batch metrics by backend or internal pipeline" do
+      metrics =
+        Enum.filter(
+          Telemetry.metrics(),
+          &(&1.name == [:logflare, :backends, :pipeline, :handle_batch, :batch_size])
+        )
+
+      assert length(metrics) == 2
+      assert Enum.all?(metrics, &(&1.tags == [:backend_type, :pipeline]))
     end
 
     test "tags dynamic pipeline and retry lookup-miss metrics by backend type" do

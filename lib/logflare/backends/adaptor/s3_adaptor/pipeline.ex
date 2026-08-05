@@ -56,7 +56,11 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
             batch_timeout: batch_timeout
           ]
         ],
-        context: %{source_id: source_id, backend_id: backend_id, backend_type: :s3}
+        context: %{
+          source_id: source_id,
+          backend_id: backend_id,
+          telemetry_tags: %{backend_type: :s3}
+        }
       )
     end
   end

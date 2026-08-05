@@ -16,6 +16,20 @@ defmodule Logflare.Backends.BroadwayContextTest do
   alias Logflare.Backends.UserMonitoring.IngestPipeline, as: UserMonitoringPipeline
   alias Logflare.Sources.Source.BigQuery.Pipeline, as: BigQueryPipeline
 
+  @pipeline_tags [
+    clickhouse: %{backend_type: :clickhouse},
+    bigquery: %{backend_type: :bigquery},
+    postgres: %{backend_type: :postgres},
+    http_based: %{backend_type: :axiom},
+    s3: %{backend_type: :s3},
+    syslog: %{backend_type: :syslog},
+    webhook_with_backend: %{backend_type: :datadog},
+    webhook_without_backend: %{backend_type: :webhook},
+    spool_consumer: %{pipeline: ConsumerPipeline},
+    spool_producer: %{pipeline: ProducerPipeline},
+    user_monitoring: %{pipeline: UserMonitoringPipeline}
+  ]
+
   defmodule QueueStub do
     def resolve(name), do: {:ok, name}
   end
@@ -43,10 +57,6 @@ defmodule Logflare.Backends.BroadwayContextTest do
       end
     end)
 
-    :ok
-  end
-
-  test "Broadway pipelines expose their effective backend type to duration metrics" do
     test_pid = self()
 
     stub(Broadway, :start_link, fn _pipeline, opts ->
@@ -54,7 +64,6 @@ defmodule Logflare.Backends.BroadwayContextTest do
       {:ok, self()}
     end)
 
-    tag_values = broadway_tag_values()
     source = build(:source, id: 101, user_id: 201)
 
     clickhouse = build(:backend, id: 301, type: :clickhouse)
@@ -65,74 +74,78 @@ defmodule Logflare.Backends.BroadwayContextTest do
     syslog = build(:backend, id: 306, type: :syslog)
     datadog = build(:backend, id: 307, type: :datadog)
 
-    assert_backend_type(:clickhouse, tag_values, fn ->
-      ClickHousePipeline.start_link(name: :clickhouse_context_test, backend: clickhouse)
-    end)
+    pipeline_starts = %{
+      clickhouse: fn ->
+        ClickHousePipeline.start_link(name: :clickhouse_context_test, backend: clickhouse)
+      end,
+      bigquery: fn ->
+        BigQueryPipeline.start_link(
+          name: :bigquery_context_test,
+          source: source,
+          backend: bigquery,
+          pipeline_ref: make_ref()
+        )
+      end,
+      postgres: fn ->
+        PostgresPipeline.start_link(%PostgresAdaptor{
+          source: source,
+          backend: postgres,
+          pipeline_name: :postgres_context_test
+        })
+      end,
+      http_based: fn ->
+        HttpPipeline.start_link(source, axiom, __MODULE__)
+      end,
+      s3: fn ->
+        S3Pipeline.start_link(
+          pipeline_name: :s3_context_test,
+          source_id: source.id,
+          backend_id: s3.id,
+          batch_timeout: 1_000
+        )
+      end,
+      syslog: fn ->
+        SyslogPipeline.start_link(
+          name: :syslog_context_test,
+          source: source,
+          backend: syslog,
+          pool: :test_pool
+        )
+      end,
+      webhook_with_backend: fn ->
+        WebhookPipeline.start_link(%{source: source, backend: datadog, config: %{}})
+      end,
+      webhook_without_backend: fn ->
+        WebhookPipeline.start_link(%{source: source, backend: nil, config: %{}})
+      end,
+      spool_consumer: fn ->
+        ConsumerPipeline.start_link(name: :spool_consumer_context_test)
+      end,
+      spool_producer: fn ->
+        ProducerPipeline.start_link(name: :spool_producer_context_test)
+      end,
+      user_monitoring: fn ->
+        UserMonitoringPipeline.start_link(metric_store_name: :user_monitoring_context_test)
+      end
+    }
 
-    assert_backend_type(:bigquery, tag_values, fn ->
-      BigQueryPipeline.start_link(
-        name: :bigquery_context_test,
-        source: source,
-        backend: bigquery,
-        pipeline_ref: make_ref()
-      )
-    end)
-
-    assert_backend_type(:postgres, tag_values, fn ->
-      PostgresPipeline.start_link(%PostgresAdaptor{
-        source: source,
-        backend: postgres,
-        pipeline_name: :postgres_context_test
-      })
-    end)
-
-    assert_backend_type(:axiom, tag_values, fn ->
-      HttpPipeline.start_link(source, axiom, __MODULE__)
-    end)
-
-    assert_backend_type(:s3, tag_values, fn ->
-      S3Pipeline.start_link(
-        pipeline_name: :s3_context_test,
-        source_id: source.id,
-        backend_id: s3.id,
-        batch_timeout: 1_000
-      )
-    end)
-
-    assert_backend_type(:syslog, tag_values, fn ->
-      SyslogPipeline.start_link(
-        name: :syslog_context_test,
-        source: source,
-        backend: syslog,
-        pool: :test_pool
-      )
-    end)
-
-    assert_backend_type(:datadog, tag_values, fn ->
-      WebhookPipeline.start_link(%{source: source, backend: datadog, config: %{}})
-    end)
-
-    assert_backend_type(:webhook, tag_values, fn ->
-      WebhookPipeline.start_link(%{source: source, backend: nil, config: %{}})
-    end)
-
-    assert_backend_type(:spool_consumer, tag_values, fn ->
-      ConsumerPipeline.start_link(name: :spool_consumer_context_test)
-    end)
-
-    assert_backend_type(:spool_producer, tag_values, fn ->
-      ProducerPipeline.start_link(name: :spool_producer_context_test)
-    end)
-
-    assert_backend_type(:user_monitoring, tag_values, fn ->
-      UserMonitoringPipeline.start_link(metric_store_name: :user_monitoring_context_test)
-    end)
+    [pipeline_starts: pipeline_starts, tag_values: broadway_tag_values()]
   end
 
-  defp assert_backend_type(expected, tag_values, start_pipeline) do
-    assert {:ok, _pid} = start_pipeline.()
-    assert_receive {:broadway_context, context}
-    assert tag_values.(%{context: context}) == %{backend_type: expected}
+  describe "effective telemetry tags exposed to Broadway duration metrics" do
+    for {pipeline, expected_tags} <- @pipeline_tags do
+      test "#{pipeline} reports #{inspect(expected_tags)}", %{
+        pipeline_starts: pipeline_starts,
+        tag_values: tag_values
+      } do
+        start_pipeline = Map.fetch!(pipeline_starts, unquote(pipeline))
+
+        assert {:ok, _pid} = start_pipeline.()
+        assert_receive {:broadway_context, context}
+
+        assert tag_values.(%{context: context}) == unquote(Macro.escape(expected_tags))
+      end
+    end
   end
 
   defp broadway_tag_values do

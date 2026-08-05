@@ -172,23 +172,23 @@ defmodule Logflare.Telemetry do
 
     broadway_metrics = [
       distribution("broadway.batcher.stop.duration",
-        tags: [:backend_type],
-        tag_values: &broadway_backend_tags/1,
+        tags: [:backend_type, :pipeline],
+        tag_values: &broadway_tags/1,
         unit: {:native, :millisecond}
       ),
       distribution("broadway.batch_processor.stop.duration",
-        tags: [:backend_type],
-        tag_values: &broadway_backend_tags/1,
+        tags: [:backend_type, :pipeline],
+        tag_values: &broadway_tags/1,
         unit: {:native, :millisecond}
       ),
       distribution("broadway.processor.message.stop.duration",
-        tags: [:backend_type],
-        tag_values: &broadway_backend_tags/1,
+        tags: [:backend_type, :pipeline],
+        tag_values: &broadway_tags/1,
         unit: {:native, :millisecond}
       ),
       distribution("broadway.processor.stop.duration",
-        tags: [:backend_type],
-        tag_values: &broadway_backend_tags/1,
+        tags: [:backend_type, :pipeline],
+        tag_values: &broadway_tags/1,
         unit: {:native, :millisecond}
       )
     ]
@@ -214,13 +214,13 @@ defmodule Logflare.Telemetry do
         description: "Distribution of log request batch sizes ingested by processor"
       ),
       distribution("logflare.backends.pipeline.handle_batch.batch_size",
-        tags: [:backend_type],
+        tags: [:backend_type, :pipeline],
         reporter_options: batch_size_reporter_opts(),
-        description: "Distribution of batch sizes for broadway pipeline by backend type"
+        description: "Distribution of batch sizes by backend type or internal pipeline"
       ),
       sum("logflare.backends.pipeline.handle_batch.batch_size",
-        tags: [:backend_type],
-        description: "Sum of batch sizes for broadway pipeline by backend type"
+        tags: [:backend_type, :pipeline],
+        description: "Sum of batch sizes by backend type or internal pipeline"
       ),
       distribution("logflare.backends.clickhouse.pipeline.handle_batch.batch_size",
         event_name: [:logflare, :backends, :pipeline, :handle_batch],
@@ -623,16 +623,19 @@ defmodule Logflare.Telemetry do
     |> String.replace(@number_suffix_regex, "")
   end
 
-  @spec broadway_backend_tags(map()) :: %{backend_type: atom()}
-  defp broadway_backend_tags(%{context: %{backend_type: backend_type}})
+  @spec broadway_tags(map()) :: %{
+          optional(:backend_type) => atom(),
+          optional(:pipeline) => atom()
+        }
+  defp broadway_tags(%{context: %{telemetry_tags: %{backend_type: backend_type}}})
        when is_atom_value(backend_type),
        do: %{backend_type: backend_type}
 
-  defp broadway_backend_tags(%{context: %{backend: %{type: backend_type}}})
-       when is_atom_value(backend_type),
-       do: %{backend_type: backend_type}
+  defp broadway_tags(%{context: %{telemetry_tags: %{pipeline: pipeline}}})
+       when is_atom_value(pipeline),
+       do: %{pipeline: pipeline}
 
-  defp broadway_backend_tags(_metadata), do: %{backend_type: :unknown}
+  defp broadway_tags(_metadata), do: %{pipeline: :unknown}
 
   defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
   defp clickhouse_batch?(_metadata), do: false

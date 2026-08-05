@@ -87,7 +87,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             ]
           ],
           context: %{
-            backend_type: :bigquery,
+            telemetry_tags: %{backend_type: :bigquery},
             bigquery_project_id: args[:bigquery_project_id],
             bigquery_dataset_id: args[:bigquery_dataset_id],
             source_token: source.token,

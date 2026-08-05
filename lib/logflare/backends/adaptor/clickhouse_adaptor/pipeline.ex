@@ -110,7 +110,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           batch_timeout: @batch_timeout
         ]
       ],
-      context: %{backend_id: backend.id, backend_type: :clickhouse}
+      context: %{backend_id: backend.id, telemetry_tags: %{backend_type: backend.type}}
     )
   end
 

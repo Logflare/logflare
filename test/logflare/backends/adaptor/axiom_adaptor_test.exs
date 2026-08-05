@@ -158,11 +158,14 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
                       _measurements, %{backend_type: :axiom}}
 
       metrics = Logflare.Telemetry.metrics()
+      deadline = System.monotonic_time(:millisecond) + 5_000
 
       for event <- broadway_duration_events do
+        timeout = max(deadline - System.monotonic_time(:millisecond), 0)
+
         assert_receive {:telemetry_event, ^event, %{duration: duration},
-                        %{context: %{backend_type: :axiom}} = metadata},
-                       5_000
+                        %{context: %{telemetry_tags: %{backend_type: :axiom}}} = metadata},
+                       timeout
 
         assert is_integer(duration)
         assert %{tag_values: tag_values} = Enum.find(metrics, &(&1.event_name == event))
