@@ -87,7 +87,7 @@ jobs:
                   ;;
                 test/e2e/*)
                   ;;
-                .github/scripts/*|config/*|lib/*|native/*|priv/*|test/*|*.exs|*.lock|Dockerfile.base|Dockerfile.runner|Dockerfile.multi-step)
+                .github/scripts/*|config/*|docs/docs.logflare.com/docs/*|lib/*|native/*|priv/*|test/*|*.exs|*.lock|Dockerfile.base|Dockerfile.runner|Dockerfile.multi-step)
                   backend=true
                   ;;
               esac
@@ -129,11 +129,15 @@ jobs:
             deps
             _build
             priv/native
-            priv/docs
           key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
           restore-keys: |
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-
+
+      - name: Prepare in-app docs
+        run: |
+          rm -rf priv/docs
+          cp -R docs/docs.logflare.com/docs priv/docs
 
       - name: Install dependencies
         run: mix do deps.get + deps.compile
@@ -181,11 +185,15 @@ jobs:
             deps
             _build
             priv/native
-            priv/docs
           key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
           restore-keys: |
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-
+
+      - name: Prepare in-app docs
+        run: |
+          rm -rf priv/docs
+          cp -R docs/docs.logflare.com/docs priv/docs
 
       - name: Install dependencies
         run: mix do deps.get + deps.compile
@@ -233,11 +241,15 @@ jobs:
             deps
             _build
             priv/native
-            priv/docs
           key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
           restore-keys: |
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-
+
+      - name: Prepare in-app docs
+        run: |
+          rm -rf priv/docs
+          cp -R docs/docs.logflare.com/docs priv/docs
 
       - name: Restore Dialyzer PLT cache
         uses: actions/cache@v5
@@ -341,11 +353,15 @@ jobs:
             deps
             _build
             priv/native
-            priv/docs
           key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
           restore-keys: |
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-
+
+      - name: Prepare in-app docs
+        run: |
+          rm -rf priv/docs
+          cp -R docs/docs.logflare.com/docs priv/docs
 
       - name: Install dependencies
         run: mix do deps.get + deps.compile
