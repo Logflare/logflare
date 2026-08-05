@@ -322,8 +322,6 @@ jobs:
     env:
       MIX_ENV: test
       SHELL: /bin/bash
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      COVERALLS_SERVICE_JOB_ID: ${{ github.sha }}-tests-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v6
 
@@ -380,6 +378,14 @@ jobs:
 
       - name: Run tests
         run: epmd -daemon; mix do ecto.create + ecto.migrate + test.coverage.ci
+
+      - name: Upload coverage
+        uses: coverallsapp/github-action@v2
+        with:
+          file: cover/lcov.info
+          format: lcov
+          git-commit: ${{ github.event.pull_request.head.sha || github.sha }}
+          build-number: ${{ github.run_id }}-${{ github.run_attempt }}
 
   rust:
     name: Rust unit tests
