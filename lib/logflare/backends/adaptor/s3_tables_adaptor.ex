@@ -3,8 +3,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor do
   Backend adaptor that writes batches of logs to AWS S3 Tables (Apache Iceberg).
 
   Runs consolidated: one adaptor tree per backend across all sources (see
-  `Logflare.Backends.ConsolidatedSup`). Ingestion is not yet implemented — the
-  pipeline drains batches without writing them.
+  `Logflare.Backends.ConsolidatedSup`).
   """
 
   use Supervisor
