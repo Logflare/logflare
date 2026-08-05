@@ -42,6 +42,7 @@ jobs:
       rust: ${{ steps.v.outputs.rust }}
       backend: ${{ steps.changes.outputs.backend }}
       frontend: ${{ steps.changes.outputs.frontend }}
+      quality: ${{ steps.changes.outputs.quality }}
       rust_changed: ${{ steps.changes.outputs.rust }}
     steps:
       - uses: actions/checkout@v6
@@ -64,6 +65,7 @@ jobs:
         run: |
           backend=false
           frontend=false
+          quality=false
           rust=false
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" || -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
@@ -85,6 +87,9 @@ jobs:
                   backend=true
                   rust=true
                   ;;
+                test/e2e/features/*)
+                  quality=true
+                  ;;
                 test/e2e/*)
                   ;;
                 .github/scripts/*|config/*|docs/docs.logflare.com/docs/*|lib/*|native/*|priv/*|test/*|*.exs|*.lock|Dockerfile.base|Dockerfile.runner|Dockerfile.multi-step)
@@ -94,15 +99,20 @@ jobs:
             done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           fi
 
+          if [[ "$backend" == "true" ]]; then
+            quality=true
+          fi
+
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+          echo "quality=$quality" >> "$GITHUB_OUTPUT"
           echo "rust=$rust" >> "$GITHUB_OUTPUT"
 
   quality:
     name: Checks (${{ matrix.commands.name }}, ${{ matrix.commands.run }})
     runs-on: ubuntu-latest
     needs: versions
-    if: needs.versions.outputs.backend == 'true'
+    if: needs.versions.outputs.quality == 'true'
     strategy:
       matrix:
         commands:
