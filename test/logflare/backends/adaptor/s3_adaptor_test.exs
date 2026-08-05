@@ -1,19 +1,12 @@
-defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
-  use Logflare.DataCase, async: false
+defmodule Logflare.Backends.Adaptor.S3AdaptorPipelineTelemetryTest do
+  use ExUnit.Case, async: true
 
-  alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.S3Adaptor
+  import Mimic
+
   alias Logflare.Backends.Adaptor.S3Adaptor.Pipeline
+  alias Logflare.TestUtils
 
-  doctest S3Adaptor
-
-  @valid_config %{
-    s3_bucket: "my-bucket",
-    storage_region: "us-east-1",
-    access_key_id: "AKID",
-    secret_access_key: "SECRET",
-    batch_timeout: 1_000
-  }
+  setup :verify_on_exit!
 
   test "configures S3 telemetry tags" do
     TestUtils.assert_broadway_telemetry_tags(%{backend_type: :s3}, fn ->
@@ -25,6 +18,23 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       )
     end)
   end
+end
+
+defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
+  use Logflare.DataCase, async: false
+
+  alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.S3Adaptor
+
+  doctest S3Adaptor
+
+  @valid_config %{
+    s3_bucket: "my-bucket",
+    storage_region: "us-east-1",
+    access_key_id: "AKID",
+    secret_access_key: "SECRET",
+    batch_timeout: 1_000
+  }
 
   describe "validate_config/1 endpoint allowlist (check enabled, default)" do
     setup do

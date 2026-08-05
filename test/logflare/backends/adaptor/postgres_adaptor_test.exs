@@ -1,3 +1,30 @@
+defmodule Logflare.Backends.Adaptor.PostgresAdaptorPipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
+  alias Logflare.Backends.Backend
+  alias Logflare.Sources.Source
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "configures Postgres telemetry tags" do
+    source = %Source{id: 101}
+    backend = %Backend{id: 301, type: :postgres}
+
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :postgres}, fn ->
+      Pipeline.start_link(%PostgresAdaptor{
+        source: source,
+        backend: backend,
+        pipeline_name: :postgres_telemetry_tags_test
+      })
+    end)
+  end
+end
+
 defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   use Logflare.DataCase
 
@@ -6,7 +33,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Adaptor.QueryResult
@@ -36,16 +62,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     backend = insert(:backend, type: :postgres, sources: [source], config: config)
 
     %{backend: backend, source: source, postgres_url: url}
-  end
-
-  test "configures Postgres telemetry tags", %{source: source, backend: backend} do
-    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :postgres}, fn ->
-      Pipeline.start_link(%PostgresAdaptor{
-        source: source,
-        backend: backend,
-        pipeline_name: :postgres_telemetry_tags_test
-      })
-    end)
   end
 
   describe "redact_config/1" do

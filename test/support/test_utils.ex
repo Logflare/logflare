@@ -467,13 +467,16 @@ defmodule Logflare.TestUtils do
   """
   @spec assert_broadway_telemetry_tags(map(), (-> term())) :: :ok
   def assert_broadway_telemetry_tags(expected_tags, start_pipeline) do
+    Mimic.set_mimic_private()
+    test_pid = self()
+
     Mimic.expect(Broadway, :start_link, fn _module, opts ->
       context = Keyword.fetch!(opts, :context)
       assert Map.fetch!(context, :telemetry_tags) == expected_tags
-      {:ok, self()}
+      {:ok, test_pid}
     end)
 
-    assert {:ok, _pid} = start_pipeline.()
+    assert {:ok, ^test_pid} = start_pipeline.()
     :ok
   end
 

@@ -1,3 +1,25 @@
+defmodule Logflare.Backends.Adaptor.AxiomAdaptorPipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Adaptor.HttpBased
+  alias Logflare.Backends.Backend
+  alias Logflare.Sources.Source
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "uses the concrete backend type" do
+    source = %Source{id: 101}
+    backend = %Backend{id: 301, type: :axiom}
+
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :axiom}, fn ->
+      HttpBased.Pipeline.start_link(source, backend, HttpBased.Client)
+    end)
+  end
+end
+
 defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
   use Logflare.DataCase, async: false
 
@@ -106,22 +128,18 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     end
   end
 
-  describe "pipeline telemetry tags" do
-    setup :backend_data
-
-    test "uses the concrete backend type", %{source: source, backend: backend} do
-      TestUtils.assert_broadway_telemetry_tags(%{backend_type: :axiom}, fn ->
-        HttpBased.Pipeline.start_link(source, backend, HttpBased.Client)
-      end)
-    end
-  end
-
   describe "logs ingestion" do
     setup :backend_data
 
     setup %{source: source, backend: backend} do
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(250)
+
+      pipeline_name = Backends.via_source(source, HttpBased.Pipeline, backend)
+
+      TestUtils.retry_assert(fn ->
+        assert is_pid(GenServer.whereis(pipeline_name))
+      end)
+
       :ok
     end
 
