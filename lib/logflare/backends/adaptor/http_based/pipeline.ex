@@ -42,7 +42,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
         http: [concurrency: 6, batch_size: 250, batch_timeout: @batch_timeout]
       ],
       context: %{
-        backend_type: backend.type,
+        telemetry_tags: %{backend_type: backend.type},
         source_id: source.id,
         backend_id: backend.id,
         source_token: source.token,
@@ -69,7 +69,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
       %{
-        backend_type: context.backend_type
+        backend_type: context.telemetry_tags.backend_type
       }
     )
 

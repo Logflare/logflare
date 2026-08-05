@@ -141,7 +141,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           batch_timeout: batch_timeout
         ]
       ],
-      context: Map.put(build_processor_context(backend.id), :backend_type, :clickhouse)
+      context:
+        Map.put(build_processor_context(backend.id), :telemetry_tags, %{
+          backend_type: backend.type
+        })
     )
   end
 
