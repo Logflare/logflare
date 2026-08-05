@@ -65,16 +65,21 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          backend=false
-          frontend=false
-          quality=false
-          rust=false
+          backend=true
+          frontend=true
+          quality=true
+          rust=true
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" || -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
-            backend=true
-            frontend=true
-            rust=true
-          else
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "workflow_dispatch: running all checks"
+          elif git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null \
+            && git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null \
+            && changed="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"; then
+            backend=false
+            frontend=false
+            quality=false
+            rust=false
+
             while IFS= read -r path; do
               case "$path" in
                 .github/workflows/elixir-ci.yml)
@@ -98,7 +103,9 @@ jobs:
                   backend=true
                   ;;
               esac
-            done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+            done <<< "$changed"
+          else
+            echo "::warning::Unable to determine changed files; running all checks"
           fi
 
           if [[ "$backend" == "true" ]]; then
