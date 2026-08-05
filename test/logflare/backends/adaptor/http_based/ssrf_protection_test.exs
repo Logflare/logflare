@@ -34,6 +34,38 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtectionTest do
     end
   end
 
+  describe "call/3 with allow_private: true" do
+    defp call_allowing_private(url),
+      do:
+        SSRFProtection.call(
+          %Tesla.Env{url: url, headers: []},
+          [{:fn, &ok_next/1}],
+          allow_private: true
+        )
+
+    test "permits private destinations the default config blocks" do
+      for url <- ["http://127.0.0.1/", "http://10.0.0.1/", "http://[::1]/"] do
+        assert {:ok, _env} = call_allowing_private(url), "expected pass-through for #{url}"
+      end
+    end
+
+    test "passes the URL through unrewritten" do
+      assert {:ok, env} = call_allowing_private("http://localhost:8428/api/v1/write")
+      assert env.url == "http://localhost:8428/api/v1/write"
+    end
+
+    test "still enforces when the option is absent or false" do
+      assert {:error, _} = call("http://127.0.0.1/")
+
+      assert {:error, _} =
+               SSRFProtection.call(
+                 %Tesla.Env{url: "http://127.0.0.1/", headers: []},
+                 [{:fn, &ok_next/1}],
+                 allow_private: false
+               )
+    end
+  end
+
   describe "call/3 with HTTPS URLs" do
     test "blocks private IPv4 at request time" do
       assert {:error, _} = call("https://127.0.0.1/")

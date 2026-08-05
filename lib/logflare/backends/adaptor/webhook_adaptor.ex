@@ -180,7 +180,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         body: body,
         headers: Map.get(config, :headers, %{}),
         http: Map.get(config, :http),
-        gzip: Map.get(config, :gzip, true)
+        gzip: Map.get(config, :gzip, true),
+        allow_private_destinations: Map.get(config, :allow_private_destinations, false)
       )
 
     case response do
@@ -264,7 +265,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           Tesla.Middleware.Telemetry,
           Tesla.Middleware.JSON,
           if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
-          SSRFProtection,
+          {SSRFProtection, allow_private: Keyword.get(opts, :allow_private_destinations, false)},
           EgressTracer
         ]
         |> Enum.filter(& &1),
@@ -386,6 +387,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),
+        allow_private_destinations: Map.get(config, :allow_private_destinations, false),
         opts: [
           # metadata map will get set as OTEL attributes in EgressTracer
           metadata:
