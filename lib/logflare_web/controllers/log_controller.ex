@@ -68,25 +68,91 @@ defmodule LogflareWeb.LogController do
     }
   )
 
-  def create(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
-    batch
-    |> Processor.ingest(Logs.Raw, source)
-    |> handle(conn)
+  def create(conn, %{"batch" => batch}) when is_list(batch) do
+    create_dispatch(conn, batch)
   end
 
-  def create(%{assigns: %{source: source}} = conn, %{"_json" => batch})
-      when is_list(batch) do
-    batch
-    |> Processor.ingest(Logs.Raw, source)
-    |> handle(conn)
+  def create(conn, %{"_json" => batch}) when is_list(batch) do
+    create_dispatch(conn, batch)
   end
 
-  def create(%{assigns: %{source: source}} = conn, _slog_params) do
-    conn.body_params
-    |> Map.drop(~w[timestamp id])
-    |> List.wrap()
-    |> Processor.ingest(Logs.Raw, source)
-    |> handle(conn)
+  def create(conn, _slog_params) do
+    event = Map.drop(conn.body_params, ~w[timestamp id])
+    create_dispatch(conn, [event])
+  end
+
+  @lf_source_key "__LF_SOURCE"
+
+  defp create_dispatch(conn, events) when is_list(events) do
+    default_source = Map.get(conn.assigns, :source)
+    multi_source? = Map.has_key?(conn.assigns, :declared_sources)
+
+    if not multi_source? and default_source != nil do
+      events
+      |> Processor.ingest(Logs.Raw, default_source)
+      |> handle(conn)
+    else
+      declared = Map.get(conn.assigns, :declared_sources, %{})
+      {grouped, errors} = group_events_by_source(events, declared, default_source)
+
+      results =
+        for {source, batch} <- grouped do
+          Processor.ingest(batch, Logs.Raw, source)
+        end
+
+      results
+      |> aggregate_results(errors)
+      |> handle(conn)
+    end
+  end
+
+  defp group_events_by_source(events, declared, default_source) do
+    {groups, errors} =
+      for event <- events, reduce: {%{}, []} do
+        {groups, errors} ->
+          token = event_source_token(event)
+          stripped = Map.drop(event, [@lf_source_key, :"#{@lf_source_key}"])
+
+          cond do
+            is_binary(token) and is_map_key(declared, token) ->
+              source = Map.fetch!(declared, token)
+              {Map.update(groups, source, [stripped], &[stripped | &1]), errors}
+
+            is_binary(token) ->
+              {groups, ["event references unknown or unauthorized source #{token}" | errors]}
+
+            token != nil ->
+              {groups, ["invalid __LF_SOURCE value" | errors]}
+
+            default_source != nil ->
+              {Map.update(groups, default_source, [stripped], &[stripped | &1]), errors}
+
+            true ->
+              {groups, ["event missing __LF_SOURCE and no source query param" | errors]}
+          end
+      end
+
+    grouped = for {source, batch} <- groups, do: {source, Enum.reverse(batch)}
+    {grouped, Enum.reverse(errors)}
+  end
+
+  defp event_source_token(%{@lf_source_key => token}), do: token
+  defp event_source_token(%{:__LF_SOURCE => token}), do: token
+  defp event_source_token(_), do: nil
+
+  defp aggregate_results(results, errors) do
+    {count, all_errors} =
+      for result <- results, reduce: {0, errors} do
+        {acc, errs} ->
+          case result do
+            {:ok, n} -> {acc + n, errs}
+            :ok -> {acc, errs}
+            {:error, more} when is_list(more) -> {acc, errs ++ more}
+            {:error, err} -> {acc, errs ++ [err]}
+          end
+      end
+
+    if all_errors == [], do: {:ok, count}, else: {:error, all_errors}
   end
 
   operation :cloudflare, false

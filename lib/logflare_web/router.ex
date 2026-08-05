@@ -107,6 +107,7 @@ defmodule LogflareWeb.Router do
     )
 
     plug(LogflareWeb.Plugs.FetchResource)
+    plug(LogflareWeb.Plugs.VerifyDeclaredSources)
     plug(LogflareWeb.Plugs.VerifyResourceAccess)
     plug(:accepts, ["json", "bert"])
     plug(LogflareWeb.Plugs.SetHeaders)
