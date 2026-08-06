@@ -148,7 +148,7 @@ jobs:
             deps
             _build
             priv/native
-          key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'native/**', 'priv/**', 'test/support/**') }}
+          key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
           restore-keys: |
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-
@@ -204,7 +204,7 @@ jobs:
             deps
             _build
             priv/native
-          key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'native/**', 'priv/**', 'test/support/**') }}
+          key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
           restore-keys: |
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-
@@ -260,7 +260,7 @@ jobs:
             deps
             _build
             priv/native
-          key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'native/**', 'priv/**', 'test/support/**') }}
+          key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
           restore-keys: |
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-
@@ -370,7 +370,7 @@ jobs:
             deps
             _build
             priv/native
-          key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'native/**', 'priv/**', 'test/support/**') }}
+          key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
           restore-keys: |
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
             mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ github.job }}-
