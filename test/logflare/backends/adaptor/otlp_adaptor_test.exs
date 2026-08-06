@@ -383,7 +383,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
     end
   end
 
-  describe "encoding of real-world log samples (documents customer-reported resource/severity/body issues)" do
+  describe "encoding of real-world log samples (resource, scope, and severity)" do
     setup :backend_data
 
     setup %{source: source, backend: backend} do
@@ -404,8 +404,6 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
         Map.new(resource.attributes, fn %{key: key, value: value} ->
           {key, any_value_to_term(value)}
         end)
-
-      IO.inspect(attrs, label: "current resource attributes", limit: :infinity)
 
       assert attrs["service.name"] == (source.service_name || source.name)
 
@@ -488,20 +486,23 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
         %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
           Protobuf.decode(body, ExportLogsServiceRequest)
 
-        IO.inspect(log_record, label: "#{unquote(fixture)} log_record", limit: :infinity)
-
-        log_record.body
-        |> any_value_to_term()
-        |> Jason.encode!(pretty: true)
-        |> IO.puts()
-
         assert log_record.severity_number == unquote(expected_severity)
-
-        # attributes/body are still unfixed (customer complaint #4) — everything
-        # still lands in one unstructured body blob rather than structured attributes
-        assert log_record.attributes == []
-        assert {:kvlist_value, _} = log_record.body.value
       end
+    end
+
+    # Customer complaint #4 (body/attributes split) is not yet fixed — tracked for
+    # a follow-up PR. This pins down the current (still-unstructured) behavior so
+    # it's obvious what to update once that change lands.
+    test "body still carries everything as one unstructured blob, not structured attributes",
+         %{source: source} do
+      log_event = load_fixture_log_event("storage", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      assert log_record.attributes == []
+      assert {:kvlist_value, _} = log_record.body.value
     end
 
     test "severity_number maps HTTP status ranges to WARN/ERROR, not just INFO", %{
