@@ -14,8 +14,6 @@ defmodule Logflare.Utils.FlagTest do
   alias Logflare.User
   alias Logflare.Utils
 
-  setup :set_mimic_global
-
   setup do
     start_supervised!(ConfigCatCache)
 
