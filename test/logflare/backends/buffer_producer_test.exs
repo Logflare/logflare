@@ -153,10 +153,8 @@ defmodule Logflare.Backends.BufferProducerTest do
 
     captured =
       capture_log(fn ->
-        send(pid, {:add_to_buffer, items})
-        :sys.get_state(pid)
-        send(pid, {:add_to_buffer, items})
-        :sys.get_state(pid)
+        TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
+        TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
       end)
 
     assert captured =~ source.name
@@ -533,10 +531,8 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       captured =
         capture_log(fn ->
-          send(pid, {:add_to_buffer, items})
-          :sys.get_state(pid)
-          send(pid, {:add_to_buffer, items})
-          :sys.get_state(pid)
+          TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
+          TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
         end)
 
       assert captured =~ "Consolidated GenStage producer has discarded"
@@ -629,10 +625,8 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       captured =
         capture_log(fn ->
-          send(pid, {:add_to_buffer, items})
-          :sys.get_state(pid)
-          send(pid, {:add_to_buffer, items})
-          :sys.get_state(pid)
+          TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
+          TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
         end)
 
       assert captured =~ "Spool producer GenStage has discarded"

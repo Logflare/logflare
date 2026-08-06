@@ -908,11 +908,10 @@ defmodule Logflare.BackendsTest do
 
       # RecentInsertsCacher bridges Counters.increment/2 (called by ingest_logs)
       # → Counters.increment_source_changed_at_unix_ts/2 (read by
-      # fetch_latest_timestamp/1). Trigger it explicitly and use :sys.get_state/1
-      # as a sync fence so the test doesn't depend on the cacher's timer.
+      # fetch_latest_timestamp/1). Trigger it synchronously so the test doesn't
+      # depend on the cacher's timer.
       cacher = GenServer.whereis(Backends.via_source(source, RecentInsertsCacher))
-      send(cacher, :do_cache)
-      :sys.get_state(cacher)
+      TestUtils.send_and_wait_for_handling(cacher, :do_cache)
 
       assert Backends.fetch_latest_timestamp(source) != 0
     end

@@ -108,8 +108,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
     end
 
     defp force_refresh(pid) do
-      send(pid, :refresh)
-      :sys.get_state(pid)
+      TestUtils.send_and_wait_for_handling(pid, :refresh)
     end
 
     # These assertions only exercise queue cardinality. For performance, clone one

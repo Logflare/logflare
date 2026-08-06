@@ -144,8 +144,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
                )
 
              coordinator = DynamicPipeline.find_coordinator_name(name)
-             send(coordinator, :check)
-             :sys.get_state(coordinator)
+             TestUtils.send_and_wait_for_handling(coordinator, :check)
              assert Process.alive?(pid)
            end) =~ "some error"
   end

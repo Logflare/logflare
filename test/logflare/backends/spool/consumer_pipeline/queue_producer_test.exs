@@ -117,8 +117,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       spool_max_ets_percent: 0.0
     )
 
-    send(MemoryMonitor, :refresh)
-    :sys.get_state(MemoryMonitor)
+    TestUtils.send_and_wait_for_handling(MemoryMonitor, :refresh)
     assert MemoryMonitor.throttled?() == true
   end
 
@@ -128,8 +127,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       spool_max_ets_percent: 1.0
     )
 
-    send(MemoryMonitor, :refresh)
-    :sys.get_state(MemoryMonitor)
+    TestUtils.send_and_wait_for_handling(MemoryMonitor, :refresh)
     assert MemoryMonitor.throttled?() == false
   end
 
