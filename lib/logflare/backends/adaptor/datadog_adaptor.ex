@@ -21,7 +21,23 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   }
   @regions Map.keys(@api_url_mapping)
 
+  @intake_origins @api_url_mapping
+                  |> Map.values()
+                  |> Enum.map(fn url ->
+                    uri = URI.parse(url)
+                    URI.to_string(%URI{scheme: uri.scheme, host: uri.host})
+                  end)
+                  |> Enum.uniq()
+                  |> Enum.sort()
+
   def regions, do: @regions
+
+  @doc """
+  Scheme-and-host origins of every regional logs intake, in the form used as a
+  `Finch` pool key.
+  """
+  @spec intake_origins() :: [String.t()]
+  def intake_origins, do: @intake_origins
 
   @behaviour Logflare.Backends.Adaptor
 
