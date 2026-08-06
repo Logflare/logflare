@@ -234,8 +234,9 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   defp build_log_record_fields({"timestamp", ts}),
     do: [time_unix_nano: System.convert_time_unit(ts, :microsecond, :nanosecond)]
 
-  defp build_log_record_fields({"event_message", msg}) when is_binary(msg),
-    do: [event_name: msg]
+  # event_message drives body (see log_body/1) instead — event_name is meant to be
+  # a low-cardinality event-type identifier, and the full message is the opposite of that.
+  defp build_log_record_fields({"event_message", _msg}), do: []
 
   defp build_log_record_fields({"attributes", attrs}) when is_map(attrs),
     do: [attributes: Enum.map(attrs, &make_key_value/1)]

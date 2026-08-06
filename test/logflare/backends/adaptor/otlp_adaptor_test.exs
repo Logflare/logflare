@@ -197,7 +197,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert request = Protobuf.decode(body, ExportLogsServiceRequest)
       assert %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} = request
       assert log_record.time_unix_nano == ts_us * 1000
-      assert log_record.event_name == msg
+      assert log_record.event_name == ""
+      assert log_record.body.value == {:string_value, msg}
       assert body =~ "random_attribute"
       assert body =~ "nothing"
     end
