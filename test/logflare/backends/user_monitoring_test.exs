@@ -11,7 +11,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Backends.QueryError
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring
-  alias Logflare.Backends.UserMonitoring.IngestPipeline
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
@@ -32,7 +31,9 @@ defmodule Logflare.Backends.UserMonitoringTest do
     [source: source, source_b: source_b, user: user]
   end
 
-  def start_otel_exporter(_context) do
+  def start_user_monitoring_pipeline(_context) do
+    start_supervised!(AllLogsLogged)
+
     UserMonitoring.get_otel_exporter()
     |> Enum.each(&start_supervised!/1)
 
@@ -180,10 +181,9 @@ defmodule Logflare.Backends.UserMonitoringTest do
   defp invalid_query_error_log_event?(_event), do: false
 
   describe "system monitoring labels" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
 
     setup do
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -253,8 +253,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
                  )
                )
       end)
-
-      stop_supervised!(IngestPipeline)
     end
 
     test "other users metrics" do
@@ -333,18 +331,15 @@ defmodule Logflare.Backends.UserMonitoringTest do
         refute attr["source_id"] in [source_id, metrics_source_id]
         refute attr["my_label"] == "test"
       end
-
-      stop_supervised!(IngestPipeline)
     end
   end
 
   describe "egress" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
     setup :set_mimic_global
 
     setup do
       Mimic.stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -399,16 +394,13 @@ defmodule Logflare.Backends.UserMonitoringTest do
       assert attributes["backend_id"] == webhook_backend.id
       assert attributes["_backend_environment"] == "test"
       assert attributes["_backend_region"] == "us-west"
-
-      stop_supervised!(IngestPipeline)
     end
   end
 
   describe "endpoints" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
 
     setup do
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -462,8 +454,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
                         | _
                       ]},
                      5_000
-
-      stop_supervised!(IngestPipeline)
     end
 
     test "endpoints.query emits backend_id and backend_type in attributes" do
@@ -516,8 +506,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
                         | _
                       ]},
                      5_000
-
-      stop_supervised!(IngestPipeline)
     end
   end
 
