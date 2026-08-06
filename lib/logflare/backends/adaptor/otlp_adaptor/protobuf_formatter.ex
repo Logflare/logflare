@@ -128,7 +128,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
     observed_ts =
       if ev.ingested_at, do: DateTime.to_unix(ev.ingested_at, :nanosecond), else: 0
 
-    {known_entries, body} =
+    {known_entries, extra} =
       Map.split(ev.body, [
         "timestamp",
         "event_message",
@@ -143,8 +143,24 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
       known_entries
       |> Enum.flat_map(&build_log_record_fields/1)
       |> maybe_derive_severity(ev.body)
+      |> add_extra_attributes(extra)
 
-    struct!(LogRecord, [observed_time_unix_nano: observed_ts, body: make_value(body)] ++ fields)
+    struct!(LogRecord, [observed_time_unix_nano: observed_ts, body: log_body(ev.body)] ++ fields)
+  end
+
+  # body is the human-readable message per the OTel Logs data model — everything
+  # else the source sends (metadata, ids, etc.) belongs in attributes instead of
+  # being crammed into body as a nested blob most receivers don't parse as structured.
+  defp log_body(%{"event_message" => msg}) when is_binary(msg), do: make_value(msg)
+  defp log_body(_body), do: make_value("")
+
+  # Merges the source's leftover fields into attributes rather than overwriting
+  # any explicit "attributes" the source already provided via build_log_record_fields.
+  defp add_extra_attributes(fields, extra) when extra == %{}, do: fields
+
+  defp add_extra_attributes(fields, extra) do
+    extra_attributes = Enum.map(extra, &make_key_value/1)
+    Keyword.update(fields, :attributes, extra_attributes, &(&1 ++ extra_attributes))
   end
 
   # None of the Supabase log sources set an explicit "severity_number", but most

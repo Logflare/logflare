@@ -279,6 +279,39 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
 
       assert log_record.trace_id == "not-valid-hex"
     end
+
+    test "merges an explicit attributes field with the source's other fields rather than one overwriting the other",
+         %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, IO.iodata_to_binary(env.body)})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      log_event =
+        build(:log_event,
+          source: source,
+          attributes: %{"explicit_key" => "explicit_value"},
+          other_field: "other_value",
+          timestamp: System.system_time(:microsecond)
+        )
+
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+      assert_receive {^ref, body}, 5000
+
+      assert %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+               Protobuf.decode(body, ExportLogsServiceRequest)
+
+      attrs =
+        Map.new(log_record.attributes, fn %{key: key, value: value} ->
+          {key, any_value_to_term(value)}
+        end)
+
+      assert attrs["explicit_key"] == "explicit_value"
+      assert attrs["other_field"] == "other_value"
+    end
   end
 
   describe "content-type header handling" do
@@ -490,19 +523,25 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       end
     end
 
-    # Customer complaint #4 (body/attributes split) is not yet fixed — tracked for
-    # a follow-up PR. This pins down the current (still-unstructured) behavior so
-    # it's obvious what to update once that change lands.
-    test "body still carries everything as one unstructured blob, not structured attributes",
-         %{source: source} do
+    test "body is the plain event_message string, and everything else lands in attributes", %{
+      source: source
+    } do
       log_event = load_fixture_log_event("storage", source)
       body = capture_request_body(source, log_event)
 
       %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
         Protobuf.decode(body, ExportLogsServiceRequest)
 
-      assert log_record.attributes == []
-      assert {:kvlist_value, _} = log_record.body.value
+      assert log_record.body.value == {:string_value, log_event.body["event_message"]}
+
+      attrs =
+        Map.new(log_record.attributes, fn %{key: key, value: value} ->
+          {key, any_value_to_term(value)}
+        end)
+
+      assert get_in(attrs, ["metadata", "level"]) == "info"
+      assert attrs["project"] == "test-project"
+      refute Map.has_key?(attrs, "event_message")
     end
 
     test "severity_number maps HTTP status ranges to WARN/ERROR, not just INFO", %{
