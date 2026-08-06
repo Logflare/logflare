@@ -111,16 +111,8 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       TestUtils.send_and_wait_for_handling(pid, :refresh)
     end
 
-    # These assertions only exercise queue cardinality. For performance, clone one
-    # factory-built event with unique IDs instead of rebuilding every queued event.
     defp fill_queue(table_key) do
-      event = build(:log_event)
-
-      events =
-        for id <- 1..(Backends.max_buffer_queue_len() + 500) do
-          %{event | id: {event.id, id}}
-        end
-
+      events = build_queue_saturation_events(Backends.max_buffer_queue_len() + 500)
       IngestEventQueue.add_to_table(table_key, events)
     end
 

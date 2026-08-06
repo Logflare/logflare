@@ -15,15 +15,10 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     {:ok, conn: conn, source: source, table_key: table_key}
   end
 
-  # Buffer limiting only depends on queue cardinality. For performance, clone one
-  # factory-built event with unique IDs instead of rebuilding every queued event.
-  defp queue_events(source, count) do
-    event = build(:log_event, source: source)
-    for id <- 1..count, do: %{event | id: {event.id, id}}
-  end
-
   defp fill_queue(table_key, source) do
-    events = queue_events(source, Backends.max_buffer_queue_len() + 500)
+    events =
+      build_queue_saturation_events(Backends.max_buffer_queue_len() + 500, source: source)
+
     IngestEventQueue.add_to_table(table_key, events)
   end
 
@@ -81,7 +76,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     other_table_key = {source.id, nil, self()}
     IngestEventQueue.upsert_tid(other_table_key)
 
-    events = queue_events(source, round(Backends.max_buffer_queue_len() / 2))
+    events =
+      build_queue_saturation_events(round(Backends.max_buffer_queue_len() / 2), source: source)
+
     IngestEventQueue.add_to_table(table_key, events)
     IngestEventQueue.add_to_table(other_table_key, events)
 
@@ -95,7 +92,12 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     assert conn.halted == false
 
-    events = queue_events(source, round(Backends.max_buffer_queue_len() / 2) + 500)
+    events =
+      build_queue_saturation_events(
+        round(Backends.max_buffer_queue_len() / 2) + 500,
+        source: source
+      )
+
     IngestEventQueue.add_to_table(table_key, events)
     IngestEventQueue.add_to_table(other_table_key, events)
 
@@ -114,7 +116,12 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
   test "200 if most events are ingested", %{conn: conn, source: source, table_key: table_key} do
     count = Backends.max_buffer_queue_len() - 500
-    IngestEventQueue.add_to_table(table_key, queue_events(source, count))
+
+    IngestEventQueue.add_to_table(
+      table_key,
+      build_queue_saturation_events(count, source: source)
+    )
+
     IngestEventQueue.pop_pending(table_key, count)
 
     # get and cache the value

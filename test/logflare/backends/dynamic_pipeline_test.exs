@@ -29,12 +29,6 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     ]
   end
 
-  defp wait_for_stop do
-    receive do
-      :stop -> :ok
-    end
-  end
-
   test "add_pipeline/1 can scale up pipelines", %{name: name, pipeline_args: pipeline_args} do
     start_supervised!(
       {DynamicPipeline,
@@ -90,7 +84,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
 
   test ":resolve_count and :resolve_interval option will determine number of pipelines to start periodically",
        %{name: name, pipeline_args: pipeline_args} do
-    pid = spawn(&wait_for_stop/0)
+    pid = spawn(&TestUtils.wait_for_stop/0)
 
     start_supervised!(
       {DynamicPipeline,
@@ -198,7 +192,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
         [:logflare, :backends, :dynamic_pipeline, :decrement]
       ])
 
-    pid = spawn(&wait_for_stop/0)
+    pid = spawn(&TestUtils.wait_for_stop/0)
 
     start_supervised!(
       {DynamicPipeline,

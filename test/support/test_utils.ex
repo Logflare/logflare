@@ -472,6 +472,18 @@ defmodule Logflare.TestUtils do
   end
 
   @doc """
+  Blocks the calling process until it receives `:stop`.
+
+  This provides a deterministic process body for tests that need to control process liveness.
+  """
+  @spec wait_for_stop() :: :ok
+  def wait_for_stop do
+    receive do
+      :stop -> :ok
+    end
+  end
+
+  @doc """
   Run function `times` times and will retry failed assertions
   """
   @spec retry_assert(opts :: keyword(), func :: (-> any())) :: any()
