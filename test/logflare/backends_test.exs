@@ -917,6 +917,8 @@ defmodule Logflare.BackendsTest do
       assert Backends.fetch_latest_timestamp(source) != 0
     end
 
+    # These assertions only exercise queue cardinality. For performance, clone one
+    # factory-built event with unique IDs instead of rebuilding every queued event.
     defp fill_queue_over_limit(table_key) do
       event = build(:log_event)
 

@@ -112,6 +112,8 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       :sys.get_state(pid)
     end
 
+    # These assertions only exercise queue cardinality. For performance, clone one
+    # factory-built event with unique IDs instead of rebuilding every queued event.
     defp fill_queue(table_key) do
       event = build(:log_event)
 

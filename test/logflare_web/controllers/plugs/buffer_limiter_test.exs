@@ -15,6 +15,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     {:ok, conn: conn, source: source, table_key: table_key}
   end
 
+  # Buffer limiting only depends on queue cardinality. For performance, clone one
+  # factory-built event with unique IDs instead of rebuilding every queued event.
   defp queue_events(source, count) do
     event = build(:log_event, source: source)
     for id <- 1..count, do: %{event | id: {event.id, id}}

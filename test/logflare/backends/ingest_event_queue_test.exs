@@ -1206,6 +1206,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  # These tests only exercise queue cardinality. For performance, clone one factory-built
+  # event with unique IDs instead of rerunning the full log-event factory for every item.
   defp build_queue_events(count, attrs \\ []) do
     event = build(:log_event, attrs)
     for id <- 1..count, do: %{event | id: {event.id, id}}
