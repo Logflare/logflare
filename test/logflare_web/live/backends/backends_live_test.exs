@@ -1008,7 +1008,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live_with_redirect(~p"/backends/#{backend.id}")
+        |> live_with_redirect(~p"/backends/#{backend.id}", bypass_team_param: true)
 
       assert html =~ backend.name
     end
