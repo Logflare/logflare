@@ -215,11 +215,12 @@ defmodule LogflareWeb.ConnCase do
   application redirect when the resource belongs to another team.
 
   Supplying the common `t=` parameter up front avoids mounting the LiveView
-  twice solely to discover the default team.
+  twice solely to discover the default team. Set `bypass_team_param: true` when
+  the first mount must exercise team selection or authorization without it.
   """
   defmacro live_with_redirect(conn, path \\ nil, opts \\ []) do
     quote bind_quoted: [conn: conn, path: path, opts: opts] do
-      path = LogflareWeb.ConnCase.put_default_team_param(conn, path)
+      {path, opts} = LogflareWeb.ConnCase.prepare_live_with_redirect(conn, path, opts)
       result = Phoenix.LiveViewTest.live(conn, path, opts)
 
       case result do
@@ -240,6 +241,14 @@ defmodule LogflareWeb.ConnCase do
           result
       end
     end
+  end
+
+  @doc false
+  def prepare_live_with_redirect(conn, path, opts) do
+    {bypass_team_param?, opts} = Keyword.pop(opts, :bypass_team_param, false)
+    path = if bypass_team_param?, do: path, else: put_default_team_param(conn, path)
+
+    {path, opts}
   end
 
   @doc false
