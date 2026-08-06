@@ -294,7 +294,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       log_event =
         build(:log_event,
           source: source,
-          attributes: %{"explicit_key" => "explicit_value"},
+          attributes: %{"explicit_key" => "explicit_value", "nested" => %{"leaf" => "value"}},
           other_field: "other_value",
           timestamp: System.system_time(:microsecond)
         )
@@ -312,6 +312,10 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
 
       assert attrs["explicit_key"] == "explicit_value"
       assert attrs["other_field"] == "other_value"
+
+      # explicit attributes are flattened the same way as the leftover fields
+      assert attrs["nested.leaf"] == "value"
+      refute Map.has_key?(attrs, "nested")
     end
   end
 
@@ -540,9 +544,30 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
           {key, any_value_to_term(value)}
         end)
 
-      assert get_in(attrs, ["metadata", "level"]) == "info"
+      assert attrs["metadata.level"] == "info"
+      refute Map.has_key?(attrs, "metadata")
       assert attrs["project"] == "test-project"
       refute Map.has_key?(attrs, "event_message")
+    end
+
+    test "nested metadata fields become their own typed scalar attributes, not a stringified blob",
+         %{source: source} do
+      log_event = load_fixture_log_event("edge_log", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      attrs =
+        Map.new(log_record.attributes, fn %{key: key, value: value} -> {key, value.value} end)
+
+      # a real, typed int_value — not a string containing "200" and not buried
+      # inside a JSON-stringified "metadata" blob
+      assert attrs["metadata.response.status_code"] == {:int_value, 200}
+      assert attrs["metadata.request.method"] == {:string_value, "GET"}
+      assert attrs["metadata.request.cf.botManagement.score"] == {:int_value, 1}
+
+      refute Map.has_key?(attrs, "metadata")
     end
 
     test "severity_number maps HTTP status ranges to WARN/ERROR, not just INFO", %{

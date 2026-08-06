@@ -159,8 +159,24 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   defp add_extra_attributes(fields, extra) when extra == %{}, do: fields
 
   defp add_extra_attributes(fields, extra) do
-    extra_attributes = Enum.map(extra, &make_key_value/1)
+    extra_attributes = flatten_attributes(extra)
     Keyword.update(fields, :attributes, extra_attributes, &(&1 ++ extra_attributes))
+  end
+
+  # Recurses into nested maps, turning each leaf into its own dotted top-level
+  # attribute (e.g. "metadata.response.status_code") instead of one attribute
+  # whose value is itself a nested kvlist_value. Receivers commonly only index
+  # flat scalar attribute values, storing anything else (a whole sub-object) as
+  # an opaque JSON string instead — flattening keeps every field queryable.
+  defp flatten_attributes(map, prefix \\ nil) do
+    Enum.flat_map(map, fn {k, v} ->
+      key = if prefix, do: "#{prefix}.#{k}", else: to_string(k)
+
+      case v do
+        v when is_map(v) -> flatten_attributes(v, key)
+        v -> [make_key_value({key, v})]
+      end
+    end)
   end
 
   # None of the Supabase log sources set an explicit "severity_number", but most
@@ -239,7 +255,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   defp build_log_record_fields({"event_message", _msg}), do: []
 
   defp build_log_record_fields({"attributes", attrs}) when is_map(attrs),
-    do: [attributes: Enum.map(attrs, &make_key_value/1)]
+    do: [attributes: flatten_attributes(attrs)]
 
   defp build_log_record_fields({"severity_number", number}) when is_integer(number),
     do: [severity_number: SeverityNumber.key(number)]
