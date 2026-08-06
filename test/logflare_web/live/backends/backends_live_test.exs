@@ -346,7 +346,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       |> element("select#type")
       |> render_change(%{backend: %{type: "datadog"}})
 
-      for region <- ["US1", "US3", "US5", "EU", "AP1", "US1-FED"] do
+      for region <- ["US1", "US3", "US5", "EU", "AP1", "AP2", "UK1", "US1-FED", "US2-FED"] do
         assert has_element?(view, "#datadog-region option", region)
       end
     end

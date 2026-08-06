@@ -15,7 +15,9 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     "EU" => "https://http-intake.logs.datadoghq.eu/api/v2/logs",
     "AP1" => "https://http-intake.logs.ap1.datadoghq.com/api/v2/logs",
     "AP2" => "https://http-intake.logs.ap2.datadoghq.com/api/v2/logs",
-    "US1-FED" => "https://http-intake.logs.ddog-gov.com/api/v2/logs"
+    "UK1" => "https://http-intake.logs.uk1.datadoghq.com/api/v2/logs",
+    "US1-FED" => "https://http-intake.logs.ddog-gov.com/api/v2/logs",
+    "US2-FED" => "https://http-intake.logs.us2.ddog-gov.com/api/v2/logs"
   }
   @regions Map.keys(@api_url_mapping)
 
