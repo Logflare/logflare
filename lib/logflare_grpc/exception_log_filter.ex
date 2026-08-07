@@ -8,7 +8,7 @@ defmodule LogflareGrpc.ExceptionLogFilter do
 
   alias GRPC.Server.Adapters.ReportException
 
-  @spec emit_log?(ReportException.t()) :: boolean()
+  @spec emit_log?(%ReportException{}) :: boolean()
   def emit_log?(%ReportException{reason: %GRPC.RPCError{status: :permission_denied}}), do: false
   def emit_log?(%ReportException{reason: %GRPC.RPCError{status: :unauthenticated}}), do: false
   def emit_log?(%ReportException{}), do: true
