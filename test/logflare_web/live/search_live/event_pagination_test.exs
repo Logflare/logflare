@@ -13,7 +13,7 @@ defmodule LogflareWeb.SearchLive.EventPaginationTest do
         EventPagination.new()
         |> EventPagination.complete_initial(%EventPage{
           rows: [],
-          request: %{intent: :initial, boundary: nil, cursor: nil},
+          request: %{intent: :initial, cursor: nil},
           cursor: previous_cursor,
           next_cursor: next_cursor,
           has_more?: true
@@ -47,7 +47,7 @@ defmodule LogflareWeb.SearchLive.EventPaginationTest do
           pagination,
           %EventPage{
             rows: [],
-            request: %{intent: :next, boundary: nil, cursor: next_cursor},
+            request: %{intent: :next, cursor: next_cursor},
             cursor: next_cursor,
             has_more?: false
           },

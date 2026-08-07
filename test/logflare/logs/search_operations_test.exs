@@ -103,12 +103,23 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert {:ok, %{event_page_request: request}} =
                SearchOperations.new_event_page(so, :initial, nil)
 
-      assert request == %{intent: :initial, boundary: nil, cursor: nil}
+      assert request == %{intent: :initial, cursor: nil}
     end
 
-    test "returns an invalid request error for an invalid page request", %{so: so} do
-      assert {:error, :invalid_request} =
-               %{so | tailing?: false} |> SearchOperations.new_event_page(:previous, nil)
+    test "creates a page request from its cursor", %{so: so} do
+      cursor = %{id: "event-id", timestamp: 1_769_904_600_000_000}
+
+      assert {:ok, %{event_page_request: request}} =
+               %{so | tailing?: false} |> SearchOperations.new_event_page(:next, cursor)
+
+      assert request == %{intent: :next, cursor: cursor}
+    end
+
+    test "returns an invalid request error when a page cursor is missing", %{so: so} do
+      for intent <- [:previous, :next] do
+        assert {:error, :invalid_request} =
+                 %{so | tailing?: false} |> SearchOperations.new_event_page(intent, nil)
+      end
     end
 
     test "returns a tailing error for tailing searches", %{so: so} do

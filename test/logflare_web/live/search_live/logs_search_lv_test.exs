@@ -2069,16 +2069,31 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     setup [:setup_user_session]
 
-    test "loading the next page appends newer rows and updates the URL range", %{
-      conn: conn,
-      events: events,
-      querystring: querystring,
-      source: source
-    } do
-      view = open_pagination_search(conn, source, querystring, Enum.at(events, 101))
+    test "load next page starts after newest fetched event and updates the URL range",
+         %{
+           conn: conn,
+           events: events,
+           message_prefix: message_prefix,
+           querystring: querystring,
+           source: source,
+           user: user
+         } do
+      newest_fetched_event = Enum.at(events, 101)
+      view = open_pagination_search(conn, source, querystring, newest_fetched_event)
 
       initial_ids = events |> Enum.slice(2, 100) |> log_event_dom_ids()
       assert visible_log_event_ids(view) == initial_ids
+
+      late_event =
+        build(:log_event,
+          source: source,
+          id: "#{message_prefix}-late",
+          timestamp: newest_fetched_event.body["timestamp"] + 500_000,
+          message: "#{message_prefix} late"
+        )
+
+      backend = Backends.get_default_backend(user)
+      assert {:ok, 1} = PostgresAdaptor.insert_log_events(source, backend, [late_event])
 
       view
       |> element("#load-more-events-bottom")
@@ -2089,7 +2104,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       view
       |> TestUtils.wait_for_render(log_event_selector(List.last(events)))
 
-      expected_ids = events |> Enum.slice(2, 101) |> log_event_dom_ids()
+      expected_ids =
+        events
+        |> Enum.slice(2, 101)
+        |> Kernel.++([late_event])
+        |> Enum.sort_by(& &1.body["timestamp"])
+        |> log_event_dom_ids()
+
       assert visible_log_event_ids(view) == expected_ids
     end
 

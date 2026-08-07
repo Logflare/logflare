@@ -57,22 +57,12 @@ defmodule Logflare.Logs.SearchOperations do
   @spec new_event_page(map() | SO.t(), EventPage.intent(), EventPage.cursor() | nil) ::
           {:ok, SO.t()} | {:error, :invalid_request | :tailing}
   def new_event_page(%SO{} = so, :initial, nil) do
-    {:ok, %{so | event_page_request: %{intent: :initial, boundary: nil, cursor: nil}}}
+    {:ok, %{so | event_page_request: %{intent: :initial, cursor: nil}}}
   end
 
   def new_event_page(%SO{tailing?: false} = so, intent, cursor) do
-    corrected_so = apply_local_timestamp_correction(so)
-
-    bounds =
-      SearchOperationHelpers.bounded_timestamp_range(
-        corrected_so.lql_ts_filters,
-        chart_period(corrected_so)
-      )
-
-    boundary = EventPage.boundary(intent, bounds)
-
-    if EventPage.valid_request?(intent, cursor, boundary) do
-      {:ok, %{so | event_page_request: %{intent: intent, boundary: boundary, cursor: cursor}}}
+    if EventPage.valid_request?(intent, cursor) do
+      {:ok, %{so | event_page_request: %{intent: intent, cursor: cursor}}}
     else
       {:error, :invalid_request}
     end
@@ -353,7 +343,7 @@ defmodule Logflare.Logs.SearchOperations do
         } = so
       )
       when intent in [:previous, :next],
-      do: apply_event_page_boundary(so)
+      do: apply_event_page_partition_filter(so)
 
   def apply_timestamp_filter_rules(%SO{backend_type: :postgres, type: :events} = so) do
     %{so | query: apply_postgres_event_timestamp_filter_rules(so)}
@@ -458,9 +448,9 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: q}
   end
 
-  defp apply_event_page_boundary(
+  defp apply_event_page_partition_filter(
          %SO{
-           event_page_request: %{intent: intent, boundary: nil, cursor: %{timestamp: timestamp}}
+           event_page_request: %{intent: intent, cursor: %{timestamp: timestamp}}
          } = so
        ) do
     direction = EventPage.direction(intent)
@@ -469,47 +459,15 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: apply_event_page_partition_filter(so.query, so, direction, timestamp)}
   end
 
-  defp apply_event_page_boundary(%SO{event_page_request: %{boundary: nil}} = so), do: so
-
-  defp apply_event_page_boundary(
-         %SO{
-           event_page_request: %{intent: intent, boundary: boundary, cursor: %{}},
-           query: query
-         } = so
-       ) do
-    boundary = normalize_event_timestamp(so.backend_type, boundary)
-    direction = EventPage.direction(intent)
-    %{so | query: apply_event_page_partition_filter(query, so, direction, boundary)}
-  end
-
-  defp apply_event_page_boundary(
-         %SO{event_page_request: %{intent: intent, boundary: boundary}} = so
-       ) do
-    boundary = normalize_event_timestamp(so.backend_type, boundary)
-    direction = EventPage.direction(intent)
-    query = where(so.query, ^boundary_condition(direction, boundary))
-
-    %{so | query: apply_event_page_partition_filter(query, so, direction, boundary)}
-  end
-
-  defp boundary_condition(:previous, boundary) when is_integer(boundary),
-    do: dynamic([t], t.timestamp < fragment("TIMESTAMP_MICROS(?)", ^boundary))
-
-  defp boundary_condition(:next, boundary) when is_integer(boundary),
-    do: dynamic([t], t.timestamp > fragment("TIMESTAMP_MICROS(?)", ^boundary))
-
-  defp boundary_condition(:previous, boundary), do: dynamic([t], t.timestamp < ^boundary)
-  defp boundary_condition(:next, boundary), do: dynamic([t], t.timestamp > ^boundary)
-
   defp apply_event_page_partition_filter(query, %SO{backend_type: :postgres}, _, _), do: query
 
   defp apply_event_page_partition_filter(
          query,
          %SO{partition_by: :timestamp},
          direction,
-         boundary
+         timestamp
        ) do
-    date = boundary |> event_boundary_datetime() |> DateTime.to_date()
+    date = timestamp |> event_timestamp_datetime() |> DateTime.to_date()
 
     case direction do
       :previous -> where(query, [t], fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^date)
@@ -517,8 +475,8 @@ defmodule Logflare.Logs.SearchOperations do
     end
   end
 
-  defp apply_event_page_partition_filter(query, %SO{partition_by: :pseudo}, direction, boundary) do
-    date = boundary |> event_boundary_datetime() |> DateTime.to_date()
+  defp apply_event_page_partition_filter(query, %SO{partition_by: :pseudo}, direction, timestamp) do
+    date = timestamp |> event_timestamp_datetime() |> DateTime.to_date()
 
     case direction do
       :previous -> where(query, partition_date() <= ^date or in_streaming_buffer())
@@ -526,12 +484,12 @@ defmodule Logflare.Logs.SearchOperations do
     end
   end
 
-  defp event_boundary_datetime(timestamp) when is_integer(timestamp),
+  defp event_timestamp_datetime(timestamp) when is_integer(timestamp),
     do: DateTime.from_unix!(timestamp, :microsecond)
 
-  defp event_boundary_datetime(%DateTime{} = timestamp), do: timestamp
+  defp event_timestamp_datetime(%DateTime{} = timestamp), do: timestamp
 
-  defp event_boundary_datetime(%NaiveDateTime{} = timestamp),
+  defp event_timestamp_datetime(%NaiveDateTime{} = timestamp),
     do: DateTime.from_naive!(timestamp, "Etc/UTC")
 
   defp apply_bq_aggregate_timestamp_filters(query, so, filters, chart_period) do
