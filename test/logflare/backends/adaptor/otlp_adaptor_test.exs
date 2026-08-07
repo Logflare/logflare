@@ -59,8 +59,19 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
 
       assert changeset.valid?, inspect(changeset)
 
-      assert %{gzip: true, protocol: "http/protobuf", headers: %{}} =
+      assert %{gzip: true, protocol: "http/protobuf", headers: %{}, flatten_to_attributes: false} =
                Ecto.Changeset.apply_changes(changeset)
+    end
+
+    test "flatten_to_attributes defaults to false but can be enabled" do
+      changeset =
+        Adaptor.cast_and_validate_config(
+          @subject,
+          Map.put(@valid_config_input, "flatten_to_attributes", "true")
+        )
+
+      assert changeset.valid?
+      assert %{flatten_to_attributes: true} = Ecto.Changeset.apply_changes(changeset)
     end
 
     test "allows to override the defaults" do
@@ -197,6 +208,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert request = Protobuf.decode(body, ExportLogsServiceRequest)
       assert %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} = request
       assert log_record.time_unix_nano == ts_us * 1000
+      # legacy (default) shape: flatten_to_attributes isn't set on this backend,
+      # so event_name still carries the message and everything else stays in body
       assert log_record.event_name == msg
       assert body =~ "random_attribute"
       assert body =~ "nothing"
@@ -490,21 +503,6 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       end
     end
 
-    # Customer complaint #4 (body/attributes split) is not yet fixed — tracked for
-    # a follow-up PR. This pins down the current (still-unstructured) behavior so
-    # it's obvious what to update once that change lands.
-    test "body still carries everything as one unstructured blob, not structured attributes",
-         %{source: source} do
-      log_event = load_fixture_log_event("storage", source)
-      body = capture_request_body(source, log_event)
-
-      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
-        Protobuf.decode(body, ExportLogsServiceRequest)
-
-      assert log_record.attributes == []
-      assert {:kvlist_value, _} = log_record.body.value
-    end
-
     test "severity_number maps HTTP status ranges to WARN/ERROR, not just INFO", %{
       source: source
     } do
@@ -567,6 +565,145 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
 
         assert log_record.severity_number == expected
       end
+    end
+  end
+
+  describe "flatten_to_attributes config option" do
+    test "defaults to false and matches the legacy shape (everything in body, unflattened)" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, type: :otlp, sources: [source], config: @valid_config)
+
+      start_supervised!({AdaptorSupervisor, {source, backend}}, id: :legacy_shape_test_adaptor)
+      :timer.sleep(250)
+
+      log_event = load_fixture_log_event("storage", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      assert log_record.event_name == log_event.body["event_message"]
+      assert log_record.attributes == []
+
+      body_map = any_value_to_term(log_record.body)
+      assert body_map["project"] == "test-project"
+      assert get_in(body_map, ["metadata", "level"]) == "info"
+    end
+
+    test "when enabled, body is the plain event_message string and everything else is flattened into attributes" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: Map.put(@valid_config, :flatten_to_attributes, true)
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}},
+        id: :structured_shape_test_adaptor
+      )
+
+      :timer.sleep(250)
+
+      log_event = load_fixture_log_event("storage", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      assert log_record.event_name == ""
+      assert log_record.body.value == {:string_value, log_event.body["event_message"]}
+
+      attrs =
+        Map.new(log_record.attributes, fn %{key: key, value: value} ->
+          {key, any_value_to_term(value)}
+        end)
+
+      assert attrs["metadata.level"] == "info"
+      refute Map.has_key?(attrs, "metadata")
+      assert attrs["project"] == "test-project"
+      refute Map.has_key?(attrs, "event_message")
+    end
+
+    test "when enabled, nested metadata fields become their own typed scalar attributes, not a stringified blob" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: Map.put(@valid_config, :flatten_to_attributes, true)
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}},
+        id: :structured_flatten_test_adaptor
+      )
+
+      :timer.sleep(250)
+
+      log_event = load_fixture_log_event("edge_log", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      attrs =
+        Map.new(log_record.attributes, fn %{key: key, value: value} -> {key, value.value} end)
+
+      # a real, typed int_value — not a string containing "200" and not buried
+      # inside a JSON-stringified "metadata" blob
+      assert attrs["metadata.response.status_code"] == {:int_value, 200}
+      assert attrs["metadata.request.method"] == {:string_value, "GET"}
+      assert attrs["metadata.request.cf.botManagement.score"] == {:int_value, 1}
+
+      refute Map.has_key?(attrs, "metadata")
+    end
+
+    test "when enabled, merges an explicit attributes field with the source's other fields rather than one overwriting the other" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: Map.put(@valid_config, :flatten_to_attributes, true)
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}},
+        id: :structured_merge_test_adaptor
+      )
+
+      :timer.sleep(250)
+
+      log_event =
+        build(:log_event,
+          source: source,
+          attributes: %{"explicit_key" => "explicit_value", "nested" => %{"leaf" => "value"}},
+          other_field: "other_value",
+          timestamp: System.system_time(:microsecond)
+        )
+
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      attrs =
+        Map.new(log_record.attributes, fn %{key: key, value: value} ->
+          {key, any_value_to_term(value)}
+        end)
+
+      assert attrs["explicit_key"] == "explicit_value"
+      assert attrs["other_field"] == "other_value"
+
+      # explicit attributes are flattened the same way as the leftover fields
+      assert attrs["nested.leaf"] == "value"
+      refute Map.has_key?(attrs, "nested")
     end
   end
 
