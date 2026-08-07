@@ -428,6 +428,83 @@ defmodule Logflare.BillingTest do
       assert %Plan{name: "Enterprise"} = Billing.get_plan_by_user(user)
     end
 
+    test "get_plans_by_users/1 matches get_plan_by_user/1 for each user" do
+      insert(:plan, name: "Free")
+      insert(:plan, name: "Lifetime")
+      insert(:plan, name: "Enterprise")
+      plan = insert(:plan, name: "Custom", stripe_id: "stripe-id")
+      partner = insert(:partner)
+
+      free_user = insert(:user, billing_enabled: true)
+
+      lifetime_user =
+        insert(:billing_account, lifetime_plan: true) |> Repo.preload(:user) |> Map.fetch!(:user)
+
+      no_stripe_user = insert(:user, billing_enabled: true)
+
+      insert(:billing_account, user: no_stripe_user, stripe_subscriptions: nil)
+
+      custom_user = insert(:user, billing_enabled: true)
+      insert(:billing_account, user: custom_user, stripe_plan_id: plan.stripe_id)
+
+      legacy_user = insert(:user, billing_enabled: false)
+
+      partner_user = insert(:user, partner: partner)
+      assert {:ok, upgraded_partner_user} = Partners.upgrade_user(partner_user)
+
+      users = [
+        free_user,
+        lifetime_user,
+        no_stripe_user,
+        custom_user,
+        legacy_user,
+        upgraded_partner_user
+      ]
+
+      plans_by_user_id = Billing.get_plans_by_users(users)
+
+      for user <- users do
+        assert plans_by_user_id[user.id] == Billing.get_plan_by_user(user)
+      end
+    end
+
+    test "get_plans_by_users/1 reuses an already-preloaded billing_account" do
+      insert(:plan, name: "Free")
+      insert(:plan, name: "Lifetime")
+
+      ba = insert(:billing_account, lifetime_plan: true) |> Repo.preload(:user)
+      preloaded_user = ba.user
+
+      count_billing_account_queries = fn ->
+        {:ok, counter} = Agent.start_link(fn -> 0 end)
+        handler_id = {:get_plans_by_users_billing_account_query_count, make_ref()}
+
+        :telemetry.attach(
+          handler_id,
+          [:logflare, :repo, :query],
+          fn _event, _measurements, metadata, _config ->
+            if metadata.source == "billing_accounts" do
+              Agent.update(counter, &(&1 + 1))
+            end
+          end,
+          nil
+        )
+
+        result = Billing.get_plans_by_users([preloaded_user])
+
+        count = Agent.get(counter, & &1)
+        :telemetry.detach(handler_id)
+        Agent.stop(counter)
+
+        {count, result}
+      end
+
+      {count, plans_by_user_id} = count_billing_account_queries.()
+
+      assert count == 0
+      assert %Plan{name: "Lifetime"} = plans_by_user_id[preloaded_user.id]
+    end
+
     test "change_plan/1 returns changeset" do
       plan = insert(:plan)
       assert %Ecto.Changeset{} = Billing.change_plan(plan)
