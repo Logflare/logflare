@@ -78,7 +78,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
   @spec transform(term(), keyword()) :: Message.t()
   def transform(event, _opts) do
-    in_flight_ref = :persistent_term.get({BufferProducer, :in_flight_ref, self()}, nil)
+    in_flight_ref = BufferProducer.get_in_flight_ref(self())
 
     %Message{
       data: event,
