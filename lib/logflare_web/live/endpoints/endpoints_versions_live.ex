@@ -27,14 +27,17 @@ defmodule LogflareWeb.EndpointsVersionsLive do
         </.subheader_path_link>/versions
       </:path>
     </.subheader>
-
-    <.versions versions={@streams.versions} current_version_id={@current_version_id} load_more?={not is_nil(@next_cursor_id)} loading?={@load_more_versions.loading}>
+    <.versions versions={@streams.versions} current_version_id={@current_version_id} load_more?={not is_nil(@next_cursor_id)} loading?={@load_more_versions.loading} animate?={@animate?}>
       <:col :let={version} class="lg:tw-col-span-1" label="Version">
-        <span :if={version.id == @current_version_id} class="tw-inline-flex tw-items-center tw-rounded-sm tw-bg-[#2155a3] tw-px-2 tw-py-1 tw-text-xs tw-font-medium tw-text-white">
-          current
-        </span>
-        <div class="tw-w-full lg:tw-text-right tw-pt-1 tw-text-sm tw-font-medium tw-text-white ">
-          {version_number(version)}
+        <div class="tw-flex tw-w-full tw-flex-col tw-items-start tw-gap-2 lg:tw-items-end">
+          <div class="tw-px-2 tw-py-1 tw-text-sm tw-font-medium tw-text-white">
+            {version_number(version)}
+          </div>
+          <div :if={version.id == @current_version_id}>
+            <span class="tw-inline-flex tw-items-center tw-rounded-sm tw-bg-[#2155a3] tw-px-2 tw-py-1 tw-text-xs tw-font-medium tw-text-white">
+              current
+            </span>
+          </div>
         </div>
       </:col>
       <:col :let={version} class="lg:tw-col-span-7" label="Changes">
@@ -46,16 +49,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
         <span class="tw-text-sm tw-font-medium tw-text-zinc-300 lg:tw-whitespace-nowrap">{version.origin || "unknown"}</span>
       </:col>
       <:col :let={version} class="lg:tw-col-span-2" label="Updated">
-        <div class="tw-flex tw-flex-col tw-gap-0.5">
-          <span class="tw-text-sm tw-font-medium tw-text-zinc-200 tw-tabular-nums">
-            {Calendar.strftime(version.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}
-          </span>
-          <div class="tw-flex tw-items-center tw-gap-2">
-            <span class="tw-text-xs tw-text-zinc-500 ">
-              {time_ago(version.inserted_at)}
-            </span>
-          </div>
-        </div>
+        <.version_updated version={version} current_version_id={@current_version_id} />
       </:col>
     </.versions>
 
@@ -82,6 +76,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   attr :current_version_id, :integer, default: nil
   attr :load_more?, :boolean, default: false
   attr :loading?, :boolean, default: false
+  attr :animate?, :boolean, default: false
 
   slot :col do
     attr :label, :string
@@ -90,7 +85,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
 
   def versions(assigns) do
     ~H"""
-    <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-5">
+    <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-5 ">
       <div class="tw-hidden lg:tw-grid tw-grid-cols-12 tw-px-4 tw-text-left tw-text-sm tw-font-semibold tw-text-zinc-400">
         <div :for={col <- @col} class={["first:tw-text-center tw-px-4 tw-py-2", col[:class]]}>{col.label}</div>
       </div>
@@ -101,15 +96,16 @@ defmodule LogflareWeb.EndpointsVersionsLive do
             No versions recorded for this endpoint.
           </p>
         </div>
-        <a
+        <div
           :for={{dom_id, version} <- @versions}
           id={dom_id}
-          phx-click="show-version"
-          phx-value-version-number={version_number(version)}
-          href="#"
-          class="tw-block tw-rounded tw-border tw-border-zinc-900 tw-bg-dashboard-grey tw-no-underline hover:tw-border-zinc-700 hover:tw-bg-[#232323] focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-[#2155a3] lg:tw-grid tw-grid-cols-12"
+          phx-mounted={maybe_slide_in(@animate? && version.id == @current_version_id)}
+          class="tw-relative tw-z-0 tw-block tw-rounded tw-border tw-border-zinc-900 tw-bg-dashboard-grey tw-no-underline hover:tw-border-zinc-700 hover:tw-bg-[#232323] focus-within:tw-z-30 focus-within:tw-outline-none focus-within:tw-ring-2 focus-within:tw-ring-[#2155a3] lg:tw-grid tw-grid-cols-12"
         >
-          <div :for={col <- @col} class={["tw-px-4 tw-py-2", col[:class]]}>
+          <button type="button" class="tw-absolute tw-inset-0 tw-z-10 tw-w-full tw-border-0 tw-bg-transparent tw-p-0" phx-click="show-version" phx-value-version-number={version_number(version)}>
+            <span class="tw-sr-only">Show version {version_number(version)}</span>
+          </button>
+          <div :for={col <- @col} class={["tw-pointer-events-none tw-relative tw-z-20 tw-px-4 tw-py-2", col[:class]]}>
             <div class="tw-mb-2 lg:tw-hidden tw-text-sm tw-font-semibold tw-text-zinc-400">
               {col.label}
             </div>
@@ -117,7 +113,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
               {render_slot(col, version)}
             </div>
           </div>
-        </a>
+        </div>
       </div>
 
       <div :if={@load_more?} class="tw-flex tw-justify-center">
@@ -129,6 +125,50 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     """
   end
 
+  defp maybe_slide_in(true),
+    do: JS.transition({"tw-transition-transform", "tw-translate-x-full", "tw-translate-none"})
+
+  defp maybe_slide_in(_), do: false
+
+  attr :version, Version, required: true
+  attr :current_version_id, :integer, default: nil
+
+  def version_updated(assigns) do
+    ~H"""
+    <div class="tw-flex tw-flex-col tw-gap-0.5">
+      <span class="tw-text-sm tw-font-medium tw-text-zinc-200 tw-tabular-nums">
+        {Calendar.strftime(@version.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}
+      </span>
+      <div class="tw-flex tw-w-full tw-items-center tw-gap-2 -tw-mr-6">
+        <span :if={relative_time_ago(@version.inserted_at)} class="tw-text-xs tw-text-zinc-500 ">
+          {relative_time_ago(@version.inserted_at)}
+        </span>
+        <div :if={@version.id != @current_version_id} class="tw-pointer-events-auto tw-ml-auto tw-shrink-0 -tw-mr-6">
+          <.version_actions version={@version} />
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :version, Version, required: true
+
+  def version_actions(assigns) do
+    ~H"""
+    <.button_dropdown id={"endpoint-version-actions-#{@version.id}"} button_class="btn btn-link" placement="below" pin="right">
+      <span class="tw-sr-only">Version actions</span>
+      <i class="fas fa-ellipsis-h" aria-hidden="true"></i>
+      <:menu_item>
+        <.button_dropdown_menu_button phx-click={restore_version()} phx-value-version-number={version_number(@version)}>
+          Restore
+        </.button_dropdown_menu_button>
+      </:menu_item>
+    </.button_dropdown>
+    """
+  end
+
+  defp restore_version, do: JS.push("restore-version") |> JS.dispatch("click", to: "body")
+
   @impl true
   def mount(%{"id" => endpoint_id} = params, _session, socket) do
     user = socket.assigns.team_user || socket.assigns.user
@@ -139,16 +179,12 @@ defmodule LogflareWeb.EndpointsVersionsLive do
           redirect(socket, to: ~p"/endpoints")
 
         endpoint ->
-          {versions, next_cursor_id} = fetch_page(endpoint.id)
-
           socket
+          |> assign(:animate?, false)
           |> assign(:endpoint, endpoint)
-          |> assign(:current_version_id, current_version_id(versions))
-          |> assign(:next_cursor_id, next_cursor_id)
-          |> assign(:load_more_versions, AsyncResult.ok(nil))
           |> assign(:selected_version, nil)
           |> maybe_assign_team_context(params, endpoint)
-          |> stream(:versions, versions, reset: true)
+          |> assign_versions(endpoint)
       end
 
     {:ok, socket}
@@ -164,7 +200,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
              Endpoints.get_endpoint_query_version(endpoint.id, version_number) do
         socket
         |> assign(:selected_version, selected_version)
-        |> assign(:endpoint_snapshot, snapshot_to_endpoint(selected_version))
+        |> assign(:endpoint_snapshot, version_endpoint_snapshot(selected_version))
       else
         _ ->
           socket
@@ -215,7 +251,47 @@ defmodule LogflareWeb.EndpointsVersionsLive do
      )}
   end
 
+  def handle_event("restore-version", %{"version-number" => version_number}, socket) do
+    endpoint = socket.assigns.endpoint
+    user = socket.assigns.team_user || socket.assigns.user
+
+    case Integer.parse(version_number) do
+      {version_number, ""} ->
+        socket =
+          socket
+          |> start_async(:version_restored, fn ->
+            Endpoints.restore_query_version(user, endpoint, version_number, user)
+          end)
+
+        {:noreply, socket}
+
+      _ ->
+        handle_async(:version_restored, {:error, :invalid_version_number}, socket)
+    end
+  end
+
   @impl true
+  def handle_async(:version_restored, {:ok, {:ok, endpoint, original_version_number}}, socket) do
+    socket =
+      socket
+      |> assign(:endpoint, endpoint)
+      |> assign(:animate?, true)
+      |> assign_versions(endpoint)
+
+    {:noreply,
+     put_flash(
+       socket,
+       :info,
+       "Restored endpoint version #{original_version_number} as new version #{socket.assigns.current_version_number}."
+     )}
+  end
+
+  def handle_async(:version_restored, _, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:error, "Unable to restore endpoint version.")}
+  end
+
   def handle_async(:load_more_versions, {:ok, {versions, next_cursor_id}}, socket) do
     {:noreply,
      socket
@@ -251,6 +327,19 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     |> Repo.all()
   end
 
+  @spec assign_versions(Phoenix.LiveView.Socket.t(), EndpointQuery.t()) ::
+          Phoenix.LiveView.Socket.t()
+  defp assign_versions(socket, %EndpointQuery{id: endpoint_id}) do
+    {versions, next_cursor_id} = fetch_page(endpoint_id)
+
+    socket
+    |> assign(:current_version_id, current_version_id(versions))
+    |> assign(:current_version_number, current_version_number(versions))
+    |> assign(:next_cursor_id, next_cursor_id)
+    |> assign(:load_more_versions, AsyncResult.ok(nil))
+    |> stream(:versions, versions, reset: true)
+  end
+
   @spec maybe_filter_after_version(Ecto.Queryable.t(), integer() | nil) :: Ecto.Query.t()
   defp maybe_filter_after_version(query, nil), do: query
 
@@ -261,6 +350,10 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   @spec current_version_id([Version.t()]) :: integer() | nil
   defp current_version_id([%Version{id: version_id} | _]), do: version_id
   defp current_version_id(_versions), do: nil
+
+  @spec current_version_number([Version.t()]) :: integer() | nil
+  defp current_version_number([%Version{} = version | _]), do: version_number(version)
+  defp current_version_number(_versions), do: nil
 
   @spec next_cursor_id([Version.t()]) :: integer() | nil
   defp next_cursor_id(versions) do
@@ -302,6 +395,17 @@ defmodule LogflareWeb.EndpointsVersionsLive do
 
   defp version_query_diff(_version), do: []
 
+  @spec relative_time_ago(DateTime.t() | NaiveDateTime.t()) :: String.t() | nil
+  defp relative_time_ago(datetime) do
+    relative = time_ago(datetime)
+
+    if relative == Calendar.strftime(datetime, "%Y-%m-%d") do
+      nil
+    else
+      relative
+    end
+  end
+
   defp query_diff_class("eq"), do: "tw-text-zinc-500"
   defp query_diff_class("del"), do: "tw-bg-red-950/40 tw-text-red-300 tw-line-through"
   defp query_diff_class("ins"), do: "tw-bg-emerald-950/40 tw-font-bold tw-text-emerald-400 px-1"
@@ -313,13 +417,11 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   defp version_number(%Version{meta: %{"version_number" => version_number}}), do: version_number
   defp version_number(_version), do: nil
 
-  @spec snapshot_to_endpoint(Version.t()) :: EndpointQuery.t()
-  defp snapshot_to_endpoint(version) do
-    snapshot = Map.get(version.meta, "endpoint_snapshot", %{})
-
-    %EndpointQuery{}
-    |> Ecto.Changeset.cast(snapshot, EndpointQuery.version_snapshot_fields())
-    |> Ecto.Changeset.apply_changes()
+  @spec version_endpoint_snapshot(Version.t()) :: EndpointQuery.t()
+  defp version_endpoint_snapshot(%Version{meta: meta}) when is_map(meta) do
+    meta
+    |> Map.get("endpoint_snapshot", %{})
+    |> EndpointQuery.from_version_snapshot()
   end
 
   defp maybe_assign_team_context(socket, %{"t" => _team_id}, _endpoint), do: socket

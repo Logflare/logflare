@@ -25,6 +25,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.Data
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.User
@@ -907,13 +908,17 @@ defmodule Logflare.BackendsTest do
 
       # RecentInsertsCacher bridges Counters.increment/2 (called by ingest_logs)
       # → Counters.increment_source_changed_at_unix_ts/2 (read by
-      # fetch_latest_timestamp/1). Trigger it explicitly and use :sys.get_state/1
-      # as a sync fence so the test doesn't depend on the cacher's timer.
+      # fetch_latest_timestamp/1). Trigger it synchronously so the test doesn't
+      # depend on the cacher's timer.
       cacher = GenServer.whereis(Backends.via_source(source, RecentInsertsCacher))
-      send(cacher, :do_cache)
-      :sys.get_state(cacher)
+      TestUtils.send_and_wait_for_handling(cacher, :do_cache)
 
       assert Backends.fetch_latest_timestamp(source) != 0
+    end
+
+    defp fill_queue_over_limit(table_key) do
+      events = build_queue_saturation_events(Backends.max_buffer_queue_len() + 500)
+      IngestEventQueue.add_to_table(table_key, events)
     end
 
     test "any_ingest_queue_over_limit?/1 is false when no queues exist for the source", %{
@@ -927,10 +932,7 @@ defmodule Logflare.BackendsTest do
       table_key = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(table_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue_over_limit(table_key)
 
       assert Backends.any_ingest_queue_over_limit?(source.id)
     end
@@ -944,10 +946,7 @@ defmodule Logflare.BackendsTest do
       table_key = {source.id, backend.id, self()}
       IngestEventQueue.upsert_tid(table_key)
 
-      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
-        le = build(:log_event)
-        IngestEventQueue.add_to_table(table_key, [le])
-      end
+      fill_queue_over_limit(table_key)
 
       assert Backends.any_ingest_queue_over_limit?(source.id)
     end
@@ -1725,7 +1724,7 @@ defmodule Logflare.BackendsTest do
     end
   end
 
-  describe "ingest_logs/2 event age filtering" do
+  describe "ingest_logs/2 event timestamp filtering" do
     setup do
       insert(:plan)
       user = insert(:user)
@@ -1736,21 +1735,32 @@ defmodule Logflare.BackendsTest do
       {:ok, source: source}
     end
 
-    test "drops events older than 24 hours", %{source: source} do
+    test "accepts events older than 24 hours", %{source: source} do
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
 
       now_us = System.system_time(:microsecond)
-      old_timestamp = now_us - 25 * 3_600 * 1_000_000
 
-      params = [%{"message" => "old event", "timestamp" => old_timestamp}]
+      params = [
+        %{"message" => "old event", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
+        %{"message" => "very old event", "timestamp" => now_us - 500 * 3_600 * 1_000_000}
+      ]
 
-      assert {:ok, 0} = Backends.ingest_logs(params, source)
+      assert {:ok, 2} = Backends.ingest_logs(params, source)
 
-      source_id = source.id
-      source_token = source.token
+      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale], _, _}
+    end
 
-      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale],
-                      %{count: 1}, %{source_id: ^source_id, source_token: ^source_token}}
+    test "counts events older than 24 hours toward the source insert count", %{source: source} do
+      old_timestamp = System.system_time(:microsecond) - 25 * 3_600 * 1_000_000
+      before_count = Data.get_node_inserts(source.token)
+
+      params = [
+        %{"message" => "old event 1", "timestamp" => old_timestamp},
+        %{"message" => "old event 2", "timestamp" => old_timestamp}
+      ]
+
+      assert {:ok, 2} = Backends.ingest_logs(params, source)
+      assert Data.get_node_inserts(source.token) == before_count + 2
     end
 
     test "drops events more than 1 hour in the future", %{source: source} do
@@ -1782,56 +1792,43 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 3} = Backends.ingest_logs(params, source)
     end
 
-    test "filters mixed batch of valid and invalid timestamps", %{source: source} do
+    test "drops only future timestamps from a mixed batch", %{source: source} do
       now_us = System.system_time(:microsecond)
 
       params = [
         %{"message" => "valid now", "timestamp" => now_us},
-        %{"message" => "too old", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
+        %{"message" => "old", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
         %{"message" => "too future", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
         %{"message" => "valid past", "timestamp" => now_us - 15 * 3_600 * 1_000_000}
       ]
 
-      assert {:ok, 2} = Backends.ingest_logs(params, source)
+      assert {:ok, 3} = Backends.ingest_logs(params, source)
     end
 
-    test "tallies each drop reason separately within a single batch", %{source: source} do
+    test "tallies future drops within a single batch", %{source: source} do
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_future])
 
       now_us = System.system_time(:microsecond)
-      old_timestamp = now_us - 73 * 3_600 * 1_000_000
       future_timestamp = now_us + 2 * 3_600 * 1_000_000
 
       params = [
         %{"message" => "valid now", "timestamp" => now_us},
-        %{"message" => "too old 1", "timestamp" => old_timestamp},
-        %{"message" => "too old 2", "timestamp" => old_timestamp},
-        %{"message" => "too future", "timestamp" => future_timestamp}
+        %{"message" => "old", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "too future 1", "timestamp" => future_timestamp},
+        %{"message" => "too future 2", "timestamp" => future_timestamp}
       ]
 
-      assert {:ok, 1} = Backends.ingest_logs(params, source)
+      assert {:ok, 2} = Backends.ingest_logs(params, source)
 
       source_id = source.id
       source_token = source.token
 
-      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale],
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future],
                       %{count: 2}, %{source_id: ^source_id, source_token: ^source_token}}
 
-      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future],
-                      %{count: 1}, %{source_id: ^source_id, source_token: ^source_token}}
-
-      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale], _, _}
       refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future], _, _}
-    end
-
-    test "accepts events at exact boundary (24 hours ago)", %{source: source} do
-      now_us = System.system_time(:microsecond)
-      boundary_timestamp = now_us - (23 * 3_600 + 59 * 60) * 1_000_000
-
-      params = [%{"message" => "boundary event", "timestamp" => boundary_timestamp}]
-
-      assert {:ok, 1} = Backends.ingest_logs(params, source)
+      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale], _, _}
     end
 
     test "accepts events at exact boundary (1 hour in future)", %{source: source} do
@@ -1847,9 +1844,8 @@ defmodule Logflare.BackendsTest do
       now_us = System.system_time(:microsecond)
 
       params = [
-        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
-        %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
-        %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
+        %{"message" => "future event 1", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
+        %{"message" => "future event 2", "timestamp" => now_us + 100 * 3_600 * 1_000_000}
       ]
 
       assert {:ok, 0} = Backends.ingest_logs(params, source)
@@ -1862,9 +1858,8 @@ defmodule Logflare.BackendsTest do
 
       params = [
         %{"message" => "valid event", "timestamp" => now_us},
-        %{"message" => "old event 1", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
-        %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
-        %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
+        %{"message" => "future event 1", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
+        %{"message" => "future event 2", "timestamp" => now_us + 100 * 3_600 * 1_000_000}
       ]
 
       log =
@@ -1872,7 +1867,7 @@ defmodule Logflare.BackendsTest do
           assert {:ok, 1} = Backends.ingest_logs(params, source)
         end)
 
-      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-24h, +1h] window"
+      assert log =~ "Dropping 2 of 3 event(s): timestamps more than 1h in the future"
     end
 
     test "does not log when no events are filtered", %{source: source} do
@@ -1880,16 +1875,17 @@ defmodule Logflare.BackendsTest do
 
       params = [
         %{"message" => "valid event 1", "timestamp" => now_us},
-        %{"message" => "valid event 2", "timestamp" => now_us - 1 * 3_600 * 1_000_000}
+        %{"message" => "valid event 2", "timestamp" => now_us - 1 * 3_600 * 1_000_000},
+        %{"message" => "old event", "timestamp" => now_us - 500 * 3_600 * 1_000_000}
       ]
 
       log =
         capture_log(fn ->
-          assert {:ok, 2} = Backends.ingest_logs(params, source)
+          assert {:ok, 3} = Backends.ingest_logs(params, source)
         end)
 
       refute log =~ "Dropping"
-      refute log =~ "timestamps outside"
+      refute log =~ "timestamps more than"
     end
   end
 
