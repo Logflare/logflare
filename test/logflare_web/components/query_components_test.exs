@@ -238,6 +238,57 @@ defmodule LogflareWeb.QueryComponentsTest do
                URI.decode_query(query)
     end
 
+    test "appends a filter when path is already filtered", %{
+      source: source,
+      schema: schema,
+      source_schema_flat_map: flat_map
+    } do
+      html =
+        render_component(&QueryComponents.quick_filter/1, %{
+          lql: ~s|m.status:~"o"|,
+          node: %{key: "status", path: ["metadata", "status"], value: "ok"},
+          source: source,
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
+        })
+
+      %URI{query: query} = html |> quick_filter_href("Append to query") |> URI.parse()
+      %{"querystring" => querystring} = URI.decode_query(query)
+
+      assert [
+               %FilterRule{path: "metadata.status", operator: :"~", value: "o"},
+               %FilterRule{path: "metadata.status", operator: :=, value: "ok"}
+             ] = Lql.decode!(querystring, schema)
+    end
+
+    test "appends an exclude filter when the path is already filtered", %{
+      source: source,
+      schema: schema,
+      source_schema_flat_map: flat_map
+    } do
+      html =
+        render_component(&QueryComponents.quick_filter/1, %{
+          lql: ~s|m.user_id:~"12"|,
+          node: %{key: "user_id", path: ["metadata", "user_id"], value: "123"},
+          source: source,
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
+        })
+
+      %URI{query: query} = html |> quick_filter_href("Exclude from query") |> URI.parse()
+      %{"querystring" => querystring} = URI.decode_query(query)
+
+      assert [
+               %FilterRule{path: "metadata.user_id", operator: :"~", value: "12"},
+               %FilterRule{
+                 path: "metadata.user_id",
+                 operator: :=,
+                 value: "123",
+                 modifiers: %{negate: true}
+               }
+             ] = Lql.decode!(querystring, schema)
+    end
+
     test "renders a metadata array quick filter link", %{
       source: source,
       schema: schema,

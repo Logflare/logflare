@@ -127,7 +127,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     # calls the producer module's own callbacks, then the transformer, inline, in one
     # process) — so self() here is the producer's pid, and this lookup always finds the
     # ref the producer published at init.
-    in_flight_ref = :persistent_term.get({BufferProducer, :in_flight_ref, self()}, nil)
+    in_flight_ref = BufferProducer.get_in_flight_ref(self())
 
     %Message{
       data: pointer,
