@@ -10,10 +10,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.LogEvent
   alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
   alias Logflare.Lql.Rules.FilterRule
 
@@ -308,6 +310,138 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :async_insert_cluster_url)
     end
+
+    test "max_event_age_hours defaults to 24 when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :max_event_age_hours) == 24
+    end
+
+    test "casts a custom max_event_age_hours" do
+      changeset = cast_and_validate_config(max_event_age_hours: 72)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :max_event_age_hours) == 72
+    end
+
+    test "accepts a max_event_age_hours of zero to disable age filtering" do
+      changeset = cast_and_validate_config(max_event_age_hours: 0)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :max_event_age_hours) == 0
+    end
+
+    test "rejects a negative max_event_age_hours" do
+      changeset = cast_and_validate_config(max_event_age_hours: -1)
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :max_event_age_hours)
+    end
+  end
+
+  describe "pre_ingest/3 event age filtering" do
+    setup do
+      [source: build(:source)]
+    end
+
+    test "drops events older than the default max event age", %{source: source} do
+      backend = clickhouse_backend()
+      recent = log_event_aged_hours(source, 1)
+      stale = log_event_aged_hours(source, 25)
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [recent, stale]) == [recent]
+    end
+
+    test "keeps every event when all are within the default max event age", %{source: source} do
+      backend = clickhouse_backend()
+      events = [log_event_aged_hours(source, 0), log_event_aged_hours(source, 23)]
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, events) == events
+    end
+
+    test "honors a custom max_event_age_hours", %{source: source} do
+      backend = clickhouse_backend(max_event_age_hours: 72)
+      within = log_event_aged_hours(source, 48)
+      stale = log_event_aged_hours(source, 96)
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [within, stale]) == [within]
+    end
+
+    test "does no filtering when max_event_age_hours is zero", %{source: source} do
+      backend = clickhouse_backend(max_event_age_hours: 0)
+      events = [log_event_aged_hours(source, 1), log_event_aged_hours(source, 5_000)]
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, events) == events
+    end
+
+    test "falls back to the default when max_event_age_hours is absent", %{source: source} do
+      backend = build(:backend, type: :clickhouse, config: %{url: "http://localhost"})
+      recent = log_event_aged_hours(source, 1)
+      stale = log_event_aged_hours(source, 25)
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [recent, stale]) == [recent]
+    end
+
+    test "emits drop_stale telemetry tagged with the backend", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
+
+      backend = clickhouse_backend()
+      events = [log_event_aged_hours(source, 25), log_event_aged_hours(source, 30)]
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, events) == []
+
+      source_id = source.id
+      source_token = source.token
+      backend_id = backend.id
+
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale],
+                      %{count: 2},
+                      %{
+                        source_id: ^source_id,
+                        source_token: ^source_token,
+                        backend_id: ^backend_id,
+                        backend_type: :clickhouse
+                      }}
+    end
+
+    test "does not emit drop_stale telemetry when nothing is dropped", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
+
+      backend = clickhouse_backend()
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [log_event_aged_hours(source, 2)]) !=
+               []
+
+      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale], _, _}
+    end
+
+    test "keeps events without an integer timestamp", %{source: source} do
+      backend = clickhouse_backend()
+      event = %LogEvent{body: %{"timestamp" => nil}}
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [event]) == [event]
+    end
+
+    test "handles an empty event list", %{source: source} do
+      assert ClickHouseAdaptor.pre_ingest(source, clickhouse_backend(), []) == []
+    end
+  end
+
+  defp clickhouse_backend(config_overrides \\ []) do
+    config =
+      Enum.into(config_overrides, %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123
+      })
+
+    build(:backend, type: :clickhouse, config: config)
+  end
+
+  defp log_event_aged_hours(source, hours) do
+    timestamp = System.system_time(:microsecond) - hours * 3_600 * 1_000_000
+    build(:log_event, source: source, timestamp: timestamp)
   end
 
   defp cast_and_validate_config(attrs \\ []) do
@@ -373,20 +507,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert :ok = ClickHouseAdaptor.test_connection(backend)
     end
 
-    test "fails when ingest URL is unreachable" do
-      {_source, backend} =
-        setup_clickhouse_test(config: %{url: "http://localhost:19999"})
+    test "fails when the ingest cluster returns a connection error" do
+      {_source, backend} = setup_clickhouse_test(cleanup?: false)
 
-      start_supervised!({ClickHouseAdaptor, backend})
-      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+      stub(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+      end)
+
+      assert {:error, :grant_check_unknown_failure} = ClickHouseAdaptor.test_connection(backend)
     end
 
-    test "fails when read_only_url is unreachable" do
+    test "fails when the read cluster returns a connection error" do
       {_source, backend} =
-        setup_clickhouse_test(config: %{read_only_url: "http://localhost:19999"})
+        setup_clickhouse_test(
+          config: %{read_only_url: "http://localhost:8123"},
+          cleanup?: false
+        )
 
-      start_supervised!({ClickHouseAdaptor, backend})
-      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+      read_grant_statement = QueryTemplates.read_grant_check_statement()
+
+      stub(Ch, :query, fn pool, statement, params, opts ->
+        if statement == read_grant_statement do
+          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+        else
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+        end
+      end)
+
+      assert {:error, :grant_check_unknown_failure} = ClickHouseAdaptor.test_connection(backend)
+      QueryConnectionSup.terminate_backend_local(backend.id)
     end
 
     test "passes when async is enabled and async_insert_cluster_url points to a valid cluster" do
@@ -485,8 +634,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       result = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log, async: true)
       assert :ok = result
 
-      Process.sleep(500)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       query_result =
@@ -518,8 +665,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       result = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
       assert :ok = result
-
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -587,8 +732,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
 
-      Process.sleep(100)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       {:ok, {[row], _bytes}} =
@@ -618,8 +761,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, [metric_event], :metric)
 
-      Process.sleep(100)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
       {:ok, {[row], _bytes}} =
@@ -646,8 +787,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, [trace_event], :trace)
-
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
@@ -677,8 +816,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
         :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], event_type)
 
-        Process.sleep(100)
-
         table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
         {:ok, {query_result, _bytes}} =
@@ -707,8 +844,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "executes a query with query-level SETTINGS", %{source: source, backend: backend} do
       log_event = build_mapped_log_event(source: source, message: "settings exec test")
       assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
-
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -786,7 +921,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       ]
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -863,7 +997,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         end
 
       assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
-      Process.sleep(200)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -1032,7 +1165,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
-      Process.sleep(100)
       [source: source, backend: backend]
     end
 
@@ -1100,7 +1232,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
-      Process.sleep(100)
       [source: source, backend: backend]
     end
 
