@@ -122,7 +122,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   # pid, and this lookup always finds the ref the producer published at init.
   def transform(event, args) do
     ref = args[:ref]
-    in_flight_ref = :persistent_term.get({BufferProducer, :in_flight_ref, self()}, nil)
+    in_flight_ref = BufferProducer.get_in_flight_ref(self())
 
     %Message{
       data: event,
@@ -338,7 +338,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     collect_batch_events(rest, [le | log_events], count + 1, bytes + size)
   end
 
-  def le_to_bq_row(%LE{body: body, id: id, otel_timestamps: otel_timestamps?}) do
+  def le_to_bq_row(%LE{body: body, id: id}) do
+    {:ok, bq_timestamp} = DateTime.from_unix(body["timestamp"], :microsecond)
+
     body =
       for {k, v} <- body, into: %{} do
         if is_map(v) do
@@ -347,8 +349,31 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           {k, v}
         end
       end
+      |> Map.put("timestamp", bq_timestamp)
       |> Map.put("event_message", body["event_message"])
-      |> EventUtils.convert_to_seconds(otel_timestamps?)
+      |> case do
+        %{"start_time" => start_time, "end_time" => end_time} = data
+        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
+          # round to microseconds
+          %{
+            data
+            | "start_time" => DateTime.from_unix!(start_time, :nanosecond),
+              "end_time" => DateTime.from_unix!(end_time, :nanosecond)
+          }
+
+        %{"start_time" => start_time} = data
+        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
+          # round to microseconds
+          %{data | "start_time" => DateTime.from_unix!(start_time, :nanosecond)}
+
+        %{"end_time" => end_time} = data
+        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
+          # round to microseconds
+          %{data | "end_time" => DateTime.from_unix!(end_time, :nanosecond)}
+
+        data ->
+          data
+      end
 
     %Model.TableDataInsertAllRequestRows{
       insertId: id,

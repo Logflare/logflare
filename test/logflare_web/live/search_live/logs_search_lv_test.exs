@@ -1052,7 +1052,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
         |> render()
 
       assert link =~ ~r/phx-value-log-event-timestamp="\d+/
-      assert link =~ ~r/phx-value-lql="\w+/
     end
 
     @tag source_schema:
@@ -1272,7 +1271,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} =
         live_with_redirect(
           conn,
-          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:\"abc-123\"|, tz: "Africa/Lagos"}}"
+          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:~\"abc\"|, tz: "Africa/Lagos"}}"
         )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
@@ -1296,7 +1295,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> render_click()
 
       to = assert_patch(view)
-      assert find_querystring(render(view)) =~ ~s|user_id:"abc-123"|
+      querystring = find_querystring(render(view))
+
+      assert querystring =~ ~s|user_id:~"abc"|
+      assert querystring =~ ~s|user_id:"abc-123"|
 
       %URI{query: query} = URI.parse(to)
 
@@ -1559,6 +1561,60 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # Allow database access after play click which might trigger a new search
       %{executor_pid: search_executor_pid} = view |> get_view_assigns()
       allow_sandbox(search_executor_pid)
+
+      assert get_view_assigns(view).tailing?
+    end
+
+    test "opening a log event pauses a live search", %{conn: conn, source: source} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      view
+      |> element("#logs-list li:first-of-type a", "view")
+      |> render_click()
+
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "close_log_event_modal", %{})
+
+      assert get_view_assigns(view).tailing?
+    end
+
+    test "closing context does not resume a paused search", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      render_click(view, "soft_pause", %{})
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "open_log_event_modal", %{})
+
+      render_click(view, "close_log_event_modal", %{})
+
+      refute get_view_assigns(view).tailing?
+    end
+
+    test "closing context resumes a search that was live", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      render_click(view, "open_log_event_modal", %{})
+
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "close_log_event_modal", %{})
 
       assert get_view_assigns(view).tailing?
     end

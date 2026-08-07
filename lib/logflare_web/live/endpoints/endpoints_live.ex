@@ -505,7 +505,7 @@ defmodule LogflareWeb.EndpointsLive do
   defp upsert_query(show_endpoint, user, origin, params) do
     case show_endpoint do
       nil -> Endpoints.create_query(user, params, origin)
-      %_{} -> Endpoints.update_query(show_endpoint, params, origin)
+      %_{} -> Endpoints.update_query(origin, show_endpoint, params, origin)
     end
   end
 

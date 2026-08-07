@@ -7,18 +7,27 @@ on:
   pull_request:
     branches: ["**"]
     paths:
+      - ".tool-versions"
+      - "Cargo.toml"
+      - "assets/**"
       - "lib/**"
       - "config/**"
       - "*.exs"
       - "*.lock"
       - "native/**"
       - "priv/**"
-      - "test/**"
+      - "test/e2e/features/**"
+      - "test/support/**"
+      - "test/test_helper.exs"
       # Run suite when this file is changed
       - ".github/workflows/e2e-tests.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   versions:
@@ -116,10 +125,10 @@ jobs:
           path: |
             ~/.cargo
             target
-          key: cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-v2-${{ runner.os }}-${{ needs.versions.outputs.rust }}-elixir-e2e-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('Cargo.toml', 'native/**') }}
           restore-keys: |
-            cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-
-            cargo-${{ runner.os }}-
+            cargo-v2-${{ runner.os }}-${{ needs.versions.outputs.rust }}-elixir-e2e-${{ hashFiles('**/Cargo.lock') }}-
+            cargo-v2-${{ runner.os }}-${{ needs.versions.outputs.rust }}-elixir-e2e-
 
       - name: Restore Mix cache
         uses: actions/cache@v5
@@ -128,10 +137,15 @@ jobs:
             deps
             _build
             priv/native
-          key: mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock', '**/Cargo.lock', 'native/**') }}
+          key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-e2e-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
           restore-keys: |
-            mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
-            mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+            mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-e2e-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
+            mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-e2e-
+
+      - name: Prepare in-app docs
+        run: |
+          rm -rf priv/docs
+          cp -R docs/docs.logflare.com/docs priv/docs
 
       - name: Install dependencies
         run: mix do deps.get + deps.compile

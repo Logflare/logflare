@@ -5,7 +5,6 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
 
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.BigQuery.SchemaTypes
-  alias Logflare.LogEvent.TypeDetection
   alias Model.TableFieldSchema, as: TFS
   alias Model.TableSchema, as: TS
 
@@ -266,7 +265,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
   end
 
   defp otel_data?(params) do
-    TypeDetection.otel_timestamps?(params)
+    Map.has_key?(params, "resource") and Map.has_key?(params, "scope")
   end
 
   defimpl DeepMerge.Resolver, for: Model.TableFieldSchema do
