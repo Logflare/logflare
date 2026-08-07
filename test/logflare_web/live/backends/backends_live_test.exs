@@ -404,6 +404,35 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "Successfully created backend"
       assert html =~ "my clickhouse"
     end
+
+    test "can create otlp backend with flatten_to_attributes enabled", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "otlp"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "my otlp",
+            type: "otlp",
+            config: %{
+              endpoint: "https://otlp.example.com/v1/logs",
+              flatten_to_attributes: "true"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+      assert html =~ "my otlp"
+
+      [backend] = Backends.list_backends_by_user_access(user, type: :otlp)
+      assert backend.config.endpoint == "https://otlp.example.com/v1/logs"
+      assert backend.config.flatten_to_attributes == true
+    end
   end
 
   describe "edit" do
