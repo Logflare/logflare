@@ -92,7 +92,7 @@ defmodule LogflareWeb.Source.SearchLV do
       tailing_initial?: true,
       tailing_timer: nil,
       tailing?: tailing?,
-      resume_tailing_after_context?: false,
+      resume_tailing_after_modal?: false,
       # search states
       search_op: nil,
       search_op_error: nil,
@@ -412,26 +412,26 @@ defmodule LogflareWeb.Source.SearchLV do
     soft_pause(ev, socket)
   end
 
-  def handle_event("open_event_context", _, socket) do
+  def handle_event("open_log_event_modal", _, socket) do
     resume_tailing? = socket.assigns.tailing?
 
     socket =
       socket
-      |> assign(:resume_tailing_after_context?, resume_tailing?)
+      |> assign(:resume_tailing_after_modal?, resume_tailing?)
       |> pause_tailing()
 
     {:noreply, socket}
   end
 
-  def handle_event("close_event_context", _, socket) do
+  def handle_event("close_log_event_modal", _, socket) do
     socket =
-      if socket.assigns.resume_tailing_after_context? do
+      if socket.assigns.resume_tailing_after_modal? do
         resume_tailing(socket)
       else
         socket
       end
 
-    {:noreply, assign(socket, :resume_tailing_after_context?, false)}
+    {:noreply, assign(socket, :resume_tailing_after_modal?, false)}
   end
 
   def handle_event("hard_play" = ev, _, socket) do

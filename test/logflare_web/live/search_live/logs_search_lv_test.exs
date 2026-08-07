@@ -1565,6 +1565,23 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert get_view_assigns(view).tailing?
     end
 
+    test "opening a log event pauses a live search", %{conn: conn, source: source} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      view
+      |> element("#logs-list li:first-of-type a", "view")
+      |> render_click()
+
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "close_log_event_modal", %{})
+
+      assert get_view_assigns(view).tailing?
+    end
+
     test "closing context does not resume a paused search", %{
       conn: conn,
       source: source
@@ -1577,9 +1594,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       render_click(view, "soft_pause", %{})
       refute get_view_assigns(view).tailing?
 
-      render_click(view, "open_event_context", %{})
+      render_click(view, "open_log_event_modal", %{})
 
-      render_click(view, "close_event_context", %{})
+      render_click(view, "close_log_event_modal", %{})
 
       refute get_view_assigns(view).tailing?
     end
@@ -1593,11 +1610,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
       assert get_view_assigns(view).tailing?
 
-      render_click(view, "open_event_context", %{})
+      render_click(view, "open_log_event_modal", %{})
 
       refute get_view_assigns(view).tailing?
 
-      render_click(view, "close_event_context", %{})
+      render_click(view, "close_log_event_modal", %{})
 
       assert get_view_assigns(view).tailing?
     end
