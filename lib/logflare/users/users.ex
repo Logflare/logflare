@@ -5,6 +5,7 @@ defmodule Logflare.Users do
 
   alias Logflare.AccountEmail
   alias Logflare.Backends
+  alias Logflare.Billing
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Endpoints
   alias Logflare.Generators
@@ -119,9 +120,7 @@ defmodule Logflare.Users do
   def preload_defaults(%User{} = user) do
     user
     |> Repo.preload([:sources, :billing_account, :team])
-    |> Map.update!(:sources, fn sources ->
-      Enum.map(sources, &Sources.put_retention_days/1)
-    end)
+    |> put_sources_retention_days()
   end
 
   def preload_defaults(users) when is_list(users) do
@@ -130,9 +129,15 @@ defmodule Logflare.Users do
     |> Enum.map(fn user ->
       user
       |> maybe_put_bigquery_defaults()
-      |> Map.update!(:sources, fn sources ->
-        Enum.map(sources, &Sources.put_retention_days/1)
-      end)
+      |> put_sources_retention_days()
+    end)
+  end
+
+  defp put_sources_retention_days(%User{} = user) do
+    plan = Billing.Cache.get_plan_by_user(user)
+
+    Map.update!(user, :sources, fn sources ->
+      Enum.map(sources, &Sources.put_retention_days(&1, plan))
     end)
   end
 
