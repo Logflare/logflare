@@ -77,6 +77,41 @@ defmodule Logflare.UsersTest do
     assert Users.count_users() == 2
   end
 
+  describe "preload_defaults/1 for a list of users" do
+    test "does not re-query the users table to hydrate source retention_days" do
+      insert(:plan)
+
+      users =
+        for _ <- 1..5 do
+          user = insert(:user)
+          insert_list(3, :source, user: user)
+          user
+        end
+
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+      handler_id = {:preload_defaults_users_query_count, make_ref()}
+
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :repo, :query],
+        fn _event, _measurements, metadata, _config ->
+          if metadata.source == "users" do
+            Agent.update(counter, &(&1 + 1))
+          end
+        end,
+        nil
+      )
+
+      Users.preload_defaults(users)
+
+      count = Agent.get(counter, & &1)
+      :telemetry.detach(handler_id)
+      Agent.stop(counter)
+
+      assert count == 0
+    end
+  end
+
   # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
   # identifier-quoting characters, whitespace, and shell metacharacters.
   @injection_chars ~c";`.'\" -/\\#!@$%^&*()+={}[]|<>?,~"
