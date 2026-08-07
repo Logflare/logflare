@@ -1,10 +1,32 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-const { collectTrimmedFields, trimFieldInput } = await import(
-  "../lql_editor_wrapper_hook.js"
-);
+const {
+  collectTrimmedFields,
+  trimFieldInput,
+  default: LqlEditorWrapper,
+} = await import("../lql_editor_wrapper_hook.js");
 
 const input = (name, value) => ({ name, value });
+
+const mountHook = () => {
+  const container = {
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  };
+
+  const hook = Object.create(LqlEditorWrapper);
+
+  hook.el = {
+    dataset: {},
+    addEventListener: vi.fn(),
+    closest: () => container,
+    parentElement: null,
+  };
+
+  hook.mounted();
+
+  return { container, hook };
+};
 
 describe("trimFieldInput", () => {
   it("trims the input value in place", () => {
@@ -51,5 +73,53 @@ describe("collectTrimmedFields", () => {
 
   it("returns an empty map when there are no inputs", () => {
     expect(collectTrimmedFields([])).toEqual({});
+  });
+});
+
+describe("focusout handler lifecycle", () => {
+  it("registers a focusout handler on the search control when mounted", () => {
+    const { container } = mountHook();
+
+    expect(container.addEventListener).toHaveBeenCalledWith(
+      "focusout",
+      expect.any(Function)
+    );
+  });
+
+  it("trims the focused out field via the registered handler", () => {
+    const { container } = mountHook();
+    const [, handler] = container.addEventListener.mock.calls[0];
+    const field = input("fields[metadata.project_ref]", "  abcdef  ");
+
+    handler({ target: field });
+
+    expect(field.value).toBe("abcdef");
+  });
+
+  it("removes the same handler when destroyed", () => {
+    const { container, hook } = mountHook();
+    const [, handler] = container.addEventListener.mock.calls[0];
+
+    hook.destroyed();
+
+    expect(container.removeEventListener).toHaveBeenCalledWith(
+      "focusout",
+      handler
+    );
+  });
+
+  it("does not blow up when destroyed without a search control", () => {
+    const hook = Object.create(LqlEditorWrapper);
+
+    hook.el = {
+      dataset: {},
+      addEventListener: vi.fn(),
+      closest: () => null,
+      parentElement: null,
+    };
+
+    hook.mounted();
+
+    expect(() => hook.destroyed()).not.toThrow();
   });
 });
