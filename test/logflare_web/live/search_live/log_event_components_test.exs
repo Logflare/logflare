@@ -5,22 +5,24 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
   import Phoenix.Component
 
   alias Logflare.Lql
+  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
   alias Logflare.LogEvent
+  alias Logflare.Logs.SearchOperation
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias LogflareWeb.SearchLive.LogEventComponents
 
   @default_attrs %{
     search_op_log_events: nil,
-    last_query_completed_at: nil,
+    log_events: [],
     loading: false,
+    pagination_buttons: %{
+      previous: %{state: :hidden, cursor: nil},
+      next: %{state: :hidden, cursor: nil}
+    },
     search_timezone: "Etc/UTC",
-    tailing?: false,
-    querystring: "",
-    lql_rules: [],
-    source: nil,
-    search_op: nil
+    tailing?: false
   }
 
   describe "results_list/1" do
@@ -34,17 +36,16 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
           bigquery_clustering_fields: "session_id"
         )
 
-      search_op_log_events = %{
-        rows: [
-          build(:log_event, message: "Log message 1", metadata: %{user_id: 123}, source: source)
-        ]
-      }
-
       {:ok, lql_rules} =
         Lql.decode(
           "c:count(*) c:group_by(t::minute)",
           SchemaBuilder.initial_table_schema()
         )
+
+      search_op_log_events =
+        search_operation(source, lql_rules, [
+          build(:log_event, message: "Log message 1", metadata: %{user_id: 123}, source: source)
+        ])
 
       [
         source: source,
@@ -53,39 +54,137 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
       ]
     end
 
-    test "renders log events list", %{
-      source: source,
-      search_op_log_events: search_op_log_events,
-      lql_rules: lql_rules
-    } do
+    test "renders log events list", %{search_op_log_events: search_op_log_events} do
       html =
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
-          | search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            search_op_log_events: search_op_log_events
+          | search_op_log_events: search_op_log_events,
+            log_events: stream_entries(search_op_log_events.rows)
         })
 
       assert html =~ "Log message 1"
+      assert html =~ ~s(data-tailing="false")
     end
 
-    test "renders loading state", %{source: source, lql_rules: lql_rules} do
+    test "renders loading state", %{search_op_log_events: search_op_log_events} do
       html =
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
           | loading: true,
-            search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            search_op_log_events: %{rows: []}
+            search_op_log_events: %{search_op_log_events | rows: []}
         })
 
-      assert html =~ ~r|id="logs-list" class="(.*)blurred"|
+      assert html =~ ~r|id="logs-list".*class="(.*)blurred"|
     end
 
-    test "renders empty state when no log events", %{source: source, lql_rules: lql_rules} do
+    test "renders the previous-page pagination button", %{
+      source: source,
+      search_op_log_events: search_op_log_events,
+      lql_rules: lql_rules
+    } do
+      search_op =
+        pagination_search_op(
+          source,
+          lql_rules,
+          [~N[2026-01-01 00:00:00], ~N[2026-01-01 01:00:00]]
+        )
+
       html =
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
-          | search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            loading: false,
+          | search_op_log_events: search_op,
+            log_events: stream_entries(search_op_log_events.rows),
+            pagination_buttons: %{
+              previous: %{state: :ready, cursor: %{id: "previous", timestamp: 1}},
+              next: %{state: :hidden, cursor: nil}
+            }
+        })
+
+      assert html =~ ~s(id="load-more-events-top")
+      assert html =~ ~s(phx-value-intent="previous")
+      assert html =~ ~s(phx-value-cursor-id="previous")
+      assert html =~ ~s(phx-value-cursor-timestamp="1")
+
+      [label] =
+        html
+        |> Floki.parse_fragment!()
+        |> Floki.find("#load-more-events-top span")
+        |> Enum.filter(&(Floki.text(&1) == "Load more"))
+
+      refute label
+             |> Floki.attribute("class")
+             |> Enum.join(" ")
+             |> String.split()
+             |> Enum.member?("phx-click-loading")
+    end
+
+    test "keeps the previous-page button mounted and hidden without a sentinel cursor", %{
+      search_op_log_events: search_op_log_events
+    } do
+      html =
+        render_component(&LogEventComponents.results_list/1, %{
+          @default_attrs
+          | search_op_log_events: search_op_log_events,
+            log_events: stream_entries(search_op_log_events.rows),
+            pagination_buttons: %{
+              previous: %{state: :hidden, cursor: nil},
+              next: %{state: :hidden, cursor: nil}
+            }
+        })
+
+      document = Floki.parse_fragment!(html)
+
+      assert [_button] =
+               Floki.find(document, "div.tw-hidden > #load-more-events-top[disabled]")
+
+      assert [_button] =
+               Floki.find(document, "div.tw-hidden > #load-more-events-bottom[disabled]")
+    end
+
+    test "disables pagination buttons while the search is loading", %{
+      source: source,
+      search_op_log_events: search_op_log_events,
+      lql_rules: lql_rules
+    } do
+      search_op =
+        pagination_search_op(
+          source,
+          lql_rules,
+          [~N[2026-01-01 00:00:00], ~N[2026-01-01 01:00:00]]
+        )
+
+      html =
+        render_component(&LogEventComponents.results_list/1, %{
+          @default_attrs
+          | search_op_log_events: search_op,
+            log_events: stream_entries(search_op_log_events.rows),
+            loading: true,
+            pagination_buttons: %{
+              previous: %{state: :disabled, cursor: %{id: "previous", timestamp: 1}},
+              next: %{state: :disabled, cursor: %{id: "next", timestamp: 2}}
+            }
+        })
+
+      document = Floki.parse_fragment!(html)
+
+      assert [_top_button] =
+               Floki.find(
+                 document,
+                 "#load-more-events-top[disabled][phx-click='load_events']"
+               )
+
+      assert [_bottom_button] =
+               Floki.find(
+                 document,
+                 "#load-more-events-bottom[disabled][phx-click='load_events'][phx-value-intent='next']"
+               )
+    end
+
+    test "renders empty state when no log events" do
+      html =
+        render_component(&LogEventComponents.results_list/1, %{
+          @default_attrs
+          | loading: false,
             search_op_log_events: nil
         })
 
@@ -108,13 +207,13 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         valid: true
       }
 
-      search_op_log_events = %{rows: [log_event_without_message]}
+      search_op_log_events = search_operation(source, lql_rules, [log_event_without_message])
 
       html =
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
-          | search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            search_op_log_events: search_op_log_events
+          | search_op_log_events: search_op_log_events,
+            log_events: stream_entries(search_op_log_events.rows)
         })
 
       assert html =~ "(empty event message)"
@@ -144,13 +243,14 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         valid: true
       }
 
-      search_op_log_events = %{rows: [normal_log_event, log_event_without_message]}
+      search_op_log_events =
+        search_operation(source, lql_rules, [normal_log_event, log_event_without_message])
 
       html =
         render_component(&LogEventComponents.results_list/1, %{
           @default_attrs
-          | search_op: %{source: source, lql_rules: lql_rules, search_timezone: "Etc/UTC"},
-            search_op_log_events: search_op_log_events
+          | search_op_log_events: search_op_log_events,
+            log_events: stream_entries(search_op_log_events.rows)
         })
 
       assert html =~ "Normal log message"
@@ -305,5 +405,39 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
 
              """
     end
+  end
+
+  defp stream_entries(log_events) do
+    log_events
+    |> Enum.with_index()
+    |> Enum.map(fn {log_event, index} -> {"log-events-#{index}", log_event} end)
+  end
+
+  defp search_operation(source, lql_rules, rows) do
+    %SearchOperation{
+      chart_data_shape_id: nil,
+      partition_by: :timestamp,
+      querystring: "",
+      rows: rows,
+      source: source,
+      lql_rules: lql_rules,
+      search_timezone: "Etc/UTC",
+      tailing?: false
+    }
+  end
+
+  defp pagination_search_op(source, lql_rules, timestamps) do
+    %SearchOperation{
+      chart_data_shape_id: nil,
+      partition_by: :timestamp,
+      querystring: "",
+      source: source,
+      lql_rules: lql_rules,
+      lql_ts_filters: [
+        %FilterRule{path: "timestamp", operator: :range, values: timestamps}
+      ],
+      search_timezone: "Etc/UTC",
+      tailing?: false
+    }
   end
 end
