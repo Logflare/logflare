@@ -48,12 +48,24 @@ defmodule Logflare.Logs.SearchOperations do
   @spec max_chart_ticks :: integer()
   def max_chart_ticks, do: @default_max_n_chart_ticks
 
+  @doc """
+  Default number of rows per page displayed to the user.
+  """
   @spec default_limit :: pos_integer()
   def default_limit, do: @default_limit
 
+  @doc """
+  Fetch one extra row as a sentinel to indicate if further pages are available.
+  """
   @spec fetch_limit :: pos_integer()
   def fetch_limit, do: @default_limit + 1
 
+  @doc """
+  Adds a validated event-page request to a search operation.
+
+  The first page does not need a cursor. Other pages require tailing to be false
+  and a valid cursor to page from.
+  """
   @spec new_event_page(map() | SO.t(), EventPage.intent(), EventPage.cursor() | nil) ::
           {:ok, SO.t()} | {:error, :invalid_request | :tailing}
   def new_event_page(%SO{} = so, :initial, nil) do
@@ -122,6 +134,7 @@ defmodule Logflare.Logs.SearchOperations do
     end)
   end
 
+  # Override the default limit; fetch extra row to check if more events are available
   @spec query_for_execution(SO.t()) :: Ecto.Query.t()
   defp query_for_execution(%SO{
          type: :events,

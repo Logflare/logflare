@@ -191,6 +191,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
     page_size = SearchOperations.default_limit()
     raw_rows = events_so.rows
+
+    # indicates another page of events is available to fetch
     has_sentinel_row? = length(raw_rows) >= SearchOperations.fetch_limit()
 
     {page_rows, sentinel_row} =
