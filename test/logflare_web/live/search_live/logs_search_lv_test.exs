@@ -2190,6 +2190,60 @@ defmodule LogflareWeb.Source.SearchLVTest do
       refute qs =~ "event_message:timeout"
       refute qs =~ "m.request_id:"
     end
+
+    test "start_search trims whitespace from field values", %{conn: conn, user: user} do
+      source = insert(:source, user: user, suggested_keys: "metadata.level!,m.user_id")
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema:
+          TestUtils.build_bq_schema(%{"metadata" => %{"level" => "error", "user_id" => "123"}})
+      )
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      render_change(view, :start_search, %{
+        "querystring" => "c:count(*) c:group_by(t::minute)",
+        "fields" => %{
+          "metadata.level" => "  error  ",
+          "metadata.user_id" => "\t123\n",
+          "metadata.request_id" => "   "
+        }
+      })
+
+      qs = render(view) |> find_querystring()
+
+      assert qs =~ "m.level:error"
+      assert qs =~ "m.user_id:123"
+      refute qs =~ "m.request_id:"
+    end
+
+    # Search initiated from SourceController.show
+    test "search with field params are trimmed", %{conn: conn, source: source} do
+      query_params = [
+        {"fields[metadata.level]", " error "},
+        {"fields[metadata.user_id]", "\t123\n"},
+        {"fields[metadata.request_id]", "   "},
+        querystring: "c:count(*) c:group_by(t::minute)"
+      ]
+
+      path = ~p"/sources/#{source.id}/search?#{query_params}"
+
+      {:error, {:live_redirect, %{to: to}}} = live_with_redirect(conn, path)
+
+      {:ok, view, _html} = live(conn, to)
+
+      qs = render(view) |> find_querystring()
+
+      assert qs =~ "m.level:error"
+      assert qs =~ "m.user_id:123"
+      refute qs =~ "m.request_id:"
+    end
   end
 
   describe "source disable tailing" do

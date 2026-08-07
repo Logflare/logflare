@@ -578,7 +578,8 @@ defmodule LogflareWeb.Source.SearchLV do
          {:ok, lql_rules} <- Lql.decode(qs, schema) do
       recommended_filter_rules =
         recommended_fields
-        |> Enum.reject(fn {_path, value} -> is_nil(value) or String.trim(value) == "" end)
+        |> Enum.map(fn {path, value} -> {path, trim_field_value(value)} end)
+        |> Enum.reject(fn {_path, value} -> value == "" end)
         |> Enum.map(fn {path, value} ->
           FilterRule.build(path: path, operator: :=, value: value)
         end)
@@ -593,6 +594,9 @@ defmodule LogflareWeb.Source.SearchLV do
       _ -> qs
     end
   end
+
+  defp trim_field_value(value) when is_binary(value), do: String.trim(value)
+  defp trim_field_value(_value), do: ""
 
   defp maybe_update_chart_controls(socket, new_chart_agg, new_chart_period) do
     prev_chart_rule =
