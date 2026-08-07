@@ -37,6 +37,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   @tail_search_interval 1000
   @user_idle_interval :timer.minutes(2)
+  @timeout_search_error_message "Query timed out: Try restricting the timestamp range or adding more filtering to your query."
 
   on_mount LogflareWeb.AuthLive
   on_mount {LogflareWeb.AuthLive, :ensure_team_param}
@@ -1110,14 +1111,20 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  defp put_flash_query_error(socket, response) do
-    message =
-      case response do
-        %QueryError{} = error -> QueryErrorHelpers.query_error_message(error)
-        _ -> QueryErrorHelpers.generic_query_error_message()
-      end
+  defp put_flash_query_error(socket, %QueryError{} = error) do
+    put_flash(socket, :error, query_error_flash_message(error))
+  end
 
-    put_flash(socket, :error, "Query halted: " <> message)
+  defp put_flash_query_error(socket, _response) do
+    put_flash(socket, :error, "Query halted: " <> QueryErrorHelpers.generic_query_error_message())
+  end
+
+  @spec query_error_flash_message(QueryError.t()) :: String.t()
+  defp query_error_flash_message(%QueryError{} = error) do
+    case QueryErrorHelpers.timeout_query_error?(error) do
+      true -> @timeout_search_error_message
+      false -> "Query halted: " <> QueryErrorHelpers.query_error_message(error)
+    end
   end
 
   defp put_halt_flash_message(socket, search_op) do

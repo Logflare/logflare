@@ -6,7 +6,7 @@ defmodule Logflare.Backends.QueryError do
   @enforce_keys [:kind, :raw_error, :backend]
   defstruct [:kind, :raw_error, :backend, :description]
 
-  @type kind :: :invalid_query | :connection_error | :backend_error
+  @type kind :: :invalid_query | :connection_error | :backend_error | :timeout
   @type t :: %__MODULE__{
           kind: kind(),
           raw_error: term(),
