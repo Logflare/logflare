@@ -1271,7 +1271,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} =
         live_with_redirect(
           conn,
-          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:\"abc-123\"|, tz: "Africa/Lagos"}}"
+          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:~\"abc\"|, tz: "Africa/Lagos"}}"
         )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
@@ -1295,7 +1295,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> render_click()
 
       to = assert_patch(view)
-      assert find_querystring(render(view)) =~ ~s|user_id:"abc-123"|
+      querystring = find_querystring(render(view))
+
+      assert querystring =~ ~s|user_id:~"abc"|
+      assert querystring =~ ~s|user_id:"abc-123"|
 
       %URI{query: query} = URI.parse(to)
 
