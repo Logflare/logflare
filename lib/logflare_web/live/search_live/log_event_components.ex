@@ -40,6 +40,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
           <div class="group-has-[.log-event-selected-field]:tw-ml-[13rem] group-has-[.log-event-selected-field]:tw-pb-1.5 tw-inline-block">
             <.modal_link
                    component={LogEventViewerComponent}
+                   click={JS.push("open_log_event_modal")}
+                   close={JS.push("close_log_event_modal", target: "#source-logs-search-control") |> JS.push("close")}
                    class="tw-text-[0.65rem]"
                    modal_id={:log_event_viewer}
                    title="Log Event"
@@ -50,8 +52,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                  </.modal_link>
                  <.modal_link
                    component={LogflareWeb.SearchLive.EventContextComponent}
-                   click={JS.push("open_event_context")}
-                   close={JS.push("close_event_context", target: "#source-logs-search-control") |> JS.push("close")}
+                   click={JS.push("open_log_event_modal")}
+                   close={JS.push("close_log_event_modal", target: "#source-logs-search-control") |> JS.push("close")}
                    class="tw-text-[0.65rem]"
                    modal_id={:log_event_context_viewer}
                    title="View Event Context"

@@ -2,6 +2,8 @@ defmodule Logflare.ApplicationTest do
   @moduledoc false
   use ExUnit.Case, async: true
 
+  alias Logflare.Backends.Adaptor.DatadogAdaptor
+
   describe "datadog_connection_pools/0" do
     setup do
       original_config = Application.get_env(:logflare, :http_connection_pools)
@@ -24,8 +26,9 @@ defmodule Logflare.ApplicationTest do
           else: Application.delete_env(:logflare, :http_connection_pools)
 
         pools = get_pools()
-        assert map_size(pools) == 5
-        assert Map.has_key?(pools, "https://http-intake.logs.datadoghq.com")
+
+        assert MapSet.new(Map.keys(pools)) ==
+                 MapSet.new(DatadogAdaptor.intake_origins())
       end
     end
 
@@ -33,8 +36,9 @@ defmodule Logflare.ApplicationTest do
       for config <- [["datadog"], ["datadog", "elastic"], ["elastic", "all", "loki"]] do
         Application.put_env(:logflare, :http_connection_pools, config)
         pools = get_pools()
-        assert map_size(pools) == 5
-        assert Map.has_key?(pools, "https://http-intake.logs.datadoghq.com")
+
+        assert MapSet.new(Map.keys(pools)) ==
+                 MapSet.new(DatadogAdaptor.intake_origins())
       end
     end
 

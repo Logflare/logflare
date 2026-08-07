@@ -230,7 +230,10 @@ defmodule Logflare.Telemetry do
       sum("logflare.logs.ingest_logs.drop_stale",
         event_name: [:logflare, :logs, :ingest_logs, :drop_stale],
         measurement: :count,
-        description: "Sum of events dropped (timestamp older than 24h)"
+        tags: [:backend_id, :backend_type],
+        keep: &backend_scoped_drop?/1,
+        description:
+          "Sum of events dropped by a backend (timestamp older than its configured max event age)"
       ),
       sum("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],
@@ -602,6 +605,9 @@ defmodule Logflare.Telemetry do
 
   defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
   defp clickhouse_batch?(_metadata), do: false
+
+  defp backend_scoped_drop?(%{backend_id: _, backend_type: _}), do: true
+  defp backend_scoped_drop?(_metadata), do: false
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]

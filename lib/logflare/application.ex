@@ -113,7 +113,8 @@ defmodule Logflare.Application do
          endpoint: LogflareGrpc.Endpoint,
          port: grpc_port,
          start_server: true,
-         adapter_opts: [cred: grpc_creds]},
+         adapter_opts: [cred: grpc_creds],
+         exception_log_filter: {LogflareGrpc.ExceptionLogFilter, :emit_log?}},
         # Monitor system level metrics
         SystemMetricsSup,
         Logflare.Telemetry,

@@ -459,6 +459,31 @@ defmodule Logflare.TestUtils do
   def random_pos_integer(limit \\ 1000), do: :rand.uniform(limit)
 
   @doc """
+  Sends a message and waits until the receiver handles it.
+
+  Messages from this process are delivered in order, so the synchronous state request acts as a
+  barrier for the preceding message. This does not drain unrelated mailbox messages.
+  """
+  @spec send_and_wait_for_handling(pid() | atom(), term()) :: :ok
+  def send_and_wait_for_handling(server, message) do
+    send(server, message)
+    :sys.get_state(server)
+    :ok
+  end
+
+  @doc """
+  Blocks the calling process until it receives `:stop`.
+
+  This provides a deterministic process body for tests that need to control process liveness.
+  """
+  @spec wait_for_stop() :: :ok
+  def wait_for_stop do
+    receive do
+      :stop -> :ok
+    end
+  end
+
+  @doc """
   Run function `times` times and will retry failed assertions
   """
   @spec retry_assert(opts :: keyword(), func :: (-> any())) :: any()

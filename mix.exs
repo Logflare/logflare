@@ -281,7 +281,7 @@ defmodule Logflare.Mixfile do
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
-      "test.coverage.ci": ["coveralls.github"],
+      "test.coverage.ci": ["coveralls.lcov"],
       "test.e2e": ["ecto.create --quiet", "ecto.migrate --quiet", "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],

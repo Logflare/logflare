@@ -33,6 +33,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.QueryError
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
+  alias Logflare.Sources.Source
 
   @min_pipelines 1
   @resolve_interval 10_000
@@ -40,6 +41,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @async_insert_busy_timeout_max_ms 3_000
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
+  @us_per_hour 3_600 * 1_000_000
+  @default_max_event_age_hours 24
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -126,6 +129,87 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @impl Logflare.Backends.Adaptor
   def supports_default_ingest?, do: true
 
+  @doc """
+  Default max event age in hours.
+  """
+  @spec default_max_event_age_hours() :: pos_integer()
+  def default_max_event_age_hours, do: @default_max_event_age_hours
+
+  @doc """
+  Drops events older than the configured max age before they are
+  queued for the consolidated pipeline.
+
+  Late-arriving events land in older partitions, which increases the parts written
+  per insert.
+
+  To disable the check, set the `max_event_age_
+  Set the backend's `max_event_age_hours`
+  config to `0` to disable the check.
+  """
+  @impl Logflare.Backends.Adaptor
+  @spec pre_ingest(Source.t(), Backend.t(), [LogEvent.t()]) :: [LogEvent.t()]
+  def pre_ingest(_source, _backend, []), do: []
+
+  def pre_ingest(%Source{} = source, %Backend{} = backend, log_events) do
+    case max_event_age_hours(backend) do
+      0 -> log_events
+      hours -> reject_stale_events(source, backend, log_events, hours)
+    end
+  end
+
+  @spec max_event_age_hours(Backend.t()) :: non_neg_integer()
+  defp max_event_age_hours(%Backend{config: %{max_event_age_hours: hours}})
+       when is_integer(hours) and hours >= 0,
+       do: hours
+
+  defp max_event_age_hours(_backend), do: @default_max_event_age_hours
+
+  @spec reject_stale_events(Source.t(), Backend.t(), [LogEvent.t()], pos_integer()) :: [
+          LogEvent.t()
+        ]
+  defp reject_stale_events(source, backend, log_events, max_age_hours) do
+    min_allowed = System.system_time(:microsecond) - max_age_hours * @us_per_hour
+
+    case Enum.count(log_events, &stale?(&1, min_allowed)) do
+      0 ->
+        log_events
+
+      dropped ->
+        log_stale_drop(source, backend, dropped, length(log_events), max_age_hours)
+        Enum.reject(log_events, &stale?(&1, min_allowed))
+    end
+  end
+
+  @spec stale?(LogEvent.t(), integer()) :: boolean()
+  defp stale?(%LogEvent{body: %{"timestamp" => timestamp}}, min_allowed)
+       when is_integer(timestamp),
+       do: timestamp < min_allowed
+
+  defp stale?(_log_event, _min_allowed), do: false
+
+  @spec log_stale_drop(Source.t(), Backend.t(), pos_integer(), pos_integer(), pos_integer()) ::
+          :ok
+  defp log_stale_drop(source, backend, dropped, total, max_age_hours) do
+    Logger.warning(
+      "Dropping #{dropped} of #{total} ClickHouse event(s): timestamps older than #{max_age_hours}h",
+      source_id: source.token,
+      backend_id: backend.id,
+      old_events_dropped: dropped,
+      total_event_count: total
+    )
+
+    :telemetry.execute(
+      [:logflare, :logs, :ingest_logs, :drop_stale],
+      %{count: dropped},
+      %{
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: backend.id,
+        backend_type: :clickhouse
+      }
+    )
+  end
+
   @doc false
   @impl Logflare.Backends.Adaptor
   def cast_config(%{} = params, existing_config \\ %{}) do
@@ -140,7 +224,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_url: :string,
        use_async_inserts_for_small_batches: :boolean,
        async_insert_cluster_url: :string,
-       async_insert_max_rows: :integer
+       async_insert_max_rows: :integer,
+       max_event_age_hours: :integer
      }}
     |> Changeset.cast(params, [
       :url,
@@ -152,10 +237,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_url,
       :use_async_inserts_for_small_batches,
       :async_insert_cluster_url,
-      :async_insert_max_rows
+      :async_insert_max_rows,
+      :max_event_age_hours
     ])
     |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
     |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
+    |> Logflare.Utils.default_field_value(
+      :max_event_age_hours,
+      @default_max_event_age_hours
+    )
   end
 
   @doc false
@@ -168,6 +258,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
     |> validate_number(:async_insert_max_rows, greater_than: 0)
+    |> validate_number(:max_event_age_hours, greater_than_or_equal_to: 0)
     |> validate_read_only_url()
     |> validate_user_pass()
     |> validate_number(:pool_size,

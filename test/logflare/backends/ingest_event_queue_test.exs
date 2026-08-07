@@ -924,7 +924,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(available_queue)
 
       max_size = IngestEventQueue.max_queue_size()
-      full_batch = build_list(max_size, :log_event, source: source)
+      full_batch = build_queue_saturation_events(max_size, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
       assert IngestEventQueue.get_table_size(full_queue) == max_size
@@ -1019,13 +1019,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         for n <- 1..3 do
           queue = {source.id, backend.id, :erlang.list_to_pid(~c"<0.200.#{n}>")}
           IngestEventQueue.upsert_tid(queue)
-          :ok = IngestEventQueue.add_to_table(queue, build_list(max_size, :log_event))
+          :ok = IngestEventQueue.add_to_table(queue, build_queue_saturation_events(max_size))
           queue
         end
 
       # every existing queue is at the hard cap — nothing eligible remains, so the
       # whole new batch falls through to the startup queue instead
-      new_events = build_list(10_000, :log_event)
+      new_events = build_queue_saturation_events(10_000)
       :ok = IngestEventQueue.add_to_table({source.id, backend.id}, new_events)
 
       assert IngestEventQueue.get_table_size(startup_key) == 10_000
@@ -1124,7 +1124,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(available_queue)
 
       max_size = IngestEventQueue.max_consolidated_queue_size()
-      full_batch = build_list(max_size, :log_event, source: source)
+      full_batch = build_queue_saturation_events(max_size, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
       assert IngestEventQueue.get_table_size(full_queue) == max_size
@@ -1168,10 +1168,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(queue1)
       IngestEventQueue.upsert_tid(queue2)
 
-      :ok = IngestEventQueue.add_to_table(queue1, build_list(1_000, :log_event))
-      :ok = IngestEventQueue.add_to_table(queue2, build_list(1_010, :log_event))
+      :ok = IngestEventQueue.add_to_table(queue1, build_queue_saturation_events(1_000))
+      :ok = IngestEventQueue.add_to_table(queue2, build_queue_saturation_events(1_010))
 
-      new_events = build_list(200, :log_event)
+      new_events = build_queue_saturation_events(200)
 
       :ok =
         IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events, chunk_size: 50)
@@ -1194,11 +1194,14 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         for n <- 1..3 do
           queue = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.200.#{n}>")}
           IngestEventQueue.upsert_tid(queue)
-          :ok = IngestEventQueue.add_to_table(queue, build_list(max_size, :log_event))
+
+          :ok =
+            IngestEventQueue.add_to_table(queue, build_queue_saturation_events(max_size))
+
           queue
         end
 
-      new_events = build_list(10_000, :log_event)
+      new_events = build_queue_saturation_events(10_000)
       :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events)
 
       assert IngestEventQueue.get_table_size(startup_key) == 10_000
@@ -1338,11 +1341,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     le = build(:log_event, source: source)
     IngestEventQueue.add_to_table(table, [le])
     IngestEventQueue.add_to_table(other_table, [le])
-    :timer.sleep(300)
 
     # Verify worker cached the values automatically (without manual cache calls)
-    assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
-    assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
+    TestUtils.retry_assert(fn ->
+      assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
+      assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
+    end)
   end
 
   test "QueueJanitor purges if exceeds max" do
@@ -1359,7 +1363,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       {QueueJanitor, source: source, backend: backend, interval: 50, max: 100, purge_ratio: 1.0}
     )
 
-    :timer.sleep(550)
     assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == 0
   end
 
@@ -1377,7 +1380,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       {QueueJanitor, source: source, backend: backend, interval: 50, max: 90, purge_ratio: 0.5}
     )
 
-    :timer.sleep(550)
     assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == 50
   end
 
@@ -1416,7 +1418,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
          consolidated_key: queues_key}
       )
 
-      :timer.sleep(550)
       assert IngestEventQueue.get_table_size(consolidated_key) == 0
       assert IngestEventQueue.list_recent_events(queues_key, 10) == []
     end
@@ -1448,7 +1449,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
          consolidated_key: {:consolidated, backend.id}}
       )
 
-      :timer.sleep(550)
       # Events should remain because 150 < 1000 (consolidated max = 100 * 10)
       assert IngestEventQueue.get_table_size(consolidated_key) == 150
     end
@@ -1512,9 +1512,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     tid = IngestEventQueue.get_tid({source.id, backend.id, pid})
     :ets.delete(tid)
     start_supervised!({MapperJanitor, interval: 100})
-    :timer.sleep(500)
-    assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == nil
-    assert :ets.info(:ingest_event_queue_mapping, :size) == 0
+
+    TestUtils.retry_assert(fn ->
+      assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == nil
+      assert :ets.info(:ingest_event_queue_mapping, :size) == 0
+    end)
   end
 
   describe "recent-events cache" do

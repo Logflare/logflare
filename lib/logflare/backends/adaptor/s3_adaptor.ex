@@ -85,6 +85,18 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     host = URI.parse(endpoint).host
 
     cond do
+      String.trim(endpoint) != endpoint ->
+        [
+          {field,
+           {"Endpoint must not have leading or trailing whitespace",
+            validation: :endpoint_malformed}}
+        ]
+
+      malformed_host?(host) ->
+        [
+          {field, {"Endpoint host is malformed", validation: :endpoint_malformed}}
+        ]
+
       ssrf_check_disabled?() ->
         []
 
@@ -99,6 +111,9 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
         ]
     end
   end
+
+  defp malformed_host?(nil), do: false
+  defp malformed_host?(host), do: String.match?(host, ~r/\s/)
 
   defp ssrf_check_disabled? do
     !!Application.get_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check)
@@ -223,19 +238,21 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
           }
         end)
 
-      event_rows
-      |> DataFrame.new(
-        dtypes: [
-          {:id, :string},
-          {:event_message, :string},
-          {:body, :string},
-          {:timestamp, {:datetime, :microsecond, "Etc/UTC"}}
-        ]
-      )
-      |> DataFrame.to_parquet(s3_file_path,
-        streaming: true,
-        config: fss_s3_config(config)
-      )
+      df =
+        DataFrame.new(event_rows,
+          dtypes: [
+            {:id, :string},
+            {:event_message, :string},
+            {:body, :string},
+            {:timestamp, {:datetime, :microsecond, "Etc/UTC"}}
+          ]
+        )
+
+      try do
+        DataFrame.to_parquet(df, s3_file_path, streaming: true, config: fss_s3_config(config))
+      rescue
+        error -> {:error, error}
+      end
     end
   end
 
