@@ -21,12 +21,12 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   def call(env, next, opts) do
     source = env.opts[:source] || %{}
     project_ref = env.opts |> Keyword.get(:metadata, %{}) |> Map.get("backend.project_ref")
-    flatten_attributes? = opts[:flatten_attributes] || false
+    flatten_to_attributes? = opts[:flatten_to_attributes] || false
 
     response =
       env
       |> put_content_type_header()
-      |> Tesla.put_body(transform_batch(env.body, source, project_ref, flatten_attributes?))
+      |> Tesla.put_body(transform_batch(env.body, source, project_ref, flatten_to_attributes?))
       |> Tesla.run(next)
 
     with {:ok, %{status: 200} = env} <- response do
@@ -56,12 +56,12 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   @spec reserved_headers() :: [String.t()]
   def reserved_headers, do: ["content-type"]
 
-  defp transform_batch(events, source, project_ref, flatten_attributes?) do
+  defp transform_batch(events, source, project_ref, flatten_to_attributes?) do
     %ExportLogsServiceRequest{
       resource_logs: [
         %ResourceLogs{
           resource: build_resource(source, project_ref),
-          scope_logs: build_scope_logs(events, flatten_attributes?),
+          scope_logs: build_scope_logs(events, flatten_to_attributes?),
           schema_url: "https://opentelemetry.io/schemas/1.26.0"
         }
       ]
@@ -113,19 +113,19 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   # Scope identifies the instrumentation library producing the telemetry (i.e.
   # Logflare's own exporter), which is correctly Logflare regardless of source —
   # unlike Resource, this is not customer-specific.
-  defp build_scope_logs(logs, flatten_attributes?) do
+  defp build_scope_logs(logs, flatten_to_attributes?) do
     [
       %ScopeLogs{
         scope: %InstrumentationScope{
           name: "Logflare",
           version: Application.spec(:logflare, :vsn) |> to_string()
         },
-        log_records: Enum.map(logs, &build_log_record(&1, flatten_attributes?))
+        log_records: Enum.map(logs, &build_log_record(&1, flatten_to_attributes?))
       }
     ]
   end
 
-  defp build_log_record(%LogEvent{} = ev, flatten_attributes?) do
+  defp build_log_record(%LogEvent{} = ev, flatten_to_attributes?) do
     observed_ts =
       if ev.ingested_at, do: DateTime.to_unix(ev.ingested_at, :nanosecond), else: 0
 
@@ -142,15 +142,15 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
 
     fields =
       known_entries
-      |> Enum.flat_map(&build_log_record_fields(&1, flatten_attributes?))
+      |> Enum.flat_map(&build_log_record_fields(&1, flatten_to_attributes?))
       |> maybe_derive_severity(ev.body)
 
-    {body, fields} = build_body_and_attributes(flatten_attributes?, ev.body, extra, fields)
+    {body, fields} = build_body_and_attributes(flatten_to_attributes?, ev.body, extra, fields)
 
     struct!(LogRecord, [observed_time_unix_nano: observed_ts, body: body] ++ fields)
   end
 
-  # Opt-in (backend config `flatten_attributes: true`, defaults to false): body
+  # Opt-in (backend config `flatten_to_attributes: true`, defaults to false): body
   # becomes the human-readable message, and everything else the source sends
   # (metadata, ids, etc.) is flattened into attributes instead. AnyValue permits
   # a structured body per the OTel spec, but attributes is the field most
@@ -262,7 +262,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   defp severity_from_status_code(status) when status >= 400, do: :SEVERITY_NUMBER_WARN
   defp severity_from_status_code(_status), do: :SEVERITY_NUMBER_INFO
 
-  defp build_log_record_fields({"timestamp", ts}, _flatten_attributes?),
+  defp build_log_record_fields({"timestamp", ts}, _flatten_to_attributes?),
     do: [time_unix_nano: System.convert_time_unit(ts, :microsecond, :nanosecond)]
 
   # In legacy (non-structured) mode, event_name carries the message, same as before
@@ -281,21 +281,21 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
   defp build_log_record_fields({"attributes", attrs}, false) when is_map(attrs),
     do: [attributes: Enum.map(attrs, &make_key_value/1)]
 
-  defp build_log_record_fields({"severity_number", number}, _flatten_attributes?)
+  defp build_log_record_fields({"severity_number", number}, _flatten_to_attributes?)
        when is_integer(number),
        do: [severity_number: SeverityNumber.key(number)]
 
-  defp build_log_record_fields({"severity_text", msg}, _flatten_attributes?)
+  defp build_log_record_fields({"severity_text", msg}, _flatten_to_attributes?)
        when is_binary(msg),
        do: [severity_text: msg]
 
-  defp build_log_record_fields({"trace_id", id}, _flatten_attributes?) when is_binary(id),
+  defp build_log_record_fields({"trace_id", id}, _flatten_to_attributes?) when is_binary(id),
     do: build_id_field(:trace_id, id)
 
-  defp build_log_record_fields({"span_id", id}, _flatten_attributes?) when is_binary(id),
+  defp build_log_record_fields({"span_id", id}, _flatten_to_attributes?) when is_binary(id),
     do: build_id_field(:span_id, id)
 
-  defp build_log_record_fields(_unmatched, _flatten_attributes?), do: []
+  defp build_log_record_fields(_unmatched, _flatten_to_attributes?), do: []
 
   # trace_id/span_id arrive as hex-encoded strings (the standard OTel textual
   # representation); the protobuf fields require raw bytes, so this must decode

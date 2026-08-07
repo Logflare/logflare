@@ -59,19 +59,19 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
 
       assert changeset.valid?, inspect(changeset)
 
-      assert %{gzip: true, protocol: "http/protobuf", headers: %{}, flatten_attributes: false} =
+      assert %{gzip: true, protocol: "http/protobuf", headers: %{}, flatten_to_attributes: false} =
                Ecto.Changeset.apply_changes(changeset)
     end
 
-    test "flatten_attributes defaults to false but can be enabled" do
+    test "flatten_to_attributes defaults to false but can be enabled" do
       changeset =
         Adaptor.cast_and_validate_config(
           @subject,
-          Map.put(@valid_config_input, "flatten_attributes", "true")
+          Map.put(@valid_config_input, "flatten_to_attributes", "true")
         )
 
       assert changeset.valid?
-      assert %{flatten_attributes: true} = Ecto.Changeset.apply_changes(changeset)
+      assert %{flatten_to_attributes: true} = Ecto.Changeset.apply_changes(changeset)
     end
 
     test "allows to override the defaults" do
@@ -208,7 +208,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert request = Protobuf.decode(body, ExportLogsServiceRequest)
       assert %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} = request
       assert log_record.time_unix_nano == ts_us * 1000
-      # legacy (default) shape: flatten_attributes isn't set on this backend,
+      # legacy (default) shape: flatten_to_attributes isn't set on this backend,
       # so event_name still carries the message and everything else stays in body
       assert log_record.event_name == msg
       assert body =~ "random_attribute"
@@ -568,7 +568,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
     end
   end
 
-  describe "flatten_attributes config option" do
+  describe "flatten_to_attributes config option" do
     test "defaults to false and matches the legacy shape (everything in body, unflattened)" do
       user = insert(:user)
       source = insert(:source, user: user)
@@ -599,7 +599,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
         insert(:backend,
           type: :otlp,
           sources: [source],
-          config: Map.put(@valid_config, :flatten_attributes, true)
+          config: Map.put(@valid_config, :flatten_to_attributes, true)
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}},
@@ -636,7 +636,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
         insert(:backend,
           type: :otlp,
           sources: [source],
-          config: Map.put(@valid_config, :flatten_attributes, true)
+          config: Map.put(@valid_config, :flatten_to_attributes, true)
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}},
@@ -671,7 +671,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
         insert(:backend,
           type: :otlp,
           sources: [source],
-          config: Map.put(@valid_config, :flatten_attributes, true)
+          config: Map.put(@valid_config, :flatten_to_attributes, true)
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}},

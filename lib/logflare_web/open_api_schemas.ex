@@ -436,11 +436,11 @@ defmodule LogflareWeb.OpenApiSchemas do
       protocol: %Schema{type: :string, nullable: true},
       gzip: %Schema{type: :boolean},
       headers: %Schema{type: :object},
-      flatten_attributes: %Schema{
+      flatten_to_attributes: %Schema{
         type: :boolean,
         nullable: true,
         description:
-          "Sends the log body as a plain message and flattens everything else into individual attributes instead of one nested body. Defaults to false."
+          "Sends the log event_message as a text string in the body field and flattens other fields into individual attributes, instead of the default nested body. Defaults to false."
       }
     }
 

@@ -412,10 +412,10 @@
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :flatten_attributes, "Flatten attributes")}
-            {checkbox(f_config, :flatten_attributes, id: "flatten-attributes")}
+            {label(f_config, :flatten_to_attributes, "Flatten to attributes")}
+            {checkbox(f_config, :flatten_to_attributes, id: "flatten-attributes")}
             <small class="form-text text-muted">
-              Send the log body as a plain message and flatten everything else into individual, filterable attributes instead of one nested body. Off by default to preserve existing behavior.
+              Sends the log event_message as a text string in the body field and flattens other fields into individual attributes, instead of the default nested body. Defaults to false.
             </small>
           </div>
         <% "last9" -> %>

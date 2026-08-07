@@ -45,7 +45,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
       protocol: :string,
       gzip: :boolean,
       headers: {:map, :string},
-      flatten_attributes: :boolean
+      flatten_to_attributes: :boolean
     }
 
     {existing_config, types}
@@ -54,7 +54,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
     |> Utils.default_field_value(:gzip, true)
     |> Utils.default_field_value(:protocol, "http/protobuf")
     |> Utils.default_field_value(:headers, %{})
-    |> Utils.default_field_value(:flatten_attributes, false)
+    |> Utils.default_field_value(:flatten_to_attributes, false)
   end
 
   # Canonicalizes submitted header names to lower case so stored config cannot
@@ -101,7 +101,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   def client_opts(%Backend{config: config}) do
     [
       url: config.endpoint,
-      formatter: {ProtobufFormatter, %{flatten_attributes: config[:flatten_attributes] || false}},
+      formatter:
+        {ProtobufFormatter, %{flatten_to_attributes: config[:flatten_to_attributes] || false}},
       gzip: config.gzip,
       json: false,
       headers: config.headers
