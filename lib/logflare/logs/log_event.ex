@@ -480,7 +480,7 @@ defmodule Logflare.LogEvent do
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_non_negative_integer(x) do
-    {Utils.to_microseconds(x), false}
+    {timestamp_to_microseconds(x), false}
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_float(x) do
@@ -505,18 +505,41 @@ defmodule Logflare.LogEvent do
 
   @spec extract_trace_start_time(params :: map()) :: pos_integer() | nil
   defp extract_trace_start_time(%{"start_time" => n}) when is_pos_integer(n),
-    do: Utils.to_microseconds(n)
+    do: timestamp_to_microseconds(n)
 
   defp extract_trace_start_time(%{"startTime" => n}) when is_pos_integer(n),
-    do: Utils.to_microseconds(n)
+    do: timestamp_to_microseconds(n)
 
   defp extract_trace_start_time(%{"start_time_unix_nano" => n}) when is_pos_integer(n),
-    do: Utils.to_microseconds(n)
+    do: timestamp_to_microseconds(n)
 
   defp extract_trace_start_time(%{"startTimeUnixNano" => n}) when is_pos_integer(n),
-    do: Utils.to_microseconds(n)
+    do: timestamp_to_microseconds(n)
 
   defp extract_trace_start_time(_params), do: nil
+
+  defp timestamp_to_microseconds(raw)
+       when raw >= 1_000_000_000_000_000_000 and
+              raw < 10_000_000_000_000_000_000,
+       do: div(raw, 1_000)
+
+  defp timestamp_to_microseconds(raw)
+       when raw >= 1_000_000_000_000_000 and
+              raw < 10_000_000_000_000_000,
+       do: raw
+
+  defp timestamp_to_microseconds(raw)
+       when raw >= 1_000_000_000_000 and
+              raw < 10_000_000_000_000,
+       do: raw * 1_000
+
+  defp timestamp_to_microseconds(raw) when raw >= 1_000_000_000 and raw < 10_000_000_000,
+    do: raw * 1_000_000
+
+  defp timestamp_to_microseconds(raw) when raw >= 1_000_000 and raw < 10_000_000,
+    do: raw * 1_000_000_000
+
+  defp timestamp_to_microseconds(raw), do: raw
 
   @spec default_timestamp() :: integer()
   defp default_timestamp do
