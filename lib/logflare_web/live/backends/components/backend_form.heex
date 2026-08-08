@@ -152,21 +152,71 @@
           </div>
         <% "elastic" -> %>
           <div class="form-group">
-            {label(f_config, :url, "Filebeat URL")}
-            {text_input(f_config, :url, class: "form-control")}
+            {label(f_config, :transport, "Transport")}
+            {select(f_config, :transport,
+              [
+                {"Filebeat HTTP", "filebeat"},
+                {"OTLP", "otlp"}
+              ],
+              class: "form-control form-control-margin",
+              id: "elastic-transport",
+              phx_change: :change_elastic_transport,
+              value: @elastic_transport
+            )}
             <small class="form-text text-muted">
-              The Filebeat HTTP(S) endpoint to send events.
+              Delivery mode for Elastic. Filebeat uses the HTTP input endpoint; OTLP uses HTTP/protobuf.
             </small>
           </div>
-          <div class="form-group">
-            {label(f_config, :username, "Basic Auth Username")}
-            {text_input(f_config, :username, class: "form-control")}
-            {label(f_config, :password, "Basic Auth Password")}
-            {text_input(f_config, :password, class: "form-control", type: "password")}
-            <small class="form-text text-muted">
-              For basic auth, both username and password must be provided.
-            </small>
-          </div>
+          <%= if @elastic_transport == "otlp" do %>
+            <div class="form-group">
+              {label(f_config, :endpoint, "Elastic Supabase Endpoint (OTLP)")}
+              {text_input(f_config, :endpoint,
+                class: "form-control",
+                value: "https://abc.ingest.us-central1.gcp.elastic.cloud:443/supabase/v1/logs"
+              )}
+              <small class="form-text text-muted">
+                Elastic managed OTLP endpoint for Supabase log ingestion (ends with /supabase/v1/logs)
+              </small>
+            </div>
+            <% headers_number = 2
+            fields =
+              (input_value(f_config, :headers) || %{})
+              |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
+              |> Enum.take(headers_number) %>
+            <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
+              <div class="form-group">
+                {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
+                {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
+                {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
+                {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
+              </div>
+            <% end %>
+            <div class="form-group">
+              {label(f_config, :gzip, "Gzip")}
+              {checkbox(f_config, :gzip, id: "elastic-gzip")}
+              <small class="form-text text-muted">
+                Enable "gzip" compression in sent requests
+              </small>
+            </div>
+            {hidden_input(f_config, :protocol, value: "http/protobuf")}
+          <% else %>
+            <div class="form-group">
+              {label(f_config, :url, "Filebeat URL")}
+              {text_input(f_config, :url, class: "form-control")}
+              <small class="form-text text-muted">
+                The Filebeat HTTP(S) endpoint to send events.
+              </small>
+            </div>
+            <div class="form-group">
+              {label(f_config, :username, "Basic Auth Username")}
+              {text_input(f_config, :username, class: "form-control")}
+              {label(f_config, :password, "Basic Auth Password")}
+              {text_input(f_config, :password, class: "form-control", type: "password")}
+              <small class="form-text text-muted">
+                For basic auth, both username and password must be provided.
+              </small>
+            </div>
+          <% end %>
         <% "loki" -> %>
           <div class="form-group">
             {label(f_config, :url, "Loki URL")}
