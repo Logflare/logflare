@@ -134,7 +134,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   def ack({queue, config}, successful, failed) do
     {sid, bid, _pipeline_ref} = queue
 
-    decrement_in_flight(successful ++ failed)
+    decrement_in_flight(successful)
+    decrement_in_flight(failed)
     finalize_acked_events({sid, bid}, successful)
     maybe_requeue_failed({sid, bid}, failed, config)
 
@@ -147,17 +148,36 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :ok
   end
 
+  # Scan messages as contiguous runs of the same in-flight reference.
+  # `current_ref` and `run_count` describe the run immediately preceding `messages`.
+  # When the reference changes, subtract the completed run and begin a new one.
+  # A reference appearing again later is handled as another run.
   @spec decrement_in_flight([Message.t()]) :: :ok
-  defp decrement_in_flight(messages) do
-    messages
-    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} ->
-      Map.get(ack_data, :in_flight_ref)
-    end)
-    |> Enum.each(fn
-      {nil, _msgs} -> :ok
-      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
-    end)
+  defp decrement_in_flight(messages), do: decrement_in_flight(messages, nil, 0)
+
+  defp decrement_in_flight([], nil, 0), do: :ok
+
+  # Flush the final run after consuming all messages.
+  defp decrement_in_flight([], ref, run_count),
+    do: decrement_in_flight_ref(ref, run_count)
+
+  defp decrement_in_flight(
+         [%{acknowledger: {_, _, ack_data}} | messages],
+         current_ref,
+         run_count
+       ) do
+    ref = Map.get(ack_data, :in_flight_ref)
+
+    if ref == current_ref do
+      decrement_in_flight(messages, current_ref, run_count + 1)
+    else
+      decrement_in_flight_ref(current_ref, run_count)
+      decrement_in_flight(messages, ref, 1)
+    end
   end
+
+  defp decrement_in_flight_ref(nil, _run_count), do: :ok
+  defp decrement_in_flight_ref(ref, run_count), do: :atomics.sub(ref, 1, run_count)
 
   # Always deletes the generation-store row. If the source's ingest rate is low, also
   # keeps an independent copy in the recent-events cache first, so "recent logs" reads

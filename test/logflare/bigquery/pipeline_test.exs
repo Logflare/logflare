@@ -199,6 +199,44 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == []
     end
 
+    test "ack decrements each producer's in-flight count without requiring grouped messages", %{
+      source: source
+    } do
+      backend = insert(:backend, user_id: source.user_id, type: :bigquery)
+      ack_ref = {{source.id, backend.id, self()}, %{max_retries: 0}}
+      generation_tid = :ets.new(:bq_ack_in_flight, [:set])
+      first_ref = :atomics.new(1, signed: false)
+      second_ref = :atomics.new(1, signed: false)
+      :atomics.put(first_ref, 1, 2)
+      :atomics.put(second_ref, 1, 2)
+
+      messages =
+        [first_ref, first_ref, second_ref, nil, second_ref]
+        |> Enum.with_index()
+        |> Enum.map(fn {in_flight_ref, index} ->
+          pointer = %LogEventPointer{
+            id: index,
+            tid: generation_tid,
+            gen_event_id: make_ref(),
+            queue_tid: generation_tid,
+            size: 1,
+            retries: 0,
+            event_type: :log,
+            day_bucket: 0
+          }
+
+          %Message{
+            data: pointer,
+            acknowledger: {Pipeline, ack_ref, %{in_flight_ref: in_flight_ref}}
+          }
+        end)
+
+      Pipeline.ack(ack_ref, messages, [])
+
+      assert :atomics.get(first_ref, 1) == 0
+      assert :atomics.get(second_ref, 1) == 0
+    end
+
     test "handle_batch emits ingest telemetry with resolved labels when source has labels", %{
       source: source
     } do
