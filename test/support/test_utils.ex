@@ -10,6 +10,34 @@ defmodule Logflare.TestUtils do
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @doc """
+  restores the previous feature flag override. Should be used in a test or setup block.
+  To use outside of a test or setup block, use `:setup` option to wrap in a setup block.
+  """
+  defmacro restore_feature_flag_overrides_on_exit(opts \\ [setup: false]) do
+    setup = Keyword.get(opts, :setup, false)
+
+    quote_body =
+      quote do
+        prev = Application.get_env(:logflare, :feature_flag_override)
+
+        on_exit(fn ->
+          Application.put_env(:logflare, :feature_flag_override, prev)
+        end)
+      end
+
+    if setup do
+      quote do
+        setup do
+          unquote(quote_body)
+          :ok
+        end
+      end
+    else
+      quote_body
+    end
+  end
+
+  @doc """
   Configures the following `:logflare` env keys:
   - :single_tenant gets set to true
   - :api_key is randomly set, simulating user setting api key through env var

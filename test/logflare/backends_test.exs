@@ -32,6 +32,13 @@ defmodule Logflare.BackendsTest do
 
   setup do
     start_supervised!(AllLogsLogged)
+    # Keep bigquery ingestion on the streaming-insert branch by default; other
+    # feature flags keep their test-env default of enabled.
+    stub(Logflare.Utils, :flag, fn
+      "BigqueryStorageWriteApi", _identifier -> false
+      _feature, _identifier -> true
+    end)
+
     :ok
   end
 
