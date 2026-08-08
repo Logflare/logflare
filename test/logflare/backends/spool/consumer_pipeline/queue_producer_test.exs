@@ -22,13 +22,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       end
     end)
 
-    # MemoryMonitor's stats() are cached in :persistent_term — global, and
-    # NOT reset between tests or test files. Without this, a test here could
-    # inherit a stale "throttled" value left by any test anywhere in the
-    # suite that ran MemoryMonitor last, hanging tests that have nothing to
-    # do with throttling (e.g. prefetch/happy-path tests below). Starting a
-    # fresh, explicitly non-throttled MemoryMonitor for every test in this
-    # file guarantees a known baseline; throttled!/0 overrides it as needed.
+    # MemoryMonitor publishes stats through a node-global named ETS table.
+    # Start a fresh, explicitly non-throttled monitor for every test so the
+    # queue producer has a known baseline; throttled!/0 overrides it as needed.
     Application.put_env(:logflare, :spool,
       spool_memory_limit_percent: 1.0,
       spool_max_ets_percent: 1.0
