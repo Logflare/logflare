@@ -733,6 +733,84 @@ defmodule Logflare.LogEventTest do
       assert le.timestamp_inferred == false
     end
 
+    test "preserves microseconds for common UTC ISO 8601 timestamps", %{source: source} do
+      for timestamp <- [
+            "1970-01-01T00:00:00.000001Z",
+            "1972-02-29T12:34:56.654321Z",
+            "2000-02-29T23:59:59.123456Z",
+            "2024-12-31T12:34:56.999999Z",
+            "2096-02-29T00:00:00.000000Z",
+            "2099-12-31T23:59:59.000001Z"
+          ] do
+        {:ok, datetime, _offset} = DateTime.from_iso8601(timestamp)
+        expected = DateTime.to_unix(datetime, :microsecond)
+
+        le = LogEvent.make(Map.put(@vallog_event_ids, "timestamp", timestamp), %{source: source})
+
+        assert le.timestamp_inferred == false
+        assert le.body["timestamp"] == expected
+        assert le.day_bucket == DayBucket.from_microseconds(expected)
+      end
+    end
+
+    property "common UTC ISO 8601 fast path matches DateTime", %{source: source} do
+      max_date_offset = Date.diff(~D[2099-12-31], ~D[1970-01-01])
+
+      check all date_offset <- integer(0..max_date_offset),
+                hour <- integer(0..23),
+                minute <- integer(0..59),
+                second <- integer(0..59),
+                microsecond <- integer(0..999_999) do
+        datetime =
+          ~D[1970-01-01]
+          |> Date.add(date_offset)
+          |> DateTime.new!(Time.new!(hour, minute, second, {microsecond, 6}), "Etc/UTC")
+
+        timestamp = DateTime.to_iso8601(datetime)
+        expected = DateTime.to_unix(datetime, :microsecond)
+        le = LogEvent.make(Map.put(@vallog_event_ids, "timestamp", timestamp), %{source: source})
+
+        refute le.timestamp_inferred
+        assert le.body["timestamp"] == expected
+        assert le.day_bucket == DayBucket.from_microseconds(expected)
+      end
+    end
+
+    test "standard parser fallback preserves other valid ISO 8601 forms", %{source: source} do
+      for timestamp <- [
+            "1969-12-31T23:59:59.123456Z",
+            "2100-03-01T00:00:00.123456Z",
+            "2024-01-01T12:34:56.123Z",
+            "2024-01-01T12:34:56Z",
+            "2024-01-01T12:34:56.123456+05:30"
+          ] do
+        {:ok, datetime, _offset} = DateTime.from_iso8601(timestamp)
+        expected = DateTime.to_unix(datetime, :microsecond)
+        le = LogEvent.make(Map.put(@vallog_event_ids, "timestamp", timestamp), %{source: source})
+
+        refute le.timestamp_inferred
+        assert le.body["timestamp"] == expected
+      end
+    end
+
+    test "rejects invalid common-shape ISO 8601 timestamps", %{source: source} do
+      for timestamp <- [
+            "2025-02-29T12:34:56.123456Z",
+            "2100-02-29T12:34:56.123456Z",
+            "2024-00-01T12:34:56.123456Z",
+            "2024-13-01T12:34:56.123456Z",
+            "2024-01-00T12:34:56.123456Z",
+            "2024-04-31T12:34:56.123456Z",
+            "2024-01-01T24:00:00.123456Z",
+            "2024-01-01T12:60:00.123456Z",
+            "2024-01-01T12:34:60.123456Z",
+            "2024-01-01T12:34:56.12345xZ"
+          ] do
+        le = LogEvent.make(Map.put(@vallog_event_ids, "timestamp", timestamp), %{source: source})
+        assert le.timestamp_inferred == true
+      end
+    end
+
     test "is true when an unparsable string timestamp is provided", %{source: source} do
       params = Map.put(@vallog_event_ids, "timestamp", "not-a-timestamp")
       le = LogEvent.make(params, %{source: source})
