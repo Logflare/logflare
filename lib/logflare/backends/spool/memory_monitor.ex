@@ -9,10 +9,11 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
   stay watched permanently once registered — no TTL/expiry — until they no
   longer resolve to a real source.
 
-  Mirrors `Logflare.LogEvent.DayBucket`'s pattern: a GenServer refreshes a
-  `:persistent_term` on a timer, so hot-path readers pay only the cost of a
-  `:persistent_term.get/1` (no GC, no locking) rather than repeating the
-  underlying `:erlang.memory/1` + `:memsup` computation themselves.
+  A GenServer refreshes a read-optimized ETS cache on a timer, so hot-path
+  readers avoid repeating the underlying `:erlang.memory/1` + `:memsup`
+  computation themselves. ETS is used instead of `:persistent_term` because
+  replacing a non-immediate persistent term initiates a VM-wide literal-area
+  scan, which is prohibitively expensive at this refresh frequency.
 
   Started once, shared by both sides — see `Logflare.Backends.Supervisor`.
   """
@@ -21,7 +22,11 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
 
   alias Logflare.Backends
 
-  @pt_key {__MODULE__, :stats}
+  @table __MODULE__
+  @cache_key :stats
+  @throttled_position 2
+  @consumer_throttled_position 3
+  @stats_position 4
   @refresh_interval 1_000
   @default_memory_limit_percent 0.70
   @default_max_ets_percent 0.25
@@ -42,7 +47,11 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
   read racing this GenServer's own boot).
   """
   @spec throttled?() :: boolean()
-  def throttled?, do: stats().throttled?
+  def throttled? do
+    :ets.lookup_element(@table, @cache_key, @throttled_position)
+  rescue
+    ArgumentError -> compute_stats(MapSet.new()).throttled?
+  end
 
   @doc """
   Returns whether any registered spool consumer source has a backed-up
@@ -50,7 +59,11 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
   `throttled?/0`.
   """
   @spec consumer_throttled?() :: boolean()
-  def consumer_throttled?, do: stats().consumer_throttled?
+  def consumer_throttled? do
+    :ets.lookup_element(@table, @cache_key, @consumer_throttled_position)
+  rescue
+    ArgumentError -> compute_stats(MapSet.new()).consumer_throttled?
+  end
 
   @doc """
   Returns the full stats map behind `throttled?/0` and `consumer_throttled?/0`
@@ -59,7 +72,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
   """
   @spec stats() :: stats()
   def stats do
-    :persistent_term.get(@pt_key)
+    :ets.lookup_element(@table, @cache_key, @stats_position)
   rescue
     ArgumentError -> compute_stats(MapSet.new())
   end
@@ -85,6 +98,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
 
   @impl GenServer
   def init(_opts) do
+    :ets.new(@table, [:named_table, :set, :protected, read_concurrency: true])
     {:ok, %{registered_sources: MapSet.new()}, {:continue, :refresh}}
   end
 
@@ -121,7 +135,10 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
       %{}
     )
 
-    :persistent_term.put(@pt_key, stats)
+    :ets.insert(
+      @table,
+      {@cache_key, stats.throttled?, stats.consumer_throttled?, stats}
+    )
   end
 
   defp compute_stats(registered_sources) do
