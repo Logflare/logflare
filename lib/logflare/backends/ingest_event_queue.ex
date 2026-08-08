@@ -285,10 +285,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec lookup_event(:ets.tid(), term()) :: LogEvent.t() | nil
   def lookup_event(tid, id) do
-    case :ets.lookup(tid, id) do
-      [{^id, event}] -> event
-      [] -> nil
-    end
+    :ets.lookup_element(tid, id, 2, nil)
   rescue
     ArgumentError ->
       emit_stale_ets_table_telemetry()
@@ -909,8 +906,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   def pop_pending_pointers(sid_bid_pid, n) when is_integer(n) do
     ms = [
-      {{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}, [],
-       [{{:"$1", :"$2", :"$3", :"$4", :"$5", :"$6", :"$7"}}]}
+      {{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}
     ]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
@@ -966,8 +962,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       when event_type in [:log, :metric, :trace] and is_integer(day_bucket) and
              is_integer(n) and n > 0 do
     ms = [
-      {{:"$1", :"$2", :"$3", :"$4", :"$5", event_type, day_bucket}, [],
-       [{{:"$1", :"$2", :"$3", :"$4", :"$5", event_type, day_bucket}}]}
+      {{:"$1", :_, :_, :_, :_, event_type, day_bucket}, [], [:"$1"]}
     ]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
@@ -975,35 +970,34 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp pop_selected_pointers(sid_bid_pid, n, ms) do
     with tid when tid != nil <- get_tid(sid_bid_pid),
-         {selected, _cont} <- :ets.select(tid, ms, n) do
-      confirmed =
-        Enum.flat_map(selected, fn {id, _, _, _, _, _, _} -> take_pointer(tid, id) end)
-
-      {:ok, confirmed, tid}
+         {selected_ids, _cont} <- :ets.select(tid, ms, n) do
+      {:ok, take_selected_pointers(selected_ids, tid, []), tid}
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, [], nil}
     end
   end
 
-  defp take_pointer(tid, id) do
+  defp take_selected_pointers([], _tid, pointers), do: :lists.reverse(pointers)
+
+  defp take_selected_pointers([id | selected_ids], tid, pointers) do
     case :ets.take(tid, id) do
       [{^id, gen_tid, gen_event_id, size, retries, event_type, day_bucket}] ->
-        [
-          %LogEventPointer{
-            id: id,
-            tid: gen_tid,
-            gen_event_id: gen_event_id,
-            queue_tid: tid,
-            size: size,
-            retries: retries,
-            event_type: event_type,
-            day_bucket: day_bucket
-          }
-        ]
+        pointer = %LogEventPointer{
+          id: id,
+          tid: gen_tid,
+          gen_event_id: gen_event_id,
+          queue_tid: tid,
+          size: size,
+          retries: retries,
+          event_type: event_type,
+          day_bucket: day_bucket
+        }
+
+        take_selected_pointers(selected_ids, tid, [pointer | pointers])
 
       [] ->
-        []
+        take_selected_pointers(selected_ids, tid, pointers)
     end
   end
 

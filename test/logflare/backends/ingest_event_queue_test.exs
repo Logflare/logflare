@@ -607,6 +607,19 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 0
     end
 
+    test "lookup_event/2 distinguishes a missing key from a stale generation table" do
+      tid = :ets.new(:lookup_event_generation, [:set])
+      assert IngestEventQueue.lookup_event(tid, make_ref()) == nil
+
+      event = [:logflare, :ingest_event_queue, :stale_table]
+      ref = :telemetry_test.attach_event_handlers(self(), [event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+      :ets.delete(tid)
+
+      assert IngestEventQueue.lookup_event(tid, make_ref()) == nil
+      assert_receive {^event, ^ref, %{count: 1}, %{}}
+    end
+
     test "counts and claims pointers by exact ClickHouse batch key", %{
       source: source,
       sbp: sbp
