@@ -44,6 +44,32 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
     assert MemoryMonitor.throttled?() == false
   end
 
+  test "falls back to live stats before the ETS cache is available" do
+    Application.put_env(:logflare, :spool,
+      spool_memory_limit_percent: 0.0,
+      spool_max_ets_percent: 0.0
+    )
+
+    assert :ets.whereis(MemoryMonitor) == :undefined
+    assert MemoryMonitor.throttled?()
+    refute MemoryMonitor.consumer_throttled?()
+    assert MemoryMonitor.stats().throttled?
+  end
+
+  test "caches refreshed stats in ETS without creating a persistent term" do
+    Application.put_env(:logflare, :spool,
+      spool_memory_limit_percent: 1.0,
+      spool_max_ets_percent: 1.0
+    )
+
+    start_supervised!(MemoryMonitor)
+    :sys.get_state(MemoryMonitor)
+
+    assert [{:stats, false, false, stats}] = :ets.lookup(MemoryMonitor, :stats)
+    assert stats == MemoryMonitor.stats()
+    assert :persistent_term.get({MemoryMonitor, :stats}, :missing) == :missing
+  end
+
   test "periodically refreshes cached memory pressure without an explicit message" do
     Application.put_env(:logflare, :spool,
       spool_memory_limit_percent: 1.0,
