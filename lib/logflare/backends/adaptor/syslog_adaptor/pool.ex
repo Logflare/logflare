@@ -29,8 +29,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   @spec send(NimblePool.pool(), iodata) :: :ok | {:error, reason}
         when reason: :closed | :timeout | :inet.posix() | :ssl.reason()
   def send(pool, message) do
-    NimblePool.checkout!(pool, :checkout, fn {pid, _ref}, conn ->
-      with {:ok, conn, socket} <- ensure_connected(conn, pid),
+    NimblePool.checkout!(pool, :checkout, fn from, conn ->
+      with {:ok, conn, socket} <- ensure_connected(conn, from),
            :ok <- Socket.send(socket, message) do
         {:ok, conn}
       else
@@ -39,12 +39,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     end)
   end
 
-  defp ensure_connected({:connected, socket}, _owner), do: {:ok, :keep, socket}
+  defp ensure_connected({:connected, socket}, _from), do: {:ok, :keep, socket}
 
-  defp ensure_connected({:idle, backend_id}, owner) do
+  defp ensure_connected({:idle, backend_id}, from) do
     config = current_backend_config(backend_id)
 
-    case connect_and_transfer(config, owner) do
+    case connect_and_transfer(config, from) do
       {:ok, socket} -> {:ok, {:connected, socket, config}, socket}
       {:error, _reason} = error -> error
     end
@@ -58,8 +58,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     end
   end
 
-  defp connect_and_transfer(config, owner) do
+  defp connect_and_transfer(config, {owner, _ref} = from) do
     with {:ok, socket} <- Socket.connect(config, @connect_timeout) do
+      :ok = NimblePool.update(from, {:connected, socket, config})
+
       case Socket.controlling_process(socket, owner) do
         :ok ->
           {:ok, socket}
@@ -99,11 +101,21 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   end
 
   @impl NimblePool
+  def handle_update({:connected, _socket, _config} = conn, :idle, backend_id) do
+    {:ok, conn, backend_id}
+  end
+
+  @impl NimblePool
   def handle_checkin(:keep, _from, conn, backend_id) do
     {:ok, conn, backend_id}
   end
 
-  def handle_checkin({:connected, _socket, _config} = conn, _from, :idle, backend_id) do
+  def handle_checkin(
+        {:connected, _socket, _config} = conn,
+        _from,
+        {:connected, _, _},
+        backend_id
+      ) do
     {:ok, conn, backend_id}
   end
 
