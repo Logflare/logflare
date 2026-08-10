@@ -3,6 +3,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
   use Logflare.DataCase
 
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Google.BigQuery.SchemaUtils
 
   setup do
@@ -16,6 +17,36 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     seconds = (next_update - System.system_time(:millisecond)) / 1000
     assert seconds <= 10
     assert seconds > 9
+  end
+
+  test "plan_update/3 skips schema building during the update cooldown" do
+    schema =
+      %{}
+      |> SchemaBuilder.build_table_schema(SchemaBuilder.initial_table_schema())
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert :noop =
+                 Schema.plan_update(%{"invalid" => []}, schema, %{
+                   next_update: System.system_time(:millisecond) + 60_000
+                 })
+      end)
+
+    refute log =~ "Field schema type change error"
+  end
+
+  test "plan_update/3 compares schemas without changing update behavior" do
+    schema =
+      %{}
+      |> SchemaBuilder.build_table_schema(SchemaBuilder.initial_table_schema())
+
+    state = %{next_update: 0}
+
+    assert :noop = Schema.plan_update(%{}, schema, state)
+    assert {:update, updated_schema} = Schema.plan_update(%{"new_field" => 1}, schema, state)
+
+    assert %_{name: "new_field", type: "INTEGER"} =
+             TestUtils.get_bq_field_schema(updated_schema, "new_field")
   end
 
   test "reserve_update_slot/2 caps concurrent pending updates" do

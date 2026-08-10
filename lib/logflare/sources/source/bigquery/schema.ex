@@ -101,10 +101,8 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   # planning work without measuring mailbox scheduling or BigQuery side effects.
   @doc false
   def plan_update(body, db_schema, state) do
-    schema = try_schema_update(body, db_schema)
-
-    if schema_needs_update?(db_schema, schema, state) do
-      {:update, schema}
+    if schema_update_allowed?(state) do
+      plan_schema_update(body, db_schema)
     else
       :noop
     end
@@ -175,33 +173,40 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
        do: {:noreply, state}
 
   defp handle_update(%LogEvent{body: body, id: event_id}, _source, state) do
-    LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
+    if schema_update_allowed?(state) do
+      LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
+      source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
 
-    db_schema =
-      if source_schema,
-        do: source_schema.bigquery_schema,
-        else: SchemaBuilder.initial_table_schema()
+      db_schema =
+        if source_schema,
+          do: source_schema.bigquery_schema,
+          else: SchemaBuilder.initial_table_schema()
 
-    case plan_update(body, db_schema, state) do
-      {:update, schema} ->
-        case patch_bigquery_table(state, schema) do
-          {:ok, _table_info} ->
-            handle_successful_patch(state, schema, db_schema)
-
-          {:error, response} ->
-            handle_patch_error(body, state, response)
-        end
-
-      :noop ->
-        {:noreply, state}
+      case plan_schema_update(body, db_schema) do
+        {:update, schema} -> patch_schema_update(body, db_schema, schema, state)
+        :noop -> {:noreply, state}
+      end
+    else
+      {:noreply, state}
     end
   end
 
-  defp schema_needs_update?(db_schema, schema, state) do
-    not same_schemas?(db_schema, schema) and
-      state.next_update <= System.system_time(:millisecond) and
+  defp patch_schema_update(body, db_schema, schema, state) do
+    case patch_bigquery_table(state, schema) do
+      {:ok, _table_info} -> handle_successful_patch(state, schema, db_schema)
+      {:error, response} -> handle_patch_error(body, state, response)
+    end
+  end
+
+  defp plan_schema_update(body, db_schema) do
+    schema = try_schema_update(body, db_schema)
+
+    if same_schemas?(db_schema, schema), do: :noop, else: {:update, schema}
+  end
+
+  defp schema_update_allowed?(state) do
+    state.next_update <= System.system_time(:millisecond) and
       not SingleTenant.postgres_backend?()
   end
 
@@ -303,14 +308,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     next_update_ts(updates_per_minute)
   end
 
-  defp same_schemas?(old_schema, new_schema) do
-    old_flatmap = SchemaUtils.bq_schema_to_flat_typemap(old_schema)
-    new_flatmap = SchemaUtils.bq_schema_to_flat_typemap(new_schema)
-
-    diff_keys = Map.keys(new_flatmap) -- Map.keys(old_flatmap)
-
-    old_schema == new_schema and Enum.empty?(diff_keys)
-  end
+  defp same_schemas?(old_schema, new_schema), do: old_schema == new_schema
 
   defp try_schema_update(body, schema) do
     SchemaBuilder.build_table_schema(body, schema)
