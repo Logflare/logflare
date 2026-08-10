@@ -35,6 +35,16 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
                TestUtils.get_bq_field_schema(changed_schema, "a.c")
     end
 
+    test "does not report a change when the payload contains a subset of record fields" do
+      prev_schema =
+        SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0, "c" => true}}, @default_schema)
+
+      {same_schema, false} =
+        SchemaBuilder.build_table_schema_with_change(%{"a" => %{"c" => true}}, prev_schema)
+
+      assert same_schema == prev_schema
+    end
+
     test "adding new field schemas" do
       prev_schema = SchemaBuilder.build_table_schema(%{"a" => %{"b" => 1.0}}, @default_schema)
       curr_schema = SchemaBuilder.build_table_schema(%{"a" => [%{"c" => 1.0}]}, prev_schema)

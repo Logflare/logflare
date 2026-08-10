@@ -185,7 +185,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
 
           case build_fields_schemas({param_key, param_value}, is_otel) do
             nil ->
-              {new_fields, changed?}
+              {new_fields, changed? or not is_nil(prev_field_schema)}
 
             new_field_schema ->
               {merged_field_schema, field_changed?} =
@@ -201,7 +201,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
         initial_schema
         |> Map.put(
           :fields,
-          updated_fields(old_fields, Enum.reverse(new_fields), initial_schema)
+          updated_fields(old_fields, params, Enum.reverse(new_fields), initial_schema)
         )
         |> deep_sort_by_fields_name()
 
@@ -211,9 +211,8 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
     end
   end
 
-  defp updated_fields(old_fields, new_fields, initial_schema) do
-    new_field_names = MapSet.new(new_fields, & &1.name)
-    unrejected_fields = Enum.reject(old_fields, &MapSet.member?(new_field_names, &1.name))
+  defp updated_fields(old_fields, params, new_fields, initial_schema) do
+    unrejected_fields = Enum.reject(old_fields, &Map.has_key?(params, &1.name))
     field_names = MapSet.new(unrejected_fields ++ new_fields, & &1.name)
 
     missing_initial_fields =
@@ -320,7 +319,6 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
   defp merge_field_schema(%TFS{fields: old_fields} = old, %TFS{fields: new_fields} = new)
        when is_list(old_fields) and is_list(new_fields) do
     old_fields_by_name = Map.new(old_fields, &{&1.name, &1})
-    new_field_names = MapSet.new(new_fields, & &1.name)
 
     {merged_new_fields, children_changed?} =
       Enum.map_reduce(new_fields, false, fn %TFS{} = new_field, changed? ->
@@ -332,10 +330,16 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
         {merged_field_schema, changed? or field_changed?}
       end)
 
-    old_only_fields = Enum.reject(old_fields, &MapSet.member?(new_field_names, &1.name))
-    merged = %{new | fields: merged_new_fields ++ old_only_fields}
+    field_changed? = children_changed? or %{old | fields: nil} != %{new | fields: nil}
 
-    {merged, children_changed? or merged != old}
+    if field_changed? do
+      new_field_names = MapSet.new(new_fields, & &1.name)
+      old_only_fields = Enum.reject(old_fields, &MapSet.member?(new_field_names, &1.name))
+
+      {%{new | fields: merged_new_fields ++ old_only_fields}, true}
+    else
+      {old, false}
+    end
   end
 
   defp merge_field_schema(%TFS{fields: old_fields} = old, %TFS{fields: new_fields})
