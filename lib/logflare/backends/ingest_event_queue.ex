@@ -278,7 +278,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   Looks up a single event directly in a generation table.
 
   `tid` here is a generation's tid (e.g. a claimed `LogEventPointer.tid`) — a direct
-  `:ets.lookup/2`, no separate id-to-table resolution needed. Returns `nil` on a miss,
+  `:ets.lookup_element/4`, no separate id-to-table resolution needed. Returns `nil` on a miss,
   including when the generation has already been dropped by rotation (see
   `drop_generation/2`) — callers should treat that the same as any other lookup miss,
   not as an error.
