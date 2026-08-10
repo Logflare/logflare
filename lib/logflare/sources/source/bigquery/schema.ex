@@ -9,18 +9,18 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   require Logger
 
-  alias Logflare.Google.BigQuery
-  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
-  alias Logflare.Google.BigQuery.SchemaUtils
-  alias Logflare.Sources
-  alias Logflare.SourceSchemas
-  alias Logflare.Sources.Source
-  alias Logflare.LogEvent
   alias Logflare.AccountEmail
   alias Logflare.Backends
+  alias Logflare.Google.BigQuery
+  alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.LogEvent
   alias Logflare.Mailer
-  alias Logflare.TeamUsers
   alias Logflare.SingleTenant
+  alias Logflare.SourceSchemas
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.TeamUsers
 
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
@@ -53,10 +53,11 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   # planning work without measuring mailbox scheduling or BigQuery side effects.
   @doc false
   def plan_update(body, db_schema, state) do
-    {schema, schema_changed?} = try_schema_update(body, db_schema)
-
-    if schema_needs_update?(schema_changed?, state) do
-      {:update, schema}
+    if schema_update_allowed?(state) do
+      case try_schema_update(body, db_schema) do
+        {schema, true} -> {:update, schema}
+        {_schema, false} -> :noop
+      end
     else
       :noop
     end
@@ -84,6 +85,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
       bigquery_dataset_id: args[:bigquery_dataset_id],
       field_count: 3,
       field_count_limit: Map.get(args[:plan] || %{}, :limit_source_fields_limit, 500),
+      schema_updates_enabled: not SingleTenant.postgres_backend?(),
       next_update: System.system_time(:millisecond)
     }
 
@@ -135,10 +137,9 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     end
   end
 
-  defp schema_needs_update?(schema_changed?, state) do
-    schema_changed? and
-      state.next_update <= System.system_time(:millisecond) and
-      not SingleTenant.postgres_backend?()
+  defp schema_update_allowed?(state) do
+    state.schema_updates_enabled and
+      state.next_update <= System.system_time(:millisecond)
   end
 
   defp patch_bigquery_table(state, schema) do

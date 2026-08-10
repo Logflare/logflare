@@ -182,14 +182,24 @@ profile_after =
     true -> false
   end
 
+eligible_state = %{next_update: 0, schema_updates_enabled: true}
+
+rate_limited_state = %{
+  next_update: System.system_time(:millisecond) + 3_600_000,
+  schema_updates_enabled: true
+}
+
 suite =
   Benchee.run(
     %{
       "noop" => fn %{body: body, schema: schema} ->
-        Schema.plan_update(body, schema, %{next_update: 0})
+        Schema.plan_update(body, schema, eligible_state)
+      end,
+      "rate limited" => fn %{update_body: body, schema: schema} ->
+        Schema.plan_update(body, schema, rate_limited_state)
       end,
       "update" => fn %{update_body: body, schema: schema} ->
-        Schema.plan_update(body, schema, %{next_update: 0})
+        Schema.plan_update(body, schema, eligible_state)
       end
     },
     inputs: inputs,

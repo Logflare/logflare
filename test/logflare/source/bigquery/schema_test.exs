@@ -2,9 +2,12 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
   @moduledoc false
   use Logflare.DataCase
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Backends
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   setup do
     insert(:plan)
@@ -17,6 +20,36 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     seconds = (next_update - System.system_time(:millisecond)) / 1000
     assert seconds <= 10
     assert seconds > 9
+  end
+
+  test "plan_update/3 skips schema construction while rate limited" do
+    next_update = System.system_time(:millisecond) + 60_000
+
+    log =
+      capture_log(fn ->
+        assert :noop =
+                 Schema.plan_update(
+                   %{"nested_array" => []},
+                   SchemaBuilder.initial_table_schema(),
+                   %{next_update: next_update, schema_updates_enabled: true}
+                 )
+      end)
+
+    refute log =~ "Field schema type change error!"
+  end
+
+  test "plan_update/3 skips schema construction when schema updates are disabled" do
+    log =
+      capture_log(fn ->
+        assert :noop =
+                 Schema.plan_update(
+                   %{"nested_array" => []},
+                   SchemaBuilder.initial_table_schema(),
+                   %{next_update: 0, schema_updates_enabled: false}
+                 )
+      end)
+
+    refute log =~ "Field schema type change error!"
   end
 
   test "update/3 skips casts when outstanding schema updates hit the limit" do
