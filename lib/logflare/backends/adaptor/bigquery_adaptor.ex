@@ -42,6 +42,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @managed_service_account_partition_count 5
   @service_account_prefix "logflare-managed"
+  @timeout_error_regex ~r/timed out/i
   @search_query_timeout_ms 60_000
   @endpoint_query_timeout_ms 60_000
 
@@ -716,9 +717,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          })}
 
       {:error, error} ->
+        query_type = Keyword.get(query_opts, :query_type)
+
         query_error =
           error
-          |> to_query_error(user.id)
+          |> to_query_error(user.id, query_type)
           |> QueryError.log(
             user_id: user.id,
             bigquery_project_id: project_id
@@ -728,9 +731,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     end
   end
 
-  @spec to_query_error(Tesla.Env.t() | GenUtils.transport_error(), pos_integer()) ::
-          QueryError.t()
-  defp to_query_error(error, _user_id) when error in [:timeout, :closed, :emfile] do
+  @spec to_query_error(
+          Tesla.Env.t() | GenUtils.transport_error(),
+          pos_integer(),
+          query_type :: atom() | nil
+        ) :: QueryError.t()
+  defp to_query_error(error, _user_id, _query_type) when error in [:timeout, :closed, :emfile] do
     %QueryError{
       kind: :connection_error,
       raw_error: error,
@@ -738,42 +744,71 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     }
   end
 
-  defp to_query_error(%{body: body}, user_id) when is_binary(body) do
+  defp to_query_error(%{body: body}, user_id, query_type) when is_non_empty_binary(body) do
     with {:ok, %{"error" => raw_error}} <- Jason.decode(body),
          %{"message" => _message} = processed_error <-
            GenUtils.process_bq_errors(raw_error, user_id) do
       processed_error
-      |> query_error_kind()
+      |> query_error_kind(query_type)
       |> query_error(processed_error)
     else
       _error -> query_error(:backend_error, body)
     end
   end
 
-  defp to_query_error(%{body: body}, _user_id) do
+  defp to_query_error(%{body: body}, _user_id, _query_type) do
     query_error(:backend_error, body)
   end
 
-  @spec query_error_kind(map()) :: QueryError.kind()
-  defp query_error_kind(%{"reason" => "billingTierLimitExceeded"}), do: :backend_error
-  defp query_error_kind(%{"reason" => "invalidQuery"}), do: :invalid_query
+  @spec query_error_kind(map(), query_type :: atom() | nil) :: QueryError.kind()
+  defp query_error_kind(%{"reason" => "billingTierLimitExceeded"}, _query_type),
+    do: :backend_error
 
-  defp query_error_kind(%{"errors" => errors}) when is_list(errors) do
-    if Enum.any?(errors, &match?(%{"reason" => "invalidQuery"}, &1)) do
-      :invalid_query
-    else
-      :backend_error
+  defp query_error_kind(%{"reason" => "invalidQuery"}, _query_type), do: :invalid_query
+
+  defp query_error_kind(%{"errors" => errors} = processed_error, query_type)
+       when is_list(errors) do
+    cond do
+      Enum.any?(errors, &match?(%{"reason" => "invalidQuery"}, &1)) -> :invalid_query
+      timeout_error?(processed_error, query_type) -> :timeout
+      true -> :backend_error
     end
   end
 
-  defp query_error_kind(processed_error) do
-    with %{"message" => message} when is_binary(message) <- processed_error,
-         true <- String.starts_with?(message, ["Unrecognized name:", "Field name"]) do
-      :invalid_query
-    else
-      _ -> :backend_error
+  defp query_error_kind(processed_error, query_type) do
+    cond do
+      invalid_query_error?(processed_error) -> :invalid_query
+      timeout_error?(processed_error, query_type) -> :timeout
+      true -> :backend_error
     end
   end
+
+  @spec invalid_query_error?(map()) :: boolean()
+  defp invalid_query_error?(%{"message" => message}) when is_non_empty_binary(message) do
+    String.starts_with?(message, ["Unrecognized name:", "Field name"])
+  end
+
+  defp invalid_query_error?(_processed_error), do: false
+
+  @spec timeout_error?(map(), query_type :: atom() | nil) :: boolean()
+  defp timeout_error?(processed_error, :search), do: timeout_error?(processed_error)
+  defp timeout_error?(_processed_error, _query_type), do: false
+
+  @spec timeout_error?(map()) :: boolean()
+  defp timeout_error?(%{"reason" => "timeout"}), do: true
+
+  defp timeout_error?(%{"errors" => errors} = processed_error) when is_list(errors) do
+    timeout_message?(processed_error["message"]) or Enum.any?(errors, &timeout_error?/1)
+  end
+
+  defp timeout_error?(%{"message" => message}), do: timeout_message?(message)
+  defp timeout_error?(_processed_error), do: false
+
+  @spec timeout_message?(term()) :: boolean()
+  defp timeout_message?(message) when is_non_empty_binary(message),
+    do: Regex.match?(@timeout_error_regex, message)
+
+  defp timeout_message?(_message), do: false
 
   @spec query_error(QueryError.kind(), term()) :: QueryError.t()
   defp query_error(kind, raw_error) do

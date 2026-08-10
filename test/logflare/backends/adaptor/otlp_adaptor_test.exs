@@ -5,6 +5,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.LogEvent
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Tesla.MockAdapter
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsPartialSuccess
@@ -57,8 +59,19 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
 
       assert changeset.valid?, inspect(changeset)
 
-      assert %{gzip: true, protocol: "http/protobuf", headers: %{}} =
+      assert %{gzip: true, protocol: "http/protobuf", headers: %{}, flatten_to_attributes: false} =
                Ecto.Changeset.apply_changes(changeset)
+    end
+
+    test "flatten_to_attributes defaults to false but can be enabled" do
+      changeset =
+        Adaptor.cast_and_validate_config(
+          @subject,
+          Map.put(@valid_config_input, "flatten_to_attributes", "true")
+        )
+
+      assert changeset.valid?
+      assert %{flatten_to_attributes: true} = Ecto.Changeset.apply_changes(changeset)
     end
 
     test "allows to override the defaults" do
@@ -129,14 +142,39 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
         assert reason != nil
       end
     end
+
+    test "resource falls back to describing Logflare, including service.version, when there's no source",
+         ctx do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, IO.iodata_to_binary(env.body)})
+
+        {:ok,
+         %Tesla.Env{
+           status: 200,
+           body: Protobuf.encode(%ExportLogsServiceResponse{partial_success: nil}),
+           headers: [{"content-type", "application/x-protobuf"}]
+         }}
+      end)
+
+      assert :ok = @subject.test_connection(ctx.backend)
+      assert_receive {^ref, body}, 5000
+
+      %{resource_logs: [%{resource: resource}]} = Protobuf.decode(body, ExportLogsServiceRequest)
+      attrs = Map.new(resource.attributes, fn %{key: key, value: value} -> {key, value} end)
+
+      assert any_value_to_term(attrs["service.name"]) == "Logflare"
+      assert is_binary(any_value_to_term(attrs["service.version"]))
+    end
   end
 
   describe "logs ingestion" do
     setup :backend_data
 
-    setup %{source: source, backend: backend} do
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(250)
+    setup %{source: source} do
+      start_supervised!({SourceSup, source})
       :ok
     end
 
@@ -170,6 +208,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert request = Protobuf.decode(body, ExportLogsServiceRequest)
       assert %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} = request
       assert log_record.time_unix_nano == ts_us * 1000
+      # legacy (default) shape: flatten_to_attributes isn't set on this backend,
+      # so event_name still carries the message and everything else stays in body
       assert log_record.event_name == msg
       assert body =~ "random_attribute"
       assert body =~ "nothing"
@@ -354,6 +394,357 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert redacted_config.headers["x-auth-token"] == "REDACTED"
       assert redacted_config.headers["x-custom-header"] == "not-a-secret"
     end
+  end
+
+  describe "encoding of real-world log samples (resource, scope, and severity)" do
+    setup :backend_data
+
+    setup %{source: source, backend: backend} do
+      start_supervised!({AdaptorSupervisor, {source, backend}})
+      :timer.sleep(250)
+      :ok
+    end
+
+    test "resource attributes describe the customer's source, not Logflare's own infra", %{
+      source: source
+    } do
+      log_event = load_fixture_log_event("storage", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{resource: resource}]} = Protobuf.decode(body, ExportLogsServiceRequest)
+
+      attrs =
+        Map.new(resource.attributes, fn %{key: key, value: value} ->
+          {key, any_value_to_term(value)}
+        end)
+
+      assert attrs["service.name"] == (source.service_name || source.name)
+
+      # no reliable version data exists for the customer's own service, so it's
+      # omitted rather than reporting Logflare's version under the wrong name
+      refute Map.has_key?(attrs, "service.version")
+
+      refute Map.has_key?(attrs, "node")
+      refute Map.has_key?(attrs, "cluster")
+      refute Map.has_key?(attrs, "service")
+
+      # no project_ref on this backend (not created via the log-drain flow), so
+      # service.namespace is omitted rather than left blank
+      refute Map.has_key?(attrs, "service.namespace")
+    end
+
+    test "resource service.name reflects source.service_name when set" do
+      user = insert(:user)
+      source = insert(:source, user: user, service_name: "my-distinctive-service")
+      backend = insert(:backend, type: :otlp, sources: [source], config: @valid_config)
+
+      start_supervised!({AdaptorSupervisor, {source, backend}}, id: :service_name_test_adaptor)
+      :timer.sleep(250)
+
+      log_event = load_fixture_log_event("storage", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{resource: resource}]} = Protobuf.decode(body, ExportLogsServiceRequest)
+      attrs = Map.new(resource.attributes, fn %{key: key, value: value} -> {key, value} end)
+
+      assert any_value_to_term(attrs["service.name"]) == "my-distinctive-service"
+    end
+
+    test "resource service.namespace reflects the backend's project_ref when set" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: @valid_config,
+          metadata: %{"project_ref" => "my-distinctive-project-ref", "type" => "log-drain"}
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}}, id: :namespace_test_adaptor)
+      :timer.sleep(250)
+
+      log_event = load_fixture_log_event("storage", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{resource: resource}]} = Protobuf.decode(body, ExportLogsServiceRequest)
+      attrs = Map.new(resource.attributes, fn %{key: key, value: value} -> {key, value} end)
+
+      assert any_value_to_term(attrs["service.namespace"]) == "my-distinctive-project-ref"
+    end
+
+    test "scope identifies Logflare itself regardless of source", %{source: source} do
+      log_event = load_fixture_log_event("storage", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{scope: scope}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      assert scope.name == "Logflare"
+      assert is_binary(scope.version) and scope.version != ""
+    end
+
+    for {fixture, severity_signal, expected_severity} <- [
+          {"storage", ~s(metadata.level = "info"), :SEVERITY_NUMBER_INFO},
+          {"realtime", ~s(metadata.level = "info"), :SEVERITY_NUMBER_INFO},
+          {"edge_log", "metadata.response.status_code = 200", :SEVERITY_NUMBER_INFO},
+          {"postgres", ~s(metadata.parsed.error_severity = "LOG"), :SEVERITY_NUMBER_INFO}
+        ] do
+      test "#{fixture}: severity_number is derived from #{severity_signal}",
+           %{source: source} do
+        log_event = load_fixture_log_event(unquote(fixture), source)
+        body = capture_request_body(source, log_event)
+
+        %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+          Protobuf.decode(body, ExportLogsServiceRequest)
+
+        assert log_record.severity_number == unquote(expected_severity)
+      end
+    end
+
+    test "severity_number maps HTTP status ranges to WARN/ERROR, not just INFO", %{
+      source: source
+    } do
+      for {status, expected} <- [
+            {200, :SEVERITY_NUMBER_INFO},
+            {404, :SEVERITY_NUMBER_WARN},
+            {500, :SEVERITY_NUMBER_ERROR}
+          ] do
+        log_event =
+          "edge_log"
+          |> load_fixture_log_event(source)
+          |> put_in([Access.key!(:body), "metadata", "response", "status_code"], status)
+
+        body = capture_request_body(source, log_event)
+
+        %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+          Protobuf.decode(body, ExportLogsServiceRequest)
+
+        assert log_record.severity_number == expected
+      end
+    end
+
+    test "postgres error_severity takes priority over metadata.level when both are present", %{
+      source: source
+    } do
+      log_event =
+        "postgres"
+        |> load_fixture_log_event(source)
+        |> put_in([Access.key!(:body), "metadata", "level"], "debug")
+
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      # metadata.parsed.error_severity is "LOG" -> INFO; if metadata.level ("debug")
+      # had won instead this would be SEVERITY_NUMBER_DEBUG
+      assert log_record.severity_number == :SEVERITY_NUMBER_INFO
+    end
+
+    test "postgres severity levels map through the full range", %{source: source} do
+      for {pg_level, expected} <- [
+            {"PANIC", :SEVERITY_NUMBER_FATAL},
+            {"FATAL", :SEVERITY_NUMBER_FATAL},
+            {"ERROR", :SEVERITY_NUMBER_ERROR},
+            {"WARNING", :SEVERITY_NUMBER_WARN},
+            {"NOTICE", :SEVERITY_NUMBER_INFO},
+            {"LOG", :SEVERITY_NUMBER_INFO},
+            {"DEBUG1", :SEVERITY_NUMBER_DEBUG}
+          ] do
+        log_event =
+          "postgres"
+          |> load_fixture_log_event(source)
+          |> put_in([Access.key!(:body), "metadata", "parsed", "error_severity"], pg_level)
+
+        body = capture_request_body(source, log_event)
+
+        %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+          Protobuf.decode(body, ExportLogsServiceRequest)
+
+        assert log_record.severity_number == expected
+      end
+    end
+  end
+
+  describe "flatten_to_attributes config option" do
+    test "defaults to false and matches the legacy shape (everything in body, unflattened)" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, type: :otlp, sources: [source], config: @valid_config)
+
+      start_supervised!({AdaptorSupervisor, {source, backend}}, id: :legacy_shape_test_adaptor)
+      :timer.sleep(250)
+
+      log_event = load_fixture_log_event("storage", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      assert log_record.event_name == log_event.body["event_message"]
+      assert log_record.attributes == []
+
+      body_map = any_value_to_term(log_record.body)
+      assert body_map["project"] == "test-project"
+      assert get_in(body_map, ["metadata", "level"]) == "info"
+    end
+
+    test "when enabled, body is the plain event_message string and everything else is flattened into attributes" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: Map.put(@valid_config, :flatten_to_attributes, true)
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}},
+        id: :structured_shape_test_adaptor
+      )
+
+      :timer.sleep(250)
+
+      log_event = load_fixture_log_event("storage", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      assert log_record.event_name == ""
+      assert log_record.body.value == {:string_value, log_event.body["event_message"]}
+
+      attrs =
+        Map.new(log_record.attributes, fn %{key: key, value: value} ->
+          {key, any_value_to_term(value)}
+        end)
+
+      assert attrs["metadata.level"] == "info"
+      refute Map.has_key?(attrs, "metadata")
+      assert attrs["project"] == "test-project"
+      refute Map.has_key?(attrs, "event_message")
+    end
+
+    test "when enabled, nested metadata fields become their own typed scalar attributes, not a stringified blob" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: Map.put(@valid_config, :flatten_to_attributes, true)
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}},
+        id: :structured_flatten_test_adaptor
+      )
+
+      :timer.sleep(250)
+
+      log_event = load_fixture_log_event("edge_log", source)
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      attrs =
+        Map.new(log_record.attributes, fn %{key: key, value: value} -> {key, value.value} end)
+
+      # a real, typed int_value — not a string containing "200" and not buried
+      # inside a JSON-stringified "metadata" blob
+      assert attrs["metadata.response.status_code"] == {:int_value, 200}
+      assert attrs["metadata.request.method"] == {:string_value, "GET"}
+      assert attrs["metadata.request.cf.botManagement.score"] == {:int_value, 1}
+
+      refute Map.has_key?(attrs, "metadata")
+    end
+
+    test "when enabled, merges an explicit attributes field with the source's other fields rather than one overwriting the other" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :otlp,
+          sources: [source],
+          config: Map.put(@valid_config, :flatten_to_attributes, true)
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}},
+        id: :structured_merge_test_adaptor
+      )
+
+      :timer.sleep(250)
+
+      log_event =
+        build(:log_event,
+          source: source,
+          attributes: %{"explicit_key" => "explicit_value", "nested" => %{"leaf" => "value"}},
+          other_field: "other_value",
+          timestamp: System.system_time(:microsecond)
+        )
+
+      body = capture_request_body(source, log_event)
+
+      %{resource_logs: [%{scope_logs: [%{log_records: [log_record]}]}]} =
+        Protobuf.decode(body, ExportLogsServiceRequest)
+
+      attrs =
+        Map.new(log_record.attributes, fn %{key: key, value: value} ->
+          {key, any_value_to_term(value)}
+        end)
+
+      assert attrs["explicit_key"] == "explicit_value"
+      assert attrs["other_field"] == "other_value"
+
+      # explicit attributes are flattened the same way as the leftover fields
+      assert attrs["nested.leaf"] == "value"
+      refute Map.has_key?(attrs, "nested")
+    end
+  end
+
+  @fixtures_dir Path.join([__DIR__, "..", "..", "..", "fixtures", "otlp_log_samples"])
+
+  defp load_fixture_log_event(name, source) do
+    @fixtures_dir
+    |> Path.join("#{name}.json")
+    |> File.read!()
+    |> Jason.decode!()
+    |> Map.put("timestamp", System.system_time(:microsecond))
+    |> LogEvent.make(%{source: source})
+  end
+
+  defp any_value_to_term(%{value: {:string_value, v}}), do: v
+  defp any_value_to_term(%{value: {:bool_value, v}}), do: v
+  defp any_value_to_term(%{value: {:int_value, v}}), do: v
+  defp any_value_to_term(%{value: {:double_value, v}}), do: v
+  defp any_value_to_term(%{value: {:bytes_value, v}}), do: Base.encode64(v)
+
+  defp any_value_to_term(%{value: {:array_value, %{values: values}}}),
+    do: Enum.map(values, &any_value_to_term/1)
+
+  defp any_value_to_term(%{value: {:kvlist_value, %{values: values}}}) do
+    Map.new(values, fn %{key: k, value: v} -> {k, any_value_to_term(v)} end)
+  end
+
+  defp any_value_to_term(%{value: nil}), do: nil
+
+  defp capture_request_body(source, log_event) do
+    this = self()
+    ref = make_ref()
+
+    mock_adapter(fn env ->
+      send(this, {ref, IO.iodata_to_binary(env.body)})
+      {:ok, %Tesla.Env{status: 200, body: ""}}
+    end)
+
+    assert {:ok, _} = Backends.ingest_logs([log_event], source)
+    assert_receive {^ref, body}, 5000
+    body
   end
 
   defp mock_adapter(calls_num \\ 1, function) do
