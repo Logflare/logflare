@@ -42,8 +42,8 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   def update(pid, %LogEvent{} = log_event, %Source{} = source)
       when is_pid(pid) or is_tuple(pid) do
     case checkout_update(pid) do
-      {:ok, counter} ->
-        GenServer.cast(pid, {:update, counter, log_event, source})
+      {:ok, update_pid, counter} ->
+        GenServer.cast(update_pid, {:update, counter, log_event, source})
 
       :drop ->
         :ok
@@ -228,7 +228,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   defp put_update_counter(name), do: name
 
   defp checkout_update(pid) when is_pid(pid) do
-    {:ok, nil}
+    {:ok, pid, nil}
   end
 
   defp checkout_update({:via, Registry, {Backends.SourceRegistry, key}}) do
@@ -241,15 +241,21 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   defp checkout_update(name) do
     case GenServer.whereis(name) do
-      pid when is_pid(pid) -> {:ok, nil}
+      pid when is_pid(pid) -> {:ok, pid, nil}
       _ -> :drop
     end
   end
 
   defp checkout_registry_update(key) do
     case Registry.lookup(Backends.SourceRegistry, key) do
-      [{_pid, counter}] -> checkout_counter(counter)
-      _ -> :drop
+      [{pid, counter}] ->
+        case checkout_counter(counter) do
+          {:ok, counter} -> {:ok, pid, counter}
+          :drop -> :drop
+        end
+
+      _ ->
+        :drop
     end
   end
 
