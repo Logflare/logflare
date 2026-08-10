@@ -24,6 +24,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
+    name = put_update_counter(name)
 
     GenServer.start_link(__MODULE__, args,
       name: name,
@@ -219,6 +220,12 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     updates_per_minute = Application.get_env(:logflare, __MODULE__)[:updates_per_minute]
     next_update_ts(updates_per_minute)
   end
+
+  defp put_update_counter({:via, Registry, {Backends.SourceRegistry, key}}) do
+    {:via, Registry, {Backends.SourceRegistry, key, update_counter()}}
+  end
+
+  defp put_update_counter(name), do: name
 
   defp checkout_update(pid) when is_pid(pid) do
     {:ok, nil}

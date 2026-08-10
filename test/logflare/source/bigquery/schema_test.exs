@@ -22,6 +22,37 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     assert seconds > 9
   end
 
+  test "start_link/1 creates a fresh update counter on restart" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend_id = System.unique_integer([:positive])
+    name = Backends.via_source(source, Schema, backend_id)
+
+    args = [
+      name: name,
+      source: source,
+      plan: %{limit_source_fields_limit: 500},
+      bigquery_project_id: "some-id",
+      bigquery_dataset_id: "some-id"
+    ]
+
+    {:ok, pid} = Schema.start_link(args)
+    Process.unlink(pid)
+    assert [{^pid, first_counter}] = Registry.lookup(Backends.SourceRegistry, registry_key(name))
+    assert :atomics.add_get(first_counter, 1, 1) == 1
+    GenServer.stop(pid)
+
+    {:ok, restarted_pid} = Schema.start_link(args)
+    Process.unlink(restarted_pid)
+
+    assert [{^restarted_pid, second_counter}] =
+             Registry.lookup(Backends.SourceRegistry, registry_key(name))
+
+    assert :atomics.get(second_counter, 1) == 0
+    refute first_counter == second_counter
+    GenServer.stop(restarted_pid)
+  end
+
   test "plan_update/3 skips schema construction while rate limited" do
     next_update = System.system_time(:millisecond) + 60_000
 
@@ -230,4 +261,6 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
 
     Application.put_env(:logflare, Schema, Keyword.merge(old_config, config))
   end
+
+  defp registry_key({:via, Registry, {Backends.SourceRegistry, key}}), do: key
 end

@@ -100,12 +100,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          source: source,
          bigquery_project_id: project_id,
          bigquery_dataset_id: dataset_id,
-         name:
-           Backends.via_source_with_value(
-             source,
-             {Schema, backend.id},
-             Schema.update_counter()
-           )
+         name: Backends.via_source(source, Schema, backend.id)
        ]}
     ]
 
