@@ -748,6 +748,21 @@ defmodule Logflare.BigQuery.PipelineTest do
       [user: user, context: %{backend_id: nil}]
     end
 
+    test "uses the freshest local rate for schema sampling" do
+      assert {probability, :normal} =
+               Pipeline.schema_sampling_probability(%{average_rate: 2, last_rate: 100})
+
+      assert_in_delta probability, 0.01, 0.000001
+    end
+
+    test "identifies zero-rate and probability-floor sampling" do
+      assert Pipeline.schema_sampling_probability(%{average_rate: 0, last_rate: 0}) ==
+               {1.0, :zero_rate}
+
+      assert Pipeline.schema_sampling_probability(%{average_rate: 200_000, last_rate: 0}) ==
+               {0.00001, :floor}
+    end
+
     test "skips schema update when the passed source has lock_schema set", %{
       user: user,
       context: context
@@ -776,6 +791,45 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       assert ^le = Pipeline.process_data(le, context, source)
       assert_received :schema_updated
+    end
+
+    test "caps pending sampled updates across processor calls", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      counter = :atomics.new(1, [])
+      schema_name = Backends.via_source(source, {Schema, nil})
+
+      schema_pid =
+        start_supervised!(
+          {Schema,
+           [
+             source: source,
+             sample_counter: counter,
+             plan: %{limit_source_fields_limit: 500},
+             bigquery_project_id: "some-id",
+             bigquery_dataset_id: "some-id",
+             name: schema_name
+           ]}
+        )
+
+      :ok = :sys.suspend(schema_pid)
+      on_exit(fn -> if Process.alive?(schema_pid), do: :sys.resume(schema_pid) end)
+
+      le = build(:log_event, source: source)
+
+      le =
+        %{le | body: %{"event_message" => "test", "id" => le.id, "timestamp" => 0}}
+
+      context =
+        Map.merge(context, %{schema_sample_counter: counter, schema_sample_limit: 1})
+
+      assert ^le = Pipeline.process_data(le, context, source)
+      assert ^le = Pipeline.process_data(le, context, source)
+
+      assert Schema.pending_update_slots(counter) == 1
+      assert {:message_queue_len, 1} = Process.info(schema_pid, :message_queue_len)
     end
 
     test "does not crash when the passed source is nil", %{context: context} do

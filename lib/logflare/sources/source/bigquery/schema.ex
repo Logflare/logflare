@@ -11,6 +11,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   alias Logflare.Google.BigQuery
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources
   alias Logflare.SourceSchemas
@@ -20,6 +21,8 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   alias Logflare.Mailer
   alias Logflare.TeamUsers
   alias Logflare.SingleTenant
+
+  @sample_counter_scale 1_000_000
 
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
@@ -35,6 +38,63 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   def update(pid, %LogEvent{} = log_event, %Source{} = source)
       when is_pid(pid) or is_tuple(pid) do
     GenServer.cast(pid, {:update, log_event, source})
+  end
+
+  @doc false
+  def update(pid, %LogEvent{} = log_event, %Source{} = source, reservation)
+      when is_pid(pid) and is_tuple(reservation) do
+    GenServer.cast(pid, {:update, log_event, source, reservation})
+  end
+
+  @doc false
+  def reserve_update_slot(sample_counter, limit)
+      when is_reference(sample_counter) and is_integer(limit) and limit > 0 and
+             limit < @sample_counter_scale do
+    current = :atomics.get(sample_counter, 1)
+    generation = div(current, @sample_counter_scale)
+
+    if rem(current, @sample_counter_scale) >= limit do
+      :full
+    else
+      case :atomics.compare_exchange(sample_counter, 1, current, current + 1) do
+        :ok -> {:ok, {sample_counter, generation}}
+        _actual -> reserve_update_slot(sample_counter, limit)
+      end
+    end
+  end
+
+  @doc false
+  def pending_update_slots(sample_counter) when is_reference(sample_counter) do
+    sample_counter
+    |> :atomics.get(1)
+    |> rem(@sample_counter_scale)
+  end
+
+  @doc false
+  def reset_update_slots(sample_counter) when is_reference(sample_counter) do
+    current = :atomics.get(sample_counter, 1)
+    generation = div(current, @sample_counter_scale) + 1
+    :atomics.put(sample_counter, 1, generation * @sample_counter_scale)
+    :ok
+  end
+
+  @doc false
+  def release_update_slot(sample_counter, generation) do
+    current = :atomics.get(sample_counter, 1)
+
+    cond do
+      div(current, @sample_counter_scale) != generation ->
+        :ok
+
+      rem(current, @sample_counter_scale) == 0 ->
+        :ok
+
+      :atomics.compare_exchange(sample_counter, 1, current, current - 1) == :ok ->
+        :ok
+
+      true ->
+        release_update_slot(sample_counter, generation)
+    end
   end
 
   # Public for profiling: benchmarks can target the GenServer's pure schema
@@ -65,6 +125,10 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
     Process.flag(:trap_exit, true)
 
+    if sample_counter = args[:sample_counter] do
+      reset_update_slots(sample_counter)
+    end
+
     state = %{
       source_id: source_id,
       source_token: source_token,
@@ -87,19 +151,30 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   def handle_cast(
-        {:update, %LogEvent{}, %Source{lock_schema: true}},
+        {:update, %LogEvent{} = log_event, %Source{} = source, {sample_counter, generation}},
         state
-      ),
-      do: {:noreply, state}
+      ) do
+    release_update_slot(sample_counter, generation)
 
-  def handle_cast(
-        {:update, %LogEvent{}, _source},
-        %{field_count: fc, field_count_limit: limit} = state
-      )
-      when fc > limit,
-      do: {:noreply, state}
+    SchemaMetrics.record_handled()
+    handle_update(log_event, source, state)
+  end
 
-  def handle_cast({:update, %LogEvent{body: body, id: event_id}, _source}, state) do
+  def handle_cast({:update, %LogEvent{} = log_event, %Source{} = source}, state) do
+    handle_update(log_event, source, state)
+  end
+
+  defp handle_update(%LogEvent{}, %Source{lock_schema: true}, state), do: {:noreply, state}
+
+  defp handle_update(
+         %LogEvent{},
+         _source,
+         %{field_count: fc, field_count_limit: limit} = state
+       )
+       when fc > limit,
+       do: {:noreply, state}
+
+  defp handle_update(%LogEvent{body: body, id: event_id}, _source, state) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
     source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
@@ -131,17 +206,22 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   defp patch_bigquery_table(state, schema) do
-    BigQuery.patch_table(
-      state.source_token,
-      schema,
-      state.bigquery_dataset_id,
-      state.bigquery_project_id
-    )
+    instrument_phase(:patch, state.source_id, fn ->
+      BigQuery.patch_table(
+        state.source_token,
+        schema,
+        state.bigquery_dataset_id,
+        state.bigquery_project_id
+      )
+    end)
   end
 
   defp handle_successful_patch(state, schema, db_schema) do
-    persist(state.source_id, schema)
-    notify_maybe(state.source_token, schema, db_schema)
+    instrument_phase(:persist, state.source_id, fn -> persist(state.source_id, schema) end)
+
+    instrument_phase(:notify, state.source_id, fn ->
+      notify_maybe(state.source_token, schema, db_schema)
+    end)
 
     {:noreply, %{state | field_count: count_fields(schema), next_update: next_update()}}
   end
@@ -157,11 +237,14 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   defp handle_schema_mismatch(body, state) do
-    with {:ok, table} <- BigQuery.get_table(state.source_token),
+    with {:ok, table} <-
+           instrument_phase(:refresh, state.source_id, fn ->
+             BigQuery.get_table(state.source_token)
+           end),
          schema <- try_schema_update(body, table.schema),
          {:ok, _table_info} <- patch_bigquery_table(state, schema) do
       field_count = count_fields(schema)
-      persist(state.source_id, schema)
+      instrument_phase(:persist, state.source_id, fn -> persist(state.source_id, schema) end)
       {:noreply, %{state | field_count: field_count, next_update: next_update()}}
     else
       {:error, response} ->
@@ -197,6 +280,18 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     |> BigQuery.SchemaUtils.flatten_typemap()
     |> Enum.count()
   end
+
+  defp instrument_phase(phase, source_id, function) do
+    metadata = %{phase: phase, source_id: source_id}
+
+    :telemetry.span([:logflare, :bigquery, :schema, :operation], metadata, fn ->
+      result = function.()
+      {result, Map.put(metadata, :result, telemetry_result(result))}
+    end)
+  end
+
+  defp telemetry_result({:error, _reason}), do: :error
+  defp telemetry_result(_result), do: :ok
 
   def next_update_ts(max_updates_per_min) do
     ms = 60 * 1000 / max_updates_per_min
