@@ -457,7 +457,7 @@
           </div>
           <div class="form-group">
             {label(f_config, :port, "Port (Required)")}
-            {number_input(f_config, :port, class: "form-control")}
+            {number_input(f_config, :port, class: "form-control", min: 1, max: 65_535)}
             <small class="text-muted">
               It's usually 6514, but may vary based on your syslog server configuration.
             </small>
