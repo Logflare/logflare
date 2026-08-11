@@ -10,15 +10,19 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   @default_transport_opts mode: :binary, packet: :raw, active: true, nodelay: true
 
   @spec connect(map, timeout) :: {:ok, socket} | {:error, reason}
-        when reason: :closed | :timeout | :inet.posix() | :ssl.reason() | String.t()
+        when reason:
+               :closed
+               | :timeout
+               | :inet.posix()
+               | :ssl.reason()
+               | {:ssrf, String.t()}
   def connect(config, timeout) do
     host = Map.fetch!(config, :host)
-    hostname = String.to_charlist(host)
     port = Map.fetch!(config, :port)
 
     with {:ok, address} <- resolve_address(host) do
       if Map.get(config, :tls) do
-        opts = ssl_opts(@default_transport_opts, config, hostname)
+        opts = ssl_opts(@default_transport_opts, config, host)
         :ssl.connect(address, port, opts, timeout)
       else
         :gen_tcp.connect(address, port, @default_transport_opts, timeout)
@@ -48,28 +52,21 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   def stream(_socket, _message), do: :ignore
 
   @spec resolve_address(String.t()) ::
-          {:ok, :inet.ip_address()} | {:error, :inet.posix() | String.t()}
+          {:ok, :inet.ip_address() | charlist()} | {:error, {:ssrf, String.t()}}
   defp resolve_address(host) do
     if SingleTenant.single_tenant?() do
-      resolve_unrestricted(host)
+      {:ok, String.to_charlist(host)}
     else
-      SSRF.safe_resolve(host)
-    end
-  end
-
-  @spec resolve_unrestricted(String.t()) ::
-          {:ok, :inet.ip_address()} | {:error, :inet.posix()}
-  defp resolve_unrestricted(host) do
-    hostname = String.to_charlist(host)
-
-    with {:error, _reason} <- :inet.getaddr(hostname, :inet) do
-      :inet.getaddr(hostname, :inet6)
+      case SSRF.safe_resolve(host) do
+        {:ok, address} -> {:ok, address}
+        {:error, reason} -> {:error, {:ssrf, reason}}
+      end
     end
   end
 
   defp ssl_opts(opts, config, host) do
     ssl_opts = [
-      server_name_indication: host,
+      server_name_indication: String.to_charlist(host),
       verify: :verify_peer,
       depth: 100,
       customize_hostname_check: [

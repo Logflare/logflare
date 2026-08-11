@@ -20,7 +20,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SocketTest do
   test "rejects private destinations before opening a connection" do
     {:ok, listener, port} = listen_tcp()
 
-    assert {:error, reason} =
+    assert {:error, {:ssrf, reason}} =
              Socket.connect(%{host: "127.0.0.1", port: port}, to_timeout(second: 1))
 
     assert reason =~ "private or reserved"
