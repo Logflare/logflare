@@ -1,22 +1,28 @@
 defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   @moduledoc false
 
+  alias Logflare.SingleTenant
+  alias Logflare.Utils.SSRF
+
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
 
   # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
   @default_transport_opts mode: :binary, packet: :raw, active: true, nodelay: true
 
   @spec connect(map, timeout) :: {:ok, socket} | {:error, reason}
-        when reason: :closed | :timeout | :inet.posix() | :ssl.reason()
+        when reason: :closed | :timeout | :inet.posix() | :ssl.reason() | String.t()
   def connect(config, timeout) do
-    host = config |> Map.fetch!(:host) |> String.to_charlist()
+    host = Map.fetch!(config, :host)
+    hostname = String.to_charlist(host)
     port = Map.fetch!(config, :port)
 
-    if Map.get(config, :tls) do
-      opts = ssl_opts(@default_transport_opts, config, host)
-      :ssl.connect(host, port, opts, timeout)
-    else
-      :gen_tcp.connect(host, port, @default_transport_opts, timeout)
+    with {:ok, address} <- resolve_address(host) do
+      if Map.get(config, :tls) do
+        opts = ssl_opts(@default_transport_opts, config, hostname)
+        :ssl.connect(address, port, opts, timeout)
+      else
+        :gen_tcp.connect(address, port, @default_transport_opts, timeout)
+      end
     end
   end
 
@@ -40,6 +46,26 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   end
 
   def stream(_socket, _message), do: :ignore
+
+  @spec resolve_address(String.t()) ::
+          {:ok, :inet.ip_address()} | {:error, :inet.posix() | String.t()}
+  defp resolve_address(host) do
+    if SingleTenant.single_tenant?() do
+      resolve_unrestricted(host)
+    else
+      SSRF.safe_resolve(host)
+    end
+  end
+
+  @spec resolve_unrestricted(String.t()) ::
+          {:ok, :inet.ip_address()} | {:error, :inet.posix()}
+  defp resolve_unrestricted(host) do
+    hostname = String.to_charlist(host)
+
+    with {:error, _reason} <- :inet.getaddr(hostname, :inet) do
+      :inet.getaddr(hostname, :inet6)
+    end
+  end
 
   defp ssl_opts(opts, config, host) do
     ssl_opts = [

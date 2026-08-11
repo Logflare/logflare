@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
 
   alias Logflare.Backends.Adaptor.SyslogAdaptor
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Utils.SSRF
 
   @moduletag :telegraf
 
@@ -14,6 +15,15 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
         File.write!(@telegraf_output_path, _empty = "")
       end
     end)
+  end
+
+  setup do
+    stub(SSRF, :safe_resolve, fn
+      "localhost" -> {:ok, {127, 0, 0, 1}}
+      host -> Mimic.call_original(SSRF, :safe_resolve, [host])
+    end)
+
+    :ok
   end
 
   test "basic fields check" do
@@ -483,6 +493,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
 
     test "for invalid host" do
       {_, backend} = start_syslog(%{host: "invalid-host", port: 6514})
+      assert {:error, :unknown_error} = SyslogAdaptor.test_connection(backend)
+    end
+
+    test "rejects private destinations instead of probing them" do
+      {_, backend} = start_syslog(%{host: "127.0.0.1", port: 6514})
       assert {:error, :unknown_error} = SyslogAdaptor.test_connection(backend)
     end
 
