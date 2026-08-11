@@ -30,24 +30,20 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
         when reason: :closed | :timeout | :inet.posix() | :ssl.reason()
   def send(pool, message) do
     NimblePool.checkout!(pool, :checkout, fn from, conn ->
-      with {:ok, conn, socket} <- ensure_connected(conn, from),
+      with {:ok, socket} <- ensure_connected(conn, from),
            :ok <- Socket.send(socket, message) do
-        {:ok, conn}
+        {:ok, :keep}
       else
         {:error, reason} = error -> {error, {:remove, reason}}
       end
     end)
   end
 
-  defp ensure_connected({:connected, socket}, _from), do: {:ok, :keep, socket}
+  defp ensure_connected({:connected, socket}, _from), do: {:ok, socket}
 
   defp ensure_connected({:idle, backend_id}, from) do
     config = current_backend_config(backend_id)
-
-    case connect_and_transfer(config, from) do
-      {:ok, socket} -> {:ok, {:connected, socket, config}, socket}
-      {:error, _reason} = error -> error
-    end
+    connect_and_transfer(config, from)
   end
 
   defp current_backend_config(backend_id) do
@@ -107,15 +103,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
   @impl NimblePool
   def handle_checkin(:keep, _from, conn, backend_id) do
-    {:ok, conn, backend_id}
-  end
-
-  def handle_checkin(
-        {:connected, _socket, _config} = conn,
-        _from,
-        {:connected, _, _},
-        backend_id
-      ) do
     {:ok, conn, backend_id}
   end
 
