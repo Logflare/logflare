@@ -22,7 +22,12 @@ defmodule LogflareWeb.Api.AccessTokenController do
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do
-    tokens = Auth.list_valid_access_tokens(user) |> Enum.map(&maybe_redact_token/1)
+    tokens =
+      user
+      |> Auth.list_valid_access_tokens()
+      |> Enum.map(&maybe_redact_token/1)
+      |> Enum.map(&format_access_token/1)
+
     json(conn, tokens)
   end
 
@@ -42,7 +47,7 @@ defmodule LogflareWeb.Api.AccessTokenController do
            Auth.create_access_token(user, Map.take(params, ["description", "scopes"])) do
       conn
       |> put_status(201)
-      |> json(access_token)
+      |> json(format_access_token(access_token))
     end
   end
 
@@ -71,5 +76,9 @@ defmodule LogflareWeb.Api.AccessTokenController do
 
   defp maybe_redact_token(%{scopes: scopes} = t) do
     if "public" in String.split(scopes), do: t, else: %{t | token: nil}
+  end
+
+  defp format_access_token(%{inserted_at: inserted_at} = token) do
+    %{token | inserted_at: DateTime.from_naive!(inserted_at, "Etc/UTC")}
   end
 end

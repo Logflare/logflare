@@ -23,39 +23,6 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
     search_op: nil
   }
 
-  defmodule TestLive do
-    use LogflareWeb, :live_view
-
-    def render(assigns) do
-      ~H"""
-      <div>
-        <LogEventComponents.results_list
-          search_op_log_events={@search_op_log_events}
-          search_op={@search_op}
-          last_query_completed_at={@last_query_completed_at}
-          loading={@loading}
-          search_timezone={@search_timezone}
-          tailing?={@tailing?}
-          querystring={@querystring}
-        />
-      </div>
-      """
-    end
-
-    def mount(_params, session, socket) do
-      {:ok,
-       assign(socket,
-         search_op_log_events: session["search_op_log_events"],
-         search_op: session["search_op"],
-         last_query_completed_at: session["last_query_completed_at"],
-         loading: session["loading"],
-         search_timezone: session["search_timezone"],
-         tailing?: session["tailing?"],
-         querystring: session["querystring"]
-       )}
-    end
-  end
-
   describe "results_list/1" do
     setup do
       user = insert(:user)

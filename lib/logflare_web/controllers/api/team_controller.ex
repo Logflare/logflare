@@ -11,6 +11,7 @@ defmodule LogflareWeb.Api.TeamController do
   alias LogflareWeb.OpenApi.UnprocessableEntity
 
   alias LogflareWeb.OpenApiSchemas.Team
+  alias LogflareWeb.OpenApiSchemas.TeamParams
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -44,7 +45,7 @@ defmodule LogflareWeb.Api.TeamController do
 
   operation(:create,
     summary: "Create Team",
-    request_body: Team.params(),
+    request_body: TeamParams.params(),
     responses: %{
       201 => Created.response(Team),
       404 => NotFound.response(),
@@ -64,7 +65,7 @@ defmodule LogflareWeb.Api.TeamController do
   operation(:update,
     summary: "Update team",
     parameters: [token: [in: :path, description: "Team Token", type: :string]],
-    request_body: Team.params(),
+    request_body: TeamParams.params(),
     responses: %{
       201 => Created.response(Team),
       204 => Accepted.response(),

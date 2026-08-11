@@ -1,9 +1,9 @@
 defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends
-  alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.LokiAdaptor
@@ -119,8 +119,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
           config: %{url: "http://localhost:1234"}
         )
 
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
+      start_supervised!({SourceSup, source})
       [backend: backend, source: source]
     end
 

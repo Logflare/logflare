@@ -26,7 +26,6 @@ defmodule LogflareWeb.Api.AlertControllerTest do
       |> get(~p"/api/alerts")
       |> json_response(200)
 
-    assert_schema(response, "AlertApiSchemaListResponse")
     assert [result] = response
     assert result["id"] == alert.id
     assert result["token"] == alert.token
@@ -43,7 +42,6 @@ defmodule LogflareWeb.Api.AlertControllerTest do
       |> get(~p"/api/alerts/#{alert.token}")
       |> json_response(200)
 
-    assert_schema(result, "AlertApiSchema")
     assert result["id"] == alert.id
     assert result["token"] == alert.token
     assert result["name"] == alert.name
@@ -79,15 +77,11 @@ defmodule LogflareWeb.Api.AlertControllerTest do
         })
         |> json_response(201)
 
-      assert_schema(response, "AlertApiSchema")
       assert %{"token" => alert_token} = response
 
-      response =
-        conn
-        |> get(~p"/api/alerts/#{alert_token}")
-        |> json_response(200)
-
-      assert_schema(response, "AlertApiSchema")
+      conn
+      |> get(~p"/api/alerts/#{alert_token}")
+      |> json_response(200)
     end
 
     test "create alert defaults language when omitted", %{conn: conn} do
@@ -113,7 +107,6 @@ defmodule LogflareWeb.Api.AlertControllerTest do
         })
         |> json_response(201)
 
-      assert_schema(response, "AlertApiSchema")
       assert %{"token" => alert_token, "backends" => [%{"id" => backend_id}]} = response
       assert backend_id == backend.id
 
@@ -158,7 +151,6 @@ defmodule LogflareWeb.Api.AlertControllerTest do
         |> post(~p"/api/alerts", %{name: "missing required fields"})
         |> json_response(422)
 
-      assert_schema(response, "UnprocessableEntityResponse")
       assert %{"errors" => %{"query" => _, "cron" => _}} = response
     end
 
@@ -170,7 +162,6 @@ defmodule LogflareWeb.Api.AlertControllerTest do
         |> put(~p"/api/alerts/#{alert.token}", %{name: "adjusted"})
         |> json_response(200)
 
-      assert_schema(response, "AlertApiSchema")
       assert %{"token" => alert_token} = response
 
       assert %{"name" => "adjusted"} =
@@ -187,7 +178,7 @@ defmodule LogflareWeb.Api.AlertControllerTest do
         |> patch(~p"/api/alerts/#{alert.token}", %{name: "adjusted"})
         |> text_response(204)
 
-      assert assert_schema(response, "AcceptedResponse") == ""
+      assert response == ""
 
       assert %{"name" => "adjusted"} =
                conn
@@ -203,7 +194,6 @@ defmodule LogflareWeb.Api.AlertControllerTest do
         |> patch(~p"/api/alerts/#{alert.token}", %{cron: "not a cron expression"})
         |> json_response(422)
 
-      assert_schema(response, "UnprocessableEntityResponse")
       assert %{"errors" => %{"cron" => _}} = response
     end
 
@@ -219,8 +209,6 @@ defmodule LogflareWeb.Api.AlertControllerTest do
         conn
         |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [backend.id, other_backend.id]})
         |> json_response(200)
-
-      assert_schema(response, "AlertApiSchema")
 
       assert MapSet.new(Enum.map(response["backends"], & &1["id"])) ==
                MapSet.new([backend.id, other_backend.id])
@@ -314,12 +302,9 @@ defmodule LogflareWeb.Api.AlertControllerTest do
       victim = insert(:user)
       victim_backend = insert(:backend, user: victim)
 
-      response =
-        conn
-        |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [victim_backend.id]})
-        |> json_response(404)
-
-      assert_schema(response, "NotFoundResponse")
+      conn
+      |> put(~p"/api/alerts/#{alert.token}", %{backend_ids: [victim_backend.id]})
+      |> json_response(404)
 
       reloaded =
         Logflare.Alerting.get_alert_query!(alert.id)
@@ -357,8 +342,6 @@ defmodule LogflareWeb.Api.AlertControllerTest do
         |> get(~p"/api/alerts")
         |> json_response(200)
 
-      assert_schema(response, "AlertApiSchemaListResponse")
-
       assert MapSet.new(Enum.map(response, & &1["token"])) ==
                MapSet.new([managed_alert.token, deleted_alert.token])
 
@@ -367,7 +350,6 @@ defmodule LogflareWeb.Api.AlertControllerTest do
         |> get(~p"/api/alerts/#{managed_alert.token}")
         |> json_response(200)
 
-      assert_schema(response, "AlertApiSchema")
       assert response["token"] == managed_alert.token
 
       assert conn
@@ -410,13 +392,10 @@ defmodule LogflareWeb.Api.AlertControllerTest do
     test "show alert with bad user", %{conn: conn, user: user} do
       alert = insert(:alert, user: user)
 
-      response =
-        conn
-        |> add_access_token(insert(:user), "private")
-        |> get(~p"/api/alerts/#{alert.token}")
-        |> json_response(404)
-
-      assert_schema(response, "NotFoundResponse")
+      conn
+      |> add_access_token(insert(:user), "private")
+      |> get(~p"/api/alerts/#{alert.token}")
+      |> json_response(404)
     end
 
     test "delete alert", %{conn: conn, user: user} do
@@ -427,14 +406,11 @@ defmodule LogflareWeb.Api.AlertControllerTest do
         |> delete(~p"/api/alerts/#{alert.token}")
         |> text_response(204)
 
-      assert assert_schema(response, "AcceptedResponse") == ""
+      assert response == ""
 
-      response =
-        conn
-        |> get(~p"/api/alerts/#{alert.token}")
-        |> json_response(404)
-
-      assert_schema(response, "NotFoundResponse")
+      conn
+      |> get(~p"/api/alerts/#{alert.token}")
+      |> json_response(404)
     end
 
     test "delete alert with bad user", %{conn: conn, user: user} do

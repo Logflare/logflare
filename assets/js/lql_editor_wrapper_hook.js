@@ -15,6 +15,32 @@ const parseSuggestedSearches = (suggestedSearchesJson) => {
   return JSON.parse(suggestedSearchesJson);
 };
 
+const FIELD_NAME_PATTERN = /^fields\[(.+)\]$/;
+
+export const trimFieldInput = (input) => {
+  const match = input?.name?.match?.(FIELD_NAME_PATTERN);
+
+  if (!match) return null;
+
+  input.value = input.value.trim();
+
+  return { name: match[1], value: input.value };
+};
+
+export const collectTrimmedFields = (inputs) => {
+  const fields = {};
+
+  inputs.forEach((input) => {
+    const field = trimFieldInput(input);
+
+    if (field) {
+      fields[field.name] = field.value;
+    }
+  });
+
+  return fields;
+};
+
 const LqlEditorWrapper = {
   mounted() {
     this._schemaFields = parseSchemaFields(this.el.dataset.schemaFieldsJson);
@@ -28,6 +54,9 @@ const LqlEditorWrapper = {
     this._lastServerQuerystring = this.el.dataset.querystring ?? "";
     this._handleSubmitRequest = () => {
       this.submitSearch();
+    };
+    this._handleFieldFocusOut = (event) => {
+      trimFieldInput(event.target);
     };
     this._handleEditorMounted = (event) => {
       const { editor } = event.detail;
@@ -79,6 +108,12 @@ const LqlEditorWrapper = {
 
     this.el.addEventListener("lql:submit", this._handleSubmitRequest);
     this.el.addEventListener("lme:editor_mounted", this._handleEditorMounted);
+
+    this._fieldsContainer = this.searchControl();
+    this._fieldsContainer?.addEventListener(
+      "focusout",
+      this._handleFieldFocusOut
+    );
   },
 
   updated() {
@@ -139,22 +174,19 @@ const LqlEditorWrapper = {
     }
   },
 
+  searchControl() {
+    return (
+      this.el.closest("#source-logs-search-control") || this.el.parentElement
+    );
+  },
+
   collectRecommendedFields() {
-    const searchControl =
-      this.el.closest("#source-logs-search-control") || this.el.parentElement;
-    const fields = {};
+    const inputs =
+      this.searchControl()?.querySelectorAll(
+        '#recommended_fields input[name^="fields["]'
+      ) ?? [];
 
-    searchControl
-      ?.querySelectorAll('#recommended_fields input[name^="fields["]')
-      .forEach((input) => {
-        const match = input.name.match(/^fields\[(.+)\]$/);
-
-        if (match) {
-          fields[match[1]] = input.value;
-        }
-      });
-
-    return fields;
+    return collectTrimmedFields(inputs);
   },
 
   submitSearch() {
@@ -178,6 +210,12 @@ const LqlEditorWrapper = {
 
   destroyed() {
     this.disposeEditorBindings();
+
+    this._fieldsContainer?.removeEventListener(
+      "focusout",
+      this._handleFieldFocusOut
+    );
+    this._fieldsContainer = null;
   },
 };
 

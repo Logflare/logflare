@@ -24,7 +24,6 @@ defmodule Logflare.Backends.BufferProducerTest do
       start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
 
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
-    :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
     [%LogEvent{id: id}] =
@@ -51,7 +50,6 @@ defmodule Logflare.Backends.BufferProducerTest do
       start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
 
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
-    :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
     PubSubRatesCache.cache_rates(source.token, %{
@@ -87,11 +85,9 @@ defmodule Logflare.Backends.BufferProducerTest do
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
     startup_table_key = {source.id, nil, nil}
     IngestEventQueue.upsert_tid(startup_table_key)
-    :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
-    Process.exit(buffer_producer_pid, :normal)
-    :timer.sleep(200)
+    signal_exit_and_wait(buffer_producer_pid)
 
     assert IngestEventQueue.total_pending(startup_table_key) == 1
     assert IngestEventQueue.total_pending(sid_bid_pid) == 0
@@ -107,7 +103,6 @@ defmodule Logflare.Backends.BufferProducerTest do
       start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, id_passing: true})
 
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
-    :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
     tid = IngestEventQueue.get_tid(sid_bid_pid)
@@ -158,10 +153,8 @@ defmodule Logflare.Backends.BufferProducerTest do
 
     captured =
       capture_log(fn ->
-        send(pid, {:add_to_buffer, items})
-        :timer.sleep(100)
-        send(pid, {:add_to_buffer, items})
-        :timer.sleep(100)
+        TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
+        TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
       end)
 
     assert captured =~ source.name
@@ -192,7 +185,6 @@ defmodule Logflare.Backends.BufferProducerTest do
         start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
 
       sid_bid_pid = {source.id, nil, buffer_producer_pid}
-      :timer.sleep(100)
 
       own_event = build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(sid_bid_pid, [own_event])
@@ -222,7 +214,6 @@ defmodule Logflare.Backends.BufferProducerTest do
         start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
 
       sid_bid_pid = {source.id, nil, buffer_producer_pid}
-      :timer.sleep(100)
 
       own_event = build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(sid_bid_pid, [own_event])
@@ -262,8 +253,6 @@ defmodule Logflare.Backends.BufferProducerTest do
           {BufferProducer, backend_id: nil, source_id: source.id, id_passing: true},
           id: :producer_b
         )
-
-      :timer.sleep(100)
 
       events = [build(:log_event, source: source), build(:log_event, source: source)]
       :ok = IngestEventQueue.add_to_table(startup_key, events)
@@ -309,14 +298,12 @@ defmodule Logflare.Backends.BufferProducerTest do
           build(:log_event, source: source)
           |> Map.put(:event_type, :log)
           |> Map.put(:day_bucket, 12_345)
-          |> Map.put(:ingest_freshness, :fresh)
         end
 
       partial =
         build(:log_event, source: source)
         |> Map.put(:event_type, :metric)
         |> Map.put(:day_bucket, 12_345)
-        |> Map.put(:ingest_freshness, :fresh)
 
       :ok = IngestEventQueue.add_to_table(startup_key, complete_group ++ [partial])
 
@@ -334,11 +321,11 @@ defmodule Logflare.Backends.BufferProducerTest do
       own_key = {:consolidated, backend.id, producer}
 
       assert IngestEventQueue.pending_batch_key_counts(own_key) == %{
-               {:fresh, :log, 12_345} => 2
+               {:log, 12_345} => 2
              }
 
       assert IngestEventQueue.pending_batch_key_counts(startup_key) == %{
-               {:fresh, :metric, 12_345} => 1
+               {:metric, 12_345} => 1
              }
     end
 
@@ -354,7 +341,6 @@ defmodule Logflare.Backends.BufferProducerTest do
           build(:log_event, source: source)
           |> Map.put(:event_type, event_type)
           |> Map.put(:day_bucket, 12_345)
-          |> Map.put(:ingest_freshness, :fresh)
         end
 
       :ok = IngestEventQueue.add_to_table(startup_key, events)
@@ -380,7 +366,7 @@ defmodule Logflare.Backends.BufferProducerTest do
       backend: backend
     } do
       startup_key = {:consolidated, backend.id, nil}
-      batch_key = {:fresh, :log, 12_345}
+      batch_key = {:log, 12_345}
       IngestEventQueue.upsert_tid(startup_key)
 
       events =
@@ -388,7 +374,6 @@ defmodule Logflare.Backends.BufferProducerTest do
           build(:log_event, source: source)
           |> Map.put(:event_type, :log)
           |> Map.put(:day_bucket, 12_345)
-          |> Map.put(:ingest_freshness, :fresh)
         end
 
       :ok = IngestEventQueue.add_to_table(startup_key, events)
@@ -432,7 +417,6 @@ defmodule Logflare.Backends.BufferProducerTest do
         )
 
       consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
-      :timer.sleep(150)
 
       le = build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
@@ -477,13 +461,11 @@ defmodule Logflare.Backends.BufferProducerTest do
         )
 
       consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
-      :timer.sleep(150)
 
       le = build(:log_event, source: source)
       :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
 
-      Process.exit(buffer_producer_pid, :normal)
-      :timer.sleep(200)
+      signal_exit_and_wait(buffer_producer_pid)
 
       assert IngestEventQueue.total_pending(startup_key) == 1
       assert IngestEventQueue.total_pending(consolidated_key) == 0
@@ -504,13 +486,11 @@ defmodule Logflare.Backends.BufferProducerTest do
         )
 
       consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
-      :timer.sleep(150)
 
       le =
         build(:log_event, source: source)
         |> Map.put(:event_type, :trace)
         |> Map.put(:day_bucket, 123_456)
-        |> Map.put(:ingest_freshness, :stale)
 
       :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
 
@@ -523,7 +503,6 @@ defmodule Logflare.Backends.BufferProducerTest do
                size: size,
                event_type: :trace,
                day_bucket: 123_456,
-               ingest_freshness: :stale,
                retries: 0
              } = pointer
 
@@ -552,10 +531,8 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       captured =
         capture_log(fn ->
-          send(pid, {:add_to_buffer, items})
-          :timer.sleep(100)
-          send(pid, {:add_to_buffer, items})
-          :timer.sleep(100)
+          TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
+          TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
         end)
 
       assert captured =~ "Consolidated GenStage producer has discarded"
@@ -579,7 +556,6 @@ defmodule Logflare.Backends.BufferProducerTest do
         start_supervised!({BufferProducer, spool_producer: true, interval: 100})
 
       spool_key = {:spool_producer, nil, buffer_producer_pid}
-      :timer.sleep(150)
 
       le = build(:log_event)
       :ok = IngestEventQueue.add_to_table(spool_key, [le])
@@ -627,16 +603,14 @@ defmodule Logflare.Backends.BufferProducerTest do
         start_supervised!({BufferProducer, spool_producer: true, interval: 100})
 
       spool_key = {:spool_producer, nil, buffer_producer_pid}
-      :timer.sleep(150)
 
       le = build(:log_event)
       :ok = IngestEventQueue.add_to_table(spool_key, [le])
 
-      Process.exit(buffer_producer_pid, :normal)
-      :timer.sleep(200)
+      stop_and_wait(buffer_producer_pid)
 
       assert IngestEventQueue.total_pending(startup_key) == 1
-      assert IngestEventQueue.total_pending(spool_key) == 0
+      assert IngestEventQueue.total_pending(spool_key) == {:error, :not_initialized}
     end
 
     test "format_discarded logs a spool-specific message" do
@@ -651,10 +625,8 @@ defmodule Logflare.Backends.BufferProducerTest do
 
       captured =
         capture_log(fn ->
-          send(pid, {:add_to_buffer, items})
-          :timer.sleep(100)
-          send(pid, {:add_to_buffer, items})
-          :timer.sleep(100)
+          TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
+          TestUtils.send_and_wait_for_handling(pid, {:add_to_buffer, items})
         end)
 
       assert captured =~ "Spool producer GenStage has discarded"
@@ -719,17 +691,17 @@ defmodule Logflare.Backends.BufferProducerTest do
       Process.cancel_timer(state.timer_ref)
     end
 
-    test "handle_info(:scheduled_resolve, _) schedules a short retry when a fetch is capped",
-         %{source: source, backend: backend} do
+    test "handle_info(:scheduled_resolve, _) schedules a short retry when a fetch is capped, for a consolidated producer",
+         %{backend: backend} do
       ref = :atomics.new(1, signed: true)
       :atomics.put(ref, 1, 1)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 1,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,
@@ -741,6 +713,38 @@ defmodule Logflare.Backends.BufferProducerTest do
       assert {:noreply, [], _state} = BufferProducer.handle_info(:scheduled_resolve, state)
 
       assert_receive :scheduled_resolve, 400
+    end
+
+    test "handle_info(:scheduled_resolve, _) never fast-retries a capped fetch for a standard (BigQuery) producer, regardless of source volume",
+         %{source: source, backend: backend} do
+      # The fast in-flight retry is scoped to consolidated/spool producers only — a
+      # bounded, small instance count each. Standard producers have no such bound
+      # (potentially many thousands of low-traffic sources fleet-wide), so a capped
+      # fetch there always falls through to the normal avg-tiered backoff instead,
+      # regardless of how busy the source is.
+      stub(Logflare.Sources, :get_source_metrics_for_ingest, fn _ -> %{avg: 300} end)
+
+      ref = :atomics.new(1, signed: true)
+      :atomics.put(ref, 1, 1)
+
+      state = %{
+        consolidated: false,
+        id_passing: true,
+        demand: 1,
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: backend.id,
+        last_discard_log_dt: nil,
+        interval: 1_000,
+        in_flight_ref: ref,
+        max_in_flight: 1,
+        timer_ref: nil
+      }
+
+      assert {:noreply, [], _state} = BufferProducer.handle_info(:scheduled_resolve, state)
+
+      refute_receive :scheduled_resolve, 400
+      assert_receive :scheduled_resolve, 1_100
     end
 
     test "handle_info(:scheduled_resolve, _) keeps the normal interval when genuinely empty, not capped",
@@ -768,16 +772,16 @@ defmodule Logflare.Backends.BufferProducerTest do
     end
 
     test "handle_demand/2 proactively schedules a short retry when capped, instead of waiting for the pending timer",
-         %{source: source, backend: backend} do
+         %{backend: backend} do
       ref = :atomics.new(1, signed: true)
       :atomics.put(ref, 1, 1)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 0,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,
@@ -795,14 +799,18 @@ defmodule Logflare.Backends.BufferProducerTest do
       source: source,
       backend: backend
     } do
+      own_key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(own_key)
+      :ok = IngestEventQueue.add_to_table(own_key, [build(:log_event, source: source)])
+
       ref = :atomics.new(1, signed: true)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 0,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,
@@ -811,22 +819,22 @@ defmodule Logflare.Backends.BufferProducerTest do
         timer_ref: nil
       }
 
-      assert {:noreply, [], _state} = BufferProducer.handle_demand(1, state)
+      assert {:noreply, [_fetched], _state} = BufferProducer.handle_demand(1, state)
 
       refute_receive :scheduled_resolve, 400
     end
 
     test "handle_demand/2 cancels the previous timer instead of forking a second parallel loop when called again while still capped",
-         %{source: source, backend: backend} do
+         %{backend: backend} do
       ref = :atomics.new(1, signed: true)
       :atomics.put(ref, 1, 1)
 
       state = %{
-        consolidated: false,
+        consolidated: true,
         id_passing: true,
         demand: 0,
-        source_id: source.id,
-        source_token: source.token,
+        source_id: nil,
+        source_token: nil,
         backend_id: backend.id,
         last_discard_log_dt: nil,
         interval: 5_000,
@@ -843,5 +851,17 @@ defmodule Logflare.Backends.BufferProducerTest do
       assert_receive :scheduled_resolve, 400
       refute_receive :scheduled_resolve, 400
     end
+  end
+
+  defp signal_exit_and_wait(pid) do
+    Process.exit(pid, :normal)
+    :sys.get_state(pid)
+    assert Process.alive?(pid)
+  end
+
+  defp stop_and_wait(pid) do
+    monitor_ref = Process.monitor(pid)
+    :ok = GenServer.stop(pid, :normal, 1_000)
+    assert_receive {:DOWN, ^monitor_ref, :process, ^pid, :normal}, 1_000
   end
 end

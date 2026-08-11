@@ -37,6 +37,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   @tail_search_interval 1000
   @user_idle_interval :timer.minutes(2)
+  @timeout_search_error_message "Query timed out: Try restricting the timestamp range or adding more filtering to your query."
 
   on_mount LogflareWeb.AuthLive
   on_mount {LogflareWeb.AuthLive, :ensure_team_param}
@@ -92,6 +93,7 @@ defmodule LogflareWeb.Source.SearchLV do
       tailing_initial?: true,
       tailing_timer: nil,
       tailing?: tailing?,
+      resume_tailing_after_modal?: false,
       # search states
       search_op: nil,
       search_op_error: nil,
@@ -245,6 +247,9 @@ defmodule LogflareWeb.Source.SearchLV do
         search_op_error: @search_op_error,
         team_user: @team_user,
         team: @team,
+        lql: @querystring,
+        querystring: @querystring,
+        search_timezone: @search_timezone,
         close: @modal.body[:close],
         return_to: @modal.body.return_to
       )}
@@ -258,16 +263,7 @@ defmodule LogflareWeb.Source.SearchLV do
     <div class="container source-logs-search-container console-text">
       <div id="logs-list-container">
         <LogEventComponents.empty_result_list :if={not @loading} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
-        <LogEventComponents.results_list
-          search_op={@search_op}
-          search_op_log_events={@search_op_log_events}
-          last_query_completed_at={@last_query_completed_at}
-          search_timezone={@search_timezone}
-          loading={@loading}
-          tailing?={@tailing?}
-          querystring={@querystring}
-          source_schema_flat_map={@source_schema_flat_map}
-        />
+        <LogEventComponents.results_list search_op={@search_op} search_op_log_events={@search_op_log_events} last_query_completed_at={@last_query_completed_at} search_timezone={@search_timezone} loading={@loading} source_schema_flat_map={@source_schema_flat_map} />
       </div>
       <div>
         {live_react_component(
@@ -417,6 +413,28 @@ defmodule LogflareWeb.Source.SearchLV do
     soft_pause(ev, socket)
   end
 
+  def handle_event("open_log_event_modal", _, socket) do
+    resume_tailing? = socket.assigns.tailing?
+
+    socket =
+      socket
+      |> assign(:resume_tailing_after_modal?, resume_tailing?)
+      |> pause_tailing()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("close_log_event_modal", _, socket) do
+    socket =
+      if socket.assigns.resume_tailing_after_modal? do
+        resume_tailing(socket)
+      else
+        socket
+      end
+
+    {:noreply, assign(socket, :resume_tailing_after_modal?, false)}
+  end
+
   def handle_event("hard_play" = ev, _, socket) do
     hard_play(ev, socket)
   end
@@ -561,7 +579,8 @@ defmodule LogflareWeb.Source.SearchLV do
          {:ok, lql_rules} <- Lql.decode(qs, schema) do
       recommended_filter_rules =
         recommended_fields
-        |> Enum.reject(fn {_path, value} -> is_nil(value) or String.trim(value) == "" end)
+        |> Enum.map(fn {path, value} -> {path, trim_field_value(value)} end)
+        |> Enum.reject(fn {_path, value} -> value == "" end)
         |> Enum.map(fn {path, value} ->
           FilterRule.build(path: path, operator: :=, value: value)
         end)
@@ -576,6 +595,9 @@ defmodule LogflareWeb.Source.SearchLV do
       _ -> qs
     end
   end
+
+  defp trim_field_value(value) when is_binary(value), do: String.trim(value)
+  defp trim_field_value(_value), do: ""
 
   defp maybe_update_chart_controls(socket, new_chart_agg, new_chart_period) do
     prev_chart_rule =
@@ -993,17 +1015,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, error_socket(socket, "Tailing is disabled for this source")}
   end
 
-  defp soft_play(_ev, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = _source} = prev_assigns
-
-    kickoff_queries(stoken, socket.assigns)
-
-    socket =
-      socket
-      |> assign(:tailing?, true)
-
-    {:noreply, socket}
-  end
+  defp soft_play(_ev, socket), do: {:noreply, resume_tailing(socket)}
 
   defp soft_pause(
          _ev,
@@ -1012,15 +1024,20 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp soft_pause(_ev, %{assigns: %{source: _source, executor_pid: executor_pid}} = socket) do
+  defp soft_pause(_ev, socket), do: {:noreply, pause_tailing(socket)}
+
+  defp pause_tailing(%{assigns: %{tailing?: false}} = socket), do: socket
+
+  defp pause_tailing(%{assigns: %{executor_pid: executor_pid}} = socket) do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(executor_pid)
 
-    socket =
-      socket
-      |> assign(:tailing?, false)
+    assign(socket, :tailing?, false)
+  end
 
-    {:noreply, socket}
+  defp resume_tailing(socket) do
+    kickoff_queries(socket.assigns.source.token, socket.assigns)
+    assign(socket, :tailing?, true)
   end
 
   defp hard_play(
@@ -1094,14 +1111,20 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  defp put_flash_query_error(socket, response) do
-    message =
-      case response do
-        %QueryError{} = error -> QueryErrorHelpers.query_error_message(error)
-        _ -> QueryErrorHelpers.generic_query_error_message()
-      end
+  defp put_flash_query_error(socket, %QueryError{} = error) do
+    put_flash(socket, :error, query_error_flash_message(error))
+  end
 
-    put_flash(socket, :error, "Query halted: " <> message)
+  defp put_flash_query_error(socket, _response) do
+    put_flash(socket, :error, "Query halted: " <> QueryErrorHelpers.generic_query_error_message())
+  end
+
+  @spec query_error_flash_message(QueryError.t()) :: String.t()
+  defp query_error_flash_message(%QueryError{} = error) do
+    case QueryErrorHelpers.timeout_query_error?(error) do
+      true -> @timeout_search_error_message
+      false -> "Query halted: " <> QueryErrorHelpers.query_error_message(error)
+    end
   end
 
   defp put_halt_flash_message(socket, search_op) do

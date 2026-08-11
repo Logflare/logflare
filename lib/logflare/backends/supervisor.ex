@@ -45,15 +45,17 @@ defmodule Logflare.Backends.Supervisor do
         Backends.IngestEventQueue.GenerationJanitor,
         Backends.Adaptor.PostgresAdaptor.Supervisor,
         Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore,
-        Backends.Adaptor.ClickHouseAdaptor.NativeIngester.SchemaCache,
-        Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup,
         Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup,
         Backends.ConsolidatedSup,
         {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},
         {Registry,
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
         {Registry,
-         name: Backends.BackendRegistry, keys: :unique, partitions: max(round(base / 8), 1)}
+         name: Backends.BackendRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
+        {Registry,
+         name: Backends.BufferProducer.InFlightRegistry,
+         keys: :unique,
+         partitions: max(round(base / 8), 1)}
       ] ++
         spool_goth_children ++
         spool_memory_monitor_children ++ producer_children ++ consumer_children

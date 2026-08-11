@@ -3,9 +3,9 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.SentryAdaptor
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Tesla.MockAdapter
 
@@ -90,8 +90,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
           config: %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
         )
 
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
+      start_supervised!({SourceSup, source})
       [backend: backend, source: source]
     end
 

@@ -8,16 +8,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.PoolSup, as: NativePoolSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.LogEvent
   alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
   alias Logflare.Lql.Rules.FilterRule
 
@@ -209,38 +207,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  describe "clickhouse_cloud?/1" do
-    test "returns true for ClickHouse Cloud URLs" do
-      backend = %Backend{config: %{url: "https://abc123.eu-central-1.aws.clickhouse.cloud"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns true for GCP Cloud URLs" do
-      backend = %Backend{config: %{url: "https://xyz.europe-west4.gcp.clickhouse.cloud"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns true regardless of port in URL" do
-      backend = %Backend{config: %{url: "https://foo.clickhouse.cloud:8443"}}
-      assert ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false for self-hosted URLs" do
-      backend = %Backend{config: %{url: "http://localhost:8123"}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false for similar but non-Cloud domains" do
-      backend = %Backend{config: %{url: "https://clickhouse.cloud.example.com"}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-
-    test "returns false when config has no url" do
-      backend = %Backend{config: %{}}
-      refute ClickHouseAdaptor.clickhouse_cloud?(backend)
-    end
-  end
-
   describe "redact_config/1" do
     test "redacts password field" do
       config = %{password: "secret123", database: "logs"}
@@ -285,6 +251,295 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert changeset.valid?
     end
+
+    test "casts read_only_urls map when provided" do
+      urls = %{
+        "dashboard_logs" => "http://logs-read.local:8123",
+        "dashboard_metrics" => "http://metrics-read.local:8123"
+      }
+
+      changeset = cast_and_validate_config(read_only_urls: urls)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == urls
+    end
+
+    test "read_only_urls defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == nil
+    end
+
+    test "rejects a malformed URL in read_only_urls" do
+      changeset =
+        cast_and_validate_config(read_only_urls: %{"dashboard_logs" => "not-a-url"})
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :read_only_urls)
+    end
+
+    test "strips basic auth credentials from every URL config field" do
+      changeset =
+        cast_and_validate_config(
+          url: "http://ingest_user:ingest_pa55@ingest.local:8123",
+          read_only_url: "http://legacy_user:legacy_pa55@legacy-read.local:8123",
+          read_only_urls: %{
+            "dashboard_logs" => "http://logs_user:logs_pa55@logs-read.local:8123",
+            "api" => "https://api_user@api-read.local:8443"
+          },
+          async_insert_cluster_url: "http://async_user:async_pa55@async.local:8123"
+        )
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :url) == "http://ingest.local:8123"
+
+      assert Ecto.Changeset.get_field(changeset, :read_only_url) ==
+               "http://legacy-read.local:8123"
+
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == %{
+               "dashboard_logs" => "http://logs-read.local:8123",
+               "api" => "https://api-read.local:8443"
+             }
+
+      assert Ecto.Changeset.get_field(changeset, :async_insert_cluster_url) ==
+               "http://async.local:8123"
+    end
+
+    test "leaves URLs without basic auth credentials untouched" do
+      changeset =
+        cast_and_validate_config(
+          url: "http://localhost:8123",
+          read_only_urls: %{"dashboard_logs" => "https://logs-read.local:8443/db"}
+        )
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :url) == "http://localhost:8123"
+
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == %{
+               "dashboard_logs" => "https://logs-read.local:8443/db"
+             }
+    end
+
+    test "casts default_read_cluster when it names a configured label" do
+      changeset =
+        cast_and_validate_config(
+          read_only_urls: %{"dashboard_logs" => "http://logs-read.local:8123"},
+          default_read_cluster: "dashboard_logs"
+        )
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :default_read_cluster) == "dashboard_logs"
+    end
+
+    test "rejects default_read_cluster that is not a configured label" do
+      changeset =
+        cast_and_validate_config(
+          read_only_urls: %{"dashboard_logs" => "http://logs-read.local:8123"},
+          default_read_cluster: "api"
+        )
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :default_read_cluster)
+    end
+
+    test "does not validate default_read_cluster when read_only_urls is empty" do
+      changeset = cast_and_validate_config(default_read_cluster: "reporting")
+
+      assert changeset.valid?
+      refute Keyword.has_key?(changeset.errors, :default_read_cluster)
+    end
+
+    test "use_async_inserts_for_small_batches defaults to false when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_for_small_batches) == false
+    end
+
+    test "casts use_async_inserts_for_small_batches when provided" do
+      changeset = cast_and_validate_config(use_async_inserts_for_small_batches: true)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_for_small_batches) == true
+    end
+
+    test "async_insert_max_rows defaults to 1000 when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_max_rows) == 1_000
+    end
+
+    test "casts a custom async_insert_max_rows" do
+      changeset = cast_and_validate_config(async_insert_max_rows: 500)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_max_rows) == 500
+    end
+
+    test "rejects a non-positive async_insert_max_rows" do
+      changeset = cast_and_validate_config(async_insert_max_rows: 0)
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :async_insert_max_rows)
+    end
+
+    test "async_insert_cluster_url defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_cluster_url) == nil
+    end
+
+    test "casts a valid async_insert_cluster_url" do
+      changeset =
+        cast_and_validate_config(async_insert_cluster_url: "https://async.clickhouse.cloud:8443")
+
+      assert changeset.valid?
+
+      assert Ecto.Changeset.get_field(changeset, :async_insert_cluster_url) ==
+               "https://async.clickhouse.cloud:8443"
+    end
+
+    test "rejects an invalid async_insert_cluster_url format" do
+      changeset = cast_and_validate_config(async_insert_cluster_url: "not-a-url")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :async_insert_cluster_url)
+    end
+
+    test "max_event_age_hours defaults to 24 when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :max_event_age_hours) == 24
+    end
+
+    test "casts a custom max_event_age_hours" do
+      changeset = cast_and_validate_config(max_event_age_hours: 72)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :max_event_age_hours) == 72
+    end
+
+    test "accepts a max_event_age_hours of zero to disable age filtering" do
+      changeset = cast_and_validate_config(max_event_age_hours: 0)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :max_event_age_hours) == 0
+    end
+
+    test "rejects a negative max_event_age_hours" do
+      changeset = cast_and_validate_config(max_event_age_hours: -1)
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :max_event_age_hours)
+    end
+  end
+
+  describe "pre_ingest/3 event age filtering" do
+    setup do
+      [source: build(:source)]
+    end
+
+    test "drops events older than the default max event age", %{source: source} do
+      backend = clickhouse_backend()
+      recent = log_event_aged_hours(source, 1)
+      stale = log_event_aged_hours(source, 25)
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [recent, stale]) == [recent]
+    end
+
+    test "keeps every event when all are within the default max event age", %{source: source} do
+      backend = clickhouse_backend()
+      events = [log_event_aged_hours(source, 0), log_event_aged_hours(source, 23)]
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, events) == events
+    end
+
+    test "honors a custom max_event_age_hours", %{source: source} do
+      backend = clickhouse_backend(max_event_age_hours: 72)
+      within = log_event_aged_hours(source, 48)
+      stale = log_event_aged_hours(source, 96)
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [within, stale]) == [within]
+    end
+
+    test "does no filtering when max_event_age_hours is zero", %{source: source} do
+      backend = clickhouse_backend(max_event_age_hours: 0)
+      events = [log_event_aged_hours(source, 1), log_event_aged_hours(source, 5_000)]
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, events) == events
+    end
+
+    test "falls back to the default when max_event_age_hours is absent", %{source: source} do
+      backend = build(:backend, type: :clickhouse, config: %{url: "http://localhost"})
+      recent = log_event_aged_hours(source, 1)
+      stale = log_event_aged_hours(source, 25)
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [recent, stale]) == [recent]
+    end
+
+    test "emits drop_stale telemetry tagged with the backend", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
+
+      backend = clickhouse_backend()
+      events = [log_event_aged_hours(source, 25), log_event_aged_hours(source, 30)]
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, events) == []
+
+      source_id = source.id
+      source_token = source.token
+      backend_id = backend.id
+
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale],
+                      %{count: 2},
+                      %{
+                        source_id: ^source_id,
+                        source_token: ^source_token,
+                        backend_id: ^backend_id,
+                        backend_type: :clickhouse
+                      }}
+    end
+
+    test "does not emit drop_stale telemetry when nothing is dropped", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
+
+      backend = clickhouse_backend()
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [log_event_aged_hours(source, 2)]) !=
+               []
+
+      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale], _, _}
+    end
+
+    test "keeps events without an integer timestamp", %{source: source} do
+      backend = clickhouse_backend()
+      event = %LogEvent{body: %{"timestamp" => nil}}
+
+      assert ClickHouseAdaptor.pre_ingest(source, backend, [event]) == [event]
+    end
+
+    test "handles an empty event list", %{source: source} do
+      assert ClickHouseAdaptor.pre_ingest(source, clickhouse_backend(), []) == []
+    end
+  end
+
+  defp clickhouse_backend(config_overrides \\ []) do
+    config =
+      Enum.into(config_overrides, %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123
+      })
+
+    build(:backend, type: :clickhouse, config: config)
+  end
+
+  defp log_event_aged_hours(source, hours) do
+    timestamp = System.system_time(:microsecond) - hours * 3_600 * 1_000_000
+    build(:log_event, source: source, timestamp: timestamp)
   end
 
   defp cast_and_validate_config(attrs \\ []) do
@@ -336,6 +591,230 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
   end
 
+  describe "resolve_read_cluster_label/2" do
+    setup do
+      config = %{
+        url: "http://ingest.local:8123",
+        read_only_url: "http://legacy-read.local:8123",
+        read_only_urls: %{
+          "dashboard_metrics" => "http://metrics-read.local:8123",
+          "dashboard_logs" => "http://logs-read.local:8123",
+          "api" => "http://api-read.local:8123",
+          "mcp" => "http://mcp-read.local:8123"
+        },
+        default_read_cluster: "dashboard_logs"
+      }
+
+      %{config: config}
+    end
+
+    test "returns the requested label when it is a configured key", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "api") == "api"
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "mcp") == "mcp"
+    end
+
+    test "falls back to default_read_cluster for an unknown label", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "does_not_exist") ==
+               "dashboard_logs"
+    end
+
+    test "falls back to default_read_cluster for an absent label", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, nil) == "dashboard_logs"
+    end
+
+    test "returns nil (legacy path) when no labels are configured" do
+      config = %{url: "http://ingest.local:8123", read_only_url: "http://legacy.local:8123"}
+
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "api") == nil
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, nil) == nil
+    end
+
+    test "returns nil when a label is requested but no default and no match", %{config: config} do
+      config = Map.delete(config, :default_read_cluster)
+
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "unmapped") == nil
+    end
+
+    test "prefers the requested label over the default", %{config: config} do
+      assert ClickHouseAdaptor.resolve_read_cluster_label(config, "dashboard_metrics") ==
+               "dashboard_metrics"
+    end
+
+    test "accepts a Backend struct", %{config: config} do
+      backend = %Backend{config: config}
+
+      assert ClickHouseAdaptor.resolve_read_cluster_label(backend, "api") == "api"
+    end
+  end
+
+  describe "read cluster routing" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      [source: source, backend: backend]
+    end
+
+    test "routes to the labeled pool for a configured read cluster", %{backend: backend} do
+      assert {:ok, {[%{"test" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                 read_cluster: "api"
+               )
+
+      assert ConnectionManager.pool_active?(backend, "api")
+      refute ConnectionManager.pool_active?(backend, "dashboard_logs")
+      refute ConnectionManager.pool_active?(backend)
+    end
+
+    test "routes an unknown read cluster to the default and warns", %{backend: backend} do
+      log =
+        ExUnit.CaptureLog.capture_log(
+          [format: "$metadata$message", metadata: [:user_id]],
+          fn ->
+            assert {:ok, {[%{"test" => 1}], _bytes}} =
+                     ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                       read_cluster: "nope"
+                     )
+          end
+        )
+
+      assert log =~ "read cluster not configured"
+      assert log =~ "user_id=#{backend.user_id}"
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+      refute ConnectionManager.pool_active?(backend, "api")
+    end
+
+    test "routes an absent read cluster to the default", %{backend: backend} do
+      assert {:ok, {[%{"test" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+  end
+
+  describe "read cluster routing without configured clusters" do
+    setup do
+      insert(:plan, name: "Free")
+
+      {source, backend} = setup_clickhouse_test()
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      [source: source, backend: backend]
+    end
+
+    test "warns and uses the legacy pool when a label is requested", %{backend: backend} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, {[%{"test" => 1}], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                     read_cluster: "api"
+                   )
+        end)
+
+      assert log =~ "read cluster not configured"
+      assert ConnectionManager.pool_active?(backend)
+      refute ConnectionManager.pool_active?(backend, "api")
+    end
+  end
+
+  describe "read cluster unhealthy fallback" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "falls back to the default cluster when the requested cluster is unhealthy" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      stub_read_cluster_connection_error(backend, "api")
+
+      log =
+        ExUnit.CaptureLog.capture_log(
+          [format: "$metadata$message", metadata: [:user_id]],
+          fn ->
+            assert {:ok, {[%{"test" => 1}], _bytes}} =
+                     ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                       read_cluster: "api"
+                     )
+          end
+        )
+
+      assert log =~ "read cluster unhealthy"
+      assert log =~ "user_id=#{backend.user_id}"
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+
+    test "does not fall back when the unhealthy cluster is already the default" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{"dashboard_logs" => "http://localhost:8123"},
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      stub_read_cluster_connection_error(backend, "dashboard_logs")
+
+      assert {:error, %QueryError{}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                 read_cluster: "dashboard_logs"
+               )
+    end
+
+    test "attributes the query error to the read cluster that was actually queried" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_url: "http://legacy-read.local:8123",
+            read_only_urls: %{"adhoc" => "http://adhoc-read.local:8123"},
+            default_read_cluster: "adhoc"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      stub_read_cluster_connection_error(backend, "adhoc")
+
+      log =
+        ExUnit.CaptureLog.capture_log(
+          [format: "$metadata$message", metadata: [:host, :read_cluster]],
+          fn ->
+            assert {:error, %QueryError{}} =
+                     ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                       read_cluster: "adhoc"
+                     )
+          end
+        )
+
+      assert log =~ "host=adhoc-read.local"
+      assert log =~ "read_cluster=adhoc"
+      refute log =~ "legacy-read.local"
+    end
+  end
+
   describe "test_connection/1 with dual cluster config" do
     setup do
       insert(:plan, name: "Free")
@@ -350,20 +829,162 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert :ok = ClickHouseAdaptor.test_connection(backend)
     end
 
-    test "fails when ingest URL is unreachable" do
+    test "fails when the ingest cluster returns a connection error and logs the ingest URL" do
+      {_source, backend} = setup_clickhouse_test(cleanup?: false)
+
+      stub(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, :grant_check_unknown_failure} =
+                   ClickHouseAdaptor.test_connection(backend)
+        end)
+
+      assert log =~ "ingest cluster"
+      assert log =~ backend.config.url
+    end
+
+    test "fails when the read cluster returns a connection error" do
       {_source, backend} =
-        setup_clickhouse_test(config: %{url: "http://localhost:19999"})
+        setup_clickhouse_test(
+          config: %{read_only_url: "http://localhost:8123"},
+          cleanup?: false
+        )
+
+      read_grant_statement = QueryTemplates.read_grant_check_statement()
+
+      stub(Ch, :query, fn pool, statement, params, opts ->
+        if statement == read_grant_statement do
+          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+        else
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+        end
+      end)
+
+      assert {:error, :grant_check_unknown_failure} = ClickHouseAdaptor.test_connection(backend)
+      QueryConnectionSup.terminate_backend_local(backend.id)
+    end
+
+    test "passes when every labeled read cluster is valid" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "reporting" => "http://localhost:8123",
+              "adhoc" => "http://localhost:8123"
+            }
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when any labeled read cluster is unreachable and logs which one" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "reporting" => "http://localhost:8123",
+              "adhoc" => "http://localhost:8124"
+            }
+          },
+          cleanup?: false
+        )
+
+      stub(Ch, :start_link, fn opts ->
+        if Keyword.get(opts, :port) == 8124 do
+          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+        else
+          Mimic.call_original(Ch, :start_link, [opts])
+        end
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, :grant_check_unknown_failure} =
+                   ClickHouseAdaptor.test_connection(backend)
+        end)
+
+      assert log =~ "read cluster"
+      assert log =~ "adhoc"
+      assert log =~ "http://localhost:8124"
+    end
+
+    test "passes when async is enabled and async_insert_cluster_url points to a valid cluster" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://localhost:8123"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "fails when async is enabled but async_insert_cluster_url is unreachable" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://localhost:19999"
+          }
+        )
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
     end
 
-    test "fails when read_only_url is unreachable" do
+    test "skips the async check when async is disabled even if the cluster URL is unreachable" do
       {_source, backend} =
-        setup_clickhouse_test(config: %{read_only_url: "http://localhost:19999"})
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: false,
+            async_insert_cluster_url: "http://localhost:19999"
+          }
+        )
 
       start_supervised!({ClickHouseAdaptor, backend})
-      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+  end
+
+  describe "insert_log_events_compressed/4 failure logging" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "logs the dedicated async cluster host when an async insert fails" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_cluster_url: "http://async-cluster.local:9000"
+          }
+        )
+
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 400, body: "boom"}}
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log([format: "$metadata$message", metadata: [:host]], fn ->
+          assert {:error, _} =
+                   ClickHouseAdaptor.insert_log_events_compressed(
+                     backend,
+                     :log,
+                     :zlib.gzip(""),
+                     async: true
+                   )
+        end)
+
+      assert log =~ "host=async-cluster.local"
+      refute log =~ "localhost"
     end
   end
 
@@ -387,8 +1008,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       result = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log, async: true)
       assert :ok = result
-
-      Process.sleep(500)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -421,8 +1040,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       result = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
       assert :ok = result
-
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -477,45 +1094,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert :ok = result
     end
 
-    test "insert_log_events/3 routes through native pool when enabled", %{
-      source: source,
-      backend: query_backend
-    } do
-      {_source, native_backend} =
-        setup_clickhouse_test(
-          source: source,
-          config: %{insert_protocol: "native", native_port: 9000}
-        )
-
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(native_backend, :log)
-
-      ddl = QueryTemplates.create_table_statement(table_name, :log, ttl_days: 0)
-      {:ok, {_, _}} = ClickHouseAdaptor.execute_ch_query(query_backend, ddl)
-
-      log_event = build_mapped_log_event(source: source, message: "native route test")
-
-      assert :ok = ClickHouseAdaptor.insert_log_events(native_backend, [log_event], :log)
-
-      pool_pid = GenServer.whereis(NativeIngester.Pool.via(native_backend))
-      assert is_pid(pool_pid)
-
-      {:ok, {rows, bytes}} =
-        ClickHouseAdaptor.execute_ch_query(
-          query_backend,
-          "SELECT event_message, ingested_at FROM #{table_name}"
-        )
-
-      assert length(rows) == 1
-      assert bytes > 0
-      assert Enum.at(rows, 0)["event_message"] == "native route test"
-      assert %NaiveDateTime{} = Enum.at(rows, 0)["ingested_at"]
-
-      on_exit(fn ->
-        NativePoolSup.stop_pool(native_backend)
-        ClickHouseAdaptor.execute_ch_query(query_backend, "DROP TABLE IF EXISTS #{table_name}")
-      end)
-    end
-
     test "insert_log_events/3 inserts logs with Map attributes", %{
       source: source,
       backend: backend
@@ -528,8 +1106,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
-
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -560,8 +1136,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, [metric_event], :metric)
 
-      Process.sleep(100)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
       {:ok, {[row], _bytes}} =
@@ -588,8 +1162,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, [trace_event], :trace)
-
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
@@ -619,8 +1191,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
         :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], event_type)
 
-        Process.sleep(100)
-
         table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
         {:ok, {query_result, _bytes}} =
@@ -649,8 +1219,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "executes a query with query-level SETTINGS", %{source: source, backend: backend} do
       log_event = build_mapped_log_event(source: source, message: "settings exec test")
       assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
-
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -728,7 +1296,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       ]
 
       :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
-      Process.sleep(100)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -805,7 +1372,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         end
 
       assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
-      Process.sleep(200)
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
@@ -974,7 +1540,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
-      Process.sleep(100)
       [source: source, backend: backend]
     end
 
@@ -1042,7 +1607,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend} = setup_clickhouse_test()
 
       start_supervised!({ClickHouseAdaptor, backend})
-      Process.sleep(100)
       [source: source, backend: backend]
     end
 
@@ -1109,20 +1673,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  describe "resolve_pipeline_count/3" do
-    test "scales up when startup contains a complete batch-key group" do
+  describe "resolve_pipeline_count/2" do
+    test "scales up when every queue is above the scaling threshold" do
       state = %{pipeline_count: 3, last_count_decrease: nil}
-      batch_size = Pipeline.max_batch_size()
 
       lens = [
-        {{:consolidated, 1, nil}, batch_size},
-        {{:consolidated, 1, self()}, batch_size},
-        {{:consolidated, 1, self()}, batch_size},
-        {{:consolidated, 1, self()}, batch_size}
+        {{:consolidated, 1, nil}, 0},
+        {{:consolidated, 1, self()}, 16_000},
+        {{:consolidated, 1, self()}, 16_000},
+        {{:consolidated, 1, self()}, 16_000}
       ]
 
-      counts = %{{:fresh, :log, 20_594} => batch_size}
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, counts) == 4
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 4
     end
 
     test "does not scale up when only one queue is over threshold and the rest are idle" do
@@ -1136,22 +1698,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         {{:consolidated, 1, self()}, 0}
       ]
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 4
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 4
     end
 
     test "does not scale up on a single outlier even when it drags the fleet average over threshold" do
       state = %{pipeline_count: 2, last_count_decrease: nil}
 
+      # [30_000, 0] averages to exactly @scaling_threshold despite one queue being
+      # completely idle — averaging alone would incorrectly scale up here.
       lens = [
         {{:consolidated, 1, nil}, 0},
         {{:consolidated, 1, self()}, 30_000},
         {{:consolidated, 1, self()}, 0}
       ]
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 2
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 2
     end
 
-    test "does not scale up for a startup burst smaller than one full batch" do
+    test "scales up when the startup queue has events, regardless of the average" do
       state = %{pipeline_count: 2, last_count_decrease: nil}
 
       lens = [
@@ -1159,8 +1723,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         {{:consolidated, 1, self()}, 0}
       ]
 
-      counts = %{{:fresh, :log, 20_594} => 500}
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, counts) == 2
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
     end
 
     test "scales down when every queue is well below threshold and enough time has passed" do
@@ -1175,7 +1738,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         {{:consolidated, 1, self()}, 0}
       ]
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 2
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 2
     end
 
     test "does not scale down again within 30 seconds of the last decrease" do
@@ -1187,7 +1750,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         {{:consolidated, 1, self()}, 0}
       ]
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 3
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
     end
 
     test "holds steady when nothing warrants scaling up or down" do
@@ -1200,14 +1763,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         {{:consolidated, 1, self()}, 2_000}
       ]
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens, %{}) == 3
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, lens) == 3
     end
 
     test "handles an empty lens list without dividing by zero" do
       state = %{pipeline_count: 1, last_count_decrease: nil}
 
-      assert ClickHouseAdaptor.resolve_pipeline_count(state, [], %{}) == 1
+      assert ClickHouseAdaptor.resolve_pipeline_count(state, []) == 1
     end
+  end
+
+  defp stub_read_cluster_connection_error(%Backend{id: backend_id}, label) do
+    stub(Ch, :query, fn pool, statement, params, opts ->
+      case pool do
+        {:via, Registry, {_registry, {_mod, ^backend_id, ^label}}} ->
+          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+
+        _ ->
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end
+    end)
   end
 
   defp modify_backend_with_long_token(%Backend{} = backend) do

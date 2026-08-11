@@ -1052,7 +1052,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
         |> render()
 
       assert link =~ ~r/phx-value-log-event-timestamp="\d+/
-      assert link =~ ~r/phx-value-lql="\w+/
     end
 
     @tag source_schema:
@@ -1272,7 +1271,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} =
         live_with_redirect(
           conn,
-          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:\"abc-123\"|, tz: "Africa/Lagos"}}"
+          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|user_id:~\"abc\"|, tz: "Africa/Lagos"}}"
         )
 
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
@@ -1296,7 +1295,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> render_click()
 
       to = assert_patch(view)
-      assert find_querystring(render(view)) =~ ~s|user_id:"abc-123"|
+      querystring = find_querystring(render(view))
+
+      assert querystring =~ ~s|user_id:~"abc"|
+      assert querystring =~ ~s|user_id:"abc-123"|
 
       %URI{query: query} = URI.parse(to)
 
@@ -1487,6 +1489,42 @@ defmodule LogflareWeb.Source.SearchLVTest do
                "Query halted: Field &quot;notthere&quot; does not exist."
     end
 
+    test "shows timeout specific error for query timeouts", %{
+      conn: conn,
+      source: source
+    } do
+      assert {:ok, view, _html} =
+               live_with_redirect(
+                 conn,
+                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
+               )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      message = "Job execution was cancelled: Job timed out"
+
+      send_query_error(
+        view,
+        kind: :timeout,
+        backend: BigQueryAdaptor,
+        raw_error: %{
+          "code" => 499,
+          "errors" => [%{"domain" => "global", "message" => message, "reason" => "stopped"}],
+          "message" => message,
+          "status" => "CANCELLED"
+        }
+      )
+
+      html = render(view)
+
+      assert html =~ "Query timed out:"
+      assert html =~ "restricting the timestamp range"
+      assert html =~ "adding more filtering"
+      refute html =~ "Query halted:"
+      refute html =~ "Backend error!"
+    end
+
     test "shows generic backend error for unclassified query errors", %{
       conn: conn,
       source: source
@@ -1559,6 +1597,60 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # Allow database access after play click which might trigger a new search
       %{executor_pid: search_executor_pid} = view |> get_view_assigns()
       allow_sandbox(search_executor_pid)
+
+      assert get_view_assigns(view).tailing?
+    end
+
+    test "opening a log event pauses a live search", %{conn: conn, source: source} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      view
+      |> element("#logs-list li:first-of-type a", "view")
+      |> render_click()
+
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "close_log_event_modal", %{})
+
+      assert get_view_assigns(view).tailing?
+    end
+
+    test "closing context does not resume a paused search", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      render_click(view, "soft_pause", %{})
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "open_log_event_modal", %{})
+
+      render_click(view, "close_log_event_modal", %{})
+
+      refute get_view_assigns(view).tailing?
+    end
+
+    test "closing context resumes a search that was live", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+      view |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
+      assert get_view_assigns(view).tailing?
+
+      render_click(view, "open_log_event_modal", %{})
+
+      refute get_view_assigns(view).tailing?
+
+      render_click(view, "close_log_event_modal", %{})
 
       assert get_view_assigns(view).tailing?
     end
@@ -2132,6 +2224,60 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert qs =~ "api-timeout"
       refute qs =~ "event_message:timeout"
+      refute qs =~ "m.request_id:"
+    end
+
+    test "start_search trims whitespace from field values", %{conn: conn, user: user} do
+      source = insert(:source, user: user, suggested_keys: "metadata.level!,m.user_id")
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema:
+          TestUtils.build_bq_schema(%{"metadata" => %{"level" => "error", "user_id" => "123"}})
+      )
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      render_change(view, :start_search, %{
+        "querystring" => "c:count(*) c:group_by(t::minute)",
+        "fields" => %{
+          "metadata.level" => "  error  ",
+          "metadata.user_id" => "\t123\n",
+          "metadata.request_id" => "   "
+        }
+      })
+
+      qs = render(view) |> find_querystring()
+
+      assert qs =~ "m.level:error"
+      assert qs =~ "m.user_id:123"
+      refute qs =~ "m.request_id:"
+    end
+
+    # Search initiated from SourceController.show
+    test "search with field params are trimmed", %{conn: conn, source: source} do
+      query_params = [
+        {"fields[metadata.level]", " error "},
+        {"fields[metadata.user_id]", "\t123\n"},
+        {"fields[metadata.request_id]", "   "},
+        querystring: "c:count(*) c:group_by(t::minute)"
+      ]
+
+      path = ~p"/sources/#{source.id}/search?#{query_params}"
+
+      {:error, {:live_redirect, %{to: to}}} = live_with_redirect(conn, path)
+
+      {:ok, view, _html} = live(conn, to)
+
+      qs = render(view) |> find_querystring()
+
+      assert qs =~ "m.level:error"
+      assert qs =~ "m.user_id:123"
       refute qs =~ "m.request_id:"
     end
   end

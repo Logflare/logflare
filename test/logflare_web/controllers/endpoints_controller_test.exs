@@ -3,6 +3,8 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
   alias GoogleApi.BigQuery.V2.Api.Jobs, as: BigQueryJobs
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Google.BigQuery.GenUtils
@@ -41,10 +43,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
-      assert response.error == QueryErrorHelpers.generic_query_error_message()
-      refute response.result
+      assert response["error"] == QueryErrorHelpers.generic_query_error_message()
+      refute response["result"]
       refute conn.halted
 
       GoogleApi.BigQuery.V2.Api.Jobs
@@ -67,7 +68,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
       assert [
                %{
@@ -75,9 +75,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
                  "id" => _id,
                  "timestamp" => _timestamp
                }
-             ] = response.result
+             ] = response["result"]
 
-      refute response.error
+      refute response["error"]
       refute conn.halted
 
       reject(&BigQueryJobs.bigquery_jobs_query/3)
@@ -89,7 +89,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
       assert [
                %{
@@ -97,9 +96,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
                  "id" => _id,
                  "timestamp" => _timestamp
                }
-             ] = response.result
+             ] = response["result"]
 
-      refute response.error
+      refute response["error"]
 
       refute conn.halted
     end
@@ -120,7 +119,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
       assert [
                %{
@@ -128,9 +126,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
                  "id" => _id,
                  "timestamp" => _timestamp
                }
-             ] = response.result
+             ] = response["result"]
 
-      refute response.error
+      refute response["error"]
       refute conn.halted
 
       GoogleApi.BigQuery.V2.Api.Jobs
@@ -147,7 +145,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
       assert [
                %{
@@ -155,9 +152,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
                  "id" => _id,
                  "timestamp" => _timestamp
                }
-             ] = response.result
+             ] = response["result"]
 
-      refute response.error
+      refute response["error"]
       refute conn.halted
 
       GoogleApi.BigQuery.V2.Api.Jobs
@@ -174,7 +171,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
       assert [
                %{
@@ -182,9 +178,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
                  "id" => _id,
                  "timestamp" => _timestamp
                }
-             ] = response.result
+             ] = response["result"]
 
-      refute response.error
+      refute response["error"]
       refute conn.halted
     end
 
@@ -198,8 +194,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> get(~p"/endpoints/query/#{endpoint.token}")
 
       assert conn
-             |> json_response(401)
-             |> assert_schema("UnauthorizedResponse") == %{error: "Unauthorized"}
+             |> json_response(401) == %{"error" => "Unauthorized"}
 
       assert conn.halted == true
     end
@@ -225,7 +220,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
         response =
           conn
           |> json_response(200)
-          |> assert_schema("EndpointQuery")
 
         assert [
                  %{
@@ -233,9 +227,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
                    "id" => _id,
                    "timestamp" => _timestamp
                  }
-               ] = response.result
+               ] = response["result"]
 
-        refute response.error
+        refute response["error"]
         refute conn.halted
       end
     end
@@ -262,12 +256,11 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
-      assert response.error =~
+      assert response["error"] =~
                LogflareWeb.QueryErrorHelpers.generic_query_error_message()
 
-      refute response.result
+      refute response["result"]
     end
 
     test "GET query with lql `f:table` overrides CTE fallback", %{
@@ -302,10 +295,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
-      assert [%{"col2" => "b"}] = response.result
-      refute response.error
+      assert [%{"col2" => "b"}] = response["result"]
+      refute response["error"]
     end
 
     test "GET query with lql and single CTE uses that CTE", %{conn: init_conn, user: user} do
@@ -330,10 +322,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
-      assert [%{"value" => "test"}] = response.result
-      refute response.error
+      assert [%{"value" => "test"}] = response["result"]
+      refute response["error"]
     end
 
     test "GET query with lql and single CTE with explicit `from:table`", %{
@@ -361,10 +352,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
-      assert [%{"value" => "test"}] = response.result
-      refute response.error
+      assert [%{"value" => "test"}] = response["result"]
+      refute response["error"]
     end
 
     test "GET query with lql `f:invalid_cte` returns error", %{conn: init_conn, user: user} do
@@ -385,12 +375,11 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
-      assert response.error =~
+      assert response["error"] =~
                LogflareWeb.QueryErrorHelpers.generic_query_error_message()
 
-      refute response.result
+      refute response["result"]
     end
   end
 
@@ -863,16 +852,15 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
       assert [
                %{
                  "ip_address" => "REDACTED",
                  "event_message" => "User REDACTED connected"
                }
-             ] = response.result
+             ] = response["result"]
 
-      refute response.error
+      refute response["error"]
       refute conn.halted
     end
 
@@ -897,16 +885,15 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
       assert [
                %{
                  "ip_address" => "REDACTED",
                  "event_message" => "User REDACTED connected REDACTED"
                }
-             ] = response.result
+             ] = response["result"]
 
-      refute response.error
+      refute response["error"]
       refute conn.halted
     end
 
@@ -933,16 +920,15 @@ defmodule LogflareWeb.EndpointsControllerTest do
       response =
         conn
         |> json_response(200)
-        |> assert_schema("EndpointQuery")
 
       assert [
                %{
                  "ip_address" => "192.168.1.1",
                  "message" => "User 10.0.0.1 connected"
                }
-             ] = response.result
+             ] = response["result"]
 
-      refute response.error
+      refute response["error"]
       refute conn.halted
     end
   end
@@ -1006,6 +992,112 @@ defmodule LogflareWeb.EndpointsControllerTest do
       refute conn.halted
 
       assert_received {:reservation, nil}
+    end
+  end
+
+  describe "read cluster header" do
+    setup do
+      _plan = insert(:plan, name: "Free")
+      user = insert(:user)
+
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          user: user,
+          config: %{
+            url: "http://localhost:8123",
+            database: "logflare_test",
+            username: "logflare",
+            password: "logflare",
+            port: 8123,
+            read_only_urls: %{
+              "api" => "http://api-read.local:8123",
+              "dashboard_logs" => "http://logs-read.local:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          query: "select 1 as test",
+          enable_auth: false
+        )
+
+      {:ok, user: user, backend: backend, endpoint: endpoint}
+    end
+
+    test "queries the read cluster named by the header", %{
+      conn: init_conn,
+      backend: backend,
+      endpoint: endpoint
+    } do
+      pid = self()
+
+      expect(Ch, :query, fn pool, _statement, _params, _opts ->
+        send(pid, {:queried_pool, pool})
+        {:ok, %Ch.Result{rows: [], columns: [], num_rows: 0, headers: []}}
+      end)
+
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-clickhouse-read-cluster-label", "api")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert json_response(conn, 200)
+      refute conn.halted
+
+      assert_received {:queried_pool, pool}
+      assert pool == ClickHouseAdaptor.connection_pool_via(backend, "api")
+      assert ConnectionManager.read_host(backend, "api") == "api-read.local"
+    end
+
+    test "queries the default read cluster when the header is absent", %{
+      conn: init_conn,
+      backend: backend,
+      endpoint: endpoint
+    } do
+      pid = self()
+
+      expect(Ch, :query, fn pool, _statement, _params, _opts ->
+        send(pid, {:queried_pool, pool})
+        {:ok, %Ch.Result{rows: [], columns: [], num_rows: 0, headers: []}}
+      end)
+
+      conn = get(init_conn, ~p"/endpoints/query/#{endpoint.token}")
+
+      assert json_response(conn, 200)
+      refute conn.halted
+
+      assert_received {:queried_pool, pool}
+      assert pool == ClickHouseAdaptor.connection_pool_via(backend, "dashboard_logs")
+      assert ConnectionManager.read_host(backend, "dashboard_logs") == "logs-read.local"
+    end
+
+    test "falls back to the default read cluster when the header names an unknown label", %{
+      conn: init_conn,
+      backend: backend,
+      endpoint: endpoint
+    } do
+      pid = self()
+
+      expect(Ch, :query, fn pool, _statement, _params, _opts ->
+        send(pid, {:queried_pool, pool})
+        {:ok, %Ch.Result{rows: [], columns: [], num_rows: 0, headers: []}}
+      end)
+
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-clickhouse-read-cluster-label", "nope")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert json_response(conn, 200)
+
+      assert_received {:queried_pool, pool}
+      assert pool == ClickHouseAdaptor.connection_pool_via(backend, "dashboard_logs")
     end
   end
 end

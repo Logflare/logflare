@@ -157,4 +157,102 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
       end)
     end
   end
+
+  describe "label-aware read pools" do
+    test "connection_pool_via/2 is distinct per label and matches /1 for nil", %{backend: backend} do
+      default_via = ConnectionManager.connection_pool_via(backend)
+      api_via = ConnectionManager.connection_pool_via(backend, "api")
+      mcp_via = ConnectionManager.connection_pool_via(backend, "mcp")
+
+      assert default_via == ConnectionManager.connection_pool_via(backend, nil)
+      assert default_via != api_via
+      assert api_via != mcp_via
+    end
+
+    test "starts a distinct manager per label for the same backend", %{backend: backend} do
+      {:ok, default_pid} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
+
+      {:ok, api_pid} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "api"))
+
+      {:ok, mcp_pid} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "mcp"))
+
+      assert default_pid != api_pid
+      assert api_pid != mcp_pid
+
+      managers = QueryConnectionSup.list_query_connection_managers()
+
+      assert {backend.id, default_pid} in managers
+      assert {backend.id, api_pid} in managers
+      assert {backend.id, mcp_pid} in managers
+    end
+
+    test "ensure_pool_started starts an independent pool per label", %{backend: backend} do
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "api"))
+
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "mcp"))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend, "api")
+      assert :ok == ConnectionManager.ensure_pool_started(backend, "mcp")
+
+      api_pool = ConnectionManager.get_pool_pid(backend, "api")
+      mcp_pool = ConnectionManager.get_pool_pid(backend, "mcp")
+
+      assert is_pid(api_pool)
+      assert is_pid(mcp_pool)
+      assert api_pool != mcp_pool
+
+      refute ConnectionManager.pool_active?(backend)
+    end
+
+    test "terminate_backend_local terminates managers for every label", %{backend: backend} do
+      {:ok, default_pid} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
+
+      {:ok, api_pid} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "api"))
+
+      {:ok, mcp_pid} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "mcp"))
+
+      assert :ok == QueryConnectionSup.terminate_backend_local(backend.id)
+
+      TestUtils.retry_assert(fn ->
+        refute Process.alive?(default_pid)
+        refute Process.alive?(api_pid)
+        refute Process.alive?(mcp_pid)
+      end)
+    end
+
+    test "refresh_backend_local stops the active pool for every label", %{backend: backend} do
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "api"))
+
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "mcp"))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend, "api")
+      assert :ok == ConnectionManager.ensure_pool_started(backend, "mcp")
+      assert ConnectionManager.pool_active?(backend, "api")
+      assert ConnectionManager.pool_active?(backend, "mcp")
+
+      assert :ok == QueryConnectionSup.refresh_backend_local(backend.id)
+
+      refute ConnectionManager.pool_active?(backend, "api")
+      refute ConnectionManager.pool_active?(backend, "mcp")
+    end
+
+    test "recycle_backend_local recycles every label's pool", %{backend: backend} do
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "api"))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend, "api")
+      assert :ok == QueryConnectionSup.recycle_backend_local(backend.id)
+      assert ConnectionManager.pool_active?(backend, "api")
+    end
+  end
 end
