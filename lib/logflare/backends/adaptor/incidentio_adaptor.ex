@@ -50,14 +50,14 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
         other -> other
       end)
 
-    now = DateTime.utc_now()
-    hash = :erlang.phash2(batch)
+    alert_name = Map.get(config, :title, "unknown")
+    window = div(DateTime.to_unix(DateTime.utc_now()), 3 * 60 * 60)
 
     metadata = Map.get(config, :metadata, %{})
     merged_metadata = Map.merge(metadata, %{"data" => batch})
 
     %{
-      "deduplication_key" => "#{hash}-#{now.minute}",
+      "deduplication_key" => "#{alert_name}-#{window}",
       "description" => Map.get(config, :description),
       "metadata" => merged_metadata,
       "source_url" => Map.get(config, :source_url),
