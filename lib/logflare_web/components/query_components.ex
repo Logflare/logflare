@@ -181,7 +181,7 @@ defmodule LogflareWeb.QueryComponents do
         updated_lql =
           lql
           |> Lql.decode!(lql_schema)
-          |> upsert_filter_rule(resolved_path, value, list_includes?, action)
+          |> put_quick_filter_rule(resolved_path, value, list_includes?, action)
           |> Lql.encode!()
 
         params =
@@ -197,7 +197,7 @@ defmodule LogflareWeb.QueryComponents do
     end
   end
 
-  defp upsert_filter_rule(rules, "timestamp", value, _list_includes?, action) do
+  defp put_quick_filter_rule(rules, "timestamp", value, _list_includes?, action) do
     chart_period = Lql.Rules.get_chart_period(rules, :minute)
 
     ts_rule =
@@ -208,7 +208,7 @@ defmodule LogflareWeb.QueryComponents do
     Lql.Rules.upsert_filter_rule_by_path(rules, ts_rule)
   end
 
-  defp upsert_filter_rule(rules, path, value, list_includes?, action) do
+  defp put_quick_filter_rule(rules, path, value, list_includes?, action) do
     filter_rule =
       FilterRule.build(
         path: path,
@@ -218,7 +218,7 @@ defmodule LogflareWeb.QueryComponents do
       )
       |> maybe_negate_filter_rule(action)
 
-    Lql.Rules.upsert_filter_rule_by_path(rules, filter_rule)
+    rules ++ [filter_rule]
   end
 
   defp maybe_negate_filter_rule(%FilterRule{} = rule, :exclude) do

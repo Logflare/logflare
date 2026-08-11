@@ -1,0 +1,115 @@
+{
+  "event_message": "GET | 200 | 1.2.3.4 | cf-ray-000000000000 | https://test-project.supabase.co/auth/v1/user | node",
+  "id": "00000000-0000-0000-0000-000000000000",
+  "identifier": "test-project",
+  "metadata": {
+    "logflare_worker": { "worker_id": "4SSCY1" },
+    "request": {
+      "cf": {
+        "asOrganization": "Amazon Data Services UK",
+        "asn": 16509,
+        "botManagement": {
+          "corporateProxy": false,
+          "detectionIds": [152120193],
+          "ja3Hash": "4a228e363d473f3fb66a05d65eee612a",
+          "ja4": "t13d5311h1_ed6c8d7875f9_518fb456ca59",
+          "ja4Signals": {
+            "browser_ratio_1h": 0.020160317420959,
+            "cache_ratio_1h": 0.13584105670452,
+            "h2h3_ratio_1h": 2.0390612917254e-5,
+            "heuristic_ratio_1h": 0.01459008269012,
+            "ips_quantile_1h": 0.99970483779907,
+            "ips_rank_1h": 248,
+            "paths_rank_1h": 228,
+            "reqs_quantile_1h": 0.99975126981735,
+            "reqs_rank_1h": 209,
+            "uas_rank_1h": 332
+          },
+          "jsDetection": { "passed": false },
+          "score": 1,
+          "staticResource": false,
+          "verifiedBot": false
+        },
+        "city": "London",
+        "clientAcceptEncoding": "gzip, deflate, br",
+        "clientTcpRtt": 4,
+        "clientTrustScore": 1,
+        "colo": "LHR",
+        "continent": "EU",
+        "country": "GB",
+        "edgeRequestKeepAliveStatus": 1,
+        "httpProtocol": "HTTP/1.1",
+        "latitude": "51.50853",
+        "longitude": "-0.12574",
+        "postalCode": "E1W",
+        "region": "England",
+        "regionCode": "ENG",
+        "timezone": "Europe/London",
+        "tlsCipher": "AEAD-AES256-GCM-SHA384",
+        "tlsClientAuth": {
+          "certPresented": "0",
+          "certRevoked": "0",
+          "certVerified": "NONE"
+        },
+        "tlsVersion": "TLSv1.3"
+      },
+      "headers": {
+        "accept": "*/*",
+        "cf_connecting_ip": "1.2.3.4",
+        "cf_ipcountry": "GB",
+        "cf_ray": "cf-ray-000000000000",
+        "host": "test-project.supabase.co",
+        "user_agent": "node",
+        "x_client_info": "supabase-ssr/0.6.1 createServerClient",
+        "x_forwarded_proto": "https",
+        "x_real_ip": "1.2.3.4"
+      },
+      "host": "test-project.supabase.co",
+      "method": "GET",
+      "path": "/auth/v1/user",
+      "protocol": "https:",
+      "sb": {
+        "auth_user": "00000000-0000-0000-0000-000000000000",
+        "jwt": {
+          "apikey": {
+            "payload": {
+              "algorithm": "HS256",
+              "expires_at": 1992715906,
+              "issuer": "supabase",
+              "role": "anon",
+              "signature_prefix": "ai3ojK"
+            }
+          },
+          "authorization": {
+            "payload": {
+              "algorithm": "HS256",
+              "expires_at": 1766053504,
+              "issuer": "https://test-project.supabase.co/auth/v1",
+              "key_id": "/qG3f1CaDyROs8f5",
+              "role": "authenticated",
+              "session_id": "00000000-0000-0000-0000-000000000000",
+              "signature_prefix": "Zjoty1",
+              "subject": "00000000-0000-0000-0000-000000000000"
+            }
+          }
+        }
+      },
+      "url": "https://test-project.supabase.co/auth/v1/user"
+    },
+    "response": {
+      "headers": {
+        "cf_cache_status": "DYNAMIC",
+        "cf_ray": "cf-ray-000000000000",
+        "content_type": "application/json",
+        "sb_gateway_version": "1",
+        "sb_request_id": "00000000-0000-0000-0000-000000000000",
+        "transfer_encoding": "chunked"
+      },
+      "origin_time": 13,
+      "status_code": 200
+    }
+  },
+  "project": "test-project",
+  "request_id": "00000000-0000-0000-0000-000000000000",
+  "timestamp": 0
+}

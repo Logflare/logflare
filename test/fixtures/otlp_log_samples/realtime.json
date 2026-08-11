@@ -1,0 +1,23 @@
+{
+  "event_message": "Starting Elixir.Realtime.RateCounter for: {:channel, :events, \"test-project\"}",
+  "id": "00000000-0000-0000-0000-000000000000",
+  "metadata": {
+    "cluster": "main",
+    "context": {
+      "application": "realtime",
+      "domain": ["elixir"],
+      "file": "lib/realtime/rate_counter/rate_counter.ex",
+      "function": "init/1",
+      "gl": "<0.3288.0>",
+      "line": 148,
+      "mfa": ["Elixir.Realtime.RateCounter", "init", "1"],
+      "module": "Elixir.Realtime.RateCounter",
+      "pid": "<0.231090078.0>",
+      "time": 0,
+      "vm": { "node": "realtime@test-node" }
+    },
+    "level": "info",
+    "region": "eu-west-2"
+  },
+  "timestamp": 0
+}

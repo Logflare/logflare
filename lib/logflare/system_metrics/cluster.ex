@@ -3,6 +3,7 @@ defmodule Logflare.SystemMetrics.Cluster do
 
   require Logger
 
+  alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.Cluster.Utils
 
   def dispatch_stats do
@@ -20,15 +21,7 @@ defmodule Logflare.SystemMetrics.Cluster do
   end
 
   def finch do
-    # TODO(ziinc): add in datadog pools
-    for url <- [
-          "https://bigquery.googleapis.com",
-          "https://http-intake.logs.datadoghq.com",
-          "https://http-intake.logs.us3.datadoghq.com",
-          "https://http-intake.logs.us5.datadoghq.com",
-          "https://http-intake.logs.datadoghq.eu",
-          "https://http-intake.logs.ap1.datadoghq.com"
-        ],
+    for url <- ["https://bigquery.googleapis.com" | DatadogAdaptor.intake_origins()],
         pool <- [
           Logflare.FinchDefault,
           Logflare.FinchIngest,
