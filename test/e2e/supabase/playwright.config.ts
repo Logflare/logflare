@@ -34,6 +34,11 @@ export default defineConfig({
   /* Default timeout for expect() assertions. Bumped from the 5s default so
    * `toContainText` can ride out brief UI/ingestion latency. */
   expect: { timeout: 15_000 },
+  /* Per-test timeout. Playwright charges beforeEach hooks to the test's own
+   * budget, so specs that seed a log event (an 8s settle in schema_modal.spec)
+   * and then poll for it via searchLogs can spend >20s before the first
+   * assertion. The 30s default left no headroom and timed out in CI. */
+  timeout: 90_000,
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL: supabasePublicUrl,
