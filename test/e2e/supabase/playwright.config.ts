@@ -1,12 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
+ * Reads environment variables from supabase/docker/.env and normalises the
+ * public URL to an IPv4 loopback address.
  */
-import dotenv from 'dotenv';
-import path from 'path';
-dotenv.config({ path: path.resolve(__dirname, 'supabase/docker/.env') });
+import { supabasePublicUrl } from './lib/env';
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -38,7 +36,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    baseURL: process.env.SUPABASE_PUBLIC_URL,
+    baseURL: supabasePublicUrl,
 
     httpCredentials: {
       username: process.env.DASHBOARD_USERNAME!,
