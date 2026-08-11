@@ -5,6 +5,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
 
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Spool.MemoryMonitor
 
   @max_points 1_800
   @tick_ms 1_000
@@ -128,6 +129,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       )
       |> Map.merge(ch_metrics)
       |> Map.merge(cpu_metrics)
+      |> Map.merge(gather_throttle_metrics())
 
     label = Time.utc_now() |> Time.truncate(:second) |> Time.to_string()
 
@@ -335,6 +337,15 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     {%{os_cpu: os_cpu, scheduler_pct: scheduler_pct}, new_wall_time}
   end
 
+  defp gather_throttle_metrics do
+    stats = MemoryMonitor.stats()
+
+    %{
+      throttled: stats.throttled?,
+      consumer_throttled: stats.consumer_throttled?
+    }
+  end
+
   defp sample_scheduler_wall_time do
     :erlang.system_flag(:scheduler_wall_time, true)
     :erlang.statistics(:scheduler_wall_time) |> Enum.sort()
@@ -396,7 +407,9 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       gc_long_rate: 0,
       gc_reclaimed_mb: 0.0,
       os_cpu: 0.0,
-      scheduler_pct: 0.0
+      scheduler_pct: 0.0,
+      throttled: false,
+      consumer_throttled: false
     }
   end
 end

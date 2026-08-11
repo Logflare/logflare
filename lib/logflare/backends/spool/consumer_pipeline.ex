@@ -21,7 +21,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     spool_config = Application.get_env(:logflare, :spool, [])
     bucket = Keyword.fetch!(spool_config, :bucket)
     concurrency = Keyword.get(spool_config, :consumer_concurrency, 4)
-    batch_size = Keyword.get(spool_config, :consumer_batch_size, 5_000)
+    batch_size = Keyword.get(spool_config, :consumer_batch_size, 1_000)
     queue_name = Keyword.fetch!(spool_config, :queue_name)
     provider = Keyword.get(spool_config, :provider, :aws)
     storage_mod = Keyword.get(spool_config, :storage_mod, default_storage_mod(provider))
@@ -37,13 +37,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [
-        default: [concurrency: concurrency, max_demand: 100]
+        default: [concurrency: concurrency, min_demand: 100, max_demand: 1000]
       ],
       batchers: [
         default: [
           batch_size: batch_size,
           batch_timeout: 1_000,
-          concurrency: 1
+          concurrency: 4
         ]
       ]
     )
@@ -79,7 +79,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   end
 
   @impl Broadway
-  def handle_batch(_batcher, messages, _batch_info, _context) do
+  def handle_batch(_batcher, messages, batch_info, _context) do
+    start = System.monotonic_time()
+
     messages
     |> Enum.map(& &1.data)
     |> Enum.group_by(&record_source_id/1)
@@ -92,10 +94,15 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         dispatch_group(source_id, lines)
     end)
 
+    System.convert_time_unit(System.monotonic_time() - start, :native, :millisecond) |> dbg()
+    dbg("handle_batch #{Time.utc_now(:millisecond)} #{batch_info.size} #{batch_info.trigger}")
+
     messages
   end
 
   defp dispatch_group(source_id, lines) do
+    start = System.monotonic_time()
+
     case Sources.get(source_id) do
       nil ->
         emit_skipped_telemetry(:unknown_source_id, length(lines))
@@ -108,6 +115,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         {:ok, _} = Backends.dispatch_from_spool(lines, source)
         :ok
     end
+
+    System.convert_time_unit(System.monotonic_time() - start, :native, :millisecond) |> dbg()
   end
 
   defp emit_skipped_telemetry(reason, count) do
