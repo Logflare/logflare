@@ -26,7 +26,7 @@ defmodule Logflare.SigtermHandler do
 
   @impl true
   def handle_event(:sigterm, state) do
-    Readiness.mark_unready()
+    Readiness.begin_draining()
 
     Logger.warning(
       "#{__MODULE__}: SIGTERM received: waiting for #{env_grace_period() / 1_000} seconds"
@@ -41,7 +41,7 @@ defmodule Logflare.SigtermHandler do
   end
 
   def handle_event(:sigquit, state) do
-    Readiness.mark_unready()
+    Readiness.begin_draining()
 
     Logger.warning(
       "#{__MODULE__}: SIGQUIT received: waiting for #{env_grace_period() / 1_000} seconds"

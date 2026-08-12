@@ -18,7 +18,7 @@ defmodule Logflare.Application do
   alias Logflare.Utils
 
   def start(_type, _args) do
-    Logflare.Readiness.mark_unready()
+    Logflare.Readiness.initialize()
 
     # set inspect function to redact sensitive information
     prev = Inspect.Opts.default_inspect_fun()
@@ -205,7 +205,7 @@ defmodule Logflare.Application do
   end
 
   def prep_stop(state) do
-    Logflare.Readiness.mark_unready()
+    Logflare.Readiness.begin_draining()
     state
   end
 

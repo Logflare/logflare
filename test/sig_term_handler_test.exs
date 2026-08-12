@@ -6,8 +6,8 @@ defmodule Logflare.SigtermHandlerTest do
   alias Logflare.SigtermHandler
 
   setup do
-    Readiness.mark_ready()
-    on_exit(&Readiness.mark_ready/0)
+    reset_readiness()
+    on_exit(&reset_readiness/0)
   end
 
   test "marks the node unready immediately after SIGTERM" do
@@ -25,5 +25,17 @@ defmodule Logflare.SigtermHandlerTest do
 
     assert Application.prep_stop(state) == state
     refute Readiness.ready?()
+  end
+
+  test "cannot become ready after shutdown begins" do
+    Readiness.begin_draining()
+    Readiness.mark_ready()
+
+    refute Readiness.ready?()
+  end
+
+  defp reset_readiness do
+    Readiness.initialize()
+    Readiness.mark_ready()
   end
 end

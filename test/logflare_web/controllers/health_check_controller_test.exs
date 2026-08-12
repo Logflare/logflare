@@ -9,6 +9,9 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   alias Logflare.Sources.Source
 
   setup do
+    reset_readiness()
+    on_exit(&reset_readiness/0)
+
     Logflare.Google.BigQuery
     |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
 
@@ -39,10 +42,12 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   end
 
   test "readiness check while draining", %{conn: conn} do
-    on_exit(&Readiness.mark_ready/0)
-    Readiness.mark_unready()
+    start_supervised!(Source.Supervisor)
+    :timer.sleep(1000)
+    Readiness.begin_draining()
 
     assert %{"status" => "not_ready"} = conn |> get("/ready") |> json_response(503)
+    assert %{"status" => "ok"} = conn |> get("/health") |> json_response(200)
   end
 
   test "memory check", %{conn: conn} do
@@ -78,6 +83,11 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
       assert %{"status" => "coming_up"} = conn |> get("/ready") |> json_response(503)
     end
+  end
+
+  defp reset_readiness do
+    Readiness.initialize()
+    Readiness.mark_ready()
   end
 
   describe "Supabase mode - with seed" do
