@@ -172,7 +172,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec max_event_age_hours(Backend.t()) :: non_neg_integer()
   defp max_event_age_hours(%Backend{config: %{max_event_age_hours: hours}})
-       when is_integer(hours) and hours >= 0,
+       when is_non_negative_integer(hours),
        do: hours
 
   defp max_event_age_hours(_backend), do: @default_max_event_age_hours
@@ -1165,7 +1165,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
     case execute_ch_query(backend, converted_query, ch_params, opts) do
       {:ok, {rows, bytes}} ->
-        rows = if is_integer(max_rows), do: Enum.take(rows, max_rows), else: rows
+        rows = if is_pos_integer(max_rows), do: Enum.take(rows, max_rows), else: rows
         {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
 
       error ->
@@ -1176,7 +1176,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @spec limit_endpoint_query(String.t(), term()) ::
           {:ok, {String.t(), pos_integer() | nil}} | {:error, String.t()}
   defp limit_endpoint_query(query_string, %{max_limit: max_limit})
-       when is_integer(max_limit) and max_limit > 0 do
+       when is_pos_integer(max_limit) do
     with {:ok, limited_query} <- ClickHouseSqlTransformer.apply_limit(query_string, max_limit) do
       {:ok, {limited_query, max_limit}}
     end
@@ -1215,7 +1215,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec maybe_start_query_connection_manager(pid() | nil, pos_integer(), String.t() | nil) ::
           :ok | {:error, term()}
-  defp maybe_start_query_connection_manager(nil, backend_id, label) when is_integer(backend_id) do
+  defp maybe_start_query_connection_manager(nil, backend_id, label)
+       when is_pos_integer(backend_id) do
     backend = Backends.Cache.get_backend(backend_id)
 
     with child_spec <- ConnectionManager.child_spec(backend, label),

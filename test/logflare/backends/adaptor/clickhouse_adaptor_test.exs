@@ -781,7 +781,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
 
       start_supervised!({ClickHouseAdaptor, backend})
-      stub_read_cluster_connection_error(backend, "api")
+      stub_read_cluster_connection_error(backend, "api", self())
 
       assert {:ok, %QueryResult{rows: rows}} =
                ClickHouseAdaptor.execute_query(
@@ -791,6 +791,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                )
 
       assert Enum.map(rows, & &1["number"]) == Enum.to_list(0..9)
+
+      assert_receive {:ch_query, _api_pool,
+                      "SELECT number FROM numbers(100) ORDER BY number LIMIT 10"}
+
+      assert_receive {:ch_query, _default_pool,
+                      "SELECT number FROM numbers(100) ORDER BY number LIMIT 10"}
+
       assert ConnectionManager.pool_active?(backend, "dashboard_logs")
     end
 
@@ -1377,8 +1384,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert {:ok, %QueryResult{rows: [%{"param_result" => "hello"}]}} = result
     end
 
-    test "enforces an endpoint max_limit exactly", %{backend: backend} do
+    test "enforces an endpoint max_limit exactly in the submitted SQL", %{backend: backend} do
       query = "SELECT number FROM numbers(100) ORDER BY number"
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:submitted_sql, IO.iodata_to_binary(statement)})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
 
       assert {:ok, %QueryResult{rows: rows}} =
                ClickHouseAdaptor.execute_query(
@@ -1387,7 +1400,36 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                  []
                )
 
+      assert_received {:submitted_sql, "SELECT number FROM numbers(100) ORDER BY number LIMIT 10"}
+
       assert Enum.map(rows, & &1["number"]) == Enum.to_list(0..9)
+    end
+
+    test "truncates decoded rows as a fallback", %{backend: backend} do
+      data = [
+        Ch.RowBinary.encode_names_and_types(["number"], ["UInt64"]),
+        Ch.RowBinary.encode_rows(Enum.map(0..9, &[&1]), ["UInt64"])
+      ]
+
+      expect(Ch, :query, fn _pool, statement, _params, _opts ->
+        assert IO.iodata_to_binary(statement) ==
+                 "SELECT number FROM numbers(10) ORDER BY number LIMIT 3"
+
+        {:ok,
+         %Ch.Result{
+           headers: [{"x-clickhouse-format", "RowBinaryWithNamesAndTypes"}],
+           data: data
+         }}
+      end)
+
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args("SELECT number FROM numbers(10) ORDER BY number", 3),
+                 []
+               )
+
+      assert Enum.map(rows, & &1["number"]) == [0, 1, 2]
     end
 
     test "returns all endpoint rows when fewer than max_limit are available", %{backend: backend} do
@@ -1425,6 +1467,53 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                )
 
       assert Enum.map(rows, & &1["number"]) == Enum.to_list(0..9)
+    end
+
+    test "caps endpoint LIMIT BY results globally", %{backend: backend} do
+      query = "SELECT number FROM numbers(100) ORDER BY number LIMIT 1 BY number"
+
+      assert_endpoint_query(
+        backend,
+        query,
+        3,
+        "SELECT * FROM (#{query}) LIMIT 3",
+        [0, 1, 2]
+      )
+    end
+
+    test "caps negative endpoint limits after selecting from the end", %{backend: backend} do
+      query = "SELECT number FROM numbers(100) ORDER BY number LIMIT -50"
+
+      assert_endpoint_query(
+        backend,
+        query,
+        10,
+        "SELECT * FROM (#{query}) LIMIT 10",
+        Enum.to_list(50..59)
+      )
+    end
+
+    test "caps fractional endpoint limits", %{backend: backend} do
+      query = "SELECT number FROM numbers(100) ORDER BY number LIMIT 0.5"
+
+      assert_endpoint_query(
+        backend,
+        query,
+        10,
+        "SELECT * FROM (#{query}) LIMIT 10",
+        Enum.to_list(0..9)
+      )
+    end
+
+    test "preserves supported non-query endpoint statements", %{backend: backend} do
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args("EXPLAIN SELECT 1", 10),
+                 []
+               )
+
+      assert rows != []
     end
 
     test "limits endpoint groups after computing aggregates", %{backend: backend} do
@@ -1916,12 +2005,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  defp assert_endpoint_query(backend, query, max_limit, expected_sql, expected_numbers) do
+    parent = self()
+
+    expect(Ch, :query, fn pool, statement, params, opts ->
+      send(parent, {:submitted_sql, IO.iodata_to_binary(statement)})
+      Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+    end)
+
+    assert {:ok, %QueryResult{rows: rows}} =
+             ClickHouseAdaptor.execute_query(
+               backend,
+               endpoint_query_args(query, max_limit),
+               []
+             )
+
+    assert_received {:submitted_sql, ^expected_sql}
+    assert Enum.map(rows, & &1["number"]) == expected_numbers
+  end
+
   defp endpoint_query_args(query, max_limit, declared_params \\ [], input_params \\ %{}) do
     {query, declared_params, input_params, %EndpointQuery{max_limit: max_limit}}
   end
 
-  defp stub_read_cluster_connection_error(%Backend{id: backend_id}, label) do
+  defp stub_read_cluster_connection_error(%Backend{id: backend_id}, label, notify \\ nil) do
     stub(Ch, :query, fn pool, statement, params, opts ->
+      if is_pid(notify) do
+        send(notify, {:ch_query, pool, IO.iodata_to_binary(statement)})
+      end
+
       case pool do
         {:via, Registry, {_registry, {_mod, ^backend_id, ^label}}} ->
           {:error, %DBConnection.ConnectionError{message: "unreachable"}}
