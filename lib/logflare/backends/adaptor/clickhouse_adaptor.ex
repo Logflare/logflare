@@ -115,12 +115,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_query(
         %Backend{} = backend,
-        {query_string, declared_params, input_params, _endpoint_query},
+        {query_string, declared_params, input_params, endpoint_query},
         opts
       )
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
              is_list(opts) do
-    execute_query_with_params(backend, query_string, declared_params, input_params, opts)
+    execute_query_with_params(
+      backend,
+      query_string,
+      declared_params,
+      input_params,
+      put_endpoint_row_cap(opts, endpoint_query)
+    )
   end
 
   def execute_query(%Backend{} = backend, %Ecto.Query{} = query, opts) when is_list(opts) do
@@ -541,22 +547,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
     requested = Keyword.get(opts, :read_cluster)
+    settings = Keyword.get(opts, :settings, [])
     label = resolve_read_cluster_label(backend, requested)
 
     warn_on_unconfigured_read_cluster(backend, requested, label)
 
-    case do_ch_query_on_label(backend, statement, params, label) do
+    case do_ch_query_on_label(backend, statement, params, label, settings) do
       {:error, %QueryError{kind: :connection_error}} = error ->
-        maybe_retry_on_default_cluster(backend, statement, params, label, error)
+        maybe_retry_on_default_cluster(backend, statement, params, label, settings, error)
 
       result ->
         result
     end
   end
 
-  @spec do_ch_query_on_label(Backend.t(), iodata(), term(), String.t() | nil) ::
+  @spec do_ch_query_on_label(Backend.t(), iodata(), term(), String.t() | nil, Keyword.t()) ::
           {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
-  defp do_ch_query_on_label(%Backend{} = backend, statement, params, label) do
+  defp do_ch_query_on_label(%Backend{} = backend, statement, params, label, settings) do
     with :ok <- ensure_query_connection_manager_started(backend, label) do
       pool_via = connection_pool_via(backend, label)
 
@@ -566,6 +573,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       log_fun = fn entry -> log_slow_checkout(entry, backend_id) end
 
       ch_opts = [decode: false, timeout: timeout, log: log_fun]
+
+      ch_opts =
+        if settings == [], do: ch_opts, else: Keyword.put(ch_opts, :settings, settings)
 
       case Ch.query(pool_via, statement, params, ch_opts) do
         {:ok, %Ch.Result{} = result} ->
@@ -609,9 +619,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           iodata(),
           term(),
           String.t() | nil,
+          Keyword.t(),
           {:error, term()}
         ) :: {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
-  defp maybe_retry_on_default_cluster(%Backend{} = backend, statement, params, label, error) do
+  defp maybe_retry_on_default_cluster(
+         %Backend{} = backend,
+         statement,
+         params,
+         label,
+         settings,
+         error
+       ) do
     default = default_read_cluster_label(backend)
 
     if is_non_empty_binary(default) and default != label do
@@ -623,7 +641,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         default_read_cluster: default
       )
 
-      do_ch_query_on_label(backend, statement, params, default)
+      do_ch_query_on_label(backend, statement, params, default, settings)
     else
       error
     end
@@ -1138,6 +1156,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       error -> error
     end
   end
+
+  # Mirrors the BigQuery adaptor, which caps endpoint results via `maxResults`.
+  # `result_overflow_mode: "break"` truncates instead of raising; ClickHouse stops on
+  # block boundaries, so slightly more than `max_result_rows` can come back.
+  @spec put_endpoint_row_cap(Keyword.t(), term()) :: Keyword.t()
+  defp put_endpoint_row_cap(opts, %{max_limit: max_limit})
+       when is_list(opts) and is_integer(max_limit) and max_limit > 0 do
+    settings =
+      opts
+      |> Keyword.get(:settings, [])
+      |> Keyword.put_new(:max_result_rows, max_limit)
+      |> Keyword.put_new(:result_overflow_mode, "break")
+
+    Keyword.put(opts, :settings, settings)
+  end
+
+  defp put_endpoint_row_cap(opts, _endpoint_query) when is_list(opts), do: opts
 
   @spec convert_query_params(sql_statement :: String.t(), allowed_params :: [String.t()]) ::
           String.t()
