@@ -695,12 +695,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
 
-      # rows render in the same order the component folds the map, so row 0 and the last
-      # row are known — removing row 0 must drop row 0's cluster, not the last one.
-      entries = Map.to_list(backend.config.read_only_urls)
-      {row0_label, _url} = hd(entries)
-      {last_label, _url} = List.last(entries)
-
+      # rows are sorted by label and each keeps a stable ref, so ref 0 is "alpha"
       view
       |> element("#read-cluster-row-0 button[phx-click='remove_row']")
       |> render_click()
@@ -709,9 +704,10 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       read_only_urls = Backends.get_backend(backend.id).config.read_only_urls
 
-      refute Map.has_key?(read_only_urls, row0_label)
-      assert Map.has_key?(read_only_urls, last_label)
-      assert map_size(read_only_urls) == 2
+      assert read_only_urls == %{
+               "beta" => "http://beta.local:8123",
+               "gamma" => "http://gamma.local:8123"
+             }
     end
 
     test "patching between clickhouse backends refreshes the read cluster rows", %{
