@@ -32,7 +32,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SocketTest do
   test "connects directly to the address returned by the safe resolver" do
     {:ok, listener, port} = listen_tcp()
 
-    expect(SSRF, :safe_resolve, fn "syslog.invalid" -> {:ok, {127, 0, 0, 1}} end)
+    expect(SSRF, :safe_resolve_all, fn "syslog.invalid" -> {:ok, [{127, 0, 0, 1}]} end)
 
     assert {:ok, client} =
              Socket.connect(%{host: "syslog.invalid", port: port}, to_timeout(second: 1))
@@ -48,12 +48,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SocketTest do
     host = "syslog-multi.test"
     first_address = non_loopback_ipv4_address()
     second_address = {127, 0, 0, 1}
-    put_host_addresses(host, [first_address, second_address])
 
-    expect(SSRF, :safe_resolve, 2, fn host ->
-      {:ok, address} = host |> String.to_charlist() |> :inet.parse_address()
-      assert address in [first_address, second_address]
-      {:ok, address}
+    expect(SSRF, :safe_resolve_all, fn ^host ->
+      {:ok, [first_address, second_address]}
     end)
 
     {:ok, listener, port} = listen_tcp()
@@ -68,32 +65,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SocketTest do
     :ok = :gen_tcp.close(listener)
   end
 
-  test "validates every resolved address before connecting" do
-    host = "syslog-rebinding.test"
-    first_address = {127, 0, 0, 1}
-    private_address = {127, 0, 0, 2}
-    put_host_addresses(host, [first_address, private_address])
-
-    expect(SSRF, :safe_resolve, 2, fn
-      "127.0.0.1" -> {:ok, first_address}
-      "127.0.0.2" -> Mimic.call_original(SSRF, :safe_resolve, ["127.0.0.2"])
-    end)
-
-    {:ok, listener, port} = listen_tcp()
-
-    assert {:error, {:ssrf, reason}} =
-             Socket.connect(%{host: host, port: port}, to_timeout(second: 1))
-
-    assert reason =~ "private or reserved"
-    assert {:error, :timeout} = :gen_tcp.accept(listener, 50)
-
-    :ok = :gen_tcp.close(listener)
-  end
-
   test "retains the original hostname for TLS SNI and hostname verification" do
     {:ok, listener, port, server} = listen_tls()
 
-    expect(SSRF, :safe_resolve, fn "telegraf" -> {:ok, @ipv6_loopback} end)
+    expect(SSRF, :safe_resolve_all, fn "telegraf" -> {:ok, [@ipv6_loopback]} end)
 
     config = %{
       host: "telegraf",
@@ -114,7 +89,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SocketTest do
 
   test "allows private destinations only in explicitly configured single-tenant mode" do
     stub(SingleTenant, :single_tenant?, fn -> true end)
-    stub(SSRF, :safe_resolve, fn _host -> flunk("safe resolver should be bypassed") end)
+    stub(SSRF, :safe_resolve_all, fn _host -> flunk("safe resolver should be bypassed") end)
 
     {:ok, listener, port} = listen_tcp()
 
@@ -143,19 +118,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SocketTest do
         _option -> nil
       end)
     end) || flunk("expected a non-loopback IPv4 interface")
-  end
-
-  defp put_host_addresses(host, addresses) do
-    previous_lookup = :inet_db.res_option(:lookup)
-    hostname = String.to_charlist(host)
-
-    :ok = :inet_db.set_lookup([:file])
-    Enum.each(addresses, &(:ok = :inet_db.add_host(&1, [hostname])))
-
-    on_exit(fn ->
-      Enum.each(addresses, &(:ok = :inet_db.del_host(&1)))
-      :ok = :inet_db.set_lookup(previous_lookup)
-    end)
   end
 
   defp listen_tls do

@@ -18,10 +18,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   end
 
   setup do
-    stub(SSRF, :safe_resolve, fn
-      "localhost" -> {:ok, {127, 0, 0, 1}}
-      "127.0.0.1" -> {:ok, {127, 0, 0, 1}}
-      host -> Mimic.call_original(SSRF, :safe_resolve, [host])
+    stub(SSRF, :safe_resolve_all, fn
+      "localhost" -> {:ok, [{127, 0, 0, 1}]}
+      host -> Mimic.call_original(SSRF, :safe_resolve_all, [host])
     end)
 
     :ok

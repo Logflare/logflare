@@ -46,53 +46,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
     if Logflare.SingleTenant.single_tenant?() do
       {:ok, [String.to_charlist(host)]}
     else
-      hostname = String.to_charlist(host)
-
-      case :inet.parse_address(hostname) do
-        {:ok, address} -> validate_addresses([address])
-        {:error, _reason} -> resolve_hostname(host, hostname)
-      end
-    end
-  end
-
-  @spec resolve_hostname(String.t(), charlist()) ::
-          {:ok, [:inet.ip_address()]} | {:error, {:ssrf, String.t()}}
-  defp resolve_hostname(host, hostname) do
-    with :unresolved <- resolve_family(hostname, :inet),
-         :unresolved <- resolve_family(hostname, :inet6) do
-      case SSRF.safe_resolve(host) do
-        {:ok, address} -> {:ok, [address]}
+      case SSRF.safe_resolve_all(host) do
+        {:ok, addresses} -> {:ok, addresses}
         {:error, reason} -> {:error, {:ssrf, reason}}
       end
-    else
-      result -> result
-    end
-  end
-
-  @spec resolve_family(charlist(), :inet | :inet6) ::
-          {:ok, [:inet.ip_address()]} | {:error, {:ssrf, String.t()}} | :unresolved
-  defp resolve_family(hostname, family) do
-    case :inet.getaddrs(hostname, family) do
-      {:ok, [_ | _] = addresses} -> validate_addresses(addresses)
-      {:ok, []} -> :unresolved
-      {:error, _reason} -> :unresolved
-    end
-  end
-
-  @spec validate_addresses([:inet.ip_address()]) ::
-          {:ok, [:inet.ip_address()]} | {:error, {:ssrf, String.t()}}
-  defp validate_addresses(addresses) do
-    Enum.reduce_while(addresses, {:ok, []}, fn address, {:ok, safe_addresses} ->
-      host = address |> :inet.ntoa() |> List.to_string()
-
-      case SSRF.safe_resolve(host) do
-        {:ok, ^address} -> {:cont, {:ok, [address | safe_addresses]}}
-        {:error, reason} -> {:halt, {:error, {:ssrf, reason}}}
-      end
-    end)
-    |> case do
-      {:ok, safe_addresses} -> {:ok, Enum.reverse(safe_addresses)}
-      {:error, _reason} = error -> error
     end
   end
 
