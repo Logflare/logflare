@@ -1,7 +1,6 @@
 defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   @moduledoc false
 
-  alias Logflare.SingleTenant
   alias Logflare.Utils.SSRF
 
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
@@ -54,7 +53,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   @spec resolve_address(String.t()) ::
           {:ok, :inet.ip_address() | charlist()} | {:error, {:ssrf, String.t()}}
   defp resolve_address(host) do
-    if SingleTenant.single_tenant?() do
+    if Logflare.SingleTenant.single_tenant?() do
       {:ok, String.to_charlist(host)}
     else
       case SSRF.safe_resolve(host) do
