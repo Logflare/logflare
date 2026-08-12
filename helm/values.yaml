@@ -322,3 +322,15 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+# Pod topology spread constraints, e.g. one replica per availability zone. Where
+# nodes are provisioned on demand, only a required constraint (DoNotSchedule)
+# makes the autoscaler add a node in the missing domain; a preferred one packs the
+# replicas together instead.
+topologySpreadConstraints: []
+  # - maxSkew: 1
+  #   topologyKey: topology.kubernetes.io/zone
+  #   whenUnsatisfiable: DoNotSchedule
+  #   labelSelector:
+  #     matchLabels:
+  #       app.kubernetes.io/name: logflare

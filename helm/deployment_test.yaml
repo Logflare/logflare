@@ -182,3 +182,30 @@ tests:
             image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
             args: ["--structured-logs", "my-project:my-region:my-instance"]
         template: deployment.yaml
+
+  - it: should not render topologySpreadConstraints by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+        template: deployment.yaml
+
+  - it: should render topologySpreadConstraints when set
+    set:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: logflare
+    asserts:
+      - contains:
+          path: spec.template.spec.topologySpreadConstraints
+          content:
+            maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: logflare
+        template: deployment.yaml
