@@ -34,6 +34,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Sources.Source
+  alias Logflare.Sql.DialectTransformer.ClickHouse, as: ClickHouseSqlTransformer
 
   @min_pipelines 1
   @resolve_interval 10_000
@@ -120,13 +121,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       )
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
              is_list(opts) do
-    execute_query_with_params(
-      backend,
-      query_string,
-      declared_params,
-      input_params,
-      put_endpoint_row_cap(opts, endpoint_query)
-    )
+    with {:ok, {limited_query, max_rows}} <- limit_endpoint_query(query_string, endpoint_query) do
+      execute_query_with_params(
+        backend,
+        limited_query,
+        declared_params,
+        input_params,
+        opts,
+        max_rows
+      )
+    end
   end
 
   def execute_query(%Backend{} = backend, %Ecto.Query{} = query, opts) when is_list(opts) do
@@ -547,23 +551,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
     requested = Keyword.get(opts, :read_cluster)
-    settings = Keyword.get(opts, :settings, [])
     label = resolve_read_cluster_label(backend, requested)
 
     warn_on_unconfigured_read_cluster(backend, requested, label)
 
-    case do_ch_query_on_label(backend, statement, params, label, settings) do
+    case do_ch_query_on_label(backend, statement, params, label) do
       {:error, %QueryError{kind: :connection_error}} = error ->
-        maybe_retry_on_default_cluster(backend, statement, params, label, settings, error)
+        maybe_retry_on_default_cluster(backend, statement, params, label, error)
 
       result ->
         result
     end
   end
 
-  @spec do_ch_query_on_label(Backend.t(), iodata(), term(), String.t() | nil, Keyword.t()) ::
+  @spec do_ch_query_on_label(Backend.t(), iodata(), term(), String.t() | nil) ::
           {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
-  defp do_ch_query_on_label(%Backend{} = backend, statement, params, label, settings) do
+  defp do_ch_query_on_label(%Backend{} = backend, statement, params, label) do
     with :ok <- ensure_query_connection_manager_started(backend, label) do
       pool_via = connection_pool_via(backend, label)
 
@@ -573,9 +576,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       log_fun = fn entry -> log_slow_checkout(entry, backend_id) end
 
       ch_opts = [decode: false, timeout: timeout, log: log_fun]
-
-      ch_opts =
-        if settings == [], do: ch_opts, else: Keyword.put(ch_opts, :settings, settings)
 
       case Ch.query(pool_via, statement, params, ch_opts) do
         {:ok, %Ch.Result{} = result} ->
@@ -619,17 +619,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           iodata(),
           term(),
           String.t() | nil,
-          Keyword.t(),
           {:error, term()}
         ) :: {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
-  defp maybe_retry_on_default_cluster(
-         %Backend{} = backend,
-         statement,
-         params,
-         label,
-         settings,
-         error
-       ) do
+  defp maybe_retry_on_default_cluster(%Backend{} = backend, statement, params, label, error) do
     default = default_read_cluster_label(backend)
 
     if is_non_empty_binary(default) and default != label do
@@ -641,7 +633,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         default_read_cluster: default
       )
 
-      do_ch_query_on_label(backend, statement, params, default, settings)
+      do_ch_query_on_label(backend, statement, params, default)
     else
       error
     end
@@ -1148,31 +1140,49 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
          input_params,
          opts
        ) do
+    execute_query_with_params(backend, query_string, declared_params, input_params, opts, nil)
+  end
+
+  @spec execute_query_with_params(
+          Backend.t(),
+          query_string :: String.t(),
+          declared_params :: [String.t()],
+          input_params :: map(),
+          opts :: Keyword.t(),
+          max_rows :: pos_integer() | nil
+        ) ::
+          {:ok, QueryResult.t()} | {:error, any()}
+  defp execute_query_with_params(
+         %Backend{} = backend,
+         query_string,
+         declared_params,
+         input_params,
+         opts,
+         max_rows
+       ) do
     converted_query = convert_query_params(query_string, declared_params)
     ch_params = Map.take(input_params, declared_params)
 
     case execute_ch_query(backend, converted_query, ch_params, opts) do
-      {:ok, {rows, bytes}} -> {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
-      error -> error
+      {:ok, {rows, bytes}} ->
+        rows = if is_integer(max_rows), do: Enum.take(rows, max_rows), else: rows
+        {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
+
+      error ->
+        error
     end
   end
 
-  # Mirrors the BigQuery adaptor, which caps endpoint results via `maxResults`.
-  # `result_overflow_mode: "break"` truncates instead of raising; ClickHouse stops on
-  # block boundaries, so slightly more than `max_result_rows` can come back.
-  @spec put_endpoint_row_cap(Keyword.t(), term()) :: Keyword.t()
-  defp put_endpoint_row_cap(opts, %{max_limit: max_limit})
-       when is_list(opts) and is_integer(max_limit) and max_limit > 0 do
-    settings =
-      opts
-      |> Keyword.get(:settings, [])
-      |> Keyword.put_new(:max_result_rows, max_limit)
-      |> Keyword.put_new(:result_overflow_mode, "break")
-
-    Keyword.put(opts, :settings, settings)
+  @spec limit_endpoint_query(String.t(), term()) ::
+          {:ok, {String.t(), pos_integer() | nil}} | {:error, String.t()}
+  defp limit_endpoint_query(query_string, %{max_limit: max_limit})
+       when is_integer(max_limit) and max_limit > 0 do
+    with {:ok, limited_query} <- ClickHouseSqlTransformer.apply_limit(query_string, max_limit) do
+      {:ok, {limited_query, max_limit}}
+    end
   end
 
-  defp put_endpoint_row_cap(opts, _endpoint_query) when is_list(opts), do: opts
+  defp limit_endpoint_query(query_string, _endpoint_query), do: {:ok, {query_string, nil}}
 
   @spec convert_query_params(sql_statement :: String.t(), allowed_params :: [String.t()]) ::
           String.t()

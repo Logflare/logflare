@@ -15,6 +15,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
   alias Logflare.Lql.Rules.FilterRule
@@ -767,6 +768,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ConnectionManager.pool_active?(backend, "dashboard_logs")
     end
 
+    test "preserves the endpoint limit when falling back to the default cluster" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      stub_read_cluster_connection_error(backend, "api")
+
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args("SELECT number FROM numbers(100) ORDER BY number", 10),
+                 read_cluster: "api"
+               )
+
+      assert Enum.map(rows, & &1["number"]) == Enum.to_list(0..9)
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+
     test "does not fall back when the unhealthy cluster is already the default" do
       {_source, backend} =
         setup_clickhouse_test(
@@ -1350,6 +1377,122 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert {:ok, %QueryResult{rows: [%{"param_result" => "hello"}]}} = result
     end
 
+    test "enforces an endpoint max_limit exactly", %{backend: backend} do
+      query = "SELECT number FROM numbers(100) ORDER BY number"
+
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args(query, 10),
+                 []
+               )
+
+      assert Enum.map(rows, & &1["number"]) == Enum.to_list(0..9)
+    end
+
+    test "returns all endpoint rows when fewer than max_limit are available", %{backend: backend} do
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args("SELECT number FROM numbers(3) ORDER BY number", 10),
+                 []
+               )
+
+      assert Enum.map(rows, & &1["number"]) == [0, 1, 2]
+    end
+
+    test "preserves a stricter endpoint limit and offset", %{backend: backend} do
+      query = "SELECT number FROM numbers(100) ORDER BY number LIMIT 5 OFFSET 2"
+
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args(query, 10),
+                 []
+               )
+
+      assert Enum.map(rows, & &1["number"]) == Enum.to_list(2..6)
+    end
+
+    test "caps an endpoint limit larger than max_limit", %{backend: backend} do
+      query = "SELECT number FROM numbers(100) ORDER BY number LIMIT 50"
+
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args(query, 10),
+                 []
+               )
+
+      assert Enum.map(rows, & &1["number"]) == Enum.to_list(0..9)
+    end
+
+    test "limits endpoint groups after computing aggregates", %{backend: backend} do
+      query = """
+      SELECT number % 20 AS bucket, count() AS total
+      FROM numbers(100)
+      GROUP BY bucket
+      ORDER BY bucket
+      """
+
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args(query, 10),
+                 []
+               )
+
+      assert Enum.map(rows, & &1["bucket"]) == Enum.to_list(0..9)
+      assert Enum.all?(rows, &(&1["total"] == 5))
+    end
+
+    test "limits endpoint CTE and UNION results", %{backend: backend} do
+      query = """
+      WITH query_rows AS (SELECT number FROM numbers(20))
+      SELECT number FROM query_rows
+      UNION ALL
+      SELECT number + 20 AS number FROM query_rows
+      ORDER BY number
+      """
+
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args(query, 10),
+                 []
+               )
+
+      assert Enum.map(rows, & &1["number"]) == Enum.to_list(0..9)
+    end
+
+    test "limits parameterized endpoint queries", %{backend: backend} do
+      args =
+        endpoint_query_args(
+          "SELECT @test_value AS value FROM numbers(20)",
+          3,
+          ["test_value"],
+          %{"test_value" => "hello"}
+        )
+
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(backend, args, [])
+
+      assert rows == List.duplicate(%{"value" => "hello"}, 3)
+    end
+
+    test "limits endpoint queries with allowed query-level settings", %{backend: backend} do
+      query = "SELECT number FROM numbers(20) ORDER BY number SETTINGS max_threads = 1"
+
+      assert {:ok, %QueryResult{rows: rows}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args(query, 3),
+                 []
+               )
+
+      assert Enum.map(rows, & &1["number"]) == [0, 1, 2]
+    end
+
     test "handles query errors gracefully", %{backend: backend} do
       result = ClickHouseAdaptor.execute_query(backend, "INVALID SQL SYNTAX", [])
 
@@ -1771,6 +1914,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert ClickHouseAdaptor.resolve_pipeline_count(state, []) == 1
     end
+  end
+
+  defp endpoint_query_args(query, max_limit, declared_params \\ [], input_params \\ %{}) do
+    {query, declared_params, input_params, %EndpointQuery{max_limit: max_limit}}
   end
 
   defp stub_read_cluster_connection_error(%Backend{id: backend_id}, label) do
