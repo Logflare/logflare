@@ -135,7 +135,6 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   attr :uri_params, :map, required: true
   attr :lql_rules, :list, required: true
   attr :user, Logflare.User, required: true
-  attr :search_op_log_events, :any, default: nil
   attr :search_op_log_aggregates, :any, default: nil
   attr :has_results?, :boolean
   attr :source, Logflare.Sources.Source, required: true

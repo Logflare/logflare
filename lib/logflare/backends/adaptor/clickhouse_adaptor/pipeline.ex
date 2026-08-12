@@ -46,10 +46,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @batch_timeout 5_000
   @batcher_concurrency 32
   @max_retries 1
-  # Two full batches across every batcher, used as a generous safety valve rather
-  # than a fine-grained flow-control knob — see BufferProducer.capped_fetch_amount/2.
-  # It should only cap genuinely runaway backlog during healthy operation.
-  @max_in_flight 2 * @batch_size * @batcher_concurrency
+  # One full batch across every batcher keeps all insert workers available without
+  # allowing a second complete wave of claimed pointers to accumulate in Broadway.
+  # See BufferProducer.capped_fetch_amount/2.
+  @max_in_flight @batch_size * @batcher_concurrency
 
   @doc false
   @spec max_retries() :: non_neg_integer()
