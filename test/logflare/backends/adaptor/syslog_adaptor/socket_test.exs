@@ -44,6 +44,52 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SocketTest do
     :ok = :gen_tcp.close(listener)
   end
 
+  test "tries each safely resolved address until one connects" do
+    host = "syslog-multi.test"
+    first_address = non_loopback_ipv4_address()
+    second_address = {127, 0, 0, 1}
+    put_host_addresses(host, [first_address, second_address])
+
+    expect(SSRF, :safe_resolve, 2, fn host ->
+      {:ok, address} = host |> String.to_charlist() |> :inet.parse_address()
+      assert address in [first_address, second_address]
+      {:ok, address}
+    end)
+
+    {:ok, listener, port} = listen_tcp()
+
+    assert {:ok, client} =
+             Socket.connect(%{host: host, port: port}, to_timeout(second: 1))
+
+    assert {:ok, server} = :gen_tcp.accept(listener, 1_000)
+
+    :ok = Socket.close(client)
+    :ok = :gen_tcp.close(server)
+    :ok = :gen_tcp.close(listener)
+  end
+
+  test "validates every resolved address before connecting" do
+    host = "syslog-rebinding.test"
+    first_address = {127, 0, 0, 1}
+    private_address = {127, 0, 0, 2}
+    put_host_addresses(host, [first_address, private_address])
+
+    expect(SSRF, :safe_resolve, 2, fn
+      "127.0.0.1" -> {:ok, first_address}
+      "127.0.0.2" -> Mimic.call_original(SSRF, :safe_resolve, ["127.0.0.2"])
+    end)
+
+    {:ok, listener, port} = listen_tcp()
+
+    assert {:error, {:ssrf, reason}} =
+             Socket.connect(%{host: host, port: port}, to_timeout(second: 1))
+
+    assert reason =~ "private or reserved"
+    assert {:error, :timeout} = :gen_tcp.accept(listener, 50)
+
+    :ok = :gen_tcp.close(listener)
+  end
+
   test "retains the original hostname for TLS SNI and hostname verification" do
     {:ok, listener, port, server} = listen_tls()
 
@@ -86,6 +132,30 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.SocketTest do
     {:ok, listener} = :gen_tcp.listen(0, active: false, ip: {127, 0, 0, 1}, reuseaddr: true)
     {:ok, {{127, 0, 0, 1}, port}} = :inet.sockname(listener)
     {:ok, listener, port}
+  end
+
+  defp non_loopback_ipv4_address do
+    {:ok, interfaces} = :inet.getifaddrs()
+
+    Enum.find_value(interfaces, fn {_name, options} ->
+      Enum.find_value(options, fn
+        {:addr, {first, _, _, _} = address} when first not in [0, 127] -> address
+        _option -> nil
+      end)
+    end) || flunk("expected a non-loopback IPv4 interface")
+  end
+
+  defp put_host_addresses(host, addresses) do
+    previous_lookup = :inet_db.res_option(:lookup)
+    hostname = String.to_charlist(host)
+
+    :ok = :inet_db.set_lookup([:file])
+    Enum.each(addresses, &(:ok = :inet_db.add_host(&1, [hostname])))
+
+    on_exit(fn ->
+      Enum.each(addresses, &(:ok = :inet_db.del_host(&1)))
+      :ok = :inet_db.set_lookup(previous_lookup)
+    end)
   end
 
   defp listen_tls do

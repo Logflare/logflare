@@ -20,6 +20,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   setup do
     stub(SSRF, :safe_resolve, fn
       "localhost" -> {:ok, {127, 0, 0, 1}}
+      "127.0.0.1" -> {:ok, {127, 0, 0, 1}}
       host -> Mimic.call_original(SSRF, :safe_resolve, [host])
     end)
 
@@ -497,7 +498,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     end
 
     test "rejects private destinations instead of probing them" do
-      {_, backend} = start_syslog(%{host: "127.0.0.1", port: 6514})
+      {_, backend} = start_syslog(%{host: "127.0.0.2", port: 6514})
       assert {:error, :unknown_error} = SyslogAdaptor.test_connection(backend)
     end
 

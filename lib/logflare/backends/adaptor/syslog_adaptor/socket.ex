@@ -3,29 +3,20 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
 
   alias Logflare.Utils.SSRF
 
+  @typep address :: :inet.ip_address() | charlist()
+  @typep reason :: :closed | :timeout | :inet.posix() | :ssl.reason() | {:ssrf, String.t()}
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
 
   # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
   @default_transport_opts mode: :binary, packet: :raw, active: true, nodelay: true
 
   @spec connect(map, timeout) :: {:ok, socket} | {:error, reason}
-        when reason:
-               :closed
-               | :timeout
-               | :inet.posix()
-               | :ssl.reason()
-               | {:ssrf, String.t()}
   def connect(config, timeout) do
     host = Map.fetch!(config, :host)
     port = Map.fetch!(config, :port)
 
-    with {:ok, address} <- resolve_address(host) do
-      if Map.get(config, :tls) do
-        opts = ssl_opts(@default_transport_opts, config, host)
-        :ssl.connect(address, port, opts, timeout)
-      else
-        :gen_tcp.connect(address, port, @default_transport_opts, timeout)
-      end
+    with {:ok, addresses} <- resolve_addresses(host) do
+      connect_addresses(addresses, config, host, port, deadline(timeout), {:error, :einval})
     end
   end
 
@@ -50,17 +41,105 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
 
   def stream(_socket, _message), do: :ignore
 
-  @spec resolve_address(String.t()) ::
-          {:ok, :inet.ip_address() | charlist()} | {:error, {:ssrf, String.t()}}
-  defp resolve_address(host) do
+  @spec resolve_addresses(String.t()) :: {:ok, [address]} | {:error, {:ssrf, String.t()}}
+  defp resolve_addresses(host) do
     if Logflare.SingleTenant.single_tenant?() do
-      {:ok, String.to_charlist(host)}
+      {:ok, [String.to_charlist(host)]}
     else
-      case SSRF.safe_resolve(host) do
-        {:ok, address} -> {:ok, address}
-        {:error, reason} -> {:error, {:ssrf, reason}}
+      hostname = String.to_charlist(host)
+
+      case :inet.parse_address(hostname) do
+        {:ok, address} -> validate_addresses([address])
+        {:error, _reason} -> resolve_hostname(host, hostname)
       end
     end
+  end
+
+  @spec resolve_hostname(String.t(), charlist()) ::
+          {:ok, [:inet.ip_address()]} | {:error, {:ssrf, String.t()}}
+  defp resolve_hostname(host, hostname) do
+    with :unresolved <- resolve_family(hostname, :inet),
+         :unresolved <- resolve_family(hostname, :inet6) do
+      case SSRF.safe_resolve(host) do
+        {:ok, address} -> {:ok, [address]}
+        {:error, reason} -> {:error, {:ssrf, reason}}
+      end
+    else
+      result -> result
+    end
+  end
+
+  @spec resolve_family(charlist(), :inet | :inet6) ::
+          {:ok, [:inet.ip_address()]} | {:error, {:ssrf, String.t()}} | :unresolved
+  defp resolve_family(hostname, family) do
+    case :inet.getaddrs(hostname, family) do
+      {:ok, [_ | _] = addresses} -> validate_addresses(addresses)
+      {:ok, []} -> :unresolved
+      {:error, _reason} -> :unresolved
+    end
+  end
+
+  @spec validate_addresses([:inet.ip_address()]) ::
+          {:ok, [:inet.ip_address()]} | {:error, {:ssrf, String.t()}}
+  defp validate_addresses(addresses) do
+    Enum.reduce_while(addresses, {:ok, []}, fn address, {:ok, safe_addresses} ->
+      host = address |> :inet.ntoa() |> List.to_string()
+
+      case SSRF.safe_resolve(host) do
+        {:ok, ^address} -> {:cont, {:ok, [address | safe_addresses]}}
+        {:error, reason} -> {:halt, {:error, {:ssrf, reason}}}
+      end
+    end)
+    |> case do
+      {:ok, safe_addresses} -> {:ok, Enum.reverse(safe_addresses)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec connect_addresses(
+          [address],
+          map,
+          String.t(),
+          :inet.port_number(),
+          integer | :infinity,
+          term
+        ) ::
+          {:ok, socket} | {:error, reason}
+  defp connect_addresses([address | addresses], config, host, port, deadline, _last_error) do
+    case connect_address(address, config, host, port, remaining_timeout(deadline)) do
+      {:ok, _socket} = result ->
+        result
+
+      {:error, reason} = error when reason in [:einval, :timeout] ->
+        error
+
+      {:error, _reason} = error ->
+        connect_addresses(addresses, config, host, port, deadline, error)
+    end
+  end
+
+  defp connect_addresses([], _config, _host, _port, _deadline, last_error), do: last_error
+
+  @spec connect_address(address, map, String.t(), :inet.port_number(), timeout) ::
+          {:ok, socket} | {:error, reason}
+  defp connect_address(address, config, host, port, timeout) do
+    if Map.get(config, :tls) do
+      opts = ssl_opts(@default_transport_opts, config, host)
+      :ssl.connect(address, port, opts, timeout)
+    else
+      :gen_tcp.connect(address, port, @default_transport_opts, timeout)
+    end
+  end
+
+  @spec deadline(timeout) :: integer | :infinity
+  defp deadline(:infinity), do: :infinity
+  defp deadline(timeout), do: System.monotonic_time(:millisecond) + timeout
+
+  @spec remaining_timeout(integer | :infinity) :: timeout
+  defp remaining_timeout(:infinity), do: :infinity
+
+  defp remaining_timeout(deadline) do
+    max(deadline - System.monotonic_time(:millisecond), 0)
   end
 
   defp ssl_opts(opts, config, host) do
