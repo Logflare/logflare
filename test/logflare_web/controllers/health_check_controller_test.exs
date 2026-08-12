@@ -3,6 +3,8 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   For node-level health check only.
   """
   use LogflareWeb.ConnCase
+
+  alias Logflare.Readiness
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
 
@@ -27,6 +29,20 @@ defmodule LogflareWeb.HealthCheckControllerTest do
                "Elixir.Logflare.Auth.Cache" => "ok"
              }
            } = json_response(conn, 200)
+  end
+
+  test "readiness check", %{conn: conn} do
+    start_supervised!(Source.Supervisor)
+    :timer.sleep(1000)
+
+    assert %{"status" => "ok"} = conn |> get("/ready") |> json_response(200)
+  end
+
+  test "readiness check while draining", %{conn: conn} do
+    on_exit(&Readiness.mark_ready/0)
+    Readiness.mark_unready()
+
+    assert %{"status" => "not_ready"} = conn |> get("/ready") |> json_response(503)
   end
 
   test "memory check", %{conn: conn} do

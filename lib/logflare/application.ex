@@ -18,6 +18,8 @@ defmodule Logflare.Application do
   alias Logflare.Utils
 
   def start(_type, _args) do
+    Logflare.Readiness.mark_unready()
+
     # set inspect function to redact sensitive information
     prev = Inspect.Opts.default_inspect_fun()
     Inspect.Opts.default_inspect_fun(&Utils.inspect_fun(prev, &1, &2))
@@ -48,7 +50,11 @@ defmodule Logflare.Application do
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Logflare.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    with {:ok, supervisor} <- Supervisor.start_link(children, opts) do
+      Logflare.Readiness.mark_ready()
+      {:ok, supervisor}
+    end
   end
 
   defp get_children(:test) do
@@ -196,6 +202,11 @@ defmodule Logflare.Application do
       end
 
     goth ++ config_cat
+  end
+
+  def prep_stop(state) do
+    Logflare.Readiness.mark_unready()
+    state
   end
 
   def config_change(changed, _new, removed) do
