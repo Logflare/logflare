@@ -94,6 +94,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     assert Enum.sort_by(result, sort_key) == Enum.sort_by(expected, sort_key)
   end
 
+  describe "configuration" do
+    test "limits in-flight pointers to one full batch per batcher" do
+      assert Pipeline.max_in_flight() == 32 * Pipeline.max_batch_size()
+    end
+  end
+
   describe "child_spec/1" do
     test "returns proper child specification" do
       spec = Pipeline.child_spec(:some_arg)

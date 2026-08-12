@@ -35,6 +35,7 @@ defmodule E2e.Features.LogsSearchTest do
 
       %{
         source: source,
+        user: user,
         matching_message: matching_message,
         non_matching_message: non_matching_message
       }
@@ -54,6 +55,33 @@ defmodule E2e.Features.LogsSearchTest do
       )
       |> assert_has("#logs-list-container", text: matching_message)
       |> refute_has("#logs-list-container", text: non_matching_message)
+    end
+
+    test "loads the remaining previous page of search results", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      pagination_message = "featuresearchpagination#{System.unique_integer([:positive])}"
+
+      log_events =
+        for index <- 1..105 do
+          build(:log_event, source: source, message: "#{pagination_message}-#{index}")
+        end
+
+      assert {:ok, 105} = Backends.ingest_logs(log_events, source)
+      assert :ok = TestUtils.wait_for_postgres_events(source, user, pagination_message, 105)
+
+      conn
+      |> visit(~p"/auth/login/single_tenant")
+      |> assert_path(~p"/dashboard")
+      |> visit(
+        ~p"/sources/#{source.id}/search?#{%{querystring: ~s|event_message:~\"^#{pagination_message}-\"|}}"
+      )
+      |> assert_has("#logs-list li[data-event-id]", count: 100)
+      |> click("#load-more-events-top")
+      |> assert_has("#logs-list li[data-event-id]", count: 105)
+      |> refute_has("#load-more-events-top")
     end
 
     test "shows a missing field error from the search page", %{conn: conn, source: source} do
