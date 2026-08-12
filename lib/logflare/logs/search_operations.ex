@@ -12,6 +12,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.DateTimeUtils
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Logs.EventPage
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Logs.SearchOperations.Helpers, as: SearchOperationHelpers
   alias Logflare.Logs.SearchUtils
@@ -47,6 +48,46 @@ defmodule Logflare.Logs.SearchOperations do
   @spec max_chart_ticks :: integer()
   def max_chart_ticks, do: @default_max_n_chart_ticks
 
+  @doc """
+  Default number of rows per page displayed to the user.
+  """
+  @spec default_limit :: pos_integer()
+  def default_limit, do: @default_limit
+
+  @doc """
+  Fetch one extra row as a sentinel to indicate if further pages are available.
+  """
+  @spec fetch_limit :: pos_integer()
+  def fetch_limit, do: @default_limit + 1
+
+  @doc """
+  Adds a validated event-page request to a search operation.
+
+  The first page does not need a cursor. Other pages require tailing to be false
+  and a valid cursor to page from.
+  """
+  @spec new_event_page(map() | SO.t(), EventPage.intent(), EventPage.cursor() | nil) ::
+          {:ok, SO.t()} | {:error, :invalid_request | :tailing}
+  def new_event_page(%SO{} = so, :initial, nil) do
+    {:ok, %{so | event_page_request: %{intent: :initial, cursor: nil}}}
+  end
+
+  def new_event_page(%SO{tailing?: false} = so, intent, cursor) do
+    if EventPage.valid_request?(intent, cursor) do
+      {:ok, %{so | event_page_request: %{intent: intent, cursor: cursor}}}
+    else
+      {:error, :invalid_request}
+    end
+  end
+
+  def new_event_page(%SO{}, _intent, _cursor), do: {:error, :tailing}
+
+  def new_event_page(params, intent, cursor) when is_map(params) do
+    params
+    |> SO.new()
+    |> new_event_page(intent, cursor)
+  end
+
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
     with {:ok, response} <- execute_backend_query(so) do
@@ -75,7 +116,7 @@ defmodule Logflare.Logs.SearchOperations do
     |> LoggerMetadata.with_metadata(fn ->
       backend = postgres_backend(so)
 
-      PostgresAdaptor.execute_query(backend, so.query, query_type: :search)
+      PostgresAdaptor.execute_query(backend, query_for_execution(so), query_type: :search)
     end)
   end
 
@@ -87,11 +128,21 @@ defmodule Logflare.Logs.SearchOperations do
     |> LoggerMetadata.with_metadata(fn ->
       BigQueryAdaptor.execute_query(
         {bq_project_id, dataset_id, so.source.user.id},
-        so.query,
+        query_for_execution(so),
         query_type: :search
       )
     end)
   end
+
+  # Override the default limit; fetch extra row to check if more events are available
+  @spec query_for_execution(SO.t()) :: Ecto.Query.t()
+  defp query_for_execution(%SO{
+         type: :events,
+         query: %Ecto.Query{limit: %Ecto.Query.LimitExpr{}} = query
+       }),
+       do: limit(query, ^fetch_limit())
+
+  defp query_for_execution(%SO{query: query}), do: query
 
   @spec source_logger_metadata(SO.t()) :: Keyword.t()
   defp source_logger_metadata(%SO{} = so) do
@@ -101,6 +152,13 @@ defmodule Logflare.Logs.SearchOperations do
   @spec put_sql_string(SO.t(), QueryResult.t()) :: SO.t()
   defp put_sql_string(%{sql_string: sql_string} = so, _response) when is_binary(sql_string),
     do: so
+
+  defp put_sql_string(%SO{backend_type: :bigquery, type: :events} = so, _response) do
+    case BigQueryAdaptor.ecto_to_sql(so.query, []) do
+      {:ok, {query_string, params}} -> %{so | sql_string: query_string, sql_params: params}
+      {:error, _reason} -> so
+    end
+  end
 
   defp put_sql_string(%SO{backend_type: :bigquery} = so, %QueryResult{
          query_string: query_string,
@@ -122,13 +180,65 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_query_defaults(SO.t()) :: SO.t()
   def apply_query_defaults(%SO{} = so) do
+    direction =
+      case so.event_page_request do
+        %{intent: intent} -> EventPage.direction(intent)
+        nil -> :previous
+      end
+
     query =
       from(table_name(so))
       |> select(%{})
-      |> order_by([t], desc: t.timestamp)
-      |> limit(@default_limit)
+      |> order_events(direction)
+      |> limit(^default_limit())
 
     %{so | query: query}
+  end
+
+  defp order_events(query, :previous),
+    do: order_by(query, [t], desc: t.timestamp, desc: t.id)
+
+  defp order_events(query, :next), do: order_by(query, [t], asc: t.timestamp, asc: t.id)
+
+  @spec apply_cursor(SO.t()) :: SO.t()
+  def apply_cursor(
+        %SO{event_page_request: %{intent: intent, cursor: %{timestamp: timestamp, id: id}}} = so
+      ) do
+    timestamp = normalize_event_timestamp(so.backend_type, timestamp)
+    direction = EventPage.direction(intent)
+
+    %{so | query: where(so.query, ^cursor_condition(direction, timestamp, id))}
+  end
+
+  def apply_cursor(%SO{} = so), do: so
+
+  defp normalize_event_timestamp(:postgres, timestamp) when is_integer(timestamp),
+    do: DateTime.from_unix!(timestamp, :microsecond)
+
+  defp normalize_event_timestamp(_backend_type, timestamp), do: timestamp
+
+  defp cursor_condition(:previous, timestamp, id) when is_integer(timestamp) do
+    dynamic(
+      [t],
+      t.timestamp < fragment("TIMESTAMP_MICROS(?)", ^timestamp) or
+        (t.timestamp == fragment("TIMESTAMP_MICROS(?)", ^timestamp) and t.id <= ^id)
+    )
+  end
+
+  defp cursor_condition(:next, timestamp, id) when is_integer(timestamp) do
+    dynamic(
+      [t],
+      t.timestamp > fragment("TIMESTAMP_MICROS(?)", ^timestamp) or
+        (t.timestamp == fragment("TIMESTAMP_MICROS(?)", ^timestamp) and t.id > ^id)
+    )
+  end
+
+  defp cursor_condition(:previous, timestamp, id) do
+    dynamic([t], t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id <= ^id))
+  end
+
+  defp cursor_condition(:next, timestamp, id) do
+    dynamic([t], t.timestamp > ^timestamp or (t.timestamp == ^timestamp and t.id > ^id))
   end
 
   @spec apply_halt_conditions(SO.t()) :: SO.t()
@@ -239,6 +349,15 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | rows: rows}
   end
 
+  def apply_timestamp_filter_rules(
+        %SO{
+          type: :events,
+          event_page_request: %{intent: intent}
+        } = so
+      )
+      when intent in [:previous, :next],
+      do: apply_event_page_partition_filter(so)
+
   def apply_timestamp_filter_rules(%SO{backend_type: :postgres, type: :events} = so) do
     %{so | query: apply_postgres_event_timestamp_filter_rules(so)}
   end
@@ -341,6 +460,50 @@ defmodule Logflare.Logs.SearchOperations do
 
     %{so | query: q}
   end
+
+  defp apply_event_page_partition_filter(
+         %SO{
+           event_page_request: %{intent: intent, cursor: %{timestamp: timestamp}}
+         } = so
+       ) do
+    direction = EventPage.direction(intent)
+    timestamp = normalize_event_timestamp(so.backend_type, timestamp)
+
+    %{so | query: apply_event_page_partition_filter(so.query, so, direction, timestamp)}
+  end
+
+  defp apply_event_page_partition_filter(query, %SO{backend_type: :postgres}, _, _), do: query
+
+  defp apply_event_page_partition_filter(
+         query,
+         %SO{partition_by: :timestamp},
+         direction,
+         timestamp
+       ) do
+    date = timestamp |> event_timestamp_datetime() |> DateTime.to_date()
+
+    case direction do
+      :previous -> where(query, [t], fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^date)
+      :next -> where(query, [t], fragment("EXTRACT(DATE FROM ?)", t.timestamp) >= ^date)
+    end
+  end
+
+  defp apply_event_page_partition_filter(query, %SO{partition_by: :pseudo}, direction, timestamp) do
+    date = timestamp |> event_timestamp_datetime() |> DateTime.to_date()
+
+    case direction do
+      :previous -> where(query, partition_date() <= ^date or in_streaming_buffer())
+      :next -> where(query, partition_date() >= ^date or in_streaming_buffer())
+    end
+  end
+
+  defp event_timestamp_datetime(timestamp) when is_integer(timestamp),
+    do: DateTime.from_unix!(timestamp, :microsecond)
+
+  defp event_timestamp_datetime(%DateTime{} = timestamp), do: timestamp
+
+  defp event_timestamp_datetime(%NaiveDateTime{} = timestamp),
+    do: DateTime.from_naive!(timestamp, "Etc/UTC")
 
   defp apply_bq_aggregate_timestamp_filters(query, so, filters, chart_period) do
     period = to_bq_interval_token(chart_period)

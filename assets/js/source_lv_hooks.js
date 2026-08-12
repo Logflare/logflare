@@ -22,11 +22,52 @@ hooks.SourceSchemaModalTable = {
 }
 
 hooks.SourceLogsSearchList = {
+  captureScrollAnchor() {
+    this.scrollPosition = window.scrollY
+
+    const firstVisibleLogEvent = [...this.el.querySelectorAll("#logs-list > li[data-event-id]")]
+      .find((element) => {
+        const { top, bottom } = element.getBoundingClientRect()
+        return top < window.innerHeight && bottom > 0
+      })
+
+    this.scrollAnchor = firstVisibleLogEvent && {
+      id: firstVisibleLogEvent.id,
+      top: firstVisibleLogEvent.getBoundingClientRect().top,
+    }
+  },
+  restoreScrollAnchor() {
+    const scrollAnchor = this.scrollAnchor
+    const scrollPosition = this.scrollPosition
+
+    requestAnimationFrame(() => {
+      const anchorElement = scrollAnchor && document.getElementById(scrollAnchor.id)
+
+      if (anchorElement && this.el.contains(anchorElement)) {
+        const scrollDelta = anchorElement.getBoundingClientRect().top - scrollAnchor.top
+        window.scrollBy(0, scrollDelta)
+      } else if (scrollPosition !== undefined) {
+        window.scrollTo(0, scrollPosition)
+      }
+    })
+  },
+  scrollToLatest() {
+    if (this.el.dataset.tailing === "true") {
+      window.scrollTo(0, document.body.scrollHeight)
+    }
+  },
+  beforeUpdate() {
+    this.captureScrollAnchor()
+  },
   updated() {
     const hook = this
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
 
-    window.scrollTo(0, document.body.scrollHeight)
+    if (this.el.dataset.tailing === "true") {
+      this.scrollToLatest()
+    } else {
+      this.restoreScrollAnchor()
+    }
 
     const observer =
       new IntersectionObserver((entries, observer) => {
@@ -47,10 +88,7 @@ hooks.SourceLogsSearchList = {
   },
   mounted() {
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
-
-    $("html, body").animate({
-      scrollTop: document.body.scrollHeight
-    })
+    this.scrollToLatest()
   },
   destroyed() {
     $(this.el).tooltip("dispose")
