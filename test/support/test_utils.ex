@@ -3,11 +3,17 @@ defmodule Logflare.TestUtils do
   Testing utilities. Globally aliased under the `TestUtils` namespace.
   """
 
+  import ExUnit.Assertions, only: [assert: 1]
+
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema
   alias GoogleApi.BigQuery.V2.Model.TableSchema
 
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.SingleTenant
+  alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.User
 
   @doc """
   Configures the following `:logflare` env keys:
@@ -481,6 +487,27 @@ defmodule Logflare.TestUtils do
     receive do
       :stop -> :ok
     end
+  end
+
+  @doc """
+  Waits until the expected number of matching events is queryable from a PostgreSQL backend.
+  """
+  @spec wait_for_postgres_events(Source.t(), User.t(), String.t(), pos_integer()) :: :ok
+  def wait_for_postgres_events(source, user, message_prefix, expected_count) do
+    backend = Backends.get_default_backend(user)
+    table_name = PostgresAdaptor.table_name(source)
+
+    retry_assert(fn ->
+      assert {:ok, %{rows: [%{"count" => ^expected_count}]}} =
+               PostgresAdaptor.execute_query(
+                 backend,
+                 {"SELECT count(*) AS count FROM #{table_name} WHERE event_message LIKE $1",
+                  ["#{message_prefix}%"]},
+                 []
+               )
+    end)
+
+    :ok
   end
 
   @doc """
