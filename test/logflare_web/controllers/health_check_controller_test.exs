@@ -72,6 +72,12 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     test "not ok", %{conn: conn} do
       assert %{"status" => "coming_up"} = conn |> get("/health") |> json_response(503)
     end
+
+    test "not ready even when the application is accepting traffic", %{conn: conn} do
+      Readiness.mark_ready()
+
+      assert %{"status" => "coming_up"} = conn |> get("/ready") |> json_response(503)
+    end
   end
 
   describe "Supabase mode - with seed" do
