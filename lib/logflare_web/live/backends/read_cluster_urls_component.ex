@@ -7,18 +7,13 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
 
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_non_empty_map: 1]
 
+  alias Logflare.Backends.Backend
+
   @impl true
   def update(assigns, socket) do
     socket = assign(socket, assigns)
 
-    socket =
-      if Map.has_key?(socket.assigns, :rows) do
-        socket
-      else
-        assign(socket, :rows, initial_rows(socket.assigns.form))
-      end
-
-    {:ok, socket}
+    {:ok, assign_new(socket, :rows, fn -> initial_rows(socket.assigns.backend) end)}
   end
 
   @impl true
@@ -120,13 +115,12 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
     end
   end
 
-  @spec initial_rows(Phoenix.HTML.Form.t()) :: [{String.t(), String.t()}]
-  defp initial_rows(form) do
-    case input_value(form, :read_only_urls) do
-      urls when is_non_empty_map(urls) -> Map.to_list(urls)
-      _ -> [{"", ""}]
-    end
+  @spec initial_rows(Backend.t() | nil) :: [{String.t(), String.t()}]
+  defp initial_rows(%Backend{config: %{read_only_urls: urls}}) when is_non_empty_map(urls) do
+    Enum.sort_by(urls, fn {label, _url} -> label end)
   end
+
+  defp initial_rows(_backend), do: [{"", ""}]
 
   @spec read_cluster_form_key?(String.t()) :: boolean()
   defp read_cluster_form_key?(key) do

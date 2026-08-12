@@ -714,6 +714,43 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert map_size(read_only_urls) == 2
     end
 
+    test "patching between clickhouse backends refreshes the read cluster rows", %{
+      conn: conn,
+      team: team,
+      user: user
+    } do
+      base_config = %{url: "http://localhost:8123", database: "test_db", port: 8123}
+
+      first =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: Map.put(base_config, :read_only_urls, %{"alpha" => "http://alpha.local:8123"})
+        )
+
+      second =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: Map.put(base_config, :read_only_urls, %{"zulu" => "http://zulu.local:8123"})
+        )
+
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/backends/#{first.id}/edit?#{[t: team.id]}")
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_0]']")
+             |> render() =~ ~s(value="alpha")
+
+      html = render_patch(view, ~p"/backends/#{second.id}/edit?#{[t: team.id]}")
+
+      refute html =~ "alpha"
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_0]']")
+             |> render() =~ ~s(value="zulu")
+    end
+
     test "cancel will nav back to show", %{conn: conn, user: user} do
       backend = insert(:backend, type: :webhook, user: user)
       assert {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
