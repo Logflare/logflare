@@ -442,6 +442,11 @@ defmodule LogflareWeb.Router do
     get("/", HealthCheckController, :check)
   end
 
+  scope "/ready", LogflareWeb do
+    pipe_through(:api)
+    get("/", HealthCheckController, :ready)
+  end
+
   # Account management API.
   scope "/api", LogflareWeb do
     pipe_through([:api, :require_mgmt_api_auth])
