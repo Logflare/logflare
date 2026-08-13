@@ -714,9 +714,12 @@ defmodule LogflareWeb.LogControllerTest do
     test "_json batch with __LF_SOURCE per event fans out to multiple sources",
          %{conn: conn, source_a: source_a, user: user} do
       source_b = insert(:source, user: user)
-      insert(:backend, sources: [source_b], type: :webhook, config: %{url: "some-b2"})
+      backend_b = insert(:backend, sources: [source_b], type: :webhook, config: %{url: "some-b2"})
       start_supervised!({SourceSup, source_b})
-      :timer.sleep(200)
+
+      TestUtils.retry_assert(fn ->
+        assert Logflare.Backends.backend_child_started?(backend_b.id, source_b.id)
+      end)
 
       this = self()
 
@@ -823,7 +826,6 @@ defmodule LogflareWeb.LogControllerTest do
     source_a = insert(:source, user: user)
     insert(:backend, sources: [source_a], type: :webhook, config: %{url: "some-a"})
     start_supervised!({SourceSup, source_a})
-    :timer.sleep(500)
 
     {:ok, user: user, source: source_a, source_a: source_a, conn: conn}
   end
