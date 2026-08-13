@@ -28,13 +28,15 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
     if SystemCache.memory_utilization() >= @memory_limit do
       handle_buffer_full(conn, nil)
     else
-      Enum.reduce_while(declared, conn, fn {_token, source}, acc ->
-        if Backends.cached_local_pending_buffer_full?(source) do
-          {:halt, handle_buffer_full(acc, source)}
-        else
-          {:cont, acc}
-        end
-      end)
+      Enum.reduce_while(declared, conn, &reduce_declared_source/2)
+    end
+  end
+
+  defp reduce_declared_source({_token, source}, conn) do
+    if Backends.cached_local_pending_buffer_full?(source) do
+      {:halt, handle_buffer_full(conn, source)}
+    else
+      {:cont, conn}
     end
   end
 
