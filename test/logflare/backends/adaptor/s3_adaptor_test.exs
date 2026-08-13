@@ -118,6 +118,43 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       assert %Ecto.Changeset{valid?: false} = cs
       assert {_message, [validation: :endpoint_not_allowed]} = cs.errors[:endpoint]
     end
+
+    test "rejects an endpoint host containing an embedded space, even with a trusted suffix" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(
+            @valid_config,
+            :endpoint,
+            "https://drain-3fq9k2z-mybucket .s3.ap-northeast-1.amazonaws.com"
+          )
+        )
+
+      assert %Ecto.Changeset{valid?: false} = cs
+      assert {_message, [validation: :endpoint_malformed]} = cs.errors[:endpoint]
+    end
+
+    test "rejects an endpoint whose host contains other whitespace characters" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(@valid_config, :endpoint, "https://bucket\t.s3.amazonaws.com")
+        )
+
+      assert %Ecto.Changeset{valid?: false} = cs
+      assert {_message, [validation: :endpoint_malformed]} = cs.errors[:endpoint]
+    end
+
+    test "rejects an endpoint with leading or trailing whitespace" do
+      cs =
+        Adaptor.cast_and_validate_config(
+          S3Adaptor,
+          Map.put(@valid_config, :endpoint, " https://bucket.s3.amazonaws.com ")
+        )
+
+      assert %Ecto.Changeset{valid?: false} = cs
+      assert {_message, [validation: :endpoint_malformed]} = cs.errors[:endpoint]
+    end
   end
 
   describe "validate_config/1 endpoint allowlist (check disabled via flag)" do
@@ -206,6 +243,45 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
       assert {:error, reason} = S3Adaptor.test_connection(backend)
       assert reason =~ "AccessDenied"
+    end
+  end
+
+  describe "push_log_events_to_s3/2" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :s3,
+          sources: [source],
+          config: %{
+            s3_bucket: "my-bucket",
+            storage_region: "us-east-1",
+            access_key_id: "AKID",
+            secret_access_key: "SECRET",
+            batch_timeout: 1_000
+          }
+        )
+
+      events = [build(:log_event, source: source)]
+
+      [source: source, backend: backend, events: events]
+    end
+
+    test "returns {:error, reason} instead of crashing when the underlying write panics", %{
+      source: source,
+      backend: backend,
+      events: events
+    } do
+      Explorer.DataFrame
+      |> expect(:to_parquet, fn _df, _path, _opts ->
+        raise ErlangError, original: :nif_panicked
+      end)
+
+      assert {:error, _reason} =
+               S3Adaptor.push_log_events_to_s3({source.id, backend.id}, events)
     end
   end
 end

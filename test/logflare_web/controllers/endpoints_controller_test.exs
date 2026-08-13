@@ -3,6 +3,8 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
   alias GoogleApi.BigQuery.V2.Api.Jobs, as: BigQueryJobs
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Google.BigQuery.GenUtils
@@ -990,6 +992,112 @@ defmodule LogflareWeb.EndpointsControllerTest do
       refute conn.halted
 
       assert_received {:reservation, nil}
+    end
+  end
+
+  describe "read cluster header" do
+    setup do
+      _plan = insert(:plan, name: "Free")
+      user = insert(:user)
+
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          user: user,
+          config: %{
+            url: "http://localhost:8123",
+            database: "logflare_test",
+            username: "logflare",
+            password: "logflare",
+            port: 8123,
+            read_only_urls: %{
+              "api" => "http://api-read.local:8123",
+              "dashboard_logs" => "http://logs-read.local:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          query: "select 1 as test",
+          enable_auth: false
+        )
+
+      {:ok, user: user, backend: backend, endpoint: endpoint}
+    end
+
+    test "queries the read cluster named by the header", %{
+      conn: init_conn,
+      backend: backend,
+      endpoint: endpoint
+    } do
+      pid = self()
+
+      expect(Ch, :query, fn pool, _statement, _params, _opts ->
+        send(pid, {:queried_pool, pool})
+        {:ok, %Ch.Result{rows: [], columns: [], num_rows: 0, headers: []}}
+      end)
+
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-clickhouse-read-cluster-label", "api")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert json_response(conn, 200)
+      refute conn.halted
+
+      assert_received {:queried_pool, pool}
+      assert pool == ClickHouseAdaptor.connection_pool_via(backend, "api")
+      assert ConnectionManager.read_host(backend, "api") == "api-read.local"
+    end
+
+    test "queries the default read cluster when the header is absent", %{
+      conn: init_conn,
+      backend: backend,
+      endpoint: endpoint
+    } do
+      pid = self()
+
+      expect(Ch, :query, fn pool, _statement, _params, _opts ->
+        send(pid, {:queried_pool, pool})
+        {:ok, %Ch.Result{rows: [], columns: [], num_rows: 0, headers: []}}
+      end)
+
+      conn = get(init_conn, ~p"/endpoints/query/#{endpoint.token}")
+
+      assert json_response(conn, 200)
+      refute conn.halted
+
+      assert_received {:queried_pool, pool}
+      assert pool == ClickHouseAdaptor.connection_pool_via(backend, "dashboard_logs")
+      assert ConnectionManager.read_host(backend, "dashboard_logs") == "logs-read.local"
+    end
+
+    test "falls back to the default read cluster when the header names an unknown label", %{
+      conn: init_conn,
+      backend: backend,
+      endpoint: endpoint
+    } do
+      pid = self()
+
+      expect(Ch, :query, fn pool, _statement, _params, _opts ->
+        send(pid, {:queried_pool, pool})
+        {:ok, %Ch.Result{rows: [], columns: [], num_rows: 0, headers: []}}
+      end)
+
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-clickhouse-read-cluster-label", "nope")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert json_response(conn, 200)
+
+      assert_received {:queried_pool, pool}
+      assert pool == ClickHouseAdaptor.connection_pool_via(backend, "dashboard_logs")
     end
   end
 end

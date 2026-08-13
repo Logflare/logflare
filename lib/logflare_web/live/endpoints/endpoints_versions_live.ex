@@ -27,19 +27,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
         </.subheader_path_link>/versions
       </:path>
     </.subheader>
-    <script>
-      window.addEventListener("phx:hide-restoring-indicator", () => {
-        document.getElementById("restoring-indicator")?.classList.add("tw-hidden")
-      })
-    </script>
-    <.versions versions={@streams.versions} current_version_id={@current_version_id} load_more?={not is_nil(@next_cursor_id)} loading?={@load_more_versions.loading}>
-      <:subhead>
-        <div id="restoring-indicator" class="tw-hidden">
-          <div class="tw-h-16 tw-rounded tw-border tw-border-zinc-900 tw-bg-dashboard-grey tw-animate-pulse tw-flex tw-items-center tw-justify-center tw-text-zinc-200">
-            Restoring
-          </div>
-        </div>
-      </:subhead>
+    <.versions versions={@streams.versions} current_version_id={@current_version_id} load_more?={not is_nil(@next_cursor_id)} loading?={@load_more_versions.loading} animate?={@animate?}>
       <:col :let={version} class="lg:tw-col-span-1" label="Version">
         <div class="tw-flex tw-w-full tw-flex-col tw-items-start tw-gap-2 lg:tw-items-end">
           <div class="tw-px-2 tw-py-1 tw-text-sm tw-font-medium tw-text-white">
@@ -88,13 +76,12 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   attr :current_version_id, :integer, default: nil
   attr :load_more?, :boolean, default: false
   attr :loading?, :boolean, default: false
+  attr :animate?, :boolean, default: false
 
   slot :col do
     attr :label, :string
     attr :class, :string
   end
-
-  slot :subhead
 
   def versions(assigns) do
     ~H"""
@@ -103,7 +90,6 @@ defmodule LogflareWeb.EndpointsVersionsLive do
         <div :for={col <- @col} class={["first:tw-text-center tw-px-4 tw-py-2", col[:class]]}>{col.label}</div>
       </div>
 
-      {render_slot(@subhead)}
       <div class="tw-flex tw-flex-col tw-gap-3" id="endpoint-versions" phx-update="stream">
         <div id="versions-empty" class="tw-hidden only:tw-flex tw-min-h-[12rem] tw-w-full tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-zinc-800 tw-bg-dashboard-grey tw-p-4 tw-text-center">
           <p class="tw-mb-0 tw-text-zinc-400">
@@ -113,6 +99,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
         <div
           :for={{dom_id, version} <- @versions}
           id={dom_id}
+          phx-mounted={maybe_slide_in(@animate? && version.id == @current_version_id)}
           class="tw-relative tw-z-0 tw-block tw-rounded tw-border tw-border-zinc-900 tw-bg-dashboard-grey tw-no-underline hover:tw-border-zinc-700 hover:tw-bg-[#232323] focus-within:tw-z-30 focus-within:tw-outline-none focus-within:tw-ring-2 focus-within:tw-ring-[#2155a3] lg:tw-grid tw-grid-cols-12"
         >
           <button type="button" class="tw-absolute tw-inset-0 tw-z-10 tw-w-full tw-border-0 tw-bg-transparent tw-p-0" phx-click="show-version" phx-value-version-number={version_number(version)}>
@@ -137,6 +124,11 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     </section>
     """
   end
+
+  defp maybe_slide_in(true),
+    do: JS.transition({"tw-transition-transform", "tw-translate-x-full", "tw-translate-none"})
+
+  defp maybe_slide_in(_), do: false
 
   attr :version, Version, required: true
   attr :current_version_id, :integer, default: nil
@@ -175,11 +167,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     """
   end
 
-  defp restore_version,
-    do:
-      JS.remove_class("tw-hidden", to: "#restoring-indicator")
-      |> JS.push("restore-version")
-      |> JS.dispatch("click", to: "body")
+  defp restore_version, do: JS.push("restore-version") |> JS.dispatch("click", to: "body")
 
   @impl true
   def mount(%{"id" => endpoint_id} = params, _session, socket) do
@@ -192,6 +180,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
 
         endpoint ->
           socket
+          |> assign(:animate?, false)
           |> assign(:endpoint, endpoint)
           |> assign(:selected_version, nil)
           |> maybe_assign_team_context(params, endpoint)
@@ -277,10 +266,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
         {:noreply, socket}
 
       _ ->
-        {:noreply,
-         socket
-         |> push_event("hide-restoring-indicator", %{})
-         |> put_flash(:error, "Unable to restore endpoint version.")}
+        handle_async(:version_restored, {:error, :invalid_version_number}, socket)
     end
   end
 
@@ -289,7 +275,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     socket =
       socket
       |> assign(:endpoint, endpoint)
-      |> push_event("hide-restoring-indicator", %{})
+      |> assign(:animate?, true)
       |> assign_versions(endpoint)
 
     {:noreply,
@@ -303,7 +289,6 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   def handle_async(:version_restored, _, socket) do
     {:noreply,
      socket
-     |> push_event("hide-restoring-indicator", %{})
      |> put_flash(:error, "Unable to restore endpoint version.")}
   end
 

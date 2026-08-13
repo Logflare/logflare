@@ -38,8 +38,8 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends
   alias Logflare.Backends.Backend
-  alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Backends.SourceSup
+  alias Logflare.SystemMetrics.AllLogsLogged
   alias Tesla.Middleware.JSON
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
 
@@ -62,11 +62,10 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
         )
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
       [source: source, backend: backend]
     end
 
-    test "ingest", %{source: source} do
+    test "ingest through the full source supervision tree", %{source: source} do
       this = self()
       ref = make_ref()
 

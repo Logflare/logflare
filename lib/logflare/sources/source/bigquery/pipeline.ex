@@ -123,7 +123,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   # pid, and this lookup always finds the ref the producer published at init.
   def transform(event, args) do
     ref = args[:ref]
-    in_flight_ref = :persistent_term.get({BufferProducer, :in_flight_ref, self()}, nil)
+    in_flight_ref = BufferProducer.get_in_flight_ref(self())
 
     %Message{
       data: event,

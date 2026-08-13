@@ -292,6 +292,88 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                )
     end
 
+    test "execute_query normalizes job timeout errors", %{user: user} do
+      message = "Job execution was cancelled: Job timed out"
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error,
+         TestUtils.gen_bq_error(message,
+           code: 499,
+           status: "CANCELLED",
+           errors: [%{"domain" => "global", "message" => message, "reason" => "stopped"}]
+         )}
+      end)
+
+      assert {:error,
+              %QueryError{
+                kind: :timeout,
+                backend: Logflare.Backends.Adaptor.BigQueryAdaptor,
+                description: nil,
+                raw_error: %{"message" => ^message, "status" => "CANCELLED"}
+              }} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select count(*) from logs", []},
+                 query_type: :search
+               )
+    end
+
+    test "execute_query only treats job timeouts as timeouts for searches", %{user: user} do
+      message = "Job execution was cancelled: Job timed out"
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error,
+         TestUtils.gen_bq_error(message,
+           code: 499,
+           status: "CANCELLED",
+           errors: [%{"domain" => "global", "message" => message, "reason" => "stopped"}]
+         )}
+      end)
+
+      for query_opts <- [[query_type: :endpoint], [query_type: :alert], []] do
+        assert {:error, %QueryError{kind: :backend_error}} =
+                 BigQueryAdaptor.execute_query(
+                   {user.bigquery_project_id || "test-project", user.bigquery_dataset_id,
+                    user.id},
+                   {"select count(*) from logs", []},
+                   query_opts
+                 )
+      end
+    end
+
+    test "execute_query normalizes timeout reason errors", %{user: user} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("Operation timeout exceeded", reason: "timeout")}
+      end)
+
+      assert {:error, %QueryError{kind: :timeout}} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select count(*) from logs", []},
+                 query_type: :search
+               )
+    end
+
+    test "execute_query does not treat cancelled jobs as timeouts", %{user: user} do
+      message = "Job execution was cancelled: User requested cancellation"
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error,
+         TestUtils.gen_bq_error(message,
+           code: 499,
+           status: "CANCELLED",
+           errors: [%{"domain" => "global", "message" => message, "reason" => "stopped"}]
+         )}
+      end)
+
+      assert {:error, %QueryError{kind: :backend_error}} =
+               BigQueryAdaptor.execute_query(
+                 {user.bigquery_project_id || "test-project", user.bigquery_dataset_id, user.id},
+                 {"select count(*) from logs", []},
+                 query_type: :search
+               )
+    end
+
     test "execute_query maps non-invalid BigQuery reasons as backend errors", %{user: user} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:error, TestUtils.gen_bq_error("backend unavailable", reason: "backendError")}

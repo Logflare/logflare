@@ -22,20 +22,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       end
     end)
 
-    # MemoryMonitor's stats() are cached in :persistent_term — global, and
-    # NOT reset between tests or test files. Without this, a test here could
-    # inherit a stale "throttled" value left by any test anywhere in the
-    # suite that ran MemoryMonitor last, hanging tests that have nothing to
-    # do with throttling (e.g. prefetch/happy-path tests below). Starting a
-    # fresh, explicitly non-throttled MemoryMonitor for every test in this
-    # file guarantees a known baseline; throttled!/0 overrides it as needed.
+    # MemoryMonitor publishes stats through a node-global named ETS table.
+    # Start a fresh, explicitly non-throttled monitor for every test so the
+    # queue producer has a known baseline; throttled!/0 overrides it as needed.
     Application.put_env(:logflare, :spool,
       spool_memory_limit_percent: 1.0,
       spool_max_ets_percent: 1.0
     )
 
     start_supervised!(MemoryMonitor)
-    Process.sleep(50)
+    :sys.get_state(MemoryMonitor)
 
     :ok
   end
@@ -117,7 +113,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       spool_max_ets_percent: 0.0
     )
 
-    Process.sleep(1_100)
+    TestUtils.send_and_wait_for_handling(MemoryMonitor, :refresh)
     assert MemoryMonitor.throttled?() == true
   end
 
@@ -127,7 +123,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       spool_max_ets_percent: 1.0
     )
 
-    Process.sleep(1_100)
+    TestUtils.send_and_wait_for_handling(MemoryMonitor, :refresh)
     assert MemoryMonitor.throttled?() == false
   end
 
@@ -190,12 +186,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
-      Process.sleep(50)
-
-      poll_timer = :sys.get_state(pid).state.poll_timer
-
-      refute is_nil(poll_timer)
-      assert Process.read_timer(poll_timer)
+      TestUtils.retry_assert(fn ->
+        poll_timer = :sys.get_state(pid).state.poll_timer
+        refute is_nil(poll_timer)
+        assert Process.read_timer(poll_timer)
+      end)
     end
 
     test "recovers automatically once memory pressure drops, without any new demand arriving" do
@@ -229,12 +224,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
-      Process.sleep(50)
-
-      poll_timer = :sys.get_state(pid).state.poll_timer
-
-      refute is_nil(poll_timer)
-      assert Process.read_timer(poll_timer)
+      TestUtils.retry_assert(fn ->
+        poll_timer = :sys.get_state(pid).state.poll_timer
+        refute is_nil(poll_timer)
+        assert Process.read_timer(poll_timer)
+      end)
     end
 
     test "recovers automatically once consumer backlog clears, without any new demand arriving" do

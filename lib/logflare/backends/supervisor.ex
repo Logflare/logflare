@@ -51,7 +51,11 @@ defmodule Logflare.Backends.Supervisor do
         {Registry,
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
         {Registry,
-         name: Backends.BackendRegistry, keys: :unique, partitions: max(round(base / 8), 1)}
+         name: Backends.BackendRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
+        {Registry,
+         name: Backends.BufferProducer.InFlightRegistry,
+         keys: :unique,
+         partitions: max(round(base / 8), 1)}
       ] ++
         spool_goth_children ++
         spool_memory_monitor_children ++ producer_children ++ consumer_children

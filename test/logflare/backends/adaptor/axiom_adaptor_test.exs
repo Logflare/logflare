@@ -25,8 +25,8 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Adaptor.HttpBased
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Tesla.MockAdapter
 
@@ -132,7 +132,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     setup :backend_data
 
     setup %{source: source, backend: backend} do
-      start_supervised!({AdaptorSupervisor, {source, backend}})
+      start_supervised!({SourceSup, source})
 
       pipeline_name = Backends.via_source(source, HttpBased.Pipeline, backend)
 

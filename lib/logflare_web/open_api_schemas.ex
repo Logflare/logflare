@@ -435,7 +435,13 @@ defmodule LogflareWeb.OpenApiSchemas do
       endpoint: %Schema{type: :string},
       protocol: %Schema{type: :string, nullable: true},
       gzip: %Schema{type: :boolean},
-      headers: %Schema{type: :object}
+      headers: %Schema{type: :object},
+      flatten_to_attributes: %Schema{
+        type: :boolean,
+        nullable: true,
+        description:
+          "Sends the log event_message as a text string in the body field and flattens other fields into individual attributes, instead of the default nested body. Defaults to false."
+      }
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:endpoint]

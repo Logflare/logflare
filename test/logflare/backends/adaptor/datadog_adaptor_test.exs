@@ -1,11 +1,11 @@
 defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends
-  alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.DatadogAdaptor
+  alias Logflare.Backends.SourceSup
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject DatadogAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
@@ -104,9 +104,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
           config: %{api_key: "foo-bar", region: "US1"}
         )
 
-      start_supervised!({AdaptorSupervisor, {source, backend}}, id: :source1)
-      start_supervised!({AdaptorSupervisor, {source_with_service_name, backend}}, id: :source2)
-      :timer.sleep(500)
+      start_supervised!({SourceSup, source}, id: :source1)
+      start_supervised!({SourceSup, source_with_service_name}, id: :source2)
 
       [
         backend: backend,

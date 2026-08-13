@@ -111,7 +111,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
     )
 
     start_supervised!(MemoryMonitor)
-    Process.sleep(50)
+    :sys.get_state(MemoryMonitor)
   end
 
   defp throttled! do
@@ -121,7 +121,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
     )
 
     start_supervised!(MemoryMonitor)
-    Process.sleep(50)
+    :sys.get_state(MemoryMonitor)
   end
 
   describe "spool_batch_size_splitter/0 when not throttled" do
@@ -173,7 +173,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
         spool_max_ets_percent: 1.0
       )
 
-      Process.sleep(1_100)
+      TestUtils.send_and_wait_for_handling(MemoryMonitor, :refresh)
       assert MemoryMonitor.throttled?() == false
 
       # 5MB + 8MB = 13MB, over the locked-in 12MB budget (would NOT emit under
