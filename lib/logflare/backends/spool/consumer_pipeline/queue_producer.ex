@@ -11,6 +11,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   @throttle_interval 100
   @min_empty_backoff_ms 100
   @max_empty_backoff_ms 1_000
+  # How soon to retry once max_in_flight capacity frees up, instead of
+  # waiting out the full @poll_interval.
+  @min_in_flight_retry_ms 100
+  # Process-dictionary key for this producer's in-flight :atomics ref — read
+  # by ConsumerPipeline.transform/2, which Broadway runs in this same
+  # process (per Broadway.Topology.ProducerStage), so no cross-process
+  # registry is needed to hand the ref to the Acknowledger via ack_data.
+  @in_flight_key :spool_queue_producer_in_flight_ref
+
+  @doc "Returns this producer's in-flight ref — must be called from within the producer's own process."
+  @spec get_in_flight_ref() :: :atomics.atomics_ref() | nil
+  def get_in_flight_ref, do: Process.get(@in_flight_key)
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(opts) do
@@ -23,6 +35,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     bucket = Keyword.fetch!(opts, :bucket)
     storage_mod = Keyword.fetch!(opts, :storage_mod)
     queue_mod = Keyword.fetch!(opts, :queue_mod)
+    in_flight_ref = :atomics.new(1, signed: true)
 
     state = %{
       queue_url: queue_url,
@@ -38,8 +51,15 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       poll_backoff_ms: @min_empty_backoff_ms,
       # source_ids already sent to MemoryMonitor.register_source/1 — sent
       # once per producer lifetime, never again.
-      registered_sources: MapSet.new()
+      registered_sources: MapSet.new(),
+      # Caps how many lines can be emitted to Broadway and not yet acked, so a
+      # slow destination backend can't let this producer keep draining the
+      # queue into an unbounded batcher backlog.
+      in_flight_ref: in_flight_ref,
+      max_in_flight: Keyword.get(opts, :max_in_flight, :infinity)
     }
+
+    Process.put(@in_flight_key, in_flight_ref)
 
     {:producer, schedule_poll(state, 0)}
   end
@@ -58,7 +78,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     {events, state} =
       cond do
         buffered?(new_state) and not over_limit?() ->
-          emit_from_buffer(new_state)
+          {events, emitted_state} = emit_from_buffer(new_state)
+
+          emitted_state =
+            if capped_by_in_flight?(emitted_state),
+              do: schedule_poll(emitted_state, @min_in_flight_retry_ms),
+              else: emitted_state
+
+          {events, emitted_state}
 
         match?({:ready, _}, new_state.prefetch) ->
           {[], schedule_poll(new_state, 0)}
@@ -78,7 +105,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   def handle_info(:poll, state) do
     idle? = state.demand <= 0 or over_limit?()
 
-    dbg("poll #{Time.utc_now(:millisecond)}")
+    dbg("poll #{Time.utc_now(:millisecond)} #{state.demand}")
     {events, new_state} =
       if idle? do
         {[], state}
@@ -127,7 +154,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # is always pushed out to @throttle_interval instead, so no call site needs
   # its own throttle-awareness beyond deciding whether to act right now.
   defp schedule_poll(state, delay) do
-    effective_delay = if over_limit?(), do: @throttle_interval, else: delay
+    effective_delay =
+      cond do
+        over_limit?() -> @throttle_interval
+        capped_by_in_flight?(state) -> @min_in_flight_retry_ms
+        true -> delay
+      end
+
     if state.poll_timer, do: Process.cancel_timer(state.poll_timer)
 
     dbg("schedule poll #{Time.utc_now(:millisecond)} in #{effective_delay}")
@@ -242,7 +275,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp emit_from_buffer(%{demand: 0} = state), do: {[], state}
 
   defp emit_from_buffer(state) do
-    {to_emit, remaining} = Enum.split(state.current.lines, state.demand)
+    to_take = min(state.demand, available_in_flight(state))
+    {to_emit, remaining} = Enum.split(state.current.lines, to_take)
+
+    if to_emit != [], do: :atomics.add(state.in_flight_ref, 1, length(to_emit))
 
     new_state = %{
       state
@@ -251,6 +287,24 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     }
 
     {to_emit, new_state}
+  end
+
+  # A generous safety valve mirroring BufferProducer's capped_fetch_amount/2, not
+  # a fine-grained flow-control knob — caps how many lines this producer will
+  # hand to Broadway once too much already-emitted work is sitting unacked,
+  # e.g. stuck deep in the batcher's own buffering while a destination backend
+  # is slow. Should never engage during healthy operation.
+  defp available_in_flight(%{max_in_flight: :infinity}), do: :infinity
+
+  defp available_in_flight(%{in_flight_ref: ref, max_in_flight: max_in_flight}) do
+    max(max_in_flight - :atomics.get(ref, 1), 0)
+  end
+
+  # True when there are lines buffered and demand waiting for them, but no
+  # in-flight capacity to emit into right now — the specific condition that
+  # warrants a fast retry instead of waiting out the normal poll cadence.
+  defp capped_by_in_flight?(state) do
+    buffered?(state) and state.demand > 0 and available_in_flight(state) == 0
   end
 
   # Wraps do_fetch_next so an unexpected exception always yields a normal
