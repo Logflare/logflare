@@ -37,22 +37,7 @@ defmodule Logflare.Admin do
         |> Repo.one()
 
       if granter_locked do
-        case target |> Ecto.Changeset.change(admin: true) |> Repo.update() do
-          {:ok, user} ->
-            Logger.info("Admin privilege granted",
-              audit: %{
-                admin_user_id: granter.id,
-                admin_email: granter.email,
-                target_user_id: target.id,
-                target_user_email: target.email
-              }
-            )
-
-            user
-
-          {:error, changeset} ->
-            Repo.rollback(changeset)
-        end
+        update_admin_status(target, granter, true, "Admin privilege granted")
       else
         Repo.rollback(:unauthorized)
       end
@@ -70,48 +55,52 @@ defmodule Logflare.Admin do
   def revoke_admin(nil, _), do: {:error, :not_found}
 
   def revoke_admin(%User{admin: true} = granter, %User{} = target) do
-    cond do
-      granter.id == target.id ->
-        {:error, :self_revocation}
-
-      true ->
-        Repo.transaction(fn ->
-          # Lock all admin rows so concurrent revocations are serialised and
-          # we can re-verify the granter's admin status from a consistent snapshot.
-          admins = from(u in User, where: u.admin == true, lock: "FOR UPDATE") |> Repo.all()
-
-          cond do
-            not Enum.any?(admins, &(&1.id == granter.id)) ->
-              Repo.rollback(:unauthorized)
-
-            length(admins) <= 1 ->
-              Repo.rollback(:last_admin)
-
-            true ->
-              case target |> Ecto.Changeset.change(admin: false) |> Repo.update() do
-                {:ok, user} ->
-                  Logger.info("Admin privilege revoked",
-                    audit: %{
-                      admin_user_id: granter.id,
-                      admin_email: granter.email,
-                      target_user_id: target.id,
-                      target_user_email: target.email
-                    }
-                  )
-
-                  user
-
-                {:error, changeset} ->
-                  Repo.rollback(changeset)
-              end
-          end
-        end)
+    if granter.id == target.id do
+      {:error, :self_revocation}
+    else
+      Repo.transaction(fn -> do_revoke_admin(granter, target) end)
     end
   end
 
   def revoke_admin(%User{}, nil), do: {:error, :not_found}
 
   def revoke_admin(%User{}, %User{}), do: {:error, :unauthorized}
+
+  defp do_revoke_admin(granter, target) do
+    # Lock all admin rows so concurrent revocations are serialised and
+    # we can re-verify the granter's admin status from a consistent snapshot.
+    admins = from(u in User, where: u.admin == true, lock: "FOR UPDATE") |> Repo.all()
+
+    cond do
+      length(admins) <= 1 ->
+        Repo.rollback(:last_admin)
+
+      not Enum.any?(admins, &(&1.id == granter.id)) ->
+        Repo.rollback(:unauthorized)
+
+      true ->
+        update_admin_status(target, granter, false, "Admin privilege revoked")
+    end
+  end
+
+  defp update_admin_status(target, granter, admin_value, log_message) do
+    case target |> Ecto.Changeset.change(admin: admin_value) |> Repo.update() do
+      {:ok, user} ->
+        Logger.info(log_message,
+          audit: %{
+            admin_user_id: granter.id,
+            admin_email: granter.email,
+            target_user_id: target.id,
+            target_user_email: target.email
+          }
+        )
+
+        user
+
+      {:error, changeset} ->
+        Repo.rollback(changeset)
+    end
+  end
 
   @spec admin?(String.t() | nil) :: boolean()
   def admin?(email) when is_binary(email) do
