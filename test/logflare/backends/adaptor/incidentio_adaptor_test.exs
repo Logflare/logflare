@@ -152,8 +152,8 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
       # link to the backend
       assert alert_source_url =~ "/backends/"
       assert title =~ "events detected"
-      # no alert title is configured for raw log ingestion, so dedup key falls back to "unknown"
-      assert deduplication_key =~ ~r/^unknown-\d+$/
+      # no alert query is configured for raw log ingestion, so dedup key falls back to "unknown"
+      assert deduplication_key =~ ~r/^unknown-unknown-\d+$/
     end
   end
 
@@ -220,7 +220,8 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
       assert alert_source_url =~ "/alerts/"
       assert title =~ alert_query.name
       assert description =~ alert_query.description
-      assert deduplication_key =~ ~r/^#{Regex.escape(alert_query.name)}-\d+$/
+      assert deduplication_key =~
+               ~r/^#{alert_query.id}-#{Regex.escape(alert_query.name)}-\d+$/
     end
   end
 end

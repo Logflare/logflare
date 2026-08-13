@@ -30,6 +30,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
       |> Map.put(:source_url, url(~p"/alerts/#{alert_query.id}"))
       |> Map.put(:title, alert_query.name)
       |> Map.put(:description, alert_query.description)
+      |> Map.put(:alert_query_id, alert_query.id)
 
     updated_backend = %{backend | config: updated_config}
 
@@ -51,13 +52,14 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
       end)
 
     alert_name = Map.get(config, :title, "unknown")
+    alert_query_id = Map.get(config, :alert_query_id, "unknown")
     window = div(DateTime.to_unix(DateTime.utc_now()), 3 * 60 * 60)
 
     metadata = Map.get(config, :metadata, %{})
     merged_metadata = Map.merge(metadata, %{"data" => batch})
 
     %{
-      "deduplication_key" => "#{alert_name}-#{window}",
+      "deduplication_key" => "#{alert_query_id}-#{alert_name}-#{window}",
       "description" => Map.get(config, :description),
       "metadata" => merged_metadata,
       "source_url" => Map.get(config, :source_url),
