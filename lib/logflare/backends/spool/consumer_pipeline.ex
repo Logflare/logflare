@@ -113,9 +113,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   end
 
   @impl Broadway
-  def handle_batch(_batcher, messages, batch_info, _context) do
-    start = System.monotonic_time()
-
+  def handle_batch(_batcher, messages, _batch_info, _context) do
     messages
     |> Enum.map(& &1.data)
     |> Enum.group_by(&record_source_id/1)
@@ -132,8 +130,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   end
 
   defp dispatch_group(source_id, lines) do
-    start = System.monotonic_time()
-
     case Sources.get(source_id) do
       nil ->
         emit_skipped_telemetry(:unknown_source_id, length(lines))
