@@ -460,9 +460,7 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
          root:
            {LogflareWeb.OpenTelemetrySampler,
             %{
-              probability:
-                System.get_env("LOGFLARE_OTEL_SAMPLE_RATIO", "1.0")
-                |> Utils.parse_float!()
+              probability: default_sample_ratio
             }}
        }}
 
