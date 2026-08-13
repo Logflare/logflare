@@ -488,6 +488,7 @@ config :syn,
 enable_alerting? = Env.get_boolean("LOGFLARE_ALERTS_ENABLED", true)
 
 config :logflare, Oban,
+  prefix: System.get_env("DB_SCHEMA", "public"),
   queues: [default: 10] ++ if(enable_alerting?, do: [alerts: 5], else: []),
   plugins: [
     {Oban.Plugins.Pruner, max_age: 86_400},
