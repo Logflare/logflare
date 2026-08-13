@@ -1,3 +1,23 @@
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
+  alias Logflare.Backends.Backend
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "configures ClickHouse telemetry tags" do
+    backend = %Backend{id: 301, type: :clickhouse}
+
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :clickhouse}, fn ->
+      Pipeline.start_link(name: :clickhouse_telemetry_tags_test, backend: backend)
+    end)
+  end
+end
+
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   use Logflare.DataCase, async: false
 
@@ -980,7 +1000,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
 
         assert log =~ "Dropped 1 ClickHouse event(s) during retry requeue"
-        assert_receive {^telemetry_event, ^ref, %{count: 1}, %{backend_id: backend_id}}
+
+        assert_receive {^telemetry_event, ^ref, %{count: 1},
+                        %{backend_id: backend_id, backend_type: :clickhouse}}
+
         assert backend_id == backend.id
 
         # nothing landed in the current generation — the event was already gone at

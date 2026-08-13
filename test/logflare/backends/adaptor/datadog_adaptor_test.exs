@@ -119,6 +119,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       this = self()
       ref = make_ref()
 
+      TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
+
       @client
       |> expect(:send, fn _req ->
         send(this, ref)
@@ -129,6 +131,9 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive ^ref, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
+                      _measurements, %{backend_type: :datadog}}
     end
 
     test "bug: nil event_message is still handled correctly ", %{source: source} do

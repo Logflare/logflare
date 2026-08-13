@@ -45,7 +45,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
           batch_timeout: 1_000,
           concurrency: 1
         ]
-      ]
+      ],
+      context: %{telemetry_tags: %{pipeline: __MODULE__}}
     )
   end
 

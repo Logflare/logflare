@@ -13,7 +13,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
   alias Logflare.LogEvent
   alias Logflare.TestUtils
 
-  setup :set_mimic_global
+  setup :verify_on_exit!
 
   @max_spool_file_size 32 * 1024 * 1024
   @early_flush_file_size 12 * 1024 * 1024
@@ -30,6 +30,18 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
     end)
 
     :ok
+  end
+
+  test "configures spool-producer telemetry tags" do
+    Application.put_env(:logflare, :spool,
+      bucket: "test-bucket",
+      queue_mod: QueueMod,
+      storage_mod: StorageMod
+    )
+
+    TestUtils.assert_broadway_telemetry_tags(%{pipeline: ProducerPipeline}, fn ->
+      ProducerPipeline.start_link(name: :spool_producer_telemetry_tags_test)
+    end)
   end
 
   defp message(size) do

@@ -1,3 +1,25 @@
+defmodule Logflare.Backends.Adaptor.AxiomAdaptorPipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Adaptor.HttpBased
+  alias Logflare.Backends.Backend
+  alias Logflare.Sources.Source
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "uses the concrete backend type" do
+    source = %Source{id: 101}
+    backend = %Backend{id: 301, type: :axiom}
+
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :axiom}, fn ->
+      HttpBased.Pipeline.start_link(source, backend, HttpBased.Client)
+    end)
+  end
+end
+
 defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
   use Logflare.DataCase, async: false
 
@@ -109,14 +131,31 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
   describe "logs ingestion" do
     setup :backend_data
 
-    setup %{source: source} do
+    setup %{source: source, backend: backend} do
       start_supervised!({SourceSup, source})
+
+      pipeline_name = Backends.via_source(source, HttpBased.Pipeline, backend)
+
+      TestUtils.retry_assert(fn ->
+        assert is_pid(GenServer.whereis(pipeline_name))
+      end)
+
       :ok
     end
 
     test "sends logs via REST API", %{source: source} do
       this = self()
       ref = make_ref()
+
+      broadway_duration_events = [
+        [:broadway, :batcher, :stop],
+        [:broadway, :batch_processor, :stop],
+        [:broadway, :processor, :message, :stop],
+        [:broadway, :processor, :stop]
+      ]
+
+      Enum.each(broadway_duration_events, &TestUtils.attach_forwarder/1)
+      TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
 
       mock_adapter(fn env ->
         # Based on https://axiom.co/docs/restapi/endpoints/ingestIntoDataset?playground=open
@@ -142,6 +181,25 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
       assert_receive {^ref, gzipped}, 5000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
+                      _measurements, %{backend_type: :axiom}}
+
+      metrics = Logflare.Telemetry.metrics()
+      deadline = System.monotonic_time(:millisecond) + 5_000
+
+      for event <- broadway_duration_events do
+        timeout = max(deadline - System.monotonic_time(:millisecond), 0)
+
+        assert_receive {:telemetry_event, ^event, %{duration: duration},
+                        %{context: %{telemetry_tags: %{backend_type: :axiom}}} = metadata},
+                       timeout
+
+        assert is_integer(duration)
+        assert %{tag_values: tag_values} = Enum.find(metrics, &(&1.event_name == event))
+        assert tag_values.(metadata) == %{backend_type: :axiom}
+      end
+
       assert json = :zlib.gunzip(gzipped)
       assert [log] = Jason.decode!(json)
       assert log["event_message"] == log_event.body["event_message"]

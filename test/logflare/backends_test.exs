@@ -1004,6 +1004,31 @@ defmodule Logflare.BackendsTest do
       # for system default
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
                       %{count: ^log_count}, %{backend_type: :bigquery}}
+
+      # for direct dispatch, including the path used by backend-routing rules
+      assert {:ok, ^log_count} = Backends.ingest_logs(events, source, backend)
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
+                      %{count: ^log_count}, %{backend_type: :postgres}}
+    end
+
+    test "emits count telemetry for direct consolidated backend ingestion", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        :backend
+        |> insert(user: user, type: :clickhouse)
+        |> Map.merge(%{consolidated_ingest?: true, config: %{max_event_age_hours: 0}})
+
+      TestUtils.attach_forwarder([:logflare, :backends, :ingest, :dispatch])
+
+      log_count = 3
+      events = for _n <- 1..log_count, do: build(:log_event, source: source)
+
+      assert {:ok, ^log_count} = Backends.ingest_logs(events, source, backend)
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
+                      %{count: ^log_count}, %{backend_type: :clickhouse}}
     end
   end
 

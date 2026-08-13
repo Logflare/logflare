@@ -28,7 +28,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
         "dev-dashboard-write-#{pid}",
         [:logflare, :backends, :pipeline, :handle_batch],
         fn _event, %{batch_size: size}, meta, refs ->
-          accumulate_batch(meta, size, :spool_producer, refs)
+          accumulate_batch(meta, size, {:pipeline, @pipeline}, refs)
         end,
         {write_rate_atomic, write_total_atomic}
       )
@@ -365,11 +365,15 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     end)
   end
 
-  defp accumulate_batch(meta, size, backend_type, {rate_ref, total_ref}) do
-    if Map.get(meta, :backend_type) == backend_type do
+  defp accumulate_batch(meta, size, {tag, value}, {rate_ref, total_ref}) do
+    if Map.get(meta, tag) == value do
       :atomics.add(rate_ref, 1, size)
       :atomics.add(total_ref, 1, size)
     end
+  end
+
+  defp accumulate_batch(meta, size, backend_type, refs) do
+    accumulate_batch(meta, size, {:backend_type, backend_type}, refs)
   end
 
   defp empty_metrics do
