@@ -1,24 +1,8 @@
 name: Integration Tests with Supabase
 
+# Temporarily manual-only while the BigQuery CI service account IAM is repaired.
 on:
-  pull_request:
-    branches:
-      - main
-    paths: &watched_paths
-      - 'config/**'
-      - 'assets/**'
-      - 'lib/**'
-      - 'priv/**'
-      - 'mix.exs'
-      - 'mix.lock'
-      - 'Dockerfile'
-      - 'run.sh'
-      - 'test/e2e/supabase/**'
-      - '.github/workflows/integration-supabase.yml'
-  push:
-    branches:
-      - main
-    paths: *watched_paths
+  workflow_dispatch:
 
 # Cancel old builds on new commit for same workflow + branch/PR
 concurrency:

@@ -22,7 +22,6 @@ defmodule Logflare.LogEventTest do
              drop: false,
              id: id,
              ingested_at: _,
-             is_from_stale_query: nil,
              source_id: source_id,
              valid: true,
              pipeline_error: nil,
@@ -655,7 +654,6 @@ defmodule Logflare.LogEventTest do
              drop: false,
              id: id,
              ingested_at: _,
-             is_from_stale_query: nil,
              valid: true,
              pipeline_error: nil,
              via_rule_id: nil

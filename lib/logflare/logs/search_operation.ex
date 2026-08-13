@@ -9,6 +9,7 @@ defmodule Logflare.Logs.SearchOperation do
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
+  alias Logflare.Logs.EventPage
   alias Logflare.Sources.Source
 
   typedstruct do
@@ -35,6 +36,7 @@ defmodule Logflare.Logs.SearchOperation do
     field :chart_data_shape_id, atom(), default: nil, enforce: true
     field :type, :events | :aggregates
     field :status, {atom(), String.t() | [String.t()]}
+    field :event_page_request, EventPage.request()
   end
 
   def new(params) do
