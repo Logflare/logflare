@@ -135,7 +135,6 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
 
     setup %{source: source, backend: backend} do
       start_supervised!({SourceSup, source})
-++++++ mrpmplzq 719b495b "test(telemetry): colocate Broadway tag coverage" (rebased revision)
 
       pipeline_name = Backends.via_source(source, HttpBased.Pipeline, backend)
 
