@@ -1,4 +1,0 @@
-services:
-  logflare:
-    image: supabase/logflare:latest
-    build: !override

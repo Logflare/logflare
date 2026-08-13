@@ -1,9 +1,0 @@
-<div class="banner">
-    <%= @message %>
-
-    <%= if @cta_text != nil and @cta_link != nil do %>
-        <a target="_blank" href="<%= @cta_link %>" %>
-            <%= @cta_text %>
-        </a>
-    <% end %>
-</div>

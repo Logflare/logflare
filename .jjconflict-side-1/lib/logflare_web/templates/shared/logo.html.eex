@@ -1,6 +1,0 @@
-<div class="d-flex align-items-center">
-    <div id="logo-box"><i class="fas fa-stream"></i></div>
-    <div>
-        Logflare <small class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small>
-    </div>
-</div>

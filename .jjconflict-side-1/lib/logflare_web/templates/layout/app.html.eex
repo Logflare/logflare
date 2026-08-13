@@ -1,4 +1,0 @@
-<%= render("flash.html", flash: %{info: Phoenix.Flash.get(@flash, :info), error: Phoenix.Flash.get(@flash, :error)}) %>
-<main role="main" class="app">
-  <%= @inner_content %>
-</main>

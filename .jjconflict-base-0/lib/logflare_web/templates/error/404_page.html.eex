@@ -1,7 +1,0 @@
-<%= render_in "error_container.html", assigns do %>
-  <div class="col-lg-7">
-    <h1>404</h1>
-    <h2 class="text-white mb-3">Page not found </h2>
-    <p>Get back <a href="/">to homepage</a></p>
-  </div>
-<% end %>
