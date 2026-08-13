@@ -129,14 +129,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
         throttled: if(stats.throttled?, do: 1, else: 0),
         total_percent: stats.total_percent,
         ets_percent: stats.ets_percent,
-        consumer_throttled: if(stats.consumer_throttled?, do: 1, else: 0),
-        # Single at-a-glance signal for "is the spool throttled for any
-        # reason right now" — throttled? and consumer_throttled? are two
-        # independent causes (node memory pressure vs. a destination's
-        # ingest buffer backing up); dashboards/alerts that just want "is
-        # something holding the consumer back" shouldn't have to know both
-        # exist or OR them together themselves.
-        any_throttled: if(stats.throttled? or stats.consumer_throttled?, do: 1, else: 0)
+        consumer_throttled: if(stats.consumer_throttled?, do: 1, else: 0)
       },
       %{}
     )

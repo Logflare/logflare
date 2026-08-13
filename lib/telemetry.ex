@@ -302,10 +302,6 @@ defmodule Logflare.Telemetry do
         description:
           "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
       ),
-      last_value("logflare.backends.spool.throttled.any_throttled",
-        description:
-          "Spool: currently throttled for any reason (memory pressure OR consumer backpressure), 1=throttled, 0=not"
-      ),
       sum("logflare.backends.spool.storage.put.count",
         tags: [:format, :result],
         description: "Spool storage writes (S3/GCS put) count by format/result"
