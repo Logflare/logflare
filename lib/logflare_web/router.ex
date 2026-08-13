@@ -22,7 +22,7 @@ defmodule LogflareWeb.Router do
 
   @auth_live_hooks [LogflareWeb.AuthLive]
   @team_param_live_hooks [LogflareWeb.AuthLive, {LogflareWeb.AuthLive, :ensure_team_param}]
-  @admin_hooks [LogflareWeb.AdminLive.AdminAuth]
+  @admin_hooks [{LogflareWeb.AdminLive.AdminAuth, :ensure_admin}]
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -401,7 +401,7 @@ defmodule LogflareWeb.Router do
     put("/plans/:id", AdminPlanController, :update)
 
     delete("/accounts/:id", AdminController, :delete_account)
-    get("/accounts/:id/become", AdminController, :become_account)
+    post("/accounts/:id/become", AdminController, :become_account)
     post("/accounts/:id/grant_admin", AdminController, :grant_admin)
     post("/accounts/:id/revoke_admin", AdminController, :revoke_admin)
 

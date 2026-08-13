@@ -34,14 +34,14 @@ defmodule LogflareWeb.AdminLive.AdminAuthTest do
                bare_socket()
              )
 
-    assert socket.redirected == {:redirect, %{to: "/"}}
+    assert socket.redirected == {:redirect, %{to: "/", status: 302}}
   end
 
   test "on_mount :ensure_admin redirects when session has no email" do
     assert {:halt, socket} =
              AdminAuth.on_mount(:ensure_admin, %{}, %{}, bare_socket())
 
-    assert socket.redirected == {:redirect, %{to: "/"}}
+    assert socket.redirected == {:redirect, %{to: "/", status: 302}}
   end
 
   test "on_mount :ensure_admin re-checks DB so a revoked admin is redirected" do
@@ -57,6 +57,6 @@ defmodule LogflareWeb.AdminLive.AdminAuthTest do
                bare_socket()
              )
 
-    assert socket.redirected == {:redirect, %{to: "/"}}
+    assert socket.redirected == {:redirect, %{to: "/", status: 302}}
   end
 end

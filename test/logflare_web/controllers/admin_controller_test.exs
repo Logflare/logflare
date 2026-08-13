@@ -124,7 +124,7 @@ defmodule LogflareWeb.AdminControllerTest do
           conn
           |> login_user(admin)
           |> Plug.Test.init_test_session(%{last_switched_team_id: team.id})
-          |> get(~p"/admin/accounts/#{target.id}/become")
+          |> post(~p"/admin/accounts/#{target.id}/become")
         end)
 
       assert log =~ admin.email
@@ -137,7 +137,7 @@ defmodule LogflareWeb.AdminControllerTest do
       conn =
         conn
         |> login_user(admin)
-        |> get(~p"/admin/accounts/#{user.id}/become")
+        |> post(~p"/admin/accounts/#{user.id}/become")
         |> follow_redirect()
 
       assert redir_path = redirected_to(conn)
@@ -178,7 +178,7 @@ defmodule LogflareWeb.AdminControllerTest do
         |> login_user(admin)
         |> put_resp_cookie("_logflare_user_id", inspect(admin.id), max_age: 2_592_000)
         |> put_resp_cookie("_logflare_team_user_id", inspect(user_team.id), max_age: 2_592_000)
-        |> get(~p"/admin/accounts/#{user.id}/become")
+        |> post(~p"/admin/accounts/#{user.id}/become")
         |> follow_redirect()
 
       assert redir_path = redirected_to(conn)
@@ -271,7 +271,7 @@ defmodule LogflareWeb.AdminControllerTest do
       conn =
         conn
         |> login_user(admin)
-        |> get(~p"/admin/accounts/0/become")
+        |> post(~p"/admin/accounts/0/become")
 
       assert redirected_to(conn) == ~p"/admin/accounts"
       assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Account not found."
@@ -394,7 +394,7 @@ defmodule LogflareWeb.AdminControllerTest do
         conn
         |> login_user(admin)
         |> Plug.Test.init_test_session(%{last_switched_team_id: admin_team.id})
-        |> get(~p"/admin/accounts/#{user.id}/become")
+        |> post(~p"/admin/accounts/#{user.id}/become")
 
       assert redir_path = redirected_to(conn)
       assert ~p"/dashboard" == redir_path
