@@ -316,15 +316,27 @@ defmodule LogflareWeb.AdminControllerTest do
       refute Logflare.Users.get(target.id).admin
     end
 
-    test "revoke_admin is blocked when target is the last admin", %{conn: conn, admin: admin} do
-      conn =
-        conn
-        |> login_user(admin)
-        |> post(~p"/admin/accounts/#{admin.id}/revoke_admin")
+    test "revoke_admin is blocked when target is the last remaining admin", %{admin: admin} do
+      other_admin = insert(:user, admin: true)
 
-      assert redirected_to(conn) == ~p"/admin/accounts"
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "last admin"
-      assert Logflare.Users.get(admin.id).admin
+      # With exactly two admins, each revoking the other concurrently should
+      # allow exactly one to succeed while the other is blocked, since it
+      # would leave zero admins.
+      parent = self()
+
+      results =
+        [{admin, other_admin}, {other_admin, admin}]
+        |> Enum.map(fn {granter, target} ->
+          Task.async(fn ->
+            Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, parent, self())
+            Logflare.Admin.revoke_admin(granter, target)
+          end)
+        end)
+        |> Enum.map(&Task.await/1)
+
+      assert Enum.count(results, &match?({:ok, _}, &1)) == 1
+      assert Enum.count(results, &match?({:error, :last_admin}, &1)) == 1
+      assert Logflare.Users.get(admin.id).admin or Logflare.Users.get(other_admin.id).admin
     end
 
     test "admin cannot revoke their own admin access", %{conn: conn, admin: admin} do
