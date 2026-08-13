@@ -1,4 +1,0 @@
-[workspace]
-resolver = "2"
-
-members = ["native/arrowipc_ex", "native/sqlparser_ex", "native/mapper_ex"]
