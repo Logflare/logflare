@@ -473,7 +473,7 @@ defmodule Logflare.BillingTest do
       insert(:plan, name: "Lifetime")
 
       ba = insert(:billing_account, lifetime_plan: true) |> Repo.preload(:user)
-      preloaded_user = ba.user
+      preloaded_user = %{ba.user | billing_account: ba}
 
       count_billing_account_queries = fn ->
         {:ok, counter} = Agent.start_link(fn -> 0 end)
