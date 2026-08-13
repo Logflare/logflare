@@ -155,7 +155,6 @@ defmodule Logflare.Utils do
   def stringify(v) when is_integer(v), do: Integer.to_string(v)
   def stringify(v), do: inspect(v)
 
-
   @doc """
   Parses a value into a float.
 
@@ -184,7 +183,7 @@ defmodule Logflare.Utils do
 
   def parse_float!(v) when is_integer(v), do: v / 1
   def parse_float!(v) when is_float(v), do: v
-  def parse_float!(v), do: raise "Could not parse to float: #{inspect(v)}"
+  def parse_float!(v), do: raise("Could not parse to float: #{inspect(v)}")
 
   @doc """
   Appends a value to the end of a tuple.
