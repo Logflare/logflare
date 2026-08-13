@@ -367,20 +367,8 @@ defmodule Logflare.Billing do
       billing_accounts_by_user_id = fetch_billing_accounts_by_user_id(users)
 
       Map.new(users, fn user ->
-        billing_account =
-          if Ecto.assoc_loaded?(user.billing_account) do
-            user.billing_account
-          else
-            Map.get(billing_accounts_by_user_id, user.id)
-          end
-
-        plan =
-          if upgraded?(user, upgraded_ids) do
-            plan_finder.(name: "Enterprise")
-          else
-            resolve_plan(user.billing_enabled, billing_account, plan_finder)
-          end
-
+        billing_account = resolve_billing_account(user, billing_accounts_by_user_id)
+        plan = resolve_user_plan(user, billing_account, upgraded_ids, plan_finder)
         {user.id, plan}
       end)
     end
@@ -390,6 +378,22 @@ defmodule Logflare.Billing do
     do: upgraded?
 
   defp upgraded?(%User{id: id}, upgraded_ids), do: MapSet.member?(upgraded_ids, id)
+
+  defp resolve_billing_account(user, billing_accounts_by_user_id) do
+    if Ecto.assoc_loaded?(user.billing_account) do
+      user.billing_account
+    else
+      Map.get(billing_accounts_by_user_id, user.id)
+    end
+  end
+
+  defp resolve_user_plan(user, billing_account, upgraded_ids, plan_finder) do
+    if upgraded?(user, upgraded_ids) do
+      plan_finder.(name: "Enterprise")
+    else
+      resolve_plan(user.billing_enabled, billing_account, plan_finder)
+    end
+  end
 
   defp fetch_upgraded_user_ids(users) do
     case users |> Enum.reject(&is_boolean(&1.partner_upgraded)) |> Enum.map(& &1.id) do
@@ -438,14 +442,18 @@ defmodule Logflare.Billing do
             plan_finder.(name: "Free")
 
           billing_account ->
-            case get_billing_account_stripe_plan(billing_account) do
-              nil ->
-                plan_finder.(name: "Free")
-
-              stripe_plan ->
-                plan_finder.(stripe_id: stripe_plan["id"])
-            end
+            resolve_stripe_plan(billing_account, plan_finder)
         end
+    end
+  end
+
+  defp resolve_stripe_plan(billing_account, plan_finder) do
+    case get_billing_account_stripe_plan(billing_account) do
+      nil ->
+        plan_finder.(name: "Free")
+
+      stripe_plan ->
+        plan_finder.(stripe_id: stripe_plan["id"])
     end
   end
 
