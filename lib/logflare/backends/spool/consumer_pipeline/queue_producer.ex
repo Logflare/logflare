@@ -253,7 +253,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       storage_mod = state.storage_mod
 
       Task.start(fn ->
-
         # A crash here must still deliver a {:prefetch_result, _} message —
         # otherwise state.prefetch is stuck at :running forever (maybe_start_prefetch
         # refuses to start a new one, and nothing else will ever unstick it).
