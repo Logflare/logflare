@@ -74,7 +74,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   def handle_demand(demand, state) do
     new_state = %{state | demand: state.demand + demand}
 
-    dbg("demand #{Time.utc_now(:millisecond)} #{demand}")
     {events, state} =
       cond do
         buffered?(new_state) and not over_limit?() ->
@@ -105,7 +104,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   def handle_info(:poll, state) do
     idle? = state.demand <= 0 or over_limit?()
 
-    dbg("poll #{Time.utc_now(:millisecond)} #{state.demand}")
     {events, new_state} =
       if idle? do
         {[], state}
@@ -163,7 +161,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
     if state.poll_timer, do: Process.cancel_timer(state.poll_timer)
 
-    dbg("schedule poll #{Time.utc_now(:millisecond)} in #{effective_delay}")
     %{state | poll_timer: Process.send_after(self(), :poll, effective_delay)}
   end
 

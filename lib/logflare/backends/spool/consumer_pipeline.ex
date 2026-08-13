@@ -128,12 +128,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         dispatch_group(source_id, lines)
     end)
 
-    System.convert_time_unit(System.monotonic_time() - start, :native, :millisecond) |> dbg()
-
-    dbg(
-      "handle_batch #{Time.utc_now(:millisecond)} #{Map.get(batch_info, :size)} #{Map.get(batch_info, :trigger)}"
-    )
-
     messages
   end
 
@@ -152,8 +146,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         {:ok, _} = Backends.dispatch_from_spool(lines, source)
         :ok
     end
-
-    System.convert_time_unit(System.monotonic_time() - start, :native, :millisecond) |> dbg()
   end
 
   defp emit_skipped_telemetry(reason, count) do
