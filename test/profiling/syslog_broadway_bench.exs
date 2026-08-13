@@ -5,264 +5,190 @@
 #
 # Useful env:
 #   SYSLOG_BENCH_MESSAGE_BYTES=200,2000,50000
-#   SYSLOG_BENCH_CONCURRENCY=1,5
+#   SYSLOG_BENCH_CONCURRENCY=1,5  # processor concurrency
+#   SYSLOG_BENCH_BATCHER_CONCURRENCY=5
 #   SYSLOG_BENCH_BATCH_SIZE=50
 #   SYSLOG_BENCH_EVENTS=5000
-#   SYSLOG_BENCH_PUSH_CHUNK=1000
 #   SYSLOG_BENCH_TIME=5
 #   SYSLOG_BENCH_WARMUP=2
 
 Code.require_file("syslog_bench_support.exs", __DIR__)
 
-defmodule SyslogBroadwayBench.Pipeline do
-  @moduledoc false
+defmodule SyslogBroadwayBench do
+  use Broadway
 
   alias Broadway.Message
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.Pool
   alias Logflare.Backends.Adaptor.SyslogAdaptor.Syslog
-  alias SyslogBenchSupport.NimbleTcpPool
+  alias SyslogBenchSupport, as: Support
 
-  def producer(source, backend) do
-    [
-      module:
-        {Backends.BufferProducer,
-         backend_id: backend.id,
-         source_id: source.id,
-         interval: 10,
-         buffer_size: SyslogBenchSupport.events() * 2},
-      transformer: {__MODULE__, :transform, []}
+  @spec setup(map(), :batched | :unbatched | :preformatted) :: map()
+  def setup(input, mode) do
+    sink = Support.start_sink()
+    source = Support.source()
+    backend = Support.backend(sink.port)
+    :ok = Support.cache_backend(backend)
+
+    pool_name = __MODULE__.Pool
+    pipeline_name = __MODULE__.Pipeline
+
+    {:ok, pool} =
+      Pool.start_link(
+        backend_id: backend.id,
+        name: pool_name,
+        worker_idle_timeout: 60_000
+      )
+
+    context = %{
+      backend_id: backend.id,
+      mode: mode,
+      pool: pool,
+      source_id: source.id
+    }
+
+    broadway_opts = [
+      pipeline_module: __MODULE__,
+      producer: [module: {Broadway.DummyProducer, []}],
+      processors: [default: [concurrency: input.concurrency, min_demand: 1]],
+      batchers: batchers(mode),
+      context: context
     ]
+
+    {:ok, pipeline} =
+      Pipeline.start_link(
+        [source: source, backend: backend, pool: pool, name: pipeline_name],
+        broadway_opts
+      )
+
+    state = %{
+      events: Enum.map(input.events, &Pipeline.transform(&1, [])),
+      pipeline: pipeline,
+      pipeline_name: pipeline_name,
+      pool: pool,
+      sink: sink
+    }
+
+    run(state)
+    state
   end
 
-  def processor_opts(concurrency) do
-    [default: [concurrency: concurrency, min_demand: 1]]
+  @spec run(map()) :: map()
+  def run(state) do
+    ref = Support.expect_frames(state.sink, length(state.events))
+    :ok = Broadway.push_messages(state.pipeline_name, state.events)
+    Support.await_frames(ref)
   end
 
-  def batcher_opts(concurrency, batch_size) do
-    [syslog: [concurrency: concurrency, batch_size: batch_size]]
-  end
-
-  def context(pool, backend) do
-    %{pool: pool, backend_id: backend.id}
-  end
-
-  def send_batch(pool, content, messages) do
-    case NimbleTcpPool.send(pool, content) do
-      :ok -> messages
-      {:error, reason} -> fail_batch(messages, reason)
-    end
-  end
-
-  def lookup_backend_config(backend_id) do
-    %{config: config} =
-      Backends.Cache.get_backend(backend_id) || raise "missing backend #{backend_id}"
-
-    config
-  end
-
-  def transform(event, _opts) do
-    %Message{data: event, acknowledger: {__MODULE__, _ref = nil, _meta = []}}
-  end
-
-  def ack(_ack_ref, _successful, _failed), do: :ok
-
-  defp fail_batch(messages, reason) do
-    Enum.map(messages, fn message ->
-      Broadway.Message.failed(message, reason)
-    end)
-  end
-end
-
-defmodule SyslogBroadwayBench.BatchedPipeline do
-  @moduledoc false
-
-  use Broadway
-
-  alias Broadway.Message
-  alias Logflare.Backends.Adaptor.SyslogAdaptor.Syslog
-  alias SyslogBroadwayBench.Pipeline
-
-  @behaviour Broadway.Acknowledger
-
-  def start_link(opts) do
-    Broadway.start_link(__MODULE__,
-      name: Keyword.fetch!(opts, :name),
-      producer: Pipeline.producer(Keyword.fetch!(opts, :source), Keyword.fetch!(opts, :backend)),
-      processors: Pipeline.processor_opts(Keyword.fetch!(opts, :processor_concurrency)),
-      batchers:
-        Pipeline.batcher_opts(
-          Keyword.fetch!(opts, :batcher_concurrency),
-          Keyword.fetch!(opts, :batch_size)
-        ),
-      context: Pipeline.context(Keyword.fetch!(opts, :pool), Keyword.fetch!(opts, :backend))
-    )
+  @spec teardown(map()) :: map()
+  def teardown(state) do
+    :ok = Broadway.stop(state.pipeline)
+    :ok = GenServer.stop(state.pool)
+    :ok = Support.stop_sink(state.sink)
+    state
   end
 
   @impl Broadway
-  def handle_message(_processor_name, message, _context) do
+  def handle_message(_processor_name, message, %{mode: :batched}) do
     Message.put_batcher(message, :syslog)
   end
 
-  @impl Broadway
-  def handle_batch(:syslog, messages, _batch_info, context) do
-    config = Pipeline.lookup_backend_config(context.backend_id)
-    content = for %Message{data: event} <- messages, do: Syslog.format(event, config)
-    Pipeline.send_batch(context.pool, content, messages)
+  def handle_message(_processor_name, message, %{mode: :unbatched} = context) do
+    config = lookup_backend_config(context.backend_id)
+    send_one(message, Syslog.format(message.data, config), context.pool)
   end
 
-  @impl Broadway.Acknowledger
-  defdelegate ack(ack_ref, successful, failed), to: Pipeline
-end
-
-defmodule SyslogBroadwayBench.NoBatcherPipeline do
-  @moduledoc false
-
-  use Broadway
-
-  alias Logflare.Backends.Adaptor.SyslogAdaptor.Syslog
-  alias SyslogBenchSupport.NimbleTcpPool
-  alias SyslogBroadwayBench.Pipeline
-
-  @behaviour Broadway.Acknowledger
-
-  def start_link(opts) do
-    Broadway.start_link(__MODULE__,
-      name: Keyword.fetch!(opts, :name),
-      producer: Pipeline.producer(Keyword.fetch!(opts, :source), Keyword.fetch!(opts, :backend)),
-      processors: Pipeline.processor_opts(Keyword.fetch!(opts, :processor_concurrency)),
-      context: Pipeline.context(Keyword.fetch!(opts, :pool), Keyword.fetch!(opts, :backend))
-    )
-  end
-
-  @impl Broadway
-  def handle_message(_processor_name, message, context) do
-    config = Pipeline.lookup_backend_config(context.backend_id)
-
-    case NimbleTcpPool.send(context.pool, Syslog.format(message.data, config)) do
-      :ok -> message
-      {:error, reason} -> Broadway.Message.failed(message, reason)
-    end
-  end
-
-  @impl Broadway.Acknowledger
-  defdelegate ack(ack_ref, successful, failed), to: Pipeline
-end
-
-defmodule SyslogBroadwayBench.PreformattedPipeline do
-  @moduledoc false
-
-  use Broadway
-
-  alias Broadway.Message
-  alias Logflare.Backends.Adaptor.SyslogAdaptor.Syslog
-  alias SyslogBroadwayBench.Pipeline
-
-  @behaviour Broadway.Acknowledger
-
-  def start_link(opts) do
-    Broadway.start_link(__MODULE__,
-      name: Keyword.fetch!(opts, :name),
-      producer: Pipeline.producer(Keyword.fetch!(opts, :source), Keyword.fetch!(opts, :backend)),
-      processors: Pipeline.processor_opts(Keyword.fetch!(opts, :processor_concurrency)),
-      batchers:
-        Pipeline.batcher_opts(
-          Keyword.fetch!(opts, :batcher_concurrency),
-          Keyword.fetch!(opts, :batch_size)
-        ),
-      context: Pipeline.context(Keyword.fetch!(opts, :pool), Keyword.fetch!(opts, :backend))
-    )
-  end
-
-  @impl Broadway
-  def handle_message(_processor_name, message, context) do
-    config = Pipeline.lookup_backend_config(context.backend_id)
+  def handle_message(_processor_name, message, %{mode: :preformatted} = context) do
+    config = lookup_backend_config(context.backend_id)
 
     message
-    |> Message.update_data(fn event -> Syslog.format(event, config) end)
+    |> Message.update_data(&Syslog.format(&1, config))
     |> Message.put_batcher(:syslog)
   end
 
   @impl Broadway
-  def handle_batch(:syslog, messages, _batch_info, context) do
-    content = for %Message{data: frame} <- messages, do: frame
-    Pipeline.send_batch(context.pool, content, messages)
+  def handle_batch(:syslog, messages, _batch_info, %{mode: :batched} = context) do
+    config = lookup_backend_config(context.backend_id)
+    content = for %Message{data: event} <- messages, do: Syslog.format(event, config)
+    send_batch(messages, content, context.pool)
   end
 
-  @impl Broadway.Acknowledger
-  defdelegate ack(ack_ref, successful, failed), to: Pipeline
+  def handle_batch(:syslog, messages, _batch_info, %{mode: :preformatted} = context) do
+    content = for %Message{data: frame} <- messages, do: frame
+    send_batch(messages, content, context.pool)
+  end
+
+  defp batchers(:unbatched), do: []
+
+  defp batchers(_mode) do
+    [
+      syslog: [
+        concurrency: Support.batcher_concurrency(),
+        batch_size: Support.batch_size()
+      ]
+    ]
+  end
+
+  defp lookup_backend_config(backend_id) do
+    %{config: config} =
+      Backends.Cache.get_backend(backend_id) || raise "missing backend #{backend_id}"
+
+    if cipher_key = config[:cipher_key] do
+      Map.put(config, :cipher_key, Base.decode64!(cipher_key))
+    else
+      config
+    end
+  end
+
+  defp send_one(message, content, pool) do
+    case Pool.send(pool, content) do
+      :ok -> message
+      {:error, reason} -> Message.failed(message, reason)
+    end
+  end
+
+  defp send_batch(messages, content, pool) do
+    case Pool.send(pool, content) do
+      :ok -> messages
+      {:error, reason} -> Enum.map(messages, &Message.failed(&1, reason))
+    end
+  end
 end
 
-alias Logflare.Backends.IngestEventQueue
-alias SyslogBenchSupport.NimbleTcpPool
-alias SyslogBenchSupport.SinkCollector
-alias SyslogBenchSupport.TcpSink
+alias SyslogBenchSupport, as: Support
 
-SyslogBenchSupport.ensure_apps_started()
-SyslogBenchSupport.ensure_cache(Logflare.Sources.Cache)
-SyslogBenchSupport.ensure_cache(Logflare.Backends.Cache)
-SyslogBenchSupport.ensure_cache(Logflare.PubSubRates.Cache)
-SyslogBenchSupport.ensure_ingest_queue_started()
-SyslogBenchSupport.print_config()
+Support.ensure_apps_started()
+Support.ensure_cache(Logflare.Backends.Cache)
+Support.print_config()
 
-event_count = SyslogBenchSupport.events()
-batch_size = SyslogBenchSupport.batch_size()
-concurrency = SyslogBenchSupport.concurrency()
-push_chunk = SyslogBenchSupport.push_chunk()
+event_count = Support.events()
 
 inputs =
-  Map.new(SyslogBenchSupport.message_bytes(), fn bytes ->
-    {"#{bytes} byte message", SyslogBenchSupport.build_events(event_count, bytes)}
-  end)
+  Map.new(
+    for bytes <- Support.message_bytes(), concurrency <- Support.processor_concurrency() do
+      label = "#{bytes} byte message, processor concurrency #{concurrency}"
+      {label, %{concurrency: concurrency, events: Support.build_events(event_count, bytes)}}
+    end
+  )
 
-run_pipeline = fn pipeline_module ->
-  fn events ->
-    {:ok, sink} = TcpSink.start_link(length(events))
-
-    source = SyslogBenchSupport.source()
-    backend = sink |> TcpSink.port() |> SyslogBenchSupport.backend()
-    SyslogBenchSupport.cache_bench_source_and_backend(source, backend)
-
-    {:ok, pool} = NimbleTcpPool.start_link(config: SyslogBenchSupport.config(TcpSink.port(sink)))
-
-    {:ok, pipeline} =
-      pipeline_module.start_link(
-        name: :"#{inspect(pipeline_module)}-#{System.unique_integer([:positive])}",
-        source: source,
-        backend: backend,
-        pool: pool,
-        processor_concurrency: concurrency,
-        batcher_concurrency: concurrency,
-        batch_size: batch_size
-      )
-
-    events
-    |> Enum.chunk_every(push_chunk)
-    |> Enum.each(fn events ->
-      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, events, chunk_size: push_chunk)
-    end)
-
-    stats = SinkCollector.collect(sink)
-
-    Broadway.stop(pipeline)
-    GenServer.stop(pool)
-    TcpSink.stop(sink)
-
-    stats
-  end
+job = fn mode ->
+  {&SyslogBroadwayBench.run/1,
+   before_scenario: &SyslogBroadwayBench.setup(&1, mode),
+   after_scenario: &SyslogBroadwayBench.teardown/1}
 end
+
+# credo:disable-for-next-line Credo.Check.Refactor.IoPuts
+IO.puts("Each iteration sends #{event_count} events; multiply iterations/second by that count.")
 
 Benchee.run(
   %{
-    "broadway: handle_message routes, handle_batch formats+sends batch" =>
-      run_pipeline.(SyslogBroadwayBench.BatchedPipeline),
-    "broadway: no batcher, handle_message formats+sends each message" =>
-      run_pipeline.(SyslogBroadwayBench.NoBatcherPipeline),
+    "broadway: handle_message routes, handle_batch formats+sends batch" => job.(:batched),
+    "broadway: no batcher, handle_message formats+sends each message" => job.(:unbatched),
     "broadway: handle_message preformats, handle_batch sends preformatted frames" =>
-      run_pipeline.(SyslogBroadwayBench.PreformattedPipeline)
+      job.(:preformatted)
   },
   inputs: inputs,
-  time: SyslogBenchSupport.time(),
-  warmup: SyslogBenchSupport.warmup(),
-  memory_time: 1,
-  reduction_time: 1
+  time: Support.time(),
+  warmup: Support.warmup()
 )
