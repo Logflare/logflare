@@ -111,16 +111,20 @@ defmodule Logflare.Backends.UserMonitoringTest do
         backend: Logflare.Backends.Adaptor.BigQueryAdaptor
       }
 
-      assert capture_log(fn ->
-               QueryError.log(error,
-                 user_id: user.id,
-                 source_token: source.token
-               )
-             end) == ""
+      log =
+        capture_log(fn ->
+          QueryError.log(error,
+            user_id: user.id,
+            source_token: source.token
+          )
+        end)
+
+      refute log =~ "Backend query error"
+      refute log =~ "raw user query detail"
 
       refute Enum.any?(
                Backends.list_recent_logs(system_source),
-               &query_error_log_event?/1
+               &invalid_query_error_log_event?/1
              )
     end
 
@@ -153,6 +157,27 @@ defmodule Logflare.Backends.UserMonitoringTest do
   end
 
   defp query_error_log_event?(_event), do: false
+
+  defp invalid_query_error_log_event?(%{
+         body: %{
+           "metadata" => %{
+             "error_kind" => "invalid_query"
+           }
+         }
+       }),
+       do: true
+
+  defp invalid_query_error_log_event?(%{
+         body: %{
+           "metadata" => %{
+             "error_string" => error_string
+           }
+         }
+       })
+       when is_binary(error_string),
+       do: error_string =~ "raw user query detail"
+
+  defp invalid_query_error_log_event?(_event), do: false
 
   describe "system monitoring labels" do
     setup :start_otel_exporter
