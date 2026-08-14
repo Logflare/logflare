@@ -80,10 +80,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   def validate_config(changeset) do
     changeset
     |> validate_required([:host, :port])
-    |> validate_number(:port,
-      greater_than_or_equal_to: 1,
-      less_than_or_equal_to: 65_535
-    )
+    |> validate_inclusion(:port, 1..65_535)
     |> validate_cipher()
     |> validate_certificate(:ca_cert)
     |> validate_certificate(:client_cert)
