@@ -42,6 +42,14 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
         assert ConsolidatedSup.count_pipelines() == initial_count
       end)
     end
+
+    test "does not restart a disabled backend pipeline", %{backend: backend} do
+      assert {:ok, disabled} = Logflare.Backends.update_backend(backend, %{enabled: false})
+      refute ConsolidatedSup.pipeline_running?(disabled)
+
+      Process.sleep(250)
+      refute ConsolidatedSup.pipeline_running?(disabled)
+    end
   end
 
   describe "ConsolidatedSupWorker orphan cleanup" do
