@@ -1,5 +1,80 @@
 defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
-  @moduledoc false
+  @moduledoc """
+  GenStage producer for `Logflare.Backends.Spool.ConsumerPipeline` — pulls
+  queue messages (SQS or Pub/Sub, via `queue_mod`) that each point at a spool
+  file in `bucket`, downloads and decodes that file's lines (via
+  `storage_mod`), and emits them to Broadway on demand.
+
+  ## Polling and prefetch
+
+  Fetching a queue message and downloading its file never happens inline in
+  this GenStage process — it always runs in a background `Task` started by
+  `maybe_start_prefetch/1`, so a slow or long-polling `queue_mod.receive/2`
+  call (especially under long-polling) can never block `handle_demand/2`,
+  `handle_info/2`, or `:sys` introspection. The result lands back via a
+  `{:prefetch_result, result}` message.
+
+  A periodic `:poll` message (`handle_info(:poll, state)`) drives the fetch
+  → transfer-into-buffer → emit pipeline forward on a fixed cadence
+  (`@max_backoff`, doing double duty as both the empty-queue backoff ceiling
+  and this fallback cadence) as a last resort, but this producer also polls
+  immediately — instead of waiting out the full interval — whenever:
+
+    * `handle_demand/2` sees buffered lines ready to go.
+    * `{:prefetch_result, _}` lands with demand waiting and nothing already
+      buffered — a real "something just became available" signal, not a guess.
+    * fetching is idle only because of `max_in_flight` or memory throttling
+      (see below), so the retry is scheduled sooner than the normal cadence.
+
+  ## Empty-queue backoff
+
+  When a prefetch comes back `:empty`, `poll_backoff_ms` doubles (capped at
+  `@max_backoff`) and becomes the delay before the next poll — a genuinely
+  idle queue gets polled less and less aggressively over time. Any
+  non-empty result (real data or an error) resets it straight back to
+  `@min_backoff`, so the loop snaps back to full speed the moment the queue
+  has something again. `@min_backoff` is also reused as the fast retry when
+  capped by `max_in_flight` (see below) — both cases are "try again soon,
+  something should resolve shortly" rather than distinct concepts.
+
+  ## Throttling
+
+  `schedule_poll/2` is the sole place allowed to arm the `:poll` timer, and
+  centralizes two independent throttle conditions — whatever delay a caller
+  asks for is overridden if either is true:
+
+    * `over_limit?/0` (`MemoryMonitor.throttled?/0` or `consumer_throttled?/0`)
+      — node memory pressure, or a destination source's ingest buffer
+      backing up. Forces `@throttle_interval` and also pauses fetching and
+      emitting entirely (`maybe_ack_exhausted/1`, `maybe_load_next/1`, and
+      `emit_from_buffer/1` all no-op while this is true) — the current
+      file's queue message simply stops draining, and thus never gets
+      acked, until the backlog clears.
+    * `capped_by_in_flight?/1` (see below) — forces `@min_backoff`.
+
+  ## max_in_flight
+
+  Emitting to Broadway is capped by a `max_in_flight` limit, backed by an
+  `:atomics` counter: incremented in `emit_from_buffer/1` as lines are
+  handed out, decremented by `ConsumerPipeline`'s Acknowledger once Broadway
+  finishes with those events (success or failure). This is the same
+  primitive BigQuery/ClickHouse/the spool producer pipeline get via
+  `BufferProducer`, duplicated here rather than shared since this producer
+  isn't `IngestEventQueue`-backed — it stops a slow destination backend from
+  letting this producer keep draining the queue into an unbounded batcher
+  backlog. The ref lives in this process's own dictionary (read via
+  `get_in_flight_ref/0`) rather than a cross-process registry, since
+  Broadway always runs `ConsumerPipeline.transform/2` in the producer's own
+  process.
+
+  ## Queue acking
+
+  SQS/Pub/Sub acking is entirely decoupled from Broadway's per-message ack
+  (which is a no-op — see `ConsumerPipeline.ack/3`). A queue message is
+  acked once all of its file's lines have been transferred into the emit
+  buffer and drained (`maybe_ack_exhausted/1`), regardless of whether
+  Broadway has actually finished processing them yet.
+  """
 
   use GenStage
 
@@ -7,13 +82,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   alias Logflare.Backends.Spool.MemoryMonitor
 
-  @poll_interval 1_000
   @throttle_interval 100
-  @min_empty_backoff_ms 100
-  @max_empty_backoff_ms 1_000
-  # How soon to retry once max_in_flight capacity frees up, instead of
-  # waiting out the full @poll_interval.
-  @min_in_flight_retry_ms 100
+  # Shared backoff range for both the empty-queue poll cadence and the
+  # max_in_flight fast retry: @min_backoff is also the fallback poll delay
+  # once demand is idle or something's buffered (used as the "poll again
+  # soon" retry), and @max_backoff also doubles as the periodic fallback
+  # cadence for the main :poll loop when nothing else needs a sooner retry.
+  @min_backoff 100
+  @max_backoff 1_000
   # Process-dictionary key for this producer's in-flight :atomics ref — read
   # by ConsumerPipeline.transform/2, which Broadway runs in this same
   # process (per Broadway.Topology.ProducerStage), so no cross-process
@@ -48,7 +124,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       # fetch_result = {:ok, handle, lines} | :empty | {:error, handle, reason}
       prefetch: nil,
       poll_timer: nil,
-      poll_backoff_ms: @min_empty_backoff_ms,
+      poll_backoff_ms: @min_backoff,
       # source_ids already sent to MemoryMonitor.register_source/1 — sent
       # once per producer lifetime, never again.
       registered_sources: MapSet.new(),
@@ -81,7 +157,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
           emitted_state =
             if capped_by_in_flight?(emitted_state),
-              do: schedule_poll(emitted_state, @min_in_flight_retry_ms),
+              do: schedule_poll(emitted_state, @min_backoff),
               else: emitted_state
 
           {events, emitted_state}
@@ -115,7 +191,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
         |> emit_from_buffer()
       end
 
-    {:noreply, events, schedule_poll(new_state, @poll_interval)}
+    {:noreply, events, schedule_poll(new_state, @max_backoff)}
   end
 
   # Records the result and, if demand is waiting with nothing buffered, kicks
@@ -123,16 +199,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # became available" signal (the background prefetch Task just completed),
   # not a guess. Real data or an error means the queue is active: reset the
   # empty-backoff and react immediately (delay 0). An empty result grows the
-  # backoff (capped at @max_empty_backoff_ms) and uses it as the delay instead,
-  # so a genuinely idle queue is polled less aggressively over time without
-  # ever blocking this process — the fetch itself always runs in the Task
-  # started by maybe_start_prefetch/1, never inline here.
+  # backoff (capped at @max_backoff) and uses it as the delay instead, so a
+  # genuinely idle queue is polled less aggressively over time without ever
+  # blocking this process — the fetch itself always runs in the Task started
+  # by maybe_start_prefetch/1, never inline here.
   @impl GenStage
   def handle_info({:prefetch_result, result}, state) do
     {poll_backoff_ms, delay} =
       case result do
-        :empty -> {min(state.poll_backoff_ms * 2, @max_empty_backoff_ms), state.poll_backoff_ms}
-        _ -> {@min_empty_backoff_ms, 0}
+        :empty -> {min(state.poll_backoff_ms * 2, @max_backoff), state.poll_backoff_ms}
+        _ -> {@min_backoff, 0}
       end
 
     new_state = %{state | prefetch: {:ready, result}, poll_backoff_ms: poll_backoff_ms}
@@ -155,7 +231,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     effective_delay =
       cond do
         over_limit?() -> @throttle_interval
-        capped_by_in_flight?(state) -> @min_in_flight_retry_ms
+        capped_by_in_flight?(state) -> @min_backoff
         true -> delay
       end
 

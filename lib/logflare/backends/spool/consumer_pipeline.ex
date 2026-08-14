@@ -24,8 +24,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
 
     spool_config = Application.get_env(:logflare, :spool, [])
     bucket = Keyword.fetch!(spool_config, :bucket)
-    concurrency = System.schedulers_online()
-    batch_size = Keyword.get(spool_config, :consumer_batch_size, 100)
+    concurrency = Keyword.get(spool_config, :consumer_concurrency, System.schedulers_online())
+    batch_size = Keyword.get(spool_config, :consumer_batch_size, 500)
     queue_name = Keyword.fetch!(spool_config, :queue_name)
     provider = Keyword.get(spool_config, :provider, :aws)
     storage_mod = Keyword.get(spool_config, :storage_mod, default_storage_mod(provider))
@@ -48,7 +48,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [
-        default: [concurrency: concurrency, min_demand: 50, max_demand: 100]
+        default: [concurrency: concurrency, min_demand: 50, max_demand: 500]
       ],
       batchers: [
         default: [
