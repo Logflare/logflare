@@ -32,15 +32,19 @@ RUN mix do local.rebar --force + local.hex --force + deps.get + deps.compile
 COPY assets/package.json assets/package-lock.json assets/
 RUN npm --prefix assets ci
 
-COPY . ./
-
-# rust bin path and release optimizations
+# Compile native extensions before copying application source so ordinary Elixir
+# changes can reuse the expensive architecture-specific Rust build.
 ENV PATH="/root/.cargo/bin:${PATH}"
 ENV CARGO_PROFILE_RELEASE_LTO="thin"
 ENV CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+COPY Cargo.toml Cargo.lock ./
+COPY native native/
+RUN set -e; \
+    for crate in arrowipc_ex ch_compression_ex mapper_ex sqlparser_ex; do \
+      cargo rustc --package "$crate" --release --locked; \
+    done
 
-# check installed correctly
-RUN cargo version
+COPY . ./
 
 # release
 RUN mix release  && \
