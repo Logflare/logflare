@@ -211,6 +211,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
         _ -> {@min_backoff, 0}
       end
 
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :queue, :poll_backoff],
+      %{backoff_ms: poll_backoff_ms},
+      %{}
+    )
+
     new_state = %{state | prefetch: {:ready, result}, poll_backoff_ms: poll_backoff_ms}
 
     if state.demand > 0 and not buffered?(state) do

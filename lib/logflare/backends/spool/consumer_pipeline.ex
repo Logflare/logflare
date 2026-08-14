@@ -113,7 +113,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   end
 
   @impl Broadway
-  def handle_batch(_batcher, messages, _batch_info, _context) do
+  def handle_batch(_batcher, messages, batch_info, _context) do
+    batch_size = Map.get(batch_info, :size)
+    batch_trigger = Map.get(batch_info, :trigger)
+
+    :telemetry.execute(
+      [:logflare, :backends, :pipeline, :handle_batch],
+      %{batch_size: batch_size, batch_trigger: batch_trigger},
+      %{backend_type: :spool_consumer, batch_trigger: batch_trigger}
+    )
+
     messages
     |> Enum.map(& &1.data)
     |> Enum.group_by(&record_source_id/1)
