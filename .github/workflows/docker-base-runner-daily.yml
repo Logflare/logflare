@@ -8,13 +8,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: docker-base-runner-publish
+  cancel-in-progress: false
+
 jobs:
   settings:
     runs-on: ubuntu-latest
     outputs:
       short_sha: ${{steps.env.outputs.short_sha}}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Setup outputs
         id: env
         run: |
@@ -34,28 +38,41 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - run: docker context create builders
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
         with:
           endpoint: builders
       - name: Login to DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           file: ./Dockerfile.base
           push: true
           pull: true
+          sbom: true
+          provenance: mode=max
           tags: |
             supabase/logflare:base-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
             supabase/logflare:base-${{ matrix.arch }}
           platforms: linux/${{ matrix.arch }}
           cache-from: type=gha,scope=base-${{ matrix.arch }}
           cache-to: type=gha,scope=base-${{ matrix.arch }},mode=max
+      - name: Export base image digest
+        run: |
+          mkdir -p /tmp/base-digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/base-digests/${digest#sha256:}"
+      - name: Upload base image digest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: base-digest-${{ matrix.arch }}
+          path: /tmp/base-digests/*
+          retention-days: 1
 
   build_runner:
     needs: settings
@@ -69,28 +86,41 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - run: docker context create builders
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
         with:
           endpoint: builders
       - name: Login to DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           file: ./Dockerfile.runner
           push: true
           pull: true
+          sbom: true
+          provenance: mode=max
           tags: |
             supabase/logflare:runner-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
             supabase/logflare:runner-${{ matrix.arch }}
           platforms: linux/${{ matrix.arch }}
           cache-from: type=gha,scope=runner-${{ matrix.arch }}
           cache-to: type=gha,scope=runner-${{ matrix.arch }},mode=max
+      - name: Export runner image digest
+        run: |
+          mkdir -p /tmp/runner-digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/runner-digests/${digest#sha256:}"
+      - name: Upload runner image digest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: runner-digest-${{ matrix.arch }}
+          path: /tmp/runner-digests/*
+          retention-days: 1
 
   merge_publish:
     needs:
@@ -99,21 +129,41 @@ jobs:
       - build_runner
     runs-on: ubuntu-latest
     steps:
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Setup tags
-        run: |
-          echo "base_tag_amd64=supabase/logflare:base-amd64" >> "$GITHUB_ENV"
-          echo "base_tag_arm64=supabase/logflare:base-arm64" >> "$GITHUB_ENV"
-          echo "runner_tag_amd64=supabase/logflare:runner-amd64" >> "$GITHUB_ENV"
-          echo "runner_tag_arm64=supabase/logflare:runner-arm64" >> "$GITHUB_ENV"
+      - name: Download base image digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: base-digest-*
+          path: /tmp/base-digests
+          merge-multiple: true
+      - name: Download runner image digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: runner-digest-*
+          path: /tmp/runner-digests
+          merge-multiple: true
       - name: Merge multi-arch manifests for base image
         run: |
-          docker buildx imagetools create -t supabase/logflare:base \
-          ${{ env.base_tag_amd64 }} ${{ env.base_tag_arm64 }}
+          sources=()
+          for digest in /tmp/base-digests/*; do
+            sources+=("supabase/logflare@sha256:$(basename "$digest")")
+          done
+          test "${#sources[@]}" -eq 2
+          docker buildx imagetools create -t supabase/logflare:base "${sources[@]}"
       - name: Merge multi-arch manifests for runner image
         run: |
-          docker buildx imagetools create -t supabase/logflare:runner \
-          ${{ env.runner_tag_amd64 }} ${{ env.runner_tag_arm64 }}
+          sources=()
+          for digest in /tmp/runner-digests/*; do
+            sources+=("supabase/logflare@sha256:$(basename "$digest")")
+          done
+          test "${#sources[@]}" -eq 2
+          docker buildx imagetools create -t supabase/logflare:runner "${sources[@]}"
+      - name: Verify image attestations
+        run: |
+          python3 bin/check-image-attestations \
+            supabase/logflare:base \
+            supabase/logflare:runner

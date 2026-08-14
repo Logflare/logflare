@@ -54,6 +54,7 @@ class Versions:
 class TagInfo:
     name: str
     architectures: frozenset[str]
+    last_updated: dt.datetime | None = None
 
     @classmethod
     def from_api(cls, payload: dict[str, object]) -> "TagInfo":
@@ -66,7 +67,18 @@ class TagInfo:
         name = payload.get("name")
         if not isinstance(name, str):
             raise BaseImageError("Docker Hub returned a tag without a name")
-        return cls(name=name, architectures=frozenset(architectures))
+        last_updated_value = payload.get("last_updated")
+        last_updated: dt.datetime | None = None
+        if isinstance(last_updated_value, str):
+            try:
+                last_updated = dt.datetime.fromisoformat(last_updated_value.replace("Z", "+00:00"))
+            except ValueError as error:
+                raise BaseImageError(
+                    f"Docker Hub returned an invalid last_updated value for {name}: {last_updated_value}"
+                ) from error
+            if last_updated.tzinfo is None:
+                last_updated = last_updated.replace(tzinfo=dt.UTC)
+        return cls(name=name, architectures=frozenset(architectures), last_updated=last_updated)
 
 
 class DockerHubClient:
@@ -182,7 +194,11 @@ def _tag_map(tags: Iterable[TagInfo]) -> dict[str, TagInfo]:
 
 
 def compatible_debian_versions(
-    versions: Versions, hex_tags: Iterable[TagInfo], debian_tags: Iterable[TagInfo]
+    versions: Versions,
+    hex_tags: Iterable[TagInfo],
+    debian_tags: Iterable[TagInfo],
+    minimum_age_days: int = 0,
+    now: dt.datetime | None = None,
 ) -> list[str]:
     hex_by_name = _tag_map(hex_tags)
     debian_by_name = _tag_map(debian_tags)
@@ -198,19 +214,31 @@ def compatible_debian_versions(
         debian_tag = debian_by_name.get(debian_version)
         if not debian_tag:
             continue
-        if REQUIRED_ARCHITECTURES.issubset(hex_tag.architectures) and REQUIRED_ARCHITECTURES.issubset(
-            debian_tag.architectures
-        ):
-            compatible.append(debian_version)
+        architectures_match = REQUIRED_ARCHITECTURES.issubset(
+            hex_tag.architectures
+        ) and REQUIRED_ARCHITECTURES.issubset(debian_tag.architectures)
+        if not architectures_match:
+            continue
+        if minimum_age_days:
+            cutoff = (now or dt.datetime.now(dt.UTC)) - dt.timedelta(days=minimum_age_days)
+            if not hex_tag.last_updated or not debian_tag.last_updated:
+                continue
+            if hex_tag.last_updated > cutoff or debian_tag.last_updated > cutoff:
+                continue
+        compatible.append(debian_version)
 
     return sorted(compatible, key=lambda value: dt.datetime.strptime(value.split("-")[1], "%Y%m%d"))
 
 
-def fetch_compatible_versions(versions: Versions, client: DockerHubClient) -> list[str]:
+def fetch_compatible_versions(
+    versions: Versions, client: DockerHubClient, minimum_age_days: int = 0
+) -> list[str]:
     builder_prefix = f"{versions.elixir}-erlang-{versions.otp}-debian-{versions.debian_series}-"
     hex_tags = client.tags("hexpm/elixir", builder_prefix)
     debian_tags = client.tags("library/debian", f"{versions.debian_series}-")
-    compatible = compatible_debian_versions(versions, hex_tags, debian_tags)
+    compatible = compatible_debian_versions(
+        versions, hex_tags, debian_tags, minimum_age_days=minimum_age_days
+    )
     if not compatible:
         raise BaseImageError(
             "no compatible amd64/arm64 Debian and Hex builder tags were found for "
@@ -289,9 +317,13 @@ def check(root: pathlib.Path, client: DockerHubClient, warn_age_days: int, fail_
     return 0
 
 
-def apply(root: pathlib.Path, client: DockerHubClient, dry_run: bool) -> int:
+def apply(
+    root: pathlib.Path, client: DockerHubClient, dry_run: bool, minimum_age_days: int
+) -> int:
     versions = load_versions(root)
-    compatible = fetch_compatible_versions(versions, client)
+    compatible = fetch_compatible_versions(
+        versions, client, minimum_age_days=minimum_age_days
+    )
     latest = compatible[-1]
     if latest == versions.debian:
         print(f"Docker base snapshot is current: {versions.debian}")
@@ -303,17 +335,25 @@ def apply(root: pathlib.Path, client: DockerHubClient, dry_run: bool) -> int:
     return 0
 
 
+def nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path.cwd())
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     check_parser = subparsers.add_parser("check", help="validate configured images and report freshness")
-    check_parser.add_argument("--warn-age-days", type=int, default=45)
-    check_parser.add_argument("--fail-age-days", type=int)
+    check_parser.add_argument("--warn-age-days", type=nonnegative_int, default=45)
+    check_parser.add_argument("--fail-age-days", type=nonnegative_int)
 
     apply_parser = subparsers.add_parser("apply", help="update Dockerfiles to the latest compatible snapshot")
     apply_parser.add_argument("--dry-run", action="store_true")
+    apply_parser.add_argument("--minimum-age-days", type=nonnegative_int, default=3)
     return parser
 
 
@@ -323,7 +363,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "check":
             return check(root, DockerHubClient(), args.warn_age_days, args.fail_age_days)
-        return apply(root, DockerHubClient(), args.dry_run)
+        return apply(root, DockerHubClient(), args.dry_run, args.minimum_age_days)
     except BaseImageError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

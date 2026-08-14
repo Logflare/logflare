@@ -24,18 +24,25 @@ env:
 
 jobs:
   scan:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            architecture: amd64
+          - runner: ubuntu-24.04-arm
+            architecture: arm64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - name: Audit fixed high and critical vulnerabilities
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Audit high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}
           format: table
           scanners: vuln
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
+          ignore-unfixed: false
           exit-code: 0
       - name: Generate vulnerability report
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -45,11 +52,11 @@ jobs:
           output: trivy-results.sarif
           scanners: vuln
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
+          ignore-unfixed: false
           exit-code: 0
       - name: Upload vulnerability report
         if: always() && hashFiles('trivy-results.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         with:
           sarif_file: trivy-results.sarif
-          category: trivy-container-image
+          category: trivy-container-image-${{ matrix.architecture }}

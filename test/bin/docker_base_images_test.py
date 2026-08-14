@@ -97,6 +97,40 @@ class DockerBaseImagesTest(unittest.TestCase):
             subject.compatible_debian_versions(versions, hex_tags, debian_tags),
         )
 
+    def test_compatible_versions_enforce_release_soak(self):
+        versions = subject.load_versions(self.root)
+        both = frozenset({"amd64", "arm64"})
+        now = dt.datetime(2026, 3, 10, tzinfo=dt.UTC)
+        old = now - dt.timedelta(days=4)
+        new = now - dt.timedelta(days=1)
+        hex_prefix = "1.19.5-erlang-27.3.4.6-debian-"
+        hex_tags = [
+            subject.TagInfo(f"{hex_prefix}trixie-20260202-slim", both, old),
+            subject.TagInfo(f"{hex_prefix}trixie-20260303-slim", both, new),
+        ]
+        debian_tags = [
+            subject.TagInfo("trixie-20260202-slim", both, old),
+            subject.TagInfo("trixie-20260303-slim", both, old),
+        ]
+
+        self.assertEqual(
+            ["trixie-20260202-slim"],
+            subject.compatible_debian_versions(
+                versions, hex_tags, debian_tags, minimum_age_days=3, now=now
+            ),
+        )
+
+    def test_tag_info_parses_docker_hub_timestamp(self):
+        tag = subject.TagInfo.from_api(
+            {
+                "name": "trixie-20260202-slim",
+                "images": [{"architecture": "amd64"}, {"architecture": "arm64"}],
+                "last_updated": "2026-02-03T04:05:06.123456Z",
+            }
+        )
+
+        self.assertEqual(dt.datetime(2026, 2, 3, 4, 5, 6, 123456, tzinfo=dt.UTC), tag.last_updated)
+
     def test_replace_debian_version_updates_all_dockerfiles(self):
         subject.replace_debian_version(
             self.root, "trixie-20260112-slim", "trixie-20260202-slim"
