@@ -22,7 +22,10 @@ on:
       - '.tool-versions'
       - 'bin/docker-base-images'
       - 'bin/docker_base_images.py'
+      - 'bin/check-image-attestations'
+      - 'bin/image_attestations.py'
       - 'test/bin/docker_base_images_test.py'
+      - 'test/bin/image_attestations_test.py'
       # Run suite when this file is changed
       - ".github/workflows/docker-test.yml"
 
@@ -34,13 +37,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Validate Docker base images
         run: |
           python3 -m unittest discover -s test/bin -p '*_test.py' -v
           python3 bin/docker-base-images check --warn-age-days 45 --fail-age-days 90
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/build-push-action@v7
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           file: ./Dockerfile
           push: false
@@ -57,5 +60,5 @@ jobs:
           format: table
           scanners: vuln
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
+          ignore-unfixed: false
           exit-code: 0

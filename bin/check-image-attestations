@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+
+from image_attestations import main
+
+raise SystemExit(main())

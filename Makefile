@@ -392,6 +392,7 @@ tag-versioned:
 
 	@echo "Retagging dev image to supabase/logflare:$(VERSION) ..."
 	docker buildx imagetools create -t supabase/logflare:$(VERSION) -t supabase/logflare:latest supabase/logflare:$(SHA_IMAGE_TAG)
+	python3 bin/check-image-attestations supabase/logflare:$(VERSION) supabase/logflare:latest
 	@echo "OK"
 
 .PHONY: tag-versioned
