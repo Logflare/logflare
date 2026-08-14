@@ -1,0 +1,99 @@
+name: Docker Base Snapshot Update
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: docker-base-snapshot-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Select latest compatible base snapshot
+        id: update
+        run: |
+          python3 bin/docker-base-images apply
+          if git diff --quiet -- Dockerfile Dockerfile.base Dockerfile.runner; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version=$(grep '^ARG DEBIAN_VERSION=' Dockerfile | cut -d= -f2)
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "branch=chore/docker-base-$version" >> "$GITHUB_OUTPUT"
+      - name: Validate update
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          python3 -m unittest discover -s test/bin -p '*_test.py' -v
+          python3 bin/docker-base-images check --warn-age-days 45 --fail-age-days 90
+      - name: Publish update branch
+        if: steps.update.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ steps.update.outputs.branch }}
+          VERSION: ${{ steps.update.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "Branch $BRANCH already exists."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -c "$BRANCH"
+            git add Dockerfile Dockerfile.base Dockerfile.runner
+            git commit -m "chore: update Docker base snapshot to $VERSION"
+            git push origin "$BRANCH"
+          fi
+
+          pr_number=$(gh pr list --head "$BRANCH" --state all --limit 1 --json number --jq '.[0].number // empty')
+          if [ -z "$pr_number" ]; then
+            body=$(mktemp)
+            cat > "$body" <<EOF
+          ## Summary
+
+          - update the Debian runtime and Hex builder snapshot to \`$VERSION\`
+          - preserve matching amd64/arm64 builder and runner images
+
+          ## Validation
+
+          - base-image compatibility checks passed
+          - Docker base snapshot is no more than 90 days old
+
+          This pull request was created by the scheduled Docker base updater and requires review.
+          EOF
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "chore: update Docker base snapshot to $VERSION" \
+              --body-file "$body"
+          else
+            merged_at=$(gh pr view "$pr_number" --json mergedAt --jq '.mergedAt // empty')
+            state=$(gh pr view "$pr_number" --json state --jq '.state')
+            if [ -n "$merged_at" ]; then
+              echo "Pull request #$pr_number is already merged."
+              exit 0
+            elif [ "$state" = "CLOSED" ]; then
+              gh pr reopen "$pr_number"
+            else
+              echo "Pull request #$pr_number is already open."
+            fi
+          fi
+
+          run_state=$(gh run list --workflow docker-test.yml --branch "$BRANCH" --limit 1 \
+            --json status,conclusion \
+            --jq '.[0] | if .status == "completed" then .conclusion else .status end')
+          case "$run_state" in
+            success|queued|in_progress) echo "Docker validation is already $run_state." ;;
+            *) gh workflow run docker-test.yml --ref "$BRANCH" ;;
+          esac
