@@ -52,7 +52,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorker do
   end
 
   defp list_expected_backend_ids do
-    Backends.list_backends(has_sources_or_rules: true)
+    Backends.list_backends(has_sources_or_rules: true, enabled: true)
     |> Enum.filter(&Adaptor.consolidated_ingest?/1)
     |> Enum.map(& &1.id)
     |> MapSet.new()
@@ -90,9 +90,11 @@ defmodule Logflare.Backends.ConsolidatedSupWorker do
 
   defp stop_pipeline(backend_id) do
     reason =
-      if Backends.Cache.get_backend(backend_id),
-        do: "no longer supports consolidated ingest",
-        else: "backend no longer exists"
+      case Backends.Cache.get_backend(backend_id) do
+        nil -> "backend no longer exists"
+        %{enabled: false} -> "backend is disabled"
+        _backend -> "no longer supports consolidated ingest"
+      end
 
     Logger.info("Stopping consolidated pipeline: #{reason}", backend_id: backend_id)
     ConsolidatedSup.stop_pipeline(backend_id)

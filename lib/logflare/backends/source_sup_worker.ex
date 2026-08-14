@@ -3,10 +3,10 @@ defmodule Logflare.Backends.SourceSupWorker do
   Worker that performs periodic cleanup ensure that SourceSup procs are correctly pulled down when deleted.
   """
   use GenServer
-  alias Logflare.Sources
+
   alias Logflare.Backends
-  alias Logflare.Rules
   alias Logflare.Backends.SourceSup
+  alias Logflare.Sources
 
   @default_interval :timer.minutes(10)
 
@@ -31,14 +31,16 @@ defmodule Logflare.Backends.SourceSupWorker do
   defp do_check(nil), do: :noop
 
   defp do_check(source) do
-    backends = Backends.list_backends(source_id: source.id)
-    rules = Rules.list_rules_with_backend(source)
+    backends = Backends.list_backends(source_id: source.id, enabled: true)
+
+    rules_backends =
+      Backends.list_backends(rules_source_id: source.id, enabled: true)
 
     # start rules source-backends
     rules_backend_ids =
-      for rule <- rules, into: MapSet.new() do
-        SourceSup.start_rule_child(rule)
-        rule.backend_id
+      for backend <- rules_backends, into: MapSet.new() do
+        SourceSup.start_backend_child(source, %{backend | register_for_ingest: false})
+        backend.id
       end
 
     # start attached source-backends

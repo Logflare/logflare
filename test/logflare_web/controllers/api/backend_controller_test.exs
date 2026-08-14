@@ -229,6 +229,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert response["name"] == name
       assert response["config"]["url"] =~ "example.com"
+      assert response["enabled"] == true
       assert response["inserted_at"]
       assert response["updated_at"]
     end
@@ -457,6 +458,31 @@ defmodule LogflareWeb.Api.BackendControllerTest do
   end
 
   describe "update/2" do
+    test "updates `enabled` and returns it from PUT", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> put("/api/backends/#{backend.token}", %{enabled: false})
+        |> json_response(200)
+
+      assert response["enabled"] == false
+      refute Logflare.Backends.get_backend(backend.id).enabled
+    end
+
+    test "rejects a null `enabled` value", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> patch("/api/backends/#{backend.token}", %{enabled: nil})
+        |> json_response(422)
+
+      assert response == %{"errors" => %{"enabled" => ["can't be blank"]}}
+    end
+
     test "updates an existing backend from a user", %{
       conn: conn,
       user: user

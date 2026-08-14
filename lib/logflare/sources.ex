@@ -726,7 +726,7 @@ defmodule Logflare.Sources do
     ingest_backends = Backends.list_dispatch_backends(source)
 
     rules_backends =
-      Backends.Cache.list_backends(rules_source_id: source.id)
+      Backends.Cache.list_backends(rules_source_id: source.id, enabled: true)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
     all_backends = [default_backend | ingest_backends] ++ rules_backends
