@@ -45,6 +45,17 @@ jobs:
           file: ./Dockerfile
           push: false
           pull: true
+          load: true
+          tags: logflare:security-scan
           platforms: linux/amd64
           cache-from: type=gha,scope=docker-build-check
           cache-to: type=gha,scope=docker-build-check,mode=max
+      - name: Audit production image vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: logflare:security-scan
+          format: table
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 0
