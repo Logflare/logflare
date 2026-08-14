@@ -299,19 +299,19 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # producer hasn't already sent — sent once per producer lifetime, never
   # again, since MemoryMonitor keeps a registered source watched permanently.
   defp register_sources(state, lines) do
-    to_register =
-      lines
-      |> Enum.map(&record_source_id/1)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
-      |> Enum.reject(&MapSet.member?(state.registered_sources, &1))
+    source_ids =
+      Enum.reduce(lines, MapSet.new(), fn line, source_ids ->
+        case record_source_id(line) do
+          nil -> source_ids
+          source_id -> MapSet.put(source_ids, source_id)
+        end
+      end)
 
-    Enum.each(to_register, &MemoryMonitor.register_source/1)
+    new_source_ids = MapSet.difference(source_ids, state.registered_sources)
 
-    registered_sources =
-      Enum.reduce(to_register, state.registered_sources, &MapSet.put(&2, &1))
+    Enum.each(new_source_ids, &MemoryMonitor.register_source/1)
 
-    %{state | registered_sources: registered_sources}
+    %{state | registered_sources: MapSet.union(state.registered_sources, source_ids)}
   end
 
   defp record_source_id(%{source_id: id}), do: id

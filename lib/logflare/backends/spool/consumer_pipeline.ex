@@ -124,8 +124,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     )
 
     messages
-    |> Enum.map(& &1.data)
-    |> Enum.group_by(&record_source_id/1)
+    |> Enum.group_by(&record_source_id(&1.data), & &1.data)
     |> Enum.each(fn
       {nil, lines} ->
         emit_skipped_telemetry(:missing_source_id, length(lines))
