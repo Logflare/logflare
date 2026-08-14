@@ -29,6 +29,8 @@ jobs:
         run: |
           echo "version=$(cat ./VERSION)" >> "$GITHUB_OUTPUT"
           echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Validate Docker base images
+        run: python3 bin/docker-base-images check --warn-age-days 45
   build:
     needs: settings
     strategy:
