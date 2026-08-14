@@ -56,6 +56,57 @@ defmodule E2e.Features.BackendsTest do
       |> refute_has("#read-cluster-row-1")
       |> assert_has("#read-cluster-row-0 input[value='reporting']")
     end
+
+    test "adding a row preserves unsaved cluster and default edits", %{
+      backend: backend,
+      conn: conn
+    } do
+      session = visit(conn, ~p"/backends/#{backend.id}/edit")
+
+      unwrap(session, fn %{frame_id: frame_id} ->
+        Frame.fill(frame_id,
+          selector: label_selector(0),
+          value: "reporting-edited",
+          timeout: 5_000
+        )
+
+        Frame.fill(frame_id,
+          selector: url_selector(0),
+          value: "https://reporting-edited.example.com:8443",
+          timeout: 5_000
+        )
+
+        Frame.fill(frame_id,
+          selector: default_cluster_selector(),
+          value: "reporting-edited",
+          timeout: 5_000
+        )
+      end)
+
+      session = click_button(session, "Add read cluster")
+
+      session
+      |> assert_has("#read-cluster-row-1")
+      |> unwrap(fn %{frame_id: frame_id} ->
+        assert {:ok, "reporting-edited"} = input_value(frame_id, label_selector(0))
+
+        assert {:ok, "https://reporting-edited.example.com:8443"} =
+                 input_value(frame_id, url_selector(0))
+
+        assert {:ok, "reporting-edited"} =
+                 input_value(frame_id, default_cluster_selector())
+      end)
+      |> click_button("Save changes")
+      |> assert_has("*", text: "Successfully updated backend")
+
+      config = Logflare.Backends.get_backend(backend.id).config
+
+      assert config.read_only_urls == %{
+               "reporting-edited" => "https://reporting-edited.example.com:8443"
+             }
+
+      assert config.default_read_cluster == "reporting-edited"
+    end
   end
 
   describe "clickhouse read cluster row removal" do
@@ -119,7 +170,7 @@ defmodule E2e.Features.BackendsTest do
              }
     end
 
-    test "removing a row drops the clicked row and discards unsaved edits elsewhere", %{
+    test "removing a row preserves unsaved edits in surviving rows and the default", %{
       backend: backend,
       conn: conn
     } do
@@ -127,25 +178,64 @@ defmodule E2e.Features.BackendsTest do
 
       unwrap(session, fn %{frame_id: frame_id} ->
         Frame.fill(frame_id, selector: label_selector(2), value: "gamma-edited", timeout: 5_000)
+
+        Frame.fill(frame_id,
+          selector: url_selector(2),
+          value: "https://gamma-edited.example.com:8443",
+          timeout: 5_000
+        )
+
+        Frame.fill(frame_id,
+          selector: default_cluster_selector(),
+          value: "gamma-edited",
+          timeout: 5_000
+        )
       end)
 
+      session = click(session, "#read-cluster-row-0 button[phx-click='remove_row']")
+
       session
-      |> click("#read-cluster-row-0 button[phx-click='remove_row']")
+      |> refute_has("#read-cluster-row-0")
+      |> unwrap(fn %{frame_id: frame_id} ->
+        assert {:ok, "gamma-edited"} = input_value(frame_id, label_selector(2))
+
+        assert {:ok, "https://gamma-edited.example.com:8443"} =
+                 input_value(frame_id, url_selector(2))
+
+        assert {:ok, "gamma-edited"} =
+                 input_value(frame_id, default_cluster_selector())
+      end)
       |> click_button("Save changes")
       |> assert_has("*", text: "Successfully updated backend")
 
-      assert Logflare.Backends.get_backend(backend.id).config.read_only_urls == %{
+      config = Logflare.Backends.get_backend(backend.id).config
+
+      assert config.read_only_urls == %{
                "beta" => "https://b.example.com:8443",
-               "gamma" => "https://c.example.com:8443"
+               "gamma-edited" => "https://gamma-edited.example.com:8443"
              }
+
+      assert config.default_read_cluster == "gamma-edited"
     end
   end
 
-  defp input_value(frame_id, ref) do
-    Frame.input_value(frame_id, selector: label_selector(ref), timeout: 5_000)
+  defp input_value(frame_id, ref) when is_integer(ref) do
+    input_value(frame_id, label_selector(ref))
+  end
+
+  defp input_value(frame_id, selector) do
+    Frame.input_value(frame_id, selector: selector, timeout: 5_000)
   end
 
   defp label_selector(ref) do
     "#read-cluster-row-#{ref} input[name='backend[config][read_cluster_label_#{ref}]']"
+  end
+
+  defp url_selector(ref) do
+    "#read-cluster-row-#{ref} input[name='backend[config][read_cluster_url_#{ref}]']"
+  end
+
+  defp default_cluster_selector do
+    "input[name='backend[config][default_read_cluster]']"
   end
 end
