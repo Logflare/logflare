@@ -35,11 +35,11 @@ defmodule Logflare.Backends.SourceSup do
     source = Sources.Cache.preload_rules(source)
 
     ingest_backends =
-      Backends.Cache.list_backends(source_id: source.id)
+      Backends.Cache.list_backends(source_id: source.id, enabled: true)
       |> Enum.reject(& &1.consolidated_ingest?)
 
     rules_backends =
-      Backends.Cache.list_backends(rules_source_id: source.id)
+      Backends.Cache.list_backends(rules_source_id: source.id, enabled: true)
       |> Enum.reject(& &1.consolidated_ingest?)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
@@ -125,6 +125,7 @@ defmodule Logflare.Backends.SourceSup do
   Consolidated backends are excluded.
   """
   @spec start_backend_child(Source.t(), Backend.t()) :: Supervisor.on_start_child() | :noop
+  def start_backend_child(%Source{}, %Backend{enabled: false}), do: :noop
   def start_backend_child(%Source{}, %Backend{consolidated_ingest?: true}), do: :noop
 
   def start_backend_child(%Source{} = source, %Backend{} = backend) do

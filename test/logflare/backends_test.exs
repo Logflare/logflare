@@ -108,6 +108,24 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
+    test "create_backend/2 does not start a consolidated pipeline when disabled", %{user: user} do
+      attrs = %{
+        type: :clickhouse,
+        name: "Disabled ClickHouse",
+        enabled: false,
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
     test "create_backend/2 does not start pipeline for non-consolidated backend", %{user: user} do
       attrs = %{
         type: :webhook,
@@ -299,6 +317,17 @@ defmodule Logflare.BackendsTest do
                Backends.list_backends(metadata: %{some: "data", value: "true", other: false})
 
       assert result.id == backend.id
+    end
+
+    test "list_backends/1 with enabled filter", %{user: user} do
+      enabled_backend = insert(:backend, user: user, enabled: true)
+      disabled_backend = insert(:backend, user: user, enabled: false)
+
+      assert [result] = Backends.list_backends(user_id: user.id, enabled: true)
+      assert result.id == enabled_backend.id
+
+      assert [result] = Backends.list_backends(user_id: user.id, enabled: false)
+      assert result.id == disabled_backend.id
     end
 
     test "list_backends/1 with default_ingest filter", %{user: user} do
@@ -835,6 +864,66 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
+    test "SourceSup filters out disabled attached and rule backends", %{
+      source: source,
+      user: user
+    } do
+      attached_backend =
+        insert(:backend,
+          enabled: false,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://attached.example.com"},
+          user: user
+        )
+
+      rule_backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://rule.example.com"},
+          user: user
+        )
+
+      insert(:rule, source: source, backend: rule_backend)
+      Backends.clear_list_backends_cache(source.id)
+
+      start_supervised!({SourceSup, source})
+
+      refute SourceSup.backend_child_started?(attached_backend.id, source.id)
+      refute SourceSup.backend_child_started?(rule_backend.id, source.id)
+    end
+
+    test "toggling a rule-only backend reconciles its SourceSup child", %{
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://rule.example.com"},
+          user: user
+        )
+
+      insert(:rule, source: source, backend: backend)
+      Backends.clear_list_backends_cache(source.id)
+      start_supervised!({SourceSup, source})
+
+      assert SourceSup.backend_child_started?(backend.id, source.id)
+
+      assert {:ok, disabled} = Backends.update_backend(backend, %{enabled: false})
+
+      TestUtils.retry_assert(fn ->
+        refute SourceSup.backend_child_started?(backend.id, source.id)
+      end)
+
+      assert {:ok, _enabled} = Backends.update_backend(disabled, %{enabled: true})
+
+      TestUtils.retry_assert(fn ->
+        assert SourceSup.backend_child_started?(backend.id, source.id)
+      end)
+    end
+
     test "SourceSup filters out consolidated backends", %{source: source, user: user} do
       consolidated_backend =
         insert(:backend,
@@ -1043,6 +1132,70 @@ defmodule Logflare.BackendsTest do
       # for system default
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
                       %{count: ^log_count}, %{backend_type: :bigquery}}
+    end
+
+    test "does not ingest or increment counters for an explicitly disabled backend", %{
+      source: source
+    } do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 0} =
+               Backends.ingest_logs([%{"event_message" => "do not send"}], source, backend)
+
+      assert {:ok, ^initial_count} = Counters.get_inserts(source.token)
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "does not fan out source ingestion to an attached disabled backend", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      Backends.clear_list_backends_cache(source.id)
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "keep local"}], source)
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "does not route or bill events for a disabled drain destination", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      insert(:rule, lql_string: "testing", backend: backend, source_id: source.id)
+      Logflare.ContextCache.bust_keys([{Rules, [source_id: source.id]}])
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing"}], source)
+      assert {:ok, count} = Counters.get_inserts(source.token)
+      assert count == initial_count + 1
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
     end
   end
 
