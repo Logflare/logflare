@@ -4,9 +4,17 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore:
+      - "test/**"
+      - "bench/**"
+      - "*.md"
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   settings:
@@ -57,9 +65,9 @@ jobs:
           # resource attribute at runtime (see Dockerfile / Logflare.Telemetry).
           build-args: |
             COMMIT_SHA=${{ needs.settings.outputs.short_sha }}
-          # caching
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Keep architecture-specific caches from overwriting each other.
+          cache-from: type=gha,scope=app-${{ matrix.arch }}
+          cache-to: type=gha,scope=app-${{ matrix.arch }},mode=max
 
   merge_publish:
     needs:

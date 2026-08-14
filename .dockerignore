@@ -2,8 +2,16 @@
 /_build
 /db
 /deps
+/target
+/priv/native
 /*.ez
 .DS_Store
+
+# Files that cannot affect the production image
+/.git
+/.github
+/bench
+/test
 
 # Generated on crash by the VM
 erl_crash.dump
