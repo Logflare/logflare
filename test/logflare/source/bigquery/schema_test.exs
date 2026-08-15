@@ -2,9 +2,10 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
   @moduledoc false
   use Logflare.DataCase
 
+  alias Logflare.Backends
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
-  alias Logflare.Google.BigQuery.SchemaUtils
 
   setup do
     insert(:plan)
@@ -49,53 +50,59 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
              TestUtils.get_bq_field_schema(updated_schema, "new_field")
   end
 
-  test "reserve_update_slot/2 caps concurrent pending updates" do
+  test "reserve_update_slot/2 caps pending updates" do
     counter = :atomics.new(1, [])
 
-    assert {:ok, _reservation} = Schema.reserve_update_slot(counter, 2)
-    assert {:ok, _reservation} = Schema.reserve_update_slot(counter, 2)
+    assert :ok = Schema.reserve_update_slot(counter, 2)
+    assert :ok = Schema.reserve_update_slot(counter, 2)
     assert :full = Schema.reserve_update_slot(counter, 2)
     assert Schema.pending_update_slots(counter) == 2
   end
 
-  test "stale reservations cannot decrement a restarted Schema generation" do
+  test "reserve_update_slot/2 caps concurrent callers" do
     counter = :atomics.new(1, [])
-    :ok = Schema.reset_update_slots(counter)
-    assert {:ok, {^counter, stale_generation}} = Schema.reserve_update_slot(counter, 2)
+    limit = 32
 
-    :ok = Schema.reset_update_slots(counter)
-    assert {:ok, {^counter, current_generation}} = Schema.reserve_update_slot(counter, 2)
-    assert current_generation > stale_generation
+    results =
+      1..1_000
+      |> Task.async_stream(
+        fn _index -> Schema.reserve_update_slot(counter, limit) end,
+        max_concurrency: 64,
+        ordered: false
+      )
+      |> Enum.map(fn {:ok, result} -> result end)
+      |> Enum.frequencies()
 
-    assert :ok = Schema.release_update_slot(counter, stale_generation)
-    assert Schema.pending_update_slots(counter) == 1
-    assert :ok = Schema.release_update_slot(counter, current_generation)
-    assert Schema.pending_update_slots(counter) == 0
+    assert results == %{ok: limit, full: 1_000 - limit}
+    assert Schema.pending_update_slots(counter) == limit
   end
 
-  test "reserved updates release their slot when handling starts" do
+  test "registered updates release their slot when handling starts" do
     user = insert(:user)
     source = insert(:source, user: user, lock_schema: true)
-    counter = :atomics.new(1, [])
+    name = Backends.via_source(source, Schema, nil)
 
     pid =
       start_supervised!(
         {Schema,
          [
            source: source,
-           sample_counter: counter,
+           max_pending_samples: 1,
            plan: %{limit_source_fields_limit: 500},
            bigquery_project_id: "some-id",
-           bigquery_dataset_id: "some-id"
+           bigquery_dataset_id: "some-id",
+           name: name
          ]}
       )
 
-    assert {:ok, reservation} = Schema.reserve_update_slot(counter, 1)
-    assert :ok = Schema.update(pid, build(:log_event, source: source), source, reservation)
+    {:via, Registry, {registry, key}} = name
+    assert [{^pid, {:schema_admission, counter, 1}}] = Registry.lookup(registry, key)
+
+    assert :ok = Schema.update(name, build(:log_event, source: source), source)
     :sys.get_state(pid)
 
     assert Schema.pending_update_slots(counter) == 0
-    assert {:ok, _reservation} = Schema.reserve_update_slot(counter, 1)
+    assert :ok = Schema.reserve_update_slot(counter, 1)
   end
 
   test "updates correctly" do

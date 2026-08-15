@@ -26,10 +26,10 @@ run = fn mode ->
       Enum.reduce(1..messages, 0, fn _, admitted ->
         reservation =
           if mode == :unbounded,
-            do: {:ok, :unbounded},
+            do: :ok,
             else: Schema.reserve_update_slot(counter, limit)
 
-        if match?({:ok, _reservation}, reservation) do
+        if reservation == :ok do
           GenServer.cast(sink, message)
           admitted + 1
         else
@@ -69,7 +69,7 @@ accepted_counter = :atomics.new(1, [])
 {accepted_us, _result} =
   :timer.tc(fn ->
     Enum.each(1..messages, fn _ ->
-      {:ok, _reservation} = Schema.reserve_update_slot(accepted_counter, limit)
+      :ok = Schema.reserve_update_slot(accepted_counter, limit)
       :atomics.sub(accepted_counter, 1, 1)
     end)
   end)

@@ -69,14 +69,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       system_source: source.system_source
     )
 
-    schema_sample_counter = :atomics.new(1, [])
-
-    max_pending_samples =
-      Application.get_env(:logflare, Schema, [])
-      |> Keyword.fetch!(:max_pending_samples)
-
-    # The pipeline shares Schema's admission generation. Keeping Schema first with
-    # rest_for_one prevents producers from reserving against a restarting generation.
     children = [
       {Schema,
        [
@@ -84,7 +76,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          source: source,
          bigquery_project_id: project_id,
          bigquery_dataset_id: dataset_id,
-         sample_counter: schema_sample_counter,
          name: Backends.via_source(source, Schema, backend.id)
        ]},
       {
@@ -96,9 +87,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           source: source,
           backend: backend,
           bigquery_project_id: project_id,
-          bigquery_dataset_id: dataset_id,
-          schema_sample_counter: schema_sample_counter,
-          schema_sample_limit: max_pending_samples
+          bigquery_dataset_id: dataset_id
         ],
         min_pipelines: 0,
         max_pipelines: System.schedulers_online(),
@@ -114,7 +103,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       }
     ]
 
-    Supervisor.init(children, strategy: :rest_for_one, max_restarts: 10)
+    Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
   end
 
   def insert_log_events_via_storage_write_api(log_events, opts) do

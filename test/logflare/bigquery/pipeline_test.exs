@@ -798,7 +798,6 @@ defmodule Logflare.BigQuery.PipelineTest do
       context: context
     } do
       source = insert(:source, user_id: user.id, lock_schema: false)
-      counter = :atomics.new(1, [])
       schema_name = Backends.via_source(source, {Schema, nil})
 
       schema_pid =
@@ -806,7 +805,7 @@ defmodule Logflare.BigQuery.PipelineTest do
           {Schema,
            [
              source: source,
-             sample_counter: counter,
+             max_pending_samples: 1,
              plan: %{limit_source_fields_limit: 500},
              bigquery_project_id: "some-id",
              bigquery_dataset_id: "some-id",
@@ -822,12 +821,11 @@ defmodule Logflare.BigQuery.PipelineTest do
       le =
         %{le | body: %{"event_message" => "test", "id" => le.id, "timestamp" => 0}}
 
-      context =
-        Map.merge(context, %{schema_sample_counter: counter, schema_sample_limit: 1})
-
       assert ^le = Pipeline.process_data(le, context, source)
       assert ^le = Pipeline.process_data(le, context, source)
 
+      {:via, Registry, {registry, key}} = schema_name
+      assert [{^schema_pid, {:schema_admission, counter, 1}}] = Registry.lookup(registry, key)
       assert Schema.pending_update_slots(counter) == 1
       assert {:message_queue_len, 1} = Process.info(schema_pid, :message_queue_len)
     end

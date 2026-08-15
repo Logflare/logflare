@@ -22,10 +22,15 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   alias Logflare.TeamUsers
   alias Logflare.SingleTenant
 
-  @sample_counter_scale 1_000_000
+  @admission_value_tag :schema_admission
 
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
+    {max_pending_samples, args} = Keyword.pop(args, :max_pending_samples)
+
+    max_pending_samples = max_pending_samples || configured_max_pending_samples()
+
+    name = register_admission_counter(name, max_pending_samples)
 
     GenServer.start_link(__MODULE__, args,
       name: name,
@@ -34,30 +39,39 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     )
   end
 
-  @spec update(atom(), LogEvent.t(), Source.t()) :: :ok
+  @spec update(GenServer.server(), LogEvent.t(), Source.t()) :: :ok
+  def update(
+        {:via, Registry, {registry, key}},
+        %LogEvent{} = log_event,
+        %Source{} = source
+      ) do
+    with [{pid, {@admission_value_tag, sample_counter, limit}}] <-
+           Registry.lookup(registry, key),
+         :ok <- reserve_update_slot(sample_counter, limit) do
+      SchemaMetrics.record_admission(:admitted)
+      GenServer.cast(pid, {:update, log_event, source, sample_counter})
+    else
+      _reason -> SchemaMetrics.record_admission(:rejected)
+    end
+
+    :ok
+  end
+
   def update(pid, %LogEvent{} = log_event, %Source{} = source)
       when is_pid(pid) or is_tuple(pid) do
     GenServer.cast(pid, {:update, log_event, source})
   end
 
   @doc false
-  def update(pid, %LogEvent{} = log_event, %Source{} = source, reservation)
-      when is_pid(pid) and is_tuple(reservation) do
-    GenServer.cast(pid, {:update, log_event, source, reservation})
-  end
-
-  @doc false
   def reserve_update_slot(sample_counter, limit)
-      when is_reference(sample_counter) and is_integer(limit) and limit > 0 and
-             limit < @sample_counter_scale do
+      when is_reference(sample_counter) and is_integer(limit) and limit > 0 do
     current = :atomics.get(sample_counter, 1)
-    generation = div(current, @sample_counter_scale)
 
-    if rem(current, @sample_counter_scale) >= limit do
+    if current >= limit do
       :full
     else
       case :atomics.compare_exchange(sample_counter, 1, current, current + 1) do
-        :ok -> {:ok, {sample_counter, generation}}
+        :ok -> :ok
         _actual -> reserve_update_slot(sample_counter, limit)
       end
     end
@@ -65,37 +79,25 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   @doc false
   def pending_update_slots(sample_counter) when is_reference(sample_counter) do
-    sample_counter
-    |> :atomics.get(1)
-    |> rem(@sample_counter_scale)
+    :atomics.get(sample_counter, 1)
   end
 
-  @doc false
-  def reset_update_slots(sample_counter) when is_reference(sample_counter) do
-    current = :atomics.get(sample_counter, 1)
-    generation = div(current, @sample_counter_scale) + 1
-    :atomics.put(sample_counter, 1, generation * @sample_counter_scale)
-    :ok
+  defp configured_max_pending_samples do
+    Application.get_env(:logflare, __MODULE__, [])
+    |> Keyword.fetch!(:max_pending_samples)
   end
 
-  @doc false
-  def release_update_slot(sample_counter, generation) do
-    current = :atomics.get(sample_counter, 1)
+  defp register_admission_counter(
+         {:via, Registry, {registry, key}},
+         max_pending_samples
+       )
+       when is_integer(max_pending_samples) and max_pending_samples > 0 do
+    sample_counter = :atomics.new(1, signed: false)
 
-    cond do
-      div(current, @sample_counter_scale) != generation ->
-        :ok
-
-      rem(current, @sample_counter_scale) == 0 ->
-        :ok
-
-      :atomics.compare_exchange(sample_counter, 1, current, current - 1) == :ok ->
-        :ok
-
-      true ->
-        release_update_slot(sample_counter, generation)
-    end
+    {:via, Registry, {registry, key, {@admission_value_tag, sample_counter, max_pending_samples}}}
   end
+
+  defp register_admission_counter(name, _max_pending_samples), do: name
 
   # Public for profiling: benchmarks can target the GenServer's pure schema
   # planning work without measuring mailbox scheduling or BigQuery side effects.
@@ -123,10 +125,6 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
     Process.flag(:trap_exit, true)
 
-    if sample_counter = args[:sample_counter] do
-      reset_update_slots(sample_counter)
-    end
-
     state = %{
       source_id: source_id,
       source_token: source_token,
@@ -149,10 +147,10 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   def handle_cast(
-        {:update, %LogEvent{} = log_event, %Source{} = source, {sample_counter, generation}},
+        {:update, %LogEvent{} = log_event, %Source{} = source, sample_counter},
         state
       ) do
-    release_update_slot(sample_counter, generation)
+    :atomics.sub(sample_counter, 1, 1)
 
     SchemaMetrics.record_handled()
     handle_update(log_event, source, state)

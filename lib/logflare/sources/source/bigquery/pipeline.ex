@@ -94,8 +94,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             bq_storage_write_api: source.bq_storage_write_api,
             source_id: source.id,
             backend_id: Map.get(backend || %{}, :id),
-            schema_sample_counter: args[:schema_sample_counter],
-            schema_sample_limit: args[:schema_sample_limit],
             user_id: source.user_id,
             system_source: source.system_source
           }
@@ -480,7 +478,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         SchemaMetrics.record_sample(rate_mode)
 
         schema_server = Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
-        maybe_update_schema(schema_server, log_event, source, context)
+        Schema.update(schema_server, log_event, source)
       end
     end
 
@@ -498,27 +496,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       rate > 100_000 -> {0.00001, :floor}
       true -> {1.0 / rate, :normal}
     end
-  end
-
-  defp maybe_update_schema(
-         schema_server,
-         log_event,
-         source,
-         %{schema_sample_counter: counter, schema_sample_limit: limit}
-       )
-       when is_reference(counter) and is_integer(limit) do
-    with pid when is_pid(pid) <- GenServer.whereis(schema_server),
-         {:ok, reservation} <- Schema.reserve_update_slot(counter, limit) do
-      SchemaMetrics.record_admission(:admitted)
-      Schema.update(pid, log_event, source, reservation)
-    else
-      _reason -> SchemaMetrics.record_admission(:rejected)
-    end
-  end
-
-  defp maybe_update_schema(schema_server, log_event, source, _context) do
-    SchemaMetrics.record_admission(:admitted)
-    Schema.update(schema_server, log_event, source)
   end
 
   def name(source_id) when is_atom(source_id) do

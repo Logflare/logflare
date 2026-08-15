@@ -63,14 +63,12 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetricsTest do
   test "aggregates Schema queues without source-level metric dimensions" do
     user = insert(:user)
     source = insert(:source, user: user, lock_schema: true)
-    counter = :atomics.new(1, [])
 
     pid =
       start_supervised!(
         {Schema,
          [
            source: source,
-           sample_counter: counter,
            plan: %{limit_source_fields_limit: 500},
            bigquery_project_id: "some-id",
            bigquery_dataset_id: "some-id",
