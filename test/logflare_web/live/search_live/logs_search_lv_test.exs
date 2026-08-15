@@ -893,8 +893,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       le = build(:log_event, metadata: %{"nested" => "something"}, top: "level", source: source)
       :timer.sleep(100)
 
-      # Backends.via_source(source, Schema, nil)
-      Schema.handle_cast({:update, le, source}, %{
+      sample_counter = :atomics.new(1, signed: false)
+      :atomics.put(sample_counter, 1, 1)
+
+      Schema.handle_cast({:update, le, source, sample_counter}, %{
         source_id: source.id,
         source_token: source.token,
         bigquery_project_id: nil,

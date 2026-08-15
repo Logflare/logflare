@@ -77,6 +77,41 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     assert Schema.pending_update_slots(counter) == limit
   end
 
+  test "requires a Registry name for admission" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    log_event = build(:log_event, source: source)
+
+    assert_raise ArgumentError, ~r/expected :name to be a Registry name/, fn ->
+      Schema.start_link(
+        source: source,
+        plan: %{limit_source_fields_limit: 500},
+        bigquery_project_id: "some-id",
+        bigquery_dataset_id: "some-id"
+      )
+    end
+
+    assert_raise ArgumentError, ~r/expected the Schema server to use a Registry name/, fn ->
+      Schema.update(self(), log_event, source)
+    end
+  end
+
+  test "rejects invalid admission limits instead of starting ungated" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    assert_raise ArgumentError, ~r/expected :max_pending_samples to be a positive integer/, fn ->
+      Schema.start_link(
+        source: source,
+        max_pending_samples: 0,
+        plan: %{limit_source_fields_limit: 500},
+        bigquery_project_id: "some-id",
+        bigquery_dataset_id: "some-id",
+        name: Backends.via_source(source, Schema, nil)
+      )
+    end
+  end
+
   test "registered updates release their slot when handling starts" do
     user = insert(:user)
     source = insert(:source, user: user, lock_schema: true)
@@ -148,6 +183,8 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
 
     on_exit(fn -> :telemetry.detach(handler_id) end)
 
+    name = Backends.via_source(source, Schema, nil)
+
     pid =
       start_supervised!(
         {Schema,
@@ -155,12 +192,13 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
            source: source,
            plan: %{limit_source_fields_limit: 500},
            bigquery_project_id: "some-id",
-           bigquery_dataset_id: "some-id"
+           bigquery_dataset_id: "some-id",
+           name: name
          ]}
       )
 
     le = build(:log_event, source: source, metadata: %{"test" => 123})
-    assert :ok = Schema.update(pid, le, source)
+    assert :ok = Schema.update(name, le, source)
 
     TestUtils.retry_assert(fn ->
       assert_received :ok

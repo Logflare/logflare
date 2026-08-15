@@ -59,9 +59,9 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     :ok
   end
 
-  def update(pid, %LogEvent{} = log_event, %Source{} = source)
-      when is_pid(pid) or is_tuple(pid) do
-    GenServer.cast(pid, {:update, log_event, source})
+  def update(server, %LogEvent{}, %Source{}) do
+    raise ArgumentError,
+          "expected the Schema server to use a Registry name, got: #{inspect(server)}"
   end
 
   @doc false
@@ -106,7 +106,14 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     {:via, Registry, {registry, key, {@admission_value_tag, sample_counter, max_pending_samples}}}
   end
 
-  defp register_admission_counter(name, _max_pending_samples), do: name
+  defp register_admission_counter({:via, Registry, _name}, max_pending_samples) do
+    raise ArgumentError,
+          "expected :max_pending_samples to be a positive integer, got: #{inspect(max_pending_samples)}"
+  end
+
+  defp register_admission_counter(name, _max_pending_samples) do
+    raise ArgumentError, "expected :name to be a Registry name, got: #{inspect(name)}"
+  end
 
   # Public for profiling: benchmarks can target the GenServer's pure schema
   # planning work without measuring mailbox scheduling or BigQuery side effects.
@@ -162,10 +169,6 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     release_update_slot(sample_counter)
 
     SchemaMetrics.record_handled()
-    handle_update(log_event, source, state)
-  end
-
-  def handle_cast({:update, %LogEvent{} = log_event, %Source{} = source}, state) do
     handle_update(log_event, source, state)
   end
 

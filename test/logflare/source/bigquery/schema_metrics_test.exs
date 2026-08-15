@@ -64,15 +64,18 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetricsTest do
     user = insert(:user)
     source = insert(:source, user: user, lock_schema: true)
 
+    name = Backends.via_source(source, Schema, nil)
+
     pid =
       start_supervised!(
         {Schema,
          [
            source: source,
+           max_pending_samples: 40,
            plan: %{limit_source_fields_limit: 500},
            bigquery_project_id: "some-id",
            bigquery_dataset_id: "some-id",
-           name: Backends.via_source(source, Schema, nil)
+           name: name
          ]}
       )
 
@@ -80,7 +83,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetricsTest do
     on_exit(fn -> if Process.alive?(pid), do: :sys.resume(pid) end)
 
     for _ <- 1..40 do
-      Schema.update(pid, build(:log_event, source: source), source)
+      Schema.update(name, build(:log_event, source: source), source)
     end
 
     Logflare.Telemetry.process_message_queue_metrics()
