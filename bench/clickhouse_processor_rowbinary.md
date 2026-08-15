@@ -36,11 +36,17 @@ a warmup batch.
 | metric | 99,290 | **107,397** | 106,749 | 105,733 |
 | trace | 120,384 | 135,506 | 136,458 | **138,754** |
 
-Six processors remain the balanced setting on six schedulers. Twelve processors gain
-only about 2% for logs and traces while losing about 2% for metrics, at the cost of
-additional scheduler competition with gzip. The existing `max_demand: 1_000` also
-remains suitable: six-processor encoding plus gzip completes 60,000 rows in roughly
-0.35–0.58 seconds, comfortably below the 5-second batch timeout.
+Six processors remain the balanced setting on the six-scheduler benchmark host. At
+runtime, processor concurrency is `max(System.schedulers_online() - 4, 6)`, reserving
+nominal capacity for the four fixed gzip/HTTP batch processors. This resolves to 6
+processors on 6 schedulers, 8 on 12, and 28 on 32. Concurrency remains per backend
+pipeline, so deployments with multiple active ClickHouse backends multiply that count.
+
+Twelve processors on the six-scheduler host gain only about 2% for logs and traces while
+losing about 2% for metrics, illustrating the cost of oversubscribing the available
+schedulers. The existing `max_demand: 1_000` remains suitable: six-processor encoding
+plus gzip completes 60,000 rows in roughly 0.35–0.58 seconds, comfortably below the
+5-second batch timeout.
 
 ## End-to-end comparison with current main
 

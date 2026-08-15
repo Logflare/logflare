@@ -4,11 +4,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   import ExUnit.CaptureLog
 
   alias Broadway.Message
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodedRow
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Mapper
@@ -132,6 +134,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert spec.id == Pipeline
       assert spec.start == {Pipeline, :start_link, [:some_arg]}
+    end
+
+    test "scales processors with schedulers while reserving four batch processors" do
+      assert Pipeline.processor_concurrency(1) == 6
+      assert Pipeline.processor_concurrency(6) == 6
+      assert Pipeline.processor_concurrency(12) == 8
+      assert Pipeline.processor_concurrency(32) == 28
+    end
+
+    test "starts Broadway with runtime-derived processor concurrency", %{backend: backend} do
+      dynamic_pipeline_name = Backends.via_backend(backend, Pipeline)
+      assert [pipeline_name] = DynamicPipeline.list_pipelines(dynamic_pipeline_name)
+
+      topology = Broadway.topology(pipeline_name)
+      assert [processor] = topology[:processors]
+      assert [batcher] = topology[:batchers]
+
+      assert processor.concurrency == Pipeline.processor_concurrency()
+      assert batcher.concurrency == 4
     end
 
     test "retains 64 batches of in-flight capacity independently of insert concurrency" do

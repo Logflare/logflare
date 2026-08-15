@@ -42,7 +42,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @event_types [:log, :metric, :trace]
   @producer_concurrency 1
-  @processor_concurrency 6
+  @min_processor_concurrency 6
   @processor_min_demand 100
   @processor_max_demand 1_000
   @batch_size 60_000
@@ -57,6 +57,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   # BufferProducer.capped_fetch_amount/2.
   @max_in_flight_batches 64
   @max_in_flight @batch_size * @max_in_flight_batches
+
+  @doc false
+  @spec processor_concurrency() :: pos_integer()
+  def processor_concurrency, do: processor_concurrency(System.schedulers_online())
+
+  @doc false
+  @spec processor_concurrency(pos_integer()) :: pos_integer()
+  def processor_concurrency(schedulers_online)
+      when is_integer(schedulers_online) and schedulers_online > 0 do
+    max(schedulers_online - @batcher_concurrency, @min_processor_concurrency)
+  end
 
   @doc false
   @spec max_retries() :: non_neg_integer()
@@ -85,6 +96,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   def start_link(args) do
     {name, args} = Keyword.pop(args, :name)
     backend = Keyword.fetch!(args, :backend)
+    processor_concurrency = processor_concurrency()
 
     Broadway.start_link(__MODULE__,
       name: name,
@@ -105,7 +117,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       ],
       processors: [
         default: [
-          concurrency: @processor_concurrency,
+          concurrency: processor_concurrency,
           min_demand: @processor_min_demand,
           max_demand: @processor_max_demand
         ]
