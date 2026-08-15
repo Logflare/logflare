@@ -4,14 +4,14 @@
 #   MIX_ENV=test mix run --no-start test/profiling/bq_schema_admission_bench.exs
 #
 # Optional env:
-#   MESSAGES=50000 FIELDS=50 LIMIT=32
+#   MESSAGES=50000 FIELDS=50 LIMIT=8
 
 alias Logflare.Sources.Source.BigQuery.Schema
 alias Logflare.Sources.Source.BigQuery.SchemaMetrics
 
 messages = String.to_integer(System.get_env("MESSAGES") || "50000")
 fields = String.to_integer(System.get_env("FIELDS") || "50")
-limit = String.to_integer(System.get_env("LIMIT") || "32")
+limit = String.to_integer(System.get_env("LIMIT") || "8")
 
 body = Map.new(1..fields, &{"field_#{&1}", String.duplicate("value", 4)})
 message = {:update, %{body: body, id: "benchmark"}, %{lock_schema: false}}
