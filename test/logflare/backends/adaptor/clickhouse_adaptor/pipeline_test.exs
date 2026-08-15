@@ -133,6 +133,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert spec.id == Pipeline
       assert spec.start == {Pipeline, :start_link, [:some_arg]}
     end
+
+    test "retains 64 batches of in-flight capacity independently of insert concurrency" do
+      assert Pipeline.max_in_flight() == 64 * Pipeline.max_batch_size()
+      assert Pipeline.max_in_flight() == 3_840_000
+    end
   end
 
   describe "process_name/2" do

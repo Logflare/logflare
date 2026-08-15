@@ -74,7 +74,10 @@ Maximum RSS changed by less than 1% because the benchmark includes the bounded t
 handoff where an event copy and its new binary coexist. After handoff, ETS memory falls
 sharply while binary memory rises; total VM memory is lower.
 
-Reducing batch-processor concurrency also lowers the count-based in-flight ceiling from
-3.84 million to 480,000 rows per backend. Together with the lower steady-state memory
-above, this supports deferring byte-based control while retaining it as useful future
+Batch-processor concurrency is decoupled from the count-based in-flight ceiling. Four
+workers bound concurrent gzip/HTTP inserts, while the producer retains the previous
+64-batch capacity of 3.84 million rows per backend. During downstream stalls, encoded
+partial and completed batches can accumulate in Broadway's `:ch` batcher up to that
+cap; additional backlog remains in `IngestEventQueue`. The lower steady-state memory
+above supports retaining this capacity while byte-based control remains useful future
 hardening.

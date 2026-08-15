@@ -51,10 +51,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   # monopolize the shared Finch pools and amplify ClickHouse timeouts under backlog.
   @batcher_concurrency 4
   @max_retries 1
-  # Two full batches across every batch processor, used as a generous safety valve
-  # rather than a fine-grained flow-control knob — see
+  # Keep buffer capacity independent of concurrent gzip/HTTP inserts. This preserves
+  # the previous 64-batch ceiling while four batch processors bound downstream load.
+  # It remains a generous safety valve rather than fine-grained flow control — see
   # BufferProducer.capped_fetch_amount/2.
-  @max_in_flight 2 * @batch_size * @batcher_concurrency
+  @max_in_flight_batches 64
+  @max_in_flight @batch_size * @max_in_flight_batches
 
   @doc false
   @spec max_retries() :: non_neg_integer()
