@@ -17,38 +17,47 @@ Commands use `MIX_ENV=test mix run --no-start` with:
 - `bench/clickhouse_processor_rowbinary.exs`
 - `bench/clickhouse_processor_rowbinary_memory.exs`
 
+The phase comparison uses `BATCH_SIZE=60000`, `BATCHES=3`, `WARMUP_BATCHES=1`,
+`CONCURRENCY=6`, and `PROCESSOR_CHUNK_SIZE=1000` for each event type and the `baseline`,
+`processor`, `encode`, and `compress` scenarios. The concurrency sweep holds those
+settings constant while testing `CONCURRENCY=4,6,8,12`. Memory runs use
+`BATCH_SIZE=60000` and compare `SCENARIO=event` with `SCENARIO=encoded` in separate OS
+processes under `/usr/bin/time -v`.
+
 ## Processor concurrency
 
 The processor scenario uses Broadway-shaped chunks of at most 1,000 rows. Results are
-rows per wall-clock second; each result covers two measured 60,000-row batches after a
-warmup batch.
+rows per wall-clock second; each result covers three measured 60,000-row batches after
+a warmup batch.
 
 | Event type | 4 processors | 6 processors | 8 processors | 12 processors |
 | --- | ---: | ---: | ---: | ---: |
-| log | 160,738 | **177,639** | 172,985 | 172,124 |
-| metric | 102,026 | 109,377 | **110,139** | 106,113 |
-| trace | 122,252 | 137,700 | 136,841 | **140,546** |
+| log | 158,534 | 170,951 | 171,329 | **174,227** |
+| metric | 99,290 | **107,397** | 106,749 | 105,733 |
+| trace | 120,384 | 135,506 | 136,458 | **138,754** |
 
-Six processors are the balanced setting on six schedulers. Higher concurrency has no
-consistent benefit across event types and increases scheduler competition with gzip.
-The existing `max_demand: 1_000` also remains suitable: serial fused encoding measured
-about 9–19 ms per 1,000 production-shaped rows, comfortably below the 5-second batch
-timeout.
+Six processors remain the balanced setting on six schedulers. Twelve processors gain
+only about 2% for logs and traces while losing about 2% for metrics, at the cost of
+additional scheduler competition with gzip. The existing `max_demand: 1_000` also
+remains suitable: six-processor encoding plus gzip completes 60,000 rows in roughly
+0.35–0.58 seconds, comfortably below the 5-second batch timeout.
 
 ## Batch critical path
 
 | Event type | Batch-side encode + gzip | Processor encode, then gzip | Gzip only |
 | --- | ---: | ---: | ---: |
-| log | 63,330 rows/s | 177,639 rows/s | 200,831 rows/s |
-| metric | 51,659 rows/s | 109,377 rows/s | 179,262 rows/s |
-| trace | 69,281 rows/s | 137,700 rows/s | 218,439 rows/s |
+| log | 78,693 rows/s | 168,077 rows/s | 230,489 rows/s |
+| metric | 49,452 rows/s | 102,807 rows/s | 178,773 rows/s |
+| trace | 66,893 rows/s | 137,989 rows/s | 219,139 rows/s |
 
 Processor-side encoding shortens the local 60,000-row encode/compress critical path by
-roughly 50–64%. It does not remove CPU work; it overlaps and parallelizes fused encoding
-before the batch trigger. Gzip remains serial per batch.
+roughly 51–53%. Encoding-only throughput with six processors is 379k log, 230k metric,
+and 334k trace rows/s; gzip-only throughput shows that serial compression becomes the
+remaining local bottleneck. The change does not remove CPU work—it overlaps and
+parallelizes fused encoding before the batch trigger.
 
 Batch-processor concurrency is reduced from 32 to 4. The local benchmark shows that one
-gzip worker can process roughly 179k–218k rows/s, so additional workers primarily cover
+gzip worker can process roughly 179k–230k rows/s, so additional workers primarily cover
 HTTP latency rather than CPU throughput. Production insert timeouts provide the missing
 downstream evidence: 32 workers let one backend issue 32 simultaneous HTTP/1 inserts,
 occupy most of the shared primary Finch pool, exceed the async pool's connection count,
@@ -66,11 +75,11 @@ The ETS value and Broadway message share the same reference-counted RowBinary pa
 
 | Event type | Full-event state | Encoded-row state | Change |
 | --- | ---: | ---: | ---: |
-| log | 328.9 MB | 230.7 MB | -29.9% |
-| metric | 471.6 MB | 275.0 MB | -41.7% |
-| trace | 403.4 MB | 249.6 MB | -38.1% |
+| log | 328.2 MB | 229.3 MB | -30.1% |
+| metric | 472.4 MB | 275.0 MB | -41.8% |
+| trace | 402.8 MB | 249.6 MB | -38.0% |
 
-Maximum RSS changed by less than 1% because the benchmark includes the bounded transient
+Maximum RSS changed by at most 1.6% because the benchmark includes the bounded transient
 handoff where an event copy and its new binary coexist. After handoff, ETS memory falls
 sharply while binary memory rises; total VM memory is lower.
 
