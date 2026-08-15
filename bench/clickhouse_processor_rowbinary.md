@@ -42,9 +42,25 @@ additional scheduler competition with gzip. The existing `max_demand: 1_000` als
 remains suitable: six-processor encoding plus gzip completes 60,000 rows in roughly
 0.35–0.58 seconds, comfortably below the 5-second batch timeout.
 
-## Batch critical path
+## End-to-end comparison with current main
 
-| Event type | Batch-side encode + gzip | Processor encode, then gzip | Gzip only |
+Current `main` at `ee61fab1` was measured in a separate clean workspace on the same
+host using the same fixtures and fixed-work settings. Its production-equivalent path is
+ETS lookup, `Mapper.map/3`, Elixir RowBinary encoding, and streaming gzip. Compressed
+output byte counts matched both stacked scenarios exactly.
+
+| Event type | Current main | Fused batch-side (#3759) | Processor-side (#3837) | #3837 elapsed change vs main |
+| --- | ---: | ---: | ---: | ---: |
+| log | 75,520 rows/s | 78,693 rows/s | 168,077 rows/s | -55% |
+| metric | 37,309 rows/s | 49,452 rows/s | 102,807 rows/s | -64% |
+| trace | 38,807 rows/s | 66,893 rows/s | 137,989 rows/s | -72% |
+
+The combined stack therefore shortens the measured local path by 55–72% versus current
+main. The next section isolates #3837's incremental effect on top of the fused mapper.
+
+## Incremental batch critical path
+
+| Event type | Fused batch-side (#3759) | Processor-side (#3837) | Gzip only |
 | --- | ---: | ---: | ---: |
 | log | 78,693 rows/s | 168,077 rows/s | 230,489 rows/s |
 | metric | 49,452 rows/s | 102,807 rows/s | 178,773 rows/s |
