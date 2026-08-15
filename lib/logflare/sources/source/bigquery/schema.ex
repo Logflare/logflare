@@ -24,6 +24,8 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   @admission_value_tag :schema_admission
 
+  @type admission_counter :: :atomics.atomics_ref()
+
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
     {max_pending_samples, args} = Keyword.pop(args, :max_pending_samples)
@@ -63,8 +65,8 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   @doc false
-  def reserve_update_slot(sample_counter, limit)
-      when is_reference(sample_counter) and is_integer(limit) and limit > 0 do
+  @spec reserve_update_slot(admission_counter(), pos_integer()) :: :ok | :full
+  def reserve_update_slot(sample_counter, limit) when is_integer(limit) and limit > 0 do
     current = :atomics.get(sample_counter, 1)
 
     if current >= limit do
@@ -78,8 +80,15 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   @doc false
-  def pending_update_slots(sample_counter) when is_reference(sample_counter) do
+  @spec pending_update_slots(admission_counter()) :: non_neg_integer()
+  def pending_update_slots(sample_counter) do
     :atomics.get(sample_counter, 1)
+  end
+
+  @spec release_update_slot(admission_counter()) :: :ok
+  defp release_update_slot(sample_counter) do
+    :atomics.sub(sample_counter, 1, 1)
+    :ok
   end
 
   defp configured_max_pending_samples do
@@ -150,7 +159,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
         {:update, %LogEvent{} = log_event, %Source{} = source, sample_counter},
         state
       ) do
-    :atomics.sub(sample_counter, 1, 1)
+    release_update_slot(sample_counter)
 
     SchemaMetrics.record_handled()
     handle_update(log_event, source, state)
