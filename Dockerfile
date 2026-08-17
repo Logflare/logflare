@@ -39,12 +39,16 @@ ENV CARGO_PROFILE_RELEASE_LTO="thin"
 ENV CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
 COPY Cargo.toml Cargo.lock ./
 COPY native native/
-RUN cargo build --workspace --release --locked
+# Keep Cargo freshness checks independent of checkout mtimes so a cached target
+# remains reusable after the full source tree is copied.
+RUN find native Cargo.toml Cargo.lock -exec touch -h -d @1 {} + && \
+    cargo build --workspace --release --locked
 
 COPY . ./
 
 # release
-RUN mix release  && \
+RUN find native Cargo.toml Cargo.lock -exec touch -h -d @1 {} + && \
+    mix release && \
     npm run --prefix assets deploy && \
     mix phx.digest
 
