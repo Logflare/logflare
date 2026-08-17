@@ -721,7 +721,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live_with_redirect(~p"/alerts")
+        |> live_with_redirect(~p"/alerts", bypass_team_param: true)
 
       assert html =~ alert_query.name
     end
@@ -735,7 +735,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live_with_redirect(~p"/alerts/#{alert_query.id}")
+        |> live_with_redirect(~p"/alerts/#{alert_query.id}", bypass_team_param: true)
 
       assert html =~ alert_query.name
     end
@@ -747,7 +747,9 @@ defmodule LogflareWeb.AlertsLiveTest do
       alert_query: alert_query
     } do
       {:ok, _view, html} =
-        conn |> login_user(user, team_user) |> live_with_redirect(~p"/alerts")
+        conn
+        |> login_user(user, team_user)
+        |> live_with_redirect(~p"/alerts", bypass_team_param: true)
 
       assert html =~ ~r/alerts\/#{alert_query.id}[^"<]*t=#{team_user.team_id}/
     end
@@ -761,7 +763,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live_with_redirect(~p"/alerts/#{alert_query}")
+        |> live_with_redirect(~p"/alerts/#{alert_query}", bypass_team_param: true)
 
       assert html =~ ~r/alerts\/#{alert_query.id}\/edit[^"<]*t=#{team_user.team_id}/
     end

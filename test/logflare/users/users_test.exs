@@ -77,6 +77,76 @@ defmodule Logflare.UsersTest do
     assert Users.count_users() == 2
   end
 
+  describe "preload_defaults/1 for a list of users" do
+    test "does not re-query the users table to hydrate source retention_days" do
+      insert(:plan)
+
+      users =
+        for _ <- 1..5 do
+          user = insert(:user)
+          insert_list(3, :source, user: user)
+          user
+        end
+
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+      handler_id = {:preload_defaults_users_query_count, make_ref()}
+
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :repo, :query],
+        fn _event, _measurements, metadata, _config ->
+          if metadata.source == "users" do
+            Agent.update(counter, &(&1 + 1))
+          end
+        end,
+        nil
+      )
+
+      Users.preload_defaults(users)
+
+      count = Agent.get(counter, & &1)
+      :telemetry.detach(handler_id)
+      Agent.stop(counter)
+
+      assert count == 0
+    end
+
+    test "resolves plans in a bounded number of queries regardless of list size" do
+      insert(:plan)
+
+      count_billing_queries_for = fn user_count ->
+        users = for _ <- 1..user_count, do: insert(:user)
+
+        {:ok, counter} = Agent.start_link(fn -> 0 end)
+        handler_id = {:preload_defaults_billing_query_count, make_ref()}
+
+        :telemetry.attach(
+          handler_id,
+          [:logflare, :repo, :query],
+          fn _event, _measurements, metadata, _config ->
+            if metadata.source in ["billing_accounts", "plans", "partner_users"] do
+              Agent.update(counter, &(&1 + 1))
+            end
+          end,
+          nil
+        )
+
+        Users.preload_defaults(users)
+
+        count = Agent.get(counter, & &1)
+        :telemetry.detach(handler_id)
+        Agent.stop(counter)
+
+        count
+      end
+
+      count_for_one = count_billing_queries_for.(1)
+      count_for_twenty = count_billing_queries_for.(20)
+
+      assert count_for_one == count_for_twenty
+    end
+  end
+
   # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
   # identifier-quoting characters, whitespace, and shell metacharacters.
   @injection_chars ~c";`.'\" -/\\#!@$%^&*()+={}[]|<>?,~"
