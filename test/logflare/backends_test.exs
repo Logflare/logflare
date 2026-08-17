@@ -27,6 +27,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Sources.Source.Data
+  alias Logflare.Sources.Source.RateCounterServer
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.User
@@ -615,8 +616,6 @@ defmodule Logflare.BackendsTest do
 
       # unchanged
       assert %Backend{config: %{url: "http" <> _}} = Backends.get_backend(backend.id)
-
-      :timer.sleep(1000)
     end
 
     test "partial config update preserves existing fields", %{user: user} do
@@ -784,25 +783,25 @@ defmodule Logflare.BackendsTest do
 
       # start an out-of-tree SourceSupWorker
       start_supervised({SourceSupWorker, [source: source, interval: 100]})
-      :timer.sleep(200)
-      new_length = Supervisor.which_children(via) |> length()
-      assert new_length > prev_length
-      assert new_length - prev_length == 3
+
+      TestUtils.retry_assert(fn ->
+        new_length = Supervisor.which_children(via) |> length()
+        assert new_length - prev_length == 3
+      end)
 
       Logflare.Repo.delete_all(Logflare.Rules.Rule)
       Logflare.Repo.delete_all(Logflare.Backends.SourcesBackend)
       Logflare.Repo.delete_all(Logflare.Backends.Backend)
 
-      :timer.sleep(200)
       # removal
-      new_length = Supervisor.which_children(via) |> length()
-      assert new_length == prev_length
+      TestUtils.retry_assert(fn ->
+        assert Supervisor.which_children(via) |> length() == prev_length
+      end)
     end
 
     test "source_sup_started?/1, lookup/2", %{source: source} do
       assert false == Backends.source_sup_started?(source)
       start_supervised!({SourceSup, source})
-      :timer.sleep(1000)
       assert true == Backends.source_sup_started?(source)
     end
 
@@ -914,7 +913,6 @@ defmodule Logflare.BackendsTest do
       Backends.clear_list_backends_cache(source.id)
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
 
       via = Backends.via_source(source, SourceSup)
 
@@ -948,7 +946,6 @@ defmodule Logflare.BackendsTest do
       assert backend.consolidated_ingest? == true
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
 
       assert :noop = SourceSup.start_backend_child(source, backend)
     end
@@ -960,7 +957,10 @@ defmodule Logflare.BackendsTest do
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
+
+      rate_counter = GenServer.whereis(Backends.via_source(source, RateCounterServer))
+      assert source.token == :sys.get_state(rate_counter)
+
       {:ok, source: source}
     end
 
@@ -995,6 +995,7 @@ defmodule Logflare.BackendsTest do
       assert Backends.fetch_latest_timestamp(source) == 0
       le = build(:log_event, source: source, some: "event")
       assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert {:ok, 1} = Counters.get_inserts(source.token)
 
       # RecentInsertsCacher bridges Counters.increment/2 (called by ingest_logs)
       # → Counters.increment_source_changed_at_unix_ts/2 (read by
@@ -1003,6 +1004,7 @@ defmodule Logflare.BackendsTest do
       cacher = GenServer.whereis(Backends.via_source(source, RecentInsertsCacher))
       TestUtils.send_and_wait_for_handling(cacher, :do_cache)
 
+      assert Counters.get_inserts_since_boot(source.token) == 1
       assert Backends.fetch_latest_timestamp(source) != 0
     end
 
@@ -1174,7 +1176,6 @@ defmodule Logflare.BackendsTest do
         insert(:source, user: user, drop_lql_string: "testing", drop_lql_filters: lql_filters)
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(1000)
 
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_lql])
 
@@ -1188,8 +1189,6 @@ defmodule Logflare.BackendsTest do
 
       assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_lql], %{count: 1},
                       %{source_id: ^source_id, source_token: ^source_token}}
-
-      :timer.sleep(1000)
     end
 
     test "emits rejected telemetry for events with pipeline_error", %{user: user} do
@@ -1225,7 +1224,6 @@ defmodule Logflare.BackendsTest do
         insert(:source, user: user, drop_lql_string: "testing", drop_lql_filters: lql_filters)
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(1000)
 
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_lql])
 
@@ -1241,8 +1239,6 @@ defmodule Logflare.BackendsTest do
                       %{source_id: ^source_id, source_token: ^source_token}}
 
       refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_lql], _, _}
-
-      :timer.sleep(1000)
     end
 
     test "route to source with lql", %{user: user} do
@@ -1251,7 +1247,6 @@ defmodule Logflare.BackendsTest do
       source = Logflare.Repo.preload(source, :rules, force: true)
       start_supervised!({SourceSup, source}, id: :source)
       start_supervised!({SourceSup, target}, id: :target)
-      :timer.sleep(500)
 
       assert {:ok, 2} =
                Backends.ingest_logs(
@@ -1279,7 +1274,6 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source}, id: :source)
       start_supervised!({SourceSup, target}, id: :target)
       start_supervised!({SourceSup, other_target}, id: :other_target)
-      :timer.sleep(500)
 
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
 
@@ -1299,7 +1293,6 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source}, id: :source)
       start_supervised!({SourceSup, target}, id: :target)
       start_supervised!({SourceSup, other_target}, id: :other_target)
-      :timer.sleep(500)
 
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
 
@@ -1449,8 +1442,6 @@ defmodule Logflare.BackendsTest do
       TestUtils.retry_assert(fn ->
         assert_received ^ref
       end)
-
-      :timer.sleep(1000)
     end
 
     test "cascade delete for rules on backend deletion", %{user: user} do
@@ -1634,7 +1625,6 @@ defmodule Logflare.BackendsTest do
       )
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
       {:ok, source: source}
     end
 
@@ -1654,8 +1644,6 @@ defmodule Logflare.BackendsTest do
       TestUtils.retry_assert(fn ->
         assert_received {^ref, %{"event_message" => "some event"}}
       end)
-
-      :timer.sleep(1000)
     end
   end
 
@@ -1809,7 +1797,6 @@ defmodule Logflare.BackendsTest do
     } do
       # Start actual SourceSup process
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
 
       via = Backends.via_source(source, SourceSup)
 
@@ -1884,7 +1871,9 @@ defmodule Logflare.BackendsTest do
       user = insert(:user)
       source = insert(:source, user: user)
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
+
+      rate_counter = GenServer.whereis(Backends.via_source(source, RateCounterServer))
+      assert source.token == :sys.get_state(rate_counter)
 
       {:ok, source: source}
     end
@@ -2049,7 +2038,6 @@ defmodule Logflare.BackendsTest do
       user = insert(:user)
       source = insert(:source, user: user, enable_spooling: false)
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
 
       prev_spool_config = Application.get_env(:logflare, :spool)
 
