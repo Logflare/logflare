@@ -39,10 +39,7 @@ ENV CARGO_PROFILE_RELEASE_LTO="thin"
 ENV CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
 COPY Cargo.toml Cargo.lock ./
 COPY native native/
-RUN set -e; \
-    for crate in arrowipc_ex ch_compression_ex mapper_ex sqlparser_ex; do \
-      cargo rustc --package "$crate" --release --locked; \
-    done
+RUN cargo build --workspace --release --locked
 
 COPY . ./
 
