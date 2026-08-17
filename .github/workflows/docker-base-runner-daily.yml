@@ -47,7 +47,6 @@ jobs:
         with:
           file: ./Dockerfile.base
           push: true
-          pull: true
           tags: |
             supabase/logflare:base-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
             supabase/logflare:base-${{ matrix.arch }}
@@ -82,7 +81,6 @@ jobs:
         with:
           file: ./Dockerfile.runner
           push: true
-          pull: true
           tags: |
             supabase/logflare:runner-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
             supabase/logflare:runner-${{ matrix.arch }}

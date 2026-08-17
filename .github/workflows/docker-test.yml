@@ -37,7 +37,6 @@ jobs:
         with:
           file: ./Dockerfile
           push: false
-          pull: true
           platforms: linux/amd64
           cache-from: type=gha,scope=docker-build-check
           cache-to: type=gha,scope=docker-build-check,mode=max

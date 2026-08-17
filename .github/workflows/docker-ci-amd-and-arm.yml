@@ -59,7 +59,6 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           push: true
-          pull: true
           tags: supabase/logflare:dev-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
           platforms: linux/${{ matrix.arch }}
           # Baked into the image as LOGFLARE_COMMIT_SHA and emitted as an OTel
