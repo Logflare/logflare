@@ -10,7 +10,7 @@ defmodule Logflare.Users.CacheWarmer do
       for u <- users do
         [
           {{:get, [u.id]}, u},
-          {{:get_by, [api_key: u.api_key]}, u}
+          {{:get_by, [[api_key: u.api_key]]}, u}
         ]
       end
 
@@ -21,7 +21,7 @@ defmodule Logflare.Users.CacheWarmer do
               Users.preload_defaults(users)
             ]) do
         [
-          {{:get_by_and_preload, [api_key: u.api_key]}, preloaded},
+          {{:get_by_and_preload, [[api_key: u.api_key]]}, preloaded},
           {{:preload_defaults, [u]}, preloaded}
         ]
       end
