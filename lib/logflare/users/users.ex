@@ -136,6 +136,8 @@ defmodule Logflare.Users do
     end)
   end
 
+  defp put_sources_retention_days(%User{sources: []} = user), do: user
+
   defp put_sources_retention_days(%User{} = user) do
     plan = Billing.Cache.get_plan_by_user(user)
     put_sources_retention_days(user, plan)

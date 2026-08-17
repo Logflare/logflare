@@ -26,6 +26,6 @@ defmodule Logflare.Users.CacheWarmer do
         ]
       end
 
-    {:ok, List.flatten(get_kv ++ preloaded_kv) |> Enum.map(&{:cached, &1})}
+    {:ok, List.flatten(get_kv ++ preloaded_kv) |> Enum.map(fn {k, v} -> {k, {:cached, v}} end)}
   end
 end
