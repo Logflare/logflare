@@ -1,11 +1,14 @@
 defmodule LogflareWeb.OpenApiTest do
   use ExUnit.Case, async: true
 
+  alias Logflare.Backends.BackendResponseConfig
   alias LogflareWeb.Api.AccessTokenController
   alias LogflareWeb.Api.QueryController
   alias LogflareWeb.Api.TeamController
+  alias LogflareWeb.OpenApiSchemas
   alias LogflareWeb.OpenApiSchemas.AccessToken
   alias LogflareWeb.OpenApiSchemas.BackendApiParams
+  alias LogflareWeb.OpenApiSchemas.BackendApiSchema
   alias LogflareWeb.OpenApiSchemas.BackendResponseConfigSchema
   alias LogflareWeb.OpenApiSchemas.ClickhouseConfigSchema
   alias LogflareWeb.OpenApiSchemas.ElasticConfigSchema
@@ -42,42 +45,38 @@ defmodule LogflareWeb.OpenApiTest do
   test "Management API backend response config documents only safe per-adaptor fields" do
     assert %Schema{anyOf: response_schemas} = BackendResponseConfigSchema.schema()
 
-    actual_property_sets =
-      response_schemas
-      |> Enum.map(&(&1.schema().properties |> Map.keys() |> MapSet.new()))
-      |> MapSet.new()
+    response_schema_by_type = %{
+      webhook: OpenApiSchemas.WebhookResponseConfigSchema,
+      elastic: OpenApiSchemas.ElasticResponseConfigSchema,
+      datadog: OpenApiSchemas.DatadogResponseConfigSchema,
+      sentry: OpenApiSchemas.EmptyBackendResponseConfigSchema,
+      postgres: OpenApiSchemas.PostgresResponseConfigSchema,
+      bigquery: OpenApiSchemas.BigQueryResponseConfigSchema,
+      loki: OpenApiSchemas.ElasticResponseConfigSchema,
+      clickhouse: OpenApiSchemas.ClickhouseResponseConfigSchema,
+      incidentio: OpenApiSchemas.EmptyBackendResponseConfigSchema,
+      s3: OpenApiSchemas.S3ResponseConfigSchema,
+      axiom: OpenApiSchemas.AxiomResponseConfigSchema,
+      otlp: OpenApiSchemas.OtlpResponseConfigSchema,
+      last9: OpenApiSchemas.Last9ResponseConfigSchema,
+      syslog: OpenApiSchemas.SyslogResponseConfigSchema
+    }
 
-    expected_property_sets =
-      [
-        [:url, :http, :gzip],
-        [:url],
-        [:region],
-        [],
-        [:hostname, :database, :schema, :port, :pool_size, :url],
-        [:project_id, :dataset_id],
-        [
-          :database,
-          :port,
-          :pool_size,
-          :use_async_inserts_for_small_batches,
-          :async_insert_max_rows,
-          :max_event_age_hours,
-          :url,
-          :read_only_url,
-          :read_only_urls,
-          :default_read_cluster,
-          :async_insert_cluster_url
-        ],
-        [:s3_bucket, :storage_region, :batch_timeout, :endpoint],
-        [:domain, :dataset_name],
-        [:protocol, :gzip, :flatten_to_attributes, :endpoint],
-        [:host, :port, :tls, :max_message_bytes]
-      ]
-      |> Enum.map(&MapSet.new/1)
-      |> MapSet.new()
+    safe_fields_by_type = BackendResponseConfig.safe_fields()
 
-    assert actual_property_sets == expected_property_sets
+    assert MapSet.new(response_schemas) == MapSet.new(Map.values(response_schema_by_type))
+
+    assert MapSet.new(Map.keys(response_schema_by_type)) ==
+             MapSet.new(Map.keys(safe_fields_by_type))
+
+    for {type, response_schema} <- response_schema_by_type do
+      assert MapSet.new(Map.keys(response_schema.schema().properties)) ==
+               MapSet.new(Map.fetch!(safe_fields_by_type, type))
+    end
+
     assert Enum.all?(response_schemas, &(&1.schema().additionalProperties == false))
+
+    assert BackendApiSchema.schema().properties.config == BackendResponseConfigSchema.schema()
 
     assert %Schema{type: :string} =
              ClickhouseConfigSchema.schema().properties.read_only_urls.additionalProperties
