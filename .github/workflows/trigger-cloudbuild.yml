@@ -15,7 +15,8 @@ jobs:
         # Push callers deploy staging only; manual release callers deploy both.
         env: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["prod","staging"]' || '["staging"]') }}
     concurrency:
-      group: cloudbuild-deploy-${{ matrix.env }}
+      # Main and versioned staging deploy different clusters; serialize each target independently.
+      group: cloudbuild-deploy-${{ matrix.env }}-${{ github.event_name == 'push' && 'main' || 'versioned' }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
@@ -40,7 +41,6 @@ jobs:
           credentials_json: ${{ matrix.env == 'prod' && secrets.GCP_PROD_CREDENTIALS || secrets.GCP_STAGING_CREDENTIALS }}
           create_credentials_file: true
           export_environment_variables: true
-          cleanup_credentials: false
       - uses: "google-github-actions/setup-gcloud@v1"
         with:
           version: "449.0.0"
