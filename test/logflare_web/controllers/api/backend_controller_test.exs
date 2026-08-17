@@ -3,7 +3,6 @@ defmodule LogflareWeb.Api.BackendControllerTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Backends.Backend
-  alias Logflare.Backends.BackendResponseConfig
 
   setup do
     insert(:plan, name: "Free")
@@ -73,13 +72,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       for backend <- backends do
         response = responses[backend.id]
 
-        expected =
-          backend.type
-          |> BackendResponseConfig.serialize(backend.config_encrypted)
-          |> Jason.encode!()
-          |> Jason.decode!()
-
-        assert response["config"] == expected
+        assert response["config"] == expected_response_config(backend.type)
         refute Jason.encode!(response) =~ "synthetic-secret"
         refute Map.has_key?(response, "metadata")
         refute Map.has_key?(response["config"], "headers")
@@ -609,11 +602,16 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       pool_size: 2,
       username: "synthetic-user",
       password: "synthetic-secret",
-      insert_protocol: "http",
-      native_port: 9000,
-      native_pool_size: 2,
+      read_only_url: "https://legacy-read.example.com",
+      read_only_urls: %{
+        "primary" => "https://read.example.com",
+        "secondary" => "https://read-2.example.com"
+      },
+      default_read_cluster: "primary",
       use_async_inserts_for_small_batches: false,
-      async_insert_max_rows: 1000
+      async_insert_cluster_url: "https://async.example.com",
+      async_insert_max_rows: 1000,
+      max_event_age_hours: 72
     }
 
   defp response_test_config(:incidentio),
@@ -641,6 +639,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       endpoint: "https://example.com",
       protocol: "http/protobuf",
       gzip: true,
+      flatten_to_attributes: true,
       headers: %{"X-Key" => "synthetic-secret"}
     }
 
@@ -658,5 +657,75 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       ca_cert: "synthetic-secret",
       client_cert: "synthetic-secret",
       client_key: "synthetic-secret"
+    }
+
+  defp expected_response_config(:webhook),
+    do: %{"url" => "https://example.com", "http" => "http2", "gzip" => true}
+
+  defp expected_response_config(:elastic), do: %{"url" => "https://example.com"}
+  defp expected_response_config(:datadog), do: %{"region" => "US1"}
+  defp expected_response_config(:sentry), do: %{}
+
+  defp expected_response_config(:postgres),
+    do: %{
+      "hostname" => "db.example.com",
+      "database" => "logs",
+      "schema" => "public",
+      "port" => 5432,
+      "pool_size" => 2
+    }
+
+  defp expected_response_config(:bigquery),
+    do: %{"project_id" => "project-id", "dataset_id" => "dataset"}
+
+  defp expected_response_config(:loki), do: %{"url" => "https://example.com"}
+
+  defp expected_response_config(:clickhouse),
+    do: %{
+      "url" => "https://example.com",
+      "database" => "default",
+      "port" => 8123,
+      "pool_size" => 2,
+      "read_only_url" => "https://legacy-read.example.com",
+      "read_only_urls" => %{
+        "primary" => "https://read.example.com",
+        "secondary" => "https://read-2.example.com"
+      },
+      "default_read_cluster" => "primary",
+      "use_async_inserts_for_small_batches" => false,
+      "async_insert_cluster_url" => "https://async.example.com",
+      "async_insert_max_rows" => 1000,
+      "max_event_age_hours" => 72
+    }
+
+  defp expected_response_config(:incidentio), do: %{}
+
+  defp expected_response_config(:s3),
+    do: %{
+      "s3_bucket" => "bucket",
+      "storage_region" => "us-east-1",
+      "batch_timeout" => 1000,
+      "endpoint" => "https://s3.example.com"
+    }
+
+  defp expected_response_config(:axiom),
+    do: %{"domain" => "api.axiom.co", "dataset_name" => "logs"}
+
+  defp expected_response_config(:otlp),
+    do: %{
+      "endpoint" => "https://example.com",
+      "protocol" => "http/protobuf",
+      "gzip" => true,
+      "flatten_to_attributes" => true
+    }
+
+  defp expected_response_config(:last9), do: %{"region" => "US-WEST-1"}
+
+  defp expected_response_config(:syslog),
+    do: %{
+      "host" => "syslog.example.com",
+      "port" => 6514,
+      "tls" => true,
+      "max_message_bytes" => 1000
     }
 end

@@ -1,14 +1,19 @@
 defmodule LogflareWeb.OpenApi do
   alias OpenApiSpex.Schema
 
-  defmacro __using__(properties: properties, required: required) do
+  defmacro __using__(opts) do
+    properties = Keyword.fetch!(opts, :properties)
+    required = Keyword.fetch!(opts, :required)
+    additional_properties = Keyword.get(opts, :additional_properties)
+
     quote do
       require OpenApiSpex
 
       OpenApiSpex.schema(%{
         type: :object,
         properties: unquote(properties),
-        required: unquote(required)
+        required: unquote(required),
+        additionalProperties: unquote(additional_properties)
       })
 
       def response do

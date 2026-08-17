@@ -15,11 +15,29 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     "EU" => "https://http-intake.logs.datadoghq.eu/api/v2/logs",
     "AP1" => "https://http-intake.logs.ap1.datadoghq.com/api/v2/logs",
     "AP2" => "https://http-intake.logs.ap2.datadoghq.com/api/v2/logs",
-    "US1-FED" => "https://http-intake.logs.ddog-gov.com/api/v2/logs"
+    "UK1" => "https://http-intake.logs.uk1.datadoghq.com/api/v2/logs",
+    "US1-FED" => "https://http-intake.logs.ddog-gov.com/api/v2/logs",
+    "US2-FED" => "https://http-intake.logs.us2.ddog-gov.com/api/v2/logs"
   }
   @regions Map.keys(@api_url_mapping)
 
+  @intake_origins @api_url_mapping
+                  |> Map.values()
+                  |> Enum.map(fn url ->
+                    uri = URI.parse(url)
+                    URI.to_string(%URI{scheme: uri.scheme, host: uri.host})
+                  end)
+                  |> Enum.uniq()
+                  |> Enum.sort()
+
   def regions, do: @regions
+
+  @doc """
+  Scheme-and-host origins of every regional logs intake, in the form used as a
+  `Finch` pool key.
+  """
+  @spec intake_origins() :: [String.t()]
+  def intake_origins, do: @intake_origins
 
   @behaviour Logflare.Backends.Adaptor
 

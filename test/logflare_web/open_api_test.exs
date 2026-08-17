@@ -7,6 +7,7 @@ defmodule LogflareWeb.OpenApiTest do
   alias LogflareWeb.OpenApiSchemas.AccessToken
   alias LogflareWeb.OpenApiSchemas.BackendApiParams
   alias LogflareWeb.OpenApiSchemas.BackendResponseConfigSchema
+  alias LogflareWeb.OpenApiSchemas.ClickhouseConfigSchema
   alias LogflareWeb.OpenApiSchemas.ElasticConfigSchema
   alias LogflareWeb.OpenApiSchemas.QueryResult
   alias OpenApiSpex.MediaType
@@ -41,15 +42,45 @@ defmodule LogflareWeb.OpenApiTest do
   test "Management API backend response config documents only safe per-adaptor fields" do
     assert %Schema{anyOf: response_schemas} = BackendResponseConfigSchema.schema()
 
-    assert Enum.any?(response_schemas, fn schema ->
-             schema.schema().properties == %{url: %Schema{type: :string}}
-           end)
+    actual_property_sets =
+      response_schemas
+      |> Enum.map(&(&1.schema().properties |> Map.keys() |> MapSet.new()))
+      |> MapSet.new()
 
-    refute Enum.any?(response_schemas, fn schema ->
-             Map.has_key?(schema.schema().properties, :password) or
-               Map.has_key?(schema.schema().properties, :headers) or
-               Map.has_key?(schema.schema().properties, :api_key)
-           end)
+    expected_property_sets =
+      [
+        [:url, :http, :gzip],
+        [:url],
+        [:region],
+        [],
+        [:hostname, :database, :schema, :port, :pool_size, :url],
+        [:project_id, :dataset_id],
+        [
+          :database,
+          :port,
+          :pool_size,
+          :use_async_inserts_for_small_batches,
+          :async_insert_max_rows,
+          :max_event_age_hours,
+          :url,
+          :read_only_url,
+          :read_only_urls,
+          :default_read_cluster,
+          :async_insert_cluster_url
+        ],
+        [:s3_bucket, :storage_region, :batch_timeout, :endpoint],
+        [:domain, :dataset_name],
+        [:protocol, :gzip, :flatten_to_attributes, :endpoint],
+        [:host, :port, :tls, :max_message_bytes]
+      ]
+      |> Enum.map(&MapSet.new/1)
+      |> MapSet.new()
+
+    assert actual_property_sets == expected_property_sets
+    assert Enum.all?(response_schemas, &(&1.schema().additionalProperties == false))
+
+    assert %Schema{type: :string} =
+             ClickhouseConfigSchema.schema().properties.read_only_urls.additionalProperties
 
     assert ElasticConfigSchema in BackendApiParams.schema().properties.config.anyOf
   end

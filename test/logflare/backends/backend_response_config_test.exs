@@ -56,11 +56,16 @@ defmodule Logflare.Backends.BackendResponseConfigTest do
       pool_size: 2,
       username: "synthetic-user",
       password: "synthetic-secret",
-      insert_protocol: "http",
-      native_port: 9000,
-      native_pool_size: 2,
+      read_only_url: "https://legacy-read.example.com",
+      read_only_urls: %{
+        "primary" => "https://read.example.com",
+        "secondary" => "https://read-2.example.com"
+      },
+      default_read_cluster: "primary",
       use_async_inserts_for_small_batches: false,
-      async_insert_max_rows: 1000
+      async_insert_cluster_url: "https://async.example.com",
+      async_insert_max_rows: 1000,
+      max_event_age_hours: 72
     },
     incidentio: %{
       api_token: "synthetic-secret",
@@ -80,6 +85,7 @@ defmodule Logflare.Backends.BackendResponseConfigTest do
       endpoint: "https://example.com",
       protocol: "http/protobuf",
       gzip: true,
+      flatten_to_attributes: true,
       headers: %{"X-Key" => "synthetic-secret"}
     },
     last9: %{region: "US-WEST-1", username: "synthetic-user", password: "synthetic-secret"},
@@ -96,45 +102,82 @@ defmodule Logflare.Backends.BackendResponseConfigTest do
     }
   }
 
+  @expected_response_configs %{
+    webhook: %{url: "https://example.com", http: "http2", gzip: true},
+    elastic: %{url: "https://example.com"},
+    datadog: %{region: "US1"},
+    sentry: %{},
+    postgres: %{
+      hostname: "db.example.com",
+      database: "logs",
+      schema: "public",
+      port: 5432,
+      pool_size: 2
+    },
+    bigquery: %{project_id: "project-id", dataset_id: "dataset"},
+    loki: %{url: "https://example.com"},
+    clickhouse: %{
+      url: "https://example.com",
+      database: "default",
+      port: 8123,
+      pool_size: 2,
+      read_only_url: "https://legacy-read.example.com",
+      read_only_urls: %{
+        "primary" => "https://read.example.com",
+        "secondary" => "https://read-2.example.com"
+      },
+      default_read_cluster: "primary",
+      use_async_inserts_for_small_batches: false,
+      async_insert_cluster_url: "https://async.example.com",
+      async_insert_max_rows: 1000,
+      max_event_age_hours: 72
+    },
+    incidentio: %{},
+    s3: %{
+      s3_bucket: "bucket",
+      storage_region: "us-east-1",
+      batch_timeout: 1000,
+      endpoint: "https://s3.example.com"
+    },
+    axiom: %{domain: "api.axiom.co", dataset_name: "logs"},
+    otlp: %{
+      endpoint: "https://example.com",
+      protocol: "http/protobuf",
+      gzip: true,
+      flatten_to_attributes: true
+    },
+    last9: %{region: "US-WEST-1"},
+    syslog: %{
+      host: "syslog.example.com",
+      port: 6514,
+      tls: true,
+      max_message_bytes: 1000
+    }
+  }
+
   test "every mapped backend has an exhaustive safe response policy" do
-    assert Map.keys(Backend.adaptor_mapping()) |> MapSet.new() ==
-             Map.keys(BackendResponseConfig.safe_fields()) |> MapSet.new()
+    mapped_types = Backend.adaptor_mapping() |> Map.keys() |> MapSet.new()
 
-    expected_known_fields =
-      BackendResponseConfig.safe_fields()
-      |> Map.values()
-      |> List.flatten()
-      |> Kernel.++([
-        :headers,
-        :username,
-        :password,
-        :api_key,
-        :api_token,
-        :dsn,
-        :access_key_id,
-        :secret_access_key,
-        :alert_source_config_id,
-        :metadata,
-        :cipher_key,
-        :ca_cert,
-        :client_cert,
-        :client_key,
-        :structured_data
-      ])
+    assert mapped_types == BackendResponseConfig.safe_fields() |> Map.keys() |> MapSet.new()
+    assert mapped_types == BackendResponseConfig.omitted_fields() |> Map.keys() |> MapSet.new()
 
-    assert MapSet.new(BackendResponseConfig.known_fields()) == MapSet.new(expected_known_fields)
+    for {type, adaptor} <- Backend.adaptor_mapping() do
+      config_fields = adaptor.cast_config(%{}).types |> Map.keys() |> MapSet.new()
+      classified_fields = BackendResponseConfig.known_fields(type) |> MapSet.new()
+
+      assert config_fields == classified_fields,
+             "#{inspect(type)} response policy does not classify every adaptor config field"
+    end
   end
 
   test "serializes every mapped backend type with exact safe fields only" do
+    assert Map.keys(@configs) |> MapSet.new() ==
+             Map.keys(@expected_response_configs) |> MapSet.new()
+
     Enum.each(@configs, fn {type, config} ->
       response_config = BackendResponseConfig.serialize(type, config)
 
-      expected_fields =
-        BackendResponseConfig.safe_fields()[type]
-        |> MapSet.new()
-        |> MapSet.intersection(Map.keys(config) |> MapSet.new())
-
-      assert MapSet.new(Map.keys(response_config)) == expected_fields
+      assert response_config == @expected_response_configs[type]
       refute Jason.encode!(response_config) =~ "synthetic-secret"
       refute Jason.encode!(response_config) =~ "synthetic-user"
       refute Map.has_key?(response_config, :headers)
@@ -159,12 +202,26 @@ defmodule Logflare.Backends.BackendResponseConfigTest do
   test "omits unsafe urls and backend metadata" do
     for url <- [
           "https://user:synthetic-secret@example.com",
+          "https://example.com:synthetic-secret",
+          "https://exa mple.com",
+          "https://%zz.example.com",
+          "ftp://example.com",
           "https://example.com/path",
           "https://example.com?token=synthetic-secret",
           "https://example.com#synthetic-secret"
         ] do
       refute Map.has_key?(BackendResponseConfig.serialize(:webhook, %{url: url}), :url)
     end
+
+    refute Map.has_key?(
+             BackendResponseConfig.serialize(:clickhouse, %{
+               read_only_urls: %{
+                 "safe" => "https://read.example.com",
+                 "unsafe" => "https://read.example.com/token"
+               }
+             }),
+             :read_only_urls
+           )
 
     response =
       Jason.encode!(%Backend{

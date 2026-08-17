@@ -49,6 +49,8 @@ defmodule Logflare.Backends.BufferProducer do
 
   @type table_key :: {pos_integer() | atom(), pos_integer() | nil, pid() | nil}
 
+  @in_flight_registry Logflare.Backends.BufferProducer.InFlightRegistry
+
   @default_interval 1_000
   # How soon to retry after a fetch came back short specifically because
   # capped_fetch_amount/2 throttled it (not because the queue was empty) — a producer
@@ -80,17 +82,16 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   # Publishes a reference to a mutable :atomics counter (not the counter value itself)
-  # via :persistent_term, so transform/2 — which runs in this same process, per
+  # via Registry, so transform/2 — which runs in this same process, per
   # Broadway.Topology.ProducerStage — can look it up once and hand it to ack/3 through
-  # the message's ack_data. Only :persistent_term.put/2 (here, once per producer
-  # lifecycle) and :erase/1 (in terminate/2) are ever called; the actual claim/ack
-  # traffic goes straight through the atomics ref, since repeated :persistent_term
-  # writes would trigger a global VM-wide sweep on every single event.
+  # the message's ack_data. We can't use :persistent_term here: producers are
+  # frequently (re)started and scaled up/down, and each put/erase would trigger a
+  # global VM-wide literal-area sweep.
   @spec init_in_flight(id_passing :: boolean(), max_in_flight :: non_neg_integer() | nil) ::
           {:atomics.atomics_ref() | nil, non_neg_integer() | :infinity | nil}
   defp init_in_flight(true, max_in_flight) do
     ref = :atomics.new(1, signed: true)
-    :persistent_term.put({__MODULE__, :in_flight_ref, self()}, ref)
+    Registry.register(@in_flight_registry, self(), ref)
     {ref, max_in_flight || :infinity}
   end
 
@@ -349,23 +350,15 @@ defmodule Logflare.Backends.BufferProducer do
 
   @impl GenStage
   def terminate(_reason, %{spool_producer: true} = state) do
-    cleanup_in_flight_ref(state)
     table_key = {:spool_producer, nil, self()}
     startup_table_key = {:spool_producer, nil, nil}
     IngestEventQueue.move(table_key, startup_table_key)
     state
   end
 
-  def terminate(_reason, state) do
-    cleanup_in_flight_ref(state)
-    state
-  end
-
-  defp cleanup_in_flight_ref(%{in_flight_ref: ref}) when not is_nil(ref) do
-    :persistent_term.erase({__MODULE__, :in_flight_ref, self()})
-  end
-
-  defp cleanup_in_flight_ref(_state), do: :ok
+  # No explicit Registry.unregister/2 needed: the registry entry is tied to this
+  # process and is cleaned up automatically once it exits.
+  def terminate(_reason, state), do: state
 
   # Diagnostic getter only — atomics refs can't be sent across a distributed
   # connection and read remotely (unlike the plain integer this returns), so callers
@@ -373,9 +366,18 @@ defmodule Logflare.Backends.BufferProducer do
   # :rpc.call that runs entirely on the producer's own node.
   @spec in_flight_count(pid()) :: non_neg_integer() | nil
   def in_flight_count(pid) do
-    case :persistent_term.get({__MODULE__, :in_flight_ref, pid}, nil) do
+    case get_in_flight_ref(pid) do
       nil -> nil
       ref -> :atomics.get(ref, 1)
+    end
+  end
+
+  # Returns the atomics ref a producer published at init, or nil if none is registered.
+  @spec get_in_flight_ref(pid()) :: :atomics.atomics_ref() | nil
+  def get_in_flight_ref(pid) do
+    case Registry.lookup(@in_flight_registry, pid) do
+      [{_pid, ref}] -> ref
+      [] -> nil
     end
   end
 

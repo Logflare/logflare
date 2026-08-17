@@ -392,12 +392,16 @@ defmodule LogflareWeb.OpenApiSchemas do
       password: %Schema{type: :string, nullable: true},
       pool_size: %Schema{type: :integer, nullable: true},
       read_only_url: %Schema{type: :string, nullable: true},
-      insert_protocol: %Schema{type: :string, nullable: true},
-      native_port: %Schema{type: :integer, nullable: true},
-      native_pool_size: %Schema{type: :integer, nullable: true},
+      read_only_urls: %Schema{
+        type: :object,
+        nullable: true,
+        additionalProperties: %Schema{type: :string}
+      },
+      default_read_cluster: %Schema{type: :string, nullable: true},
       use_async_inserts_for_small_batches: %Schema{type: :boolean, nullable: true},
       async_insert_cluster_url: %Schema{type: :string, nullable: true},
-      async_insert_max_rows: %Schema{type: :integer, nullable: true}
+      async_insert_max_rows: %Schema{type: :integer, nullable: true},
+      max_event_age_hours: %Schema{type: :integer, nullable: true}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:url, :database, :port]
@@ -447,7 +451,13 @@ defmodule LogflareWeb.OpenApiSchemas do
       endpoint: %Schema{type: :string},
       protocol: %Schema{type: :string, nullable: true},
       gzip: %Schema{type: :boolean},
-      headers: %Schema{type: :object}
+      headers: %Schema{type: :object},
+      flatten_to_attributes: %Schema{
+        type: :boolean,
+        nullable: true,
+        description:
+          "Sends the log event_message as a text string in the body field and flattens other fields into individual attributes, instead of the default nested body. Defaults to false."
+      }
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:endpoint]
@@ -485,22 +495,38 @@ defmodule LogflareWeb.OpenApiSchemas do
       http: %Schema{type: :string},
       gzip: %Schema{type: :boolean}
     }
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule ElasticResponseConfigSchema do
     @properties %{url: %Schema{type: :string}}
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule DatadogResponseConfigSchema do
     @properties %{region: %Schema{type: :string}}
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule EmptyBackendResponseConfigSchema do
     @properties %{}
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule PostgresResponseConfigSchema do
@@ -512,12 +538,20 @@ defmodule LogflareWeb.OpenApiSchemas do
       pool_size: %Schema{type: :integer},
       url: %Schema{type: :string}
     }
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule BigQueryResponseConfigSchema do
     @properties %{project_id: %Schema{type: :string}, dataset_id: %Schema{type: :string}}
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule ClickhouseResponseConfigSchema do
@@ -525,16 +559,23 @@ defmodule LogflareWeb.OpenApiSchemas do
       database: %Schema{type: :string},
       port: %Schema{type: :integer},
       pool_size: %Schema{type: :integer},
-      insert_protocol: %Schema{type: :string},
-      native_port: %Schema{type: :integer},
-      native_pool_size: %Schema{type: :integer},
       use_async_inserts_for_small_batches: %Schema{type: :boolean},
       async_insert_max_rows: %Schema{type: :integer},
+      max_event_age_hours: %Schema{type: :integer},
       url: %Schema{type: :string},
       read_only_url: %Schema{type: :string},
+      read_only_urls: %Schema{
+        type: :object,
+        additionalProperties: %Schema{type: :string}
+      },
+      default_read_cluster: %Schema{type: :string},
       async_insert_cluster_url: %Schema{type: :string}
     }
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule S3ResponseConfigSchema do
@@ -544,26 +585,43 @@ defmodule LogflareWeb.OpenApiSchemas do
       batch_timeout: %Schema{type: :integer},
       endpoint: %Schema{type: :string}
     }
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule AxiomResponseConfigSchema do
     @properties %{domain: %Schema{type: :string}, dataset_name: %Schema{type: :string}}
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule OtlpResponseConfigSchema do
     @properties %{
       protocol: %Schema{type: :string},
       gzip: %Schema{type: :boolean},
+      flatten_to_attributes: %Schema{type: :boolean},
       endpoint: %Schema{type: :string}
     }
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule Last9ResponseConfigSchema do
     @properties %{region: %Schema{type: :string}}
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule SyslogResponseConfigSchema do
@@ -573,7 +631,11 @@ defmodule LogflareWeb.OpenApiSchemas do
       tls: %Schema{type: :boolean},
       max_message_bytes: %Schema{type: :integer}
     }
-    use LogflareWeb.OpenApi, properties: @properties, required: []
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [],
+      additional_properties: false
   end
 
   defmodule BackendResponseConfigSchema do
