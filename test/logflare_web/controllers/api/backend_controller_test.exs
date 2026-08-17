@@ -3,6 +3,8 @@ defmodule LogflareWeb.Api.BackendControllerTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Backends.Backend
+  alias LogflareWeb.ApiSpec
+  alias LogflareWeb.OpenApiSchemas.BackendResponseConfigSchema
 
   setup do
     insert(:plan, name: "Free")
@@ -69,10 +71,24 @@ defmodule LogflareWeb.Api.BackendControllerTest do
         |> json_response(200)
         |> Map.new(&{&1["id"], &1})
 
+      api_spec = ApiSpec.spec()
+
+      response_config_schema =
+        Map.fetch!(api_spec.components.schemas, BackendResponseConfigSchema.schema().title)
+
       for backend <- backends do
         response = responses[backend.id]
 
         assert response["config"] == expected_response_config(backend.type)
+
+        assert {:ok, _config} =
+                 OpenApiSpex.cast_value(response["config"], response_config_schema, api_spec)
+
+        assert {:error, _reason} =
+                 response["config"]
+                 |> Map.put("unknown_secret", "synthetic-secret")
+                 |> OpenApiSpex.cast_value(response_config_schema, api_spec)
+
         refute Jason.encode!(response) =~ "synthetic-secret"
         refute Map.has_key?(response, "metadata")
         refute Map.has_key?(response["config"], "headers")

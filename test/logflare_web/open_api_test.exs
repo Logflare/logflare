@@ -1,6 +1,7 @@
 defmodule LogflareWeb.OpenApiTest do
   use ExUnit.Case, async: true
 
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.BackendResponseConfig
   alias LogflareWeb.Api.AccessTokenController
   alias LogflareWeb.Api.QueryController
@@ -16,6 +17,23 @@ defmodule LogflareWeb.OpenApiTest do
   alias OpenApiSpex.MediaType
   alias OpenApiSpex.Response
   alias OpenApiSpex.Schema
+
+  @response_schema_by_type %{
+    webhook: OpenApiSchemas.WebhookResponseConfigSchema,
+    elastic: OpenApiSchemas.ElasticResponseConfigSchema,
+    datadog: OpenApiSchemas.DatadogResponseConfigSchema,
+    sentry: OpenApiSchemas.EmptyBackendResponseConfigSchema,
+    postgres: OpenApiSchemas.PostgresResponseConfigSchema,
+    bigquery: OpenApiSchemas.BigQueryResponseConfigSchema,
+    loki: OpenApiSchemas.ElasticResponseConfigSchema,
+    clickhouse: OpenApiSchemas.ClickhouseResponseConfigSchema,
+    incidentio: OpenApiSchemas.EmptyBackendResponseConfigSchema,
+    s3: OpenApiSchemas.S3ResponseConfigSchema,
+    axiom: OpenApiSchemas.AxiomResponseConfigSchema,
+    otlp: OpenApiSchemas.OtlpResponseConfigSchema,
+    last9: OpenApiSchemas.Last9ResponseConfigSchema,
+    syslog: OpenApiSchemas.SyslogResponseConfigSchema
+  }
 
   @bad_request_error_schema %Schema{
     oneOf: [
@@ -45,31 +63,14 @@ defmodule LogflareWeb.OpenApiTest do
   test "Management API backend response config documents only safe per-adaptor fields" do
     assert %Schema{anyOf: response_schemas} = BackendResponseConfigSchema.schema()
 
-    response_schema_by_type = %{
-      webhook: OpenApiSchemas.WebhookResponseConfigSchema,
-      elastic: OpenApiSchemas.ElasticResponseConfigSchema,
-      datadog: OpenApiSchemas.DatadogResponseConfigSchema,
-      sentry: OpenApiSchemas.EmptyBackendResponseConfigSchema,
-      postgres: OpenApiSchemas.PostgresResponseConfigSchema,
-      bigquery: OpenApiSchemas.BigQueryResponseConfigSchema,
-      loki: OpenApiSchemas.ElasticResponseConfigSchema,
-      clickhouse: OpenApiSchemas.ClickhouseResponseConfigSchema,
-      incidentio: OpenApiSchemas.EmptyBackendResponseConfigSchema,
-      s3: OpenApiSchemas.S3ResponseConfigSchema,
-      axiom: OpenApiSchemas.AxiomResponseConfigSchema,
-      otlp: OpenApiSchemas.OtlpResponseConfigSchema,
-      last9: OpenApiSchemas.Last9ResponseConfigSchema,
-      syslog: OpenApiSchemas.SyslogResponseConfigSchema
-    }
-
     safe_fields_by_type = BackendResponseConfig.safe_fields()
 
-    assert MapSet.new(response_schemas) == MapSet.new(Map.values(response_schema_by_type))
+    assert MapSet.new(response_schemas) == MapSet.new(Map.values(@response_schema_by_type))
 
-    assert MapSet.new(Map.keys(response_schema_by_type)) ==
+    assert MapSet.new(Map.keys(@response_schema_by_type)) ==
              MapSet.new(Map.keys(safe_fields_by_type))
 
-    for {type, response_schema} <- response_schema_by_type do
+    for {type, response_schema} <- @response_schema_by_type do
       assert MapSet.new(Map.keys(response_schema.schema().properties)) ==
                MapSet.new(Map.fetch!(safe_fields_by_type, type))
     end
@@ -82,6 +83,33 @@ defmodule LogflareWeb.OpenApiTest do
              ClickhouseConfigSchema.schema().properties.read_only_urls.additionalProperties
 
     assert ElasticConfigSchema in BackendApiParams.schema().properties.config.anyOf
+  end
+
+  test "Management API backend response field types match adaptor config types" do
+    for {type, response_schema} <- @response_schema_by_type do
+      adaptor = Map.fetch!(Backend.adaptor_mapping(), type)
+      config_types = adaptor.cast_config(%{}).types
+
+      for {field, field_schema} <- response_schema.schema().properties do
+        config_type = Map.fetch!(config_types, field)
+
+        expected_schema_type =
+          case config_type do
+            :string -> :string
+            :integer -> :integer
+            :boolean -> :boolean
+            {:map, _value_type} -> :object
+          end
+
+        assert field_schema.type == expected_schema_type
+        refute field_schema.nullable
+
+        case config_type do
+          {:map, :string} -> assert %Schema{type: :string} = field_schema.additionalProperties
+          _other -> :ok
+        end
+      end
+    end
   end
 
   test "Management API access token timestamps are documented as RFC3339" do

@@ -171,8 +171,10 @@ defmodule Logflare.Backends.BackendResponseConfigTest do
   end
 
   test "serializes every mapped backend type with exact safe fields only" do
-    assert Map.keys(@configs) |> MapSet.new() ==
-             Map.keys(@expected_response_configs) |> MapSet.new()
+    fixture_types = MapSet.new(Map.keys(@configs))
+
+    assert fixture_types == MapSet.new(Map.keys(@expected_response_configs))
+    assert fixture_types == MapSet.new(Map.keys(Backend.adaptor_mapping()))
 
     Enum.each(@configs, fn {type, config} ->
       response_config = BackendResponseConfig.serialize(type, config)
