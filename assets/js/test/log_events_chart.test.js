@@ -3,7 +3,7 @@ import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("recharts", async () => {
-  const { createElement } = await import("react");
+  const { createElement, useRef } = await import("react");
   const emptyComponent = () => null;
   const mouseEventNames = [
     "onClick",
@@ -16,12 +16,24 @@ vi.mock("recharts", async () => {
   return {
     Bar: emptyComponent,
     BarChart: ({ children, ...props }) => {
+      const frameIdsByEvent = useRef(new Map());
       const deferredMouseProps = Object.fromEntries(
         mouseEventNames
           .filter((name) => props[name])
           .map((name) => [
             name,
-            (...args) => requestAnimationFrame(() => props[name](...args)),
+            (...args) => {
+              const pendingFrameId = frameIdsByEvent.current.get(name);
+              if (pendingFrameId !== undefined) {
+                cancelAnimationFrame(pendingFrameId);
+              }
+
+              const frameId = requestAnimationFrame(() => {
+                props[name](...args);
+                frameIdsByEvent.current.delete(name);
+              });
+              frameIdsByEvent.current.set(name, frameId);
+            },
           ]),
       );
 
@@ -72,21 +84,27 @@ const renderChart = (pushEvent, data = chartData) =>
     },
   );
 
-let animationFrames = [];
+let animationFrames = new Map();
+let nextAnimationFrameId = 1;
 
 const flushAnimationFrames = () => {
   act(() => {
-    const queuedFrames = animationFrames;
-    animationFrames = [];
+    const queuedFrames = [...animationFrames.values()];
+    animationFrames.clear();
     queuedFrames.forEach((callback) => callback());
   });
 };
 
 beforeEach(() => {
-  animationFrames = [];
+  animationFrames = new Map();
+  nextAnimationFrameId = 1;
   vi.stubGlobal("requestAnimationFrame", (callback) => {
-    animationFrames.push(callback);
-    return animationFrames.length;
+    const frameId = nextAnimationFrameId++;
+    animationFrames.set(frameId, callback);
+    return frameId;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (frameId) => {
+    animationFrames.delete(frameId);
   });
 });
 
@@ -204,6 +222,7 @@ describe("LogEventsChart pointer selection", () => {
 
     chart.props.onMouseDown({}, { clientX: 150 });
     flushAnimationFrames();
+    chart.props.onMouseMove({}, { clientX: 250 });
     chart.props.onMouseMove({}, { clientX: 350 });
     flushAnimationFrames();
     chart.props.onMouseUp({}, { clientX: 350 });
