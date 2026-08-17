@@ -24,6 +24,8 @@ defmodule LogflareWeb.LogEventLive do
     lql = params["lql"] || ""
     is_tailing = params["tailing?"] == "true"
 
+    search_timezone = params["tz"] || preferred_timezone(socket.assigns)
+
     opts =
       [
         source: source,
@@ -49,7 +51,7 @@ defmodule LogflareWeb.LogEventLive do
       |> assign(:log_event_id, params["uuid"])
       |> assign(:lql, lql)
       |> assign(:tailing?, is_tailing)
-      |> assign(:tz, params["tz"])
+      |> assign(:search_timezone, search_timezone)
       |> assign(:timestamp, timestamp)
 
     {:ok, socket}
@@ -68,4 +70,15 @@ defmodule LogflareWeb.LogEventLive do
 
   defp maybe_put_timestamp(opts, timestamp),
     do: Keyword.put(opts, :timestamp, DateTime.truncate(timestamp, :second))
+
+  @spec preferred_timezone(map()) :: String.t()
+  defp preferred_timezone(%{team_user: %{preferences: %{timezone: timezone}}})
+       when is_binary(timezone),
+       do: timezone
+
+  defp preferred_timezone(%{user: %{preferences: %{timezone: timezone}}})
+       when is_binary(timezone),
+       do: timezone
+
+  defp preferred_timezone(_assigns), do: "Etc/UTC"
 end

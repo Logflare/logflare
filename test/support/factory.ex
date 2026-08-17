@@ -170,6 +170,18 @@ defmodule Logflare.Factory do
     end)
   end
 
+  @doc """
+  Builds queue saturation events without rerunning the full log-event factory for every item.
+
+  Queue saturation tests only require unique queue keys, so this builds one event and clones it
+  with unique IDs.
+  """
+  @spec build_queue_saturation_events(pos_integer(), keyword()) :: [LogEvent.t()]
+  def build_queue_saturation_events(count, attrs \\ []) do
+    event = build(:log_event, attrs)
+    for id <- 1..count, do: %{event | id: {event.id, id}}
+  end
+
   def plan_factory do
     %Plan{
       stripe_id: "31415",

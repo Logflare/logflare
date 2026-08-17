@@ -15,18 +15,17 @@
     module={LogflareWeb.Search.LogEventViewerComponent}
     id={:log_event_viewer}
     {%{
-  user: @user,
-    source_schema_flat_map: @source_schema_flat_map,
-    source: @source,
-    timestamp: @timestamp,
-    log_event: @log_event,
-    params: %{
-      "log-event-id" => @log_event_id,
-      "log-event-timestamp" => @timestamp,
-      "lql" => assigns[:lql],
-      "tailing?" => assigns[:tailing?],
-      "tz" => assigns[:tz]
-    }
-  }}
+      user: @user,
+      source_schema_flat_map: @source_schema_flat_map,
+      source: @source,
+      timestamp: @timestamp,
+      log_event: @log_event,
+      lql: @lql,
+      search_timezone: @search_timezone,
+      params: %{
+        "log-event-id" => @log_event_id,
+        "log-event-timestamp" => @timestamp
+      }
+    }}
   />
 </div>

@@ -2,6 +2,7 @@ defmodule Logflare.Networking do
   @moduledoc false
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+  alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.SingleTenant
 
   def pools do
@@ -132,28 +133,9 @@ defmodule Logflare.Networking do
   end
 
   defp all_datadog_pools do
-    %{
-      "https://http-intake.logs.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.us3.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.us5.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.datadoghq.eu" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.ap1.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ]
-    }
+    for origin <- DatadogAdaptor.intake_origins(), into: %{} do
+      {origin, [protocols: [:http1], start_pool_metrics?: true]}
+    end
   end
 
   defp grpc_pools do
