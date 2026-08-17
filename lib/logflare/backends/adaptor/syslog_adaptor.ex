@@ -17,7 +17,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   typedstruct enforce: true do
     field(:tls, boolean())
     field(:host, String.t())
-    field(:port, non_neg_integer())
+    field(:port, pos_integer())
     field(:cipher_key, binary())
     field(:ca_cert, String.t())
     field(:client_cert, String.t())
@@ -80,7 +80,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   def validate_config(changeset) do
     changeset
     |> validate_required([:host, :port])
-    |> validate_inclusion(:port, 0..65_535)
+    |> validate_inclusion(:port, 1..65_535)
     |> validate_cipher()
     |> validate_certificate(:ca_cert)
     |> validate_certificate(:client_cert)

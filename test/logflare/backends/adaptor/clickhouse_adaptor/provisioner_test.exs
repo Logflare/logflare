@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
 
   import Logflare.ClickHouseMappedEvents
 
@@ -67,23 +68,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
   describe "connection test failure handling" do
     @tag capture_log: true
-    test "fails initialization when ClickHouse is unavailable" do
-      {_source, invalid_backend} =
-        setup_clickhouse_test(
-          config: %{
-            url: "http://localhost",
-            username: "invalid_user",
-            password: "invalid_pass",
-            port: 19_999
-          }
-        )
+    test "stops when the ingest grant check encounters a connection error", %{
+      backend: backend
+    } do
+      grant_check_statement = QueryTemplates.grant_check_statement()
 
-      pid = start_supervised!({Provisioner, invalid_backend}, restart: :transient)
+      stub(Ch, :query, fn
+        _pool, ^grant_check_statement, _params, _opts ->
+          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+
+        pool, statement, params, opts ->
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      pid = start_supervised!({Provisioner, backend}, restart: :transient)
       ref = Process.monitor(pid)
 
       assert_receive {:DOWN, ^ref, :process, ^pid,
                       {:shutdown, {:error, :grant_check_unknown_failure}}},
-                     5_000
+                     1_000
     end
   end
 

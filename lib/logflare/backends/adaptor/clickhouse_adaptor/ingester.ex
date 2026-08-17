@@ -18,7 +18,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @initial_delay 2_500
   @max_delay 5_000
   @pool_timeout 8_000
-  @receive_timeout 20_000
+  @receive_timeout 15_000
   @too_many_parts_marker "Code: 252."
 
   @doc """

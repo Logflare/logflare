@@ -2,6 +2,7 @@ defmodule Logflare.NetworkingTest do
   @moduledoc false
   use Logflare.DataCase
 
+  alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.Networking
 
   describe "single tenant mode using Big Query" do
@@ -32,33 +33,18 @@ defmodule Logflare.NetworkingTest do
     TestUtils.setup_single_tenant(backend_type: :postgres)
 
     test "returns only datadog connection pools" do
+      expected_datadog_pools =
+        DatadogAdaptor.intake_origins()
+        |> Map.new(fn origin ->
+          {origin, [protocols: [:http1], start_pool_metrics?: true]}
+        end)
+        |> Map.put(:default, protocols: [:http1])
+
       assert [
                {Finch,
                 [
                   name: Logflare.FinchDefault,
-                  pools: %{
-                    :default => [protocols: [:http1]],
-                    "https://http-intake.logs.ap1.datadoghq.com" => [
-                      protocols: [:http1],
-                      start_pool_metrics?: true
-                    ],
-                    "https://http-intake.logs.datadoghq.com" => [
-                      protocols: [:http1],
-                      start_pool_metrics?: true
-                    ],
-                    "https://http-intake.logs.datadoghq.eu" => [
-                      protocols: [:http1],
-                      start_pool_metrics?: true
-                    ],
-                    "https://http-intake.logs.us3.datadoghq.com" => [
-                      protocols: [:http1],
-                      start_pool_metrics?: true
-                    ],
-                    "https://http-intake.logs.us5.datadoghq.com" => [
-                      protocols: [:http1],
-                      start_pool_metrics?: true
-                    ]
-                  }
+                  pools: datadog_pools
                 ]},
                {Finch,
                 name: Logflare.FinchClickHouseIngest,
@@ -71,6 +57,8 @@ defmodule Logflare.NetworkingTest do
                   :default => _async_config
                 }}
              ] = Networking.pools()
+
+      assert datadog_pools == expected_datadog_pools
     end
   end
 end
