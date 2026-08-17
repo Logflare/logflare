@@ -2,6 +2,9 @@ defmodule LogflareWeb.Api.BackendControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.BackendResponseConfig
+
   setup do
     insert(:plan, name: "Free")
     user = insert(:user)
@@ -44,6 +47,43 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                |> json_response(200)
 
       assert backend_id == backend.id
+    end
+
+    test "every mapped backend response exposes only its safe response config", %{
+      conn: conn,
+      user: user
+    } do
+      backends =
+        for type <- Map.keys(Backend.adaptor_mapping()) do
+          insert(:backend,
+            user: user,
+            type: type,
+            config_encrypted: response_test_config(type),
+            metadata: %{secret: "synthetic-secret"}
+          )
+        end
+
+      responses =
+        conn
+        |> add_access_token(user, "private")
+        |> get(~p"/api/backends")
+        |> json_response(200)
+        |> Map.new(&{&1["id"], &1})
+
+      for backend <- backends do
+        response = responses[backend.id]
+
+        expected =
+          backend.type
+          |> BackendResponseConfig.serialize(backend.config_encrypted)
+          |> Jason.encode!()
+          |> Jason.decode!()
+
+        assert response["config"] == expected
+        refute Jason.encode!(response) =~ "synthetic-secret"
+        refute Map.has_key?(response, "metadata")
+        refute Map.has_key?(response["config"], "headers")
+      end
     end
 
     test "can filter on metadata column", %{conn: conn, user: user} do
@@ -126,11 +166,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                "name" => ^name,
                "description" => "some description",
                "config" => %{
-                 "url" => "postgresql://test:REDACTED@" <> _,
                  "schema" => "_my_schema"
-               },
-               "metadata" => %{
-                 "some" => "data"
                },
                "inserted_at" => _,
                "updated_at" => _
@@ -167,14 +203,9 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                "description" => "some description",
                "config" => %{
                  "url" => "http://localhost:8123",
-                 "username" => "test_user",
-                 "password" => "REDACTED",
                  "database" => "default",
                  "port" => 8123,
                  "pool_size" => 10
-               },
-               "metadata" => %{
-                 "some" => "data"
                }
              } = json_response(conn, 201)
     end
@@ -199,73 +230,51 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                "token" => _,
                "name" => ^name,
                "config" => %{
-                 "api_key" => "REDACTED",
                  "region" => "US1"
-               },
-               "metadata" => %{
-                 "some" => "data"
                }
              } = json_response(conn, 201)
     end
 
-    test "creates a elastic backend for an authenticated user", %{conn: conn, user: user} do
+    test "creates an elastic backend without returning credentials or metadata", %{
+      conn: conn,
+      user: user
+    } do
       name = TestUtils.random_string()
 
-      conn =
+      response =
         conn
         |> add_access_token(user, "private")
         |> post("/api/backends", %{
           name: name,
           type: "elastic",
           config: %{url: "https://example.com", username: "someuser", password: "12345"},
-          metadata: %{
-            some: "data"
-          }
+          metadata: %{some: "data"}
         })
+        |> json_response(201)
 
-      assert %{
-               "id" => _,
-               "token" => _,
-               "name" => ^name,
-               "config" => %{
-                 "url" => "https://" <> _,
-                 "password" => "REDACTED",
-                 "username" => "someuser"
-               },
-               "metadata" => %{
-                 "some" => "data"
-               }
-             } = json_response(conn, 201)
+      assert response["config"] == %{"url" => "https://example.com"}
+      refute Map.has_key?(response, "metadata")
     end
 
-    test "creates a loki backend for an authenticated user", %{conn: conn, user: user} do
+    test "creates a loki backend without returning credentials or metadata", %{
+      conn: conn,
+      user: user
+    } do
       name = TestUtils.random_string()
 
-      conn =
+      response =
         conn
         |> add_access_token(user, "private")
         |> post("/api/backends", %{
           name: name,
           type: "loki",
           config: %{url: "https://example.com", username: "someuser", password: "12345"},
-          metadata: %{
-            some: "data"
-          }
+          metadata: %{some: "data"}
         })
+        |> json_response(201)
 
-      assert %{
-               "id" => _,
-               "token" => _,
-               "name" => ^name,
-               "config" => %{
-                 "url" => "https://" <> _,
-                 "password" => "REDACTED",
-                 "username" => "someuser"
-               },
-               "metadata" => %{
-                 "some" => "data"
-               }
-             } = json_response(conn, 201)
+      assert response["config"] == %{"url" => "https://example.com"}
+      refute Map.has_key?(response, "metadata")
     end
 
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
@@ -555,4 +564,99 @@ defmodule LogflareWeb.Api.BackendControllerTest do
              |> response(404)
     end
   end
+
+  defp response_test_config(:webhook),
+    do: %{
+      url: "https://example.com",
+      http: "http2",
+      gzip: true,
+      headers: %{"X-Key" => "synthetic-secret"}
+    }
+
+  defp response_test_config(:elastic),
+    do: %{url: "https://example.com", username: "synthetic-user", password: "synthetic-secret"}
+
+  defp response_test_config(:datadog), do: %{region: "US1", api_key: "synthetic-secret"}
+  defp response_test_config(:sentry), do: %{dsn: "https://key:synthetic-secret@example.com/1"}
+
+  defp response_test_config(:postgres),
+    do: %{
+      hostname: "db.example.com",
+      database: "logs",
+      schema: "public",
+      port: 5432,
+      pool_size: 2,
+      username: "synthetic-user",
+      password: "synthetic-secret"
+    }
+
+  defp response_test_config(:bigquery),
+    do: %{project_id: "project-id", dataset_id: "dataset", arbitrary: "synthetic-secret"}
+
+  defp response_test_config(:loki),
+    do: %{
+      url: "https://example.com",
+      username: "synthetic-user",
+      password: "synthetic-secret",
+      headers: %{"X-Key" => "synthetic-secret"}
+    }
+
+  defp response_test_config(:clickhouse),
+    do: %{
+      url: "https://example.com",
+      database: "default",
+      port: 8123,
+      pool_size: 2,
+      username: "synthetic-user",
+      password: "synthetic-secret",
+      insert_protocol: "http",
+      native_port: 9000,
+      native_pool_size: 2,
+      use_async_inserts_for_small_batches: false,
+      async_insert_max_rows: 1000
+    }
+
+  defp response_test_config(:incidentio),
+    do: %{
+      api_token: "synthetic-secret",
+      alert_source_config_id: "source",
+      metadata: %{secret: "synthetic-secret"}
+    }
+
+  defp response_test_config(:s3),
+    do: %{
+      s3_bucket: "bucket",
+      storage_region: "us-east-1",
+      batch_timeout: 1000,
+      endpoint: "https://s3.example.com",
+      access_key_id: "synthetic-user",
+      secret_access_key: "synthetic-secret"
+    }
+
+  defp response_test_config(:axiom),
+    do: %{domain: "api.axiom.co", dataset_name: "logs", api_token: "synthetic-secret"}
+
+  defp response_test_config(:otlp),
+    do: %{
+      endpoint: "https://example.com",
+      protocol: "http/protobuf",
+      gzip: true,
+      headers: %{"X-Key" => "synthetic-secret"}
+    }
+
+  defp response_test_config(:last9),
+    do: %{region: "US-WEST-1", username: "synthetic-user", password: "synthetic-secret"}
+
+  defp response_test_config(:syslog),
+    do: %{
+      host: "syslog.example.com",
+      port: 6514,
+      tls: true,
+      structured_data: "[credential@1 token=\"synthetic-secret\"]",
+      max_message_bytes: 1000,
+      cipher_key: "synthetic-secret",
+      ca_cert: "synthetic-secret",
+      client_cert: "synthetic-secret",
+      client_key: "synthetic-secret"
+    }
 end

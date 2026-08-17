@@ -44,7 +44,11 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       assert response["description"] == source.description
     end
 
-    test "backend postgres secrets are redacted", %{conn: conn, user: user, sources: [source | _]} do
+    test "backend postgres credentials are omitted", %{
+      conn: conn,
+      user: user,
+      sources: [source | _]
+    } do
       insert(:backend,
         sources: [source],
         user: user,
@@ -58,8 +62,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
                |> get("/api/sources/#{source.token}")
                |> json_response(200)
 
-      config = backend["config"]
-      assert config["url"] =~ "postgresql://user:REDACTED@localhost"
+      assert backend["config"] == %{}
     end
 
     test "returns not found if doesn't own the source", %{conn: conn, sources: [source | _]} do
@@ -69,6 +72,57 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       |> add_access_token(invalid_user, "private")
       |> get("/api/sources/#{source.token}")
       |> response(404)
+    end
+  end
+
+  test "source index, show, PUT, and backend attach responses omit nested backend credentials", %{
+    conn: conn,
+    user: user,
+    sources: [source | _]
+  } do
+    backend =
+      insert(:backend,
+        user: user,
+        type: :webhook,
+        config: %{url: "https://example.com", headers: %{"X-Api-Key" => "synthetic-secret"}}
+      )
+
+    attached =
+      conn
+      |> add_access_token(user, "private")
+      |> post("/api/sources/#{source.token}/backends/#{backend.token}")
+      |> json_response(201)
+
+    indexed_source =
+      conn
+      |> add_access_token(user, "private")
+      |> get("/api/sources")
+      |> json_response(200)
+      |> Enum.find(&(&1["id"] == source.id))
+
+    for response <- [
+          attached,
+          indexed_source,
+          conn
+          |> add_access_token(user, "private")
+          |> get("/api/sources/#{source.token}")
+          |> json_response(200),
+          conn
+          |> add_access_token(user, "private")
+          |> put("/api/sources/#{source.token}", %{name: source.name})
+          |> json_response(200)
+        ] do
+      assert %{"backends" => [nested_backend]} = response
+
+      assert nested_backend["config"]["url"] == "https://example.com"
+
+      assert MapSet.subset?(
+               MapSet.new(Map.keys(nested_backend["config"])),
+               MapSet.new(["url", "http", "gzip"])
+             )
+
+      refute Jason.encode!(response) =~ "synthetic-secret"
+      refute Map.has_key?(nested_backend, "metadata")
     end
   end
 

@@ -5,6 +5,9 @@ defmodule LogflareWeb.OpenApiTest do
   alias LogflareWeb.Api.QueryController
   alias LogflareWeb.Api.TeamController
   alias LogflareWeb.OpenApiSchemas.AccessToken
+  alias LogflareWeb.OpenApiSchemas.BackendApiParams
+  alias LogflareWeb.OpenApiSchemas.BackendResponseConfigSchema
+  alias LogflareWeb.OpenApiSchemas.ElasticConfigSchema
   alias LogflareWeb.OpenApiSchemas.QueryResult
   alias OpenApiSpex.MediaType
   alias OpenApiSpex.Response
@@ -33,6 +36,22 @@ defmodule LogflareWeb.OpenApiTest do
              properties: %{result: %Schema{type: :array, items: %Schema{type: :object}}},
              required: [:result]
            } = QueryResult.schema()
+  end
+
+  test "Management API backend response config documents only safe per-adaptor fields" do
+    assert %Schema{anyOf: response_schemas} = BackendResponseConfigSchema.schema()
+
+    assert Enum.any?(response_schemas, fn schema ->
+             schema.schema().properties == %{url: %Schema{type: :string}}
+           end)
+
+    refute Enum.any?(response_schemas, fn schema ->
+             Map.has_key?(schema.schema().properties, :password) or
+               Map.has_key?(schema.schema().properties, :headers) or
+               Map.has_key?(schema.schema().properties, :api_key)
+           end)
+
+    assert ElasticConfigSchema in BackendApiParams.schema().properties.config.anyOf
   end
 
   test "Management API access token timestamps are documented as RFC3339" do

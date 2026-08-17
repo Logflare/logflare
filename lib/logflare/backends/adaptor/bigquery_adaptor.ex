@@ -259,6 +259,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def bq_identifier_pattern, do: @bq_identifier_pattern
 
   @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    for key <- [:project_id, :dataset_id], into: %{} do
+      {key, Map.get(config, key) || Map.get(config, Atom.to_string(key))}
+    end
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+  end
+
+  @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
     changeset
     |> Changeset.validate_format(:dataset_id, @bq_identifier_pattern,

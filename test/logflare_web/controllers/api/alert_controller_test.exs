@@ -65,6 +65,50 @@ defmodule LogflareWeb.Api.AlertControllerTest do
     assert %{backends: %Schema{type: :array}} = AlertApiSchema.schema().properties
   end
 
+  test "alert index, show, create, and PUT responses omit nested backend credentials", %{
+    conn: conn,
+    user: user
+  } do
+    backend =
+      insert(:backend,
+        user: user,
+        type: :webhook,
+        config: %{url: "https://example.com", headers: %{"X-Api-Key" => "synthetic-secret"}}
+      )
+
+    created =
+      conn
+      |> post(~p"/api/alerts", %{
+        name: "safe backend alert",
+        query: "select current_date() as date",
+        cron: "0 0 1 * *",
+        backend_ids: [backend.id]
+      })
+      |> json_response(201)
+
+    alert_token = created["token"]
+
+    for response <- [
+          created,
+          conn |> get(~p"/api/alerts") |> json_response(200) |> hd(),
+          conn |> get(~p"/api/alerts/#{alert_token}") |> json_response(200),
+          conn
+          |> put(~p"/api/alerts/#{alert_token}", %{name: "updated safe backend alert"})
+          |> json_response(200)
+        ] do
+      assert %{"backends" => [nested_backend]} = response
+
+      assert nested_backend["config"] == %{
+               "url" => "https://example.com",
+               "http" => "http2",
+               "gzip" => true
+             }
+
+      refute Jason.encode!(response) =~ "synthetic-secret"
+      refute Map.has_key?(nested_backend, "metadata")
+    end
+  end
+
   describe "with alerts" do
     test "create alert", %{conn: conn} do
       response =

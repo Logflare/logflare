@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Backend do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.BackendResponseConfig
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Rules.Rule
   alias Logflare.Sources.Source
@@ -126,8 +127,6 @@ defmodule Logflare.Backends.Backend do
     def encode(value, opts) do
       type = value.type
 
-      adaptor = Backend.adaptor_mapping()[type]
-
       values =
         value
         |> Map.put(:config, value.config_encrypted)
@@ -138,18 +137,11 @@ defmodule Logflare.Backends.Backend do
           :type,
           :id,
           :config,
-          :metadata,
           :default_ingest?,
           :inserted_at,
           :updated_at
         ])
-        |> Map.update(:config, %{}, fn config ->
-          if function_exported?(adaptor, :redact_config, 1) do
-            adaptor.redact_config(config)
-          else
-            config
-          end
-        end)
+        |> Map.update(:config, %{}, &BackendResponseConfig.serialize(type, &1))
 
       Jason.Encode.map(values, opts)
     end

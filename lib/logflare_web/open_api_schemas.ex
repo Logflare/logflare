@@ -318,6 +318,16 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:url]
   end
 
+  defmodule ElasticConfigSchema do
+    @properties %{
+      url: %Schema{type: :string},
+      username: %Schema{type: :string, nullable: true},
+      password: %Schema{type: :string, nullable: true}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:url]
+  end
+
   defmodule DatadogConfigSchema do
     @properties %{
       api_key: %Schema{type: :string},
@@ -469,6 +479,132 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:host, :port]
   end
 
+  defmodule WebhookResponseConfigSchema do
+    @properties %{
+      url: %Schema{type: :string},
+      http: %Schema{type: :string},
+      gzip: %Schema{type: :boolean}
+    }
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule ElasticResponseConfigSchema do
+    @properties %{url: %Schema{type: :string}}
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule DatadogResponseConfigSchema do
+    @properties %{region: %Schema{type: :string}}
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule EmptyBackendResponseConfigSchema do
+    @properties %{}
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule PostgresResponseConfigSchema do
+    @properties %{
+      hostname: %Schema{type: :string},
+      database: %Schema{type: :string},
+      schema: %Schema{type: :string},
+      port: %Schema{type: :integer},
+      pool_size: %Schema{type: :integer},
+      url: %Schema{type: :string}
+    }
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule BigQueryResponseConfigSchema do
+    @properties %{project_id: %Schema{type: :string}, dataset_id: %Schema{type: :string}}
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule ClickhouseResponseConfigSchema do
+    @properties %{
+      database: %Schema{type: :string},
+      port: %Schema{type: :integer},
+      pool_size: %Schema{type: :integer},
+      insert_protocol: %Schema{type: :string},
+      native_port: %Schema{type: :integer},
+      native_pool_size: %Schema{type: :integer},
+      use_async_inserts_for_small_batches: %Schema{type: :boolean},
+      async_insert_max_rows: %Schema{type: :integer},
+      url: %Schema{type: :string},
+      read_only_url: %Schema{type: :string},
+      async_insert_cluster_url: %Schema{type: :string}
+    }
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule S3ResponseConfigSchema do
+    @properties %{
+      s3_bucket: %Schema{type: :string},
+      storage_region: %Schema{type: :string},
+      batch_timeout: %Schema{type: :integer},
+      endpoint: %Schema{type: :string}
+    }
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule AxiomResponseConfigSchema do
+    @properties %{domain: %Schema{type: :string}, dataset_name: %Schema{type: :string}}
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule OtlpResponseConfigSchema do
+    @properties %{
+      protocol: %Schema{type: :string},
+      gzip: %Schema{type: :boolean},
+      endpoint: %Schema{type: :string}
+    }
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule Last9ResponseConfigSchema do
+    @properties %{region: %Schema{type: :string}}
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule SyslogResponseConfigSchema do
+    @properties %{
+      host: %Schema{type: :string},
+      port: %Schema{type: :integer},
+      tls: %Schema{type: :boolean},
+      max_message_bytes: %Schema{type: :integer}
+    }
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
+  defmodule BackendResponseConfigSchema do
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{
+      anyOf: [
+        WebhookResponseConfigSchema,
+        ElasticResponseConfigSchema,
+        DatadogResponseConfigSchema,
+        EmptyBackendResponseConfigSchema,
+        PostgresResponseConfigSchema,
+        BigQueryResponseConfigSchema,
+        ClickhouseResponseConfigSchema,
+        S3ResponseConfigSchema,
+        AxiomResponseConfigSchema,
+        OtlpResponseConfigSchema,
+        Last9ResponseConfigSchema,
+        SyslogResponseConfigSchema
+      ]
+    })
+
+    def response do
+      {"#{__MODULE__.schema().title} Response", "application/json", __MODULE__}
+    end
+
+    def params do
+      {"#{__MODULE__.schema().title} Parameters", "application/json", __MODULE__}
+    end
+  end
+
   defmodule BackendApiSchema do
     @properties %{
       name: %Schema{type: :string},
@@ -476,24 +612,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       token: %Schema{type: :string},
       type: %Schema{type: :string},
       description: %Schema{type: :string, nullable: true},
-      config: %Schema{
-        anyOf: [
-          LogflareWeb.OpenApiSchemas.WebhookConfigSchema,
-          LogflareWeb.OpenApiSchemas.DatadogConfigSchema,
-          LogflareWeb.OpenApiSchemas.SentryConfigSchema,
-          LogflareWeb.OpenApiSchemas.PostgresConfigSchema,
-          LogflareWeb.OpenApiSchemas.BigQueryConfigSchema,
-          LogflareWeb.OpenApiSchemas.LokiConfigSchema,
-          LogflareWeb.OpenApiSchemas.ClickhouseConfigSchema,
-          LogflareWeb.OpenApiSchemas.IncidentioConfigSchema,
-          LogflareWeb.OpenApiSchemas.S3ConfigSchema,
-          LogflareWeb.OpenApiSchemas.AxiomConfigSchema,
-          LogflareWeb.OpenApiSchemas.OtlpConfigSchema,
-          LogflareWeb.OpenApiSchemas.Last9ConfigSchema,
-          LogflareWeb.OpenApiSchemas.SyslogConfigSchema
-        ]
-      },
-      metadata: %Schema{type: :object, nullable: true},
+      config: BackendResponseConfigSchema.schema(),
       default_ingest?: %Schema{type: :boolean},
       inserted_at: %Schema{type: :string},
       updated_at: %Schema{type: :string}
@@ -507,7 +626,24 @@ defmodule LogflareWeb.OpenApiSchemas do
       name: %Schema{type: :string},
       type: %Schema{type: :string},
       description: %Schema{type: :string, nullable: true},
-      config: BackendApiSchema.schema().properties.config,
+      config: %Schema{
+        anyOf: [
+          WebhookConfigSchema,
+          ElasticConfigSchema,
+          DatadogConfigSchema,
+          SentryConfigSchema,
+          PostgresConfigSchema,
+          BigQueryConfigSchema,
+          LokiConfigSchema,
+          ClickhouseConfigSchema,
+          IncidentioConfigSchema,
+          S3ConfigSchema,
+          AxiomConfigSchema,
+          OtlpConfigSchema,
+          Last9ConfigSchema,
+          SyslogConfigSchema
+        ]
+      },
       metadata: %Schema{type: :object, nullable: true},
       default_ingest?: %Schema{type: :boolean}
     }
