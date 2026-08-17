@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+
+from docker_base_images import main
+
+raise SystemExit(main())

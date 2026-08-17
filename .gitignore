@@ -13,6 +13,10 @@ erl_crash.dump
 # Generated on crash by NPM
 npm-debug.log
 
+# Python bytecode
+__pycache__/
+*.py[cod]
+
 # Static artifacts
 /assets/node_modules
 /assets/yarn.lock
