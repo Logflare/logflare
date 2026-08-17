@@ -120,13 +120,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   # re-reverses its return by status internally), so compare message sets by id
   # rather than list order.
   defp assert_same_messages(result, expected) do
-    sort_key = fn
-      %{data: %EncodedRow{pointer: %{id: id}}} -> id
-      %{data: %LogEventPointer{id: id}} -> id
-    end
-
-    assert Enum.sort_by(result, sort_key) == Enum.sort_by(expected, sort_key)
+    assert Enum.sort_by(result, &message_id/1) == Enum.sort_by(expected, &message_id/1)
   end
+
+  defp message_id(%Message{data: %EncodedRow{pointer: %{id: id}}}), do: id
+  defp message_id(%Message{data: %LogEventPointer{id: id}}), do: id
 
   describe "child_spec/1" do
     test "returns proper child specification" do
@@ -220,6 +218,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
                IngestEventQueue.lookup_event(gen_tid, event.id)
 
       assert day_bucket == event.day_bucket
+    end
+
+    test "emits missing-id telemetry when the processor cannot resolve an event", %{
+      context: context,
+      backend: backend
+    } do
+      event = build(:log_event)
+      gen_tid = setup_generation_events([])
+      pointer = pointer_for(event, gen_tid)
+
+      message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+      }
+
+      telemetry_event = [:logflare, :ingest_event_queue, :missing_ids]
+      ref = :telemetry_test.attach_event_handlers(self(), [telemetry_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      assert %Message{status: {:failed, :not_found}} =
+               Pipeline.handle_message(:default, message, context)
+
+      assert_receive {^telemetry_event, ^ref, %{count: 1}, metadata}
+      assert metadata.backend_type == :clickhouse
+      assert metadata.backend_id == backend.id
+      assert metadata.event_type == :log
     end
 
     test "keys metric events by `{:metric, day_bucket}`", %{context: context, backend: backend} do
@@ -392,10 +416,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
-      statuses =
-        Map.new(result, fn %Message{data: %LogEventPointer{id: id}, status: status} ->
-          {id, status}
-        end)
+      statuses = Map.new(result, fn message -> {message_id(message), message.status} end)
 
       assert statuses[valid_event.id] == :ok
       assert statuses[invalid_event.id] == {:failed, "invalid event UUID"}
@@ -1242,6 +1263,77 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
                  )
       end
 
+      test "reroutes an encoded retry when its claiming producer queue is stale", %{
+        source: source
+      } do
+        retry_backend_id = System.unique_integer([:positive])
+        target_key = {:consolidated, retry_backend_id, self()}
+        assert {:ok, target_tid} = IngestEventQueue.upsert_tid(target_key)
+
+        stale_queue_tid = :ets.new(:test_pipeline_stale_retry_queue, [:set, :public])
+        :ets.delete(stale_queue_tid)
+
+        event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+        gen_tid = setup_generation_events([event])
+        pointer = pointer_for(event, gen_tid, stale_queue_tid)
+        original_row = <<1, 2, 3>>
+        encoded = %EncodedRow{pointer: pointer, row: original_row}
+        assert :ok = IngestEventQueue.replace_event(gen_tid, event.id, encoded)
+
+        failed_message = %Message{
+          data: encoded,
+          acknowledger: {Pipeline, :ack_id, %{backend_id: retry_backend_id}},
+          status: {:failed, "connection error"}
+        }
+
+        Mimic.stub(CircuitBreaker, :check, fn ^retry_backend_id -> :ok end)
+
+        assert :ok = Pipeline.ack(:ack_ref, [], [failed_message])
+
+        assert %LogEventPointer{retries: 1, queue_tid: ^target_tid} =
+                 queued_pointer(target_tid, event.id)
+
+        assert %EncodedRow{pointer: %{retries: 1}, row: ^original_row} =
+                 IngestEventQueue.lookup_event(gen_tid, event.id)
+      end
+
+      test "reports a queue-unavailable drop separately from a generation lookup miss", %{
+        source: source
+      } do
+        retry_backend_id = System.unique_integer([:positive])
+        stale_queue_tid = :ets.new(:test_pipeline_stale_retry_queue, [:set, :public])
+        :ets.delete(stale_queue_tid)
+
+        event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+        gen_tid = setup_generation_events([event])
+        pointer = pointer_for(event, gen_tid, stale_queue_tid)
+        encoded = %EncodedRow{pointer: pointer, row: <<1, 2, 3>>}
+        assert :ok = IngestEventQueue.replace_event(gen_tid, event.id, encoded)
+
+        failed_message = %Message{
+          data: encoded,
+          acknowledger: {Pipeline, :ack_id, %{backend_id: retry_backend_id}},
+          status: {:failed, "connection error"}
+        }
+
+        dropped_event = [:logflare, :ingest_event_queue, :not_initialized, :dropped]
+        lookup_miss_event = [:logflare, :ingest_event_queue, :requeue_lookup_miss]
+
+        ref =
+          :telemetry_test.attach_event_handlers(self(), [dropped_event, lookup_miss_event])
+
+        on_exit(fn -> :telemetry.detach(ref) end)
+        Mimic.stub(CircuitBreaker, :check, fn ^retry_backend_id -> :ok end)
+
+        assert :ok = Pipeline.ack(:ack_ref, [], [failed_message])
+
+        assert_receive {^dropped_event, ^ref, %{count: 1}, metadata}
+        assert metadata.backend_type == :clickhouse
+        assert metadata.backend_id == retry_backend_id
+        refute_receive {^lookup_miss_event, ^ref, _, _}
+        assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+      end
+
       test "increments retry count on each encoded-row requeue", %{
         source: source,
         backend: backend
@@ -1405,10 +1497,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
-      statuses =
-        Map.new(result, fn %Message{data: %LogEventPointer{id: id}, status: status} ->
-          {id, status}
-        end)
+      statuses = Map.new(result, fn message -> {message_id(message), message.status} end)
 
       assert statuses[valid_event.id] == {:failed, "Connection timeout"}
       assert statuses[invalid_event.id] == {:failed, "invalid event UUID"}

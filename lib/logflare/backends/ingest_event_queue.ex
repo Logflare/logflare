@@ -1026,21 +1026,58 @@ defmodule Logflare.Backends.IngestEventQueue do
   itself alive by claiming this in the first place. Bump `pointer.retries` before
   calling this if the caller is retrying after a failure.
 
-  If `queue_tid` has since gone stale (its owning producer died), the retry is dropped —
-  same stale-table telemetry/rescue pattern used everywhere else in this module.
+  Returns `{:error, :not_initialized}` if `queue_tid` has since gone stale because its
+  owning producer died, allowing callers that retain the event payload to reroute it.
+  Returns `{:error, :already_exists}` rather than overwriting a newer same-ID pointer.
   """
-  @spec reinsert_pointer(LogEventPointer.t()) :: :ok
+  @spec reinsert_pointer(LogEventPointer.t()) ::
+          :ok | {:error, :already_exists | :not_initialized}
   def reinsert_pointer(%LogEventPointer{} = pointer) do
     row =
       {pointer.id, pointer.tid, pointer.gen_event_id, pointer.size, pointer.retries,
        pointer.event_type, pointer.day_bucket}
 
-    :ets.insert(pointer.queue_tid, row)
-    :ok
+    if :ets.insert_new(pointer.queue_tid, row) do
+      :ok
+    else
+      {:error, :already_exists}
+    end
   rescue
     ArgumentError ->
       emit_stale_ets_table_telemetry()
-      :ok
+      {:error, :not_initialized}
+  end
+
+  @doc """
+  Routes a previously-claimed pointer to an available queue for `queues_key`.
+
+  Active producer queues are tried from least to most pending, followed by the startup
+  queue. A candidate that disappears during routing is skipped. The backing generation
+  row is not copied; the routed pointer continues to reference it directly.
+  """
+  @spec reinsert_pointer(
+          queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
+          LogEventPointer.t()
+        ) :: :ok | {:error, :already_exists | :not_initialized}
+  def reinsert_pointer(queues_key, %LogEventPointer{} = pointer) do
+    queues_key
+    |> list_queues_with_tids()
+    |> Enum.sort_by(&reinsert_queue_priority/1)
+    |> Enum.reduce_while({:error, :not_initialized}, fn {_table_key, queue_tid}, _acc ->
+      case reinsert_pointer(%{pointer | queue_tid: queue_tid}) do
+        :ok -> {:halt, :ok}
+        {:error, :already_exists} = error -> {:halt, error}
+        {:error, :not_initialized} -> {:cont, {:error, :not_initialized}}
+      end
+    end)
+  end
+
+  defp reinsert_queue_priority({{_, _, pid}, tid}) do
+    case :ets.info(tid, :size) do
+      size when is_integer(size) and is_nil(pid) -> {1, size}
+      size when is_integer(size) -> {0, size}
+      _ -> {2, 0}
+    end
   end
 
   @doc """

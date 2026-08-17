@@ -403,7 +403,7 @@ defmodule Logflare.Telemetry do
       sum("logflare.ingest_event_queue.missing_ids.count",
         event_name: [:logflare, :ingest_event_queue, :missing_ids],
         tags: [:backend_type],
-        description: "Count of event IDs not found in ETS during handle_batch fetch"
+        description: "Count of event IDs not found during pipeline generation-store resolution"
       ),
       sum("logflare.ingest_event_queue.not_initialized.dropped.count",
         event_name: [:logflare, :ingest_event_queue, :not_initialized, :dropped],

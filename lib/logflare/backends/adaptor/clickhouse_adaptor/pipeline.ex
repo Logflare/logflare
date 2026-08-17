@@ -178,7 +178,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         _processor_name,
         %Message{data: %LogEventPointer{event_type: event_type, day_bucket: day_bucket} = pointer} =
           message,
-        %{mapper_configs: mapper_configs}
+        %{backend_id: backend_id, mapper_configs: mapper_configs}
       )
       when is_event_type(event_type) do
     message =
@@ -196,17 +196,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         case Mapper.map_result(event.body, compiled, output_context: output_context) do
           {:ok, row} ->
             encoded = %EncodedRow{pointer: pointer, row: row}
-            replace_event_with_encoded_row(message, encoded)
+            replace_event_with_encoded_row(message, encoded, backend_id, event_type)
 
           {:error, reason} ->
             Message.failed(message, reason)
         end
 
       %EncodedRow{} = encoded ->
-        replace_event_with_encoded_row(message, %{encoded | pointer: pointer})
+        replace_event_with_encoded_row(
+          message,
+          %{encoded | pointer: pointer},
+          backend_id,
+          event_type
+        )
 
       nil ->
-        Message.failed(message, :not_found)
+        fail_missing_message(message, backend_id, event_type)
     end
   end
 
@@ -214,14 +219,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     Message.failed(message, :not_found)
   end
 
-  @spec replace_event_with_encoded_row(Message.t(), EncodedRow.t()) :: Message.t()
-  defp replace_event_with_encoded_row(message, %EncodedRow{pointer: pointer} = encoded) do
+  @spec replace_event_with_encoded_row(
+          Message.t(),
+          EncodedRow.t(),
+          pos_integer(),
+          TypeDetection.event_type()
+        ) :: Message.t()
+  defp replace_event_with_encoded_row(
+         message,
+         %EncodedRow{pointer: pointer} = encoded,
+         backend_id,
+         event_type
+       ) do
     encoded_message = %{message | data: encoded}
 
     case IngestEventQueue.replace_event(pointer.tid, pointer.gen_event_id, encoded) do
       :ok -> encoded_message
-      {:error, :not_found} -> Message.failed(message, :not_found)
+      {:error, :not_found} -> fail_missing_message(message, backend_id, event_type)
     end
+  end
+
+  defp fail_missing_message(message, backend_id, event_type) do
+    emit_missing_ids_telemetry(backend_id, event_type, 1)
+    Message.failed(message, :not_found)
   end
 
   @spec handle_batch(
@@ -386,18 +406,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   end
 
   @spec emit_missing_ids_telemetry([Message.t()], Backend.t(), TypeDetection.event_type()) :: :ok
-  defp emit_missing_ids_telemetry(rejected, backend, event_type) do
-    case Enum.count(rejected, &match?(%Message{status: {:failed, :not_found}}, &1)) do
-      0 ->
-        :ok
+  defp emit_missing_ids_telemetry(rejected, %Backend{} = backend, event_type) do
+    count = Enum.count(rejected, &match?(%Message{status: {:failed, :not_found}}, &1))
+    emit_missing_ids_telemetry(backend.id, event_type, count)
+  end
 
-      count ->
-        :telemetry.execute(
-          [:logflare, :ingest_event_queue, :missing_ids],
-          %{count: count},
-          %{backend_type: :clickhouse, backend_id: backend.id, event_type: event_type}
-        )
-    end
+  @spec emit_missing_ids_telemetry(
+          pos_integer(),
+          TypeDetection.event_type(),
+          non_neg_integer()
+        ) :: :ok
+  defp emit_missing_ids_telemetry(_backend_id, _event_type, 0), do: :ok
+
+  defp emit_missing_ids_telemetry(backend_id, event_type, count) do
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :missing_ids],
+      %{count: count},
+      %{backend_type: :clickhouse, backend_id: backend_id, event_type: event_type}
+    )
   end
 
   @spec finalize_insert(
@@ -490,6 +516,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
+  @typep requeue_result :: :requeued | :deduplicated | :lookup_miss | :queue_unavailable
+
   @spec requeue_retriable(
           backend_id :: pos_integer(),
           retriable :: [EncodedRow.t() | LogEventPointer.t()]
@@ -500,42 +528,70 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       backend_id: backend_id
     )
 
-    requeued = Enum.count(retriable, &requeue_payload/1)
-    emit_requeue_lookup_miss_telemetry(backend_id, length(retriable) - requeued)
+    result_counts = Enum.frequencies_by(retriable, &requeue_payload(backend_id, &1))
+
+    emit_requeue_lookup_miss_telemetry(backend_id, Map.get(result_counts, :lookup_miss, 0))
+
+    emit_requeue_queue_unavailable_telemetry(
+      backend_id,
+      Map.get(result_counts, :queue_unavailable, 0)
+    )
 
     :ok
   end
 
-  @spec requeue_payload(EncodedRow.t() | LogEventPointer.t()) :: boolean()
-  defp requeue_payload(%EncodedRow{pointer: pointer} = encoded) do
+  @spec requeue_payload(pos_integer(), EncodedRow.t() | LogEventPointer.t()) :: requeue_result()
+  defp requeue_payload(backend_id, %EncodedRow{pointer: pointer} = encoded) do
     pointer = %{pointer | retries: pointer.retries + 1}
     encoded = %{encoded | pointer: pointer}
 
     case IngestEventQueue.replace_event(pointer.tid, pointer.gen_event_id, encoded) do
-      :ok ->
-        IngestEventQueue.reinsert_pointer(pointer)
-        true
-
-      {:error, :not_found} ->
-        false
+      :ok -> reinsert_retry_pointer(backend_id, pointer)
+      {:error, :not_found} -> :lookup_miss
     end
   end
 
-  defp requeue_payload(%LogEventPointer{} = pointer) do
+  defp requeue_payload(backend_id, %LogEventPointer{} = pointer) do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
       nil ->
-        false
+        :lookup_miss
 
       _event_or_encoded_row ->
-        IngestEventQueue.reinsert_pointer(%{pointer | retries: pointer.retries + 1})
-        true
+        pointer = %{pointer | retries: pointer.retries + 1}
+        reinsert_retry_pointer(backend_id, pointer)
     end
   end
 
-  # A miss here means the pointer's generation was already dropped by
-  # GenerationJanitor before the retry could look it up — the event is silently
-  # lost rather than requeued. Bounded and rare in practice, but worth surfacing
-  # since it's otherwise invisible.
+  @spec reinsert_retry_pointer(pos_integer(), LogEventPointer.t()) :: requeue_result()
+  defp reinsert_retry_pointer(backend_id, pointer) do
+    result =
+      case IngestEventQueue.reinsert_pointer(pointer) do
+        :ok ->
+          :ok
+
+        {:error, :already_exists} = error ->
+          error
+
+        {:error, :not_initialized} ->
+          IngestEventQueue.reinsert_pointer({:consolidated, backend_id}, pointer)
+      end
+
+    case result do
+      :ok ->
+        :requeued
+
+      {:error, :already_exists} ->
+        :deduplicated
+
+      {:error, :not_initialized} ->
+        IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+        :queue_unavailable
+    end
+  end
+
+  # A lookup miss means GenerationJanitor dropped the backing generation before the
+  # retry could resolve or replace its event. Bounded and rare in practice, but worth
+  # surfacing since it's otherwise invisible.
   @spec emit_requeue_lookup_miss_telemetry(pos_integer(), non_neg_integer()) :: :ok
   defp emit_requeue_lookup_miss_telemetry(_backend_id, 0), do: :ok
 
@@ -549,6 +605,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       [:logflare, :ingest_event_queue, :requeue_lookup_miss],
       %{count: missing_count},
       %{backend_id: backend_id}
+    )
+  end
+
+  @spec emit_requeue_queue_unavailable_telemetry(pos_integer(), non_neg_integer()) :: :ok
+  defp emit_requeue_queue_unavailable_telemetry(_backend_id, 0), do: :ok
+
+  defp emit_requeue_queue_unavailable_telemetry(backend_id, dropped_count) do
+    Logger.warning(
+      "Dropped #{dropped_count} ClickHouse event(s) during retry requeue: no queue remained available",
+      backend_id: backend_id
+    )
+
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :not_initialized, :dropped],
+      %{count: dropped_count},
+      %{backend_type: :clickhouse, backend_id: backend_id}
     )
   end
 
