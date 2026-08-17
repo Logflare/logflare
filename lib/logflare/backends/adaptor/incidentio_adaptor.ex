@@ -51,15 +51,15 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
         other -> other
       end)
 
-    alert_name = Map.get(config, :title, "unknown")
     alert_query_id = Map.get(config, :alert_query_id, "unknown")
+    # for simplicity, we use unix epoch for window alignment
     window = div(DateTime.to_unix(DateTime.utc_now()), 3 * 60 * 60)
 
     metadata = Map.get(config, :metadata, %{})
     merged_metadata = Map.merge(metadata, %{"data" => batch})
 
     %{
-      "deduplication_key" => "#{alert_query_id}-#{alert_name}-#{window}",
+      "deduplication_key" => "#{alert_query_id}-#{window}",
       "description" => Map.get(config, :description),
       "metadata" => merged_metadata,
       "source_url" => Map.get(config, :source_url),
