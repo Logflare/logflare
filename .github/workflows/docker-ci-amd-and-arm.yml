@@ -8,10 +8,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
-
 jobs:
   settings:
     runs-on: ubuntu-latest
@@ -34,6 +30,9 @@ jobs:
             arch: amd64
           - runner: blacksmith-4vcpu-ubuntu-2404-arm
             arch: arm64
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ matrix.arch }}
+      cancel-in-progress: ${{ github.event_name == 'push' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:

@@ -13,6 +13,9 @@ jobs:
     strategy:
       matrix:
         env: [prod, staging]
+    concurrency:
+      group: cloudbuild-deploy-${{ matrix.env }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       # setup deps and env vars
