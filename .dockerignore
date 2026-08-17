@@ -4,6 +4,7 @@
 /deps
 /target
 /priv/native
+/gha-creds-*.json
 /*.ez
 .DS_Store
 
