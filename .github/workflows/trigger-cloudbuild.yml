@@ -15,7 +15,8 @@ jobs:
         # Push callers deploy staging only; manual release callers deploy both.
         env: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["prod","staging"]' || '["staging"]') }}
     concurrency:
-      group: cloudbuild-deploy-${{ matrix.env }}
+      # Main and versioned staging deploy different clusters; serialize each target independently.
+      group: cloudbuild-deploy-${{ matrix.env }}-${{ github.event_name == 'push' && 'main' || 'versioned' }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
