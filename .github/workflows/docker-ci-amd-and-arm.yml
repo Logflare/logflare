@@ -4,10 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths-ignore:
-      - "test/**"
-      - "bench/**"
-      - "*.md"
 
 permissions:
   contents: read
