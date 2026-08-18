@@ -1245,10 +1245,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
         Pipeline.ack(:ack_ref, [], [failed_message])
 
-        assert %EncodedRow{pointer: %{retries: 1}, row: ^original_row} =
-                 IngestEventQueue.lookup_event(gen_tid, event.id)
-
         assert %LogEventPointer{retries: 1} = retry_pointer = queued_pointer(queue_tid, event.id)
+        refute retry_pointer.tid == gen_tid
+        refute retry_pointer.gen_event_id == event.id
+        assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+        assert %EncodedRow{pointer: ^retry_pointer, row: ^original_row} =
+                 IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id)
+
+        # The retry no longer depends on the old generation remaining alive.
+        :ets.delete(gen_tid)
 
         retry_message = %Message{
           data: retry_pointer,
@@ -1260,6 +1266,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
                    :default,
                    retry_message,
                    Pipeline.processor_context(backend.id)
+                 )
+      end
+
+      test "moves an unencoded retry into the current generation", %{
+        source: source,
+        backend: backend
+      } do
+        event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+        old_gen_tid = setup_generation_events([event])
+        queue_tid = :ets.new(:test_pipeline_retry_queue, [:set, :public])
+        queues_key = {:consolidated, backend.id}
+        assert :ok = IngestEventQueue.new_generations([queues_key])
+        current_gen_tid = IngestEventQueue.current_generation_tid(queues_key)
+
+        failed_message = %Message{
+          data: pointer_for(event, old_gen_tid, queue_tid),
+          acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+          status: {:failed, "connection error"}
+        }
+
+        assert :ok = Pipeline.ack(:ack_ref, [], [failed_message])
+
+        assert %LogEventPointer{tid: ^current_gen_tid, retries: 1} =
+                 retry_pointer = queued_pointer(queue_tid, event.id)
+
+        assert IngestEventQueue.lookup_event(old_gen_tid, event.id) == nil
+
+        assert %Logflare.LogEvent{retries: 1} =
+                 IngestEventQueue.lookup_event(
+                   retry_pointer.tid,
+                   retry_pointer.gen_event_id
                  )
       end
 
@@ -1291,10 +1328,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert :ok = Pipeline.ack(:ack_ref, [], [failed_message])
 
         assert %LogEventPointer{retries: 1, queue_tid: ^target_tid} =
-                 queued_pointer(target_tid, event.id)
+                 retry_pointer = queued_pointer(target_tid, event.id)
 
-        assert %EncodedRow{pointer: %{retries: 1}, row: ^original_row} =
-                 IngestEventQueue.lookup_event(gen_tid, event.id)
+        assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+        assert %EncodedRow{pointer: ^retry_pointer, row: ^original_row} =
+                 IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id)
       end
 
       test "reports a queue-unavailable drop separately from a generation lookup miss", %{
@@ -1355,9 +1394,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         Pipeline.ack(:ack_ref, [], [failed_message])
 
         assert %{retries: ^initial_retries} = event
-        assert %EncodedRow{pointer: %{retries: retries}} = lookup_by_event_id(gen_tid, event.id)
+
+        assert %LogEventPointer{retries: retries} =
+                 retry_pointer =
+                 queued_pointer(queue_tid, event.id)
+
         assert retries == initial_retries + 1
-        assert %LogEventPointer{retries: ^retries} = queued_pointer(queue_tid, event.id)
+        assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+        assert %EncodedRow{pointer: ^retry_pointer} =
+                 lookup_by_event_id(retry_pointer.tid, event.id)
       end
 
       test "handles mixed retriable and exhausted encoded rows", %{
@@ -1392,11 +1438,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert IngestEventQueue.lookup_event(gen_tid, exhausted_event.id) == nil
         assert queued_pointer(exhausted_queue_tid, exhausted_event.id) == nil
 
-        assert %EncodedRow{pointer: %{retries: 1}} =
-                 IngestEventQueue.lookup_event(gen_tid, retriable_event.id)
-
         assert %LogEventPointer{retries: 1} =
+                 retry_pointer =
                  queued_pointer(retriable_queue_tid, retriable_event.id)
+
+        assert IngestEventQueue.lookup_event(gen_tid, retriable_event.id) == nil
+
+        assert %EncodedRow{pointer: ^retry_pointer} =
+                 IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id)
       end
 
       test "emits telemetry and logs a warning when a retriable event's generation is already gone",
@@ -1698,10 +1747,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       Pipeline.ack(:ack_ref, [], [failed_message])
 
-      assert %EncodedRow{pointer: %{retries: 1}} =
-               IngestEventQueue.lookup_event(gen_tid, event.id)
+      assert %LogEventPointer{retries: 1} = retry_pointer = queued_pointer(queue_tid, event.id)
+      assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
 
-      assert %LogEventPointer{retries: 1} = queued_pointer(queue_tid, event.id)
+      assert %EncodedRow{pointer: ^retry_pointer} =
+               IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id)
     end
   end
 end

@@ -870,6 +870,71 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert reclaimed.retries == 1
     end
 
+    test "transfers a retry payload into the current generation before publishing its pointer", %{
+      source: source,
+      sbp: {sid, bid, _pid} = sbp
+    } do
+      event = build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+
+      old_gen_tid = pointer.tid
+      old_gen_event_id = pointer.gen_event_id
+      queues_key = {sid, bid}
+      assert :ok = IngestEventQueue.new_generations([queues_key])
+      current_gen_tid = IngestEventQueue.current_generation_tid(queues_key)
+      retry_pointer = %{pointer | retries: pointer.retries + 1}
+
+      assert {:ok, %LogEventPointer{tid: ^current_gen_tid} = published_pointer} =
+               IngestEventQueue.requeue_payload(queues_key, retry_pointer, fn new_pointer ->
+                 {:retried, new_pointer}
+               end)
+
+      assert IngestEventQueue.lookup_event(old_gen_tid, old_gen_event_id) == nil
+
+      assert {:retried, ^published_pointer} =
+               IngestEventQueue.lookup_event(
+                 published_pointer.tid,
+                 published_pointer.gen_event_id
+               )
+
+      assert {:ok, [^published_pointer], _tid} =
+               IngestEventQueue.pop_pending_pointers(sbp, 1)
+    end
+
+    test "cleans up the claimed and staged payloads when a newer pointer already exists", %{
+      source: source,
+      sbp: {sid, bid, _pid} = sbp
+    } do
+      event = build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+
+      duplicate = %{event | body: Map.put(event.body, "event_message", "newer")}
+      assert :ok = IngestEventQueue.add_to_table(sbp, [duplicate])
+      queue_tid = IngestEventQueue.get_tid(sbp)
+      [existing_pointer_row] = :ets.lookup(queue_tid, event.id)
+
+      {_, existing_gen_tid, existing_gen_event_id, _, _, _, _} = existing_pointer_row
+      queues_key = {sid, bid}
+      assert :ok = IngestEventQueue.new_generations([queues_key])
+      staged_gen_tid = IngestEventQueue.current_generation_tid(queues_key)
+
+      assert {:error, :already_exists} =
+               IngestEventQueue.requeue_payload(
+                 queues_key,
+                 %{pointer | retries: pointer.retries + 1},
+                 fn new_pointer -> {:retried, new_pointer} end
+               )
+
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
+      assert :ets.info(staged_gen_tid, :size) == 0
+      assert :ets.lookup(queue_tid, event.id) == [existing_pointer_row]
+
+      assert IngestEventQueue.lookup_event(existing_gen_tid, existing_gen_event_id) ==
+               duplicate
+    end
+
     test "reports when the queue table is stale" do
       tid = :ets.new(:stale_reinsert_queue, [:public, :set])
       :ets.delete(tid)

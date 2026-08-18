@@ -10,9 +10,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   generationally-rotated event store per `queues_key` initially holding the actual
   `LogEvent` bodies (see `current_generation_tid/1`, `new_generations/1`,
   `Logflare.Backends.IngestEventQueue.GenerationJanitor`). A consumer may replace a
-  claimed value with a backend-specific encoded representation while retaining the
-  same pointer for retries. `add_to_table/3` always
-  writes both; which read function a caller uses decides whether it gets back
+  claimed value with a backend-specific encoded representation, then transfer that
+  value into the current generation when retrying. `add_to_table/3` always writes both;
+  which read function a caller uses decides whether it gets back
   lightweight pointers (`pop_pending_pointers/2` — ID-passing pipelines: ClickHouse,
   BigQuery, spool) or fully-resolved `LogEvent` structs (`pop_pending/2` — every other
   adaptor).
@@ -1018,6 +1018,115 @@ defmodule Logflare.Backends.IngestEventQueue do
       [] ->
         take_selected_pointers(selected_ids, tid, pointers)
     end
+  end
+
+  @doc """
+  Transfers a claimed payload into the current generation and publishes its new pointer.
+
+  The payload is staged before its pointer, so a consumer cannot claim a pointer whose
+  backing value is missing. The original queue is tried first, followed by the other
+  live queues for `queues_key`. A stale destination rolls back only the staged row and
+  tries the next queue. Once a new pointer is published, or a newer same-ID pointer wins,
+  the old generation row is deleted because the caller's claim no longer owns it. If no
+  queue remains, both rows are removed and `{:error, :not_initialized}` reports that the
+  caller must account for the payload as dropped.
+
+  `payload_builder` receives the final pointer so payloads that embed their pointer can
+  store the new generation and destination queue identifiers consistently.
+  """
+  @spec requeue_payload(
+          queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
+          LogEventPointer.t(),
+          (LogEventPointer.t() -> term())
+        ) ::
+          {:ok, LogEventPointer.t()} | {:error, :already_exists | :not_initialized}
+  def requeue_payload(queues_key, %LogEventPointer{} = pointer, payload_builder)
+      when is_function(payload_builder, 1) do
+    candidate_tids =
+      queues_key
+      |> list_queues_with_tids()
+      |> Enum.sort_by(&reinsert_queue_priority/1)
+      |> Enum.map(&elem(&1, 1))
+      |> then(&Enum.uniq([pointer.queue_tid | &1]))
+
+    result =
+      requeue_payload_to_candidate(candidate_tids, queues_key, pointer, payload_builder)
+
+    delete_id(pointer.tid, pointer.gen_event_id)
+    result
+  end
+
+  defp requeue_payload_to_candidate([], _queues_key, _pointer, _payload_builder),
+    do: {:error, :not_initialized}
+
+  defp requeue_payload_to_candidate(
+         [queue_tid | candidate_tids],
+         queues_key,
+         pointer,
+         payload_builder
+       ) do
+    case stage_and_publish_requeued_payload(queues_key, queue_tid, pointer, payload_builder, 1) do
+      {:error, :not_initialized} ->
+        requeue_payload_to_candidate(candidate_tids, queues_key, pointer, payload_builder)
+
+      result ->
+        result
+    end
+  end
+
+  defp stage_and_publish_requeued_payload(
+         queues_key,
+         queue_tid,
+         pointer,
+         payload_builder,
+         generation_retries
+       ) do
+    gen_tid = current_generation_tid(queues_key)
+    gen_event_id = make_ref()
+
+    new_pointer = %{
+      pointer
+      | tid: gen_tid,
+        gen_event_id: gen_event_id,
+        queue_tid: queue_tid
+    }
+
+    payload = payload_builder.(new_pointer)
+
+    case insert_generation_payload(gen_tid, gen_event_id, payload) do
+      :ok ->
+        case reinsert_pointer(new_pointer) do
+          :ok ->
+            {:ok, new_pointer}
+
+          {:error, reason} = error when reason in [:already_exists, :not_initialized] ->
+            delete_id(gen_tid, gen_event_id)
+            error
+        end
+
+      {:error, :not_initialized} when generation_retries > 0 ->
+        :ok = new_generations([queues_key])
+
+        stage_and_publish_requeued_payload(
+          queues_key,
+          queue_tid,
+          pointer,
+          payload_builder,
+          generation_retries - 1
+        )
+
+      {:error, :not_initialized} = error ->
+        error
+    end
+  end
+
+  defp insert_generation_payload(gen_tid, gen_event_id, payload) do
+    :ets.insert(gen_tid, {gen_event_id, payload})
+    :ok
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_initialized}
   end
 
   @doc """

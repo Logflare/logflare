@@ -542,55 +542,40 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @spec requeue_payload(pos_integer(), EncodedRow.t() | LogEventPointer.t()) :: requeue_result()
   defp requeue_payload(backend_id, %EncodedRow{pointer: pointer} = encoded) do
-    pointer = %{pointer | retries: pointer.retries + 1}
-    encoded = %{encoded | pointer: pointer}
-
-    case IngestEventQueue.replace_event(pointer.tid, pointer.gen_event_id, encoded) do
-      :ok -> reinsert_retry_pointer(backend_id, pointer)
-      {:error, :not_found} -> :lookup_miss
-    end
+    transfer_retry_payload(backend_id, pointer, encoded)
   end
 
   defp requeue_payload(backend_id, %LogEventPointer{} = pointer) do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
-      nil ->
-        :lookup_miss
-
-      _event_or_encoded_row ->
-        pointer = %{pointer | retries: pointer.retries + 1}
-        reinsert_retry_pointer(backend_id, pointer)
+      nil -> :lookup_miss
+      event_or_encoded_row -> transfer_retry_payload(backend_id, pointer, event_or_encoded_row)
     end
   end
 
-  @spec reinsert_retry_pointer(pos_integer(), LogEventPointer.t()) :: requeue_result()
-  defp reinsert_retry_pointer(backend_id, pointer) do
-    result =
-      case IngestEventQueue.reinsert_pointer(pointer) do
-        :ok ->
-          :ok
+  @spec transfer_retry_payload(pos_integer(), LogEventPointer.t(), EncodedRow.t() | LogEvent.t()) ::
+          requeue_result()
+  defp transfer_retry_payload(backend_id, pointer, payload) do
+    pointer = %{pointer | retries: pointer.retries + 1}
 
-        {:error, :already_exists} = error ->
-          error
-
-        {:error, :not_initialized} ->
-          IngestEventQueue.reinsert_pointer({:consolidated, backend_id}, pointer)
-      end
-
-    case result do
-      :ok ->
-        :requeued
-
-      {:error, :already_exists} ->
-        :deduplicated
-
-      {:error, :not_initialized} ->
-        IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
-        :queue_unavailable
-    end
+    {:consolidated, backend_id}
+    |> IngestEventQueue.requeue_payload(pointer, fn new_pointer ->
+      retry_payload_with_pointer(payload, new_pointer)
+    end)
+    |> requeue_transfer_result()
   end
+
+  defp retry_payload_with_pointer(%EncodedRow{} = encoded, pointer),
+    do: %{encoded | pointer: pointer}
+
+  defp retry_payload_with_pointer(%LogEvent{} = event, pointer),
+    do: %{event | retries: pointer.retries}
+
+  defp requeue_transfer_result({:ok, _pointer}), do: :requeued
+  defp requeue_transfer_result({:error, :already_exists}), do: :deduplicated
+  defp requeue_transfer_result({:error, :not_initialized}), do: :queue_unavailable
 
   # A lookup miss means GenerationJanitor dropped the backing generation before the
-  # retry could resolve or replace its event. Bounded and rare in practice, but worth
+  # retry could resolve its event. Bounded and rare in practice, but worth
   # surfacing since it's otherwise invisible.
   @spec emit_requeue_lookup_miss_telemetry(pos_integer(), non_neg_integer()) :: :ok
   defp emit_requeue_lookup_miss_telemetry(_backend_id, 0), do: :ok
