@@ -99,6 +99,15 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert [] == IngestEventQueue.list_counts({source.id, nil})
     end
 
+    test "generation tables use decentralized counters", %{
+      source: %{id: source_id},
+      backend: %{id: backend_id}
+    } do
+      tid = IngestEventQueue.current_generation_tid({source_id, backend_id})
+
+      assert :ets.info(tid, :decentralized_counters)
+    end
+
     test "add_to_table/2 removes the backing row when a duplicate pointer is rejected", %{
       source: %{id: source_id} = source,
       backend: %{id: backend_id}

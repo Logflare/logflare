@@ -186,7 +186,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       :ets.new(@ets_table, [
         :public,
         :set,
-        {:decentralized_counters, false},
+        {:decentralized_counters, true},
         {:write_concurrency, :auto},
         {:read_concurrency, true}
       ])
@@ -1096,15 +1096,19 @@ defmodule Logflare.Backends.IngestEventQueue do
     {:ok, from_generations ++ list_recent_events(sid_bid, n)}
   end
 
+  defp select_generation_events(_tid, n) when n <= 0, do: []
+
   defp select_generation_events(tid, n) do
     ms = [{{:_, :"$1"}, [], [:"$1"]}]
 
-    with size when is_integer(size) <- :ets.info(tid, :size),
-         {events, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      events
-    else
-      _ -> []
+    case :ets.select(tid, ms, n) do
+      {events, _cont} -> events
+      :"$end_of_table" -> []
     end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      []
   end
 
   @doc """
