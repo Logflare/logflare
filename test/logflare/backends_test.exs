@@ -247,6 +247,42 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  describe "get_default_backend/1" do
+    test "defaults dataset_id even when bigquery_project_id is set but bigquery_dataset_id is nil" do
+      user = insert(:user, bigquery_project_id: "some-project", bigquery_dataset_id: nil)
+
+      assert %Backend{
+               type: :bigquery,
+               config: %{project_id: "some-project", dataset_id: dataset_id}
+             } = Backends.get_default_backend(user)
+
+      refute is_nil(dataset_id)
+      assert dataset_id == User.generate_bq_dataset_id(user.id)
+    end
+
+    test "defaults project_id even when bigquery_dataset_id is set but bigquery_project_id is nil" do
+      user = insert(:user, bigquery_project_id: nil, bigquery_dataset_id: "some_dataset")
+
+      assert %Backend{
+               type: :bigquery,
+               config: %{project_id: project_id, dataset_id: "some_dataset"}
+             } = Backends.get_default_backend(user)
+
+      refute is_nil(project_id)
+      assert project_id == User.bq_project_id()
+    end
+
+    test "uses user-configured project_id and dataset_id when both are set" do
+      user =
+        insert(:user, bigquery_project_id: "some-project", bigquery_dataset_id: "some_dataset")
+
+      assert %Backend{
+               type: :bigquery,
+               config: %{project_id: "some-project", dataset_id: "some_dataset"}
+             } = Backends.get_default_backend(user)
+    end
+  end
+
   describe "backend management" do
     setup do
       # Stub SSRF resolution so tests aren't sensitive to whether a fixture
