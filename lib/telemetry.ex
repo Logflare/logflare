@@ -432,6 +432,13 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         description:
           "Count of retriable events whose generation-store row was already gone by requeue lookup time"
+      ),
+      sum("logflare.ingest_event_queue.requeue_deduplicated.count",
+        event_name: [:logflare, :ingest_event_queue, :requeue_deduplicated],
+        measurement: :count,
+        tags: [:backend_type],
+        description:
+          "Count of claimed retry payloads discarded because a newer same-ID pointer already existed"
       )
     ]
 

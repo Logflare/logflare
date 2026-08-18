@@ -1243,6 +1243,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
         assert %EncodedRow{row: original_row} = failed_message.data
 
+        telemetry_event = [:logflare, :ingest_event_queue, :requeue_deduplicated]
+        ref = :telemetry_test.attach_event_handlers(self(), [telemetry_event])
+        on_exit(fn -> :telemetry.detach(ref) end)
+
         Pipeline.ack(:ack_ref, [], [failed_message])
 
         assert %LogEventPointer{retries: 1} = retry_pointer = queued_pointer(queue_tid, event.id)
@@ -1267,6 +1271,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
                    retry_message,
                    Pipeline.processor_context(backend.id)
                  )
+
+        refute_receive {^telemetry_event, ^ref, _, _}
+      end
+
+      test "reports and cleans up an encoded retry deduplicated by a newer pointer", %{
+        source: source,
+        backend: backend
+      } do
+        event = build(:log_event, source: source, message: "claimed") |> Map.put(:retries, 0)
+        old_gen_tid = setup_generation_events([event])
+        queue_tid = :ets.new(:test_pipeline_retry_queue, [:set, :public])
+
+        failed_message =
+          event
+          |> batch_message(old_gen_tid, backend.id, queue_tid)
+          |> Message.failed("connection error")
+
+        authoritative_event = %{event | body: Map.put(event.body, "event_message", "newer")}
+        authoritative_gen_tid = setup_generation_events([authoritative_event])
+        authoritative_pointer = pointer_for(authoritative_event, authoritative_gen_tid, queue_tid)
+        assert :ok = IngestEventQueue.reinsert_pointer(authoritative_pointer)
+
+        telemetry_event = [:logflare, :ingest_event_queue, :requeue_deduplicated]
+        ref = :telemetry_test.attach_event_handlers(self(), [telemetry_event])
+        on_exit(fn -> :telemetry.detach(ref) end)
+
+        log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
+
+        assert log =~ "Deduplicated 1 ClickHouse event(s) during retry requeue"
+
+        assert_receive {^telemetry_event, ^ref, %{count: 1}, metadata}
+        assert metadata == %{backend_type: :clickhouse, backend_id: backend.id}
+
+        assert IngestEventQueue.lookup_event(old_gen_tid, event.id) == nil
+        assert queued_pointer(queue_tid, event.id) == authoritative_pointer
+
+        assert IngestEventQueue.lookup_event(
+                 authoritative_pointer.tid,
+                 authoritative_pointer.gen_event_id
+               ) == authoritative_event
       end
 
       test "moves an unencoded retry into the current generation", %{

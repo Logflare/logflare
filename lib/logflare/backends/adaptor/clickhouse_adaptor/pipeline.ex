@@ -530,6 +530,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
     result_counts = Enum.frequencies_by(retriable, &requeue_payload(backend_id, &1))
 
+    emit_requeue_deduplicated_telemetry(
+      backend_id,
+      Map.get(result_counts, :deduplicated, 0)
+    )
+
     emit_requeue_lookup_miss_telemetry(backend_id, Map.get(result_counts, :lookup_miss, 0))
 
     emit_requeue_queue_unavailable_telemetry(
@@ -573,6 +578,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   defp requeue_transfer_result({:ok, _pointer}), do: :requeued
   defp requeue_transfer_result({:error, :already_exists}), do: :deduplicated
   defp requeue_transfer_result({:error, :not_initialized}), do: :queue_unavailable
+
+  @spec emit_requeue_deduplicated_telemetry(pos_integer(), non_neg_integer()) :: :ok
+  defp emit_requeue_deduplicated_telemetry(_backend_id, 0), do: :ok
+
+  defp emit_requeue_deduplicated_telemetry(backend_id, deduplicated_count) do
+    Logger.warning(
+      "Deduplicated #{deduplicated_count} ClickHouse event(s) during retry requeue: a newer same-ID pointer remains queued",
+      backend_id: backend_id
+    )
+
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :requeue_deduplicated],
+      %{count: deduplicated_count},
+      %{backend_type: :clickhouse, backend_id: backend_id}
+    )
+  end
 
   # A lookup miss means GenerationJanitor dropped the backing generation before the
   # retry could resolve its event. Bounded and rare in practice, but worth
