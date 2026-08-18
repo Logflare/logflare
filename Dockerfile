@@ -40,9 +40,19 @@ ENV CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
 COPY Cargo.toml Cargo.lock ./
 COPY native native/
 # Keep Cargo freshness checks independent of checkout mtimes so a cached target
-# remains reusable after the full source tree is copied.
-RUN find native Cargo.toml Cargo.lock -exec touch -h -d @1 {} + && \
-    cargo build --workspace --release --locked
+# remains reusable after the full source tree is copied. Rustler invokes `cargo
+# rustc --package` during `mix release`; using plain `cargo build` here creates
+# different final-crate units and makes Rustler compile every NIF again. Keep
+# this command mode aligned with Rustler, and derive the package list so future
+# workspace crates cannot silently miss the prebuild layer.
+RUN set -eu; \
+    find native Cargo.toml Cargo.lock -exec touch -h -d @1 {} +; \
+    crates="$(cargo metadata --format-version=1 --no-deps --locked | \
+      node -e 'let input=""; process.stdin.on("data", chunk => input += chunk).on("end", () => { const metadata = JSON.parse(input); const members = new Set(metadata.workspace_members); process.stdout.write(metadata.packages.filter(pkg => members.has(pkg.id)).map(pkg => pkg.name).join(" ")); });')"; \
+    test -n "$crates"; \
+    for crate in $crates; do \
+      cargo rustc --package "$crate" --release --locked; \
+    done
 
 COPY . ./
 
