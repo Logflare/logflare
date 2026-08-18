@@ -912,6 +912,37 @@ defmodule Logflare.Backends.IngestEventQueueTest do
                IngestEventQueue.pop_pending_pointers(sbp, 1)
     end
 
+    test "recovers when the current generation disappears before retry payload staging", %{
+      source: source,
+      sbp: {sid, bid, _pid} = sbp
+    } do
+      event = build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+
+      stale_gen_tid = pointer.tid
+      assert :ok = IngestEventQueue.drop_generation({sid, bid}, stale_gen_tid)
+
+      assert {:ok, %LogEventPointer{} = published_pointer} =
+               IngestEventQueue.requeue_payload(
+                 {sid, bid},
+                 %{pointer | retries: pointer.retries + 1},
+                 fn new_pointer -> {:retried, new_pointer} end
+               )
+
+      refute published_pointer.tid == stale_gen_tid
+      assert published_pointer.tid == IngestEventQueue.current_generation_tid({sid, bid})
+
+      assert {:retried, ^published_pointer} =
+               IngestEventQueue.lookup_event(
+                 published_pointer.tid,
+                 published_pointer.gen_event_id
+               )
+
+      assert {:ok, [^published_pointer], _tid} =
+               IngestEventQueue.pop_pending_pointers(sbp, 1)
+    end
+
     test "cleans up the claimed and staged payloads when a newer pointer already exists", %{
       source: source,
       sbp: {sid, bid, _pid} = sbp

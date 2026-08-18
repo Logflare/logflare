@@ -1298,6 +1298,58 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         refute_receive {^telemetry_event, ^ref, _, _}
       end
 
+      test "drops an encoded row when its published retry also fails", %{
+        source: source,
+        backend: backend,
+        context: context
+      } do
+        event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+        gen_tid = setup_generation_events([event])
+        retry_key = {:consolidated, backend.id, self()}
+        assert {:ok, queue_tid} = IngestEventQueue.upsert_tid(retry_key)
+
+        first_failure =
+          event
+          |> batch_message(gen_tid, backend.id, queue_tid)
+          |> Message.failed("first connection error")
+
+        assert %EncodedRow{row: original_row} = first_failure.data
+        assert :ok = Pipeline.ack(:ack_ref, [], [first_failure])
+
+        assert {:ok, [retry_pointer], ^queue_tid} =
+                 IngestEventQueue.pop_pending_pointers(retry_key, 1)
+
+        assert retry_pointer.retries == Pipeline.max_retries()
+
+        retry_message = %Message{
+          data: retry_pointer,
+          acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+        }
+
+        assert %Message{data: %EncodedRow{row: ^original_row}} =
+                 processed_retry =
+                 Pipeline.handle_message(:default, retry_message, context)
+
+        log =
+          capture_log(fn ->
+            assert :ok =
+                     Pipeline.ack(
+                       :ack_ref,
+                       [],
+                       [Message.failed(processed_retry, "second connection error")]
+                     )
+          end)
+
+        assert log =~ "Dropping 1 ClickHouse events: exhausted #{Pipeline.max_retries()} retries"
+        assert IngestEventQueue.total_pending(retry_key) == 0
+        assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+        assert IngestEventQueue.lookup_event(
+                 retry_pointer.tid,
+                 retry_pointer.gen_event_id
+               ) == nil
+      end
+
       test "reports and cleans up an encoded retry deduplicated by a newer pointer", %{
         source: source,
         backend: backend
