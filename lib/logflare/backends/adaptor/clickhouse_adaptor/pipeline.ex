@@ -62,6 +62,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @spec processor_concurrency() :: pos_integer()
   def processor_concurrency, do: processor_concurrency(System.schedulers_online())
 
+  # This concurrency is allocated per backend pipeline, so the total processor count
+  # grows with active ClickHouse backends. Revisit a global cap or admission budget
+  # before enabling ClickHouse log drains broadly.
   @doc false
   @spec processor_concurrency(pos_integer()) :: pos_integer()
   def processor_concurrency(schedulers_online)
