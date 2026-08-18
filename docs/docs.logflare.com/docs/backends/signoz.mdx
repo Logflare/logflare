@@ -20,7 +20,7 @@ You can obtain the ingestion URL and ingestion key under **Settings > Ingestion*
 ### Implementation Details
 
 - The adaptor sends logs to `<endpoint>/v1/logs`.
-- It uses OTLP over HTTP with Protobuf encoding, with gzip compression enabled.
+- It uses OTLP over HTTP with Protobuf encoding.
 - Authentication is handled via the `signoz-ingestion-key` header, which is omitted when no ingestion key is configured.
 
 ### Log record mapping

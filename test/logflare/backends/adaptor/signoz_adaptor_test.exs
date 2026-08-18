@@ -19,7 +19,7 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
   }
   @valid_config_input Map.new(@valid_config, fn {k, v} -> {Atom.to_string(k), v} end)
 
-  @keyless_config %{endpoint: "https://otel.example.com:4318"}
+  @keyless_config %{endpoint: "http://otel.example.com:4318"}
 
   defp backend_data(_ctx), do: insert_backend(@valid_config)
 
@@ -88,10 +88,10 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
       assert changeset.valid?
     end
 
-    test "accepts config without an ingestion key" do
+    test "accepts a plain http endpoint without an ingestion key" do
       changeset =
         Adaptor.cast_and_validate_config(@subject, %{
-          "endpoint" => "https://otel.example.com:4318"
+          "endpoint" => "http://otel.example.com:4318"
         })
 
       assert changeset.valid?
@@ -210,7 +210,7 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
     end
   end
 
-  describe "logs ingestion without an ingestion key" do
+  describe "logs ingestion to a self-managed collector" do
     setup :keyless_backend_data
 
     setup %{source: source} do
@@ -218,12 +218,12 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptorTest do
       :ok
     end
 
-    test "omits the ingestion key header", %{source: source} do
+    test "sends over plain http and omits the ingestion key header", %{source: source} do
       this = self()
       ref = make_ref()
 
       mock_adapter(fn env ->
-        assert Tesla.build_url(env) == "https://otel.example.com:4318/v1/logs"
+        assert Tesla.build_url(env) == "http://otel.example.com:4318/v1/logs"
         assert Tesla.get_header(env, "signoz-ingestion-key") == nil
 
         send(this, {ref, :sent})
