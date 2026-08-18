@@ -666,6 +666,57 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     end
   end
 
+  describe "handle_batch/4 backend-level telemetry (O11Y-1733)" do
+    setup do
+      {source, backend} =
+        setup_clickhouse_test(metadata: %{"environment" => "test", "region" => "us-west"})
+
+      {:ok, supervisor_pid} = ClickHouseAdaptor.start_link(backend)
+
+      on_exit(fn ->
+        if Process.alive?(supervisor_pid) do
+          Process.exit(supervisor_pid, :shutdown)
+        end
+      end)
+
+      TestUtils.retry_assert(fn ->
+        assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+      end)
+
+      [source: source, backend: backend, context: %{backend_id: backend.id}]
+    end
+
+    test "emits backend metadata as attributes on the backend-level handle_batch metric", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      log_event = build(:log_event, source: source, message: "Test message")
+      gen_tid = setup_generation_events([log_event])
+      messages = [batch_message(log_event, gen_tid, backend.id)]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :size
+      }
+
+      telemetry_event = [:logflare, :backends, :pipeline, :handle_batch]
+      TestUtils.attach_forwarder(telemetry_event)
+
+      Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      assert_receive {:telemetry_event, ^telemetry_event, _measurements, metadata}
+
+      # Each backend adaptor's backend-level telemetry should surface the
+      # backend's free-form `metadata` map as metric attributes, mirroring
+      # what the webhook adaptor already does for its egress metric.
+      assert metadata[:_backend_environment] == "test" or metadata["_backend_environment"] == "test"
+      assert metadata[:_backend_region] == "us-west" or metadata["_backend_region"] == "us-west"
+    end
+  end
+
   describe "handle_batch/4 async insert decision" do
     setup do
       {async_source, async_backend} =

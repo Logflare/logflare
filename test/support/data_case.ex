@@ -129,10 +129,12 @@ defmodule Logflare.DataCase do
   - `:source` - Existing source to use (creates one if not provided)
   - `:default_ingest_backend?` - Whether to set the backend as the default ingest backend (requires a source to be provided with the default ingest backend option set to true)
   - `:cleanup?` - Whether to drop the backend's ClickHouse tables on exit (defaults to true)
+  - `:metadata` - Backend metadata map (defaults to `nil`)
   """
   def setup_clickhouse_test(opts \\ []) do
     config = Keyword.get(opts, :config, %{})
     default_ingest_backend? = Keyword.get(opts, :default_ingest_backend?, false)
+    metadata = Keyword.get(opts, :metadata)
 
     user =
       case Keyword.get(opts, :user) do
@@ -160,6 +162,7 @@ defmodule Logflare.DataCase do
         type: :clickhouse,
         config: Map.merge(default_config, config),
         default_ingest?: default_ingest_backend?,
+        metadata: metadata,
         user: user,
         sources: [source]
       )

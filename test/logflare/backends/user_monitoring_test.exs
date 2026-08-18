@@ -255,6 +255,49 @@ defmodule Logflare.Backends.UserMonitoringTest do
       end)
     end
 
+    test "backends.ingest.ingested_bytes and backends.ingest.ingested_count are emitted at the Backends context/source level, independent of backend adaptor (O11Y-1733)" do
+      user = insert(:user, system_monitoring: true)
+      metrics_source = insert(:source, user: user, system_source_type: :metrics)
+      start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
+
+      {source, backend} = setup_clickhouse_test(user: user)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      {:ok, supervisor_pid} = ClickHouseAdaptor.start_link(backend)
+      on_exit(fn -> if Process.alive?(supervisor_pid), do: Process.exit(supervisor_pid, :shutdown) end)
+
+      TestUtils.retry_assert(fn ->
+        assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+      end)
+
+      assert {:ok, _} = Backends.ingest_logs([%{"message" => "test clickhouse ingest"}], source)
+
+      # `ingested_count`/`ingested_bytes` today are only emitted from the BigQuery
+      # pipeline (lib/logflare/sources/source/bigquery/pipeline.ex). Per O11Y-1733,
+      # this should be emitted once at the Backends context/source level, prior to
+      # per-backend dispatch, so it applies uniformly regardless of which backend(s)
+      # a source is routed to - including non-BigQuery backends like ClickHouse.
+      TestUtils.retry_assert(fn ->
+        events = Backends.list_recent_logs_local(metrics_source)
+
+        assert Enum.any?(
+                 events,
+                 &match?(
+                   %LogEvent{body: %{"event_message" => "logflare.backends.ingest.ingested_count"}},
+                   &1
+                 )
+               )
+
+        assert Enum.any?(
+                 events,
+                 &match?(
+                   %LogEvent{body: %{"event_message" => "logflare.backends.ingest.ingested_bytes"}},
+                   &1
+                 )
+               )
+      end)
+    end
+
     test "other users metrics" do
       pid = self()
       test_ref = make_ref()
@@ -394,6 +437,55 @@ defmodule Logflare.Backends.UserMonitoringTest do
       assert attributes["backend_id"] == webhook_backend.id
       assert attributes["_backend_environment"] == "test"
       assert attributes["_backend_region"] == "us-west"
+    end
+
+    test "backends.ingest.egress.request_bytes tags log drain backends with _backend_type" do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _, _, _, _, opts ->
+        send(pid, {:insert_all, opts[:body].rows})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      user = insert(:user, system_monitoring: true)
+      metrics_source = insert(:source, user: user, system_source_type: :metrics)
+
+      webhook_backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://127.0.0.1:9999/webhook"}
+        )
+
+      source = insert(:source, user: user)
+
+      start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      {:ok, _} = Backends.update_source_backends(source, [webhook_backend])
+      Backends.Cache.get_backend(webhook_backend.id)
+
+      assert {:ok, _} = Backends.ingest_logs([%{"message" => "test webhook egress"}], source)
+
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 15_000
+
+      rows = for row <- rows, do: row.json
+
+      egress_row =
+        Enum.find(
+          rows,
+          &match?(%{"event_message" => "logflare.backends.ingest.egress.request_bytes"}, &1)
+        )
+
+      assert egress_row, "Expected egress metric to be present"
+
+      [attributes] = egress_row["attributes"]
+
+      # webhook backends are "log drain" style backends; the egress metric should
+      # carry a filterable `_backend_type` attribute so drain traffic can be
+      # isolated from other egress (e.g. `attributes._backend_type: "log-drain"`).
+      assert attributes["_backend_type"] == "log-drain"
     end
   end
 
