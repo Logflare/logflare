@@ -843,7 +843,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-  describe "reinsert_pointer/1" do
+  describe "pointer reinsertion" do
     setup do
       user = insert(:user)
       source = insert(:source, user: user)
@@ -862,11 +862,21 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
       assert IngestEventQueue.total_pending(sbp) == 0
 
+      colliding_pointer = %{
+        pointer
+        | tid: make_ref(),
+          gen_event_id: make_ref(),
+          retries: 99
+      }
+
+      assert :ok = IngestEventQueue.insert_new_pointer(colliding_pointer)
       assert :ok = IngestEventQueue.reinsert_pointer(%{pointer | retries: pointer.retries + 1})
       assert IngestEventQueue.total_pending(sbp) == 1
 
       assert {:ok, [reclaimed], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
       assert reclaimed.id == le.id
+      assert reclaimed.tid == pointer.tid
+      assert reclaimed.gen_event_id == pointer.gen_event_id
       assert reclaimed.retries == 1
     end
 
@@ -950,7 +960,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         day_bucket: 0
       }
 
-      assert {:error, :not_initialized} = IngestEventQueue.reinsert_pointer(pointer)
+      assert {:error, :not_initialized} = IngestEventQueue.insert_new_pointer(pointer)
     end
 
     test "routes a pointer away from a stale queue", %{source: source, sbp: {sid, bid, _pid}} do
@@ -972,7 +982,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         day_bucket: event.day_bucket
       }
 
-      assert :ok = IngestEventQueue.reinsert_pointer({sid, bid}, pointer)
+      assert :ok = IngestEventQueue.insert_new_pointer({sid, bid}, pointer)
       assert [{event_id, _, _, _, 1, _, _}] = :ets.lookup(target_tid, event.id)
       assert event_id == event.id
     end
@@ -994,7 +1004,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         day_bucket: event.day_bucket
       }
 
-      assert {:error, :already_exists} = IngestEventQueue.reinsert_pointer(retry)
+      assert {:error, :already_exists} = IngestEventQueue.insert_new_pointer(retry)
       assert :ets.lookup(queue_tid, event.id) == [existing]
     end
   end

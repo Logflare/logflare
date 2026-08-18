@@ -1095,7 +1095,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     case insert_generation_payload(gen_tid, gen_event_id, payload) do
       :ok ->
-        case reinsert_pointer(new_pointer) do
+        case insert_new_pointer(new_pointer) do
           :ok ->
             {:ok, new_pointer}
 
@@ -1135,18 +1135,32 @@ defmodule Logflare.Backends.IngestEventQueue do
   itself alive by claiming this in the first place. Bump `pointer.retries` before
   calling this if the caller is retrying after a failure.
 
-  Returns `{:error, :not_initialized}` if `queue_tid` has since gone stale because its
-  owning producer died, allowing callers that retain the event payload to reroute it.
-  Returns `{:error, :already_exists}` rather than overwriting a newer same-ID pointer.
+  This preserves the historical overwrite behavior required by startup seeding and
+  spool retries: if the destination already contains the same event ID, this claimed
+  pointer replaces it instead of being silently stranded. Call `insert_new_pointer/1`
+  when an existing pointer must remain authoritative.
   """
-  @spec reinsert_pointer(LogEventPointer.t()) ::
-          :ok | {:error, :already_exists | :not_initialized}
+  @spec reinsert_pointer(LogEventPointer.t()) :: :ok
   def reinsert_pointer(%LogEventPointer{} = pointer) do
-    row =
-      {pointer.id, pointer.tid, pointer.gen_event_id, pointer.size, pointer.retries,
-       pointer.event_type, pointer.day_bucket}
+    :ets.insert(pointer.queue_tid, pointer_row(pointer))
+    :ok
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      :ok
+  end
 
-    if :ets.insert_new(pointer.queue_tid, row) do
+  @doc """
+  Inserts a claimed pointer only when the destination does not already contain its ID.
+
+  Returns `{:error, :not_initialized}` if `queue_tid` has since gone stale, allowing a
+  caller that retains the payload to try another queue. Returns
+  `{:error, :already_exists}` without overwriting the authoritative same-ID pointer.
+  """
+  @spec insert_new_pointer(LogEventPointer.t()) ::
+          :ok | {:error, :already_exists | :not_initialized}
+  def insert_new_pointer(%LogEventPointer{} = pointer) do
+    if :ets.insert_new(pointer.queue_tid, pointer_row(pointer)) do
       :ok
     else
       {:error, :already_exists}
@@ -1158,27 +1172,32 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Routes a previously-claimed pointer to an available queue for `queues_key`.
+  Routes a claimed pointer to an available queue without overwriting an existing ID.
 
   Active producer queues are tried from least to most pending, followed by the startup
   queue. A candidate that disappears during routing is skipped. The backing generation
   row is not copied; the routed pointer continues to reference it directly.
   """
-  @spec reinsert_pointer(
+  @spec insert_new_pointer(
           queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
           LogEventPointer.t()
         ) :: :ok | {:error, :already_exists | :not_initialized}
-  def reinsert_pointer(queues_key, %LogEventPointer{} = pointer) do
+  def insert_new_pointer(queues_key, %LogEventPointer{} = pointer) do
     queues_key
     |> list_queues_with_tids()
     |> Enum.sort_by(&reinsert_queue_priority/1)
     |> Enum.reduce_while({:error, :not_initialized}, fn {_table_key, queue_tid}, _acc ->
-      case reinsert_pointer(%{pointer | queue_tid: queue_tid}) do
+      case insert_new_pointer(%{pointer | queue_tid: queue_tid}) do
         :ok -> {:halt, :ok}
         {:error, :already_exists} = error -> {:halt, error}
         {:error, :not_initialized} -> {:cont, {:error, :not_initialized}}
       end
     end)
+  end
+
+  defp pointer_row(pointer) do
+    {pointer.id, pointer.tid, pointer.gen_event_id, pointer.size, pointer.retries,
+     pointer.event_type, pointer.day_bucket}
   end
 
   defp reinsert_queue_priority({{_, _, pid}, tid}) do
