@@ -4,8 +4,8 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
   import Mimic
 
   alias Broadway.Message
-  alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.IngestEventQueue.LogEventPointer
+  alias Logflare.Backends.Spool.EventQueue
+  alias Logflare.Backends.Spool.EventQueue.Chunk
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.ProducerPipeline
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
@@ -32,30 +32,8 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
     :ok
   end
 
-  defp message(size) do
-    %{
-      data: %LogEventPointer{
-        id: Ecto.UUID.generate(),
-        tid: :fake_tid,
-        gen_event_id: make_ref(),
-        queue_tid: :fake_tid,
-        size: size,
-        retries: 0,
-        event_type: :log,
-        day_bucket: 0
-      }
-    }
-  end
-
-  # Builds a real ETS-backed LogEventPointer message via the same
-  # IngestEventQueue.upsert_tid/1 + add_to_table/2 + pop_pending_pointers/2 path real
-  # ingestion uses — matching what BufferProducer's spool_producer path actually hands
-  # to handle_batch/4. Unlike message/1 above, this is a real log event the upload
-  # functions can look up and serialize. Going through the real insertion and claim
-  # helpers, rather than hand-rolling a pointer ourselves, means a row-shape change
-  # there shows up as a test failure here instead of silently drifting out of sync.
-  defp log_event_message(body \\ %{"message" => "hello"}, via_rule_id \\ nil) do
-    log_event = %LogEvent{
+  defp log_event(body \\ %{"message" => "hello"}, via_rule_id \\ nil) do
+    %LogEvent{
       id: Ecto.UUID.generate(),
       source_id: 1,
       body: body,
@@ -65,16 +43,36 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       drop: false,
       via_rule_id: via_rule_id
     }
+  end
 
-    key = {:spool_producer, nil, self()}
-    {:ok, _tid} = IngestEventQueue.upsert_tid(key)
-    :ok = IngestEventQueue.add_to_table(key, [log_event])
+  # A synthetic message carrying a chunk of `event_count` dummy events and an
+  # explicit `byte_size` — used by the splitter tests below, which only care about
+  # the accounting numbers, not real event content or upload behavior.
+  defp sized_message(byte_size, event_count \\ 1) do
+    %{
+      data: %Chunk{
+        ref: make_ref(),
+        caller_pid: nil,
+        events: List.duplicate(log_event(), event_count),
+        byte_size: byte_size,
+        retries: 0
+      }
+    }
+  end
 
-    {:ok, [pointer], _queue_tid} = IngestEventQueue.pop_pending_pointers(key, 1)
+  defp chunk_message(events, opts \\ []) do
+    chunk = %Chunk{
+      ref: Keyword.get(opts, :ref, make_ref()),
+      caller_pid: Keyword.get(opts, :caller_pid),
+      events: events,
+      byte_size: Keyword.get(opts, :byte_size, 0),
+      retries: Keyword.get(opts, :retries, 0)
+    }
 
     %Message{
-      data: pointer,
-      acknowledger: {ProducerPipeline, :no_ack_ref, :ack_data}
+      data: chunk,
+      acknowledger:
+        {ProducerPipeline, :no_ack_ref, %{in_flight_ref: Keyword.get(opts, :in_flight_ref)}}
     }
   end
 
@@ -117,7 +115,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       not_throttled!()
       {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
 
-      assert {:cont, {_count, remaining}} = reducer.(message(10 * 1024 * 1024), initial)
+      assert {:cont, {_count, remaining}} = reducer.(sized_message(10 * 1024 * 1024), initial)
       assert remaining == @max_spool_file_size - 10 * 1024 * 1024
     end
 
@@ -125,8 +123,22 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       not_throttled!()
       {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
 
-      assert {:cont, acc} = reducer.(message(20 * 1024 * 1024), initial)
-      assert {:emit, {_count, :pending}} = reducer.(message(15 * 1024 * 1024), acc)
+      assert {:cont, acc} = reducer.(sized_message(20 * 1024 * 1024), initial)
+      assert {:emit, {_count, :pending}} = reducer.(sized_message(15 * 1024 * 1024), acc)
+    end
+
+    test "a single chunk larger than the whole budget is still admitted, and closes the batch" do
+      not_throttled!()
+      {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
+
+      assert {:emit, {_count, :pending}} = reducer.(sized_message(64 * 1024 * 1024), initial)
+    end
+
+    test "emits once accumulated event count would exceed the 500_000 cap" do
+      not_throttled!()
+      {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
+
+      assert {:emit, {_count, :pending}} = reducer.(sized_message(1, 500_001), initial)
     end
   end
 
@@ -136,14 +148,14 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
 
       # 15MB alone wouldn't trip the normal 32MB budget, but does trip the 12MB one.
-      assert {:emit, {_count, :pending}} = reducer.(message(15 * 1024 * 1024), initial)
+      assert {:emit, {_count, :pending}} = reducer.(sized_message(15 * 1024 * 1024), initial)
     end
 
     test "continuing under the early-flush budget still tracks the correct remaining bytes" do
       throttled!()
       {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
 
-      assert {:cont, {_count, remaining}} = reducer.(message(5 * 1024 * 1024), initial)
+      assert {:cont, {_count, remaining}} = reducer.(sized_message(5 * 1024 * 1024), initial)
       assert remaining == @early_flush_file_size - 5 * 1024 * 1024
     end
 
@@ -152,7 +164,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
 
       # First message decides the budget for this whole batch: 12MB (throttled).
-      assert {:cont, acc} = reducer.(message(5 * 1024 * 1024), initial)
+      assert {:cont, acc} = reducer.(sized_message(5 * 1024 * 1024), initial)
 
       # Flip to "not throttled" and wait for MemoryMonitor to genuinely refresh —
       # if the reducer re-checked per message, this would flip its behavior.
@@ -166,7 +178,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
       # 5MB + 8MB = 13MB, over the locked-in 12MB budget (would NOT emit under
       # a freshly-rechecked 32MB budget) — proves the decision wasn't re-evaluated.
-      assert {:emit, {_count, :pending}} = reducer.(message(8 * 1024 * 1024), acc)
+      assert {:emit, {_count, :pending}} = reducer.(sized_message(8 * 1024 * 1024), acc)
     end
   end
 
@@ -179,7 +191,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
       stub(QueueMod, :publish, fn _ref, _body -> :ok end)
 
-      messages = [log_event_message()]
+      messages = [chunk_message([log_event()])]
       batch_info = %{size: 1, trigger: :size}
 
       result = ProducerPipeline.handle_batch(:spool, messages, batch_info, handle_batch_context())
@@ -198,13 +210,64 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
                       %{count: 1}, %{result: :ok, stage: nil}}
     end
 
+    test "flattens multiple chunks (from different callers) into one upload" do
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _bucket, _key, body, _opts ->
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      stub(QueueMod, :publish, fn _ref, _body -> :ok end)
+
+      messages = [
+        chunk_message([log_event(%{"message" => "one"})]),
+        chunk_message([log_event(%{"message" => "two"}), log_event(%{"message" => "three"})])
+      ]
+
+      batch_info = %{size: 3, trigger: :size}
+      context = handle_batch_context(compress: false)
+
+      ProducerPipeline.handle_batch(:spool, messages, batch_info, context)
+
+      assert_receive {:put, body}
+      lines = body |> String.trim() |> String.split("\n")
+      assert length(lines) == 3
+    end
+
+    test "batch telemetry counts events, not messages/chunks" do
+      TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :producer, :batch])
+
+      stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
+      stub(QueueMod, :publish, fn _ref, _body -> :ok end)
+
+      # 2 messages (chunks) carrying 3 events total — batch_info.size is a *message*
+      # count from Broadway and deliberately doesn't match, to prove the telemetry
+      # below counts events, not messages.
+      messages = [
+        chunk_message([log_event()]),
+        chunk_message([log_event(), log_event()])
+      ]
+
+      batch_info = %{size: 2, trigger: :size}
+
+      ProducerPipeline.handle_batch(:spool, messages, batch_info, handle_batch_context())
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
+                      %{batch_size: 3}, _}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :producer, :batch],
+                      %{count: 3}, %{result: :ok, stage: nil}}
+    end
+
     test "maps messages to failed and emits storage.put telemetry with result: :error on upload failure" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :put])
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :producer, :batch])
 
       stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:error, :timeout} end)
 
-      messages = [log_event_message()]
+      messages = [chunk_message([log_event()])]
       batch_info = %{size: 1, trigger: :size}
 
       [result_message] =
@@ -226,7 +289,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
       stub(QueueMod, :publish, fn _ref, _body -> {:error, :unavailable} end)
 
-      messages = [log_event_message()]
+      messages = [chunk_message([log_event()])]
       batch_info = %{size: 1, trigger: :size}
 
       ProducerPipeline.handle_batch(:spool, messages, batch_info, handle_batch_context())
@@ -242,7 +305,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
       stub(QueueMod, :publish, fn _ref, _body -> {:error, :unavailable} end)
 
-      messages = [log_event_message()]
+      messages = [chunk_message([log_event()])]
       batch_info = %{size: 1, trigger: :size}
 
       [result_message] =
@@ -263,7 +326,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
         stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
         stub(QueueMod, :publish, fn _ref, _body -> :ok end)
 
-        messages = [log_event_message()]
+        messages = [chunk_message([log_event()])]
         batch_info = %{size: 1, trigger: :size}
         context = handle_batch_context(format: unquote(format), compress: unquote(compress))
 
@@ -286,7 +349,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
       stub(QueueMod, :publish, fn _ref, _body -> :ok end)
 
-      messages = [log_event_message(%{"message" => "hello"}, 123)]
+      messages = [chunk_message([log_event(%{"message" => "hello"}, 123)])]
       batch_info = %{size: 1, trigger: :size}
       context = handle_batch_context(format: :ndjson, compress: false)
 
@@ -306,7 +369,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
       stub(QueueMod, :publish, fn _ref, _body -> :ok end)
 
-      messages = [log_event_message(%{"message" => "hello"}, 123)]
+      messages = [chunk_message([log_event(%{"message" => "hello"}, 123)])]
       batch_info = %{size: 1, trigger: :size}
       context = handle_batch_context(format: :etf, compress: false)
 
@@ -314,6 +377,98 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
       assert_receive {:put, body}
       assert [%{via_rule_id: 123}] = :erlang.binary_to_term(body)
+    end
+  end
+
+  describe "ack/3" do
+    setup do
+      EventQueue.init_table()
+      drain()
+      :ok
+    end
+
+    defp drain do
+      case EventQueue.pop(1_000) do
+        [] -> :ok
+        _ -> drain()
+      end
+    end
+
+    test "replies :ok to a successful chunk's caller" do
+      message = chunk_message([log_event()], caller_pid: self())
+      ref = message.data.ref
+
+      assert :ok = ProducerPipeline.ack(:no_ack_ref, [message], [])
+      assert_receive {^ref, :ok}
+    end
+
+    test "does not reply for a fire-and-forget chunk (caller_pid: nil)" do
+      message = chunk_message([log_event()])
+
+      assert :ok = ProducerPipeline.ack(:no_ack_ref, [message], [])
+      refute_receive {_ref, _result}
+    end
+
+    test "with default max_retries (0), a failed chunk replies :error immediately and is not requeued" do
+      message =
+        [log_event()]
+        |> chunk_message(caller_pid: self())
+        |> Message.failed(:boom)
+
+      ref = message.data.ref
+
+      assert :ok = ProducerPipeline.ack(:no_ack_ref, [], [message])
+      assert_receive {^ref, {:error, :boom}}
+      assert EventQueue.count() == 0
+    end
+
+    test "with max_retries > 0, a failed chunk under its retry budget is requeued instead of replied to" do
+      Application.put_env(:logflare, :spool, max_retries: 1)
+
+      message =
+        [log_event()]
+        |> chunk_message(caller_pid: self(), retries: 0)
+        |> Message.failed(:boom)
+
+      ref = message.data.ref
+
+      assert :ok = ProducerPipeline.ack(:no_ack_ref, [], [message])
+      refute_receive {^ref, _result}
+
+      assert [requeued] = EventQueue.pop(1)
+      assert requeued.ref == ref
+      assert requeued.retries == 1
+    end
+
+    test "with max_retries > 0, a chunk that already exhausted its retries is replied to, not requeued again" do
+      Application.put_env(:logflare, :spool, max_retries: 1)
+
+      message =
+        [log_event()]
+        |> chunk_message(caller_pid: self(), retries: 1)
+        |> Message.failed(:boom)
+
+      ref = message.data.ref
+
+      assert :ok = ProducerPipeline.ack(:no_ack_ref, [], [message])
+      assert_receive {^ref, {:error, :boom}}
+      assert EventQueue.count() == 0
+    end
+
+    test "decrements the in_flight atomic by total event count across mixed chunks" do
+      ref = :atomics.new(1, signed: true)
+      :atomics.put(ref, 1, 3)
+
+      ok_message =
+        chunk_message([log_event()], in_flight_ref: ref)
+
+      failed_message =
+        [log_event(), log_event()]
+        |> chunk_message(caller_pid: self(), in_flight_ref: ref)
+        |> Message.failed(:boom)
+
+      assert :ok = ProducerPipeline.ack(:no_ack_ref, [ok_message], [failed_message])
+      assert :atomics.get(ref, 1) == 0
     end
   end
 end

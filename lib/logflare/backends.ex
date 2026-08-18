@@ -15,6 +15,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.Spool.EventQueue
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
@@ -593,7 +594,11 @@ defmodule Logflare.Backends do
 
   Events are conditionally dispatched to backends based on whether they are registered. If they register for ingestion dispatching, events will get sent to the registered backend.
 
-  Once this function returns `:ok`, the events get dispatched to respective backend adaptor portions of the pipeline to be further processed.
+  For a spoolable event (gated by `allow_spooling`, the global spool mode, and
+  `source.enable_spooling` — see `spoolable?/3`), this blocks the caller until the
+  event is durably uploaded to the spool bucket *and* the consumer queue has been
+  notified, so `{:ok, count}` means durable, not just queued. Non-spooled events are
+  dispatched to their backend and this returns immediately, as before.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
@@ -601,21 +606,35 @@ defmodule Logflare.Backends do
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
           {:ok, count :: pos_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: pos_integer()} | {:error, term()}
   def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
     ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
 
-    if spoolable?(log_events, source, allow_spooling) do
-      dispatch_to_spool_producer(log_events)
-    else
-      maybe_broadcast_and_route(source, log_events)
-      dispatch_to_backends(source, backend, log_events)
-    end
+    result =
+      if spoolable?(log_events, source, allow_spooling) do
+        dispatch_to_spool_producer(log_events)
+      else
+        maybe_broadcast_and_route(source, log_events)
+        dispatch_to_backends(source, backend, log_events)
+        :ok
+      end
 
-    if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+    case result do
+      :ok -> if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # Blocks the caller until the chunk this pushes is durable (uploaded + queue-notified)
+  # or fails — see Spool.ProducerPipeline.ack/3, which replies to `self()` here, and
+  # EventQueue.push_sync/2's moduledoc for why the wait timeout is a fixed internal
+  # constant rather than something threaded through from here.
+  @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
+  defp dispatch_to_spool_producer(log_events) do
+    EventQueue.push_sync(log_events)
   end
 
   # Requires an explicit opt-in (allow_spooling), not just global mode +
@@ -734,10 +753,6 @@ defmodule Logflare.Backends do
 
   defp spool_mode,
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
-
-  defp dispatch_to_spool_producer(log_events) do
-    IngestEventQueue.add_to_table({:spool_producer, nil}, log_events)
-  end
 
   defp maybe_broadcast_and_route(source, log_events) do
     case source.metrics do
