@@ -67,6 +67,17 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   Broadway always runs `ConsumerPipeline.transform/2` in the producer's own
   process.
 
+  ## Draining
+
+  Implements `Broadway.Producer.prepare_for_draining/1`, which Broadway's
+  Terminator calls as soon as this topology starts shutting down (e.g. node
+  rotation/deploy), before consumer subscriptions are cancelled. This flips
+  `draining: true`, which `maybe_start_prefetch/1` checks to stop starting
+  new fetches — so the queue stops being pulled from immediately, rather
+  than continuing until the process is eventually killed. Anything already
+  buffered in `current`, or a prefetch `Task` already in flight, still
+  drains out and acks normally; only the *next* fetch is suppressed.
+
   ## Queue acking
 
   SQS/Pub/Sub acking is entirely decoupled from Broadway's per-message ack
@@ -75,6 +86,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   buffer and drained (`maybe_ack_exhausted/1`), regardless of whether
   Broadway has actually finished processing them yet.
   """
+
+  @behaviour Broadway.Producer
 
   use GenStage
 
@@ -132,12 +145,26 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       # slow destination backend can't let this producer keep draining the
       # queue into an unbounded batcher backlog.
       in_flight_ref: in_flight_ref,
-      max_in_flight: Keyword.get(opts, :max_in_flight, :infinity)
+      max_in_flight: Keyword.get(opts, :max_in_flight, :infinity),
+      # Set by prepare_for_draining/1 when Broadway begins shutting this
+      # topology down — stops new fetches from starting while still letting
+      # anything already buffered/in flight drain out and ack normally.
+      draining: false
     }
 
     Process.put(@in_flight_key, in_flight_ref)
 
     {:producer, schedule_poll(state, 0)}
+  end
+
+  # Invoked by Broadway's Terminator once this topology starts shutting down
+  # (e.g. on node rotation/deploy), before consumer subscriptions are
+  # cancelled. Stops new fetches from starting — see maybe_start_prefetch/1 —
+  # so the queue stops being pulled from as soon as shutdown begins, rather
+  # than continuing to pull until the process is eventually killed.
+  @impl Broadway.Producer
+  def prepare_for_draining(state) do
+    {:noreply, [], %{state | draining: true}}
   end
 
   # Only forces an immediate poll when something already resolved is sitting
@@ -324,6 +351,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # queue). This is the only place safe_fetch_next runs; it never runs inline
   # in this process, so a slow or long-polling queue_mod.receive call (SQS/
   # PubSub) can never block handle_demand/2, handle_info/2, or :sys introspection.
+  defp maybe_start_prefetch(%{prefetch: nil, draining: true} = state), do: state
+
   defp maybe_start_prefetch(%{prefetch: nil} = state) do
     if over_limit?() do
       state

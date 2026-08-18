@@ -552,4 +552,46 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
                       %{count: 1}, %{reason: :prefetch_failed}}
     end
   end
+
+  describe "draining" do
+    test "prepare_for_draining stops new fetches from starting, but still drains and acks what's already buffered" do
+      test_pid = self()
+
+      stub(QueueMod, :receive, fn _url, _opts ->
+        send(test_pid, :queue_receive_called)
+        {:ok, []}
+      end)
+
+      stub_ack_nack(self())
+
+      pid = start_producer()
+
+      # Seed `current` directly, as if a file had already been fetched before
+      # draining began, bypassing queue_mod.receive entirely.
+      :sys.replace_state(pid, fn gen_stage_state ->
+        put_in(gen_stage_state.state.current, %{
+          handle: "h1",
+          lines: [%{"id" => "e1"}]
+        })
+      end)
+
+      :sys.replace_state(pid, fn gen_stage_state ->
+        {:noreply, [], new_module_state} =
+          QueueProducer.prepare_for_draining(gen_stage_state.state)
+
+        %{gen_stage_state | state: new_module_state}
+      end)
+
+      assert :sys.get_state(pid).state.draining == true
+
+      [event] =
+        GenStage.stream([{pid, max_demand: 10}])
+        |> Enum.take(1)
+
+      assert event["id"] == "e1"
+      assert_receive {:acked, "h1"}, 2000
+
+      refute_receive :queue_receive_called, 300
+    end
+  end
 end
