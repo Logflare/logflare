@@ -199,8 +199,7 @@ fn decode_output<'a>(
                 .enumerate()
                 .map(|(index, field)| (field.name.as_str(), (index, field.field_type)))
                 .collect();
-            let layout =
-                crate::clickhouse_rowbinary::compile_layout(&row_type, &fields_by_name)?;
+            let layout = crate::clickhouse_rowbinary::compile_layout(&row_type, &fields_by_name)?;
             Ok(CompiledOutput::ClickHouseRowBinary(layout))
         }
         _ => Err(format!("unsupported mapping output format '{format}'")),

@@ -340,6 +340,28 @@ impl<'values, 'env> RowValues<'values, 'env> {
             .copied()
             .ok_or_else(|| format!("compiled mapping did not produce ClickHouse field '{name}'"))
     }
+
+    fn finish(self) -> EncodeResult<()> {
+        if self.cursor == self.layout.len() {
+            Ok(())
+        } else {
+            Err(format!(
+                "ClickHouse row encoder consumed {} of {} compiled fields",
+                self.cursor,
+                self.layout.len()
+            ))
+        }
+    }
+}
+
+fn encode_row_values<'values, 'env>(
+    values: &'values [Term<'env>],
+    layout: &'values [usize],
+    encode: impl FnOnce(&mut RowValues<'values, 'env>) -> EncodeResult<()>,
+) -> EncodeResult<()> {
+    let mut values = RowValues::new(values, layout);
+    encode(&mut values)?;
+    values.finish()
 }
 
 pub fn append_row(
@@ -349,39 +371,21 @@ pub fn append_row(
     envelope: RowEnvelope,
     mapping_config_id: Binary,
 ) -> EncodeResult<()> {
-    match layout.row_type {
-        RowType::Log => append_log(
-            output,
-            &layout.field_indices,
-            values,
-            envelope,
-            mapping_config_id,
-        ),
-        RowType::Metric => append_metric(
-            output,
-            &layout.field_indices,
-            values,
-            envelope,
-            mapping_config_id,
-        ),
-        RowType::Trace => append_trace(
-            output,
-            &layout.field_indices,
-            values,
-            envelope,
-            mapping_config_id,
-        ),
-    }
+    encode_row_values(values, &layout.field_indices, |values| {
+        match layout.row_type {
+            RowType::Log => append_log(output, values, envelope, mapping_config_id),
+            RowType::Metric => append_metric(output, values, envelope, mapping_config_id),
+            RowType::Trace => append_trace(output, values, envelope, mapping_config_id),
+        }
+    })
 }
 
 fn append_log(
     output: &mut BinaryBuilder,
-    layout: &[usize],
-    values: &[Term],
+    values: &mut RowValues<'_, '_>,
     envelope: RowEnvelope,
     mapping_config_id: Binary,
 ) -> EncodeResult<()> {
-    let mut values = RowValues::new(values, layout);
     encode_envelope(
         output,
         envelope.id,
@@ -424,12 +428,10 @@ fn append_log(
 
 fn append_metric(
     output: &mut BinaryBuilder,
-    layout: &[usize],
-    values: &[Term],
+    values: &mut RowValues<'_, '_>,
     envelope: RowEnvelope,
     mapping_config_id: Binary,
 ) -> EncodeResult<()> {
-    let mut values = RowValues::new(values, layout);
     encode_envelope(
         output,
         envelope.id,
@@ -487,12 +489,10 @@ fn append_metric(
 
 fn append_trace(
     output: &mut BinaryBuilder,
-    layout: &[usize],
-    values: &[Term],
+    values: &mut RowValues<'_, '_>,
     envelope: RowEnvelope,
     mapping_config_id: Binary,
 ) -> EncodeResult<()> {
-    let mut values = RowValues::new(values, layout);
     encode_envelope(
         output,
         envelope.id,
@@ -821,4 +821,30 @@ fn encode_array_map_string_string(output: &mut BinaryBuilder, value: Term) -> En
         encode_map_string_string(output, value)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rustler::Term;
+
+    use super::encode_row_values;
+
+    #[test]
+    fn row_encoder_rejects_unconsumed_layout_fields() {
+        let values: [Term<'static>; 0] = [];
+        let layout = [0];
+
+        assert_eq!(
+            encode_row_values(&values, &layout, |_| Ok(())),
+            Err("ClickHouse row encoder consumed 0 of 1 compiled fields".to_string())
+        );
+    }
+
+    #[test]
+    fn row_encoder_accepts_fully_consumed_layout() {
+        let values: [Term<'static>; 0] = [];
+        let layout = [];
+
+        assert_eq!(encode_row_values(&values, &layout, |_| Ok(())), Ok(()));
+    }
 }
