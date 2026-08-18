@@ -30,4 +30,4 @@ SigNoz indexes the OTLP log record body and attributes, and does not read `event
 - `event_message` becomes the record body, so it shows as the log message in SigNoz.
 - Every other field is flattened into individual attributes using dotted keys, for example `metadata.parsed.error_severity`, so each one is filterable.
 - Severity is derived from the source's own level fields when the event carries no explicit `severity_number`.
-- The source name is sent as the `service.name` resource attribute. For log drains, the project ref is sent as `service.namespace`.
+- The source name is sent as the `service.name` resource attribute.

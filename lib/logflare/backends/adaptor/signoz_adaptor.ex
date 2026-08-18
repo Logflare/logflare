@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptor do
 
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
+  alias Ecto.Changeset
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.OtlpAdaptor
@@ -45,31 +46,24 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptor do
     }
 
     {existing_config, types}
-    |> Ecto.Changeset.cast(params, Map.keys(types))
+    |> Changeset.cast(params, Map.keys(types))
   end
 
   @impl Adaptor
   def validate_config(changeset) do
     changeset
-    |> Ecto.Changeset.validate_required([:endpoint])
-    |> Ecto.Changeset.validate_format(:endpoint, ~r/https?\:\/\/.+/)
-    |> validate_endpoint_without_logs_path()
+    |> Changeset.validate_required([:endpoint])
+    |> Changeset.validate_format(:endpoint, ~r/https?\:\/\/.+/)
+    |> Changeset.validate_change(:endpoint, &logs_path_validator/2)
   end
 
   # Pasting the full logs URL is an easy mistake, and appending to it would silently 404.
-  @spec validate_endpoint_without_logs_path(Ecto.Changeset.t()) :: Ecto.Changeset.t()
-  defp validate_endpoint_without_logs_path(changeset) do
-    endpoint = Ecto.Changeset.get_field(changeset, :endpoint)
-
-    if is_non_empty_binary(endpoint) and
-         String.ends_with?(String.trim_trailing(endpoint, "/"), @logs_path) do
-      Ecto.Changeset.add_error(
-        changeset,
-        :endpoint,
-        "must not include the #{@logs_path} path, which is appended automatically"
-      )
+  @spec logs_path_validator(atom(), String.t()) :: [{atom(), String.t()}]
+  defp logs_path_validator(field, endpoint) do
+    if String.ends_with?(String.trim_trailing(endpoint, "/"), @logs_path) do
+      [{field, "must not include the #{@logs_path} path, which is appended automatically"}]
     else
-      changeset
+      []
     end
   end
 
