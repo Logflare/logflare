@@ -114,19 +114,92 @@ defmodule LogflareWeb.Api.BackendControllerTest do
         refute Jason.encode!(backend["config"]) =~ "leaked-secret"
       end
     end
+
+    test "redacts persisted webhook header and URL credentials in the raw response", %{
+      conn: conn,
+      user: user
+    } do
+      %_{id: id} =
+        insert(:backend,
+          type: :webhook,
+          user: user,
+          config: %{
+            url: "https://user:url-leaked-secret@example.com/hooks",
+            headers: %{
+              "Content-Type" => "application/json",
+              "X-Webhook-Secret" => "header-leaked-secret"
+            }
+          }
+        )
+
+      conn =
+        conn
+        |> add_access_token(user, "private")
+        |> get(~p"/api/backends")
+
+      refute conn.resp_body =~ "url-leaked-secret"
+      refute conn.resp_body =~ "header-leaked-secret"
+
+      response = json_response(conn, 200)
+      assert %{"id" => ^id} = backend = Enum.find(response, &(&1["id"] == id))
+
+      assert %{
+               "url" => "https://REDACTED@example.com/hooks",
+               "headers" => %{
+                 "content-type" => "application/json",
+                 "x-webhook-secret" => "REDACTED"
+               }
+             } = backend["config"]
+    end
   end
 
   describe "show/2" do
-    test "returns single backend for given user", %{conn: conn, user: user} do
-      backend = insert(:backend, user: user)
+    test "returns a backend without webhook credentials in the raw response", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          type: :webhook,
+          user: user,
+          config: %{
+            url: "https://user:url-leaked-secret@example.com/hooks",
+            headers: %{"X-Auth-Token" => "header-leaked-secret"}
+          }
+        )
 
-      response =
+      conn =
         conn
         |> add_access_token(user, "private")
         |> get("/api/backends/#{backend.token}")
-        |> json_response(200)
 
-      assert response["id"] == backend.id
+      refute conn.resp_body =~ "url-leaked-secret"
+      refute conn.resp_body =~ "header-leaked-secret"
+
+      assert %{
+               "id" => backend_id,
+               "config" => %{
+                 "url" => "https://REDACTED@example.com/hooks",
+                 "headers" => %{"x-auth-token" => "REDACTED"}
+               }
+             } = json_response(conn, 200)
+
+      assert backend_id == backend.id
+    end
+
+    test "serializes a persisted webhook with nil headers", %{conn: conn, user: user} do
+      backend =
+        insert(:backend,
+          type: :webhook,
+          user: user,
+          config: %{url: "https://example.com/hooks", headers: nil}
+        )
+
+      assert %{"config" => %{"headers" => %{}}} =
+               conn
+               |> add_access_token(user, "private")
+               |> get("/api/backends/#{backend.token}")
+               |> json_response(200)
     end
 
     test "returns not found if doesn't own the source", %{conn: conn} do
@@ -507,6 +580,43 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       assert response["config"]["url"] == "http://example.com"
       assert response["config"]["gzip"] == false
       assert response["config"]["http"] == "http1"
+    end
+
+    test "redacted webhook config round-trip preserves stored credentials", %{
+      conn: conn,
+      user: user
+    } do
+      original_url = "https://user:url-secret@example.com/hooks"
+      original_header = "header-secret"
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          user: user,
+          config: %{
+            url: original_url,
+            headers: %{"X-Webhook-Secret" => original_header}
+          }
+        )
+
+      redacted_config =
+        conn
+        |> add_access_token(user, "private")
+        |> get("/api/backends/#{backend.token}")
+        |> json_response(200)
+        |> Map.fetch!("config")
+
+      conn
+      |> add_access_token(user, "private")
+      |> patch("/api/backends/#{backend.token}", %{config: redacted_config})
+      |> response(204)
+
+      stored_config = Logflare.Backends.get_backend(backend.id).config_encrypted
+      stored_url = Map.get(stored_config, :url) || Map.get(stored_config, "url")
+      stored_headers = Map.get(stored_config, :headers) || Map.get(stored_config, "headers")
+
+      assert stored_url == original_url
+      assert Map.get(stored_headers, "x-webhook-secret") == original_header
     end
   end
 
