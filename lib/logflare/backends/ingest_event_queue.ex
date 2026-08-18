@@ -1331,13 +1331,6 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  defp add_dropped_count(sid_bid_pid, n, acc) do
-    case drop_pending(sid_bid_pid, n) do
-      {:ok, num} -> acc + num
-      {:error, :not_initialized} -> acc
-    end
-  end
-
   @spec drop_pending(source_backend_pid() | consolidated_table_key(), non_neg_integer()) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
   def drop_pending({_, _, _}, 0), do: {:ok, 0}
@@ -1357,6 +1350,13 @@ defmodule Logflare.Backends.IngestEventQueue do
     else
       nil -> {:error, :not_initialized}
       {:error, :not_initialized} = error -> error
+    end
+  end
+
+  defp add_dropped_count(sid_bid_pid, n, acc) do
+    case drop_pending(sid_bid_pid, n) do
+      {:ok, num} -> acc + num
+      {:error, :not_initialized} -> acc
     end
   end
 
