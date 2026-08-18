@@ -317,6 +317,38 @@ deploy.staging.versioned:
 		--region=us-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
+# Deploys the currently checked-out branch's HEAD to two dedicated staging
+# instance groups (instance-group-staging-spool-producer/-consumer) for
+# testing the spool feature, reusing the staging DB/secrets already baked
+# into the staging image. See cloudbuild/staging/deploy-spool.yaml.
+# Requires the two instance groups to already exist (one-time bootstrap, not
+# automated here since nothing in this pipeline creates a MIG).
+deploy.staging.spool: deploy.staging.spool-image deploy.staging.spool-producer deploy.staging.spool-consumer
+
+deploy.staging.spool-image:
+	@gcloud config set project logflare-staging
+	gcloud builds submit . \
+		--config=cloudbuild/staging/build-image.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
+		--region=europe-west1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+deploy.staging.spool-producer:
+	gcloud builds submit . \
+		--config=./cloudbuild/staging/deploy-spool.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_CLUSTER=spool-producer,_SPOOL_MODE=producer \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+deploy.staging.spool-consumer:
+	gcloud builds submit . \
+		--config=./cloudbuild/staging/deploy-spool.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_CLUSTER=spool-consumer,_SPOOL_MODE=consumer \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+.PHONY: deploy.staging.spool deploy.staging.spool-image deploy.staging.spool-producer deploy.staging.spool-consumer
+
 deploy.prod.versioned:
 	@gcloud config set project logflare-232118
 	@echo "Creating staging instance template and deploying..."
