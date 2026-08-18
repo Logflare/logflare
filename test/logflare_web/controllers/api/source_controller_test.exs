@@ -311,6 +311,61 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     end
   end
 
+  describe "index/2 with redacted backend configs" do
+    @backend_configs_by_type [
+      {:webhook, %{url: "http://example.com", headers: %{"Authorization" => "leaked-secret"}}},
+      {:elastic, %{url: "https://example.com", username: "someuser", password: "leaked-secret"}},
+      {:datadog, %{api_key: "leaked-secret", region: "US1"}},
+      {:sentry, %{dsn: "https://user:leaked-secret@sentry.io/123"}},
+      {:postgres, %{url: "postgresql://user:leaked-secret@localhost:5432/db"}},
+      {:loki, %{url: "https://example.com", username: "someuser", password: "leaked-secret"}},
+      {:clickhouse,
+       %{
+         url: "http://localhost:8123",
+         username: "someuser",
+         password: "leaked-secret",
+         database: "default",
+         port: 8123
+       }},
+      {:incidentio, %{api_token: "leaked-secret", alert_source_config_id: "abc"}},
+      {:s3,
+       %{
+         endpoint: "https://s3.amazonaws.com",
+         s3_bucket: "my-bucket",
+         storage_region: "us-east-1",
+         access_key_id: "AKIA_ID",
+         secret_access_key: "leaked-secret"
+       }},
+      {:axiom, %{domain: "api.axiom.co", api_token: "leaked-secret", dataset_name: "ds"}},
+      {:otlp, %{endpoint: "http://example.com", headers: %{"Authorization" => "leaked-secret"}}},
+      {:last9, %{region: "us-east-1", username: "someuser", password: "leaked-secret"}},
+      {:syslog, %{host: "example.com", port: 514, cipher_key: "leaked-secret"}}
+    ]
+
+    for {type, config} <- @backend_configs_by_type do
+      test "GET /api/sources redacts secrets for #{type} backend attached as default ingest",
+           %{conn: conn, user: user, sources: [source | _]} do
+        insert(:backend,
+          type: unquote(type),
+          config: unquote(Macro.escape(config)),
+          user: user,
+          sources: [source],
+          default_ingest?: true
+        )
+
+        response =
+          conn
+          |> add_access_token(user, "private")
+          |> get("/api/sources")
+          |> json_response(200)
+
+        assert %{"backends" => [backend]} = Enum.find(response, &(&1["id"] == source.id))
+
+        refute Jason.encode!(backend["config"]) =~ "leaked-secret"
+      end
+    end
+  end
+
   describe "add_backend/2" do
     test "attaches a backend", %{conn: conn, user: user, sources: [source | _]} do
       backend = insert(:backend, user: user)
