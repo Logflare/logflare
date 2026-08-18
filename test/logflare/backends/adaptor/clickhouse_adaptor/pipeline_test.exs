@@ -6,9 +6,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
+  alias Logflare.Mapper
   alias Logflare.TestUtils
 
   # Arbitrary day bucket value — pipeline only passes it through telemetry/OTEL
@@ -252,6 +254,104 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       end)
     end
 
+    test "encodes rows independently while preserving missing events", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      events =
+        Enum.map(1..10, fn index ->
+          build(:log_event, source: source, message: "Sequential event #{index}")
+        end)
+
+      stored_events = List.delete_at(events, 4)
+      gen_tid = setup_generation_events(stored_events)
+      messages = Enum.map(events, &batch_message(&1, gen_tid, backend.id))
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 10,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      assert Enum.count(result, &match?(%Message{status: :ok}, &1)) == 9
+      assert Enum.count(result, &match?(%Message{status: {:failed, :not_found}}, &1)) == 1
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+      expected_messages = stored_events |> Enum.map(& &1.body["event_message"]) |> Enum.sort()
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {rows, _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT event_message FROM #{table_name}"
+                 )
+
+        assert rows |> Enum.map(& &1["event_message"]) |> Enum.sort() == expected_messages
+      end)
+    end
+
+    test "isolates mapping failures while inserting valid rows and tracking only missing events",
+         %{
+           context: context,
+           source: source,
+           backend: backend
+         } do
+      valid_event = build(:log_event, source: source, message: "valid row")
+
+      invalid_event =
+        build(:log_event, source: source, message: "invalid row")
+        |> Map.put(:id, "not-a-uuid")
+
+      missing_event = build(:log_event, source: source, message: "missing row")
+      gen_tid = setup_generation_events([valid_event, invalid_event])
+
+      messages = [
+        batch_message(valid_event, gen_tid, backend.id),
+        batch_message(invalid_event, gen_tid, backend.id),
+        batch_message(missing_event, gen_tid, backend.id)
+      ]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 3,
+        trigger: :flush
+      }
+
+      telemetry_event = [:logflare, :ingest_event_queue, :missing_ids]
+      TestUtils.attach_forwarder(telemetry_event)
+
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      statuses =
+        Map.new(result, fn %Message{data: %LogEventPointer{id: id}, status: status} ->
+          {id, status}
+        end)
+
+      assert statuses[valid_event.id] == :ok
+      assert statuses[invalid_event.id] == {:failed, "invalid event UUID"}
+      assert statuses[missing_event.id] == {:failed, :not_found}
+
+      assert_receive {:telemetry_event, ^telemetry_event, %{count: 1},
+                      %{backend_id: backend_id, event_type: :log}}
+
+      assert backend_id == backend.id
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[%{"event_message" => "valid row"}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT event_message FROM #{table_name}"
+                 )
+      end)
+    end
+
     test "handles empty messages list", %{context: context} do
       batch_info = %Broadway.BatchInfo{
         batcher: :ch,
@@ -475,18 +575,43 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       end)
     end
 
-    test "inserts logs with all scalar fields readable via SELECT", %{
+    test "round-trips every log column with distinct values", %{
       context: context,
       source: source,
       backend: backend
     } do
+      timestamp = System.system_time(:microsecond)
+
       event =
         build(:log_event,
           source: source,
-          message: "Full field test",
-          metadata: %{"level" => "error", "region" => "us-east-1"}
+          ingested_at: nil,
+          project: "log-project",
+          trace_id: "log-trace",
+          span_id: "log-span",
+          trace_flags: 7,
+          severity_text: "warn",
+          severity_number: 19,
+          resource: %{
+            "service" => %{"name" => "log-service"},
+            "schema_url" => "log-resource-schema",
+            "region" => "log-region"
+          },
+          scope: %{
+            "name" => "log-scope",
+            "version" => "log-v1",
+            "schema_url" => "log-scope-schema",
+            "attributes" => %{"scope-key" => "scope-value"}
+          },
+          event_message: "log-message",
+          custom_log: "log-attribute",
+          timestamp: timestamp
         )
+        |> Map.put(:ingested_at, nil)
 
+      map_config = MappingDefaults.for_log()
+      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
 
@@ -502,59 +627,112 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      row =
-        TestUtils.retry_assert(fn ->
-          assert {:ok, {[row], _bytes}} =
-                   ClickHouseAdaptor.execute_ch_query(
-                     backend,
-                     """
-                     SELECT
-                       id, source_uuid, source_name, project, trace_id, span_id, trace_flags,
-                       severity_text, severity_number, service_name, event_message,
-                       scope_name, scope_version, scope_schema_url, resource_schema_url,
-                       resource_attributes, scope_attributes, log_attributes, timestamp
-                     FROM #{table_name}
-                     LIMIT 1
-                     """
-                   )
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[row], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   """
+                   SELECT
+                     id, source_uuid, source_name, project, trace_id, span_id, trace_flags,
+                     severity_text, severity_number, service_name, event_message,
+                     scope_name, scope_version, scope_schema_url, resource_schema_url,
+                     resource_attributes, scope_attributes, log_attributes,
+                     mapping_config_id, ingested_at,
+                     toUnixTimestamp64Nano(timestamp) AS timestamp_nano
+                   FROM #{table_name}
+                   """
+                 )
 
-          row
-        end)
-
-      assert row["id"] != nil
-      assert is_binary(row["source_uuid"])
-      assert row["event_message"] == "Full field test"
-      assert row["severity_text"] == "ERROR"
-      assert row["severity_number"] == 17
-      assert is_binary(row["project"])
-      assert is_binary(row["trace_id"])
-      assert is_binary(row["span_id"])
-      assert is_integer(row["trace_flags"])
-      assert is_binary(row["service_name"])
-      assert is_binary(row["scope_name"])
-      assert is_binary(row["scope_version"])
-      assert is_binary(row["scope_schema_url"])
-      assert is_binary(row["resource_schema_url"])
-      assert row["timestamp"] != nil
+        assert row["id"] == event.id
+        assert row["source_uuid"] == Atom.to_string(event.source_uuid)
+        assert row["source_name"] == event.source_name
+        assert row["project"] == "log-project"
+        assert row["trace_id"] == "log-trace"
+        assert row["span_id"] == "log-span"
+        assert row["trace_flags"] == 7
+        assert row["severity_text"] == "WARN"
+        assert row["severity_number"] == 19
+        assert row["service_name"] == "log-service"
+        assert row["event_message"] == "log-message"
+        assert row["scope_name"] == "log-scope"
+        assert row["scope_version"] == "log-v1"
+        assert row["scope_schema_url"] == "log-scope-schema"
+        assert row["resource_schema_url"] == "log-resource-schema"
+        assert row["resource_attributes"] == mapped_body["resource_attributes"]
+        assert row["scope_attributes"] == mapped_body["scope_attributes"]
+        assert row["log_attributes"] == mapped_body["log_attributes"]
+        assert row["mapping_config_id"] == MappingDefaults.config_id(:log)
+        assert row["ingested_at"] == nil
+        assert row["timestamp_nano"] == timestamp * 1_000
+      end)
     end
 
-    test "inserts metrics with all scalar fields readable via SELECT", %{
+    test "round-trips every metric column with distinct values", %{
       context: context,
       source: source,
       backend: backend
     } do
+      timestamp = System.system_time(:microsecond)
+      time_unix_nano = timestamp * 1_000 - 200
+      start_time_unix_nano = timestamp * 1_000 - 500
+
       event =
         build(:log_event,
           source: source,
-          message: "Metric full field",
-          metadata: %{
-            "metric_name" => "http_requests",
-            "metric_unit" => "1",
-            "value" => 42.5
-          }
+          project: "metric-project",
+          time_unix_nano: time_unix_nano,
+          start_time_unix_nano: start_time_unix_nano,
+          metric_name: "metric-name",
+          metric_description: "metric-description",
+          metric_unit: "metric-unit",
+          metric_type: "histogram",
+          resource: %{
+            "service" => %{"name" => "metric-service"},
+            "schema_url" => "metric-resource-schema"
+          },
+          scope: %{
+            "name" => "metric-scope",
+            "version" => "metric-v1",
+            "schema_url" => "metric-scope-schema",
+            "attributes" => %{"scope-key" => "scope-value"}
+          },
+          event_message: "metric-message",
+          custom_metric: "metric-attribute",
+          aggregation_temporality: "delta",
+          is_monotonic: true,
+          flags: 123_456,
+          value: 1.25,
+          count: 2,
+          sum: 3.5,
+          min: -4.75,
+          max: 5.875,
+          scale: -6,
+          zero_count: 7,
+          positive_offset: 8,
+          negative_offset: -9,
+          bucket_counts: [10, 11],
+          explicit_bounds: [12.5, 13.5],
+          positive_bucket_counts: [14, 15],
+          negative_bucket_counts: [16, 17],
+          quantile_values: [18.5, 19.5],
+          quantiles: [0.25, 0.75],
+          exemplars: [
+            %{
+              "filtered_attributes" => %{"exemplar-key" => "exemplar-value"},
+              "time_unix_nano" => time_unix_nano - 100,
+              "value" => 20.5,
+              "span_id" => "exemplar-span",
+              "trace_id" => "exemplar-trace"
+            }
+          ],
+          timestamp: timestamp
         )
         |> Map.put(:event_type, :metric)
+        |> Map.put(:ingested_at, nil)
 
+      map_config = MappingDefaults.for_metric()
+      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
 
@@ -570,51 +748,138 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
-      row =
-        TestUtils.retry_assert(fn ->
-          assert {:ok, {[row], _bytes}} =
-                   ClickHouseAdaptor.execute_ch_query(
-                     backend,
-                     """
-                     SELECT
-                       id, source_uuid, source_name, project, time_unix, start_time_unix,
-                       metric_name, metric_description, metric_unit, metric_type,
-                       service_name, event_message, scope_name, scope_version,
-                       scope_schema_url, resource_schema_url,
-                       resource_attributes, scope_attributes, attributes,
-                       aggregation_temporality, is_monotonic, flags,
-                       value, count, sum, min, max,
-                       scale, zero_count, positive_offset, negative_offset,
-                       timestamp
-                     FROM #{table_name}
-                     LIMIT 1
-                     """
-                   )
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[row], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   """
+                   SELECT
+                     id, source_uuid, source_name, project,
+                     toUnixTimestamp64Nano(time_unix) AS time_unix_nano,
+                     toUnixTimestamp64Nano(start_time_unix) AS start_time_unix_nano,
+                     metric_name, metric_description, metric_unit,
+                     toInt8(metric_type) AS metric_type,
+                     service_name, event_message, scope_name, scope_version,
+                     scope_schema_url, resource_schema_url,
+                     resource_attributes, scope_attributes, attributes,
+                     aggregation_temporality, toUInt8(is_monotonic) AS is_monotonic, flags,
+                     value, count, sum, min, max, scale, zero_count,
+                     positive_offset, negative_offset, bucket_counts, explicit_bounds,
+                     positive_bucket_counts, negative_bucket_counts,
+                     quantile_values, quantiles, `exemplars.filtered_attributes`,
+                     arrayMap(value -> toUnixTimestamp64Nano(value), `exemplars.time_unix`)
+                       AS exemplar_times,
+                     `exemplars.value`, `exemplars.span_id`, `exemplars.trace_id`,
+                     mapping_config_id, ingested_at,
+                     toUnixTimestamp64Nano(timestamp) AS timestamp_nano
+                   FROM #{table_name}
+                   """
+                 )
 
-          row
-        end)
+        assert row["id"] == event.id
+        assert row["source_uuid"] == Atom.to_string(event.source_uuid)
+        assert row["source_name"] == event.source_name
+        assert row["project"] == "metric-project"
+        assert row["time_unix_nano"] == mapped_body["time_unix"]
+        assert row["start_time_unix_nano"] == mapped_body["start_time_unix"]
+        assert row["metric_name"] == "metric-name"
+        assert row["metric_description"] == "metric-description"
+        assert row["metric_unit"] == "metric-unit"
+        assert row["metric_type"] == mapped_body["metric_type"]
+        assert row["service_name"] == "metric-service"
+        assert row["event_message"] == "metric-message"
+        assert row["scope_name"] == "metric-scope"
+        assert row["scope_version"] == "metric-v1"
+        assert row["scope_schema_url"] == "metric-scope-schema"
+        assert row["resource_schema_url"] == "metric-resource-schema"
+        assert row["resource_attributes"] == mapped_body["resource_attributes"]
+        assert row["scope_attributes"] == mapped_body["scope_attributes"]
+        assert row["attributes"] == mapped_body["attributes"]
+        assert row["aggregation_temporality"] == "delta"
+        assert row["is_monotonic"] == 1
+        assert row["flags"] == 123_456
+        assert row["value"] == 1.25
+        assert row["count"] == 2
+        assert row["sum"] == 3.5
+        assert row["min"] == -4.75
+        assert row["max"] == 5.875
+        assert row["scale"] == -6
+        assert row["zero_count"] == 7
+        assert row["positive_offset"] == 8
+        assert row["negative_offset"] == -9
+        assert row["bucket_counts"] == mapped_body["bucket_counts"]
+        assert row["explicit_bounds"] == mapped_body["explicit_bounds"]
+        assert row["positive_bucket_counts"] == mapped_body["positive_bucket_counts"]
+        assert row["negative_bucket_counts"] == mapped_body["negative_bucket_counts"]
+        assert row["quantile_values"] == mapped_body["quantile_values"]
+        assert row["quantiles"] == mapped_body["quantiles"]
 
-      assert row["id"] != nil
-      assert is_binary(row["source_uuid"])
-      assert row["event_message"] == "Metric full field"
-      assert is_binary(row["metric_name"])
-      assert is_binary(row["metric_unit"])
-      assert row["timestamp"] != nil
-      assert row["time_unix"] != nil
+        assert row["exemplars.filtered_attributes"] ==
+                 mapped_body["exemplars.filtered_attributes"]
+
+        assert row["exemplar_times"] == mapped_body["exemplars.time_unix"]
+        assert row["exemplars.value"] == mapped_body["exemplars.value"]
+        assert row["exemplars.span_id"] == mapped_body["exemplars.span_id"]
+        assert row["exemplars.trace_id"] == mapped_body["exemplars.trace_id"]
+        assert row["mapping_config_id"] == MappingDefaults.config_id(:metric)
+        assert row["ingested_at"] == nil
+        assert row["timestamp_nano"] == timestamp * 1_000
+      end)
     end
 
-    test "inserts traces with all scalar fields readable via SELECT", %{
+    test "round-trips every trace column with distinct values", %{
       context: context,
       source: source,
       backend: backend
     } do
+      timestamp = System.system_time(:microsecond)
+      start_time = timestamp * 1_000 - 1_000
+      end_time = start_time + 600
+
       event =
         build(:log_event,
           source: source,
-          message: "Trace full field test"
+          project: "trace-project",
+          trace_id: "trace-id",
+          span_id: "span-id",
+          parent_span_id: "parent-span-id",
+          trace_state: "vendor=value",
+          span_name: "trace-span-name",
+          span_kind: "server",
+          resource: %{
+            "service" => %{"name" => "trace-service"},
+            "schema_url" => "trace-resource-schema"
+          },
+          event_message: "trace-message",
+          duration: 0,
+          start_time: start_time,
+          end_time: end_time,
+          status: %{"code" => "ERROR", "message" => "trace-status-message"},
+          scope: %{"name" => "trace-scope", "version" => "trace-v1"},
+          custom_span: "span-attribute",
+          events: [
+            %{
+              "time_unix_nano" => start_time + 100,
+              "name" => "trace-event",
+              "attributes" => %{"event-key" => "event-value"}
+            }
+          ],
+          links: [
+            %{
+              "trace_id" => "linked-trace",
+              "span_id" => "linked-span",
+              "trace_state" => "linked-vendor=value",
+              "attributes" => %{"link-key" => "link-value"}
+            }
+          ],
+          timestamp: timestamp
         )
         |> Map.put(:event_type, :trace)
+        |> Map.put(:ingested_at, nil)
 
+      map_config = MappingDefaults.for_trace()
+      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
 
@@ -630,39 +895,55 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
-      row =
-        TestUtils.retry_assert(fn ->
-          assert {:ok, {[row], _bytes}} =
-                   ClickHouseAdaptor.execute_ch_query(
-                     backend,
-                     """
-                     SELECT
-                       id, source_uuid, source_name, project, timestamp,
-                       trace_id, span_id, parent_span_id, trace_state,
-                       span_name, span_kind, service_name, event_message,
-                       duration, status_code, status_message,
-                       scope_name, scope_version,
-                       resource_attributes, span_attributes
-                     FROM #{table_name}
-                     LIMIT 1
-                     """
-                   )
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[row], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   """
+                   SELECT
+                     id, source_uuid, source_name, project, trace_id, span_id,
+                     parent_span_id, trace_state, span_name, span_kind,
+                     service_name, event_message, duration, status_code, status_message,
+                     scope_name, scope_version, resource_attributes, span_attributes,
+                     arrayMap(value -> toUnixTimestamp64Nano(value), `events.timestamp`)
+                       AS event_times,
+                     `events.name`, `events.attributes`, `links.trace_id`, `links.span_id`,
+                     `links.trace_state`, `links.attributes`, mapping_config_id, ingested_at,
+                     toUnixTimestamp64Nano(timestamp) AS timestamp_nano
+                   FROM #{table_name}
+                   """
+                 )
 
-          row
-        end)
-
-      assert row["id"] != nil
-      assert is_binary(row["source_uuid"])
-      assert row["event_message"] == "Trace full field test"
-      assert is_binary(row["trace_id"])
-      assert is_binary(row["span_id"])
-      assert is_binary(row["parent_span_id"])
-      assert is_binary(row["span_name"])
-      assert is_binary(row["span_kind"])
-      assert is_binary(row["status_code"])
-      assert is_binary(row["status_message"])
-      assert is_integer(row["duration"])
-      assert row["timestamp"] != nil
+        assert row["id"] == event.id
+        assert row["source_uuid"] == Atom.to_string(event.source_uuid)
+        assert row["source_name"] == event.source_name
+        assert row["project"] == "trace-project"
+        assert row["trace_id"] == "trace-id"
+        assert row["span_id"] == "span-id"
+        assert row["parent_span_id"] == "parent-span-id"
+        assert row["trace_state"] == "vendor=value"
+        assert row["span_name"] == "trace-span-name"
+        assert row["span_kind"] == "Server"
+        assert row["service_name"] == "trace-service"
+        assert row["event_message"] == "trace-message"
+        assert row["duration"] == end_time - start_time
+        assert row["status_code"] == "ERROR"
+        assert row["status_message"] == "trace-status-message"
+        assert row["scope_name"] == "trace-scope"
+        assert row["scope_version"] == "trace-v1"
+        assert row["resource_attributes"] == mapped_body["resource_attributes"]
+        assert row["span_attributes"] == mapped_body["span_attributes"]
+        assert row["event_times"] == mapped_body["events.timestamp"]
+        assert row["events.name"] == mapped_body["events.name"]
+        assert row["events.attributes"] == mapped_body["events.attributes"]
+        assert row["links.trace_id"] == mapped_body["links.trace_id"]
+        assert row["links.span_id"] == mapped_body["links.span_id"]
+        assert row["links.trace_state"] == mapped_body["links.trace_state"]
+        assert row["links.attributes"] == mapped_body["links.attributes"]
+        assert row["mapping_config_id"] == MappingDefaults.config_id(:trace)
+        assert row["ingested_at"] == nil
+        assert row["timestamp_nano"] == timestamp * 1_000
+      end)
     end
   end
 
@@ -1018,6 +1299,52 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert [%Message{status: {:failed, "Connection timeout"}}] = result
+    end
+
+    test "preserves rejected reasons when the valid-row insert also fails", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      valid_event = build(:log_event, source: source, message: "valid row")
+
+      invalid_event =
+        build(:log_event, source: source, message: "invalid row")
+        |> Map.put(:id, "not-a-uuid")
+
+      missing_event = build(:log_event, source: source, message: "missing row")
+      gen_tid = setup_generation_events([valid_event, invalid_event])
+
+      messages = [
+        batch_message(valid_event, gen_tid, backend.id),
+        batch_message(invalid_event, gen_tid, backend.id),
+        batch_message(missing_event, gen_tid, backend.id)
+      ]
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                        _event_type,
+                                                                        _compressed,
+                                                                        _opts ->
+        {:error, "Connection timeout"}
+      end)
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 3,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      statuses =
+        Map.new(result, fn %Message{data: %LogEventPointer{id: id}, status: status} ->
+          {id, status}
+        end)
+
+      assert statuses[valid_event.id] == {:failed, "Connection timeout"}
+      assert statuses[invalid_event.id] == {:failed, "invalid event UUID"}
+      assert statuses[missing_event.id] == {:failed, :not_found}
     end
   end
 
