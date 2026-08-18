@@ -1338,6 +1338,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
                ) == authoritative_event
       end
 
+      test "replaces a dangling same-ID pointer instead of deduplicating the retry", %{
+        source: source,
+        backend: backend
+      } do
+        event = build(:log_event, source: source, message: "claimed") |> Map.put(:retries, 0)
+        old_gen_tid = setup_generation_events([event])
+        queue_tid = :ets.new(:test_pipeline_retry_queue, [:set, :public])
+
+        failed_message =
+          event
+          |> batch_message(old_gen_tid, backend.id, queue_tid)
+          |> Message.failed("connection error")
+
+        assert %EncodedRow{row: original_row} = failed_message.data
+
+        stale_gen_tid = setup_generation_events([])
+        dangling_pointer = pointer_for(event, stale_gen_tid, queue_tid)
+        :ets.delete(stale_gen_tid)
+        assert :ok = IngestEventQueue.reinsert_pointer(dangling_pointer)
+
+        telemetry_event = [:logflare, :ingest_event_queue, :requeue_deduplicated]
+        ref = :telemetry_test.attach_event_handlers(self(), [telemetry_event])
+        on_exit(fn -> :telemetry.detach(ref) end)
+
+        assert :ok = Pipeline.ack(:ack_ref, [], [failed_message])
+
+        assert %LogEventPointer{retries: 1} = retry_pointer = queued_pointer(queue_tid, event.id)
+        refute retry_pointer.tid == stale_gen_tid
+        refute retry_pointer.gen_event_id == dangling_pointer.gen_event_id
+
+        assert %EncodedRow{pointer: ^retry_pointer, row: ^original_row} =
+                 IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id)
+
+        refute_receive {^telemetry_event, ^ref, _, _}
+      end
+
       test "moves an unencoded retry into the current generation", %{
         source: source,
         backend: backend

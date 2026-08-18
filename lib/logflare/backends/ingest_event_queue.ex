@@ -33,6 +33,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_recent_events :ingest_event_queue_recent_events
   @max_queue_size 30_000
   @consolidated_max_queue_size 120_000
+  @requeue_pointer_collision_retries 2
   @pointer_batch_key_match_spec (for event_type <- [:log, :metric, :trace] do
                                    {{:_, :_, :_, :_, :_, event_type, :"$1"},
                                     [{:is_integer, :"$1"}], [{{event_type, :"$1"}}]}
@@ -1026,10 +1027,12 @@ defmodule Logflare.Backends.IngestEventQueue do
   The payload is staged before its pointer, so a consumer cannot claim a pointer whose
   backing value is missing. The original queue is tried first, followed by the other
   live queues for `queues_key`. A stale destination rolls back only the staged row and
-  tries the next queue. Once a new pointer is published, or a newer same-ID pointer wins,
-  the old generation row is deleted because the caller's claim no longer owns it. If no
-  queue remains, both rows are removed and `{:error, :not_initialized}` reports that the
-  caller must account for the payload as dropped.
+  tries the next queue. Once a new pointer is published, or a newer same-ID pointer with
+  a resolvable payload wins, the old generation row is deleted because the caller's
+  claim no longer owns it. A dangling same-ID pointer is replaced instead of causing the
+  valid retry payload to be discarded. If no queue remains, both rows are removed and
+  `{:error, :not_initialized}` reports that the caller must account for the payload as
+  dropped.
 
   `payload_builder` receives the final pointer so payloads that embed their pointer can
   store the new generation and destination queue identifiers consistently.
@@ -1095,7 +1098,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     case insert_generation_payload(gen_tid, gen_event_id, payload) do
       :ok ->
-        case insert_new_pointer(new_pointer) do
+        case publish_requeued_pointer(new_pointer, @requeue_pointer_collision_retries) do
           :ok ->
             {:ok, new_pointer}
 
@@ -1123,6 +1126,43 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp insert_generation_payload(gen_tid, gen_event_id, payload) do
     :ets.insert(gen_tid, {gen_event_id, payload})
     :ok
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_initialized}
+  end
+
+  defp publish_requeued_pointer(pointer, collision_retries) do
+    case insert_new_pointer(pointer) do
+      {:error, :already_exists} when collision_retries > 0 ->
+        case remove_dangling_pointer(pointer.queue_tid, pointer.id) do
+          :retry -> publish_requeued_pointer(pointer, collision_retries - 1)
+          :resolvable -> {:error, :already_exists}
+          {:error, :not_initialized} = error -> error
+        end
+
+      result ->
+        result
+    end
+  end
+
+  defp remove_dangling_pointer(queue_tid, id) do
+    case :ets.lookup(queue_tid, id) do
+      [{^id, gen_tid, gen_event_id, _, _, _, _} = row] ->
+        case lookup_event(gen_tid, gen_event_id) do
+          nil ->
+            # Delete only the row inspected above. If another writer replaced it, this
+            # is a no-op and the bounded publication retry re-evaluates that winner.
+            :ets.delete_object(queue_tid, row)
+            :retry
+
+          _payload ->
+            :resolvable
+        end
+
+      [] ->
+        :retry
+    end
   rescue
     ArgumentError ->
       emit_stale_ets_table_telemetry()
