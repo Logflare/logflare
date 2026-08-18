@@ -410,14 +410,11 @@ defmodule Logflare.Backends.IngestEventQueue do
     do: do_get_tid({sid, bid}, pid)
 
   defp do_get_tid(key, pid) do
-    :ets.match(@ets_table_mapper, {key, pid, :"$1"}, 1)
-    |> case do
-      {[[tid]], _cont} ->
-        if :ets.info(tid, :name) != :undefined, do: tid
-
-      _ ->
-        nil
-    end
+    @ets_table_mapper
+    |> :ets.match({key, pid, :"$1"})
+    |> Enum.find_value(fn [tid] ->
+      if :ets.info(tid, :name) != :undefined, do: tid
+    end)
   end
 
   @doc """
@@ -905,9 +902,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending_pointers(_, 0), do: {:ok, [], nil}
 
   def pop_pending_pointers(sid_bid_pid, n) when is_integer(n) do
-    ms = [
-      {{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}
-    ]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
   end
@@ -961,28 +956,42 @@ defmodule Logflare.Backends.IngestEventQueue do
       )
       when event_type in [:log, :metric, :trace] and is_integer(day_bucket) and
              is_integer(n) and n > 0 do
-    ms = [
-      {{:"$1", :_, :_, :_, :_, event_type, day_bucket}, [], [:"$1"]}
-    ]
+    ms = [{{:"$1", :_, :_, :_, :_, event_type, day_bucket}, [], [:"$1"]}]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
   end
 
   defp pop_selected_pointers(sid_bid_pid, n, ms) do
     with tid when tid != nil <- get_tid(sid_bid_pid),
-         {selected_ids, _cont} <- :ets.select(tid, ms, n) do
-      {:ok, take_selected_pointers(selected_ids, tid, []), tid}
+         {:ok, ids} <- select_pointer_ids(tid, ms, n) do
+      case ids do
+        [] -> {:ok, [], nil}
+        ids -> pointer_claim_result(claim_pointers(tid, ids), tid)
+      end
     else
       nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, [], nil}
+      {:error, :not_initialized} = error -> error
     end
   end
 
-  defp take_selected_pointers([], _tid, pointers), do: :lists.reverse(pointers)
+  defp select_pointer_ids(tid, ms, n) do
+    case :ets.select(tid, ms, n) do
+      {ids, _cont} -> {:ok, ids}
+      :"$end_of_table" -> {:ok, []}
+    end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_initialized}
+  end
 
-  defp take_selected_pointers([id | selected_ids], tid, pointers) do
-    case :ets.take(tid, id) do
-      [{^id, gen_tid, gen_event_id, size, retries, event_type, day_bucket}] ->
+  defp claim_pointers(tid, ids), do: claim_pointers(ids, tid, [])
+
+  defp claim_pointers([], _tid, pointers), do: {:lists.reverse(pointers), false}
+
+  defp claim_pointers([id | ids], tid, pointers) do
+    case take_pointer_row(tid, id) do
+      {:ok, {^id, gen_tid, gen_event_id, size, retries, event_type, day_bucket}} ->
         pointer = %LogEventPointer{
           id: id,
           tid: gen_tid,
@@ -994,11 +1003,29 @@ defmodule Logflare.Backends.IngestEventQueue do
           day_bucket: day_bucket
         }
 
-        take_selected_pointers(selected_ids, tid, [pointer | pointers])
+        claim_pointers(ids, tid, [pointer | pointers])
 
-      [] ->
-        take_selected_pointers(selected_ids, tid, pointers)
+      :missing ->
+        claim_pointers(ids, tid, pointers)
+
+      :stale ->
+        {:lists.reverse(pointers), true}
     end
+  end
+
+  defp pointer_claim_result({[], true}, _tid), do: {:error, :not_initialized}
+  defp pointer_claim_result({pointers, _stale?}, tid), do: {:ok, pointers, tid}
+
+  @spec take_pointer_row(:ets.tid(), term()) :: {:ok, tuple()} | :missing | :stale
+  defp take_pointer_row(tid, id) do
+    case :ets.take(tid, id) do
+      [row] -> {:ok, row}
+      [] -> :missing
+    end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      :stale
   end
 
   @doc """
@@ -1035,26 +1062,43 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending(_, 0), do: {:ok, []}
 
   def pop_pending(sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :"$2", :"$3", :_, :_, :_, :_}, [], [{{:"$1", :"$2", :"$3"}}]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
-         size when is_integer(size) <- :ets.info(tid, :size),
-         {selected, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      events =
-        selected
-        |> Enum.map(&resolve_and_delete_pending(tid, &1))
-        |> Enum.reject(&is_nil/1)
+         {:ok, ids} <- select_pointer_ids(tid, ms, n) do
+      {events, claimed, stale?} = claim_events(ids, tid, [], 0)
 
-      {:ok, events}
+      if stale? and claimed == 0 do
+        {:error, :not_initialized}
+      else
+        {:ok, events}
+      end
     else
       nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, []}
+      {:error, :not_initialized} = error -> error
     end
   end
 
-  defp resolve_and_delete_pending(tid, {id, gen_tid, gen_event_id}) do
-    :ets.delete(tid, id)
+  defp claim_events([], _tid, events, claimed),
+    do: {:lists.reverse(events), claimed, false}
 
+  defp claim_events([id | ids], tid, events, claimed) do
+    case take_pointer_row(tid, id) do
+      {:ok, {^id, gen_tid, gen_event_id, _, _, _, _}} ->
+        case take_pointer_event({gen_tid, gen_event_id}) do
+          nil -> claim_events(ids, tid, events, claimed + 1)
+          event -> claim_events(ids, tid, [event | events], claimed + 1)
+        end
+
+      :missing ->
+        claim_events(ids, tid, events, claimed)
+
+      :stale ->
+        {:lists.reverse(events), claimed, true}
+    end
+  end
+
+  defp take_pointer_event({gen_tid, gen_event_id}) do
     case :ets.take(gen_tid, gen_event_id) do
       [{^gen_event_id, event}] -> event
       [] -> nil
@@ -1272,13 +1316,13 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec drop_pending(source_backend_pid(), non_neg_integer()) :: :ok
 
+  def drop_pending({_, _}, 0), do: :ok
+
   def drop_pending({_, _} = sid_bid, n) when is_integer(n) do
     traverse_queues(sid_bid, fn objs, acc ->
       num =
         for {sid_bid_pid, _tid} <- objs, reduce: 0 do
-          acc ->
-            {:ok, num} = drop_pending(sid_bid_pid, n)
-            acc + num
+          acc -> add_dropped_count(sid_bid_pid, n, acc)
         end
 
       num + acc
@@ -1287,22 +1331,48 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
+  defp add_dropped_count(sid_bid_pid, n, acc) do
+    case drop_pending(sid_bid_pid, n) do
+      {:ok, num} -> acc + num
+      {:error, :not_initialized} -> acc
+    end
+  end
+
   @spec drop_pending(source_backend_pid() | consolidated_table_key(), non_neg_integer()) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
+  def drop_pending({_, _, _}, 0), do: {:ok, 0}
+
   def drop_pending({_, _, _} = sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :"$2", :"$3", :_, :_, :_, :_}, [], [{{:"$1", :"$2", :"$3"}}]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
-         {taken, _cont} <- :ets.select(tid, ms, n) do
-      for {id, gen_tid, gen_event_id} <- taken do
-        :ets.delete(tid, id)
-        delete_id(gen_tid, gen_event_id)
-      end
+         {:ok, ids} <- select_pointer_ids(tid, ms, n) do
+      {dropped, stale?} = drop_claimed(ids, tid, 0)
 
-      {:ok, Enum.count(taken)}
+      if stale? and dropped == 0 do
+        {:error, :not_initialized}
+      else
+        {:ok, dropped}
+      end
     else
       nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, 0}
+      {:error, :not_initialized} = error -> error
+    end
+  end
+
+  defp drop_claimed([], _tid, dropped), do: {dropped, false}
+
+  defp drop_claimed([id | ids], tid, dropped) do
+    case take_pointer_row(tid, id) do
+      {:ok, {^id, gen_tid, gen_event_id, _, _, _, _}} ->
+        delete_id(gen_tid, gen_event_id)
+        drop_claimed(ids, tid, dropped + 1)
+
+      :missing ->
+        drop_claimed(ids, tid, dropped)
+
+      :stale ->
+        {dropped, true}
     end
   end
 
