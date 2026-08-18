@@ -30,6 +30,9 @@ jobs:
             arch: amd64
           - runner: blacksmith-4vcpu-ubuntu-2404-arm
             arch: arm64
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ matrix.arch }}
+      cancel-in-progress: ${{ github.event_name == 'push' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
@@ -57,9 +60,9 @@ jobs:
           # resource attribute at runtime (see Dockerfile / Logflare.Telemetry).
           build-args: |
             COMMIT_SHA=${{ needs.settings.outputs.short_sha }}
-          # caching
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Keep architecture-specific caches from overwriting each other.
+          cache-from: type=gha,scope=app-${{ matrix.arch }}
+          cache-to: type=gha,scope=app-${{ matrix.arch }},mode=max
 
   merge_publish:
     needs:

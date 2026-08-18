@@ -6,6 +6,11 @@ on:
     branches: [main]
     paths:
       - 'native/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'mix.exs'
+      - 'mix.lock'
+      - 'VERSION'
       - 'priv/**'
       - 'rel/**'
       - 'config/**'
@@ -14,7 +19,7 @@ on:
       - 'Dockerfile.multi-step'
       - 'Dockerfile.base'
       - 'Dockerfile.runner'
-      - '!assets/**'
+      - '.dockerignore'
       - '*.sh'
       - '.tool-versions'
       # Run suite when this file is changed
@@ -35,6 +40,5 @@ jobs:
           file: ./Dockerfile.multi-step
           push: false
           platforms: linux/amd64
-          # caching
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=docker-build-check
+          cache-to: type=gha,scope=docker-build-check,mode=max

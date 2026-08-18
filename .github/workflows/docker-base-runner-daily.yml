@@ -51,8 +51,8 @@ jobs:
             supabase/logflare:base-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
             supabase/logflare:base-${{ matrix.arch }}
           platforms: linux/${{ matrix.arch }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=base-${{ matrix.arch }}
+          cache-to: type=gha,scope=base-${{ matrix.arch }},mode=max
 
   build_runner:
     needs: settings
@@ -85,8 +85,8 @@ jobs:
             supabase/logflare:runner-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
             supabase/logflare:runner-${{ matrix.arch }}
           platforms: linux/${{ matrix.arch }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=runner-${{ matrix.arch }}
+          cache-to: type=gha,scope=runner-${{ matrix.arch }},mode=max
 
   merge_publish:
     needs:
