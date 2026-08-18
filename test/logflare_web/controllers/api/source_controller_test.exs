@@ -8,6 +8,36 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.TestUtils
 
+  @backend_configs_with_secrets [
+    {:webhook, %{url: "http://example.com", headers: %{"authorization" => "secret-token"}},
+     ["headers", "authorization"], "secret-token"},
+    {:elastic, %{url: "https://example.com", username: "user", password: "secret-pass"},
+     ["password"], "secret-pass"},
+    {:datadog, %{api_key: "secret-key", region: "US1"}, ["api_key"], "secret-key"},
+    {:sentry, %{dsn: "https://user:secret-pass@sentry.io/123"}, ["dsn"], "secret-pass"},
+    {:postgres, %{url: "postgresql://user:secret-pass@localhost"}, ["url"], "secret-pass"},
+    {:loki, %{url: "https://example.com", username: "user", password: "secret-pass"},
+     ["password"], "secret-pass"},
+    {:clickhouse,
+     %{url: "http://localhost:8123", username: "user", password: "secret-pass", database: "db"},
+     ["password"], "secret-pass"},
+    {:incidentio, %{api_token: "secret-token"}, ["api_token"], "secret-token"},
+    {:s3,
+     %{
+       s3_bucket: "bucket",
+       storage_region: "us-east-1",
+       access_key_id: "access-key",
+       secret_access_key: "secret-key"
+     }, ["secret_access_key"], "secret-key"},
+    {:axiom, %{api_token: "secret-token", dataset: "dataset"}, ["api_token"], "secret-token"},
+    {:otlp, %{endpoint: "http://example.com", headers: %{"authorization" => "secret-token"}},
+     ["headers", "authorization"], "secret-token"},
+    {:last9, %{region: "us", username: "user", password: "secret-pass"}, ["password"],
+     "secret-pass"},
+    {:syslog, %{host: "localhost", port: 514, ca_cert: "secret-cert"}, ["ca_cert"],
+     "secret-cert"}
+  ]
+
   setup do
     start_supervised!(AllLogsLogged)
     insert(:plan, name: "Free")
@@ -29,6 +59,37 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       expected = sources |> Enum.map(& &1.id) |> Enum.sort()
 
       assert response == expected
+    end
+
+    for {type, config, secret_path, secret} <- @backend_configs_with_secrets do
+      test "returns #{type} backend with redacted config", %{conn: conn, user: user} do
+        type = unquote(type)
+        config = unquote(Macro.escape(config))
+        secret_path = unquote(secret_path)
+        secret = unquote(secret)
+
+        source = insert(:source, user_id: user.id)
+
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: type,
+          config: config,
+          default_ingest?: true
+        )
+
+        response =
+          conn
+          |> add_access_token(user, "private")
+          |> get("/api/sources")
+          |> json_response(200)
+
+        assert %{"backends" => [backend]} =
+                 Enum.find(response, &(&1["id"] == source.id))
+
+        redacted_value = get_in(backend["config"], secret_path)
+        refute is_binary(redacted_value) and String.contains?(redacted_value, secret)
+      end
     end
   end
 
