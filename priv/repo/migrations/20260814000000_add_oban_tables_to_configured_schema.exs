@@ -4,5 +4,10 @@ defmodule Logflare.Repo.Migrations.AddObanTablesToConfiguredSchema do
   def up, do: Oban.Migration.up(version: 12, prefix: oban_prefix())
   def down, do: :ok
 
-  defp oban_prefix, do: System.get_env("DB_SCHEMA", "public")
+  defp oban_prefix do
+    :logflare
+    |> Application.get_env(Logflare.Repo, [])
+    |> Keyword.get(:schema)
+    |> Kernel.||("public")
+  end
 end
