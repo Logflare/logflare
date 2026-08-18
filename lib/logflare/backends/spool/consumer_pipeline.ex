@@ -122,7 +122,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
 
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
-      %{batch_size: batch_size, batch_trigger: batch_trigger},
+      Map.merge(
+        %{batch_size: batch_size, batch_trigger: batch_trigger},
+        Logflare.Telemetry.queue_time_measurements(
+          messages |> Enum.map(&line_ingested_at(&1.data)) |> Enum.reject(&is_nil/1)
+        )
+      ),
       %{backend_type: :spool_consumer, batch_trigger: batch_trigger}
     )
 
@@ -176,6 +181,19 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   defp record_source_id(%{source_id: id}), do: id
   defp record_source_id(%{"source_id" => id}), do: id
   defp record_source_id(_), do: nil
+
+  @spec line_ingested_at(map()) :: DateTime.t() | nil
+  defp line_ingested_at(%{ingested_at: us}) when is_integer(us),
+    do: DateTime.from_unix!(us, :microsecond)
+
+  defp line_ingested_at(%{"ingested_at" => iso}) when is_binary(iso) do
+    case DateTime.from_iso8601(iso) do
+      {:ok, dt, _} -> dt
+      {:error, _} -> nil
+    end
+  end
+
+  defp line_ingested_at(_), do: nil
 
   defp default_storage_mod(:gcp), do: Storage.GCS
   defp default_storage_mod(_), do: Storage.S3

@@ -168,7 +168,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         %{backend_id: backend_id}
       )
       when is_event_type(event_type) do
-    emit_batch_telemetry(batch_info, backend_id, event_type, day_bucket)
+    emit_batch_telemetry(messages, batch_info, backend_id, event_type, day_bucket)
 
     backend = Backends.Cache.get_backend(backend_id)
 
@@ -217,15 +217,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   end
 
   @spec emit_batch_telemetry(
+          [Message.t()],
           Broadway.BatchInfo.t(),
           pos_integer(),
           TypeDetection.event_type(),
           integer()
         ) :: :ok
-  defp emit_batch_telemetry(batch_info, backend_id, event_type, day_bucket) do
+  defp emit_batch_telemetry(messages, batch_info, backend_id, event_type, day_bucket) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
-      %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+      Map.merge(
+        %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+        Logflare.Telemetry.queue_time_measurements(pointer_ingested_ats(messages))
+      ),
       %{
         backend_type: :clickhouse,
         backend_id: backend_id,
@@ -234,6 +238,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         day_bucket: day_bucket
       }
     )
+  end
+
+  @spec pointer_ingested_ats([Message.t()]) :: [DateTime.t()]
+  defp pointer_ingested_ats(messages) do
+    messages
+    |> Enum.map(fn %{data: %LogEventPointer{tid: tid, gen_event_id: gen_event_id}} ->
+      IngestEventQueue.lookup_event(tid, gen_event_id)
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(& &1.ingested_at)
   end
 
   @spec encode_and_insert(

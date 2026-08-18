@@ -64,16 +64,19 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
   end
 
   def handle_batch(:http, messages, batch_info, context) do
+    backend = Backends.Cache.get_backend(context.backend_id)
+    events = for %{data: le} <- messages, do: le
+
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
-      %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+      Map.merge(
+        %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+        Logflare.Telemetry.queue_time_measurements(Enum.map(events, & &1.ingested_at))
+      ),
       %{
         backend_type: :http_based
       }
     )
-
-    backend = Backends.Cache.get_backend(context.backend_id)
-    events = for %{data: le} <- messages, do: le
     source = Sources.Cache.get_by_id(context.source_id)
 
     metadata =

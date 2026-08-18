@@ -57,6 +57,27 @@ defmodule Logflare.Telemetry do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  @doc """
+  Little's Law queueing metrics: average and max time (ms) elapsed between a LogEvent's
+  `ingested_at` and `now`. Used to compute per-batch queueing delay at the point a
+  backend pipeline actually handles the batch.
+  """
+  @spec queue_time_measurements([DateTime.t()], DateTime.t()) :: %{
+          optional(:avg_queue_time_ms) => float(),
+          optional(:max_queue_time_ms) => non_neg_integer()
+        }
+  def queue_time_measurements(ingested_ats, now \\ DateTime.utc_now())
+  def queue_time_measurements([], _now), do: %{}
+
+  def queue_time_measurements(ingested_ats, now) do
+    deltas_ms = Enum.map(ingested_ats, &DateTime.diff(now, &1, :millisecond))
+
+    %{
+      avg_queue_time_ms: Enum.sum(deltas_ms) / length(deltas_ms),
+      max_queue_time_ms: Enum.max(deltas_ms)
+    }
+  end
+
   @spec resource() :: map()
   def resource do
     %{
@@ -205,6 +226,24 @@ defmodule Logflare.Telemetry do
       sum("logflare.backends.pipeline.handle_batch.batch_size",
         tags: [:backend_type],
         description: "Sum of batch sizes for broadway pipeline by backend type"
+      ),
+      distribution("logflare.backends.pipeline.handle_batch.avg_queue_time_ms",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :avg_queue_time_ms,
+        tags: [:backend_type],
+        unit: :millisecond,
+        reporter_options: queue_time_reporter_opts(),
+        description:
+          "Little's Law (avg): mean time between LogEvent ingested_at and backend batch handling, per batch, by backend type"
+      ),
+      distribution("logflare.backends.pipeline.handle_batch.max_queue_time_ms",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :max_queue_time_ms,
+        tags: [:backend_type],
+        unit: :millisecond,
+        reporter_options: queue_time_reporter_opts(),
+        description:
+          "Little's Law (max): max time between LogEvent ingested_at and backend batch handling, per batch, by backend type"
       ),
       distribution("logflare.backends.clickhouse.pipeline.handle_batch.batch_size",
         event_name: [:logflare, :backends, :pipeline, :handle_batch],
@@ -637,5 +676,9 @@ defmodule Logflare.Telemetry do
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]
+  end
+
+  defp queue_time_reporter_opts do
+    [buckets: [0, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000, 60_000]]
   end
 end

@@ -353,9 +353,14 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     end
 
     def handle_batch(:http, messages, batch_info, context) do
+      events = for %{data: le} <- messages, do: le
+
       :telemetry.execute(
         [:logflare, :backends, :pipeline, :handle_batch],
-        %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+        Map.merge(
+          %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+          Logflare.Telemetry.queue_time_measurements(Enum.map(events, & &1.ingested_at))
+        ),
         %{
           backend_type: :webhook
         }
@@ -367,10 +372,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       # convert this to a custom format if needed
       payload =
         if format_batch = Map.get(config, :format_batch) do
-          events = for %{data: le} <- messages, do: le
           format_batch.(events)
         else
-          for %{data: le} <- messages, do: le.body
+          for le <- events, do: le.body
         end
 
       process_data(payload, config, backend_metadata, context)

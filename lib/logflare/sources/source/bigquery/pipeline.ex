@@ -271,6 +271,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
       {log_events, batch_count, batch_size} = collect_batch_events(triples)
 
+      :telemetry.execute(
+        [:logflare, :backends, :pipeline, :handle_batch],
+        Logflare.Telemetry.queue_time_measurements(Enum.map(log_events, & &1.ingested_at)),
+        %{backend_type: :bigquery}
+      )
+
       if source && source.bq_storage_write_api do
         batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
 

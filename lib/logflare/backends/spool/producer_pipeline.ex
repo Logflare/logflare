@@ -178,7 +178,10 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       }) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
-      %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+      Map.merge(
+        %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+        Logflare.Telemetry.queue_time_measurements(pointer_ingested_ats(messages))
+      ),
       %{backend_type: :spool_producer, batch_trigger: batch_info.trigger}
     )
 
@@ -301,6 +304,14 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
   defp lookup_message_event(%{data: %LogEventPointer{tid: tid, gen_event_id: gen_event_id}}) do
     IngestEventQueue.lookup_event(tid, gen_event_id)
+  end
+
+  @spec pointer_ingested_ats([Message.t()]) :: [DateTime.t()]
+  defp pointer_ingested_ats(messages) do
+    messages
+    |> Enum.map(&lookup_message_event/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(& &1.ingested_at)
   end
 
   defp upload_plain(messages, bucket, file_key, storage_mod) do
