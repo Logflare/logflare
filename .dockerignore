@@ -11,7 +11,9 @@
 # Files that cannot affect the production image
 /.git
 /.github
+/*.md
 /bench
+/docs
 /test
 
 # Generated on crash by the VM
