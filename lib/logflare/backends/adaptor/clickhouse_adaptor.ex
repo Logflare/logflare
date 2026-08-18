@@ -40,6 +40,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @resolve_interval 10_000
   @scaling_threshold 15_000
   @async_insert_busy_timeout_max_ms 3_000
+  @insert_max_execution_time_seconds 10
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
   @us_per_hour 3_600 * 1_000_000
@@ -742,6 +743,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   When `opts` includes `async: true`, the insert is routed through ClickHouse
   async inserts so the server coalesces sparse, late-arriving batches into
   fewer, fatter parts.
+
+  All inserts carry a server-side `max_execution_time` of
+  #{@insert_max_execution_time_seconds} seconds.
   """
   @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type(), keyword()) ::
           :ok | {:error, String.t()}
@@ -804,7 +808,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec build_insert_opts(keyword()) :: keyword()
   defp build_insert_opts(opts) do
-    if Keyword.get(opts, :async, false), do: async_insert_opts(), else: []
+    opts
+    |> Keyword.get(:async, false)
+    |> insert_settings()
+  end
+
+  @spec insert_settings(boolean()) :: keyword()
+  defp insert_settings(true), do: base_insert_opts() ++ async_insert_opts()
+  defp insert_settings(false), do: base_insert_opts()
+
+  @spec base_insert_opts() :: keyword()
+  defp base_insert_opts do
+    [max_execution_time: @insert_max_execution_time_seconds]
   end
 
   # The endpoint host an HTTP insert actually targets, for failure logging: async inserts
@@ -827,6 +842,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     [
       async_insert: 1,
       wait_for_async_insert: 1,
+      wait_for_async_insert_timeout: @insert_max_execution_time_seconds,
       async_insert_busy_timeout_max_ms: @async_insert_busy_timeout_max_ms
     ]
   end

@@ -987,6 +987,49 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "insert settings" do
+    setup do
+      insert(:plan, name: "Free")
+      {_source, backend} = setup_clickhouse_test()
+
+      [backend: backend]
+    end
+
+    test "sync inserts set max_execution_time and no async settings", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn request, _pool, _opts ->
+        params = URI.decode_query(request.query)
+
+        assert params["max_execution_time"] == "10"
+        refute Map.has_key?(params, "async_insert")
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+    end
+
+    test "async inserts set max_execution_time alongside async settings", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn request, _pool, _opts ->
+        params = URI.decode_query(request.query)
+
+        assert params["max_execution_time"] == "10"
+        assert params["async_insert"] == "1"
+        assert params["wait_for_async_insert"] == "1"
+        assert params["wait_for_async_insert_timeout"] == "10"
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok =
+               ClickHouseAdaptor.insert_log_events_compressed(
+                 backend,
+                 :log,
+                 :zlib.gzip(""),
+                 async: true
+               )
+    end
+  end
+
   describe "insert_log_events_compressed/4 failure logging" do
     setup do
       insert(:plan, name: "Free")
