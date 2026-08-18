@@ -344,10 +344,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     end
 
     invalid_uuid = %{valid | id: "not-a-uuid"}
+    invalid_uuid_context = OutputContext.clickhouse_row_binary(invalid_uuid, config_id)
+
+    assert {:error, invalid_uuid_reason} =
+             Mapper.map_result(invalid_uuid.body, compiled, output_context: invalid_uuid_context)
+
+    assert invalid_uuid_reason =~ "invalid event UUID"
 
     assert_raise ArgumentError, ~r/invalid event UUID/, fn ->
-      context = OutputContext.clickhouse_row_binary(invalid_uuid, config_id)
-      Mapper.map(invalid_uuid.body, compiled, output_context: context)
+      Mapper.map(invalid_uuid.body, compiled, output_context: invalid_uuid_context)
     end
 
     malformed_canonical_uuid = %{valid | id: "0011223--4455-6677-8899-aabbccddeeff"}
@@ -358,10 +363,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     end
 
     missing_timestamp = %{valid | body: %{"event_message" => "missing timestamp"}}
+    missing_timestamp_context = OutputContext.clickhouse_row_binary(missing_timestamp, config_id)
+
+    assert {:error, timestamp_reason} =
+             Mapper.map_result(missing_timestamp.body, compiled,
+               output_context: missing_timestamp_context
+             )
+
+    assert timestamp_reason =~ "mapped signed field is not an integer"
+
+    assert {:error, ^timestamp_reason} =
+             Mapper.run(missing_timestamp.body, MappingDefaults.for_log(),
+               output_context: missing_timestamp_context
+             )
 
     assert_raise ArgumentError, ~r/mapped signed field is not an integer/, fn ->
-      context = OutputContext.clickhouse_row_binary(missing_timestamp, config_id)
-      Mapper.map(missing_timestamp.body, compiled, output_context: context)
+      Mapper.map(missing_timestamp.body, compiled, output_context: missing_timestamp_context)
     end
   end
 

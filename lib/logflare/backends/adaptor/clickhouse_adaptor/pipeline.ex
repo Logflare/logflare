@@ -255,11 +255,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       }
     } do
       with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(event_type) do
-        {good, bad, good_count, compressed} =
+        {good, rejected, good_count, compressed} =
           stream_compress(messages, event_type, compiled, config_id)
 
-        emit_missing_ids_telemetry(bad, backend, event_type)
-        finalize_insert(backend, event_type, compressed, good_count, good, bad)
+        emit_missing_ids_telemetry(rejected, backend, event_type)
+        finalize_insert(backend, event_type, compressed, good_count, good, rejected)
       else
         {:error, reason} -> Enum.map(messages, &Message.failed(&1, reason))
       end
@@ -277,13 +277,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
       mapping_config_id = Ingester.encode_mapping_config_id(config_id)
 
-      {good, bad, good_count, chunks} =
+      {good, rejected, good_count, chunks} =
         Enum.reduce(messages, {[], [], 0, []}, fn message, acc ->
           encode_message(z, event_type, compiled, mapping_config_id, message, acc)
         end)
 
       final_chunk = :zlib.deflate(z, "", :finish)
-      {good, bad, good_count, IO.iodata_to_binary([Enum.reverse(chunks), final_chunk])}
+      {good, rejected, good_count, IO.iodata_to_binary([Enum.reverse(chunks), final_chunk])}
     after
       :zlib.deflateEnd(z)
       :zlib.close(z)
@@ -304,17 +304,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          compiled,
          mapping_config_id,
          %{data: %LogEventPointer{event_type: event_type} = pointer} = message,
-         {good, bad, good_count, chunks}
+         {good, rejected, good_count, chunks}
        ) do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
       %LogEvent{} = event ->
         output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
-        row = Mapper.map(event.body, compiled, output_context: output_context)
-        row_chunk = :zlib.deflate(z, row)
-        {[message | good], bad, good_count + 1, [row_chunk | chunks]}
+
+        case Mapper.map_result(event.body, compiled, output_context: output_context) do
+          {:ok, row} ->
+            row_chunk = :zlib.deflate(z, row)
+            {[message | good], rejected, good_count + 1, [row_chunk | chunks]}
+
+          {:error, reason} ->
+            {good, [Message.failed(message, reason) | rejected], good_count, chunks}
+        end
 
       nil ->
-        {good, [message | bad], good_count, chunks}
+        {good, [Message.failed(message, :not_found) | rejected], good_count, chunks}
     end
   end
 
@@ -324,20 +330,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
          _compiled,
          _mapping_config_id,
          message,
-         {good, bad, good_count, chunks}
+         {good, rejected, good_count, chunks}
        ) do
-    {good, [message | bad], good_count, chunks}
+    {good, [Message.failed(message, :not_found) | rejected], good_count, chunks}
   end
 
   @spec emit_missing_ids_telemetry([Message.t()], Backend.t(), TypeDetection.event_type()) :: :ok
-  defp emit_missing_ids_telemetry([], _backend, _event_type), do: :ok
+  defp emit_missing_ids_telemetry(rejected, backend, event_type) do
+    case Enum.count(rejected, &match?(%Message{status: {:failed, :not_found}}, &1)) do
+      0 ->
+        :ok
 
-  defp emit_missing_ids_telemetry(bad, backend, event_type) do
-    :telemetry.execute(
-      [:logflare, :ingest_event_queue, :missing_ids],
-      %{count: length(bad)},
-      %{backend_type: :clickhouse, backend_id: backend.id, event_type: event_type}
-    )
+      count ->
+        :telemetry.execute(
+          [:logflare, :ingest_event_queue, :missing_ids],
+          %{count: count},
+          %{backend_type: :clickhouse, backend_id: backend.id, event_type: event_type}
+        )
+    end
   end
 
   @spec finalize_insert(
@@ -348,14 +358,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           [Message.t()],
           [Message.t()]
         ) :: [Message.t()]
-  defp finalize_insert(_backend, _event_type, _compressed, _good_count, [] = _good, bad) do
-    # No rows encoded (every event was missing from ETS by batch time), so the
-    # compressed payload carries zero RowBinary rows. Skip the empty ClickHouse
-    # insert and fail the missing messages, mirroring Ingester.insert/5's empty guard.
-    Enum.map(bad, &Message.failed(&1, :not_found))
+  defp finalize_insert(_backend, _event_type, _compressed, _good_count, [] = _good, rejected) do
+    # No rows encoded, so skip the empty ClickHouse insert. Rejected messages
+    # already carry their mapping failure or missing-event reason.
+    rejected
   end
 
-  defp finalize_insert(backend, event_type, compressed, good_count, good, bad) do
+  defp finalize_insert(backend, event_type, compressed, good_count, good, rejected) do
     insert_opts = [async: async_insert?(backend, good_count)]
 
     case ClickHouseAdaptor.insert_log_events_compressed(
@@ -365,14 +374,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
            insert_opts
          ) do
       :ok ->
-        # `bad` (rare, typically empty) goes on the left of `++` so the cons cells
-        # being rebuilt are its short list; `good` (up to the full batch size) is
-        # attached as-is on the right with no copying.
-        Enum.map(bad, &Message.failed(&1, :not_found)) ++ good
+        # `rejected` (rare, typically empty) goes on the left of `++` so the cons
+        # cells being rebuilt are its short list; `good` is attached without copying.
+        rejected ++ good
 
       {:error, reason} ->
         record_insert_failure(backend, reason)
-        Enum.map(bad, &Message.failed(&1, reason)) ++ Enum.map(good, &Message.failed(&1, reason))
+        rejected ++ Enum.map(good, &Message.failed(&1, reason))
     end
   end
 

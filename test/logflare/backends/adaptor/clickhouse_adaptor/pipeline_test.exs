@@ -294,6 +294,64 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       end)
     end
 
+    test "isolates mapping failures while inserting valid rows and tracking only missing events",
+         %{
+           context: context,
+           source: source,
+           backend: backend
+         } do
+      valid_event = build(:log_event, source: source, message: "valid row")
+
+      invalid_event =
+        build(:log_event, source: source, message: "invalid row")
+        |> Map.put(:id, "not-a-uuid")
+
+      missing_event = build(:log_event, source: source, message: "missing row")
+      gen_tid = setup_generation_events([valid_event, invalid_event])
+
+      messages = [
+        batch_message(valid_event, gen_tid, backend.id),
+        batch_message(invalid_event, gen_tid, backend.id),
+        batch_message(missing_event, gen_tid, backend.id)
+      ]
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 3,
+        trigger: :flush
+      }
+
+      telemetry_event = [:logflare, :ingest_event_queue, :missing_ids]
+      TestUtils.attach_forwarder(telemetry_event)
+
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      statuses =
+        Map.new(result, fn %Message{data: %LogEventPointer{id: id}, status: status} ->
+          {id, status}
+        end)
+
+      assert statuses[valid_event.id] == :ok
+      assert statuses[invalid_event.id] == {:failed, "invalid event UUID"}
+      assert statuses[missing_event.id] == {:failed, :not_found}
+
+      assert_receive {:telemetry_event, ^telemetry_event, %{count: 1},
+                      %{backend_id: backend_id, event_type: :log}}
+
+      assert backend_id == backend.id
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[%{"event_message" => "valid row"}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT event_message FROM #{table_name}"
+                 )
+      end)
+    end
+
     test "handles empty messages list", %{context: context} do
       batch_info = %Broadway.BatchInfo{
         batcher: :ch,
@@ -1241,6 +1299,52 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert [%Message{status: {:failed, "Connection timeout"}}] = result
+    end
+
+    test "preserves rejected reasons when the valid-row insert also fails", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      valid_event = build(:log_event, source: source, message: "valid row")
+
+      invalid_event =
+        build(:log_event, source: source, message: "invalid row")
+        |> Map.put(:id, "not-a-uuid")
+
+      missing_event = build(:log_event, source: source, message: "missing row")
+      gen_tid = setup_generation_events([valid_event, invalid_event])
+
+      messages = [
+        batch_message(valid_event, gen_tid, backend.id),
+        batch_message(invalid_event, gen_tid, backend.id),
+        batch_message(missing_event, gen_tid, backend.id)
+      ]
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                        _event_type,
+                                                                        _compressed,
+                                                                        _opts ->
+        {:error, "Connection timeout"}
+      end)
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 3,
+        trigger: :flush
+      }
+
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      statuses =
+        Map.new(result, fn %Message{data: %LogEventPointer{id: id}, status: status} ->
+          {id, status}
+        end)
+
+      assert statuses[valid_event.id] == {:failed, "Connection timeout"}
+      assert statuses[invalid_event.id] == {:failed, "invalid event UUID"}
+      assert statuses[missing_event.id] == {:failed, :not_found}
     end
   end
 

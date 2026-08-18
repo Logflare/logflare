@@ -42,7 +42,7 @@ defmodule Logflare.Mapper do
           {:ok, map() | binary()} | {:error, String.t()}
   def run(document, %MappingConfig{} = config, opts \\ []) when is_map(document) do
     case compile(config) do
-      {:ok, compiled} -> {:ok, map(document, compiled, opts)}
+      {:ok, compiled} -> map_result(document, compiled, opts)
       {:error, _} = error -> error
     end
   end
@@ -68,12 +68,23 @@ defmodule Logflare.Mapper do
   """
   @spec map(map(), reference(), keyword()) :: map() | binary()
   def map(document, compiled_mapping, opts \\ []) when is_map(document) do
+    document
+    |> map_result(compiled_mapping, opts)
+    |> unwrap_result()
+  end
+
+  @doc "Maps a document and returns a result tuple instead of raising on output errors."
+  @spec map_result(map(), reference(), keyword()) ::
+          {:ok, map() | binary()} | {:error, String.t()}
+  def map_result(document, compiled_mapping, opts \\ []) when is_map(document) do
     flat_keys = Keyword.get(opts, :flat_keys, false)
     output_context = Keyword.get(opts, :output_context)
 
-    document
-    |> Native.map(compiled_mapping, {flat_keys, output_context})
-    |> unwrap_result()
+    case Native.map(document, compiled_mapping, {flat_keys, output_context}) do
+      {:ok, output} -> {:ok, output}
+      {:error, _reason} = error -> error
+      output -> {:ok, output}
+    end
   end
 
   defp unwrap_result({:ok, output}), do: output
@@ -81,6 +92,4 @@ defmodule Logflare.Mapper do
   defp unwrap_result({:error, reason}) do
     raise ArgumentError, "failed to produce mapping output: #{reason}"
   end
-
-  defp unwrap_result(output), do: output
 end
