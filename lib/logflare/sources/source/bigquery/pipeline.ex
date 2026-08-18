@@ -155,7 +155,11 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   @spec decrement_in_flight([Message.t()]) :: :ok
   defp decrement_in_flight(messages), do: decrement_in_flight(messages, nil, 0)
 
-  defp decrement_in_flight([], nil, 0), do: :ok
+  @spec decrement_in_flight(
+          [Message.t()],
+          :atomics.atomics_ref() | nil,
+          non_neg_integer()
+        ) :: :ok
 
   # Flush the final run after consuming all messages.
   defp decrement_in_flight([], ref, run_count),
