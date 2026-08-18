@@ -11,7 +11,10 @@ defmodule Logflare.ClickHouseMappedEvents do
   import Logflare.Utils.Guards, only: [is_empty_map: 1]
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
+  alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
+
+  @compiled_mapping_key {__MODULE__, :compiled_mapping}
 
   @doc """
   Builds a log event with a semi-realistic OTEL-style input body, then maps it
@@ -128,10 +131,26 @@ defmodule Logflare.ClickHouseMappedEvents do
     %{event | body: mapped_body}
   end
 
+  @spec map_body(map(), TypeDetection.event_type()) :: {map(), String.t()}
   defp map_body(input_body, event_type) do
-    config = MappingDefaults.for_type(event_type)
-    compiled = Mapper.compile!(%{config | output: nil})
-    {Mapper.map(input_body, compiled), MappingDefaults.config_id(event_type)}
+    {compiled, config_id} = compiled_mapping(event_type)
+    {Mapper.map(input_body, compiled), config_id}
+  end
+
+  @spec compiled_mapping(TypeDetection.event_type()) :: {reference(), String.t()}
+  defp compiled_mapping(event_type) do
+    key = {@compiled_mapping_key, event_type}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        config = MappingDefaults.for_type(event_type)
+        cached = {Mapper.compile!(%{config | output: nil}), MappingDefaults.config_id(event_type)}
+        :persistent_term.put(key, cached)
+        cached
+
+      cached ->
+        cached
+    end
   end
 
   @spec deep_merge_opts(map(), map()) :: map()

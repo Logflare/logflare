@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
   use ExUnit.Case, async: true
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
+  alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
   alias Logflare.Mapper.MappingConfig.OutputFormat
 
@@ -451,11 +452,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
     end
   end
 
-  defp compile_map_output(event_type) do
-    config = MappingDefaults.for_type(event_type)
-    Mapper.compile!(%{config | output: nil})
-  end
-
   describe "flat_map attribute values are strings" do
     test "log attribute values are all strings", %{log: compiled} do
       payload = %{
@@ -583,5 +579,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert is_map(link_attrs)
       assert link_attrs["link.type"] == "parent"
     end
+  end
+
+  @spec compile_map_output(TypeDetection.event_type()) :: reference()
+  defp compile_map_output(event_type) do
+    config = MappingDefaults.for_type(event_type)
+    Mapper.compile!(%{config | output: nil})
   end
 end
