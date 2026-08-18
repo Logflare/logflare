@@ -220,12 +220,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert day_bucket == event.day_bucket
     end
 
-    test "emits missing-id telemetry when the processor cannot resolve an event", %{
+    test "keeps an encoded row when its generation disappears after lookup", %{
       context: context,
       backend: backend
     } do
       event = build(:log_event)
-      gen_tid = setup_generation_events([])
+      gen_tid = setup_generation_events([event])
       pointer = pointer_for(event, gen_tid)
 
       message = %Message{
@@ -233,17 +233,51 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
       }
 
+      Mimic.expect(IngestEventQueue, :replace_event, fn ^gen_tid,
+                                                        id,
+                                                        %EncodedRow{} ->
+        assert id == event.id
+        :ets.delete(gen_tid)
+        {:error, :not_found}
+      end)
+
+      assert %Message{
+               status: :ok,
+               data: %EncodedRow{pointer: ^pointer, row: row}
+             } = Pipeline.handle_message(:default, message, context)
+
+      assert is_binary(row)
+    end
+
+    test "aggregates missing-id telemetry when processors cannot resolve events", %{
+      context: context,
+      backend: backend
+    } do
+      events = build_list(3, :log_event)
+      gen_tid = setup_generation_events([])
+
+      failed_messages =
+        Enum.map(events, fn event ->
+          message = %Message{
+            data: pointer_for(event, gen_tid),
+            acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+          }
+
+          assert %Message{status: {:failed, :not_found}} =
+                   Pipeline.handle_message(:default, message, context)
+        end)
+
       telemetry_event = [:logflare, :ingest_event_queue, :missing_ids]
       ref = :telemetry_test.attach_event_handlers(self(), [telemetry_event])
       on_exit(fn -> :telemetry.detach(ref) end)
 
-      assert %Message{status: {:failed, :not_found}} =
-               Pipeline.handle_message(:default, message, context)
+      capture_log(fn -> assert :ok = Pipeline.ack(:ack_ref, [], failed_messages) end)
 
-      assert_receive {^telemetry_event, ^ref, %{count: 1}, metadata}
+      assert_receive {^telemetry_event, ^ref, %{count: 3}, metadata}
       assert metadata.backend_type == :clickhouse
       assert metadata.backend_id == backend.id
       assert metadata.event_type == :log
+      refute_receive {^telemetry_event, ^ref, _, _}
     end
 
     test "keys metric events by `{:metric, day_bucket}`", %{context: context, backend: backend} do
@@ -383,12 +417,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       end)
     end
 
-    test "isolates mapping failures while inserting valid rows and tracking only missing events",
-         %{
-           context: context,
-           source: source,
-           backend: backend
-         } do
+    test "isolates mapping failures while inserting valid rows", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
       valid_event = build(:log_event, source: source, message: "valid row")
 
       invalid_event =
@@ -411,9 +444,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         trigger: :flush
       }
 
-      telemetry_event = [:logflare, :ingest_event_queue, :missing_ids]
-      TestUtils.attach_forwarder(telemetry_event)
-
       result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       statuses = Map.new(result, fn message -> {message_id(message), message.status} end)
@@ -421,11 +451,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert statuses[valid_event.id] == :ok
       assert statuses[invalid_event.id] == {:failed, "invalid event UUID"}
       assert statuses[missing_event.id] == {:failed, :not_found}
-
-      assert_receive {:telemetry_event, ^telemetry_event, %{count: 1},
-                      %{backend_id: backend_id, event_type: :log}}
-
-      assert backend_id == backend.id
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 

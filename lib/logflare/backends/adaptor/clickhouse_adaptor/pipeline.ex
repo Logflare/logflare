@@ -181,7 +181,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         _processor_name,
         %Message{data: %LogEventPointer{event_type: event_type, day_bucket: day_bucket} = pointer} =
           message,
-        %{backend_id: backend_id, mapper_configs: mapper_configs}
+        %{mapper_configs: mapper_configs}
       )
       when is_event_type(event_type) do
     message =
@@ -199,22 +199,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         case Mapper.map_result(event.body, compiled, output_context: output_context) do
           {:ok, row} ->
             encoded = %EncodedRow{pointer: pointer, row: row}
-            replace_event_with_encoded_row(message, encoded, backend_id, event_type)
+            replace_event_with_encoded_row(message, encoded)
 
           {:error, reason} ->
             Message.failed(message, reason)
         end
 
       %EncodedRow{} = encoded ->
-        replace_event_with_encoded_row(
-          message,
-          %{encoded | pointer: pointer},
-          backend_id,
-          event_type
-        )
+        replace_event_with_encoded_row(message, %{encoded | pointer: pointer})
 
       nil ->
-        fail_missing_message(message, backend_id, event_type)
+        fail_missing_message(message, event_type)
     end
   end
 
@@ -222,29 +217,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     Message.failed(message, :not_found)
   end
 
-  @spec replace_event_with_encoded_row(
-          Message.t(),
-          EncodedRow.t(),
-          pos_integer(),
-          TypeDetection.event_type()
-        ) :: Message.t()
-  defp replace_event_with_encoded_row(
-         message,
-         %EncodedRow{pointer: pointer} = encoded,
-         backend_id,
-         event_type
-       ) do
+  @spec replace_event_with_encoded_row(Message.t(), EncodedRow.t()) :: Message.t()
+  defp replace_event_with_encoded_row(message, %EncodedRow{pointer: pointer} = encoded) do
     encoded_message = %{message | data: encoded}
 
     case IngestEventQueue.replace_event(pointer.tid, pointer.gen_event_id, encoded) do
-      :ok -> encoded_message
-      {:error, :not_found} -> fail_missing_message(message, backend_id, event_type)
+      :ok ->
+        encoded_message
+
+      {:error, :not_found} ->
+        # The processor owns the encoded bytes once lookup succeeds. Generation eviction
+        # may race this best-effort replacement, but must not discard a row that can still
+        # be inserted or transferred into a fresh generation on retry.
+        encoded_message
     end
   end
 
-  defp fail_missing_message(message, backend_id, event_type) do
-    emit_missing_ids_telemetry(backend_id, event_type, 1)
-    Message.failed(message, :not_found)
+  defp fail_missing_message(
+         %Message{acknowledger: {acknowledger, ack_ref, ack_data}} = message,
+         event_type
+       ) do
+    acknowledger =
+      {acknowledger, ack_ref, Map.put(ack_data, :missing_generation_event_type, event_type)}
+
+    message
+    |> then(&%{&1 | acknowledger: acknowledger})
+    |> Message.failed(:not_found)
   end
 
   @spec handle_batch(
@@ -272,6 +270,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @spec ack(ack_ref :: term(), successful :: [Message.t()], failed :: [Message.t()]) :: :ok
   def ack(_ack_ref, successful, failed) do
     decrement_in_flight(successful, failed)
+    emit_missing_ids_telemetry(failed)
 
     Enum.each(successful, fn message ->
       pointer = message_pointer(message)
@@ -350,7 +349,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     } do
       {good, rejected, good_count, compressed} = stream_compress(messages, event_type)
 
-      emit_missing_ids_telemetry(rejected, backend, event_type)
       finalize_insert(backend, event_type, compressed, good_count, good, rejected)
     end
   end
@@ -408,19 +406,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     {good, [message | rejected], good_count, chunks}
   end
 
-  @spec emit_missing_ids_telemetry([Message.t()], Backend.t(), TypeDetection.event_type()) :: :ok
-  defp emit_missing_ids_telemetry(rejected, %Backend{} = backend, event_type) do
-    count = Enum.count(rejected, &match?(%Message{status: {:failed, :not_found}}, &1))
-    emit_missing_ids_telemetry(backend.id, event_type, count)
+  @spec emit_missing_ids_telemetry([Message.t()]) :: :ok
+  defp emit_missing_ids_telemetry(messages) do
+    messages
+    |> Enum.reduce(%{}, fn
+      %Message{
+        acknowledger:
+          {_, _,
+           %{
+             backend_id: backend_id,
+             missing_generation_event_type: event_type
+           }}
+      },
+      counts
+      when is_event_type(event_type) ->
+        Map.update(counts, {backend_id, event_type}, 1, &(&1 + 1))
+
+      _message, counts ->
+        counts
+    end)
+    |> Enum.each(fn {{backend_id, event_type}, count} ->
+      emit_missing_ids_telemetry(backend_id, event_type, count)
+    end)
+
+    :ok
   end
 
   @spec emit_missing_ids_telemetry(
           pos_integer(),
           TypeDetection.event_type(),
-          non_neg_integer()
+          pos_integer()
         ) :: :ok
-  defp emit_missing_ids_telemetry(_backend_id, _event_type, 0), do: :ok
-
   defp emit_missing_ids_telemetry(backend_id, event_type, count) do
     :telemetry.execute(
       [:logflare, :ingest_event_queue, :missing_ids],
