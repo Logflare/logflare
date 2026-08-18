@@ -1027,8 +1027,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   The payload is staged before its pointer, so a consumer cannot claim a pointer whose
   backing value is missing. The original queue is tried first, followed by the other
   live queues for `queues_key`. A stale destination rolls back only the staged row and
-  tries the next queue. Once a new pointer is published, or a newer same-ID pointer with
-  a resolvable payload wins, the old generation row is deleted because the caller's
+  tries the next queue. Once a new pointer is published, or an existing same-ID pointer
+  with a resolvable payload wins, the old generation row is deleted because the caller's
   claim no longer owns it. A dangling same-ID pointer is replaced instead of causing the
   valid retry payload to be discarded. If no queue remains, both rows are removed and
   `{:error, :not_initialized}` reports that the caller must account for the payload as
@@ -1195,7 +1195,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   Returns `{:error, :not_initialized}` if `queue_tid` has since gone stale, allowing a
   caller that retains the payload to try another queue. Returns
-  `{:error, :already_exists}` without overwriting the authoritative same-ID pointer.
+  `{:error, :already_exists}` without overwriting the existing same-ID pointer.
   """
   @spec insert_new_pointer(LogEventPointer.t()) ::
           :ok | {:error, :already_exists | :not_initialized}

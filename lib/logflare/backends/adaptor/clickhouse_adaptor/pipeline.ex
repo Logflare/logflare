@@ -11,9 +11,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   Uses ID-passing: the producer emits `LogEventPointer`s (id + routing metadata)
   while full events live in a separate generation store (see
-  `Logflare.Backends.IngestEventQueue`). Processors resolve and replace each full event
-  with a fused mapper-produced `EncodedRow`; batch processors only stream those
-  reference-counted RowBinary rows through gzip and insert the compressed payload.
+  `Logflare.Backends.IngestEventQueue`). Processors resolve each full event and produce
+  an `EncodedRow`, replacing the generation value while that generation remains live.
+  The processor message retains its encoded bytes across concurrent generation eviction;
+  batch processors only stream those RowBinary rows through gzip and insert the payload.
   """
 
   @behaviour Broadway.Acknowledger
@@ -63,8 +64,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   def processor_concurrency, do: processor_concurrency(System.schedulers_online())
 
   # This concurrency is allocated per backend pipeline, so the total processor count
-  # grows with active ClickHouse backends. Revisit a global cap or admission budget
-  # before enabling ClickHouse log drains broadly.
+  # grows with active ClickHouse backends. The six-processor floor also intentionally
+  # oversubscribes hosts with fewer than ten schedulers. Revisit a global cap or
+  # admission budget before enabling ClickHouse log drains broadly.
   @doc false
   @spec processor_concurrency(pos_integer()) :: pos_integer()
   def processor_concurrency(schedulers_online)
@@ -241,7 +243,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       {acknowledger, ack_ref, Map.put(ack_data, :missing_generation_event_type, event_type)}
 
     message
-    |> then(&%{&1 | acknowledger: acknowledger})
+    |> Map.replace!(:acknowledger, acknowledger)
     |> Message.failed(:not_found)
   end
 
@@ -603,7 +605,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   defp emit_requeue_deduplicated_telemetry(backend_id, deduplicated_count) do
     Logger.warning(
-      "Deduplicated #{deduplicated_count} ClickHouse event(s) during retry requeue: a newer same-ID pointer remains queued",
+      "Deduplicated #{deduplicated_count} ClickHouse event(s) during retry requeue: an existing same-ID pointer has a resolvable payload",
       backend_id: backend_id
     )
 

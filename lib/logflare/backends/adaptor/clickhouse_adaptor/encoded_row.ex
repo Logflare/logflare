@@ -2,10 +2,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodedRow do
   @moduledoc """
   A ClickHouse RowBinary row and the queue pointer that owns it.
 
-  The processor replaces the full `LogEvent` in the generation store with this
-  representation after fused mapping and encoding. The large row binary is shared
-  between ETS and Broadway messages by reference, and retries update and reinsert
-  only the lightweight pointer without mapping or encoding the event again.
+  After fused mapping and encoding, the processor stores this representation in the
+  generation table while that table remains live. The Broadway message independently
+  retains the row across concurrent generation eviction. Normally the large binary is
+  shared by reference between ETS and the message, and retries update only the pointer
+  without mapping or encoding the event again.
   """
 
   alias Logflare.Backends.IngestEventQueue.LogEventPointer

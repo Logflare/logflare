@@ -1,8 +1,11 @@
 # ClickHouse processor-side RowBinary benchmark
 
-This benchmark compares the fused-mapper baseline, where each batch processor
-resolves and encodes every row serially after a batch triggers, with processor-side
-encoding followed by batch-only gzip work.
+This fixed-work benchmark compares the fused-mapper baseline, where each batch
+processor resolves and encodes every row serially after a batch triggers, with
+processor-side encoding followed by batch-only gzip work. It measures ETS lookup,
+mapping, RowBinary encoding, and compression; it does not include Broadway message
+handling, generation-value replacement, HTTP, or ClickHouse execution. Treat the
+results as directional local-path measurements rather than production throughput.
 
 ## Environment
 
@@ -19,8 +22,9 @@ Commands use `MIX_ENV=test mix run --no-start` with:
 
 The phase comparison uses `BATCH_SIZE=60000`, `BATCHES=3`, `WARMUP_BATCHES=1`,
 `CONCURRENCY=6`, and `PROCESSOR_CHUNK_SIZE=1000` for each event type and the `baseline`,
-`processor`, `encode`, and `compress` scenarios. The concurrency sweep holds those
-settings constant while testing `CONCURRENCY=4,6,8,12`. Memory runs use
+`processor`, `encode`, and `compress` scenarios. Each table entry is one three-batch
+observation rather than a repeated distribution with variance. The concurrency sweep
+holds those settings constant while testing `CONCURRENCY=4,6,8,12`. Memory runs use
 `BATCH_SIZE=60000` and compare `SCENARIO=event` with `SCENARIO=encoded` in separate OS
 processes under `/usr/bin/time -v`.
 
@@ -37,10 +41,12 @@ a warmup batch.
 | trace | 120,384 | 135,506 | 136,458 | **138,754** |
 
 Six processors remain the balanced setting on the six-scheduler benchmark host. At
-runtime, processor concurrency is `max(System.schedulers_online() - 4, 6)`, reserving
-nominal capacity for the four fixed gzip/HTTP batch processors. This resolves to 6
-processors on 6 schedulers, 8 on 12, and 28 on 32. Concurrency remains per backend
-pipeline, so deployments with multiple active ClickHouse backends multiply that count.
+runtime, processor concurrency is `max(System.schedulers_online() - 4, 6)`. This
+subtracts four on larger hosts but intentionally keeps a six-processor floor, so hosts
+with fewer than ten schedulers remain oversubscribed once the four gzip/HTTP batch
+processors are included. The formula resolves to 6 processors on 6 schedulers, 8 on 12,
+and 28 on 32. Concurrency remains per backend pipeline, so deployments with multiple
+active ClickHouse backends multiply that count.
 
 Twelve processors on the six-scheduler host gain only about 2% for logs and traces while
 losing about 2% for metrics, illustrating the cost of oversubscribing the available
@@ -48,12 +54,12 @@ schedulers. The existing `max_demand: 1_000` remains suitable: six-processor enc
 plus gzip completes 60,000 rows in roughly 0.35–0.58 seconds, comfortably below the
 5-second batch timeout.
 
-## End-to-end comparison with current main
+## Local-path comparison with historical main
 
-Current `main` at `ee61fab1` was measured in a separate clean workspace on the same
-host using the same fixtures and fixed-work settings. Its production-equivalent path is
-ETS lookup, `Mapper.map/3`, Elixir RowBinary encoding, and streaming gzip. Compressed
-output byte counts matched both stacked scenarios exactly.
+Historical `main` at `ee61fab1` was measured in a separate clean workspace on the same
+host using the same fixtures and fixed-work settings. Its measured local path is ETS
+lookup, `Mapper.map/3`, Elixir RowBinary encoding, and streaming gzip. Compressed output
+byte counts matched both stacked scenarios exactly.
 
 | Event type | Current main | Fused batch-side (#3759) | Processor-side (#3837) | #3837 elapsed change vs main |
 | --- | ---: | ---: | ---: | ---: |
@@ -61,8 +67,9 @@ output byte counts matched both stacked scenarios exactly.
 | metric | 37,309 rows/s | 49,452 rows/s | 102,807 rows/s | -64% |
 | trace | 38,807 rows/s | 66,893 rows/s | 137,989 rows/s | -72% |
 
-The combined stack therefore shortens the measured local path by 55–72% versus current
-main. The next section isolates #3837's incremental effect on top of the fused mapper.
+The combined stack therefore shortens this measured local path by 55–72% versus the
+historical revision. The next section isolates #3837's incremental effect on top of the
+fused mapper; it does not estimate end-to-end ingest throughput.
 
 ## Incremental batch critical path
 
@@ -109,6 +116,7 @@ Batch-processor concurrency is decoupled from the count-based in-flight ceiling.
 workers bound concurrent gzip/HTTP inserts, while the producer retains the previous
 64-batch capacity of 3.84 million rows per backend. During downstream stalls, encoded
 partial and completed batches can accumulate in Broadway's `:ch` batcher up to that
-cap; additional backlog remains in `IngestEventQueue`. The lower steady-state memory
-above supports retaining this capacity while byte-based control remains useful future
+cap; additional backlog remains in `IngestEventQueue`. The one-batch steady-state
+measurement above does not establish memory safety at the count ceiling. It supports
+the relative representation change, while byte-based control remains useful future
 hardening.

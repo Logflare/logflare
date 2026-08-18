@@ -233,9 +233,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
       }
 
-      Mimic.expect(IngestEventQueue, :replace_event, fn ^gen_tid,
-                                                        id,
-                                                        %EncodedRow{} ->
+      Mimic.expect(IngestEventQueue, :replace_event, fn ^gen_tid, id, %EncodedRow{} ->
         assert id == event.id
         :ets.delete(gen_tid)
         {:error, :not_found}

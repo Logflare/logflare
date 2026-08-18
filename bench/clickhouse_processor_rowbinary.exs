@@ -1,5 +1,6 @@
 # Fixed-work benchmark for moving fused ClickHouse mapping/RowBinary production
-# from Broadway batch processors into processors.
+# from Broadway batch processors into processors. It excludes Broadway message
+# handling, generation replacement, HTTP, and ClickHouse execution.
 #
 # Examples:
 #

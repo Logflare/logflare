@@ -438,7 +438,7 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         tags: [:backend_type],
         description:
-          "Count of claimed retry payloads discarded because a newer same-ID pointer already existed"
+          "Count of claimed retry payloads discarded because an existing same-ID pointer had a resolvable payload"
       )
     ]
 
