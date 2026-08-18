@@ -2,6 +2,3 @@
 resolver = "2"
 
 members = ["native/arrowipc_ex", "native/sqlparser_ex", "native/mapper_ex"]
-
-[profile.release.package.mapper_ex]
-codegen-units = 1
