@@ -272,18 +272,26 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       assert {:ok, _} = Backends.ingest_logs([%{"message" => "test clickhouse ingest"}], source)
 
+      backend_id = backend.id
+
       # `ingested_count`/`ingested_bytes` today are only emitted from the BigQuery
-      # pipeline (lib/logflare/sources/source/bigquery/pipeline.ex). Per O11Y-1733,
-      # this should be emitted once at the Backends context/source level, prior to
-      # per-backend dispatch, so it applies uniformly regardless of which backend(s)
-      # a source is routed to - including non-BigQuery backends like ClickHouse.
+      # pipeline (lib/logflare/sources/source/bigquery/pipeline.ex), tagged with
+      # whichever backend that legacy pipeline runs against. Per O11Y-1733, this
+      # should instead be emitted once at the Backends context/source level, prior
+      # to per-backend dispatch, tagged with the backend the event actually routed
+      # to - including non-BigQuery backends like ClickHouse.
       TestUtils.retry_assert(fn ->
         events = Backends.list_recent_logs_local(metrics_source)
 
         assert Enum.any?(
                  events,
                  &match?(
-                   %LogEvent{body: %{"event_message" => "logflare.backends.ingest.ingested_count"}},
+                   %LogEvent{
+                     body: %{
+                       "event_message" => "logflare.backends.ingest.ingested_count",
+                       "attributes" => %{"backend_id" => ^backend_id}
+                     }
+                   },
                    &1
                  )
                )
@@ -291,7 +299,12 @@ defmodule Logflare.Backends.UserMonitoringTest do
         assert Enum.any?(
                  events,
                  &match?(
-                   %LogEvent{body: %{"event_message" => "logflare.backends.ingest.ingested_bytes"}},
+                   %LogEvent{
+                     body: %{
+                       "event_message" => "logflare.backends.ingest.ingested_bytes",
+                       "attributes" => %{"backend_id" => ^backend_id}
+                     }
+                   },
                    &1
                  )
                )
