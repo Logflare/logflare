@@ -219,14 +219,8 @@ defmodule Logflare.Backends do
         name: "Default PostgreSQL backend"
       }
     else
-      {project_id, dataset_id} =
-        if user.bigquery_project_id do
-          {user.bigquery_project_id, user.bigquery_dataset_id}
-        else
-          project_id = User.bq_project_id()
-          dataset_id = User.generate_bq_dataset_id(user.id)
-          {project_id, dataset_id}
-        end
+      project_id = user.bigquery_project_id || User.bq_project_id()
+      dataset_id = user.bigquery_dataset_id || User.generate_bq_dataset_id(user.id)
 
       %Backend{
         type: :bigquery,

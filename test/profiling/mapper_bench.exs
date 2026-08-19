@@ -282,7 +282,8 @@ log_params = %{
 log_event = LogEvent.make(log_params, %{source: source})
 
 # ── Compile mapping config ───────────────────────────────────────────────
-log_compiled = Mapper.compile!(MappingDefaults.for_log())
+log_config = MappingDefaults.for_log()
+log_compiled = Mapper.compile!(%{log_config | output: nil})
 
 # ── Verify output ────────────────────────────────────────────────────────
 body_result = Mapper.map(log_event.body, log_compiled)
