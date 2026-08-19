@@ -484,6 +484,52 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert %LogEvent{} = IngestEventQueue.lookup_event(gen_tid, remaining_gen_event_id)
     end
 
+    @tag :race
+    test "drop_pending/2 never deletes events claimed by pointer consumers", %{
+      source: source,
+      source_backend_pid: sbp
+    } do
+      count = 2_000
+      events = for _ <- 1..count, do: build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      barrier = :atomics.new(2, signed: false)
+
+      tasks =
+        for kind <- List.duplicate(:claim, 4) ++ List.duplicate(:drop, 4) do
+          Task.async(fn ->
+            :atomics.add_get(barrier, 1, 1)
+            await_counter(barrier, 2, 1)
+
+            case kind do
+              :claim ->
+                {:ok, pointers, _tid} = IngestEventQueue.pop_pending_pointers(sbp, count)
+                {:claimed, pointers}
+
+              :drop ->
+                {:ok, dropped} = IngestEventQueue.drop_pending(sbp, count)
+                {:dropped, dropped}
+            end
+          end)
+        end
+
+      await_counter(barrier, 1, length(tasks))
+      :atomics.put(barrier, 2, 1)
+      results = Task.await_many(tasks, 10_000)
+
+      pointers = for {:claimed, pointers} <- results, pointer <- pointers, do: pointer
+      dropped = for({:dropped, count} <- results, do: count) |> Enum.sum()
+      pointer_ids = Enum.map(pointers, & &1.id)
+
+      assert length(pointer_ids) == length(Enum.uniq(pointer_ids))
+      assert length(pointers) + dropped == count
+
+      for pointer <- pointers do
+        assert %LogEvent{} =
+                 IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id)
+      end
+    end
+
     test "truncate all events in a queue", %{source: source, source_backend_pid: sbp} do
       batch =
         for _ <- 1..500 do
@@ -1518,6 +1564,53 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(key) == 0
     end
 
+    @tag :race
+    test "resolved and ID-passing consumers never claim the same event", %{
+      key: key,
+      source: source
+    } do
+      count = 2_000
+      events = for _ <- 1..count, do: build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(key, events)
+
+      barrier = :atomics.new(2, signed: false)
+
+      tasks =
+        for kind <- List.duplicate(:pointer, 4) ++ List.duplicate(:event, 4) do
+          Task.async(fn ->
+            :atomics.add_get(barrier, 1, 1)
+            await_counter(barrier, 2, 1)
+
+            case kind do
+              :pointer ->
+                {:ok, pointers, _tid} = IngestEventQueue.pop_pending_pointers(key, count)
+                {:pointers, pointers}
+
+              :event ->
+                {:ok, claimed_events} = IngestEventQueue.pop_pending(key, count)
+                {:events, claimed_events}
+            end
+          end)
+        end
+
+      await_counter(barrier, 1, length(tasks))
+      :atomics.put(barrier, 2, 1)
+      results = Task.await_many(tasks, 10_000)
+
+      pointers = for {:pointers, pointers} <- results, pointer <- pointers, do: pointer
+      claimed_events = for {:events, events} <- results, event <- events, do: event
+      pointer_ids = MapSet.new(pointers, & &1.id)
+      event_ids = MapSet.new(claimed_events, & &1.id)
+
+      assert MapSet.disjoint?(pointer_ids, event_ids)
+      assert MapSet.size(pointer_ids) + MapSet.size(event_ids) == count
+
+      for pointer <- pointers do
+        assert %LogEvent{} =
+                 IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id)
+      end
+    end
+
     test "skips a pointer whose generation was already dropped instead of crashing", %{
       key: key,
       source: source
@@ -2067,6 +2160,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         # use extended_statistics to view units of work done
         formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
       )
+    end
+  end
+
+  defp await_counter(counter, index, target) do
+    if :atomics.get(counter, index) < target do
+      :erlang.yield()
+      await_counter(counter, index, target)
     end
   end
 end
