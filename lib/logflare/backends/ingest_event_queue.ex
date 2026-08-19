@@ -1211,30 +1211,6 @@ defmodule Logflare.Backends.IngestEventQueue do
       {:error, :not_initialized}
   end
 
-  @doc """
-  Routes a claimed pointer to an available queue without overwriting an existing ID.
-
-  Active producer queues are tried from least to most pending, followed by the startup
-  queue. A candidate that disappears during routing is skipped. The backing generation
-  row is not copied; the routed pointer continues to reference it directly.
-  """
-  @spec insert_new_pointer(
-          queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
-          LogEventPointer.t()
-        ) :: :ok | {:error, :already_exists | :not_initialized}
-  def insert_new_pointer(queues_key, %LogEventPointer{} = pointer) do
-    queues_key
-    |> list_queues_with_tids()
-    |> Enum.sort_by(&reinsert_queue_priority/1)
-    |> Enum.reduce_while({:error, :not_initialized}, fn {_table_key, queue_tid}, _acc ->
-      case insert_new_pointer(%{pointer | queue_tid: queue_tid}) do
-        :ok -> {:halt, :ok}
-        {:error, :already_exists} = error -> {:halt, error}
-        {:error, :not_initialized} -> {:cont, {:error, :not_initialized}}
-      end
-    end)
-  end
-
   defp pointer_row(pointer) do
     {pointer.id, pointer.tid, pointer.gen_event_id, pointer.size, pointer.retries,
      pointer.event_type, pointer.day_bucket}

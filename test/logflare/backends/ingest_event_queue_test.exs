@@ -1038,30 +1038,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert {:error, :not_initialized} = IngestEventQueue.insert_new_pointer(pointer)
     end
 
-    test "routes a pointer away from a stale queue", %{source: source, sbp: {sid, bid, _pid}} do
-      stale_tid = :ets.new(:stale_reinsert_queue, [:public, :set])
-      :ets.delete(stale_tid)
-
-      target_key = {sid, bid, self()}
-      target_tid = IngestEventQueue.get_tid(target_key)
-      event = build(:log_event, source: source)
-
-      pointer = %LogEventPointer{
-        id: event.id,
-        tid: make_ref(),
-        gen_event_id: make_ref(),
-        queue_tid: stale_tid,
-        size: 1,
-        retries: 1,
-        event_type: event.event_type,
-        day_bucket: event.day_bucket
-      }
-
-      assert :ok = IngestEventQueue.insert_new_pointer({sid, bid}, pointer)
-      assert [{event_id, _, _, _, 1, _, _}] = :ets.lookup(target_tid, event.id)
-      assert event_id == event.id
-    end
-
     test "does not overwrite a newer pointer with the same event id", %{source: source, sbp: sbp} do
       event = build(:log_event, source: source)
       assert :ok = IngestEventQueue.add_to_table(sbp, [event])

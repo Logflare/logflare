@@ -134,13 +134,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           batch_timeout: @batch_timeout
         ]
       ],
-      context: processor_context(backend.id)
+      context: build_processor_context(backend.id)
     )
   end
 
   @doc false
-  @spec processor_context(pos_integer()) :: map()
-  def processor_context(backend_id) do
+  @spec build_processor_context(pos_integer()) :: map()
+  def build_processor_context(backend_id) do
     mapper_configs =
       Map.new(@event_types, fn event_type ->
         {:ok, compiled, config_id} = MappingConfigStore.get_compiled(event_type)

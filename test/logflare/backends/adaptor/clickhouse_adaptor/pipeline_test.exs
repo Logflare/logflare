@@ -37,7 +37,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
     end)
 
-    context = Pipeline.processor_context(backend.id)
+    context = Pipeline.build_processor_context(backend.id)
 
     [
       source: source,
@@ -113,7 +113,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       acknowledger: {Pipeline, :ack_id, %{backend_id: backend_id, in_flight_ref: in_flight_ref}}
     }
 
-    Pipeline.handle_message(:default, message, Pipeline.processor_context(backend_id))
+    Pipeline.handle_message(:default, message, Pipeline.build_processor_context(backend_id))
   end
 
   # handle_batch/4 is not required to preserve input order (Broadway partitions and
@@ -1292,7 +1292,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
                  Pipeline.handle_message(
                    :default,
                    retry_message,
-                   Pipeline.processor_context(backend.id)
+                   Pipeline.build_processor_context(backend.id)
                  )
 
         refute_receive {^telemetry_event, ^ref, _, _}
