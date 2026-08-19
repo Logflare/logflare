@@ -553,7 +553,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       config: BackendApiSchema.schema().properties.config,
       metadata: %Schema{type: :object, nullable: true},
       default_ingest?: %Schema{type: :boolean},
-      enabled: %Schema{type: :boolean, default: true}
+      enabled: %Schema{type: :boolean}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :type, :config]

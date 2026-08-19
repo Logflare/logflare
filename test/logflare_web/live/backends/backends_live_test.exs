@@ -63,6 +63,28 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert Backends.get_backend(backend.id).enabled
     end
 
+    test "team member cannot toggle a backend accessible only to the selected team owner", %{
+      conn: conn
+    } do
+      selected_team_owner = insert(:user)
+      selected_team = insert(:team, user: selected_team_owner)
+      acting_team_user = insert(:team_user, team: selected_team)
+
+      other_team_owner = insert(:user)
+      other_team = insert(:team, user: other_team_owner)
+      insert(:team_user, team: other_team, email: selected_team_owner.email)
+      backend = insert(:backend, user: other_team_owner)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(selected_team_owner, acting_team_user)
+        |> live(~p"/backends?t=#{selected_team.id}")
+
+      render_hook(view, "toggle_backend", %{"backend_id" => to_string(backend.id)})
+
+      assert Backends.get_backend(backend.id).enabled
+    end
+
     test "attacker cannot create a rule for another user's source from backends liveview",
          %{conn: conn} do
       attacker = insert(:user, endpoints_beta: true)

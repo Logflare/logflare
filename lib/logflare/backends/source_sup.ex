@@ -153,16 +153,13 @@ defmodule Logflare.Backends.SourceSup do
 
   def stop_backend_child(%Source{} = source, backend_id) when backend_id != nil do
     via = Backends.via_source(source, __MODULE__)
-    # spec = Backend.child_spec(source, backend)
 
     found_id =
       Supervisor.which_children(via)
-      |> Enum.find_value(
-        fn {{_mod, _source_id, bid}, _pid, _type, _sup} ->
-          bid == backend_id
-        end,
-        &elem(&1, 0)
-      )
+      |> Enum.find_value(fn
+        {{_mod, _source_id, ^backend_id} = child_id, _pid, _type, _modules} -> child_id
+        _child -> nil
+      end)
 
     if found_id do
       Supervisor.terminate_child(via, found_id)

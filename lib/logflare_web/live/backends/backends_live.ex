@@ -172,8 +172,10 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   def handle_event("toggle_backend", %{"backend_id" => backend_id}, socket) do
+    effective_user = socket.assigns[:team_user] || socket.assigns.user
+
     socket =
-      if backend = Backends.get_backend_by_user_access(socket.assigns.user, backend_id) do
+      if backend = Backends.get_backend_by_user_access(effective_user, backend_id) do
         toggle_backend(socket, backend)
       else
         put_flash(socket, :error, "You do not have access to that backend.")
