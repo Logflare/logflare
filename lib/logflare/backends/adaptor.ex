@@ -285,7 +285,7 @@ defmodule Logflare.Backends.Adaptor do
 
   @doc """
   Redacts a given adaptor's configuration. Return the config unchanged if there is no redaction needed.
-  Always works on atom keys.
+  Always works on atom keys - the caller is responsible for normalizing config keys before calling this.
   """
   @callback redact_config(config :: map()) :: map()
 
@@ -300,7 +300,6 @@ defmodule Logflare.Backends.Adaptor do
                       send_alert: 3,
                       supports_default_ingest?: 0,
                       consolidated_ingest?: 0,
-                      redact_config: 1,
                       on_backend_config_changed: 1,
                       on_backend_deleted: 1
 end

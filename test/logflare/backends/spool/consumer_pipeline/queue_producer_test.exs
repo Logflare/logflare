@@ -328,15 +328,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
           Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
         end
 
-      # @poll_interval is 1000ms. If every concurrent handle_demand call spawned
-      # its own poll chain (the pre-fix bug), 5 subscribers would each also
-      # reschedule their own timer on every "queue empty" tick, and the call
-      # count would grow roughly with subscriber_count * elapsed/interval.
-      # With de-duplication, it should track ~elapsed/interval regardless of
-      # how many consumers are asking for demand.
+      # Empty results back off from @min_empty_backoff_ms (100ms) up to
+      # @max_empty_backoff_ms (1000ms), doubling each time: ~100, 200, 400,
+      # 800, 1000, 1000... so a healthy, de-duplicated producer sees on the
+      # order of 5-6 receive calls in a 2500ms window of sustained empty
+      # results, regardless of how many consumers are asking for demand. If
+      # every concurrent handle_demand call spawned its own poll chain (the
+      # pre-fix bug), 5 subscribers would each independently drive that same
+      # backoff schedule, and the call count would grow roughly with
+      # subscriber_count * expected_count instead of staying flat.
       call_count = count_messages_within(:queue_receive_called, 2500)
 
-      assert call_count <= 4
+      assert call_count <= 8
 
       Enum.each(tasks, &Task.shutdown(&1, :brutal_kill))
     end
@@ -502,7 +505,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
-                      %{count: 1}, %{reason: :fetch_failed, result: :error}},
+                      %{count: 1}, %{reason: :prefetch_failed, result: :error}},
                      2000
     end
   end
@@ -512,23 +515,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     # "prefetch task crash resilience" above) always loses the queue handle in
     # safe_fetch_next's rescue, so it can never reach the nack/telemetry branch
     # (`if handle do ... end` is always false there). Only a *normal* {:error,
-    # reason} return preserves the handle — these tests use that path.
-    test "nacks with reason: :fetch_failed on a normal (non-raising) download error, cold start" do
-      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
-
-      stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/broken.ndjson")])
-      stub_storage(%{"0/broken.ndjson" => {:error, :network_error}})
-
-      pid = start_producer()
-      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
-
-      assert_receive {:nacked, "h1"}, 2000
-
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
-                      %{count: 1}, %{reason: :fetch_failed}}
-    end
-
+    # reason} return preserves the handle — this test uses that path.
+    #
+    # Fetching always happens via the background prefetch Task now (there's no
+    # separate blocking cold-start fetch path anymore), so :fetch_failed as a
+    # distinct reason no longer exists — every normal download failure reports
+    # :prefetch_failed, cold start or not.
     test "nacks with reason: :prefetch_failed on a normal (non-raising) download error during prefetch" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
 

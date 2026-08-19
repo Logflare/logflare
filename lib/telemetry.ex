@@ -221,6 +221,27 @@ defmodule Logflare.Telemetry do
         keep: &clickhouse_batch?/1,
         description: "Sum of ClickHouse batch sizes by backend, event type, and trigger"
       ),
+      distribution("logflare.backends.spool.pipeline.handle_batch.batch_size",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :batch_size,
+        tags: [:backend_type, :batch_trigger],
+        keep: &spool_batch?/1,
+        reporter_options: batch_size_reporter_opts(),
+        description:
+          "Distribution of spool producer/consumer batch sizes by backend type and trigger"
+      ),
+      sum("logflare.backends.spool.pipeline.handle_batch.batch_size",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :batch_size,
+        tags: [:backend_type, :batch_trigger],
+        keep: &spool_batch?/1,
+        description: "Sum of spool producer/consumer batch sizes by backend type and trigger"
+      ),
+      distribution("logflare.backends.spool.queue.poll_backoff.backoff_ms",
+        reporter_options: [buckets: [100, 200, 400, 800, 1_000]],
+        description:
+          "Distribution of the spool consumer queue producer's empty-queue poll backoff (ms)"
+      ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
       sum("logflare.logs.ingest_logs.drop_lql",
         event_name: [:logflare, :logs, :ingest_logs, :drop_lql],
@@ -382,7 +403,7 @@ defmodule Logflare.Telemetry do
       sum("logflare.ingest_event_queue.missing_ids.count",
         event_name: [:logflare, :ingest_event_queue, :missing_ids],
         tags: [:backend_type],
-        description: "Count of event IDs not found in ETS during handle_batch fetch"
+        description: "Count of event IDs not found during pipeline generation-store resolution"
       ),
       sum("logflare.ingest_event_queue.not_initialized.dropped.count",
         event_name: [:logflare, :ingest_event_queue, :not_initialized, :dropped],
@@ -411,6 +432,13 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         description:
           "Count of retriable events whose generation-store row was already gone by requeue lookup time"
+      ),
+      sum("logflare.ingest_event_queue.requeue_deduplicated.count",
+        event_name: [:logflare, :ingest_event_queue, :requeue_deduplicated],
+        measurement: :count,
+        tags: [:backend_type],
+        description:
+          "Count of claimed retry payloads discarded because an existing same-ID pointer had a resolvable payload"
       )
     ]
 
@@ -605,6 +633,11 @@ defmodule Logflare.Telemetry do
 
   defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
   defp clickhouse_batch?(_metadata), do: false
+
+  defp spool_batch?(%{backend_type: type}) when type in [:spool_producer, :spool_consumer],
+    do: true
+
+  defp spool_batch?(_metadata), do: false
 
   defp backend_scoped_drop?(%{backend_id: _, backend_type: _}), do: true
   defp backend_scoped_drop?(_metadata), do: false
