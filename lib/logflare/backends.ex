@@ -598,7 +598,7 @@ defmodule Logflare.Backends do
     with %Backend{} = backend <- get_backend(backend_id) do
       source_targets = list_backend_source_targets(backend_id)
 
-      if source_targets != [] do
+      if source_targets != [] or not backend.enabled do
         Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, source_targets])
       end
     end
