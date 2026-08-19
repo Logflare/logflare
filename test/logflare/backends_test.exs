@@ -3015,6 +3015,58 @@ defmodule Logflare.BackendsTest do
 
       assert :ok = Backends.sync_backend_across_cluster(backend.id)
     end
+
+    test "syncs consolidated lifecycle with no associated sources", %{user: user} do
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [],
+          enabled: false,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          }
+        )
+
+      assert {:ok, _pid} = Backends.ConsolidatedSup.start_pipeline(backend)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+      on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend.id) end)
+
+      expect(ClusterUtils, :rpc_multicast, fn
+        Backends, :sync_backends_local, [%Backend{id: id, enabled: false}, []] = args
+        when id == backend.id ->
+          apply(Backends, :sync_backends_local, args)
+      end)
+
+      assert :ok = Backends.sync_backend_across_cluster(backend.id)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
+    test "skips enabled consolidated backends with no associated sources", %{user: user} do
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [],
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          }
+        )
+
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+      reject(&ClusterUtils.rpc_multicast/3)
+
+      assert :ok = Backends.sync_backend_across_cluster(backend.id)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
   end
 
   describe "ingest_logs/2 event timestamp filtering" do
