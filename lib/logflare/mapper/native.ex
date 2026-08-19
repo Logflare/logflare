@@ -6,6 +6,10 @@ defmodule Logflare.Mapper.Native do
   @spec compile_mapping(map()) :: {:ok, reference()} | {:error, String.t()}
   def compile_mapping(_config), do: :erlang.nif_error(:nif_not_loaded)
 
-  @spec map(map(), reference(), boolean()) :: map()
-  def map(_body, _compiled_mapping, _flat_keys \\ false), do: :erlang.nif_error(:nif_not_loaded)
+  @type map_options :: boolean() | {boolean(), Logflare.Mapper.OutputContext.t() | nil}
+
+  @spec map(term(), reference(), map_options()) ::
+          map() | {:ok, binary()} | {:error, String.t()}
+  def map(_document, _compiled_mapping, _options \\ false),
+    do: :erlang.nif_error(:nif_not_loaded)
 end

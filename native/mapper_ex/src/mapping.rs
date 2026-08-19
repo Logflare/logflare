@@ -12,12 +12,19 @@ use crate::string_filters::{CharClass, StringFilters};
 const ROOT_CACHE_MIN_REFERENCES: usize = 8;
 
 #[derive(Debug)]
+pub enum CompiledOutput {
+    Map,
+    ClickHouseRowBinary(crate::clickhouse_rowbinary::CompiledLayout),
+}
+
+#[derive(Debug)]
 pub struct CompiledMapping {
     pub fields: Vec<CompiledField>,
     pub path_cache_size: usize,
     pub root_cache_size: usize,
     pub root_cache_scan_limit: usize,
     pub root_cache_keys: HashMap<Vec<u8>, usize>,
+    pub output: CompiledOutput,
 }
 
 #[derive(Debug)]
@@ -159,6 +166,7 @@ pub struct Enum8Data {
 
 pub fn decode_mapping<'a>(env: Env<'a>, config: Term<'a>) -> Result<CompiledMapping, String> {
     let mut fields = decode_fields(env, config)?;
+    let output = decode_output(env, config, &fields)?;
     let (path_cache_size, root_cache_size, root_cache_keys) =
         assign_path_cache_indices(&mut fields);
     Ok(CompiledMapping {
@@ -167,7 +175,35 @@ pub fn decode_mapping<'a>(env: Env<'a>, config: Term<'a>) -> Result<CompiledMapp
         root_cache_size,
         root_cache_scan_limit: root_cache_keys.len().max(ROOT_CACHE_MIN_REFERENCES),
         root_cache_keys,
+        output,
     })
+}
+
+fn decode_output<'a>(
+    env: Env<'a>,
+    config: Term<'a>,
+    fields: &[CompiledField],
+) -> Result<CompiledOutput, String> {
+    let Some(output) = get_term_key(env, config, "output") else {
+        return Ok(CompiledOutput::Map);
+    };
+    let format = get_string_key(env, output, "format")?
+        .ok_or_else(|| "output format is required".to_string())?;
+
+    match format.as_str() {
+        "clickhouse_row_binary" => {
+            let row_type = get_string_key(env, output, "row_type")?
+                .ok_or_else(|| "ClickHouse RowBinary output row_type is required".to_string())?;
+            let fields_by_name = fields
+                .iter()
+                .enumerate()
+                .map(|(index, field)| (field.name.as_str(), (index, field.field_type)))
+                .collect();
+            let layout = crate::clickhouse_rowbinary::compile_layout(&row_type, &fields_by_name)?;
+            Ok(CompiledOutput::ClickHouseRowBinary(layout))
+        }
+        _ => Err(format!("unsupported mapping output format '{format}'")),
+    }
 }
 
 fn assign_path_cache_indices(
