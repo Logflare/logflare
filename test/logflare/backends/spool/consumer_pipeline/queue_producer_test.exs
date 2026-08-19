@@ -554,25 +554,91 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   end
 
   describe "draining" do
-    test "prepare_for_draining stops new fetches from starting, but still drains and acks what's already buffered" do
+    defp draining_state(overrides) do
+      Map.merge(
+        %{
+          queue_url: "q",
+          queue_mod: QueueMod,
+          current: nil,
+          prefetch: nil,
+          demand: 5,
+          draining: false
+        },
+        overrides
+      )
+    end
+
+    test "acks an already-exhausted current file (everything in it was already handed off safely)" do
+      stub_ack_nack(self())
+
+      state = draining_state(%{current: %{handle: "h1", lines: []}})
+
+      assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
+
+      assert_receive {:acked, "h1"}
+      refute_receive {:nacked, "h1"}
+      assert new_state.draining == true
+      assert new_state.demand == 0
+      assert new_state.current == nil
+    end
+
+    test "nacks a not-yet-exhausted current file instead of risking emission with no live consumer" do
+      stub_ack_nack(self())
+
+      state = draining_state(%{current: %{handle: "h1", lines: [%{"id" => "e1"}]}})
+
+      assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
+
+      assert_receive {:nacked, "h1"}
+      refute_receive {:acked, "h1"}
+      assert new_state.current == nil
+    end
+
+    test "nacks an already-landed prefetch result rather than letting it be loaded and emitted" do
+      stub_ack_nack(self())
+
+      state = draining_state(%{prefetch: {:ready, {:ok, "h2", [%{"id" => "e2"}]}}})
+
+      assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
+
+      assert_receive {:nacked, "h2"}
+      assert new_state.prefetch == nil
+    end
+
+    test "handle_demand/2 and handle_info(:poll, _) are frozen no-ops once draining" do
+      state = draining_state(%{draining: true, demand: 0})
+
+      assert QueueProducer.handle_demand(10, state) == {:noreply, [], state}
+      assert QueueProducer.handle_info(:poll, state) == {:noreply, [], state}
+    end
+
+    test "a prefetch already :running when draining begins is nacked once it lands, not emitted, even with a live subscriber already registered" do
       test_pid = self()
 
-      stub(QueueMod, :receive, fn _url, _opts ->
-        send(test_pid, :queue_receive_called)
-        {:ok, []}
-      end)
-
       stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.ndjson")])
+
+      # Blocks until released, so the background prefetch Task started by
+      # maybe_start_prefetch/1 is still genuinely :running when
+      # prepare_for_draining/1 fires below — this is production ordering
+      # (subscribe with real demand first, drain later), the reverse of what
+      # the original version of this test exercised.
+      stub(StorageMod, :get, fn _bucket, _key ->
+        send(test_pid, {:storage_get_called, self()})
+
+        receive do
+          :proceed -> {:ok, ndjson_body([%{"id" => "e1"}])}
+        end
+      end)
 
       pid = start_producer()
 
-      # Seed `current` directly, as if a file had already been fetched before
-      # draining began, bypassing queue_mod.receive entirely.
-      :sys.replace_state(pid, fn gen_stage_state ->
-        put_in(gen_stage_state.state.current, %{
-          handle: "h1",
-          lines: [%{"id" => "e1"}]
-        })
+      task = Task.async(fn -> GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1) end)
+
+      assert_receive {:storage_get_called, prefetch_task_pid}, 2000
+
+      TestUtils.retry_assert(fn ->
+        assert :sys.get_state(pid).state.prefetch == :running
       end)
 
       :sys.replace_state(pid, fn gen_stage_state ->
@@ -584,14 +650,15 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert :sys.get_state(pid).state.draining == true
 
-      [event] =
-        GenStage.stream([{pid, max_demand: 10}])
-        |> Enum.take(1)
+      # Only now does the prefetch's download actually complete, landing
+      # {:prefetch_result, {:ok, "h1", _}} after draining has already begun.
+      send(prefetch_task_pid, :proceed)
 
-      assert event["id"] == "e1"
-      assert_receive {:acked, "h1"}, 2000
+      assert_receive {:nacked, "h1"}, 2000
+      refute_received {:acked, "h1"}
+      refute Task.yield(task, 300)
 
-      refute_receive :queue_receive_called, 300
+      Task.shutdown(task, :brutal_kill)
     end
   end
 end
