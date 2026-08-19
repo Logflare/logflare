@@ -244,7 +244,6 @@ defmodule Logflare.Backends.SourceSup do
 
   def stop_backend_child(%Source{} = source, backend_id) when backend_id != nil do
     via = Backends.via_source(source, __MODULE__)
-    # spec = Backend.child_spec(source, backend)
 
     found_id =
       Supervisor.which_children(via)

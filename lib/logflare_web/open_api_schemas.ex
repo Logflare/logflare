@@ -635,7 +635,7 @@ defmodule LogflareWeb.OpenApiSchemas do
         description:
           "When true, every source in the account with default ingest enabled sends events to this backend. Only backends with a consolidated ingest pipeline can be the default, one per backend type per account."
       },
-      enabled: %Schema{type: :boolean, default: true}
+      enabled: %Schema{type: :boolean}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :type, :config]
