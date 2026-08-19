@@ -508,6 +508,49 @@
               Optional client key for mutual TLS authentication. Must be in PEM format.
             </small>
           </div>
+        <% "splunk" -> %>
+          <div class="form-group">
+            {label(f_config, :url, "HEC endpoint URL (Required)")}
+            {text_input(f_config, :url, class: "form-control")}
+            <small class="form-text text-muted">
+              Full HTTP Event Collector URL, e.g. <code>https://splunk.example.com:8088/services/collector/event</code> for Splunk Enterprise, or <code>https://http-inputs-&lt;stack&gt;.splunkcloud.com/services/collector/event</code> for Splunk Cloud Platform.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :token, "HEC token (Required)")}
+            {text_input(f_config, :token, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Token of the HTTP Event Collector input
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :index, "Index")}
+            {text_input(f_config, :index, class: "form-control")}
+            <small class="form-text text-muted">
+              Optional target index. Must be allowed by the HEC token, otherwise Splunk rejects the events. Defaults to the token's index.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :sourcetype, "Sourcetype")}
+            {text_input(f_config, :sourcetype, class: "form-control", placeholder: "_json")}
+            <small class="form-text text-muted">
+              Optional sourcetype. Defaults to <code>_json</code>, so that Splunk extracts the event fields.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :source, "Source")}
+            {text_input(f_config, :source, class: "form-control")}
+            <small class="form-text text-muted">
+              Optional source. Defaults to the Logflare source name.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :host, "Host")}
+            {text_input(f_config, :host, class: "form-control")}
+            <small class="form-text text-muted">
+              Optional host. Defaults to the HEC input setting.
+            </small>
+          </div>
         <% _ -> %>
           <div>Select a Backend Type</div>
       <% end %>
