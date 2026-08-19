@@ -1999,22 +1999,56 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.sync_backend_across_cluster(non_existent_id)
     end
 
-    test "works with backend having no associated sources", %{user: user} do
-      # Backend has no associated sources
+    test "syncs consolidated lifecycle with no associated sources", %{user: user} do
       backend =
         insert(:backend,
           user: user,
           sources: [],
-          default_ingest?: true,
-          type: :webhook,
-          config: %{url: "http://test.com"}
+          enabled: false,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          }
         )
 
-      # Should not make any RPC calls
+      assert {:ok, _pid} = Backends.ConsolidatedSup.start_pipeline(backend)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+      on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend.id) end)
 
+      expect(ClusterUtils, :rpc_multicast, fn
+        Backends, :sync_backends_local, [%Backend{id: id, enabled: false}, []] = args
+        when id == backend.id ->
+          apply(Backends, :sync_backends_local, args)
+      end)
+
+      assert :ok = Backends.sync_backend_across_cluster(backend.id)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
+    test "skips enabled consolidated backends with no associated sources", %{user: user} do
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [],
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          }
+        )
+
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
       reject(&ClusterUtils.rpc_multicast/3)
 
       assert :ok = Backends.sync_backend_across_cluster(backend.id)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
     end
   end
 
