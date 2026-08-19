@@ -346,9 +346,10 @@ defmodule Logflare.Backends do
           sync_backend_across_cluster(updated.id)
         end
 
-        Enum.each(updated.sources, &restart_source_sup(&1))
-
-        maybe_restart_consolidated_pipeline(updated)
+        unless enabled_changed? do
+          Enum.each(updated.sources, &restart_source_sup(&1))
+          maybe_restart_consolidated_pipeline(updated)
+        end
 
         if config_modified?, do: Adaptor.on_backend_config_changed(updated)
 
@@ -629,15 +630,13 @@ defmodule Logflare.Backends do
   """
   @spec sync_backends_local(Backend.t(), [{Source.t(), boolean()}]) :: :ok
   def sync_backends_local(%Backend{} = backend, source_targets) do
+    if backend.enabled, do: maybe_start_consolidated_pipeline(backend)
+
     ContextCache.bust_keys([{__MODULE__, backend.id}])
 
     Enum.each(source_targets, &sync_backend_child(backend, &1))
 
-    if backend.enabled do
-      maybe_start_consolidated_pipeline(backend)
-    else
-      maybe_stop_consolidated_pipeline(backend)
-    end
+    if not backend.enabled, do: maybe_stop_consolidated_pipeline(backend)
 
     :ok
   end

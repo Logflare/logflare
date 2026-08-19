@@ -18,6 +18,12 @@ defmodule LogflareWeb.ApiSpecTest do
     assert %OpenApiSpex.OpenApi{} = ApiSpec.spec()
   end
 
+  test "does not advertise an enabled default for backend PATCH requests" do
+    schema = request_schema(ApiSpec.spec(), "/api/backends/{token}", :patch)
+
+    assert %OpenApiSpex.Schema{default: nil} = schema.properties.enabled
+  end
+
   test "rejects an undocumented response status" do
     conn =
       Phoenix.ConnTest.build_conn(:get, "/api/account")

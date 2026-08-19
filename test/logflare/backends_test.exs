@@ -179,6 +179,48 @@ defmodule Logflare.BackendsTest do
 
       Backends.ConsolidatedSup.stop_pipeline(updated)
     end
+
+    test "update_backend/2 starts consolidated pipeline before cache invalidation", %{
+      user: user
+    } do
+      sources = insert_pair(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          enabled: false,
+          user: user,
+          sources: sources,
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          }
+        )
+
+      on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend.id) end)
+
+      test_pid = self()
+
+      pipeline_name =
+        Backends.via_backend(backend, Logflare.Backends.Adaptor.ClickHouseAdaptor)
+
+      stub(ClusterUtils, :rpc_multicast, fn _module, _function, _args -> :ok end)
+
+      stub(Logflare.ContextCache, :bust_keys, fn keys ->
+        send(test_pid, {:cache_bust, GenServer.whereis(pipeline_name)})
+        Mimic.call_original(Logflare.ContextCache, :bust_keys, [keys])
+      end)
+
+      assert {:ok, enabled_backend} = Backends.update_backend(backend, %{enabled: true})
+
+      assert_receive {:cache_bust, exposed_pipeline_pid}
+      assert is_pid(exposed_pipeline_pid)
+      assert GenServer.whereis(pipeline_name) == exposed_pipeline_pid
+      assert Backends.ConsolidatedSup.pipeline_running?(enabled_backend)
+    end
   end
 
   describe "clickhouse read pool hooks" do
@@ -886,6 +928,81 @@ defmodule Logflare.BackendsTest do
       TestUtils.retry_assert(fn ->
         assert SourceSup.backend_child_started?(backend.id, source.id)
       end)
+    end
+
+    test "disabling a rule-only backend stops only its SourceSup child", %{
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      peer_backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://peer.example.com"},
+          user: user
+        )
+
+      insert(:rule, source: source, backend: backend)
+      insert(:rule, source: source, backend: peer_backend)
+      Backends.clear_list_backends_cache(source.id)
+      start_supervised!({SourceSup, source})
+
+      assert SourceSup.backend_child_started?(backend.id, source.id)
+      assert SourceSup.backend_child_started?(peer_backend.id, source.id)
+
+      stub(ClusterUtils, :rpc_multicast, fn _module, _function, _args -> :ok end)
+
+      assert {:ok, _disabled} = Backends.update_backend(backend, %{enabled: false})
+
+      refute SourceSup.backend_child_started?(backend.id, source.id)
+      assert SourceSup.backend_child_started?(peer_backend.id, source.id)
+    end
+
+    test "disabling an attached backend preserves unrelated SourceSup children", %{
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      peer_backend =
+        insert(:backend,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://peer.example.com"},
+          user: user
+        )
+
+      Backends.clear_list_backends_cache(source.id)
+      assert :ok = Backends.start_source_sup(source)
+      on_exit(fn -> Backends.stop_source_sup(source) end)
+
+      assert {:ok, source_sup_pid} = Backends.lookup(SourceSup, source)
+
+      peer_child_name =
+        Backends.via_source(source, Logflare.Backends.AdaptorSupervisor, peer_backend)
+
+      peer_child_pid = GenServer.whereis(peer_child_name)
+      assert is_pid(peer_child_pid)
+
+      stub(ClusterUtils, :rpc_multicast, fn _module, _function, _args -> :ok end)
+
+      assert {:ok, _disabled} = Backends.update_backend(backend, %{enabled: false})
+
+      assert {:ok, ^source_sup_pid} = Backends.lookup(SourceSup, source)
+      assert GenServer.whereis(peer_child_name) == peer_child_pid
+      refute SourceSup.backend_child_started?(backend.id, source.id)
     end
 
     test "SourceSup filters out consolidated backends", %{source: source, user: user} do
