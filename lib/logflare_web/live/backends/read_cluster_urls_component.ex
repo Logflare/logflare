@@ -10,6 +10,8 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
 
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_non_empty_map: 1]
 
+  require Logger
+
   alias Logflare.Backends.Backend
 
   @type row :: {non_neg_integer(), String.t(), String.t()}
@@ -45,7 +47,13 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
      )}
   end
 
-  def handle_event("sync", _params, socket), do: {:noreply, socket}
+  def handle_event("sync", _params, socket) do
+    Logger.warning("Unexpected sync payload shape in ReadClusterUrlsComponent",
+      backend_id: socket.assigns.backend && socket.assigns.backend.id
+    )
+
+    {:noreply, socket}
+  end
 
   def handle_event("add_row", _params, socket) do
     %{next_ref: ref, rows: rows} = socket.assigns
