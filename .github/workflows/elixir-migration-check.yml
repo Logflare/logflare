@@ -117,6 +117,11 @@ jobs:
             mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
             mix-v3-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
 
+      - name: Prepare in-app docs
+        run: |
+          rm -rf priv/docs
+          cp -R docs/docs.logflare.com/docs priv/docs
+
       - name: Install dependencies
         run: mix deps.get
       - name: Migrate
