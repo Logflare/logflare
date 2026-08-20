@@ -12,7 +12,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   `maybe_start_prefetch/1`, so a slow or long-polling `queue_mod.receive/2`
   call (especially under long-polling) can never block `handle_demand/2`,
   `handle_info/2`, or `:sys` introspection. The result lands back via a
-  `{:prefetch_result, result}` message.
+  `{:prefetch_result, result}` message — unless the producer has already
+  been killed by the time the fetch resolves (see `deliver_or_settle/5`),
+  in which case the Task settles the handle itself instead of sending into
+  the void.
 
   A periodic `:poll` message (`handle_info(:poll, state)`) drives the fetch
   → transfer-into-buffer → emit pipeline forward on a fixed cadence
@@ -431,8 +434,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
         # A crash here must still deliver a {:prefetch_result, _} message —
         # otherwise state.prefetch is stuck at :running forever (maybe_start_prefetch
         # refuses to start a new one, and nothing else will ever unstick it).
+        parent_ref = Process.monitor(parent)
         result = safe_fetch_next(queue_url, bucket, queue_mod, storage_mod)
-        send(parent, {:prefetch_result, result})
+        deliver_or_settle(result, parent, parent_ref, queue_mod, queue_url)
       end)
 
       %{state | prefetch: :running}
@@ -440,6 +444,37 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp maybe_start_prefetch(state), do: state
+
+  # The producer can be killed mid-fetch (e.g. Broadway's shutdown budget
+  # runs out before a slow/long-polling queue_mod.receive call returns,
+  # despite prepare_for_draining/1 and handle_info({:prefetch_result, _},
+  # %{draining: true}) settling everything they get a chance to). Since
+  # Task.start/1 is deliberately unlinked (a crash here must never take down
+  # the producer), send/2 to an already-dead parent is a silent no-op — the
+  # handle would otherwise sit invisible until the queue's own visibility
+  # timeout expires (minutes, not seconds) before it's redelivered. Checking
+  # the monitor right before sending closes that window down to a
+  # vanishingly small race instead: if the parent is already gone, settle
+  # the handle directly here rather than leaving it stranded.
+  defp deliver_or_settle(result, parent, parent_ref, queue_mod, queue_url) do
+    receive do
+      {:DOWN, ^parent_ref, :process, ^parent, _reason} ->
+        settle_orphaned_result(result, queue_mod, queue_url)
+    after
+      0 ->
+        send(parent, {:prefetch_result, result})
+        Process.demonitor(parent_ref, [:flush])
+    end
+  end
+
+  defp settle_orphaned_result({:ok, handle, _lines}, queue_mod, queue_url),
+    do: nack_and_notify(queue_mod, queue_url, handle, :producer_gone)
+
+  defp settle_orphaned_result({:error, handle, _reason}, queue_mod, queue_url)
+       when not is_nil(handle),
+       do: nack_and_notify(queue_mod, queue_url, handle, :producer_gone)
+
+  defp settle_orphaned_result(_result, _queue_mod, _queue_url), do: :ok
 
   defp emit_from_buffer(%{current: nil} = state), do: {[], state}
   defp emit_from_buffer(%{current: %{lines: []}} = state), do: {[], state}

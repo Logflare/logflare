@@ -660,5 +660,49 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       Task.shutdown(task, :brutal_kill)
     end
+
+    test "a prefetch whose producer is already dead by the time it lands settles (nacks) the handle directly, instead of leaving it stuck until the queue's own visibility timeout" do
+      test_pid = self()
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.ndjson")])
+
+      # Blocks until released, so the producer can be killed while this
+      # fetch is still genuinely in flight — the scenario djwhitt flagged as
+      # non-blocking on the PR: Task.start/1 is unlinked, so without the
+      # parent-monitor in maybe_start_prefetch/1, this result would be sent
+      # to a dead pid and silently dropped.
+      stub(StorageMod, :get, fn _bucket, _key ->
+        send(test_pid, {:storage_get_called, self()})
+
+        receive do
+          :proceed -> {:ok, ndjson_body([%{"id" => "e1"}])}
+        end
+      end)
+
+      pid = start_producer()
+
+      # Seed demand directly rather than subscribing a real consumer — this
+      # test is about the producer-death race in the prefetch Task, not
+      # about consumer-side subscription behavior.
+      :sys.replace_state(pid, fn gen_stage_state ->
+        put_in(gen_stage_state.state.demand, 1)
+      end)
+
+      send(pid, :poll)
+
+      assert_receive {:storage_get_called, prefetch_task_pid}, 2000
+
+      ref = Process.monitor(pid)
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :killed}, 2000
+
+      # Only now does the prefetch's download actually complete — well
+      # after its parent producer is fully, verifiably dead.
+      send(prefetch_task_pid, :proceed)
+
+      assert_receive {:nacked, "h1"}, 2000
+      refute_received {:acked, "h1"}
+    end
   end
 end
