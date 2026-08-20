@@ -43,10 +43,25 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
     end
 
     test "wraps set operations before adding a global limit" do
-      query = "SELECT number FROM numbers(5) UNION ALL SELECT number + 5 FROM numbers(5)"
-      expected = "SELECT * FROM (#{query}) LIMIT 3"
+      for query <- [
+            "SELECT 1 UNION ALL SELECT 2",
+            "SELECT 1 UNION DISTINCT SELECT 2",
+            "SELECT 1 INTERSECT SELECT 2",
+            "SELECT 1 EXCEPT SELECT 2"
+          ] do
+        expected = "SELECT * FROM (#{query}) LIMIT 3"
 
-      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+        assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+      end
+    end
+
+    test "preserves a set operation's stricter limit and offset inside the global cap" do
+      query =
+        "SELECT number FROM numbers(5) UNION ALL SELECT number + 5 FROM numbers(5) ORDER BY number LIMIT 4 OFFSET 2"
+
+      expected = "SELECT * FROM (#{query}) LIMIT 10"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 10)
     end
 
     test "adds a global limit after LIMIT BY" do

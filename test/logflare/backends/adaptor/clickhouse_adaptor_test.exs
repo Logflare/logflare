@@ -1578,17 +1578,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Enum.all?(rows, &(&1["total"] == 5))
     end
 
-    test "wraps endpoint CTE and UNION results before adding the limit", %{backend: backend} do
-      query =
-        "WITH query_rows AS (SELECT number FROM numbers(20)) SELECT number FROM query_rows UNION ALL SELECT number + 20 AS number FROM query_rows ORDER BY number"
+    test "wraps the completed endpoint UNION result before adding the limit", %{backend: backend} do
+      query = """
+      WITH query_rows AS (SELECT number FROM numbers(10))
+      SELECT number * 2 AS number FROM query_rows
+      UNION ALL
+      SELECT number * 2 + 1 AS number FROM query_rows
+      """
 
-      assert_endpoint_query(
-        backend,
-        query,
-        10,
-        "SELECT * FROM (#{query}) LIMIT 10",
-        Enum.to_list(0..9)
-      )
+      expected_sql =
+        "SELECT * FROM (WITH query_rows AS (SELECT number FROM numbers(10)) SELECT number * 2 AS number FROM query_rows UNION ALL SELECT number * 2 + 1 AS number FROM query_rows) LIMIT 10"
+
+      rows = assert_endpoint_query(backend, query, 10, expected_sql, {:count, 10})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..19))
     end
 
     test "limits parameterized endpoint queries", %{backend: backend} do
@@ -2042,7 +2045,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  defp assert_endpoint_query(backend, query, max_limit, expected_sql, expected_numbers) do
+  defp assert_endpoint_query(backend, query, max_limit, expected_sql, expected_result) do
     parent = self()
 
     expect(Ch, :query, fn pool, statement, params, opts ->
@@ -2058,7 +2061,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
              )
 
     assert_received {:submitted_sql, ^expected_sql}
-    assert Enum.map(rows, & &1["number"]) == expected_numbers
+
+    case expected_result do
+      {:count, count} -> assert length(rows) == count
+      expected_numbers -> assert Enum.map(rows, & &1["number"]) == expected_numbers
+    end
+
+    rows
   end
 
   defp endpoint_query_args(query, max_limit, declared_params \\ [], input_params \\ %{}) do
