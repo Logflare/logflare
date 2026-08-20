@@ -91,6 +91,66 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
       assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
     end
 
+    test "keeps LIMIT BY together over a completed set operation" do
+      query =
+        "SELECT 1 AS n UNION ALL SELECT 2 AS n UNION ALL SELECT 3 AS n UNION ALL SELECT 4 AS n LIMIT 1 BY n"
+
+      expected =
+        "SELECT * FROM (SELECT * FROM (SELECT 1 AS n UNION ALL SELECT 2 AS n UNION ALL SELECT 3 AS n UNION ALL SELECT 4 AS n) LIMIT 1 BY n) LIMIT 3"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+    end
+
+    test "keeps set-operation SETTINGS outermost" do
+      query =
+        "SELECT 1 AS n UNION ALL SELECT 2 AS n LIMIT 100 SETTINGS max_threads = 1"
+
+      expected =
+        "SELECT * FROM (SELECT 1 AS n UNION ALL SELECT 2 AS n) LIMIT least(100, 3) SETTINGS max_threads = 1"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+    end
+
+    test "keeps SETTINGS outside a complex set-operation limit" do
+      query =
+        "SELECT 1 AS n UNION ALL SELECT 2 AS n ORDER BY n LIMIT -1 SETTINGS max_threads = 1"
+
+      expected =
+        "SELECT * FROM (SELECT * FROM (SELECT 1 AS n UNION ALL SELECT 2 AS n) ORDER BY n LIMIT -1) LIMIT 3 SETTINGS max_threads = 1"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+    end
+
+    test "preserves coupled modifiers when ordering is not exposed" do
+      query =
+        "SELECT number AS value FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5) ORDER BY number DESC LIMIT 3"
+
+      expected =
+        "SELECT * FROM (SELECT number AS value FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5) ORDER BY number DESC LIMIT 3) LIMIT 2"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+    end
+
+    test "hoists ordering by an exposed set-operation alias" do
+      query =
+        "SELECT number AS value FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5) ORDER BY value DESC LIMIT 3"
+
+      expected =
+        "SELECT * FROM (SELECT number AS value FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5)) ORDER BY value DESC LIMIT least(3, 2)"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+    end
+
+    test "hoists ordering through an unmodified wildcard projection" do
+      query =
+        "SELECT * FROM numbers(5) UNION ALL SELECT * FROM numbers(5) ORDER BY number DESC LIMIT 3"
+
+      expected =
+        "SELECT * FROM (SELECT * FROM numbers(5) UNION ALL SELECT * FROM numbers(5)) ORDER BY number DESC LIMIT least(3, 2)"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+    end
+
     test "caps negative and fractional set-operation limits after global evaluation" do
       for existing_limit <- ["-5", "0.5"] do
         query =

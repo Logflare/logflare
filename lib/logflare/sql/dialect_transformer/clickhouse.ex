@@ -10,7 +10,8 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   alias Logflare.Sql.Parser
   alias Logflare.User
 
-  @set_operation_modifiers ~w(order_by limit offset format_clause)
+  @set_operation_result_modifiers ~w(order_by limit offset limit_by)
+  @terminal_modifiers ~w(format_clause settings)
 
   @impl true
   def quote_style, do: nil
@@ -92,15 +93,14 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   end
 
   # ClickHouse binds trailing modifiers to a set-operation branch. Move modifiers
-  # onto a SELECT over the completed result so ordering and limits are global.
+  # onto a SELECT over the completed result when its ordering only references
+  # exposed output columns. Otherwise preserve the coupled clauses for backwards
+  # compatibility and apply only the endpoint cap outside them.
   defp wrap_set_operation(%{"Query" => query_ast} = statement) do
-    modifiers = Map.take(query_ast, @set_operation_modifiers)
+    modifier_keys = set_operation_modifier_keys(query_ast)
+    modifiers = Map.take(query_ast, modifier_keys)
 
-    inner_query_ast =
-      Enum.reduce(@set_operation_modifiers, query_ast, fn key, query_ast ->
-        Map.put(query_ast, key, nil)
-      end)
-
+    inner_query_ast = Enum.reduce(modifier_keys, query_ast, &clear_query_modifier(&2, &1))
     statement = put_in(statement, ["Query"], inner_query_ast)
 
     with {:ok, inner_query} <- Parser.to_string(statement),
@@ -109,6 +109,81 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
       {:ok, put_in(outer_statement, ["Query"], Map.merge(outer_query_ast, modifiers))}
     end
   end
+
+  defp set_operation_modifier_keys(query_ast) do
+    if safe_to_hoist_order_by?(query_ast) do
+      @set_operation_result_modifiers ++ @terminal_modifiers
+    else
+      @terminal_modifiers
+    end
+  end
+
+  defp safe_to_hoist_order_by?(%{"order_by" => nil}), do: true
+
+  defp safe_to_hoist_order_by?(
+         %{
+           "order_by" => %{"exprs" => order_exprs, "interpolate" => nil}
+         } = query_ast
+       ) do
+    case set_operation_output_names(query_ast["body"]) do
+      {:ok, output_names, wildcard?} ->
+        Enum.all?(order_exprs, &exposed_order_identifier?(&1, output_names, wildcard?))
+
+      :error ->
+        false
+    end
+  end
+
+  defp safe_to_hoist_order_by?(_query_ast), do: false
+
+  defp set_operation_output_names(%{"Query" => query_ast}),
+    do: set_operation_output_names(query_ast["body"])
+
+  defp set_operation_output_names(%{"SetOperation" => %{"left" => left}}),
+    do: set_operation_output_names(left)
+
+  defp set_operation_output_names(%{"Select" => %{"projection" => projection}}) do
+    {output_names, wildcard?} =
+      Enum.reduce(projection, {MapSet.new(), false}, fn
+        %{"ExprWithAlias" => %{"alias" => identifier}}, {output_names, wildcard?} ->
+          {MapSet.put(output_names, identifier_key(identifier)), wildcard?}
+
+        %{"UnnamedExpr" => %{"Identifier" => identifier}}, {output_names, wildcard?} ->
+          {MapSet.put(output_names, identifier_key(identifier)), wildcard?}
+
+        %{"Wildcard" => wildcard}, {output_names, wildcard?} ->
+          {output_names, wildcard? or plain_wildcard?(wildcard)}
+
+        _projection, output ->
+          output
+      end)
+
+    {:ok, output_names, wildcard?}
+  end
+
+  defp set_operation_output_names(_body), do: :error
+
+  defp exposed_order_identifier?(
+         %{"expr" => %{"Identifier" => identifier}},
+         output_names,
+         wildcard?
+       ) do
+    wildcard? or MapSet.member?(output_names, identifier_key(identifier))
+  end
+
+  defp exposed_order_identifier?(_order_expr, _output_names, _wildcard?), do: false
+
+  defp identifier_key(%{"quote_style" => quote_style, "value" => value}),
+    do: {quote_style, value}
+
+  defp plain_wildcard?(wildcard) do
+    wildcard
+    |> Map.delete("wildcard_token")
+    |> Enum.all?(fn {_option, value} -> is_nil(value) end)
+  end
+
+  defp clear_query_modifier(query_ast, "limit_by"), do: Map.put(query_ast, "limit_by", [])
+  defp clear_query_modifier(query_ast, key), do: Map.put(query_ast, key, nil)
 
   # LIMIT BY is per group, while negative, fractional, and arbitrary expressions
   # do not have ordinary row-count semantics. Cap their completed result from an
@@ -128,14 +203,18 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   defp requires_outer_limit?(_query_ast), do: true
 
   defp wrap_with_limit(%{"Query" => query_ast} = statement, max_rows) do
-    format_clause = query_ast["format_clause"]
-    statement = put_in(statement, ["Query", "format_clause"], nil)
+    terminal_modifiers = Map.take(query_ast, @terminal_modifiers)
+
+    statement =
+      Enum.reduce(@terminal_modifiers, statement, fn key, statement ->
+        put_in(statement, ["Query", key], nil)
+      end)
 
     with {:ok, inner_query} <- Parser.to_string(statement),
          {:ok, [%{"Query" => outer_query} = outer_statement]} <-
            Parser.parse(dialect(), "SELECT * FROM (#{inner_query}) LIMIT #{max_rows}") do
       outer_statement
-      |> put_in(["Query", "format_clause"], format_clause || outer_query["format_clause"])
+      |> put_in(["Query"], Map.merge(outer_query, terminal_modifiers))
       |> Parser.to_string()
     end
   end

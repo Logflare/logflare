@@ -1632,6 +1632,40 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert_endpoint_query(backend, query, 3, expected_sql, [2, 3, 4])
     end
 
+    test "caps a completed endpoint UNION after LIMIT BY", %{backend: backend} do
+      query =
+        "SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number LIMIT 1 BY number"
+
+      expected_sql =
+        "SELECT * FROM (SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number) LIMIT 1 BY number) LIMIT 3"
+
+      rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+      assert Enum.all?(rows, &(&1["number"] in 1..4))
+    end
+
+    test "keeps allowed endpoint UNION settings on the completed result", %{backend: backend} do
+      query =
+        "SELECT number FROM numbers(5) UNION ALL SELECT number + 5 AS number FROM numbers(5) ORDER BY number LIMIT 100 SETTINGS max_threads = 1"
+
+      expected_sql =
+        "SELECT * FROM (SELECT number FROM numbers(5) UNION ALL SELECT number + 5 AS number FROM numbers(5)) ORDER BY number LIMIT least(100, 3) SETTINGS max_threads = 1"
+
+      assert_endpoint_query(backend, query, 3, expected_sql, [0, 1, 2])
+    end
+
+    test "preserves an endpoint UNION ordered by an unexposed source column", %{backend: backend} do
+      query =
+        "SELECT number AS value FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5) ORDER BY number DESC LIMIT 3"
+
+      expected_sql =
+        "SELECT * FROM (SELECT number AS value FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5) ORDER BY number DESC LIMIT 3) LIMIT 2"
+
+      rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+      assert Enum.all?(rows, &(&1["value"] in 0..4))
+    end
+
     test "caps endpoint UNIONs after evaluating complex global limits", %{backend: backend} do
       for {existing_limit, expected_numbers} <- [{"-5", [15, 16, 17]}, {"0.5", [0, 1, 2]}] do
         query =
