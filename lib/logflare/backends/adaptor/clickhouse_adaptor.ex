@@ -34,11 +34,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Sources.Source
+  alias Logflare.Sql.DialectTransformer.ClickHouse, as: ClickHouseSqlTransformer
 
   @min_pipelines 1
   @resolve_interval 10_000
   @scaling_threshold 15_000
   @async_insert_busy_timeout_max_ms 3_000
+  @insert_max_execution_time_seconds 10
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
   @us_per_hour 3_600 * 1_000_000
@@ -115,12 +117,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_query(
         %Backend{} = backend,
-        {query_string, declared_params, input_params, _endpoint_query},
+        {query_string, declared_params, input_params, endpoint_query},
         opts
       )
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
              is_list(opts) do
-    execute_query_with_params(backend, query_string, declared_params, input_params, opts)
+    with {:ok, {limited_query, max_rows}} <- limit_endpoint_query(query_string, endpoint_query) do
+      execute_query_with_params(
+        backend,
+        limited_query,
+        declared_params,
+        input_params,
+        opts,
+        max_rows
+      )
+    end
   end
 
   def execute_query(%Backend{} = backend, %Ecto.Query{} = query, opts) when is_list(opts) do
@@ -162,7 +173,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec max_event_age_hours(Backend.t()) :: non_neg_integer()
   defp max_event_age_hours(%Backend{config: %{max_event_age_hours: hours}})
-       when is_integer(hours) and hours >= 0,
+       when is_non_negative_integer(hours),
        do: hours
 
   defp max_event_age_hours(_backend), do: @default_max_event_age_hours
@@ -732,6 +743,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   When `opts` includes `async: true`, the insert is routed through ClickHouse
   async inserts so the server coalesces sparse, late-arriving batches into
   fewer, fatter parts.
+
+  All inserts carry a server-side `max_execution_time` of
+  #{@insert_max_execution_time_seconds} seconds.
   """
   @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type(), keyword()) ::
           :ok | {:error, String.t()}
@@ -794,7 +808,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec build_insert_opts(keyword()) :: keyword()
   defp build_insert_opts(opts) do
-    if Keyword.get(opts, :async, false), do: async_insert_opts(), else: []
+    opts
+    |> Keyword.get(:async, false)
+    |> insert_settings()
+  end
+
+  @spec insert_settings(boolean()) :: keyword()
+  defp insert_settings(true), do: base_insert_opts() ++ async_insert_opts()
+  defp insert_settings(false), do: base_insert_opts()
+
+  @spec base_insert_opts() :: keyword()
+  defp base_insert_opts do
+    [max_execution_time: @insert_max_execution_time_seconds]
   end
 
   # The endpoint host an HTTP insert actually targets, for failure logging: async inserts
@@ -817,6 +842,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     [
       async_insert: 1,
       wait_for_async_insert: 1,
+      wait_for_async_insert_timeout: @insert_max_execution_time_seconds,
       async_insert_busy_timeout_max_ms: @async_insert_busy_timeout_max_ms
     ]
   end
@@ -1130,14 +1156,49 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
          input_params,
          opts
        ) do
+    execute_query_with_params(backend, query_string, declared_params, input_params, opts, nil)
+  end
+
+  @spec execute_query_with_params(
+          Backend.t(),
+          query_string :: String.t(),
+          declared_params :: [String.t()],
+          input_params :: map(),
+          opts :: Keyword.t(),
+          max_rows :: pos_integer() | nil
+        ) ::
+          {:ok, QueryResult.t()} | {:error, any()}
+  defp execute_query_with_params(
+         %Backend{} = backend,
+         query_string,
+         declared_params,
+         input_params,
+         opts,
+         max_rows
+       ) do
     converted_query = convert_query_params(query_string, declared_params)
     ch_params = Map.take(input_params, declared_params)
 
     case execute_ch_query(backend, converted_query, ch_params, opts) do
-      {:ok, {rows, bytes}} -> {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
-      error -> error
+      {:ok, {rows, bytes}} ->
+        rows = if is_pos_integer(max_rows), do: Enum.take(rows, max_rows), else: rows
+        {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
+
+      error ->
+        error
     end
   end
+
+  @spec limit_endpoint_query(String.t(), term()) ::
+          {:ok, {String.t(), pos_integer() | nil}} | {:error, String.t()}
+  defp limit_endpoint_query(query_string, %{max_limit: max_limit})
+       when is_pos_integer(max_limit) do
+    with {:ok, limited_query} <- ClickHouseSqlTransformer.apply_limit(query_string, max_limit) do
+      {:ok, {limited_query, max_limit}}
+    end
+  end
+
+  defp limit_endpoint_query(query_string, _endpoint_query), do: {:ok, {query_string, nil}}
 
   @spec convert_query_params(sql_statement :: String.t(), allowed_params :: [String.t()]) ::
           String.t()
@@ -1170,7 +1231,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec maybe_start_query_connection_manager(pid() | nil, pos_integer(), String.t() | nil) ::
           :ok | {:error, term()}
-  defp maybe_start_query_connection_manager(nil, backend_id, label) when is_integer(backend_id) do
+  defp maybe_start_query_connection_manager(nil, backend_id, label)
+       when is_pos_integer(backend_id) do
     backend = Backends.Cache.get_backend(backend_id)
 
     with child_spec <- ConnectionManager.child_spec(backend, label),

@@ -64,32 +64,40 @@ defmodule Logflare.Sources do
   """
   @spec list_sources(Keyword.t()) :: [Source.t()]
   def list_sources(filters) when is_list(filters) do
-    filters
-    |> Enum.reduce(from(s in Source), fn
-      {:backend_id, backend_id}, q when is_integer(backend_id) ->
-        from(s in q,
-          join: sb in "sources_backends",
-          on: sb.source_id == s.id,
-          where: sb.backend_id == ^backend_id
-        )
+    hydrate_retention_days? = Keyword.get(filters, :hydrate_retention_days?, false)
 
-      {:user_id, user_id}, q when is_integer(user_id) ->
-        where(q, [s], s.user_id == ^user_id)
+    sources =
+      filters
+      |> Enum.reduce(from(s in Source), fn
+        {:backend_id, backend_id}, q when is_integer(backend_id) ->
+          from(s in q,
+            join: sb in "sources_backends",
+            on: sb.source_id == s.id,
+            where: sb.backend_id == ^backend_id
+          )
 
-      {:user_id, user_ids}, q when is_list(user_ids) ->
-        where(q, [s], s.user_id in ^user_ids)
+        {:user_id, user_id}, q when is_integer(user_id) ->
+          where(q, [s], s.user_id == ^user_id)
 
-      {:default_ingest_backend_enabled?, enabled}, q when is_boolean(enabled) ->
-        where(q, [s], s.default_ingest_backend_enabled? == ^enabled)
+        {:user_id, user_ids}, q when is_list(user_ids) ->
+          where(q, [s], s.user_id in ^user_ids)
 
-      {:system_source, value}, q when is_boolean(value) ->
-        where(q, [s], s.system_source == ^value)
+        {:default_ingest_backend_enabled?, enabled}, q when is_boolean(enabled) ->
+          where(q, [s], s.default_ingest_backend_enabled? == ^enabled)
 
-      _, q ->
-        q
-    end)
-    |> Repo.all()
-    |> Enum.map(&put_retention_days/1)
+        {:system_source, value}, q when is_boolean(value) ->
+          where(q, [s], s.system_source == ^value)
+
+        _, q ->
+          q
+      end)
+      |> Repo.all()
+
+    if hydrate_retention_days? do
+      Enum.map(sources, &put_retention_days/1)
+    else
+      sources
+    end
   end
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
@@ -521,10 +529,16 @@ defmodule Logflare.Sources do
   def put_retention_days(%Source{} = source) do
     user = Users.Cache.get(source.user_id)
     plan = Billing.Cache.get_plan_by_user(user)
-    %{source | retention_days: source_ttl_to_days(source, plan)}
+    put_retention_days(source, plan)
   end
 
   def put_retention_days(source), do: source
+
+  @doc "Same as `put_retention_days/1`, but takes an already-fetched plan to avoid re-fetching it per source."
+  @spec put_retention_days(Source.t() | nil, Plan.t()) :: Source.t() | nil
+  def put_retention_days(%Source{} = source, %Plan{} = plan) do
+    %{source | retention_days: source_ttl_to_days(source, plan)}
+  end
 
   @doc """
   Formats a source TTL to the specified unit

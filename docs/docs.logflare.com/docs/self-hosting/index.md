@@ -61,6 +61,8 @@ Additional environment variable configurations for the OpenTelemetry libraries u
 
 Logflare has a health check endpoint `/health`, which is used to ensure that the system is functioning correctly with sufficient resources for normal functions.
 
+Use `/ready` for readiness probes. It performs the health checks and returns `503` as soon as graceful shutdown begins so load balancers can stop routing new traffic to the instance.
+
 Environment variables that influence the logic are prefixed with `LOGFLARE_HEALTH_*`. Refer to above table for customizing the values.
 
 #### Metadata

@@ -372,6 +372,21 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   end
 
   describe "config validation" do
+    test "allows valid ports" do
+      for port <- [1, 65_535] do
+        assert syslog_changeset(%{host: "localhost", port: port}).valid?
+      end
+    end
+
+    test "rejects invalid ports" do
+      for port <- [-1, 0, 65_536, 1.5] do
+        changeset = syslog_changeset(%{host: "localhost", port: port})
+
+        refute changeset.valid?
+        assert %{port: ["is invalid"]} = errors_on(changeset)
+      end
+    end
+
     test "rejects invalid structured data" do
       bad_examples = [
         "invalid",

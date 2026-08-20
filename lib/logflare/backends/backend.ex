@@ -145,14 +145,23 @@ defmodule Logflare.Backends.Backend do
           :updated_at
         ])
         |> Map.update(:config, %{}, fn config ->
-          if function_exported?(adaptor, :redact_config, 1) do
-            adaptor.redact_config(config)
-          else
-            config
-          end
+          config
+          |> atomize_keys()
+          |> adaptor.redact_config()
         end)
 
       Jason.Encode.map(values, opts)
+    end
+
+    # `config_encrypted` round-trips through JSON encryption/decryption, so
+    # decrypted config maps come back with string keys instead of the atom
+    # keys used when the config was cast/validated. Adaptors' `redact_config/1`
+    # callbacks always operate on atom keys, so normalize here first.
+    defp atomize_keys(config) when is_map(config) do
+      Map.new(config, fn
+        {key, value} when is_binary(key) -> {String.to_existing_atom(key), value}
+        {key, value} -> {key, value}
+      end)
     end
   end
 end
