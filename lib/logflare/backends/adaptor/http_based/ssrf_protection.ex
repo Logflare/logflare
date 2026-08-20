@@ -15,7 +15,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtection do
         # hostname (required by HTTP/1.1 and virtual hosting).
         ip_host = SSRF.url_host(addr)
         rewritten = URI.to_string(%{uri | host: ip_host, authority: nil})
-        headers = List.keystore(env.headers, "host", 0, {"host", uri.host})
+        headers = List.keystore(env.headers, "host", 0, {"host", host_header(uri)})
         Tesla.run(%{env | url: rewritten, headers: headers}, next)
 
       {:ok, _addr} ->
@@ -25,6 +25,17 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtection do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  @spec host_header(URI.t()) :: String.t()
+  defp host_header(%URI{authority: authority, userinfo: userinfo}) when is_binary(authority) do
+    # URI.host omits IPv6 brackets and the explicit port, so preserve the URI authority while
+    # removing userinfo, which must not be included in the Host header.
+    if userinfo do
+      String.replace_prefix(authority, "#{userinfo}@", "")
+    else
+      authority
     end
   end
 end
