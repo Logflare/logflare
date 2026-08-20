@@ -669,6 +669,84 @@ defmodule LogflareWeb.BackendsLiveTest do
              |> has_element?()
     end
 
+    test "row actions preserve unsaved read cluster inputs", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            read_only_urls: %{"reporting" => "http://reporting.local:8123"},
+            default_read_cluster: "reporting"
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> element("input[name='backend[config][read_cluster_label_0]']")
+      |> render_change(%{
+        "backend" => %{"config" => %{"read_cluster_label_0" => "reporting-edited"}}
+      })
+
+      view
+      |> element("input[name='backend[config][read_cluster_url_0]']")
+      |> render_change(%{
+        "backend" => %{
+          "config" => %{"read_cluster_url_0" => "http://reporting-edited.local:8123"}
+        }
+      })
+
+      view
+      |> element("input[name='backend[config][default_read_cluster]']")
+      |> render_change(%{
+        "backend" => %{"config" => %{"default_read_cluster" => "reporting-edited"}}
+      })
+
+      view
+      |> element("button[phx-click='add_row']")
+      |> render_click()
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_0]']")
+             |> render() =~ ~s(value="reporting-edited")
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_url_0]']")
+             |> render() =~ ~s(value="http://reporting-edited.local:8123")
+
+      assert view
+             |> element("input[name='backend[config][default_read_cluster]']")
+             |> render() =~ ~s(value="reporting-edited")
+
+      assert has_element?(view, "#read-cluster-row-1")
+
+      view
+      |> element("#read-cluster-row-1 button[phx-click='remove_row']")
+      |> render_click()
+
+      refute has_element?(view, "#read-cluster-row-1")
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_0]']")
+             |> render() =~ ~s(value="reporting-edited")
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_url_0]']")
+             |> render() =~ ~s(value="http://reporting-edited.local:8123")
+
+      assert view
+             |> element("input[name='backend[config][default_read_cluster]']")
+             |> render() =~ ~s(value="reporting-edited")
+    end
+
     test "removing a read cluster row drops that specific row's cluster on save", %{
       conn: conn,
       source: source,

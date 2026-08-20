@@ -10,6 +10,8 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
 
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_non_empty_map: 1]
 
+  require Logger
+
   alias Logflare.Backends.Backend
 
   @type row :: {non_neg_integer(), String.t(), String.t()}
@@ -18,11 +20,41 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
   def update(assigns, socket) do
     socket = assign(socket, assigns)
     socket = assign_new(socket, :rows, fn -> initial_rows(socket.assigns.backend) end)
+    socket = assign_new(socket, :next_ref, fn -> length(socket.assigns.rows) end)
 
-    {:ok, assign_new(socket, :next_ref, fn -> length(socket.assigns.rows) end)}
+    {:ok,
+     assign_new(socket, :default_read_cluster, fn ->
+       input_value(socket.assigns.form, :default_read_cluster) || ""
+     end)}
   end
 
   @impl true
+  def handle_event("sync", %{"backend" => %{"config" => config}}, socket) when is_map(config) do
+    rows =
+      Enum.map(socket.assigns.rows, fn {ref, label, url} ->
+        {
+          ref,
+          Map.get(config, "read_cluster_label_#{ref}", label),
+          Map.get(config, "read_cluster_url_#{ref}", url)
+        }
+      end)
+
+    {:noreply,
+     assign(socket,
+       rows: rows,
+       default_read_cluster:
+         Map.get(config, "default_read_cluster", socket.assigns.default_read_cluster)
+     )}
+  end
+
+  def handle_event("sync", _params, socket) do
+    Logger.warning("Unexpected sync payload shape in ReadClusterUrlsComponent",
+      backend_id: socket.assigns.backend && socket.assigns.backend.id
+    )
+
+    {:noreply, socket}
+  end
+
   def handle_event("add_row", _params, socket) do
     %{next_ref: ref, rows: rows} = socket.assigns
 
@@ -54,12 +86,18 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
             {text_input(@form, "read_cluster_label_#{row_ref}",
               value: row_label,
               placeholder: "caller label",
-              class: "form-control"
+              class: "form-control",
+              phx_change: "sync",
+              phx_target: @myself,
+              phx_debounce: "blur"
             )}
             {text_input(@form, "read_cluster_url_#{row_ref}",
               value: row_url,
               placeholder: "https://read-cluster:8443",
-              class: "form-control"
+              class: "form-control",
+              phx_change: "sync",
+              phx_target: @myself,
+              phx_debounce: "blur"
             )}
             <button type="button" class="btn btn-outline-danger" phx-click="remove_row" phx-value-ref={row_ref} phx-target={@myself}>
               <i class="fas fa-minus"></i>
@@ -74,7 +112,14 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
 
       <div class="form-group">
         {label(@form, :default_read_cluster, "Default Read Cluster (Optional)")}
-        {text_input(@form, :default_read_cluster, class: "form-control", placeholder: "caller label")}
+        {text_input(@form, :default_read_cluster,
+          value: @default_read_cluster,
+          class: "form-control",
+          placeholder: "caller label",
+          phx_change: "sync",
+          phx_target: @myself,
+          phx_debounce: "blur"
+        )}
         <small class="form-text text-muted">
           The caller label whose cluster absorbs unrecognized or absent callers. Must match a label above.
         </small>
