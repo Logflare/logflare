@@ -22,6 +22,13 @@ defmodule Logflare.TelemetryTest do
   @drop_stale_metric_name [:logflare, :logs, :ingest_logs, :drop_stale]
   @drop_stale_metric_string "logflare.logs.ingest_logs.drop_stale"
 
+  @requeue_deduplicated_metric_name [
+    :logflare,
+    :ingest_event_queue,
+    :requeue_deduplicated,
+    :count
+  ]
+
   describe "metrics/0" do
     test "returns only well-formed Telemetry.Metrics definitions" do
       metrics = Telemetry.metrics()
@@ -58,6 +65,14 @@ defmodule Logflare.TelemetryTest do
           ] do
         assert expected in names, "expected #{inspect(expected)} to be a defined metric"
       end
+    end
+
+    test "defines retry deduplication as a low-cardinality event count" do
+      [metric] = requeue_deduplicated_metrics()
+
+      assert metric.event_name == [:logflare, :ingest_event_queue, :requeue_deduplicated]
+      assert metric.measurement == :count
+      assert metric.tags == [:backend_type]
     end
 
     test "defines ClickHouse batch distribution and throughput metrics" do
@@ -422,5 +437,9 @@ defmodule Logflare.TelemetryTest do
 
   defp drop_stale_metrics do
     Enum.filter(Telemetry.metrics(), &(&1.name == @drop_stale_metric_name))
+  end
+
+  defp requeue_deduplicated_metrics do
+    Enum.filter(Telemetry.metrics(), &(&1.name == @requeue_deduplicated_metric_name))
   end
 end
