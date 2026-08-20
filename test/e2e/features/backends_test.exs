@@ -57,6 +57,59 @@ defmodule E2e.Features.BackendsTest do
       |> assert_has("#read-cluster-row-0 input[value='reporting']")
     end
 
+    test "typing into a read cluster field does not sync to the server until blurred", %{
+      backend: backend,
+      conn: conn
+    } do
+      session = visit(conn, ~p"/backends/#{backend.id}/edit")
+
+      unwrap(session, fn %{frame_id: frame_id} ->
+        {:ok, _} = Frame.fill(frame_id, selector: url_selector(0), value: "", timeout: 5_000)
+
+        {:ok, _} =
+          Frame.evaluate(frame_id,
+            expression: """
+            (() => {
+              window.__sentFrames = [];
+              const originalSend = WebSocket.prototype.send;
+              WebSocket.prototype.send = function (data) {
+                window.__sentFrames.push(data);
+                return originalSend.apply(this, arguments);
+              };
+              return true;
+            })()
+            """,
+            timeout: 5_000
+          )
+
+        {:ok, _} =
+          Frame.type(frame_id,
+            selector: url_selector(0),
+            text: "https://reader-b.example.com:8443",
+            delay: 10,
+            timeout: 5_000
+          )
+
+        {:ok, sent_before_blur} = sent_sync_frame_count(frame_id)
+        assert sent_before_blur == 0
+
+        {:ok, _} = Frame.blur(frame_id, selector: url_selector(0), timeout: 5_000)
+
+        {:ok, _} =
+          Frame.wait_for_function(frame_id,
+            expression:
+              "() => window.__sentFrames.some((f) => typeof f === 'string' && f.includes('\"sync\"'))",
+            is_function: true,
+            timeout: 5_000
+          )
+
+        {:ok, sent_after_blur} = sent_sync_frame_count(frame_id)
+        assert sent_after_blur == 1
+
+        assert {:ok, "https://reader-b.example.com:8443"} = input_value(frame_id, url_selector(0))
+      end)
+    end
+
     test "adding a row preserves unsaved cluster and default edits", %{
       backend: backend,
       conn: conn
@@ -217,6 +270,14 @@ defmodule E2e.Features.BackendsTest do
 
       assert config.default_read_cluster == "gamma-edited"
     end
+  end
+
+  defp sent_sync_frame_count(frame_id) do
+    Frame.evaluate(frame_id,
+      expression:
+        "window.__sentFrames.filter((f) => typeof f === 'string' && f.includes('\"sync\"')).length",
+      timeout: 5_000
+    )
   end
 
   defp input_value(frame_id, ref) when is_integer(ref) do

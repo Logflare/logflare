@@ -80,14 +80,16 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
               placeholder: "caller label",
               class: "form-control",
               phx_change: "sync",
-              phx_target: @myself
+              phx_target: @myself,
+              phx_debounce: "blur"
             )}
             {text_input(@form, "read_cluster_url_#{row_ref}",
               value: row_url,
               placeholder: "https://read-cluster:8443",
               class: "form-control",
               phx_change: "sync",
-              phx_target: @myself
+              phx_target: @myself,
+              phx_debounce: "blur"
             )}
             <button type="button" class="btn btn-outline-danger" phx-click="remove_row" phx-value-ref={row_ref} phx-target={@myself}>
               <i class="fas fa-minus"></i>
@@ -107,7 +109,8 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
           class: "form-control",
           placeholder: "caller label",
           phx_change: "sync",
-          phx_target: @myself
+          phx_target: @myself,
+          phx_debounce: "blur"
         )}
         <small class="form-text text-muted">
           The caller label whose cluster absorbs unrecognized or absent callers. Must match a label above.
