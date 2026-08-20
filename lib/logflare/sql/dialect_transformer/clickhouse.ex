@@ -55,9 +55,12 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   defp apply_limit_to_statements(_statements, _query, _max_rows),
     do: {:error, "Expected one ClickHouse query"}
 
+  # Set operations need an outer query so ClickHouse applies and parses the cap
+  # against the completed result instead of a UNION/INTERSECT/EXCEPT branch.
   # LIMIT BY is per group, while negative, fractional, and arbitrary expressions
   # do not have ordinary row-count semantics. Cap their completed result from an
   # outer query instead of comparing the original expression numerically.
+  defp requires_outer_limit?(%{"body" => %{"SetOperation" => _operation}}), do: true
   defp requires_outer_limit?(%{"limit_by" => [_ | _]}), do: true
   defp requires_outer_limit?(%{"limit" => nil}), do: false
 
