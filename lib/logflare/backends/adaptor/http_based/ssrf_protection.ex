@@ -29,13 +29,15 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtection do
   end
 
   @spec host_header(URI.t()) :: String.t()
-  defp host_header(%URI{authority: authority, userinfo: userinfo}) when is_binary(authority) do
-    # URI.host omits IPv6 brackets and the explicit port, so preserve the URI authority while
-    # removing userinfo, which must not be included in the Host header.
-    if userinfo do
-      String.replace_prefix(authority, "#{userinfo}@", "")
+  defp host_header(%URI{host: host, port: port, scheme: scheme})
+       when is_binary(host) and is_binary(scheme) do
+    # URI.host stores IPv6 without brackets and excludes the port, so add both when required.
+    host = if String.contains?(host, ":"), do: "[#{host}]", else: host
+
+    if is_integer(port) and port != URI.default_port(scheme) do
+      "#{host}:#{port}"
     else
-      authority
+      host
     end
   end
 end
