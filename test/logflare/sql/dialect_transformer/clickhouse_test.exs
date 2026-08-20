@@ -177,14 +177,25 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
       assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
     end
 
-    test "hoists ordering through an unmodified wildcard projection" do
+    test "keeps wildcard ordering in its original scope" do
       query =
         "SELECT * FROM numbers(5) UNION ALL SELECT * FROM numbers(5) ORDER BY number DESC LIMIT 3"
 
-      expected =
-        "SELECT * FROM (SELECT * FROM numbers(5) UNION ALL SELECT * FROM numbers(5)) ORDER BY number DESC LIMIT least(3, 2)"
+      expected = "SELECT * FROM (#{query}) LIMIT 2"
 
       assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+    end
+
+    test "preserves wildcard modifiers that reference a right-branch alias" do
+      base_query =
+        "SELECT * FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5)"
+
+      for modifier <- ["ORDER BY value DESC LIMIT 3", "LIMIT 1 BY value"] do
+        query = "#{base_query} #{modifier}"
+        expected = "SELECT * FROM (#{query}) LIMIT 2"
+
+        assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+      end
     end
 
     test "caps negative and fractional set-operation limits after global evaluation" do

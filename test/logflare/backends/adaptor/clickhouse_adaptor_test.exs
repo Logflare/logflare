@@ -1703,6 +1703,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Enum.all?(rows, &(&1["value"] in 0..4))
     end
 
+    test "preserves endpoint UNION wildcard modifiers in branch scope", %{backend: backend} do
+      base_query =
+        "SELECT * FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5)"
+
+      for modifier <- ["ORDER BY value DESC LIMIT 3", "LIMIT 1 BY value"] do
+        query = "#{base_query} #{modifier}"
+        expected_sql = "SELECT * FROM (#{query}) LIMIT 2"
+        rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+        assert Enum.all?(rows, &(&1["number"] in 0..4))
+      end
+    end
+
     test "caps endpoint UNIONs after evaluating complex global limits", %{backend: backend} do
       for {existing_limit, expected_numbers} <- [{"-5", [15, 16, 17]}, {"0.5", [0, 1, 2]}] do
         query =

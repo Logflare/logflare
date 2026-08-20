@@ -133,8 +133,8 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
          } = query_ast
        ) do
     case set_operation_output_names(query_ast["body"]) do
-      {:ok, output_names, wildcard?} ->
-        Enum.all?(order_exprs, &exposed_order_identifier?(&1, output_names, wildcard?))
+      {:ok, output_names} ->
+        Enum.all?(order_exprs, &exposed_order_identifier?(&1, output_names))
 
       :error ->
         false
@@ -148,8 +148,8 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   defp safe_to_hoist_limit_by?(%{"limit_by" => limit_by} = query_ast)
        when is_list(limit_by) do
     case set_operation_output_names(query_ast["body"]) do
-      {:ok, output_names, wildcard?} ->
-        Enum.all?(limit_by, &exposed_result_expression?(&1, output_names, wildcard?))
+      {:ok, output_names} ->
+        Enum.all?(limit_by, &exposed_result_expression?(&1, output_names))
 
       :error ->
         false
@@ -158,48 +158,31 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
 
   defp safe_to_hoist_limit_by?(_query_ast), do: false
 
-  defp exposed_result_expression?(
-         %{"Identifier" => identifier},
-         output_names,
-         wildcard?
-       ) do
-    wildcard? or MapSet.member?(output_names, identifier_key(identifier))
+  defp exposed_result_expression?(%{"Identifier" => identifier}, output_names) do
+    MapSet.member?(output_names, identifier_key(identifier))
   end
 
   # Qualified names lose their table scope above the set result, while nested
   # queries can refer to CTEs or branch-local tables that are no longer visible.
-  defp exposed_result_expression?(
-         %{"CompoundIdentifier" => _identifiers},
-         _output_names,
-         _wildcard?
-       ),
-       do: false
-
-  defp exposed_result_expression?(%{"Query" => _query}, _output_names, _wildcard?),
+  defp exposed_result_expression?(%{"CompoundIdentifier" => _identifiers}, _output_names),
     do: false
 
-  defp exposed_result_expression?(%{"Subquery" => _query}, _output_names, _wildcard?),
-    do: false
+  defp exposed_result_expression?(%{"Query" => _query}, _output_names), do: false
+  defp exposed_result_expression?(%{"Subquery" => _query}, _output_names), do: false
+  defp exposed_result_expression?(%{"Exists" => _query}, _output_names), do: false
+  defp exposed_result_expression?(%{"InSubquery" => _query}, _output_names), do: false
 
-  defp exposed_result_expression?(%{"Exists" => _query}, _output_names, _wildcard?),
-    do: false
-
-  defp exposed_result_expression?(%{"InSubquery" => _query}, _output_names, _wildcard?),
-    do: false
-
-  defp exposed_result_expression?(expression, output_names, wildcard?)
-       when is_list(expression) do
-    Enum.all?(expression, &exposed_result_expression?(&1, output_names, wildcard?))
+  defp exposed_result_expression?(expression, output_names) when is_list(expression) do
+    Enum.all?(expression, &exposed_result_expression?(&1, output_names))
   end
 
-  defp exposed_result_expression?(expression, output_names, wildcard?)
-       when is_map(expression) do
+  defp exposed_result_expression?(expression, output_names) when is_map(expression) do
     Enum.all?(expression, fn {_key, value} ->
-      exposed_result_expression?(value, output_names, wildcard?)
+      exposed_result_expression?(value, output_names)
     end)
   end
 
-  defp exposed_result_expression?(_expression, _output_names, _wildcard?), do: true
+  defp exposed_result_expression?(_expression, _output_names), do: true
 
   defp contains_nested_query?(%{"Query" => _query}), do: true
   defp contains_nested_query?(%{"Subquery" => _query}), do: true
@@ -221,44 +204,33 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
     do: set_operation_output_names(left)
 
   defp set_operation_output_names(%{"Select" => %{"projection" => projection}}) do
-    {output_names, wildcard?} =
-      Enum.reduce(projection, {MapSet.new(), false}, fn
-        %{"ExprWithAlias" => %{"alias" => identifier}}, {output_names, wildcard?} ->
-          {MapSet.put(output_names, identifier_key(identifier)), wildcard?}
+    # A wildcard's expanded names depend on the source schema and cannot be
+    # proven from the parser AST. Keep only explicit output names.
+    output_names =
+      Enum.reduce(projection, MapSet.new(), fn
+        %{"ExprWithAlias" => %{"alias" => identifier}}, output_names ->
+          MapSet.put(output_names, identifier_key(identifier))
 
-        %{"UnnamedExpr" => %{"Identifier" => identifier}}, {output_names, wildcard?} ->
-          {MapSet.put(output_names, identifier_key(identifier)), wildcard?}
+        %{"UnnamedExpr" => %{"Identifier" => identifier}}, output_names ->
+          MapSet.put(output_names, identifier_key(identifier))
 
-        %{"Wildcard" => wildcard}, {output_names, wildcard?} ->
-          {output_names, wildcard? or plain_wildcard?(wildcard)}
-
-        _projection, output ->
-          output
+        _projection, output_names ->
+          output_names
       end)
 
-    {:ok, output_names, wildcard?}
+    {:ok, output_names}
   end
 
   defp set_operation_output_names(_body), do: :error
 
-  defp exposed_order_identifier?(
-         %{"expr" => %{"Identifier" => identifier}},
-         output_names,
-         wildcard?
-       ) do
-    wildcard? or MapSet.member?(output_names, identifier_key(identifier))
+  defp exposed_order_identifier?(%{"expr" => %{"Identifier" => identifier}}, output_names) do
+    MapSet.member?(output_names, identifier_key(identifier))
   end
 
-  defp exposed_order_identifier?(_order_expr, _output_names, _wildcard?), do: false
+  defp exposed_order_identifier?(_order_expr, _output_names), do: false
 
   defp identifier_key(%{"quote_style" => quote_style, "value" => value}),
     do: {quote_style, value}
-
-  defp plain_wildcard?(wildcard) do
-    wildcard
-    |> Map.delete("wildcard_token")
-    |> Enum.all?(fn {_option, value} -> is_nil(value) end)
-  end
 
   defp clear_query_modifier(query_ast, "limit_by"), do: Map.put(query_ast, "limit_by", [])
   defp clear_query_modifier(query_ast, key), do: Map.put(query_ast, key, nil)
