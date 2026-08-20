@@ -1578,23 +1578,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Enum.all?(rows, &(&1["total"] == 5))
     end
 
-    test "limits endpoint CTE and UNION results", %{backend: backend} do
-      query = """
-      WITH query_rows AS (SELECT number FROM numbers(20))
-      SELECT number FROM query_rows
-      UNION ALL
-      SELECT number + 20 AS number FROM query_rows
-      ORDER BY number
-      """
+    test "wraps endpoint CTE and UNION results before adding the limit", %{backend: backend} do
+      query =
+        "WITH query_rows AS (SELECT number FROM numbers(20)) SELECT number FROM query_rows UNION ALL SELECT number + 20 AS number FROM query_rows ORDER BY number"
 
-      assert {:ok, %QueryResult{rows: rows}} =
-               ClickHouseAdaptor.execute_query(
-                 backend,
-                 endpoint_query_args(query, 10),
-                 []
-               )
-
-      assert Enum.map(rows, & &1["number"]) == Enum.to_list(0..9)
+      assert_endpoint_query(
+        backend,
+        query,
+        10,
+        "SELECT * FROM (#{query}) LIMIT 10",
+        Enum.to_list(0..9)
+      )
     end
 
     test "limits parameterized endpoint queries", %{backend: backend} do

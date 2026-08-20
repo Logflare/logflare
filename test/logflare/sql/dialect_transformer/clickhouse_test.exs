@@ -42,6 +42,13 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
                ClickHouse.apply_limit("SELECT number FROM numbers(100) LIMIT 50", 10)
     end
 
+    test "wraps set operations before adding a global limit" do
+      query = "SELECT number FROM numbers(5) UNION ALL SELECT number + 5 FROM numbers(5)"
+      expected = "SELECT * FROM (#{query}) LIMIT 3"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+    end
+
     test "adds a global limit after LIMIT BY" do
       query = "SELECT number FROM numbers(100) LIMIT 1 BY number"
 
