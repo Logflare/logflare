@@ -111,11 +111,18 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   end
 
   defp set_operation_modifier_keys(query_ast) do
-    if safe_to_hoist_order_by?(query_ast) do
+    if safe_to_hoist_result_modifiers?(query_ast) do
       @set_operation_result_modifiers ++ @terminal_modifiers
     else
       @terminal_modifiers
     end
+  end
+
+  defp safe_to_hoist_result_modifiers?(query_ast) do
+    safe_to_hoist_order_by?(query_ast) and
+      safe_to_hoist_limit_by?(query_ast) and
+      not contains_nested_query?(query_ast["limit"]) and
+      not contains_nested_query?(query_ast["offset"])
   end
 
   defp safe_to_hoist_order_by?(%{"order_by" => nil}), do: true
@@ -135,6 +142,77 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   end
 
   defp safe_to_hoist_order_by?(_query_ast), do: false
+
+  defp safe_to_hoist_limit_by?(%{"limit_by" => []}), do: true
+
+  defp safe_to_hoist_limit_by?(%{"limit_by" => limit_by} = query_ast)
+       when is_list(limit_by) do
+    case set_operation_output_names(query_ast["body"]) do
+      {:ok, output_names, wildcard?} ->
+        Enum.all?(limit_by, &exposed_result_expression?(&1, output_names, wildcard?))
+
+      :error ->
+        false
+    end
+  end
+
+  defp safe_to_hoist_limit_by?(_query_ast), do: false
+
+  defp exposed_result_expression?(
+         %{"Identifier" => identifier},
+         output_names,
+         wildcard?
+       ) do
+    wildcard? or MapSet.member?(output_names, identifier_key(identifier))
+  end
+
+  # Qualified names lose their table scope above the set result, while nested
+  # queries can refer to CTEs or branch-local tables that are no longer visible.
+  defp exposed_result_expression?(
+         %{"CompoundIdentifier" => _identifiers},
+         _output_names,
+         _wildcard?
+       ),
+       do: false
+
+  defp exposed_result_expression?(%{"Query" => _query}, _output_names, _wildcard?),
+    do: false
+
+  defp exposed_result_expression?(%{"Subquery" => _query}, _output_names, _wildcard?),
+    do: false
+
+  defp exposed_result_expression?(%{"Exists" => _query}, _output_names, _wildcard?),
+    do: false
+
+  defp exposed_result_expression?(%{"InSubquery" => _query}, _output_names, _wildcard?),
+    do: false
+
+  defp exposed_result_expression?(expression, output_names, wildcard?)
+       when is_list(expression) do
+    Enum.all?(expression, &exposed_result_expression?(&1, output_names, wildcard?))
+  end
+
+  defp exposed_result_expression?(expression, output_names, wildcard?)
+       when is_map(expression) do
+    Enum.all?(expression, fn {_key, value} ->
+      exposed_result_expression?(value, output_names, wildcard?)
+    end)
+  end
+
+  defp exposed_result_expression?(_expression, _output_names, _wildcard?), do: true
+
+  defp contains_nested_query?(%{"Query" => _query}), do: true
+  defp contains_nested_query?(%{"Subquery" => _query}), do: true
+  defp contains_nested_query?(%{"Exists" => _query}), do: true
+  defp contains_nested_query?(%{"InSubquery" => _query}), do: true
+
+  defp contains_nested_query?(value) when is_list(value),
+    do: Enum.any?(value, &contains_nested_query?/1)
+
+  defp contains_nested_query?(value) when is_map(value),
+    do: Enum.any?(value, fn {_key, child} -> contains_nested_query?(child) end)
+
+  defp contains_nested_query?(_value), do: false
 
   defp set_operation_output_names(%{"Query" => query_ast}),
     do: set_operation_output_names(query_ast["body"])

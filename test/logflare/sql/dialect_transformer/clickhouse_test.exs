@@ -101,6 +101,42 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
       assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
     end
 
+    test "preserves coupled modifiers when LIMIT BY references an unexposed column" do
+      query =
+        "SELECT number AS value FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5) ORDER BY value DESC LIMIT 1 BY number"
+
+      expected = "SELECT * FROM (#{query}) LIMIT 2"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+    end
+
+    test "keeps a CTE-dependent set-operation limit in scope" do
+      query =
+        "WITH cap AS (SELECT 3 AS n) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT (SELECT n FROM cap)"
+
+      expected = "SELECT * FROM (#{query}) LIMIT 2"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+    end
+
+    test "keeps a CTE-dependent set-operation offset in scope" do
+      query =
+        "WITH offset_rows AS (SELECT 2 AS n) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT 3 OFFSET (SELECT n FROM offset_rows)"
+
+      expected = "SELECT * FROM (#{query}) LIMIT 2"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+    end
+
+    test "keeps a CTE-dependent set-operation LIMIT BY in scope" do
+      query =
+        "WITH groups AS (SELECT 1 AS g) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT 1 BY (SELECT g FROM groups)"
+
+      expected = "SELECT * FROM (#{query}) LIMIT 2"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+    end
+
     test "keeps set-operation SETTINGS outermost" do
       query =
         "SELECT 1 AS n UNION ALL SELECT 2 AS n LIMIT 100 SETTINGS max_threads = 1"
