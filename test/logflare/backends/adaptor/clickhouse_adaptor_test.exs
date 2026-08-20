@@ -1603,6 +1603,45 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert_endpoint_query(backend, query, 1, expected_sql, [2])
     end
 
+    test "orders a parenthesized endpoint UNION through outer SETTINGS", %{backend: backend} do
+      query =
+        "(SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number UNION ALL SELECT 5 AS number ORDER BY number DESC) SETTINGS max_threads = 1"
+
+      expected_sql =
+        "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number UNION ALL SELECT 5 AS number) ORDER BY number DESC LIMIT 2 SETTINGS max_threads = 1"
+
+      assert_endpoint_query(backend, query, 2, expected_sql, [5, 4])
+    end
+
+    test "keeps endpoint UNION FETCH ordered under the exact cap", %{backend: backend} do
+      query =
+        "SELECT 1 AS number UNION ALL SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number FETCH FIRST 1 ROWS WITH TIES"
+
+      expected_sql =
+        "SELECT * FROM (SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 1 AS number UNION ALL SELECT 2 AS number) ORDER BY number FETCH FIRST 1 ROWS WITH TIES) LIMIT 1"
+
+      assert_endpoint_query(backend, query, 1, expected_sql, [1])
+    end
+
+    test "keeps CTE-dependent endpoint UNION WITH FILL bounds in scope", %{backend: backend} do
+      query =
+        "WITH bounds AS (SELECT 5 AS max) SELECT 0 AS number UNION ALL SELECT 2 AS number ORDER BY number WITH FILL TO assumeNotNull((SELECT max FROM bounds)) STEP 1"
+
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 2"
+
+      assert_endpoint_query(backend, query, 2, expected_sql, [0, 2])
+    end
+
+    test "hoists constant endpoint UNION WITH FILL bounds", %{backend: backend} do
+      query =
+        "SELECT 0 AS number UNION ALL SELECT 2 AS number ORDER BY number WITH FILL FROM 0 TO 5 STEP 1"
+
+      expected_sql =
+        "SELECT * FROM (SELECT 0 AS number UNION ALL SELECT 2 AS number) ORDER BY number WITH FILL FROM 0 TO 5 STEP 1 LIMIT 2"
+
+      assert_endpoint_query(backend, query, 2, expected_sql, [0, 1])
+    end
+
     test "orders the completed endpoint UNION before applying the limit", %{backend: backend} do
       query = """
       SELECT number FROM numbers(100)

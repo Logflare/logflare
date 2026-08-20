@@ -71,6 +71,47 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
       assert {:ok, ^expected} = ClickHouse.apply_limit(query, 1)
     end
 
+    test "hoists modifiers through terminal-only parenthesis wrappers" do
+      for terminal <- ["SETTINGS max_threads = 1", "FORMAT JSONEachRow"] do
+        query =
+          "(SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number DESC) #{terminal}"
+
+        expected =
+          "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number) ORDER BY number DESC LIMIT 1 #{terminal}"
+
+        assert {:ok, ^expected} = ClickHouse.apply_limit(query, 1)
+      end
+    end
+
+    test "combines nested and outer SETTINGS while collapsing parentheses" do
+      query =
+        "(SELECT 1 AS n UNION ALL SELECT 2 AS n ORDER BY n SETTINGS max_threads = 1) SETTINGS optimize_read_in_order = 0"
+
+      expected =
+        "SELECT * FROM (SELECT 1 AS n UNION ALL SELECT 2 AS n) ORDER BY n LIMIT 1 SETTINGS max_threads = 1, optimize_read_in_order = 0"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 1)
+    end
+
+    test "keeps FETCH with set-operation ordering under the endpoint cap" do
+      cases = [
+        {
+          "SELECT 1 AS n UNION ALL SELECT 2 AS n ORDER BY n FETCH FIRST 1 ROWS ONLY",
+          "SELECT * FROM (SELECT * FROM (SELECT 1 AS n UNION ALL SELECT 2 AS n) ORDER BY n FETCH FIRST 1 ROWS ONLY) LIMIT 2",
+          2
+        },
+        {
+          "SELECT 1 AS n UNION ALL SELECT 1 AS n UNION ALL SELECT 2 AS n ORDER BY n FETCH FIRST 1 ROWS WITH TIES",
+          "SELECT * FROM (SELECT * FROM (SELECT 1 AS n UNION ALL SELECT 1 AS n UNION ALL SELECT 2 AS n) ORDER BY n FETCH FIRST 1 ROWS WITH TIES) LIMIT 1",
+          1
+        }
+      ]
+
+      for {query, expected, max_rows} <- cases do
+        assert {:ok, ^expected} = ClickHouse.apply_limit(query, max_rows)
+      end
+    end
+
     test "hoists a set operation's ordering onto the global limit" do
       query =
         "SELECT number FROM numbers(5) UNION ALL SELECT number + 5 FROM numbers(5) ORDER BY number DESC"
@@ -133,6 +174,25 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
         "WITH groups AS (SELECT 1 AS g) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT 1 BY (SELECT g FROM groups)"
 
       expected = "SELECT * FROM (#{query}) LIMIT 2"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+    end
+
+    test "keeps scoped WITH FILL bounds inside the set operation" do
+      query =
+        "WITH bounds AS (SELECT 5 AS max) SELECT 0 AS n UNION ALL SELECT 2 AS n ORDER BY n WITH FILL TO assumeNotNull((SELECT max FROM bounds)) STEP 1"
+
+      expected = "SELECT * FROM (#{query}) LIMIT 2"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
+    end
+
+    test "hoists constant WITH FILL bounds with set-operation ordering" do
+      query =
+        "SELECT 0 AS n UNION ALL SELECT 2 AS n ORDER BY n WITH FILL FROM 0 TO 5 STEP 1"
+
+      expected =
+        "SELECT * FROM (SELECT 0 AS n UNION ALL SELECT 2 AS n) ORDER BY n WITH FILL FROM 0 TO 5 STEP 1 LIMIT 2"
 
       assert {:ok, ^expected} = ClickHouse.apply_limit(query, 2)
     end

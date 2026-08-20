@@ -10,7 +10,7 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   alias Logflare.Sql.Parser
   alias Logflare.User
 
-  @set_operation_result_modifiers ~w(order_by limit offset limit_by)
+  @set_operation_result_modifiers ~w(order_by limit offset limit_by fetch)
   @terminal_modifiers ~w(format_clause settings)
 
   @impl true
@@ -80,17 +80,40 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
         nil
 
       nested_query ->
-        if redundant_query_wrapper?(query_ast), do: nested_query, else: query_ast
+        if collapsible_query_wrapper?(query_ast) do
+          move_terminal_modifiers(query_ast, nested_query)
+        else
+          query_ast
+        end
     end
   end
 
   defp set_operation_query(_query_ast), do: nil
 
-  defp redundant_query_wrapper?(query_ast) do
+  defp collapsible_query_wrapper?(query_ast) do
     query_ast
-    |> Map.delete("body")
+    |> Map.drop(["body" | @terminal_modifiers])
     |> Enum.all?(fn {_key, value} -> is_nil(value) or value == [] end)
   end
+
+  defp move_terminal_modifiers(query_ast, nested_query) do
+    Enum.reduce(@terminal_modifiers, nested_query, fn key, nested_query ->
+      value = merge_terminal_modifier(key, nested_query[key], query_ast[key])
+
+      if is_nil(value) or value == [],
+        do: nested_query,
+        else: Map.put(nested_query, key, value)
+    end)
+  end
+
+  defp merge_terminal_modifier("settings", nested, outer)
+       when is_list(nested) and is_list(outer),
+       do: nested ++ outer
+
+  defp merge_terminal_modifier(_key, nested, outer) when is_nil(outer) or outer == [],
+    do: nested
+
+  defp merge_terminal_modifier(_key, _nested, outer), do: outer
 
   # ClickHouse binds trailing modifiers to a set-operation branch. Move modifiers
   # onto a SELECT over the completed result when its ordering only references
@@ -122,7 +145,8 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
     safe_to_hoist_order_by?(query_ast) and
       safe_to_hoist_limit_by?(query_ast) and
       not contains_nested_query?(query_ast["limit"]) and
-      not contains_nested_query?(query_ast["offset"])
+      not contains_nested_query?(query_ast["offset"]) and
+      not contains_nested_query?(query_ast["fetch"])
   end
 
   defp safe_to_hoist_order_by?(%{"order_by" => nil}), do: true
@@ -134,7 +158,10 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
        ) do
     case set_operation_output_names(query_ast["body"]) do
       {:ok, output_names} ->
-        Enum.all?(order_exprs, &exposed_order_identifier?(&1, output_names))
+        Enum.all?(order_exprs, fn order_expr ->
+          exposed_order_identifier?(order_expr, output_names) and
+            scope_independent_expression?(order_expr["with_fill"])
+        end)
 
       :error ->
         false
@@ -183,6 +210,9 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   end
 
   defp exposed_result_expression?(_expression, _output_names), do: true
+
+  defp scope_independent_expression?(expression),
+    do: exposed_result_expression?(expression, MapSet.new())
 
   defp contains_nested_query?(%{"Query" => _query}), do: true
   defp contains_nested_query?(%{"Subquery" => _query}), do: true
@@ -235,9 +265,10 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   defp clear_query_modifier(query_ast, "limit_by"), do: Map.put(query_ast, "limit_by", [])
   defp clear_query_modifier(query_ast, key), do: Map.put(query_ast, key, nil)
 
-  # LIMIT BY is per group, while negative, fractional, and arbitrary expressions
-  # do not have ordinary row-count semantics. Cap their completed result from an
-  # outer query instead of comparing the original expression numerically.
+  # LIMIT BY, FETCH, negative, fractional, and arbitrary expressions do not have
+  # ordinary row-count semantics. Cap their completed result from an outer query
+  # instead of comparing the original expression numerically.
+  defp requires_outer_limit?(%{"fetch" => fetch}) when not is_nil(fetch), do: true
   defp requires_outer_limit?(%{"limit_by" => [_ | _]}), do: true
   defp requires_outer_limit?(%{"limit" => nil}), do: false
 
