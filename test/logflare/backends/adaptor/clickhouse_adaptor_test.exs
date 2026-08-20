@@ -1594,6 +1594,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Enum.all?(rows, &(&1["number"] in 0..19))
     end
 
+    test "wraps a parenthesized plain endpoint query before adding the limit", %{
+      backend: backend
+    } do
+      query = "(SELECT number FROM numbers(5))"
+      expected_sql = "SELECT * FROM ((SELECT number FROM numbers(5))) LIMIT 3"
+      rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..4))
+    end
+
+    test "wraps endpoint OFFSET ROWS before adding the limit", %{backend: backend} do
+      query = "SELECT number FROM numbers(10) ORDER BY number OFFSET 2 ROWS"
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 3"
+      rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+      assert Enum.all?(rows, &(&1["number"] in 2..9))
+    end
+
     test "preserves final-branch ordering in a parenthesized endpoint UNION", %{
       backend: backend
     } do

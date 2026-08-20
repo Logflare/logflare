@@ -79,7 +79,7 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   defp set_operation_query(%{"body" => %{"Query" => nested_query}} = query_ast) do
     case set_operation_query(nested_query) do
       nil ->
-        nil
+        query_ast
 
       nested_query ->
         if collapsible_query_wrapper?(query_ast) do
@@ -108,6 +108,8 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
     end)
   end
 
+  # Wrapping necessarily flattens nested SETTINGS scope. Keeping nested entries
+  # first preserves ClickHouse's effective outer-setting precedence.
   defp merge_terminal_modifier("settings", nested, outer)
        when is_list(nested) and is_list(outer),
        do: nested ++ outer
@@ -117,10 +119,15 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
 
   defp merge_terminal_modifier(_key, _nested, outer), do: outer
 
-  # LIMIT BY, FETCH, negative, fractional, and arbitrary expressions do not have
-  # ordinary row-count semantics. Cap their completed result from an outer query
-  # instead of comparing the original expression numerically.
+  # LIMIT BY, FETCH, OFFSET ROWS, negative, fractional, and arbitrary expressions
+  # do not have ordinary row-count semantics. Cap their completed result from an
+  # outer query instead of comparing the original expression numerically.
   defp requires_outer_limit?(%{"fetch" => fetch}) when not is_nil(fetch), do: true
+
+  defp requires_outer_limit?(%{"offset" => %{"rows" => rows}})
+       when rows in ["Rows", "Row"],
+       do: true
+
   defp requires_outer_limit?(%{"limit_by" => [_ | _]}), do: true
   defp requires_outer_limit?(%{"limit" => nil}), do: false
 

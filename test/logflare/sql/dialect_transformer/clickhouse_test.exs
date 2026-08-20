@@ -37,6 +37,15 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
                )
     end
 
+    test "wraps OFFSET ROWS before adding a global limit" do
+      for row_keyword <- ["ROW", "ROWS"] do
+        query = "SELECT number FROM numbers(10) ORDER BY number OFFSET 2 #{row_keyword}"
+
+        assert ClickHouse.apply_limit(query, 3) ==
+                 {:ok, "SELECT * FROM (#{query}) LIMIT 3"}
+      end
+    end
+
     test "caps a larger existing limit" do
       assert {:ok, "SELECT number FROM numbers(100) LIMIT least(50, 10)"} =
                ClickHouse.apply_limit("SELECT number FROM numbers(100) LIMIT 50", 10)
@@ -58,6 +67,13 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
     test "wraps a parenthesized set operation before adding a global limit" do
       query = "(SELECT 1 UNION ALL SELECT 2)"
       expected = "SELECT * FROM (SELECT 1 UNION ALL SELECT 2) LIMIT 3"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+    end
+
+    test "wraps a parenthesized plain query before adding a global limit" do
+      query = "(SELECT number FROM numbers(10))"
+      expected = "SELECT * FROM ((SELECT number FROM numbers(10))) LIMIT 3"
 
       assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
     end
