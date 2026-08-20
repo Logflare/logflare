@@ -1594,6 +1594,56 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Enum.all?(rows, &(&1["number"] in 0..19))
     end
 
+    test "wraps and orders a parenthesized endpoint UNION before limiting", %{backend: backend} do
+      query = "(SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number DESC)"
+
+      expected_sql =
+        "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number) ORDER BY number DESC LIMIT 1"
+
+      assert_endpoint_query(backend, query, 1, expected_sql, [2])
+    end
+
+    test "orders the completed endpoint UNION before applying the limit", %{backend: backend} do
+      query = """
+      SELECT number FROM numbers(100)
+      UNION ALL
+      SELECT number + 100 AS number FROM numbers(100)
+      ORDER BY number DESC
+      """
+
+      expected_sql =
+        "SELECT * FROM (SELECT number FROM numbers(100) UNION ALL SELECT number + 100 AS number FROM numbers(100)) ORDER BY number DESC LIMIT 5"
+
+      assert_endpoint_query(backend, query, 5, expected_sql, Enum.to_list(199..195//-1))
+    end
+
+    test "applies an endpoint UNION limit and offset to the completed result", %{backend: backend} do
+      query = """
+      SELECT number FROM numbers(10)
+      UNION ALL
+      SELECT number + 10 AS number FROM numbers(10)
+      ORDER BY number
+      LIMIT 4 OFFSET 2
+      """
+
+      expected_sql =
+        "SELECT * FROM (SELECT number FROM numbers(10) UNION ALL SELECT number + 10 AS number FROM numbers(10)) ORDER BY number LIMIT least(4, 3) OFFSET 2"
+
+      assert_endpoint_query(backend, query, 3, expected_sql, [2, 3, 4])
+    end
+
+    test "caps endpoint UNIONs after evaluating complex global limits", %{backend: backend} do
+      for {existing_limit, expected_numbers} <- [{"-5", [15, 16, 17]}, {"0.5", [0, 1, 2]}] do
+        query =
+          "SELECT number FROM numbers(10) UNION ALL SELECT number + 10 AS number FROM numbers(10) ORDER BY number LIMIT #{existing_limit}"
+
+        expected_sql =
+          "SELECT * FROM (SELECT * FROM (SELECT number FROM numbers(10) UNION ALL SELECT number + 10 AS number FROM numbers(10)) ORDER BY number LIMIT #{existing_limit}) LIMIT 3"
+
+        assert_endpoint_query(backend, query, 3, expected_sql, expected_numbers)
+      end
+    end
+
     test "limits parameterized endpoint queries", %{backend: backend} do
       args =
         endpoint_query_args(

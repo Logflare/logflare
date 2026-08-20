@@ -10,6 +10,8 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   alias Logflare.Sql.Parser
   alias Logflare.User
 
+  @set_operation_modifiers ~w(order_by limit offset format_clause)
+
   @impl true
   def quote_style, do: nil
 
@@ -32,18 +34,12 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   end
 
   defp apply_limit_to_statements(
-         [%{"Query" => query_ast} = statement],
+         [%{"Query" => _query_ast} = statement],
          _query,
          max_rows
        ) do
-    if requires_outer_limit?(query_ast) do
-      wrap_with_limit(statement, max_rows)
-    else
-      with {:ok, limit} <- build_limit(query_ast["limit"], max_rows) do
-        statement
-        |> put_in(["Query", "limit"], limit)
-        |> Parser.to_string()
-      end
+    with {:ok, statement} <- maybe_wrap_set_operation(statement) do
+      apply_limit_to_query(statement, max_rows)
     end
   end
 
@@ -55,12 +51,68 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   defp apply_limit_to_statements(_statements, _query, _max_rows),
     do: {:error, "Expected one ClickHouse query"}
 
-  # Set operations need an outer query so ClickHouse applies and parses the cap
-  # against the completed result instead of a UNION/INTERSECT/EXCEPT branch.
+  defp apply_limit_to_query(%{"Query" => query_ast} = statement, max_rows) do
+    if requires_outer_limit?(query_ast) do
+      wrap_with_limit(statement, max_rows)
+    else
+      with {:ok, limit} <- build_limit(query_ast["limit"], max_rows) do
+        statement
+        |> put_in(["Query", "limit"], limit)
+        |> Parser.to_string()
+      end
+    end
+  end
+
+  defp maybe_wrap_set_operation(%{"Query" => query_ast} = statement) do
+    case set_operation_query(query_ast) do
+      nil -> {:ok, statement}
+      query_ast -> statement |> put_in(["Query"], query_ast) |> wrap_set_operation()
+    end
+  end
+
+  defp set_operation_query(%{"body" => %{"SetOperation" => _operation}} = query_ast),
+    do: query_ast
+
+  defp set_operation_query(%{"body" => %{"Query" => nested_query}} = query_ast) do
+    case set_operation_query(nested_query) do
+      nil ->
+        nil
+
+      nested_query ->
+        if redundant_query_wrapper?(query_ast), do: nested_query, else: query_ast
+    end
+  end
+
+  defp set_operation_query(_query_ast), do: nil
+
+  defp redundant_query_wrapper?(query_ast) do
+    query_ast
+    |> Map.delete("body")
+    |> Enum.all?(fn {_key, value} -> is_nil(value) or value == [] end)
+  end
+
+  # ClickHouse binds trailing modifiers to a set-operation branch. Move modifiers
+  # onto a SELECT over the completed result so ordering and limits are global.
+  defp wrap_set_operation(%{"Query" => query_ast} = statement) do
+    modifiers = Map.take(query_ast, @set_operation_modifiers)
+
+    inner_query_ast =
+      Enum.reduce(@set_operation_modifiers, query_ast, fn key, query_ast ->
+        Map.put(query_ast, key, nil)
+      end)
+
+    statement = put_in(statement, ["Query"], inner_query_ast)
+
+    with {:ok, inner_query} <- Parser.to_string(statement),
+         {:ok, [%{"Query" => outer_query_ast} = outer_statement]} <-
+           Parser.parse(dialect(), "SELECT * FROM (#{inner_query})") do
+      {:ok, put_in(outer_statement, ["Query"], Map.merge(outer_query_ast, modifiers))}
+    end
+  end
+
   # LIMIT BY is per group, while negative, fractional, and arbitrary expressions
   # do not have ordinary row-count semantics. Cap their completed result from an
   # outer query instead of comparing the original expression numerically.
-  defp requires_outer_limit?(%{"body" => %{"SetOperation" => _operation}}), do: true
   defp requires_outer_limit?(%{"limit_by" => [_ | _]}), do: true
   defp requires_outer_limit?(%{"limit" => nil}), do: false
 

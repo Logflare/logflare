@@ -55,13 +55,62 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
       end
     end
 
-    test "preserves a set operation's stricter limit and offset inside the global cap" do
+    test "wraps a parenthesized set operation before adding a global limit" do
+      query = "(SELECT 1 UNION ALL SELECT 2)"
+      expected = "SELECT * FROM (SELECT 1 UNION ALL SELECT 2) LIMIT 3"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+    end
+
+    test "hoists ordering from a parenthesized set operation" do
+      query = "(SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number DESC)"
+
+      expected =
+        "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number) ORDER BY number DESC LIMIT 1"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 1)
+    end
+
+    test "hoists a set operation's ordering onto the global limit" do
+      query =
+        "SELECT number FROM numbers(5) UNION ALL SELECT number + 5 FROM numbers(5) ORDER BY number DESC"
+
+      expected =
+        "SELECT * FROM (SELECT number FROM numbers(5) UNION ALL SELECT number + 5 FROM numbers(5)) ORDER BY number DESC LIMIT 3"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+    end
+
+    test "applies a set operation's existing limit and offset globally" do
       query =
         "SELECT number FROM numbers(5) UNION ALL SELECT number + 5 FROM numbers(5) ORDER BY number LIMIT 4 OFFSET 2"
 
-      expected = "SELECT * FROM (#{query}) LIMIT 10"
+      expected =
+        "SELECT * FROM (SELECT number FROM numbers(5) UNION ALL SELECT number + 5 FROM numbers(5)) ORDER BY number LIMIT least(4, 3) OFFSET 2"
 
-      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 10)
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+    end
+
+    test "caps negative and fractional set-operation limits after global evaluation" do
+      for existing_limit <- ["-5", "0.5"] do
+        query =
+          "SELECT number FROM numbers(10) UNION ALL SELECT number + 10 FROM numbers(10) ORDER BY number LIMIT #{existing_limit}"
+
+        expected =
+          "SELECT * FROM (SELECT * FROM (SELECT number FROM numbers(10) UNION ALL SELECT number + 10 FROM numbers(10)) ORDER BY number LIMIT #{existing_limit}) LIMIT 3"
+
+        assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
+      end
+    end
+
+    test "keeps FORMAT outside nested set-operation limits" do
+      query =
+        "SELECT number FROM numbers(10) UNION ALL SELECT number + 10 FROM numbers(10) ORDER BY number LIMIT -5 FORMAT JSONEachRow"
+
+      expected =
+        "SELECT * FROM (SELECT * FROM (SELECT number FROM numbers(10) UNION ALL SELECT number + 10 FROM numbers(10)) ORDER BY number LIMIT -5) LIMIT 3 FORMAT JSONEachRow"
+
+      assert {:ok, ^expected} = ClickHouse.apply_limit(query, 3)
     end
 
     test "adds a global limit after LIMIT BY" do
