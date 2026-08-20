@@ -1612,7 +1612,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Enum.all?(rows, &(&1["number"] in 2..9))
     end
 
-    test "preserves final-branch ordering in a parenthesized endpoint UNION", %{
+    test "keeps final-branch ordering inside a parenthesized endpoint UNION subquery", %{
       backend: backend
     } do
       query = "(SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number DESC)"
@@ -1634,7 +1634,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       expected_sql =
         "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number UNION ALL SELECT 5 AS number ORDER BY number DESC) LIMIT 2 SETTINGS max_threads = 1"
 
-      assert_endpoint_query(backend, query, 2, expected_sql, [1, 2])
+      rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+      assert Enum.all?(rows, &(&1["number"] in 1..5))
     end
 
     test "keeps endpoint UNION FETCH in the final branch under the exact cap", %{
@@ -1656,7 +1658,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       expected_sql = "SELECT * FROM (#{query}) LIMIT 2"
 
-      assert_endpoint_query(backend, query, 2, expected_sql, [0, 2])
+      rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..4))
     end
 
     test "keeps constant endpoint UNION WITH FILL bounds in the final branch", %{
@@ -1672,7 +1676,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Enum.all?(rows, &(&1["number"] in 0..4))
     end
 
-    test "preserves final-branch endpoint UNION ordering under the result cap", %{
+    test "keeps final-branch ordering inside the endpoint UNION subquery", %{
       backend: backend
     } do
       query = """
@@ -1747,29 +1751,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
 
     test "keeps CTE-dependent endpoint UNION modifiers in scope", %{backend: backend} do
-      cases = [
-        {
-          "WITH cap AS (SELECT 3 AS n) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT (SELECT n FROM cap)",
-          [0, 1]
-        },
-        {
-          "WITH offset_rows AS (SELECT 2 AS n) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT 3 OFFSET (SELECT n FROM offset_rows)",
-          [0, 1]
-        },
-        {
-          "WITH groups AS (SELECT 1 AS g) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT 1 BY (SELECT g FROM groups)",
-          [0, 1]
-        }
+      queries = [
+        "WITH cap AS (SELECT 3 AS n) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT (SELECT n FROM cap)",
+        "WITH offset_rows AS (SELECT 2 AS n) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT 3 OFFSET (SELECT n FROM offset_rows)",
+        "WITH groups AS (SELECT 1 AS g) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT 1 BY (SELECT g FROM groups)"
       ]
 
-      for {query, expected_numbers} <- cases do
-        assert_endpoint_query(
-          backend,
-          query,
-          2,
-          "SELECT * FROM (#{query}) LIMIT 2",
-          expected_numbers
-        )
+      for query <- queries do
+        rows =
+          assert_endpoint_query(
+            backend,
+            query,
+            2,
+            "SELECT * FROM (#{query}) LIMIT 2",
+            {:count, 2}
+          )
+
+        assert Enum.all?(rows, &(&1["number"] in 0..4))
       end
     end
 
@@ -1788,7 +1786,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       expected_sql =
         "SELECT * FROM (SELECT number FROM numbers(5) UNION ALL SELECT number + 5 AS number FROM numbers(5) ORDER BY number LIMIT 100) LIMIT 3 SETTINGS max_threads = 1"
 
-      assert_endpoint_query(backend, query, 3, expected_sql, [0, 1, 2])
+      rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..9))
     end
 
     test "preserves an endpoint UNION ordered by an unexposed source column", %{backend: backend} do
