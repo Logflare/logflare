@@ -36,4 +36,27 @@ defmodule Logflare.Backends.CacheTest do
 
     assert Backends.Cache.get_backend(backend.id)
   end
+
+  test "clear_list_backends_cache/1 clears legacy and enabled source cache keys", %{
+    source: source
+  } do
+    cache_keys = [
+      {:list_backends, [[source_id: source.id]]},
+      {:list_backends, [source_id: source.id]},
+      {:list_backends, [[source_id: source.id, enabled: true]]},
+      {:list_backends, [[rules_source_id: source.id]]},
+      {:list_backends, [[rules_source_id: source.id, enabled: true]]}
+    ]
+
+    Enum.each(cache_keys, fn key ->
+      assert {:ok, true} = Cachex.put(Backends.Cache, key, {:cached, []})
+      assert {:cached, []} = Cachex.get!(Backends.Cache, key)
+    end)
+
+    assert :ok = Backends.clear_list_backends_cache(source.id)
+
+    Enum.each(cache_keys, fn key ->
+      assert is_nil(Cachex.get!(Backends.Cache, key))
+    end)
+  end
 end

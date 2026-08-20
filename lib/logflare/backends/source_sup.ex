@@ -35,11 +35,11 @@ defmodule Logflare.Backends.SourceSup do
     source = Sources.Cache.preload_rules(source)
 
     ingest_backends =
-      Backends.Cache.list_backends(source_id: source.id)
+      Backends.Cache.list_backends(source_id: source.id, enabled: true)
       |> Enum.reject(& &1.consolidated_ingest?)
 
     rules_backends =
-      Backends.Cache.list_backends(rules_source_id: source.id)
+      Backends.Cache.list_backends(rules_source_id: source.id, enabled: true)
       |> Enum.reject(& &1.consolidated_ingest?)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
@@ -125,6 +125,7 @@ defmodule Logflare.Backends.SourceSup do
   Consolidated backends are excluded.
   """
   @spec start_backend_child(Source.t(), Backend.t()) :: Supervisor.on_start_child() | :noop
+  def start_backend_child(%Source{}, %Backend{enabled: false}), do: :noop
   def start_backend_child(%Source{}, %Backend{consolidated_ingest?: true}), do: :noop
 
   def start_backend_child(%Source{} = source, %Backend{} = backend) do
@@ -152,16 +153,13 @@ defmodule Logflare.Backends.SourceSup do
 
   def stop_backend_child(%Source{} = source, backend_id) when backend_id != nil do
     via = Backends.via_source(source, __MODULE__)
-    # spec = Backend.child_spec(source, backend)
 
     found_id =
       Supervisor.which_children(via)
-      |> Enum.find_value(
-        fn {{_mod, _source_id, bid}, _pid, _type, _sup} ->
-          bid == backend_id
-        end,
-        &elem(&1, 0)
-      )
+      |> Enum.find_value(fn
+        {{_mod, _source_id, ^backend_id} = child_id, _pid, _type, _modules} -> child_id
+        _child -> nil
+      end)
 
     if found_id do
       Supervisor.terminate_child(via, found_id)

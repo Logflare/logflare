@@ -42,6 +42,26 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
         assert ConsolidatedSup.count_pipelines() == initial_count
       end)
     end
+
+    test "stops a disabled backend pipeline and does not restart it", %{backend: backend} do
+      case ConsolidatedSup.start_pipeline(backend) do
+        {:ok, _pid} -> :ok
+        {:error, {:already_started, _pid}} -> :ok
+      end
+
+      assert ConsolidatedSup.pipeline_running?(backend)
+
+      backend
+      |> Ecto.Changeset.change(enabled: false)
+      |> Repo.update!()
+
+      TestUtils.retry_assert(fn ->
+        refute ConsolidatedSup.pipeline_running?(backend)
+      end)
+
+      Process.sleep(300)
+      refute ConsolidatedSup.pipeline_running?(backend)
+    end
   end
 
   describe "ConsolidatedSupWorker orphan cleanup" do

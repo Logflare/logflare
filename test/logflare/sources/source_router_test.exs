@@ -1,11 +1,13 @@
 defmodule Logflare.Sources.SourceRouterTest do
   use Logflare.DataCase
 
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSup
   alias Logflare.LogEvent
   alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules.Rule
+  alias Logflare.Sources.Counters
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -39,6 +41,30 @@ defmodule Logflare.Sources.SourceRouterTest do
                    | via_rule_id: rule.id
                  }
                ]
+      end
+
+      test "does not route to a disabled backend", %{user: user} do
+        backend =
+          insert(:backend,
+            user: user,
+            enabled: false,
+            type: :webhook,
+            config: %{url: "https://disabled.example.com"}
+          )
+
+        source = insert(:source, user: user)
+        rule = insert(:rule, source: source, backend: backend, lql_string: "testing")
+
+        start_supervised!({SourceSup, source})
+        {:ok, _tid} = IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+        {:ok, initial_count} = Counters.get_inserts(source.token)
+
+        log_event = build(:log_event, source: source, message: "testing123")
+        SourceRouter.route_to_sinks_and_ingest(log_event, source, unquote(router))
+
+        refute SourceSup.rule_child_started?(rule)
+        assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+        assert {:ok, ^initial_count} = Counters.get_inserts(source.token)
       end
 
       test "list_includes operator", %{user: user} do

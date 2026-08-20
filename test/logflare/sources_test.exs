@@ -529,6 +529,38 @@ defmodule Logflare.SourcesTest do
       assert Backends.source_sup_started?(source)
     end
 
+    test "shuts down sources with pending items only for a disabled destination", %{
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [source],
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"}
+        )
+
+      Backends.clear_list_backends_cache(source.id)
+
+      event = build(:log_event, source: source)
+
+      {:ok, _tid} =
+        Backends.IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      Backends.IngestEventQueue.add_to_table({source.id, backend.id}, [event])
+
+      assert Backends.IngestEventQueue.total_pending({source.id, backend.id}) == 1
+      assert Backends.source_sup_started?(source)
+
+      :ok = Sources.shutdown_idle_sources()
+
+      TestUtils.retry_assert(fn ->
+        refute Backends.source_sup_started?(source)
+      end)
+    end
+
     test "does NOT shut down sources with recent logs within 5 minutes", %{source: source} do
       event = build(:log_event, source: source, ingested_at: DateTime.utc_now())
       Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [event])
