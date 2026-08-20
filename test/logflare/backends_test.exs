@@ -1957,6 +1957,16 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.reconcile_backend_local(message)
       refute SourceSup.backend_child_started?(backend.id, source.id)
       assert GenServer.whereis(peer_child_name) == peer_child_pid
+
+      cache_key = {:get_backend, [backend.id]}
+
+      Logflare.ContextCache.Gossip.receive(
+        Backends.Cache,
+        cache_key,
+        %{backend | enabled: true}
+      )
+
+      refute Cachex.get!(Backends.Cache, cache_key)
     end
 
     test "versioned receiver orders consolidated lifecycle around cache invalidation", %{

@@ -612,6 +612,7 @@ defmodule Logflare.Backends do
         reconcile_backend(backend, list_backend_source_targets(backend_id))
 
       nil ->
+        tombstone_backend_cache(backend_id)
         ContextCache.bust_keys([{__MODULE__, backend_id}])
         ConsolidatedSup.stop_pipeline(backend_id)
         :ok
@@ -646,6 +647,8 @@ defmodule Logflare.Backends do
 
   @spec reconcile_backend(Backend.t(), [{Source.t(), boolean()}]) :: :ok
   defp reconcile_backend(%Backend{} = backend, source_targets) do
+    tombstone_backend_cache(backend.id)
+
     if backend.enabled do
       reconcile_enabled_backend(backend, source_targets)
     else
@@ -653,6 +656,11 @@ defmodule Logflare.Backends do
     end
 
     :ok
+  end
+
+  @spec tombstone_backend_cache(pos_integer()) :: :ok
+  defp tombstone_backend_cache(backend_id) do
+    ContextCache.Gossip.record_tombstones([{__MODULE__, backend_id}])
   end
 
   @spec reconcile_enabled_backend(Backend.t(), [{Source.t(), boolean()}]) :: :ok
