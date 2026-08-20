@@ -10,7 +10,6 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   alias Logflare.Sql.Parser
   alias Logflare.User
 
-  @set_operation_result_modifiers ~w(order_by limit offset limit_by fetch)
   @terminal_modifiers ~w(format_clause settings)
 
   @impl true
@@ -35,12 +34,18 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   end
 
   defp apply_limit_to_statements(
-         [%{"Query" => _query_ast} = statement],
+         [%{"Query" => query_ast} = statement],
          _query,
          max_rows
        ) do
-    with {:ok, statement} <- maybe_wrap_set_operation(statement) do
-      apply_limit_to_query(statement, max_rows)
+    case set_operation_query(query_ast) do
+      nil ->
+        apply_limit_to_query(statement, max_rows)
+
+      query_ast ->
+        statement
+        |> put_in(["Query"], query_ast)
+        |> wrap_with_limit(max_rows)
     end
   end
 
@@ -64,13 +69,10 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
     end
   end
 
-  defp maybe_wrap_set_operation(%{"Query" => query_ast} = statement) do
-    case set_operation_query(query_ast) do
-      nil -> {:ok, statement}
-      query_ast -> statement |> put_in(["Query"], query_ast) |> wrap_set_operation()
-    end
-  end
-
+  # ClickHouse binds trailing result modifiers to the final branch of an
+  # unparenthesized set operation. Preserve those modifiers in place and add the
+  # endpoint cap around the completed result. Only SETTINGS and FORMAT move to
+  # the generated outer query because they must remain terminal.
   defp set_operation_query(%{"body" => %{"SetOperation" => _operation}} = query_ast),
     do: query_ast
 
@@ -114,156 +116,6 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
     do: nested
 
   defp merge_terminal_modifier(_key, _nested, outer), do: outer
-
-  # ClickHouse binds trailing modifiers to a set-operation branch. Move modifiers
-  # onto a SELECT over the completed result when its ordering only references
-  # exposed output columns. Otherwise preserve the coupled clauses for backwards
-  # compatibility and apply only the endpoint cap outside them.
-  defp wrap_set_operation(%{"Query" => query_ast} = statement) do
-    modifier_keys = set_operation_modifier_keys(query_ast)
-    modifiers = Map.take(query_ast, modifier_keys)
-
-    inner_query_ast = Enum.reduce(modifier_keys, query_ast, &clear_query_modifier(&2, &1))
-    statement = put_in(statement, ["Query"], inner_query_ast)
-
-    with {:ok, inner_query} <- Parser.to_string(statement),
-         {:ok, [%{"Query" => outer_query_ast} = outer_statement]} <-
-           Parser.parse(dialect(), "SELECT * FROM (#{inner_query})") do
-      {:ok, put_in(outer_statement, ["Query"], Map.merge(outer_query_ast, modifiers))}
-    end
-  end
-
-  defp set_operation_modifier_keys(query_ast) do
-    if safe_to_hoist_result_modifiers?(query_ast) do
-      @set_operation_result_modifiers ++ @terminal_modifiers
-    else
-      @terminal_modifiers
-    end
-  end
-
-  defp safe_to_hoist_result_modifiers?(query_ast) do
-    safe_to_hoist_order_by?(query_ast) and
-      safe_to_hoist_limit_by?(query_ast) and
-      not contains_nested_query?(query_ast["limit"]) and
-      not contains_nested_query?(query_ast["offset"]) and
-      not contains_nested_query?(query_ast["fetch"])
-  end
-
-  defp safe_to_hoist_order_by?(%{"order_by" => nil}), do: true
-
-  defp safe_to_hoist_order_by?(
-         %{
-           "order_by" => %{"exprs" => order_exprs, "interpolate" => nil}
-         } = query_ast
-       ) do
-    case set_operation_output_names(query_ast["body"]) do
-      {:ok, output_names} ->
-        Enum.all?(order_exprs, fn order_expr ->
-          exposed_order_identifier?(order_expr, output_names) and
-            scope_independent_expression?(order_expr["with_fill"])
-        end)
-
-      :error ->
-        false
-    end
-  end
-
-  defp safe_to_hoist_order_by?(_query_ast), do: false
-
-  defp safe_to_hoist_limit_by?(%{"limit_by" => []}), do: true
-
-  defp safe_to_hoist_limit_by?(%{"limit_by" => limit_by} = query_ast)
-       when is_list(limit_by) do
-    case set_operation_output_names(query_ast["body"]) do
-      {:ok, output_names} ->
-        Enum.all?(limit_by, &exposed_result_expression?(&1, output_names))
-
-      :error ->
-        false
-    end
-  end
-
-  defp safe_to_hoist_limit_by?(_query_ast), do: false
-
-  defp exposed_result_expression?(%{"Identifier" => identifier}, output_names) do
-    MapSet.member?(output_names, identifier_key(identifier))
-  end
-
-  # Qualified names lose their table scope above the set result, while nested
-  # queries can refer to CTEs or branch-local tables that are no longer visible.
-  defp exposed_result_expression?(%{"CompoundIdentifier" => _identifiers}, _output_names),
-    do: false
-
-  defp exposed_result_expression?(%{"Query" => _query}, _output_names), do: false
-  defp exposed_result_expression?(%{"Subquery" => _query}, _output_names), do: false
-  defp exposed_result_expression?(%{"Exists" => _query}, _output_names), do: false
-  defp exposed_result_expression?(%{"InSubquery" => _query}, _output_names), do: false
-
-  defp exposed_result_expression?(expression, output_names) when is_list(expression) do
-    Enum.all?(expression, &exposed_result_expression?(&1, output_names))
-  end
-
-  defp exposed_result_expression?(expression, output_names) when is_map(expression) do
-    Enum.all?(expression, fn {_key, value} ->
-      exposed_result_expression?(value, output_names)
-    end)
-  end
-
-  defp exposed_result_expression?(_expression, _output_names), do: true
-
-  defp scope_independent_expression?(expression),
-    do: exposed_result_expression?(expression, MapSet.new())
-
-  defp contains_nested_query?(%{"Query" => _query}), do: true
-  defp contains_nested_query?(%{"Subquery" => _query}), do: true
-  defp contains_nested_query?(%{"Exists" => _query}), do: true
-  defp contains_nested_query?(%{"InSubquery" => _query}), do: true
-
-  defp contains_nested_query?(value) when is_list(value),
-    do: Enum.any?(value, &contains_nested_query?/1)
-
-  defp contains_nested_query?(value) when is_map(value),
-    do: Enum.any?(value, fn {_key, child} -> contains_nested_query?(child) end)
-
-  defp contains_nested_query?(_value), do: false
-
-  defp set_operation_output_names(%{"Query" => query_ast}),
-    do: set_operation_output_names(query_ast["body"])
-
-  defp set_operation_output_names(%{"SetOperation" => %{"left" => left}}),
-    do: set_operation_output_names(left)
-
-  defp set_operation_output_names(%{"Select" => %{"projection" => projection}}) do
-    # A wildcard's expanded names depend on the source schema and cannot be
-    # proven from the parser AST. Keep only explicit output names.
-    output_names =
-      Enum.reduce(projection, MapSet.new(), fn
-        %{"ExprWithAlias" => %{"alias" => identifier}}, output_names ->
-          MapSet.put(output_names, identifier_key(identifier))
-
-        %{"UnnamedExpr" => %{"Identifier" => identifier}}, output_names ->
-          MapSet.put(output_names, identifier_key(identifier))
-
-        _projection, output_names ->
-          output_names
-      end)
-
-    {:ok, output_names}
-  end
-
-  defp set_operation_output_names(_body), do: :error
-
-  defp exposed_order_identifier?(%{"expr" => %{"Identifier" => identifier}}, output_names) do
-    MapSet.member?(output_names, identifier_key(identifier))
-  end
-
-  defp exposed_order_identifier?(_order_expr, _output_names), do: false
-
-  defp identifier_key(%{"quote_style" => quote_style, "value" => value}),
-    do: {quote_style, value}
-
-  defp clear_query_modifier(query_ast, "limit_by"), do: Map.put(query_ast, "limit_by", [])
-  defp clear_query_modifier(query_ast, key), do: Map.put(query_ast, key, nil)
 
   # LIMIT BY, FETCH, negative, fractional, and arbitrary expressions do not have
   # ordinary row-count semantics. Cap their completed result from an outer query

@@ -1594,33 +1594,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Enum.all?(rows, &(&1["number"] in 0..19))
     end
 
-    test "wraps and orders a parenthesized endpoint UNION before limiting", %{backend: backend} do
+    test "preserves final-branch ordering in a parenthesized endpoint UNION", %{
+      backend: backend
+    } do
       query = "(SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number DESC)"
 
       expected_sql =
-        "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number) ORDER BY number DESC LIMIT 1"
+        "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number DESC) LIMIT 1"
 
-      assert_endpoint_query(backend, query, 1, expected_sql, [2])
+      rows = assert_endpoint_query(backend, query, 1, expected_sql, {:count, 1})
+
+      assert hd(rows)["number"] in [1, 2]
     end
 
-    test "orders a parenthesized endpoint UNION through outer SETTINGS", %{backend: backend} do
+    test "keeps parenthesized endpoint UNION settings outside the result cap", %{
+      backend: backend
+    } do
       query =
         "(SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number UNION ALL SELECT 5 AS number ORDER BY number DESC) SETTINGS max_threads = 1"
 
       expected_sql =
-        "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number UNION ALL SELECT 5 AS number) ORDER BY number DESC LIMIT 2 SETTINGS max_threads = 1"
+        "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number UNION ALL SELECT 5 AS number ORDER BY number DESC) LIMIT 2 SETTINGS max_threads = 1"
 
-      assert_endpoint_query(backend, query, 2, expected_sql, [5, 4])
+      assert_endpoint_query(backend, query, 2, expected_sql, [1, 2])
     end
 
-    test "keeps endpoint UNION FETCH ordered under the exact cap", %{backend: backend} do
+    test "keeps endpoint UNION FETCH in the final branch under the exact cap", %{
+      backend: backend
+    } do
       query =
         "SELECT 1 AS number UNION ALL SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number FETCH FIRST 1 ROWS WITH TIES"
 
-      expected_sql =
-        "SELECT * FROM (SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 1 AS number UNION ALL SELECT 2 AS number) ORDER BY number FETCH FIRST 1 ROWS WITH TIES) LIMIT 1"
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 1"
 
-      assert_endpoint_query(backend, query, 1, expected_sql, [1])
+      rows = assert_endpoint_query(backend, query, 1, expected_sql, {:count, 1})
+
+      assert hd(rows)["number"] in [1, 2]
     end
 
     test "keeps CTE-dependent endpoint UNION WITH FILL bounds in scope", %{backend: backend} do
@@ -1632,17 +1641,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert_endpoint_query(backend, query, 2, expected_sql, [0, 2])
     end
 
-    test "hoists constant endpoint UNION WITH FILL bounds", %{backend: backend} do
+    test "keeps constant endpoint UNION WITH FILL bounds in the final branch", %{
+      backend: backend
+    } do
       query =
         "SELECT 0 AS number UNION ALL SELECT 2 AS number ORDER BY number WITH FILL FROM 0 TO 5 STEP 1"
 
-      expected_sql =
-        "SELECT * FROM (SELECT 0 AS number UNION ALL SELECT 2 AS number) ORDER BY number WITH FILL FROM 0 TO 5 STEP 1 LIMIT 2"
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 2"
 
-      assert_endpoint_query(backend, query, 2, expected_sql, [0, 1])
+      rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..4))
     end
 
-    test "orders the completed endpoint UNION before applying the limit", %{backend: backend} do
+    test "preserves final-branch endpoint UNION ordering under the result cap", %{
+      backend: backend
+    } do
       query = """
       SELECT number FROM numbers(100)
       UNION ALL
@@ -1651,12 +1665,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       """
 
       expected_sql =
-        "SELECT * FROM (SELECT number FROM numbers(100) UNION ALL SELECT number + 100 AS number FROM numbers(100)) ORDER BY number DESC LIMIT 5"
+        "SELECT * FROM (SELECT number FROM numbers(100) UNION ALL SELECT number + 100 AS number FROM numbers(100) ORDER BY number DESC) LIMIT 5"
 
-      assert_endpoint_query(backend, query, 5, expected_sql, Enum.to_list(199..195//-1))
+      rows = assert_endpoint_query(backend, query, 5, expected_sql, {:count, 5})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..199))
     end
 
-    test "applies an endpoint UNION limit and offset to the completed result", %{backend: backend} do
+    test "preserves a final-branch limit before applying the endpoint cap", %{backend: backend} do
+      query =
+        "SELECT 100 AS number UNION ALL SELECT number AS number FROM numbers(2) ORDER BY number LIMIT 1"
+
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 10"
+      rows = assert_endpoint_query(backend, query, 10, expected_sql, {:count, 2})
+
+      assert rows |> Enum.map(& &1["number"]) |> Enum.sort() == [0, 100]
+    end
+
+    test "supports explicit global ordering around an endpoint UNION", %{backend: backend} do
+      query =
+        "SELECT * FROM (SELECT number FROM numbers(5) UNION ALL SELECT number + 5 AS number FROM numbers(5)) ORDER BY number DESC"
+
+      expected_sql = "#{query} LIMIT 3"
+
+      assert_endpoint_query(backend, query, 3, expected_sql, [9, 8, 7])
+    end
+
+    test "preserves an endpoint UNION branch limit and offset", %{backend: backend} do
       query = """
       SELECT number FROM numbers(10)
       UNION ALL
@@ -1666,18 +1701,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       """
 
       expected_sql =
-        "SELECT * FROM (SELECT number FROM numbers(10) UNION ALL SELECT number + 10 AS number FROM numbers(10)) ORDER BY number LIMIT least(4, 3) OFFSET 2"
+        "SELECT * FROM (SELECT number FROM numbers(10) UNION ALL SELECT number + 10 AS number FROM numbers(10) ORDER BY number LIMIT 4 OFFSET 2) LIMIT 3"
 
-      assert_endpoint_query(backend, query, 3, expected_sql, [2, 3, 4])
+      rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..19))
     end
 
-    test "caps a completed endpoint UNION after LIMIT BY", %{backend: backend} do
+    test "caps an endpoint UNION while preserving final-branch LIMIT BY", %{backend: backend} do
       query =
         "SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number LIMIT 1 BY number"
 
-      expected_sql =
-        "SELECT * FROM (SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number) LIMIT 1 BY number) LIMIT 3"
-
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 3"
       rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
 
       assert Enum.all?(rows, &(&1["number"] in 1..4))
@@ -1720,12 +1755,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       end
     end
 
-    test "keeps allowed endpoint UNION settings on the completed result", %{backend: backend} do
+    test "keeps an endpoint UNION branch alias used by LIMIT in scope", %{backend: backend} do
+      query = "SELECT number FROM numbers(5) UNION ALL SELECT 3 AS cap FROM numbers(5) LIMIT cap"
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 10"
+      rows = assert_endpoint_query(backend, query, 10, expected_sql, {:count, 8})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..4))
+    end
+
+    test "keeps allowed endpoint UNION settings outside branch modifiers", %{backend: backend} do
       query =
         "SELECT number FROM numbers(5) UNION ALL SELECT number + 5 AS number FROM numbers(5) ORDER BY number LIMIT 100 SETTINGS max_threads = 1"
 
       expected_sql =
-        "SELECT * FROM (SELECT number FROM numbers(5) UNION ALL SELECT number + 5 AS number FROM numbers(5)) ORDER BY number LIMIT least(100, 3) SETTINGS max_threads = 1"
+        "SELECT * FROM (SELECT number FROM numbers(5) UNION ALL SELECT number + 5 AS number FROM numbers(5) ORDER BY number LIMIT 100) LIMIT 3 SETTINGS max_threads = 1"
 
       assert_endpoint_query(backend, query, 3, expected_sql, [0, 1, 2])
     end
@@ -1755,15 +1798,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       end
     end
 
-    test "caps endpoint UNIONs after evaluating complex global limits", %{backend: backend} do
-      for {existing_limit, expected_numbers} <- [{"-5", [15, 16, 17]}, {"0.5", [0, 1, 2]}] do
+    test "caps endpoint UNIONs while preserving complex branch limits", %{backend: backend} do
+      for existing_limit <- ["-5", "0.5"] do
         query =
           "SELECT number FROM numbers(10) UNION ALL SELECT number + 10 AS number FROM numbers(10) ORDER BY number LIMIT #{existing_limit}"
 
-        expected_sql =
-          "SELECT * FROM (SELECT * FROM (SELECT number FROM numbers(10) UNION ALL SELECT number + 10 AS number FROM numbers(10)) ORDER BY number LIMIT #{existing_limit}) LIMIT 3"
+        expected_sql = "SELECT * FROM (#{query}) LIMIT 3"
 
-        assert_endpoint_query(backend, query, 3, expected_sql, expected_numbers)
+        rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+        assert Enum.all?(rows, &(&1["number"] in 0..19))
       end
     end
 
