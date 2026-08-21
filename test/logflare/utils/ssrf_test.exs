@@ -1,6 +1,5 @@
 defmodule Logflare.Utils.SSRFTest do
-  @moduledoc false
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Logflare.Utils.SSRF
 
@@ -87,6 +86,30 @@ defmodule Logflare.Utils.SSRFTest do
     end
   end
 
+  describe "safe_resolve_all/1" do
+    test "returns every public address while safe_resolve/1 keeps the first" do
+      host = "ssrf-public.test"
+      addresses = [{1, 1, 1, 1}, {8, 8, 8, 8}]
+      put_host_addresses(host, addresses)
+
+      assert {:ok, ^addresses} = SSRF.safe_resolve_all(host)
+      assert {:ok, {1, 1, 1, 1}} = SSRF.safe_resolve(host)
+    end
+
+    test "rejects the entire answer when any address is private" do
+      host = "ssrf-mixed.test"
+      put_host_addresses(host, [{1, 1, 1, 1}, {127, 0, 0, 1}])
+
+      assert {:error, reason} = SSRF.safe_resolve_all(host)
+      assert reason =~ "private or reserved"
+    end
+
+    test "returns one-element lists for literal addresses" do
+      assert {:ok, [{1, 1, 1, 1}]} = SSRF.safe_resolve_all("1.1.1.1")
+      assert {:error, _reason} = SSRF.safe_resolve_all("127.0.0.1")
+    end
+  end
+
   describe "url_host/1" do
     test "formats IPv4 as plain string" do
       assert SSRF.url_host({1, 2, 3, 4}) == "1.2.3.4"
@@ -98,5 +121,18 @@ defmodule Logflare.Utils.SSRFTest do
       assert SSRF.url_host({0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888}) ==
                "[2001:4860:4860::8888]"
     end
+  end
+
+  defp put_host_addresses(host, addresses) do
+    previous_lookup = :inet_db.res_option(:lookup)
+    hostname = String.to_charlist(host)
+
+    :ok = :inet_db.set_lookup([:file])
+    Enum.each(addresses, &(:ok = :inet_db.add_host(&1, [hostname])))
+
+    on_exit(fn ->
+      Enum.each(addresses, &(:ok = :inet_db.del_host(&1)))
+      :ok = :inet_db.set_lookup(previous_lookup)
+    end)
   end
 end

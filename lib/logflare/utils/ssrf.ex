@@ -54,19 +54,29 @@ defmodule Logflare.Utils.SSRF do
   Used to obtain an IP to connect to directly, eliminating DNS re-resolution.
   """
   @spec safe_resolve(String.t() | nil) :: {:ok, :inet.ip_address()} | {:error, String.t()}
-  def safe_resolve(host) when is_non_empty_binary(host) do
+  def safe_resolve(host) do
+    with {:ok, [addr | _]} <- safe_resolve_all(host), do: {:ok, addr}
+  end
+
+  @doc """
+  Resolves `host` and returns every IP address from the first available address
+  family, or an error if any address is private/reserved or none can be resolved.
+  """
+  @spec safe_resolve_all(String.t() | nil) ::
+          {:ok, [:inet.ip_address(), ...]} | {:error, String.t()}
+  def safe_resolve_all(host) when is_non_empty_binary(host) do
     charlist = String.to_charlist(host)
 
     with {:ok, addr} <- :inet.parse_address(charlist),
          {:private, false} <- {:private, private_ip?(addr)} do
-      {:ok, addr}
+      {:ok, [addr]}
     else
       {:error, _} -> resolve_hostname(charlist)
       {:private, true} -> {:error, @private_ip_error}
     end
   end
 
-  def safe_resolve(_), do: {:error, "invalid host"}
+  def safe_resolve_all(_), do: {:error, "invalid host"}
 
   @doc "Formats an IP address tuple as a URL host component (IPv6 wrapped in brackets)."
   @spec url_host(:inet.ip_address()) :: String.t()
@@ -85,11 +95,12 @@ defmodule Logflare.Utils.SSRF do
   end
 
   defp resolve_hostname(charlist, family) do
-    with {:ok, addrs} <- :inet.getaddrs(charlist, family),
+    with {:ok, [_ | _] = addrs} <- :inet.getaddrs(charlist, family),
          {:private, false} <- {:private, Enum.any?(addrs, &private_ip?/1)} do
-      {:ok, List.first(addrs)}
+      {:ok, addrs}
     else
       {:private, true} -> {:error, @private_ip_error}
+      {:ok, []} -> :unresolved
       {:error, _} -> :unresolved
     end
   end
