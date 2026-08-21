@@ -3,6 +3,7 @@ defmodule LogflareWeb.OpenApiTest do
 
   alias LogflareWeb.Api.AccessTokenController
   alias LogflareWeb.Api.QueryController
+  alias LogflareWeb.Api.SourceController
   alias LogflareWeb.Api.TeamController
   alias LogflareWeb.OpenApiSchemas.AccessToken
   alias LogflareWeb.OpenApiSchemas.QueryResult
@@ -38,6 +39,16 @@ defmodule LogflareWeb.OpenApiTest do
   test "Management API access token timestamps are documented as RFC3339" do
     assert %Schema{type: :string, format: :"date-time"} =
              AccessToken.schema().properties.inserted_at
+  end
+
+  test "source list format is documented as a CSV enum" do
+    assert [
+             %OpenApiSpex.Parameter{
+               name: :format,
+               in: :query,
+               schema: %Schema{type: :string, enum: ["csv"]}
+             }
+           ] = SourceController.open_api_operation(:index).parameters
   end
 
   test "Management API 400 errors are documented as JSON" do

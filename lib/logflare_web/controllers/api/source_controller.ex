@@ -2,32 +2,139 @@ defmodule LogflareWeb.Api.SourceController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  alias Logflare.Backends
+  alias Logflare.Partners.Partner
   alias Logflare.Sources
   alias Logflare.SourceSchemas
-  alias Logflare.Backends
+  alias LogflareWeb.Api.FallbackController
+  alias LogflareWeb.Api.SourceCsv
   alias LogflareWeb.OpenApi.Accepted
+  alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApi.Unauthorized
   alias LogflareWeb.OpenApi.UnprocessableEntity
-  alias LogflareWeb.OpenApiSchemas.Event
-
-  alias LogflareWeb.OpenApiSchemas.Source
-  alias LogflareWeb.OpenApiSchemas.SourceParams
   alias LogflareWeb.OpenApiSchemas
+  alias LogflareWeb.OpenApiSchemas.Event
+  alias LogflareWeb.OpenApiSchemas.Source
+  alias LogflareWeb.OpenApiSchemas.SourceIndexResponse
+  alias LogflareWeb.OpenApiSchemas.SourceParams
+  alias OpenApiSpex.MediaType
+  alias OpenApiSpex.Response
+  alias OpenApiSpex.Schema
 
   action_fallback(LogflareWeb.Api.FallbackController)
+
+  @max_source_id 9_223_372_036_854_775_807
 
   tags(["management"])
 
   operation(:index,
     summary: "List sources",
-    responses: %{200 => List.response(Source)}
+    description:
+      "Private tokens receive the full management source representation by default. Ingest-compatible credentials receive only token and name. Set format=csv for a token,name CSV list.",
+    parameters: [
+      format: [
+        in: :query,
+        description: "Response format (csv)",
+        schema: %Schema{type: :string, enum: ["csv"]}
+      ]
+    ],
+    responses: %{
+      200 => %Response{
+        description: "Source list",
+        content: %{
+          "application/json" => %MediaType{schema: SourceIndexResponse},
+          "text/csv" => %MediaType{schema: %Schema{type: :string}}
+        }
+      },
+      400 => BadRequest.response(),
+      401 => Unauthorized.response()
+    }
   )
 
-  def index(%{assigns: %{user: user}} = conn, _) do
-    sources = Sources.list_sources_by_user(user.id) |> Sources.preload_for_dashboard()
-    json(conn, sources)
+  def index(%{assigns: %{user: user}} = conn, params) do
+    case {params["format"], source_access_for_conn(conn)} do
+      {_format, :unauthorized} ->
+        FallbackController.call(conn, {:error, :unauthorized})
+
+      {format, _access} when format not in [nil, "csv"] ->
+        FallbackController.call(conn, {:error, "Unsupported format"})
+
+      {"csv", access} ->
+        conn
+        |> put_resp_header("cache-control", "no-store")
+        |> put_resp_content_type("text/csv")
+        |> send_resp(
+          200,
+          SourceCsv.encode(Sources.list_source_tokens_by_user(user.id, source_ids(access)))
+        )
+
+      {nil, :private} ->
+        render_private_json(conn, user.id)
+
+      {nil, :partner} ->
+        render_private_json(conn, user.id)
+
+      {nil, {:ingest, source_ids}} ->
+        render_minimal_json(conn, user.id, source_ids)
+    end
+  end
+
+  defp render_private_json(conn, user_id) do
+    conn
+    |> put_resp_header("cache-control", "no-store")
+    |> json(Sources.list_sources_by_user(user_id) |> Sources.preload_for_dashboard())
+  end
+
+  defp render_minimal_json(conn, user_id, source_ids) do
+    conn
+    |> put_resp_header("cache-control", "no-store")
+    |> json(Sources.list_source_tokens_by_user(user_id, source_ids))
+  end
+
+  defp source_access_for_conn(%{assigns: %{partner: %Partner{}}}), do: :partner
+
+  defp source_access_for_conn(%{assigns: %{access_token: access_token}}),
+    do: source_access_for_token(access_token)
+
+  defp source_access_for_conn(_conn), do: {:ingest, nil}
+
+  defp source_ids(:private), do: nil
+  defp source_ids(:partner), do: nil
+  defp source_ids({:ingest, source_ids}), do: source_ids
+
+  defp source_access_for_token(nil), do: {:ingest, nil}
+
+  defp source_access_for_token(%{scopes: scopes}) do
+    scopes = String.split(scopes || "")
+
+    cond do
+      "private" in scopes -> :private
+      scopes == [] or "public" in scopes or "ingest" in scopes -> {:ingest, nil}
+      true -> scoped_source_access(scopes)
+    end
+  end
+
+  defp scoped_source_access(scopes) do
+    source_ids =
+      scopes
+      |> Enum.flat_map(fn
+        "ingest:source:" <> id -> parse_source_id(id)
+        "ingest:collection:" <> id -> parse_source_id(id)
+        _ -> []
+      end)
+      |> Enum.uniq()
+
+    if source_ids == [], do: :unauthorized, else: {:ingest, source_ids}
+  end
+
+  defp parse_source_id(id) do
+    case Integer.parse(id) do
+      {source_id, ""} when source_id > 0 and source_id <= @max_source_id -> [source_id]
+      _ -> []
+    end
   end
 
   operation(:show,

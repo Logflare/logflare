@@ -154,6 +154,24 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:name]
   end
 
+  defmodule SourceListItem do
+    @properties %{
+      token: %Schema{type: :string},
+      name: %Schema{type: :string}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:token, :name]
+  end
+
+  defmodule SourceIndexResponse do
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{
+      type: :array,
+      items: %Schema{anyOf: [Source, SourceListItem]}
+    })
+  end
+
   defmodule SourceParams do
     @properties %{
       name: %Schema{type: :string},
