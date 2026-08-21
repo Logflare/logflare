@@ -824,6 +824,109 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.restart_source_sup(source)
     end
 
+    test "stop_backend_child/2 stops only the requested backend child", %{
+      source: source,
+      user: user
+    } do
+      [backend1, backend2] =
+        insert_pair(:backend,
+          user: user,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://example.com"}
+        )
+
+      Backends.clear_list_backends_cache(source.id)
+      start_supervised!({SourceSup, source})
+
+      via = Backends.via_source(source, SourceSup)
+      children = Supervisor.which_children(via)
+      backend_ids = [backend1.id, backend2.id]
+
+      assert Enum.count(children, fn
+               {{_mod, _source_id, backend_id}, _pid, _type, _modules} ->
+                 backend_id in backend_ids
+
+               _other ->
+                 false
+             end) == 2
+
+      [_first_child | remaining_children] = children
+
+      {{_mod, _source_id, requested_backend_id} = requested_child_id, requested_child_pid, _type,
+       _modules} =
+        Enum.find(remaining_children, fn
+          {{_mod, _source_id, backend_id}, _pid, _type, _modules} ->
+            backend_id in backend_ids
+
+          _other ->
+            false
+        end)
+
+      unrelated_children =
+        children
+        |> Map.new(fn {child_id, pid, _type, _modules} -> {child_id, pid} end)
+        |> Map.delete(requested_child_id)
+
+      assert :ok = SourceSup.stop_backend_child(source, requested_backend_id)
+
+      remaining_child_pids =
+        via
+        |> Supervisor.which_children()
+        |> Map.new(fn {child_id, pid, _type, _modules} -> {child_id, pid} end)
+
+      refute Process.alive?(requested_child_pid)
+      refute Map.has_key?(remaining_child_pids, requested_child_id)
+
+      for {child_id, pid} <- unrelated_children do
+        assert remaining_child_pids[child_id] == pid
+        assert Process.alive?(pid)
+      end
+    end
+
+    test "stop_backend_child/2 leaves children running when the backend is missing", %{
+      source: source,
+      user: user
+    } do
+      insert_pair(:backend,
+        user: user,
+        sources: [source],
+        type: :webhook,
+        config: %{url: "https://example.com"}
+      )
+
+      Backends.clear_list_backends_cache(source.id)
+      start_supervised!({SourceSup, source})
+
+      via = Backends.via_source(source, SourceSup)
+
+      children = Supervisor.which_children(via)
+      existing_child_pids = Map.new(children, fn {id, pid, _type, _modules} -> {id, pid} end)
+
+      missing_backend_id =
+        children
+        |> Enum.flat_map(fn
+          {{_mod, _source_id, backend_id}, _pid, _type, _modules}
+          when is_integer(backend_id) ->
+            [backend_id]
+
+          _other ->
+            []
+        end)
+        |> Enum.max()
+        |> Kernel.+(1)
+
+      assert {:error, :not_found} = SourceSup.stop_backend_child(source, missing_backend_id)
+
+      remaining_child_pids =
+        via
+        |> Supervisor.which_children()
+        |> Map.new(fn {id, pid, _type, _modules} -> {id, pid} end)
+
+      assert remaining_child_pids == existing_child_pids
+      assert Enum.all?(existing_child_pids, fn {_id, pid} -> Process.alive?(pid) end)
+    end
+
     test "rules_child_started? when SourceSup already started", %{source: source} do
       rule_backend = insert(:backend)
       rule = insert(:rule, source: source, backend: rule_backend)
