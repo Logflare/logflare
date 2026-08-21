@@ -119,6 +119,11 @@ defmodule Logflare.SourceSchemas do
   def format_schema(%SourceSchema{bigquery_schema: bq_schema}, :dot, to_merge) do
     bq_schema
     |> SchemaUtils.bq_schema_to_flat_typemap()
+    |> format_schema(:dot, to_merge)
+  end
+
+  def format_schema(schema_flat_map, :dot, to_merge) when is_map(schema_flat_map) do
+    schema_flat_map
     |> Enum.filter(fn
       {_k, :map} -> false
       _ -> true

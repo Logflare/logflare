@@ -3,6 +3,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   use LogflareWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import ExUnit.CaptureLog
 
   alias Ecto.Adapters.SQL
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
@@ -14,6 +15,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Backends.QueryError
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql.Rules
+  alias Logflare.NaturalLanguageLql.AnthropicClient
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
@@ -58,6 +60,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
     :ok
   end
 
+  defp setup_anthropic_client(_ctx) do
+    stub(AnthropicClient, :configured?, fn -> true end)
+    :ok
+  end
+
   # to simulate signed in user.
   defp setup_user_session(%{conn: conn, user: user, plan: plan}) do
     _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
@@ -79,7 +86,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   # do this for all tests
-  setup [:setup_mocks, :on_exit_kill_tasks]
+  setup [:setup_mocks, :on_exit_kill_tasks, :setup_anthropic_client]
   setup {TestUtils, :attach_wait_for_render}
 
   describe "resource switching for team_users" do
@@ -553,6 +560,106 @@ defmodule LogflareWeb.Source.SearchLVTest do
       querystring = find_querystring(html)
 
       assert querystring =~ "c:count(*) c:group_by(t::minute)"
+    end
+
+    test "accepts query and supports feedback", %{conn: conn, source: source} do
+      stub(AnthropicClient, :generate, fn prompt ->
+        assert prompt =~ "Natural-language request:\nerror"
+        anthropic_response(%{lql: "event_message:error"}, "request-inline-valid-lql")
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      render_change(view, :start_ai_search, %{"querystring" => "error"})
+      render_async(view)
+      assert_patch(view)
+
+      assert get_view_assigns(view).querystring ==
+               ~s|s:user_id@user_id ~"(?i)error" c:count(*) c:group_by(t::minute)|
+
+      refute get_view_assigns(view).tailing?
+
+      TestUtils.retry_assert(fn ->
+        assert has_element?(view, "#ai-feedback-menu > button:not([disabled])", "Send feedback")
+      end)
+
+      log = capture_log(fn -> render_click(element(view, "#ai-poor-response-feedback")) end)
+
+      assert log =~ ~s(AI Assist feedback: feedback="poor")
+      assert log =~ ~s(prompt="error")
+      assert log =~ ~s(anthropic_request_id="request-inline-valid-lql")
+      assert has_element?(view, "#ai-feedback-menu > button[disabled]", "Feedback sent.")
+
+      render_change(view, :start_search, %{"querystring" => "error"})
+      refute has_element?(view, "#ai-feedback-menu")
+    end
+
+    test "rejects AI requests over 500 characters", %{conn: conn, source: source} do
+      reject(AnthropicClient, :generate, 1)
+
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      render_change(view, :start_ai_search, %{
+        "querystring" => String.duplicate("a", 501)
+      })
+
+      assert render(view) =~ "Natural-language queries must be 500 characters or fewer."
+      refute get_view_assigns(view).ai_assist.loading?
+    end
+
+    test "displays AI model errors as flash messages", %{conn: conn, source: source} do
+      stub(AnthropicClient, :generate, fn _prompt ->
+        anthropic_response(%{kind: "error", error: "unsupported"})
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      render_change(view, :start_ai_search, %{"querystring" => "m.level:"})
+      render_async(view)
+
+      assert render(view) =~ "This request needs more detail or cannot be answered"
+    end
+
+    test "a manual search cancels an in-flight AI request", %{conn: conn, source: source} do
+      parent = self()
+
+      stub(AnthropicClient, :generate, fn _prompt ->
+        send(parent, {:ai_request_started, self()})
+        Process.sleep(:infinity)
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      render_change(view, :start_ai_search, %{"querystring" => "find errors"})
+      assert_receive {:ai_request_started, ai_pid}
+      monitor_ref = Process.monitor(ai_pid)
+
+      render_change(view, :start_ai_search, %{"querystring" => "duplicate request"})
+      refute_receive {:ai_request_started, _pid}, 50
+
+      render_change(view, :start_search, %{"querystring" => "warning"})
+      assert_patch(view)
+      assert_receive {:DOWN, ^monitor_ref, :process, ^ai_pid, {:shutdown, :cancel}}
+
+      assigns = get_view_assigns(view)
+      assert assigns.querystring =~ "warning"
+      refute assigns.ai_assist.loading?
+      refute assigns.ai_assist.feedback
+      refute assigns.ai_assist.pending_feedback
+      refute render(view) =~ "Natural-language query generation is currently unavailable."
+    end
+
+    test "hides AI assist when Anthropic is not configured", %{conn: conn, source: source} do
+      stub(AnthropicClient, :configured?, fn -> false end)
+
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      refute has_element?(view, "#ai-search-button")
     end
 
     @tag source_attrs: [default_search_lql: "s:m.level"]
@@ -1925,6 +2032,30 @@ defmodule LogflareWeb.Source.SearchLVTest do
       refute view |> element("#logs-list-container") |> render() =~ non_matching_message
     end
 
+    test "offers AI feedback when a generated search fails", %{
+      conn: conn,
+      source: source
+    } do
+      stub(AnthropicClient, :generate, fn _prompt ->
+        anthropic_response(%{lql: ~s(event_message:~"[")})
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      render_change(view, :start_ai_search, %{"querystring" => "find malformed regex"})
+      render_async(view)
+
+      TestUtils.retry_assert(fn ->
+        assigns = get_view_assigns(view)
+        refute assigns.ai_assist.loading?
+        assert assigns.ai_assist.feedback.natural_language_request == "find malformed regex"
+        refute assigns.ai_assist.pending_feedback
+        assert has_element?(view, "#ai-feedback-menu")
+      end)
+    end
+
     test "tailing inserts a late event at its timestamp position", %{
       conn: conn,
       source: source
@@ -2870,6 +3001,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       completed_at when completed_at != prev_completed_at and not is_nil(completed_at) -> true
       _ -> false
     end
+  end
+
+  defp anthropic_response(payload, request_id \\ "request-id") do
+    payload = Map.merge(%{kind: "query", lql: nil, error: nil}, payload)
+    {:ok, %{text: Jason.encode!(payload), request_id: request_id}}
   end
 
   defp get_view_assigns(view) do

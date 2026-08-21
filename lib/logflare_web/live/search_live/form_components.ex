@@ -10,6 +10,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   alias Logflare.Lql.Rules
   alias Logflare.Utils
   alias Logflare.Sources.Source
+  alias LogflareWeb.SearchLive.AiAssist
 
   attr :lql_rules, :list, required: true
   attr :chart_aggregate_enabled?, :boolean, required: true
@@ -140,6 +141,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   attr :source, Logflare.Sources.Source, required: true
   attr :last_query_completed_at, :any, default: nil
   attr :lql_schema_flat_map, :map, required: true
+  attr :ai_assist, AiAssist, default: %AiAssist{}
 
   def search_controls(assigns) do
     assigns =
@@ -158,8 +160,28 @@ defmodule LogflareWeb.SearchLive.FormComponents do
             <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
 
             <div class="tw-order-2 tw-basis-full tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
-              <div id="lql-editor-hook" phx-hook="LqlEditorWrapper" phx-update="ignore" data-querystring={@querystring} data-schema-fields-json={@lql_schema_fields_json} data-suggested-searches-json={@saved_searches_json} class="lql-editor-wrapper tw-mt-0">
-                <LiveMonacoEditor.code_editor value={@querystring} path="lql_query" class="tw-w-full tw-h-8" opts={lql_editor_opts()} />
+              <div class="lql-editor-wrapper tw-mt-0 tw-flex tw-items-center tw-bg-[#282c34]">
+                <div id="lql-editor-hook" phx-hook="LqlEditorWrapper" phx-update="ignore" data-querystring={@querystring} data-schema-fields-json={@lql_schema_fields_json} data-suggested-searches-json={@saved_searches_json} class="tw-min-w-0 tw-flex-1">
+                  <LiveMonacoEditor.code_editor value={@querystring} path="lql_query" class="tw-w-full tw-h-8" opts={lql_editor_opts()} />
+                </div>
+                <div :if={@ai_assist.enabled?} class="tw-shrink-0">
+                  <button
+                    type="button"
+                    id="ai-search-button"
+                    class="btn btn-primary tw-mx-1 tw-flex tw-h-7 tw-w-9 tw-items-center tw-justify-center tw-p-0"
+                    aria-label="AI search assistant"
+                    data-title={"AI search assistant<br>#{if(@ai_assist.macintosh?, do: "⌘ Enter", else: "Ctrl+Enter")}"}
+                    data-toggle="tooltip"
+                    data-html="true"
+                    data-placement="top"
+                    aria-busy={to_string(@ai_assist.loading?)}
+                    phx-click={Phoenix.LiveView.JS.dispatch("lql:ai-submit", to: "#lql-editor-hook")}
+                    disabled={@ai_assist.loading?}
+                  >
+                    <i :if={@ai_assist.loading?} class="spinner-border spinner-border-sm" aria-hidden="true"></i>
+                    <i :if={!@ai_assist.loading?} class="fas fa-magic" aria-hidden="true"></i>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -175,6 +197,24 @@ defmodule LogflareWeb.SearchLive.FormComponents do
           <.navigation_buttons tailing?={@tailing?} uri_params={@uri_params} />
 
           <.action_buttons source={@source} user={@user} has_results?={@has_results?} />
+
+          <div :if={@ai_assist.feedback} class="ml-auto pb-1">
+            <.button_dropdown id="ai-feedback-menu" button_class="btn btn-link tw-mr-0 -tw-mt-4 tw-p-0 tw-text-xs" placement="above" pin="right" disabled={@ai_assist.feedback.submitted?}>
+              {if(@ai_assist.feedback.submitted?, do: "Feedback sent.", else: "Send feedback")}
+              <:menu_item>
+                <.button_dropdown_menu_button
+                  id="ai-poor-response-feedback"
+                  class="tw-flex tw-w-full tw-items-center tw-gap-1 tw-border-0 tw-bg-transparent tw-p-0 tw-text-left tw-text-gray-500"
+                  phx-click={
+                    Phoenix.LiveView.JS.push("submit_ai_feedback")
+                    |> Phoenix.LiveView.JS.hide(to: "#ai-feedback-menu ul")
+                  }
+                >
+                  <i class="far fa-thumbs-down" aria-hidden="true"></i> Poor response
+                </.button_dropdown_menu_button>
+              </:menu_item>
+            </.button_dropdown>
+          </div>
         </div>
 
         <.chart_controls lql_rules={@lql_rules} chart_aggregate_enabled?={search_agg_controls_enabled?(@lql_rules)} />
@@ -213,6 +253,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
         "quickSuggestions" => true,
         "matchBrackets" => "never",
         "tabIndex" => 0,
+        "tabFocusMode" => true,
         "fontFamily" =>
           "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
         "padding" => %{"top" => 5, "bottom" => 5},
