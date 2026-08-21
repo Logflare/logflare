@@ -9,30 +9,33 @@ defmodule Logflare.Utils do
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.OauthAccessTokens.PartnerOauthAccessToken
   import Cachex.Spec
-  import Logflare.Utils.Guards, only: [is_atom_value: 1]
+  import Logflare.Utils.Guards, only: [is_atom_value: 1, is_non_empty_binary: 1]
 
   @sensitive_header_names ["authorization", "x-api-key", "Authorization", "X-API-Key"]
 
   @doc """
   Checks if a feature flag is enabled.
   If SDK key is not set, will always return false.
-  In test mode, will always return true.
 
   ### Example
     iex> flag("my-feature")
     true
   """
-  def flag(feature, identifer \\ nil) when is_binary(feature) do
+  def flag(feature, identifier \\ nil) when is_non_empty_binary(feature) do
     config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
-    env = Application.get_env(:logflare, :env)
-    overrides = Application.get_env(:logflare, :feature_flag_override, %{})
+
+    overrides =
+      Application.get_env(:logflare, :feature_flag_override) ||
+        %{}
+
+    test_env? = Application.get_env(:logflare, :env) == :test
 
     cond do
-      env == :test ->
+      test_env? ->
         true
 
       config_cat_key != nil ->
-        case identifer do
+        case identifier do
           nil ->
             ConfigCat.get_value(feature, false)
 
@@ -45,7 +48,7 @@ defmodule Logflare.Utils do
         end
 
       true ->
-        Map.get(overrides, feature, "false") == "true"
+        Map.get(overrides, feature, "false") in ["true", true]
     end
   end
 
