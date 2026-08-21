@@ -18,7 +18,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
   end
 
   describe "cast and validate" do
-    test "API key is required" do
+    test "filebeat requires url; username/password must both be set when used" do
       changeset = Adaptor.cast_and_validate_config(@subject, %{})
 
       refute changeset.valid?
@@ -28,6 +28,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
              }).valid?
 
       assert Adaptor.cast_and_validate_config(@subject, %{
+               "transport" => "filebeat",
                "url" => "http://foobarbaz.com",
                "username" => "foobarbaz",
                "password" => "foobarbaz"
@@ -36,6 +37,34 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
       refute Adaptor.cast_and_validate_config(@subject, %{
                "url" => "http://foobarbaz.com",
                "username" => "foobarbaz"
+             }).valid?
+    end
+
+    test "defaults transport to filebeat when omitted" do
+      changeset =
+        Adaptor.cast_and_validate_config(@subject, %{
+          "url" => "http://foobarbaz.com"
+        })
+
+      assert changeset.valid?
+      assert Ecto.Changeset.apply_changes(changeset).transport == "filebeat"
+    end
+
+    test "otlp transport requires endpoint" do
+      refute Adaptor.cast_and_validate_config(@subject, %{
+               "transport" => "otlp"
+             }).valid?
+
+      assert Adaptor.cast_and_validate_config(@subject, %{
+               "transport" => "otlp",
+               "endpoint" => "https://abc.ingest.us-central1.gcp.elastic.cloud:443/supabase/v1/logs"
+             }).valid?
+    end
+
+    test "rejects unknown transport" do
+      refute Adaptor.cast_and_validate_config(@subject, %{
+               "transport" => "logstash",
+               "url" => "http://foobarbaz.com"
              }).valid?
     end
   end
@@ -49,6 +78,21 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
     test "leaves config unchanged when password is not present" do
       config = %{url: "https://example.com"}
       assert ^config = @subject.redact_config(config)
+    end
+
+    test "redacts sensitive otlp headers" do
+      config = %{
+        transport: "otlp",
+        endpoint: "https://example.com/v1/logs",
+        headers: %{
+          "Authorization" => "secret",
+          "x-custom-header" => "ok"
+        }
+      }
+
+      redacted = @subject.redact_config(config)
+      assert redacted.headers["Authorization"] == "REDACTED"
+      assert redacted.headers["x-custom-header"] == "ok"
     end
   end
 
