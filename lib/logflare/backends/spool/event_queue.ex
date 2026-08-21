@@ -66,7 +66,6 @@ defmodule Logflare.Backends.Spool.EventQueue do
 
   def push_sync(events, timeout) do
     {:ok, ref} = enqueue(events, self())
-    started_at = System.monotonic_time(:millisecond)
 
     result =
       receive do
@@ -74,8 +73,6 @@ defmodule Logflare.Backends.Spool.EventQueue do
       after
         timeout -> {:error, :timeout}
       end
-
-    dbg(System.monotonic_time(:millisecond) - started_at)
 
     result
   end

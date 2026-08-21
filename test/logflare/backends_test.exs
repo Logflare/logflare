@@ -1989,9 +1989,34 @@ defmodule Logflare.BackendsTest do
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      # No spool pipeline is running in this test, so ingest_logs/4 (spoolable events
-      # block until acked — see Backends.dispatch_to_spool_producer/1) would otherwise
+      assert [chunk] = EventQueue.pop(1_000)
+      assert length(chunk.events) == 1
+    end
+
+    test "does not block when blocking_ingest is unset, even with everything else gating true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      # Nothing acks this chunk. If ingest_logs blocked here (blocking_ingest: true),
+      # this test would hang for EventQueue's default ack timeout instead of returning
+      # immediately.
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert EventQueue.count() == 1
+    end
+
+    test "blocks until acked when blocking_ingest is true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer, blocking_ingest: true)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      # No spool pipeline is running in this test, so ingest_logs/4 would otherwise
       # hang for EventQueue's default ack timeout. Simulate the pipeline: claim the
       # chunk ourselves and ack it, same as ProducerPipeline.ack/3 would on a
       # successful upload+notify.

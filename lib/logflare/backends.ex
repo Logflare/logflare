@@ -595,10 +595,13 @@ defmodule Logflare.Backends do
   Events are conditionally dispatched to backends based on whether they are registered. If they register for ingestion dispatching, events will get sent to the registered backend.
 
   For a spoolable event (gated by `allow_spooling`, the global spool mode, and
-  `source.enable_spooling` — see `spoolable?/3`), this blocks the caller until the
-  event is durably uploaded to the spool bucket *and* the consumer queue has been
-  notified, so `{:ok, count}` means durable, not just queued. Non-spooled events are
-  dispatched to their backend and this returns immediately, as before.
+  `source.enable_spooling` — see `spoolable?/3`) where `:blocking_ingest` is also
+  enabled in `:logflare, :spool` config, this blocks the caller until the event is
+  durably uploaded to the spool bucket *and* the consumer queue has been notified,
+  so `{:ok, count}` means durable, not just queued. With `:blocking_ingest` unset
+  (the default) or false, a spoolable event is queued fire-and-forget instead — same
+  latency as a non-spooled event. Non-spooled events are always dispatched to their
+  backend and this returns immediately.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
@@ -628,13 +631,26 @@ defmodule Logflare.Backends do
     end
   end
 
-  # Blocks the caller until the chunk this pushes is durable (uploaded + queue-notified)
-  # or fails — see Spool.ProducerPipeline.ack/3, which replies to `self()` here, and
+  # Gated by :blocking_ingest so this can be rolled out independently of spool mode
+  # itself: with it unset/false, ingest_logs/4 keeps its old fire-and-forget latency
+  # even while spooling is on. When true, blocks the caller until the chunk this
+  # pushes is durable (uploaded + queue-notified) or fails — see
+  # Spool.ProducerPipeline.ack/3, which replies to `self()` here, and
   # EventQueue.push_sync/2's moduledoc for why the wait timeout is a fixed internal
   # constant rather than something threaded through from here.
   @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
   defp dispatch_to_spool_producer(log_events) do
-    EventQueue.push_sync(log_events)
+    if blocking_ingest?() do
+      EventQueue.push_sync(log_events)
+    else
+      EventQueue.push(log_events)
+      :ok
+    end
+  end
+
+  @spec blocking_ingest?() :: boolean()
+  defp blocking_ingest? do
+    :logflare |> Application.get_env(:spool, []) |> Keyword.get(:blocking_ingest, false)
   end
 
   # Requires an explicit opt-in (allow_spooling), not just global mode +
