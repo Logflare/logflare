@@ -9,8 +9,9 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
   alias Broadway.Message
   alias Logflare.Backends.BufferProducer
-  alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.IngestEventQueue.LogEventPointer
+  alias Logflare.Backends.Spool.ChunkProducer
+  alias Logflare.Backends.Spool.EventQueue
+  alias Logflare.Backends.Spool.EventQueue.Chunk
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Storage
   alias Logflare.Backends.Spool.Queue
@@ -18,7 +19,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @behaviour Broadway.Acknowledger
 
   @max_batch_size 500_000
-  @default_batch_timeout 5_000
+  @default_batch_timeout 200
   @max_spool_file_size 32 * 1024 * 1024
   @early_flush_file_size 12 * 1024 * 1024
   @default_max_retries 0
@@ -27,7 +28,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @batcher_concurrency 4
   @producer_concurrency 1
   # Generous safety valve (2x total batcher capacity), not a fine-grained flow-control
-  # knob — see BufferProducer's capped_fetch_amount/2. Should never engage during
+  # knob — see ChunkProducer's in-flight cap. Should never engage during
   # healthy operation; only caps genuinely runaway backlog.
   @max_in_flight 2 * @max_batch_size * @batcher_concurrency
 
@@ -49,9 +50,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       hibernate_after: 5_000,
       spawn_opt: [fullsweep_after: 10],
       producer: [
-        module:
-          {BufferProducer,
-           [spool_producer: true, id_passing: true, max_in_flight: @max_in_flight]},
+        module: {ChunkProducer, [max_in_flight: @max_in_flight]},
         transformer: {__MODULE__, :transform, []},
         concurrency: @producer_concurrency
       ],
@@ -76,12 +75,12 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     )
   end
 
-  @spec transform(term(), keyword()) :: Message.t()
-  def transform(event, _opts) do
+  @spec transform(Chunk.t(), keyword()) :: Message.t()
+  def transform(%Chunk{} = chunk, _opts) do
     in_flight_ref = BufferProducer.get_in_flight_ref(self())
 
     %Message{
-      data: event,
+      data: chunk,
       acknowledger: {__MODULE__, :no_ack_ref, %{in_flight_ref: in_flight_ref}}
     }
   end
@@ -90,13 +89,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   def ack(_ref, successful, failed) do
     decrement_in_flight(successful ++ failed)
 
-    # The pointer was already removed from its queue at claim time
-    # (pop_pending_pointers/2 claims via :ets.take/2); ack still has to delete the
-    # event row from the generation store itself — GenerationJanitor's rotation is a
-    # failsafe for abandoned claims, not the primary cleanup path.
-    Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
-      IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
-    end)
+    Enum.each(successful, fn %{data: %Chunk{} = chunk} -> reply(chunk, :ok) end)
 
     maybe_requeue_failed(failed)
 
@@ -110,17 +103,29 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       Map.get(ack_data, :in_flight_ref)
     end)
     |> Enum.each(fn
-      {nil, _msgs} -> :ok
-      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
+      {nil, _msgs} ->
+        :ok
+
+      {ref, msgs} ->
+        event_count = Enum.reduce(msgs, 0, fn msg, acc -> acc + length(msg.data.events) end)
+        :atomics.sub(ref, 1, event_count)
     end)
   end
 
-  # Requeue failed spool writes for retry — same bounded-retry pattern as
-  # Source.BigQuery.Pipeline.maybe_requeue_failed/3. Every failed message's pointer was
-  # already removed from its queue at claim time — retriable ones are written back
-  # directly into the queue they were claimed from (see
-  # IngestEventQueue.reinsert_pointer/1); exhausted ones still need their event row
-  # deleted from the generation store, since nothing will ever ack them.
+  @spec reply(Chunk.t(), :ok | {:error, term()}) :: :ok
+  defp reply(%Chunk{caller_pid: nil}, _result), do: :ok
+
+  defp reply(%Chunk{caller_pid: pid, ref: ref}, result) do
+    send(pid, {ref, result})
+    :ok
+  end
+
+  # Every chunk in a failed batch is retried or given up on as a whole — a chunk is
+  # claimed and acked as one atomic unit (see EventQueue's moduledoc), so it's never
+  # split into "some of its events retry, some don't". Chunks that were already
+  # durably written but whose queue-notify failed hit this same path: see the
+  # {stage, {:error, _}} branch in handle_batch/4 for why that counts as a retriable
+  # failure rather than a partial success.
   defp maybe_requeue_failed([]), do: :ok
 
   defp maybe_requeue_failed(failed) do
@@ -128,32 +133,31 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
     {retriable, exhausted} =
       failed
-      |> Enum.map(fn %{data: %LogEventPointer{} = pointer} -> pointer end)
-      |> Enum.split_with(&(&1.retries < max_retries))
+      |> Enum.map(fn %{data: %Chunk{} = chunk} = message -> {chunk, failure_reason(message)} end)
+      |> Enum.split_with(fn {chunk, _reason} -> chunk.retries < max_retries end)
 
     if exhausted != [] do
       Logger.warning(
-        "spool_producer_pipeline: dropping #{length(exhausted)} events: exhausted #{max_retries} retries"
+        "spool_producer_pipeline: dropping #{length(exhausted)} chunks: exhausted #{max_retries} retries"
       )
 
-      Enum.each(exhausted, fn pointer ->
-        IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
-      end)
+      Enum.each(exhausted, fn {chunk, reason} -> reply(chunk, {:error, reason}) end)
     end
 
     requeue_retriable(retriable)
   end
 
+  defp failure_reason(%{status: {:failed, reason}}), do: reason
+  defp failure_reason(%{status: status}), do: status
+
   defp requeue_retriable([]), do: :ok
 
   defp requeue_retriable(retriable) do
     Logger.warning(
-      "spool_producer_pipeline: requeuing #{length(retriable)} failed events for retry"
+      "spool_producer_pipeline: requeuing #{length(retriable)} failed chunks for retry"
     )
 
-    Enum.each(retriable, fn pointer ->
-      IngestEventQueue.reinsert_pointer(%{pointer | retries: pointer.retries + 1})
-    end)
+    Enum.each(retriable, fn {chunk, _reason} -> EventQueue.requeue(chunk) end)
   end
 
   defp spool_max_retries do
@@ -176,9 +180,17 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         storage_mod: storage_mod,
         queue_mod: queue_mod
       }) do
+    # batch_info.size is a message count — one message is one chunk (see
+    # EventQueue's moduledoc), not one event, so it undercounts whenever a chunk
+    # holds more than one event. Every telemetry measurement below counts actual
+    # events instead, matching what dashboard_live.ex and friends expect "batch_size"
+    # to mean.
+    events = Enum.flat_map(messages, fn %{data: %Chunk{events: events}} -> events end)
+    event_count = length(events)
+
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
-      %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+      %{batch_size: event_count, batch_trigger: batch_info.trigger},
       %{backend_type: :spool_producer, batch_trigger: batch_info.trigger}
     )
 
@@ -186,14 +198,12 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     file_key = "#{partition}/#{generate_uuidv7()}.#{file_extension(format, compress)}"
 
     with {:upload, {:ok, _}} <-
-           {:upload, do_upload(format, compress, messages, bucket, file_key, storage_mod)},
+           {:upload, do_upload(format, compress, events, bucket, file_key, storage_mod)},
          {:notify, :ok} <-
-           {:notify, notify_queue(queue_mod, queue_ref, file_key, batch_info.size)} do
-      emit_batch_result(:ok, nil, batch_info.size)
+           {:notify, notify_queue(queue_mod, queue_ref, file_key, event_count)} do
+      emit_batch_result(:ok, nil, event_count)
 
-      Logger.debug("spool_producer_pipeline: wrote #{batch_info.size} events to spool",
-        key: file_key
-      )
+      Logger.debug("spool_producer_pipeline: wrote #{event_count} events to spool", key: file_key)
 
       messages
     else
@@ -204,7 +214,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         # retry (see maybe_requeue_failed/1) rather than leaving this batch
         # stuck at a file nothing will ever be notified about; the orphaned
         # file at the old key is cleaned up by the bucket's lifecycle policy.
-        emit_batch_result(:error, stage, batch_info.size)
+        emit_batch_result(:error, stage, event_count)
 
         Logger.error(
           "spool_producer_pipeline: #{stage} failed key=#{file_key} error=#{inspect(reason)}"
@@ -222,11 +232,17 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     )
   end
 
-  # Throttle state is sampled once per batch (on the first message after a
-  # reset), not once per message — the :pending sentinel marks "not yet
+  # Throttle state is sampled once per batch (on the first chunk after a
+  # reset), not once per chunk — the :pending sentinel marks "not yet
   # decided for this batch". Logflare.Backends.Spool.MemoryMonitor.throttled?/0
   # is a cheap ETS tuple-element lookup, but even that isn't worth paying on
-  # every single message when a batch can be up to @max_batch_size messages.
+  # every single chunk when a batch can accumulate many of them.
+  #
+  # `count` tracks events (not chunks) remaining before @max_batch_size. A chunk is
+  # always admitted into whichever batch it arrives at — see EventQueue's moduledoc on
+  # why a chunk is never split — so the budget check happens *after* inclusion and can
+  # go negative: a single chunk bigger than the whole remaining budget still gets
+  # admitted, and simply closes the batch immediately after itself.
   #
   # Public (not private) so the returned {initial_acc, reducer_fn} tuple can
   # be exercised directly in tests without spinning up a full Broadway pipeline.
@@ -239,28 +255,28 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     {
       {@max_batch_size, :pending},
       fn
-        _message, {1, _budget} ->
-          {:emit, {@max_batch_size, :pending}}
-
         message, {count, :pending} ->
-          budget = effective_max_file_size()
-          continue_or_emit(message_size(message), count, budget)
+          continue_or_emit(message, count, effective_max_file_size())
 
         message, {count, budget} ->
-          continue_or_emit(message_size(message), count, budget)
+          continue_or_emit(message, count, budget)
       end
     }
   end
 
-  defp message_size(%{data: %LogEventPointer{size: size}}), do: size
+  defp message_size(%{data: %Chunk{byte_size: byte_size}}), do: byte_size
+  defp message_event_count(%{data: %Chunk{events: events}}), do: length(events)
 
-  @spec continue_or_emit(non_neg_integer(), non_neg_integer(), non_neg_integer()) ::
+  @spec continue_or_emit(Message.t(), non_neg_integer(), non_neg_integer()) ::
           {:emit | :cont, {non_neg_integer(), non_neg_integer() | :pending}}
-  defp continue_or_emit(size, count, budget) do
-    if budget - size <= 0 do
+  defp continue_or_emit(message, count, budget) do
+    remaining_count = count - message_event_count(message)
+    remaining_budget = budget - message_size(message)
+
+    if remaining_count <= 0 or remaining_budget <= 0 do
       {:emit, {@max_batch_size, :pending}}
     else
-      {:cont, {count - 1, budget - size}}
+      {:cont, {remaining_count, remaining_budget}}
     end
   end
 
@@ -278,17 +294,17 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   defp file_extension(:etf, true), do: "etf.gz"
   defp file_extension(:etf, false), do: "etf"
 
-  defp do_upload(:ndjson, true, messages, bucket, file_key, storage_mod),
-    do: upload_compressed(messages, bucket, file_key, storage_mod)
+  defp do_upload(:ndjson, true, events, bucket, file_key, storage_mod),
+    do: upload_compressed(events, bucket, file_key, storage_mod)
 
-  defp do_upload(:ndjson, false, messages, bucket, file_key, storage_mod),
-    do: upload_plain(messages, bucket, file_key, storage_mod)
+  defp do_upload(:ndjson, false, events, bucket, file_key, storage_mod),
+    do: upload_plain(events, bucket, file_key, storage_mod)
 
-  defp do_upload(:etf, compress, messages, bucket, file_key, storage_mod),
-    do: upload_etf(compress, messages, bucket, file_key, storage_mod)
+  defp do_upload(:etf, compress, events, bucket, file_key, storage_mod),
+    do: upload_etf(compress, events, bucket, file_key, storage_mod)
 
-  defp upload_compressed(messages, bucket, file_key, storage_mod) do
-    body = compress_to_binary(messages)
+  defp upload_compressed(events, bucket, file_key, storage_mod) do
+    body = compress_to_binary(events)
 
     result =
       storage_mod.put(bucket, file_key, body,
@@ -299,18 +315,10 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     result
   end
 
-  defp lookup_message_event(%{data: %LogEventPointer{tid: tid, gen_event_id: gen_event_id}}) do
-    IngestEventQueue.lookup_event(tid, gen_event_id)
-  end
-
-  defp upload_plain(messages, bucket, file_key, storage_mod) do
+  defp upload_plain(events, bucket, file_key, storage_mod) do
     body =
-      Enum.flat_map(messages, fn message ->
-        case lookup_message_event(message) do
-          nil -> []
-          log_event -> [encode_line(log_event), "\n"]
-        end
-      end)
+      events
+      |> Enum.flat_map(fn log_event -> [encode_line(log_event), "\n"] end)
       |> IO.iodata_to_binary()
 
     result =
@@ -322,25 +330,17 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     result
   end
 
-  defp upload_etf(compress, messages, bucket, file_key, storage_mod) do
+  defp upload_etf(compress, events, bucket, file_key, storage_mod) do
     records =
-      Enum.flat_map(messages, fn message ->
-        case lookup_message_event(message) do
-          nil ->
-            []
-
-          log_event ->
-            [
-              %{
-                id: log_event.id,
-                source_id: log_event.source_id,
-                body: log_event.body,
-                event_type: log_event.event_type,
-                ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond),
-                via_rule_id: log_event.via_rule_id
-              }
-            ]
-        end
+      Enum.map(events, fn log_event ->
+        %{
+          id: log_event.id,
+          source_id: log_event.source_id,
+          body: log_event.body,
+          event_type: log_event.event_type,
+          ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond),
+          via_rule_id: log_event.via_rule_id
+        }
       end)
 
     body = :erlang.term_to_binary(records)
@@ -363,18 +363,15 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     )
   end
 
-  defp compress_to_binary(messages) do
+  defp compress_to_binary(events) do
     z = :zlib.open()
 
     try do
       :ok = :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
 
       chunks =
-        Enum.flat_map(messages, fn message ->
-          case lookup_message_event(message) do
-            nil -> []
-            log_event -> :zlib.deflate(z, [encode_line(log_event), "\n"], :none)
-          end
+        Enum.flat_map(events, fn log_event ->
+          :zlib.deflate(z, [encode_line(log_event), "\n"], :none)
         end)
 
       final = :zlib.deflate(z, [], :finish)

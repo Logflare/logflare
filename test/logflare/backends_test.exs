@@ -14,6 +14,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentInsertsCacher
+  alias Logflare.Backends.Spool.EventQueue
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.LogEvent
@@ -1932,67 +1933,116 @@ defmodule Logflare.BackendsTest do
         end
       end)
 
+      EventQueue.init_table()
+      drain_event_queue()
+
       {:ok, source: source}
     end
 
-    defp stub_add_to_table_observer(test_pid) do
-      stub(IngestEventQueue, :add_to_table, fn key, _batch ->
-        send(test_pid, {:add_to_table, key})
-        :ok
-      end)
+    # Chunks are claimed off the queue by whichever ChunkProducer poll runs
+    # next (see ChunkProducer), so leftovers from an earlier test could
+    # otherwise be mistaken for this test's own dispatch.
+    defp drain_event_queue do
+      case EventQueue.pop(1_000) do
+        [] -> :ok
+        _chunks -> drain_event_queue()
+      end
+    end
+
+    # ingest_logs/5's spool path pushes the chunk before it blocks on the ack, but
+    # from another process there's no signal for exactly when that push has landed.
+    defp wait_for_chunk(attempts \\ 50) do
+      case EventQueue.pop(1) do
+        [] when attempts > 0 ->
+          Process.sleep(10)
+          wait_for_chunk(attempts - 1)
+
+        chunks ->
+          chunks
+      end
     end
 
     test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert EventQueue.count() == 0
     end
 
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :disable)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert EventQueue.count() == 0
     end
 
     test "dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      assert_receive {:add_to_table, {:spool_producer, nil}}
+      assert [chunk] = EventQueue.pop(1_000)
+      assert length(chunk.events) == 1
+    end
+
+    test "does not block when blocking_ingest is unset, even with everything else gating true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      # Nothing acks this chunk. If ingest_logs blocked here (blocking_ingest: true),
+      # this test would hang for EventQueue's default ack timeout instead of returning
+      # immediately.
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert EventQueue.count() == 1
+    end
+
+    test "blocks until acked when blocking_ingest is true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer, blocking_ingest: true)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      # No spool pipeline is running in this test, so ingest_logs/4 would otherwise
+      # hang for EventQueue's default ack timeout. Simulate the pipeline: claim the
+      # chunk ourselves and ack it, same as ProducerPipeline.ack/3 would on a
+      # successful upload+notify.
+      task = Task.async(fn -> Backends.ingest_logs(params, source, nil, true) end)
+
+      assert [chunk] = wait_for_chunk()
+      assert length(chunk.events) == 1
+      send(chunk.caller_pid, {chunk.ref, :ok})
+
+      assert {:ok, 1} = Task.await(task)
     end
 
     test "does not dispatch to the spool producer when allow_spooling is omitted, even if the global mode and source.enable_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert EventQueue.count() == 0
     end
 
     test "does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       le = build(:log_event, source: source)
@@ -2000,7 +2050,7 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert EventQueue.count() == 0
     end
   end
 end
