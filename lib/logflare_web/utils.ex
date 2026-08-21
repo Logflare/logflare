@@ -47,12 +47,10 @@ defmodule LogflareWeb.Utils do
       "No errors"
 
   """
+  @spec stringify_changeset_errors(Ecto.Changeset.t()) :: String.t()
   def stringify_changeset_errors(%Ecto.Changeset{} = changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Enum.reduce(opts, msg, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", _to_string(value))
-      end)
-    end)
+    changeset
+    |> changeset_errors()
     |> Enum.reduce([], fn {k, v}, acc ->
       ["#{k}: #{Enum.join(v, " & ")}" | acc]
     end)
@@ -60,20 +58,25 @@ defmodule LogflareWeb.Utils do
     |> Enum.join("\n")
   end
 
+  @spec stringify_changeset_errors(Ecto.Changeset.t(), String.t()) :: String.t()
   def stringify_changeset_errors(%Ecto.Changeset{} = changeset, default_message) do
     changeset
-    |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
-    |> Enum.map(fn {field, errors} -> "#{field}: #{_to_string(errors)}" end)
-    |> Enum.join("; ")
+    |> changeset_errors()
+    |> Enum.map_join("; ", fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
     |> case do
       "" -> default_message
       errors -> "#{default_message}: #{errors}"
     end
   end
 
-  defp _to_string(val) when is_list(val), do: Enum.join(val, ", ")
-  defp _to_string(val) when is_binary(val) or is_atom(val) or is_number(val), do: to_string(val)
-  defp _to_string(val), do: inspect(val)
+  @spec changeset_errors(Ecto.Changeset.t()) :: Ecto.Changeset.traverse_result()
+  def changeset_errors(%Ecto.Changeset{} = changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
+      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+      end)
+    end)
+  end
 
   @spec time_ago(DateTime.t() | NaiveDateTime.t()) :: String.t()
   def time_ago(datetime) do
