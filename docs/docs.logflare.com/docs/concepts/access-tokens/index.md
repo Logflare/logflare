@@ -52,6 +52,12 @@ Access tokens can be exposed for client-side usage. Consider restricting tokens 
 
 Private access tokens should not be exposed to the client side, as private access tokens have complete access to all management APIs used for account control.
 
+## Discovering ingest sources
+
+`GET /api/sources` can be used to discover sources available to an ingest credential. An account-wide `ingest` token, legacy API key, deprecated empty/public token, or source-scoped `ingest:source:<id>` (including deprecated `ingest:collection:<id>`) token returns an ordered JSON list containing only `token` and `name`. Source-scoped tokens return only owned, authorized sources.
+
+Private tokens retain the management response, which contains the complete source representation. Any credential authorized to list sources can request the minimal RFC 4180 CSV list with `GET /api/sources?format=csv`; its columns are `token,name`. Source lists are returned with `Cache-Control: no-store`.
+
 ## Rotation
 
 When rotating access tokens for client-side access tokens, we recommend creating another client-side token and performing a gradual shift to the new token before revoking the old token.
