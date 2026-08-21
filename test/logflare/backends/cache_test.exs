@@ -17,18 +17,28 @@ defmodule Logflare.Backends.CacheTest do
     {:ok, backend: backend, source: source, user: user}
   end
 
-  test "clear_list_backends_cache/1 removes the list_backends/1 entry", %{
+  test "clear_list_backends_cache/1 refreshes cached source backends", %{
     backend: backend,
     source: source
   } do
     backend_id = backend.id
+
+    # Prime the cache with the backend currently associated with the source.
     assert [%{id: ^backend_id}] = Backends.Cache.list_backends(source_id: source.id)
 
-    cache_key = {:list_backends, [[source_id: source.id]]}
-    assert {:cached, [%{id: ^backend_id}]} = Cachex.get!(Backends.Cache, cache_key)
+    # Remove the association directly so the cached result remains stale.
+    assert {1, nil} =
+             Repo.delete_all(
+               from(sb in "sources_backends",
+                 where: sb.source_id == ^source.id and sb.backend_id == ^backend.id
+               )
+             )
 
+    assert [%{id: ^backend_id}] = Backends.Cache.list_backends(source_id: source.id)
+
+    # Clearing the source-specific entry makes the next lookup reflect the database.
     assert :ok = Backends.clear_list_backends_cache(source.id)
-    assert is_nil(Cachex.get!(Backends.Cache, cache_key))
+    assert [] = Backends.Cache.list_backends(source_id: source.id)
   end
 
   test "warmer", %{user: user} do
