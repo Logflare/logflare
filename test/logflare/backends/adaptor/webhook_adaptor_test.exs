@@ -10,7 +10,26 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Tesla.Middleware.JSON
+
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
+  @sensitive_header_names ~w(
+    api-key
+    apikey
+    authorization
+    cookie
+    proxy-authorization
+    webhook-secret
+    x-access-token
+    x-amz-security-token
+    x-api-key
+    x-api-token
+    x-auth-token
+    x-hub-signature
+    x-hub-signature-256
+    x-secret-key
+    x-signature
+    x-webhook-secret
+  )
 
   setup do
     insert(:plan)
@@ -404,21 +423,47 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   end
 
   describe "redact_config/1" do
-    test "redacts Authorization header" do
+    test "redacts every maintained sensitive header while preserving other headers" do
+      sensitive_headers = Map.new(@sensitive_header_names, &{&1, "leaked-secret"})
+
       config = %{
-        headers: %{
-          "Authorization" => "Bearer secret-token-123",
-          "Content-Type" => "application/json"
-        }
+        headers:
+          Map.merge(sensitive_headers, %{
+            "Content-Type" => "application/json",
+            "X-Custom" => "visible-value"
+          })
       }
 
-      assert %{headers: %{"Authorization" => "REDACTED", "Content-Type" => "application/json"}} =
+      assert %{headers: redacted_headers} = @subject.redact_config(config)
+
+      assert Map.take(redacted_headers, @sensitive_header_names) ==
+               Map.new(@sensitive_header_names, &{&1, "REDACTED"})
+
+      assert redacted_headers["Content-Type"] == "application/json"
+      assert redacted_headers["X-Custom"] == "visible-value"
+    end
+
+    test "redacts sensitive headers case-insensitively" do
+      config = %{headers: %{"Authorization" => "Basic dXNlcjpwYXNz", "X-API-KEY" => "secret"}}
+
+      assert %{headers: %{"Authorization" => "REDACTED", "X-API-KEY" => "REDACTED"}} =
                @subject.redact_config(config)
     end
 
-    test "redacts authorization header case-insensitive" do
-      config = %{headers: %{"authorization" => "Basic dXNlcjpwYXNz"}}
-      assert %{headers: %{"authorization" => "REDACTED"}} = @subject.redact_config(config)
+    test "redacts URL userinfo" do
+      config = %{url: "https://user:leaked-secret@example.com/hooks"}
+
+      assert %{url: "https://REDACTED@example.com/hooks"} = @subject.redact_config(config)
+    end
+
+    test "preserves a URL without userinfo" do
+      config = %{url: "https://example.com/hooks"}
+      assert %{url: "https://example.com/hooks", headers: %{}} = @subject.redact_config(config)
+    end
+
+    test "normalizes nil headers when serializing legacy config" do
+      config = %{url: "https://example.com/hooks", headers: nil}
+      assert %{url: "https://example.com/hooks", headers: %{}} = @subject.redact_config(config)
     end
   end
 
@@ -518,6 +563,26 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       changeset = @subject.cast_config(params, %{url: "https://example.com", headers: %{}})
 
       assert Ecto.Changeset.get_field(changeset, :headers) == %{}
+    end
+  end
+
+  describe "cast_config/2 URL redaction round-trip" do
+    test "restores stored URL credentials when the redacted URL is submitted unchanged" do
+      existing = %{url: "https://user:leaked-secret@example.com/hooks"}
+      params = %{url: "https://REDACTED@example.com/hooks"}
+
+      changeset = @subject.cast_config(params, existing)
+
+      assert Ecto.Changeset.get_field(changeset, :url) == existing.url
+    end
+
+    test "does not copy stored credentials when the destination changes" do
+      existing = %{url: "https://user:leaked-secret@example.com/hooks"}
+      params = %{url: "https://REDACTED@other.example.com/hooks"}
+
+      changeset = @subject.cast_config(params, existing)
+
+      assert Ecto.Changeset.get_field(changeset, :url) == params.url
     end
   end
 

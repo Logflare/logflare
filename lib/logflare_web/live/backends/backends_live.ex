@@ -7,6 +7,7 @@ defmodule LogflareWeb.BackendsLive do
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1, with_team_param: 2]
 
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
   alias Logflare.Rules
   alias Logflare.Sources
   alias LogflareWeb.Backends.ReadClusterUrlsComponent
@@ -444,6 +445,10 @@ defmodule LogflareWeb.BackendsLive do
     |> assign(:default_ingest_sources, default_ingest_sources)
     |> assign(:available_sources, available_sources)
   end
+
+  @spec read_cluster_component_id(Backend.t() | nil) :: String.t()
+  defp read_cluster_component_id(%Backend{id: id}), do: "read-cluster-urls-#{id}"
+  defp read_cluster_component_id(_backend), do: "read-cluster-urls-new"
 
   @spec transform_params(map()) :: {:ok, map()} | {:error, String.t()}
   defp transform_params(params) do
