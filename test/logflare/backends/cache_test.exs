@@ -17,6 +17,20 @@ defmodule Logflare.Backends.CacheTest do
     {:ok, backend: backend, source: source, user: user}
   end
 
+  test "clear_list_backends_cache/1 removes the list_backends/1 entry", %{
+    backend: backend,
+    source: source
+  } do
+    backend_id = backend.id
+    assert [%{id: ^backend_id}] = Backends.Cache.list_backends(source_id: source.id)
+
+    cache_key = {:list_backends, [[source_id: source.id]]}
+    assert {:cached, [%{id: ^backend_id}]} = Cachex.get!(Backends.Cache, cache_key)
+
+    assert :ok = Backends.clear_list_backends_cache(source.id)
+    assert is_nil(Cachex.get!(Backends.Cache, cache_key))
+  end
+
   test "warmer", %{user: user} do
     assert {:ok, []} = CacheWarmer.execute(nil)
 
