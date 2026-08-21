@@ -107,6 +107,7 @@ defmodule LogflareWeb.ConnCase do
     |> Plug.Conn.put_private(:logflare_test_team_id, team_user.team_id)
     |> Plug.Conn.assign(:team_user, team_user)
     |> Plug.Conn.put_session(:current_email, team_user.email)
+    |> Plug.Conn.put_session(:last_switched_team_id, team_user.team_id)
   end
 
   def login_user(conn, user) do

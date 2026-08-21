@@ -1,6 +1,20 @@
 defmodule LogflareWeb.OpenApi do
   alias OpenApiSpex.Schema
 
+  @private_admin_scope "private:admin"
+
+  @spec private_admin_scope(Keyword.t()) :: Keyword.t()
+  def private_admin_scope(opts \\ []) do
+    Keyword.merge(
+      [
+        description: "Requires `#{@private_admin_scope}` scope.",
+        security: [%{"authorization" => []}],
+        "x-required-scopes": [@private_admin_scope]
+      ],
+      opts
+    )
+  end
+
   defmacro __using__(properties: properties, required: required) do
     quote do
       require OpenApiSpex

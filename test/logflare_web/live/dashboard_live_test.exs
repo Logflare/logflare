@@ -193,10 +193,14 @@ defmodule LogflareWeb.DashboardLiveTest do
       another_member: another_member,
       other_team: other_team
     } do
+      admin_team_member =
+        insert(:team_user, team: another_member.team, role: :admin)
+
       {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
 
       assert view |> has_element?("#members li", "#{other_team.user.name}")
       assert view |> has_element?("#members li", "#{another_member.name}")
+      assert view |> has_element?("#members li", ~r/#{admin_team_member.name}.*?admin/s)
 
       refute view
              |> has_element?("a[href='/account/edit#team-members']", "Invite more team members")
