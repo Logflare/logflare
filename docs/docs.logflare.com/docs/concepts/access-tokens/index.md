@@ -18,6 +18,10 @@ Access tokens can be scoped to specific functionality.
 
 `ingest` and `query` scopes can be scoped to specific sources and endpoints. It is recommended to use the least privileged token for the given task, especially for public ingestion.
 
+## Discovering ingest sources
+
+Use `GET /api/ingest_sources` to discover the sources available to an ingest access token. The JSON response contains only each source's `token` and `name`; use `?format=csv` for RFC 4180 CSV with a `token,name` header. The endpoint accepts account-wide `ingest` and private tokens, as well as source-scoped `ingest:source:<source-id>` tokens. Deprecated `ingest:collection:<source-id>` scopes remain supported. Responses are not cached.
+
 ## Managing Access Tokens
 
 Access tokens can be created under the [Manage Access Tokens page](https://logflare.app/access-tokens).
