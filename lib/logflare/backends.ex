@@ -475,7 +475,6 @@ defmodule Logflare.Backends do
   @spec clear_list_backends_cache(source_id :: integer()) :: :ok
   def clear_list_backends_cache(source_id) when is_integer(source_id) do
     Cachex.del(__MODULE__.Cache, {:list_backends, [[source_id: source_id]]})
-    Cachex.del(__MODULE__.Cache, {:list_backends, [source_id: source_id]})
     :ok
   end
 
