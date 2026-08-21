@@ -1,5 +1,6 @@
 defmodule Logflare.Sources.SourceRouter do
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
   alias Logflare.LogEvent, as: LE
   alias Logflare.Rules.Rule
@@ -32,13 +33,14 @@ defmodule Logflare.Sources.SourceRouter do
 
   defp do_routing(%Rule{backend_id: backend_id} = rule, %LE{} = le, source)
        when backend_id != nil do
-    # route to a backend
-    backend = Backends.Cache.get_backend(backend_id)
     le = %{le | via_rule_id: rule.id}
-    if SourceSup.rule_child_started?(rule) == false, do: SourceSup.start_rule_child(rule)
 
-    # ingest to a specific backend
-    Backends.ingest_logs([le], source, backend)
+    with %Backend{enabled: true} = backend <- Backends.Cache.get_backend(backend_id) do
+      if SourceSup.rule_child_started?(rule) == false, do: SourceSup.start_rule_child(rule)
+      Backends.ingest_logs([le], source, backend)
+    else
+      _disabled_or_missing_backend -> :ok
+    end
   end
 
   defp do_routing(%Rule{sink: sink} = rule, %LE{} = le, _source) when sink != nil do
