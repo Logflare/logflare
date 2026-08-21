@@ -287,7 +287,7 @@ deploy.staging.main:
 	@gcloud config set project logflare-staging
 	gcloud builds submit . \
 		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_TAG_LATEST=true \
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
@@ -307,7 +307,7 @@ deploy.staging.versioned:
 	@gcloud config set project logflare-staging
 	gcloud builds submit . \
 		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION) \
+		--substitutions=_IMAGE_TAG=$(VERSION),_TAG_LATEST=true \
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
