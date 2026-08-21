@@ -869,7 +869,8 @@ defmodule Logflare.BackendsTest do
         {{_, _, requested_backend_id} = requested_child_id, requested_child_pid}
       ] = existing_backend_pids
 
-      refute requested_child_id == elem(hd(children.()), 0)
+      [{first_supervisor_child_id, _, _, _} | _] = children.()
+      refute requested_child_id == first_supervisor_child_id
 
       missing_backend_id = Enum.max(backend_ids) + 1
 
