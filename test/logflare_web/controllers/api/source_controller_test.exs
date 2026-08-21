@@ -364,6 +364,45 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         refute Jason.encode!(backend["config"]) =~ "leaked-secret"
       end
     end
+
+    test "redacts persisted webhook credentials in the raw source response", %{
+      conn: conn,
+      user: user,
+      sources: [source | _]
+    } do
+      insert(:backend,
+        type: :webhook,
+        user: user,
+        sources: [source],
+        default_ingest?: true,
+        config: %{
+          url: "https://user:url-leaked-secret@example.com/hooks",
+          headers: %{
+            "Content-Type" => "application/json",
+            "X-Secret-Key" => "header-leaked-secret"
+          }
+        }
+      )
+
+      conn =
+        conn
+        |> add_access_token(user, "private")
+        |> get("/api/sources")
+
+      refute conn.resp_body =~ "url-leaked-secret"
+      refute conn.resp_body =~ "header-leaked-secret"
+
+      response = json_response(conn, 200)
+      assert %{"backends" => [backend]} = Enum.find(response, &(&1["id"] == source.id))
+
+      assert %{
+               "url" => "https://REDACTED@example.com/hooks",
+               "headers" => %{
+                 "Content-Type" => "application/json",
+                 "X-Secret-Key" => "REDACTED"
+               }
+             } = backend["config"]
+    end
   end
 
   describe "add_backend/2" do

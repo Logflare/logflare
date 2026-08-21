@@ -29,8 +29,29 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @behaviour Logflare.Backends.Adaptor
 
-  # Sentinel value substituted for secret header values by redact_config/1.
+  # Sentinel value substituted for credentials by redact_config/1.
   @redacted_value "REDACTED"
+
+  # Header names are case-insensitive. Keep this list intentionally explicit so
+  # adding another credential-bearing header is a reviewed policy change.
+  @sensitive_header_names MapSet.new(~w(
+                            api-key
+                            apikey
+                            authorization
+                            cookie
+                            proxy-authorization
+                            webhook-secret
+                            x-access-token
+                            x-amz-security-token
+                            x-api-key
+                            x-api-token
+                            x-auth-token
+                            x-hub-signature
+                            x-hub-signature-256
+                            x-secret-key
+                            x-signature
+                            x-webhook-secret
+                          ))
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = args) do
@@ -57,6 +78,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     {existing_config, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
     |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip])
     |> unredact_headers(existing_config)
+    |> unredact_url(existing_config)
     |> normalize_header_keys()
     |> Logflare.Utils.default_field_value(:http, "http2")
     |> Logflare.Utils.default_field_value(:gzip, true)
@@ -114,6 +136,20 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     end
   end
 
+  # Preserve URL credentials when a client submits the redacted URL unchanged.
+  # Comparing against the redacted stored URL prevents credentials from being
+  # copied to a different destination when the user intentionally changes it.
+  defp unredact_url(changeset, existing_config) do
+    submitted_url = Ecto.Changeset.get_change(changeset, :url)
+    existing_url = Map.get(existing_config, :url) || Map.get(existing_config, "url")
+
+    if is_binary(existing_url) and submitted_url == redact_url_userinfo(existing_url) do
+      Ecto.Changeset.put_change(changeset, :url, existing_url)
+    else
+      changeset
+    end
+  end
+
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
     changeset
@@ -141,20 +177,33 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
-    Map.update(config, :headers, %{}, &redact_headers/1)
+    config
+    |> Map.update(:headers, %{}, &redact_headers/1)
+    |> Map.update(:url, nil, &redact_url_userinfo/1)
   end
+
+  defp redact_headers(nil), do: %{}
 
   defp redact_headers(headers) do
     for {key, value} <- headers, into: %{}, do: redact_header(key, value)
   end
 
   defp redact_header(key, value) do
-    if String.downcase(key) == "authorization" do
+    if MapSet.member?(@sensitive_header_names, String.downcase(to_string(key))) do
       {key, @redacted_value}
     else
       {key, value}
     end
   end
+
+  defp redact_url_userinfo(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{userinfo: nil} -> url
+      uri -> URI.to_string(%{uri | userinfo: @redacted_value})
+    end
+  end
+
+  defp redact_url_userinfo(url), do: url
 
   @impl Logflare.Backends.Adaptor
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
