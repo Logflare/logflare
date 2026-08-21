@@ -47,6 +47,26 @@ defmodule Logflare.Sources do
     |> Enum.map(&put_retention_days/1)
   end
 
+  @spec list_ingest_sources_by_user(pos_integer(), :all | [pos_integer()]) :: [map()]
+  def list_ingest_sources_by_user(user_id, :all) do
+    ingest_sources_query(user_id)
+    |> Repo.all()
+  end
+
+  def list_ingest_sources_by_user(user_id, source_ids) when is_list(source_ids) do
+    ingest_sources_query(user_id)
+    |> where([s], s.id in ^source_ids)
+    |> Repo.all()
+  end
+
+  defp ingest_sources_query(user_id) do
+    from(s in Source,
+      where: s.user_id == ^user_id,
+      order_by: [asc: s.name, asc: s.token],
+      select: %{token: s.token, name: s.name}
+    )
+  end
+
   @spec list_system_sources_by_user(User.t()) :: [Source.t()]
   def list_system_sources_by_user(%User{id: user_id}), do: list_system_sources_by_user(user_id)
 
