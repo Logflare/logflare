@@ -22,20 +22,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       end
     end)
 
-    # MemoryMonitor's stats() are cached in :persistent_term — global, and
-    # NOT reset between tests or test files. Without this, a test here could
-    # inherit a stale "throttled" value left by any test anywhere in the
-    # suite that ran MemoryMonitor last, hanging tests that have nothing to
-    # do with throttling (e.g. prefetch/happy-path tests below). Starting a
-    # fresh, explicitly non-throttled MemoryMonitor for every test in this
-    # file guarantees a known baseline; throttled!/0 overrides it as needed.
+    # MemoryMonitor publishes stats through a node-global named ETS table.
+    # Start a fresh, explicitly non-throttled monitor for every test so the
+    # queue producer has a known baseline; throttled!/0 overrides it as needed.
     Application.put_env(:logflare, :spool,
       spool_memory_limit_percent: 1.0,
       spool_max_ets_percent: 1.0
     )
 
     start_supervised!(MemoryMonitor)
-    Process.sleep(50)
+    :sys.get_state(MemoryMonitor)
 
     :ok
   end
@@ -117,7 +113,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       spool_max_ets_percent: 0.0
     )
 
-    Process.sleep(1_100)
+    TestUtils.send_and_wait_for_handling(MemoryMonitor, :refresh)
     assert MemoryMonitor.throttled?() == true
   end
 
@@ -127,7 +123,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       spool_max_ets_percent: 1.0
     )
 
-    Process.sleep(1_100)
+    TestUtils.send_and_wait_for_handling(MemoryMonitor, :refresh)
     assert MemoryMonitor.throttled?() == false
   end
 
@@ -190,12 +186,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
-      Process.sleep(50)
-
-      poll_timer = :sys.get_state(pid).state.poll_timer
-
-      refute is_nil(poll_timer)
-      assert Process.read_timer(poll_timer)
+      TestUtils.retry_assert(fn ->
+        poll_timer = :sys.get_state(pid).state.poll_timer
+        refute is_nil(poll_timer)
+        assert Process.read_timer(poll_timer)
+      end)
     end
 
     test "recovers automatically once memory pressure drops, without any new demand arriving" do
@@ -229,12 +224,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
-      Process.sleep(50)
-
-      poll_timer = :sys.get_state(pid).state.poll_timer
-
-      refute is_nil(poll_timer)
-      assert Process.read_timer(poll_timer)
+      TestUtils.retry_assert(fn ->
+        poll_timer = :sys.get_state(pid).state.poll_timer
+        refute is_nil(poll_timer)
+        assert Process.read_timer(poll_timer)
+      end)
     end
 
     test "recovers automatically once consumer backlog clears, without any new demand arriving" do
@@ -334,15 +328,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
           Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
         end
 
-      # @poll_interval is 1000ms. If every concurrent handle_demand call spawned
-      # its own poll chain (the pre-fix bug), 5 subscribers would each also
-      # reschedule their own timer on every "queue empty" tick, and the call
-      # count would grow roughly with subscriber_count * elapsed/interval.
-      # With de-duplication, it should track ~elapsed/interval regardless of
-      # how many consumers are asking for demand.
+      # Empty results back off from @min_empty_backoff_ms (100ms) up to
+      # @max_empty_backoff_ms (1000ms), doubling each time: ~100, 200, 400,
+      # 800, 1000, 1000... so a healthy, de-duplicated producer sees on the
+      # order of 5-6 receive calls in a 2500ms window of sustained empty
+      # results, regardless of how many consumers are asking for demand. If
+      # every concurrent handle_demand call spawned its own poll chain (the
+      # pre-fix bug), 5 subscribers would each independently drive that same
+      # backoff schedule, and the call count would grow roughly with
+      # subscriber_count * expected_count instead of staying flat.
       call_count = count_messages_within(:queue_receive_called, 2500)
 
-      assert call_count <= 4
+      assert call_count <= 8
 
       Enum.each(tasks, &Task.shutdown(&1, :brutal_kill))
     end
@@ -508,7 +505,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
-                      %{count: 1}, %{reason: :fetch_failed, result: :error}},
+                      %{count: 1}, %{reason: :prefetch_failed, result: :error}},
                      2000
     end
   end
@@ -518,23 +515,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     # "prefetch task crash resilience" above) always loses the queue handle in
     # safe_fetch_next's rescue, so it can never reach the nack/telemetry branch
     # (`if handle do ... end` is always false there). Only a *normal* {:error,
-    # reason} return preserves the handle — these tests use that path.
-    test "nacks with reason: :fetch_failed on a normal (non-raising) download error, cold start" do
-      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
-
-      stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/broken.ndjson")])
-      stub_storage(%{"0/broken.ndjson" => {:error, :network_error}})
-
-      pid = start_producer()
-      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
-
-      assert_receive {:nacked, "h1"}, 2000
-
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
-                      %{count: 1}, %{reason: :fetch_failed}}
-    end
-
+    # reason} return preserves the handle — this test uses that path.
+    #
+    # Fetching always happens via the background prefetch Task now (there's no
+    # separate blocking cold-start fetch path anymore), so :fetch_failed as a
+    # distinct reason no longer exists — every normal download failure reports
+    # :prefetch_failed, cold start or not.
     test "nacks with reason: :prefetch_failed on a normal (non-raising) download error during prefetch" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
 
@@ -564,6 +550,159 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
                       %{count: 1}, %{reason: :prefetch_failed}}
+    end
+  end
+
+  describe "draining" do
+    defp draining_state(overrides) do
+      Map.merge(
+        %{
+          queue_url: "q",
+          queue_mod: QueueMod,
+          current: nil,
+          prefetch: nil,
+          demand: 5,
+          draining: false
+        },
+        overrides
+      )
+    end
+
+    test "acks an already-exhausted current file (everything in it was already handed off safely)" do
+      stub_ack_nack(self())
+
+      state = draining_state(%{current: %{handle: "h1", lines: []}})
+
+      assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
+
+      assert_receive {:acked, "h1"}
+      refute_receive {:nacked, "h1"}
+      assert new_state.draining == true
+      assert new_state.demand == 0
+      assert new_state.current == nil
+    end
+
+    test "nacks a not-yet-exhausted current file instead of risking emission with no live consumer" do
+      stub_ack_nack(self())
+
+      state = draining_state(%{current: %{handle: "h1", lines: [%{"id" => "e1"}]}})
+
+      assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
+
+      assert_receive {:nacked, "h1"}
+      refute_receive {:acked, "h1"}
+      assert new_state.current == nil
+    end
+
+    test "nacks an already-landed prefetch result rather than letting it be loaded and emitted" do
+      stub_ack_nack(self())
+
+      state = draining_state(%{prefetch: {:ready, {:ok, "h2", [%{"id" => "e2"}]}}})
+
+      assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
+
+      assert_receive {:nacked, "h2"}
+      assert new_state.prefetch == nil
+    end
+
+    test "handle_demand/2 and handle_info(:poll, _) are frozen no-ops once draining" do
+      state = draining_state(%{draining: true, demand: 0})
+
+      assert QueueProducer.handle_demand(10, state) == {:noreply, [], state}
+      assert QueueProducer.handle_info(:poll, state) == {:noreply, [], state}
+    end
+
+    test "a prefetch already :running when draining begins is nacked once it lands, not emitted, even with a live subscriber already registered" do
+      test_pid = self()
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.ndjson")])
+
+      # Blocks until released, so the background prefetch Task started by
+      # maybe_start_prefetch/1 is still genuinely :running when
+      # prepare_for_draining/1 fires below — this is production ordering
+      # (subscribe with real demand first, drain later), the reverse of what
+      # the original version of this test exercised.
+      stub(StorageMod, :get, fn _bucket, _key ->
+        send(test_pid, {:storage_get_called, self()})
+
+        receive do
+          :proceed -> {:ok, ndjson_body([%{"id" => "e1"}])}
+        end
+      end)
+
+      pid = start_producer()
+
+      task = Task.async(fn -> GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1) end)
+
+      assert_receive {:storage_get_called, prefetch_task_pid}, 2000
+
+      TestUtils.retry_assert(fn ->
+        assert :sys.get_state(pid).state.prefetch == :running
+      end)
+
+      :sys.replace_state(pid, fn gen_stage_state ->
+        {:noreply, [], new_module_state} =
+          QueueProducer.prepare_for_draining(gen_stage_state.state)
+
+        %{gen_stage_state | state: new_module_state}
+      end)
+
+      assert :sys.get_state(pid).state.draining == true
+
+      # Only now does the prefetch's download actually complete, landing
+      # {:prefetch_result, {:ok, "h1", _}} after draining has already begun.
+      send(prefetch_task_pid, :proceed)
+
+      assert_receive {:nacked, "h1"}, 2000
+      refute_received {:acked, "h1"}
+      refute Task.yield(task, 300)
+
+      Task.shutdown(task, :brutal_kill)
+    end
+
+    test "a prefetch whose producer is already dead by the time it lands settles (nacks) the handle directly, instead of leaving it stuck until the queue's own visibility timeout" do
+      test_pid = self()
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.ndjson")])
+
+      # Blocks until released, so the producer can be killed while this
+      # fetch is still genuinely in flight — the scenario djwhitt flagged as
+      # non-blocking on the PR: Task.start/1 is unlinked, so without the
+      # parent-monitor in maybe_start_prefetch/1, this result would be sent
+      # to a dead pid and silently dropped.
+      stub(StorageMod, :get, fn _bucket, _key ->
+        send(test_pid, {:storage_get_called, self()})
+
+        receive do
+          :proceed -> {:ok, ndjson_body([%{"id" => "e1"}])}
+        end
+      end)
+
+      pid = start_producer()
+
+      # Seed demand directly rather than subscribing a real consumer — this
+      # test is about the producer-death race in the prefetch Task, not
+      # about consumer-side subscription behavior.
+      :sys.replace_state(pid, fn gen_stage_state ->
+        put_in(gen_stage_state.state.demand, 1)
+      end)
+
+      send(pid, :poll)
+
+      assert_receive {:storage_get_called, prefetch_task_pid}, 2000
+
+      ref = Process.monitor(pid)
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :killed}, 2000
+
+      # Only now does the prefetch's download actually complete — well
+      # after its parent producer is fully, verifiably dead.
+      send(prefetch_task_pid, :proceed)
+
+      assert_receive {:nacked, "h1"}, 2000
+      refute_received {:acked, "h1"}
     end
   end
 end

@@ -217,13 +217,37 @@
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :insert_protocol, "Insert Protocol")}
-            {select(f_config, :insert_protocol, [{"HTTP", "http"}, {"Native (TCP)", "native"}],
-              class: "form-control form-control-margin",
-              id: "insert_protocol"
+            {label(f_config, :use_async_inserts_for_small_batches, "Async Inserts for Small Batches")}
+            {checkbox(f_config, :use_async_inserts_for_small_batches, id: "use_async_inserts_for_small_batches")}
+            <small class="form-text text-muted">
+              When enabled, small batches are sent to ClickHouse as async inserts.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :async_insert_cluster_url, "Async Insert Cluster URL (Optional)")}
+            {text_input(f_config, :async_insert_cluster_url, class: "form-control")}
+            <small class="form-text text-muted">
+              Optional dedicated cluster endpoint to handle async inserts. When empty, async inserts go to the primary URL.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :async_insert_max_rows, "Async Insert Max Rows")}
+            {text_input(f_config, :async_insert_max_rows,
+              class: "form-control",
+              value: input_value(f_config, "async_insert_max_rows") || 1000
             )}
             <small class="form-text text-muted">
-              Protocol used for inserting data into ClickHouse.
+              Batches with fewer than this many rows are sent as async inserts (when enabled above).
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :max_event_age_hours, "Max Event Age (Hours)")}
+            {text_input(f_config, :max_event_age_hours,
+              class: "form-control",
+              value: input_value(f_config, "max_event_age_hours") || 24
+            )}
+            <small class="form-text text-muted">
+              Events with a timestamp older than this are not sent to ClickHouse. Set to <code>0</code> to disable the check.
             </small>
           </div>
           <div class="form-group">
@@ -234,16 +258,8 @@
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :native_port, "Native Port")}
-            {text_input(f_config, :native_port, class: "form-control", value: input_value(f_config, "native_port") || 9440)}
-          </div>
-          <div class="form-group">
             {label(f_config, :pool_size, "HTTP Pool Size")}
             {text_input(f_config, :pool_size, class: "form-control", value: input_value(f_config, "pool_size") || 20)}
-          </div>
-          <div class="form-group">
-            {label(f_config, :native_pool_size, "Native Pool Size")}
-            {text_input(f_config, :native_pool_size, class: "form-control", value: input_value(f_config, "native_pool_size") || 20)}
           </div>
           <div class="form-group">
             {label(f_config, :read_only_url, "Read-Only URL (Optional)")}
@@ -252,6 +268,7 @@
               Separate endpoint for read queries, for example: <code>https://read-warehouse.clickhouse.cloud:8443</code>
             </small>
           </div>
+          <.live_component module={LogflareWeb.Backends.ReadClusterUrlsComponent} id={read_cluster_component_id(@backend)} form={f_config} backend={@backend} />
         <% "incidentio" -> %>
           <div class="form-group">
             {label(f_config, :api_token, "API Token")}
@@ -356,7 +373,10 @@
         <% "otlp" -> %>
           <div class="form-group">
             {label(f_config, :endpoint, "Endpoint")}
-            {text_input(f_config, :endpoint, class: "form-control", value: "https://otlp-endpoint.com/v1/logs")}
+            {text_input(f_config, :endpoint,
+              class: "form-control",
+              placeholder: "https://otlp-endpoint.com/v1/logs"
+            )}
             <small class="form-text text-muted">
               Address of the OTLP Endpoint
             </small>
@@ -390,6 +410,13 @@
             )}
             <small class="form-text text-muted">
               Transport protocol used for OTLP
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :flatten_to_attributes, "Flatten to attributes")}
+            {checkbox(f_config, :flatten_to_attributes, id: "flatten-attributes")}
+            <small class="form-text text-muted">
+              Sends the log event_message as a text string in the body field and flattens other fields into individual attributes, instead of the default nested body. Defaults to false.
             </small>
           </div>
         <% "last9" -> %>
@@ -430,7 +457,7 @@
           </div>
           <div class="form-group">
             {label(f_config, :port, "Port (Required)")}
-            {number_input(f_config, :port, class: "form-control")}
+            {number_input(f_config, :port, class: "form-control", min: 1, max: 65_535)}
             <small class="text-muted">
               It's usually 6514, but may vary based on your syslog server configuration.
             </small>

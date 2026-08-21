@@ -386,8 +386,11 @@ deploy.prod.versioned:
 tag-versioned:
 
 	@echo "Checking dockerhub registry for dev image supabase/logflare:$(SHA_IMAGE_TAG) ..."
-	@echo "Dev image must be built on CI: https://github.com/Logflare/logflare/actions" \
-		docker manifest inspect supabase/logflare:$(SHA_IMAGE_TAG) >/dev/null
+	@if ! docker manifest inspect supabase/logflare:$(SHA_IMAGE_TAG) >/dev/null 2>&1; then \
+		echo "Dev image does not exist: supabase/logflare:$(SHA_IMAGE_TAG)"; \
+		echo "Build it through https://github.com/Logflare/logflare/actions"; \
+		exit 1; \
+	fi
 	@echo "OK"
 
 	@echo "Retagging dev image to supabase/logflare:$(VERSION) ..."

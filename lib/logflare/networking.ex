@@ -2,6 +2,7 @@ defmodule Logflare.Networking do
   @moduledoc false
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+  alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.SingleTenant
 
   def pools do
@@ -91,6 +92,24 @@ defmodule Logflare.Networking do
              transport_opts: [timeout: 10_000]
            ]
          ]
+       }},
+      # Dedicated pool for async inserts, isolated from the primary ingest pool. Sized
+      # for a small async cluster: same per-pool connection size, but a
+      # lower pool count since size * count connections all target one load-balanced
+      # endpoint fronting far fewer replicas than a primary.
+      {Finch,
+       name: Logflare.FinchClickHouseAsyncIngest,
+       pools: %{
+         default: [
+           protocols: [:http1],
+           size: min(base * 2, 15),
+           count: min(max(div(base, 4), 1), 2),
+           conn_max_idle_time: 5_000,
+           start_pool_metrics?: true,
+           conn_opts: [
+             transport_opts: [timeout: 10_000]
+           ]
+         ]
        }}
     ]
   end
@@ -114,28 +133,9 @@ defmodule Logflare.Networking do
   end
 
   defp all_datadog_pools do
-    %{
-      "https://http-intake.logs.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.us3.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.us5.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.datadoghq.eu" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.ap1.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ]
-    }
+    for origin <- DatadogAdaptor.intake_origins(), into: %{} do
+      {origin, [protocols: [:http1], start_pool_metrics?: true]}
+    end
   end
 
   defp grpc_pools do

@@ -33,7 +33,6 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_event_age_us 24 * 3_600 * 1_000_000
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
 
@@ -46,16 +45,12 @@ defmodule Logflare.Backends do
   def max_buffer_queue_len, do: @max_pending_buffer_len_per_queue
 
   @doc """
-  Returns the maximum age, in microseconds, of an event that will be accepted at
-  ingestion. Events older than this are dropped as stale.
-  """
-  @spec max_event_age_us() :: non_neg_integer()
-  def max_event_age_us, do: @max_event_age_us
-
-  @doc """
   Returns the maximum time, in microseconds, that an event's timestamp may be in
   the future and still be accepted at ingestion. Events further ahead than this
   are dropped.
+
+  There is no equivalent global lower bound. Dropping events for being too old is
+  now a backend-specific concern (_see `Logflare.Backends.Adaptor.ClickHouseAdaptor.pre_ingest/3`_)
   """
   @spec max_future_event_us() :: non_neg_integer()
   def max_future_event_us, do: @max_future_event_us
@@ -224,14 +219,8 @@ defmodule Logflare.Backends do
         name: "Default PostgreSQL backend"
       }
     else
-      {project_id, dataset_id} =
-        if user.bigquery_project_id do
-          {user.bigquery_project_id, user.bigquery_dataset_id}
-        else
-          project_id = User.bq_project_id()
-          dataset_id = User.generate_bq_dataset_id(user.id)
-          {project_id, dataset_id}
-        end
+      project_id = user.bigquery_project_id || User.bq_project_id()
+      dataset_id = user.bigquery_dataset_id || User.generate_bq_dataset_id(user.id)
 
       %Backend{
         type: :bigquery,
@@ -664,9 +653,7 @@ defmodule Logflare.Backends do
   end
 
   defp split_valid_events(source, event_params) do
-    now_us = System.system_time(:microsecond)
-    min_allowed = now_us - @max_event_age_us
-    max_allowed = now_us + @max_future_event_us
+    max_allowed = System.system_time(:microsecond) + @max_future_event_us
 
     {events, errors, total, tally} =
       for param <- event_params, reduce: {[], [], 0, %{}} do
@@ -678,9 +665,6 @@ defmodule Logflare.Backends do
             %{pipeline_error: %_{message: message}, valid: false} ->
               {events, [message | errors], total + 1, bump(tally, :rejected)}
 
-            %{body: %{"timestamp" => timestamp}} when timestamp < min_allowed ->
-              {events, errors, total + 1, bump(tally, :drop_stale)}
-
             %{body: %{"timestamp" => timestamp}} when timestamp > max_allowed ->
               {events, errors, total + 1, bump(tally, :drop_future)}
 
@@ -691,15 +675,12 @@ defmodule Logflare.Backends do
 
     emit_ingest_telemetry(tally, source)
 
-    dropped_old = Map.get(tally, :drop_stale, 0)
     dropped_future = Map.get(tally, :drop_future, 0)
-    dropped_total = dropped_old + dropped_future
 
-    if dropped_total > 0 do
+    if dropped_future > 0 do
       Logger.warning(
-        "Dropping #{dropped_total} of #{total} event(s): timestamps outside [-24h, +1h] window",
+        "Dropping #{dropped_future} of #{total} event(s): timestamps more than 1h in the future",
         source_id: source.token,
-        old_events_dropped: dropped_old,
         future_events_dropped: dropped_future,
         total_event_count: total
       )
@@ -898,6 +879,20 @@ defmodule Logflare.Backends do
 
   def via_backend(backend_id, mod) when is_number(backend_id) do
     {:via, Registry, {BackendRegistry, {mod, backend_id}}}
+  end
+
+  @doc """
+  Like `via_backend/2` but adds a `label` dimension to the registry key. `nil` reuses the
+  `via_backend/2` key, so legacy/unlabeled callers are unchanged.
+  """
+  @spec via_backend(Backend.t() | non_neg_integer(), module(), String.t() | nil) ::
+          {:via, module(), term()}
+  def via_backend(%Backend{id: id}, mod, label), do: via_backend(id, mod, label)
+
+  def via_backend(backend_id, mod, nil), do: via_backend(backend_id, mod)
+
+  def via_backend(backend_id, mod, label) when is_pos_integer(backend_id) do
+    {:via, Registry, {BackendRegistry, {mod, backend_id, label}}}
   end
 
   @doc """

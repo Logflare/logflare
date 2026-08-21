@@ -112,8 +112,8 @@ defmodule Logflare.DataCase do
   """
   def errors_on(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
+      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
       end)
     end)
   end
@@ -128,6 +128,7 @@ defmodule Logflare.DataCase do
   - `:user` - Existing user to use (creates one if not provided)
   - `:source` - Existing source to use (creates one if not provided)
   - `:default_ingest_backend?` - Whether to set the backend as the default ingest backend (requires a source to be provided with the default ingest backend option set to true)
+  - `:cleanup?` - Whether to drop the backend's ClickHouse tables on exit (defaults to true)
   """
   def setup_clickhouse_test(opts \\ []) do
     config = Keyword.get(opts, :config, %{})
@@ -163,7 +164,9 @@ defmodule Logflare.DataCase do
         sources: [source]
       )
 
-    on_exit(fn -> cleanup_clickhouse_tables(backend) end)
+    if Keyword.get(opts, :cleanup?, true) do
+      on_exit(fn -> cleanup_clickhouse_tables(backend) end)
+    end
 
     {source, backend}
   end

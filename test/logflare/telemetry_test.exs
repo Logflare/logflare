@@ -18,6 +18,17 @@ defmodule Logflare.TelemetryTest do
   ]
   @clickhouse_batch_metric_string "logflare.backends.clickhouse.pipeline.handle_batch.batch_size"
 
+  @drop_stale_exporter :logflare_drop_stale_metrics_test
+  @drop_stale_metric_name [:logflare, :logs, :ingest_logs, :drop_stale]
+  @drop_stale_metric_string "logflare.logs.ingest_logs.drop_stale"
+
+  @requeue_deduplicated_metric_name [
+    :logflare,
+    :ingest_event_queue,
+    :requeue_deduplicated,
+    :count
+  ]
+
   describe "metrics/0" do
     test "returns only well-formed Telemetry.Metrics definitions" do
       metrics = Telemetry.metrics()
@@ -56,6 +67,14 @@ defmodule Logflare.TelemetryTest do
       end
     end
 
+    test "defines retry deduplication as a low-cardinality event count" do
+      [metric] = requeue_deduplicated_metrics()
+
+      assert metric.event_name == [:logflare, :ingest_event_queue, :requeue_deduplicated]
+      assert metric.measurement == :count
+      assert metric.tags == [:backend_type]
+    end
+
     test "defines ClickHouse batch distribution and throughput metrics" do
       metrics = clickhouse_batch_metrics()
 
@@ -69,13 +88,13 @@ defmodule Logflare.TelemetryTest do
       for metric <- metrics do
         assert metric.event_name == [:logflare, :backends, :pipeline, :handle_batch]
         assert metric.measurement == :batch_size
-        assert metric.tags == [:event_type, :batch_trigger]
+        assert metric.tags == [:backend_id, :event_type, :batch_trigger]
         assert metric.keep.(%{backend_type: :clickhouse})
         refute metric.keep.(%{backend_type: :bigquery})
       end
     end
 
-    test "aggregates ClickHouse batches by event type and trigger" do
+    test "aggregates ClickHouse batches by backend, event type, and trigger" do
       start_supervised!(
         {OtelMetricExporter,
          name: @clickhouse_batch_exporter,
@@ -88,14 +107,21 @@ defmodule Logflare.TelemetryTest do
       )
 
       event = [:logflare, :backends, :pipeline, :handle_batch]
-      log_tags = %{event_type: :log, batch_trigger: :size}
-      metric_tags = %{event_type: :metric, batch_trigger: :timeout}
-      trace_tags = %{event_type: :trace, batch_trigger: :timeout}
+      log_tags = %{backend_id: 1, event_type: :log, batch_trigger: :size}
+      other_log_tags = %{backend_id: 2, event_type: :log, batch_trigger: :size}
+      metric_tags = %{backend_id: 1, event_type: :metric, batch_trigger: :timeout}
+      trace_tags = %{backend_id: 2, event_type: :trace, batch_trigger: :timeout}
 
       :telemetry.execute(
         event,
         %{batch_size: 20_000},
         Map.put(log_tags, :backend_type, :clickhouse)
+      )
+
+      :telemetry.execute(
+        event,
+        %{batch_size: 10_000},
+        Map.put(other_log_tags, :backend_type, :clickhouse)
       )
 
       :telemetry.execute(
@@ -117,10 +143,73 @@ defmodule Logflare.TelemetryTest do
                {:sum, @clickhouse_batch_metric_string} => sums
              } = MetricStore.get_metrics(@clickhouse_batch_exporter)
 
-      assert sums == %{log_tags => 20_000, metric_tags => 500, trace_tags => 125}
+      assert sums == %{
+               log_tags => 20_000,
+               other_log_tags => 10_000,
+               metric_tags => 500,
+               trace_tags => 125
+             }
+
       assert [{_bucket, {1, 20_000}}] = distributions |> Map.fetch!(log_tags) |> Map.to_list()
+
+      assert [{_bucket, {1, 10_000}}] =
+               distributions |> Map.fetch!(other_log_tags) |> Map.to_list()
+
       assert [{_bucket, {1, 500}}] = distributions |> Map.fetch!(metric_tags) |> Map.to_list()
       assert [{_bucket, {1, 125}}] = distributions |> Map.fetch!(trace_tags) |> Map.to_list()
+    end
+
+    test "tags stale event drops by backend" do
+      [metric] = drop_stale_metrics()
+
+      assert metric.event_name == @drop_stale_metric_name
+      assert metric.measurement == :count
+      assert metric.tags == [:backend_id, :backend_type]
+    end
+
+    test "keeps only stale event drops carrying backend metadata" do
+      [metric] = drop_stale_metrics()
+
+      assert metric.keep.(%{backend_id: 1, backend_type: :clickhouse})
+      refute metric.keep.(%{source_id: 1, source_token: "abc"})
+      refute metric.keep.(%{backend_id: 1})
+      refute metric.keep.(%{backend_type: :clickhouse})
+    end
+
+    test "aggregates stale event drops per backend without source-level cardinality" do
+      start_supervised!(
+        {OtelMetricExporter,
+         name: @drop_stale_exporter,
+         metrics: drop_stale_metrics(),
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://localhost:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      backend_one = %{backend_id: 1, backend_type: :clickhouse}
+      backend_two = %{backend_id: 2, backend_type: :clickhouse}
+
+      for {backend_tags, source_id, count} <- [
+            {backend_one, 100, 5},
+            {backend_one, 200, 7},
+            {backend_two, 100, 3}
+          ] do
+        metadata =
+          backend_tags
+          |> Map.put(:source_id, source_id)
+          |> Map.put(:source_token, "source-#{source_id}")
+
+        :telemetry.execute(@drop_stale_metric_name, %{count: count}, metadata)
+      end
+
+      :telemetry.execute(@drop_stale_metric_name, %{count: 99}, %{source_id: 300})
+
+      assert %{{:sum, @drop_stale_metric_string} => sums} =
+               MetricStore.get_metrics(@drop_stale_exporter)
+
+      assert sums == %{backend_one => 12, backend_two => 3}
     end
   end
 
@@ -344,5 +433,13 @@ defmodule Logflare.TelemetryTest do
 
   defp clickhouse_batch_metrics do
     Enum.filter(Telemetry.metrics(), &(&1.name == @clickhouse_batch_metric_name))
+  end
+
+  defp drop_stale_metrics do
+    Enum.filter(Telemetry.metrics(), &(&1.name == @drop_stale_metric_name))
+  end
+
+  defp requeue_deduplicated_metrics do
+    Enum.filter(Telemetry.metrics(), &(&1.name == @requeue_deduplicated_metric_name))
   end
 end

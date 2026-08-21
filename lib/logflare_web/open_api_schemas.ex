@@ -382,9 +382,10 @@ defmodule LogflareWeb.OpenApiSchemas do
       password: %Schema{type: :string, nullable: true},
       pool_size: %Schema{type: :integer, nullable: true},
       read_only_url: %Schema{type: :string, nullable: true},
-      insert_protocol: %Schema{type: :string, nullable: true},
-      native_port: %Schema{type: :integer, nullable: true},
-      native_pool_size: %Schema{type: :integer, nullable: true}
+      use_async_inserts_for_small_batches: %Schema{type: :boolean, nullable: true},
+      async_insert_cluster_url: %Schema{type: :string, nullable: true},
+      async_insert_max_rows: %Schema{type: :integer, nullable: true},
+      max_event_age_hours: %Schema{type: :integer, nullable: true}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:url, :database, :port]
@@ -434,7 +435,13 @@ defmodule LogflareWeb.OpenApiSchemas do
       endpoint: %Schema{type: :string},
       protocol: %Schema{type: :string, nullable: true},
       gzip: %Schema{type: :boolean},
-      headers: %Schema{type: :object}
+      headers: %Schema{type: :object},
+      flatten_to_attributes: %Schema{
+        type: :boolean,
+        nullable: true,
+        description:
+          "Sends the log event_message as a text string in the body field and flattens other fields into individual attributes, instead of the default nested body. Defaults to false."
+      }
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:endpoint]

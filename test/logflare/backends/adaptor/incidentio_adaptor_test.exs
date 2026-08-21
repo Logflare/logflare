@@ -1,11 +1,12 @@
 defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor
-  alias Logflare.Backends
-  alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Alerting
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.SourceSup
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.IncidentioAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
@@ -121,8 +122,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
           }
         )
 
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
+      start_supervised!({SourceSup, source})
       [backend: backend, source: source]
     end
 
@@ -170,7 +170,6 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
       [backend: backend, source: source, user: user]
     end
 

@@ -8,6 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  ReferenceArea,
 } from "recharts";
 
 import { BarLoader } from "react-spinners";
@@ -183,6 +184,68 @@ const barTotal = (entry, keys) =>
 
 const periods = ["day", "hour", "minute", "second"];
 
+const formatSearchDatetime = (utcDatetime, tz) => {
+  const datetime = DateTime.fromISO(utcDatetime, { zone: tz });
+  if (!datetime.isValid) return null;
+
+  return datetime.toISO({
+    includeOffset: false,
+    suppressMilliseconds: true,
+    format: "extended",
+  });
+};
+
+const buildTimeRangeQuery = (
+  firstUtcDatetime,
+  secondUtcDatetime,
+  tz,
+  chartPeriod,
+) => {
+  const first = DateTime.fromISO(firstUtcDatetime, { zone: tz });
+  const second = DateTime.fromISO(secondUtcDatetime, { zone: tz });
+  if (!first.isValid || !second.isValid || !periods.includes(chartPeriod)) return null;
+
+  const [start, lastBucket] =
+    first.toMillis() <= second.toMillis() ? [first, second] : [second, first];
+  const end = lastBucket.plus({ [`${chartPeriod}s`]: 1 });
+
+  return `t:${formatSearchDatetime(start.toISO(), tz)}..${formatSearchDatetime(end.toISO(), tz)}`;
+};
+
+const activeChartPoint = (state, chartData = []) => {
+  const activePayload = state?.activePayload?.[0]?.payload;
+  const hasActiveIndex = state?.activeIndex !== null && state?.activeIndex !== undefined;
+  const activeIndex = hasActiveIndex ? Number(state.activeIndex) : null;
+  const indexedPoint = Number.isInteger(activeIndex) ? chartData[activeIndex] : null;
+  const activePoint = activePayload || indexedPoint;
+  const label = state?.activeLabel || activePoint?.timestamp || activePoint?.datetime;
+  const datetime = activePoint?.datetime || activePoint?.timestamp || state?.activeLabel;
+
+  return label && datetime ? { label, datetime } : null;
+};
+
+const activeDatetime = (state, chartData = []) =>
+  activeChartPoint(state, chartData)?.datetime;
+
+const chartPointAtX = (clientX, bounds, chartData = []) => {
+  if (!Number.isFinite(clientX) || !bounds || bounds.width <= 0 || chartData.length === 0) {
+    return null;
+  }
+
+  const relativeX = clientX - bounds.left;
+  if (relativeX < 0 || relativeX > bounds.width) return null;
+
+  const index = Math.min(
+    chartData.length - 1,
+    Math.floor((relativeX / bounds.width) * chartData.length),
+  );
+  const point = chartData[index];
+  const label = point?.timestamp || point?.datetime;
+  const datetime = point?.datetime || point?.timestamp;
+
+  return label && datetime ? { label, datetime } : null;
+};
+
 const LogEventsChart = ({
   data,
   loading,
@@ -192,16 +255,16 @@ const LogEventsChart = ({
   pushEvent,
 }) => {
   const tz = userTz || "Etc/UTC";
+  const chartContainerRef = React.useRef(null);
+  const [dragRange, setDragRange] = React.useState(null);
+  const dragStartRef = React.useRef(null);
+  const dragEndRef = React.useRef(null);
+  const suppressClickRef = React.useRef(false);
+
   const triggerTimeSearch = (utcDatetime) => {
     if (!utcDatetime) return;
 
-    pushEvent("soft_pause", {});
-
-    const start = DateTime.fromISO(utcDatetime, { zone: tz }).toISO({
-      includeOffset: false,
-      suppressMilliseconds: true,
-      format: "extended",
-    });
+    const start = formatSearchDatetime(utcDatetime, tz);
     const end = DateTime.fromISO(utcDatetime, { zone: tz })
       .plus({ [chartPeriod + "s"]: 1 })
       .toISO({
@@ -209,28 +272,93 @@ const LogEventsChart = ({
         suppressMilliseconds: true,
         format: "extended",
       });
-    const ts = `t:${start}..${end}`;
+    if (!start || !end) return;
+
+    pushEvent("soft_pause", {});
+
     const index = periods.findIndex((p) => p === chartPeriod);
     const newPeriod = index === 3 ? periods[3] : periods[index + 1];
 
     pushEvent("datetime_update", {
-      querystring: ts,
+      querystring: `t:${start}..${end}`,
       period: newPeriod,
     });
   };
 
-  const handleBarClick = (entry) => {
-    const payload = entry?.payload;
-    if (!payload) return;
-    const utcDatetime = payload.datetime || payload.timestamp;
-    triggerTimeSearch(utcDatetime);
+  const triggerTimeRangeSearch = (firstUtcDatetime, secondUtcDatetime) => {
+    const querystring = buildTimeRangeQuery(
+      firstUtcDatetime,
+      secondUtcDatetime,
+      tz,
+      chartPeriod,
+    );
+    if (!querystring) return;
+
+    pushEvent("soft_pause", {});
+    pushEvent("datetime_update", { querystring });
   };
 
-  const handleChartClick = (state) => {
-    const activePoint = state?.activePayload?.[0]?.payload;
-    const utcDatetime =
-      activePoint?.datetime || activePoint?.timestamp || state?.activeLabel;
-    triggerTimeSearch(utcDatetime);
+  const consumeSuppressedClick = () => {
+    const suppressClick = suppressClickRef.current;
+    suppressClickRef.current = false;
+    return suppressClick;
+  };
+  const pointForMouseEvent = (state, event) =>
+    chartPointAtX(
+      event?.clientX,
+      chartContainerRef.current?.getBoundingClientRect(),
+      chartData,
+    ) || activeChartPoint(state, chartData);
+
+  const handleChartClick = (state, event) => {
+    if (consumeSuppressedClick()) return;
+    triggerTimeSearch(pointForMouseEvent(state, event)?.datetime);
+  };
+
+  const handleMouseDown = (state, event) => {
+    const point = pointForMouseEvent(state, event);
+    if (!point) return;
+
+    dragStartRef.current = point;
+    dragEndRef.current = point;
+    suppressClickRef.current = false;
+    setDragRange({ start: point.label, end: point.label });
+  };
+
+  const handleMouseMove = (state, event) => {
+    if (!dragStartRef.current) return;
+
+    const point = pointForMouseEvent(state, event);
+    if (!point) return;
+
+    dragEndRef.current = point;
+    setDragRange({ start: dragStartRef.current.label, end: point.label });
+  };
+
+  const resetDrag = () => {
+    dragStartRef.current = null;
+    dragEndRef.current = null;
+    setDragRange(null);
+  };
+
+  const handleMouseUp = (state, event) => {
+    const start = dragStartRef.current;
+    const end = pointForMouseEvent(state, event) || dragEndRef.current;
+    const didDrag = Boolean(start && end && start.label !== end.label);
+
+    if (didDrag) {
+      suppressClickRef.current = true;
+      triggerTimeRangeSearch(start.datetime, end.datetime);
+    }
+
+    resetDrag();
+  };
+
+  const handleMouseLeave = () => {
+    if (!dragStartRef.current) return;
+
+    suppressClickRef.current = false;
+    resetDrag();
   };
 
   const TooltipContent = tooltipFactory(chartDataShapeId);
@@ -274,7 +402,7 @@ const LogEventsChart = ({
             width={width}
             height={highlightHeight}
             fill={highlightFill}
-            onClick={() => handleBarClick({ payload })}
+            pointerEvents="none"
           />
         )}
         <rect
@@ -283,7 +411,7 @@ const LogEventsChart = ({
           width={width}
           height={height}
           fill={fill}
-          onClick={() => handleBarClick({ payload })}
+          pointerEvents="none"
         />
       </g>
     );
@@ -291,6 +419,7 @@ const LogEventsChart = ({
 
   return (
     <div
+      ref={chartContainerRef}
       style={{
         height: 100,
         display: "flex",
@@ -314,8 +443,12 @@ const LogEventsChart = ({
           <BarChart
             data={chartData}
             margin={{ top: 20, right: 0, bottom: 0, left: 0 }}
-            style={{ cursor: "pointer" }}
+            style={{ cursor: dragRange ? "crosshair" : "pointer" }}
             onClick={handleChartClick}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
           >
             <CartesianGrid
               stroke={chartGridLineColor}
@@ -331,6 +464,18 @@ const LogEventsChart = ({
               content={<TooltipContent />}
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
+            {dragRange?.start !== dragRange?.end && (
+              <ReferenceArea
+                x1={dragRange.start}
+                x2={dragRange.end}
+                fill={brandGreen}
+                fillOpacity={0.15}
+                stroke={brandGreen}
+                strokeOpacity={0.5}
+                ifOverflow="visible"
+                style={{ pointerEvents: "none" }}
+              />
+            )}
             {settings.keys.map((key) => (
               <Bar
                 key={key}
@@ -340,7 +485,6 @@ const LogEventsChart = ({
                 isAnimationActive={false}
                 minPointSize={minPointSizeForDataKey(chartData, key)}
                 shape={key === topStackKey ? renderBarWithHighlight : undefined}
-                onClick={handleBarClick}
               />
             ))}
           </BarChart>
@@ -350,4 +494,4 @@ const LogEventsChart = ({
   );
 };
 
-export { LogEventsChart };
+export { activeDatetime, buildTimeRangeQuery, chartPointAtX, LogEventsChart };
