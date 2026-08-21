@@ -851,8 +851,10 @@ defmodule Logflare.BackendsTest do
         _child -> false
       end
 
-      child_pids = fn children ->
-        Map.new(children, fn {child_id, pid, _type, _modules} -> {child_id, pid} end)
+      child_pids = fn ->
+        via
+        |> Supervisor.which_children()
+        |> Map.new(fn {child_id, pid, _type, _modules} -> {child_id, pid} end)
       end
 
       # Select the second backend child, which cannot be the supervisor's first child.
@@ -863,18 +865,18 @@ defmodule Logflare.BackendsTest do
 
       refute requested_child_id == elem(hd(children), 0)
 
-      existing_child_pids = child_pids.(children)
+      existing_child_pids = child_pids.()
       missing_backend_id = Enum.max(backend_ids) + 1
 
       # A missing backend ID must leave every existing child running with the same PID.
       assert {:error, :not_found} = SourceSup.stop_backend_child(source, missing_backend_id)
-      assert child_pids.(Supervisor.which_children(via)) == existing_child_pids
+      assert child_pids.() == existing_child_pids
       assert Enum.all?(Map.values(existing_child_pids), &Process.alive?/1)
 
       # Stopping the second backend must not disturb the first or any unrelated child.
       assert :ok = SourceSup.stop_backend_child(source, requested_backend_id)
 
-      remaining_child_pids = child_pids.(Supervisor.which_children(via))
+      remaining_child_pids = child_pids.()
 
       refute Process.alive?(requested_child_pid)
       assert remaining_child_pids == Map.delete(existing_child_pids, requested_child_id)
@@ -885,7 +887,7 @@ defmodule Logflare.BackendsTest do
       # The first backend remains independently stoppable after the second is removed.
       assert :ok = SourceSup.stop_backend_child(source, first_backend_id)
 
-      remaining_child_pids = child_pids.(Supervisor.which_children(via))
+      remaining_child_pids = child_pids.()
 
       expected_child_pids =
         existing_child_pids |> Map.delete(requested_child_id) |> Map.delete(first_child_id)
