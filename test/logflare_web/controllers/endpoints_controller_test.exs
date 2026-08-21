@@ -257,8 +257,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         conn
         |> json_response(200)
 
-      assert response["error"] =~
-               LogflareWeb.QueryErrorHelpers.generic_query_error_message()
+      assert response["error"] == LogflareWeb.QueryErrorHelpers.generic_query_error_message()
 
       refute response["result"]
     end
@@ -376,8 +375,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         conn
         |> json_response(200)
 
-      assert response["error"] =~
-               LogflareWeb.QueryErrorHelpers.generic_query_error_message()
+      assert response["error"] == LogflareWeb.QueryErrorHelpers.generic_query_error_message()
 
       refute response["result"]
     end
