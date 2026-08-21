@@ -41,6 +41,26 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert nil == IngestEventQueue.get_tid({source.id, backend.id, pid})
   end
 
+  describe "replace_event/3" do
+    test "replaces an existing generation value" do
+      tid = :ets.new(:replace_event_test, [:set, :public])
+      :ets.insert(tid, {:id, :original})
+
+      assert :ok = IngestEventQueue.replace_event(tid, :id, :replacement)
+      assert IngestEventQueue.lookup_event(tid, :id) == :replacement
+    end
+
+    test "does not recreate a missing or stale generation row" do
+      tid = :ets.new(:replace_event_test, [:set, :public])
+
+      assert {:error, :not_found} = IngestEventQueue.replace_event(tid, :id, :replacement)
+      assert IngestEventQueue.lookup_event(tid, :id) == nil
+
+      :ets.delete(tid)
+      assert {:error, :not_found} = IngestEventQueue.replace_event(tid, :id, :replacement)
+    end
+  end
+
   describe "with user, source, backend" do
     setup do
       user = insert(:user)
@@ -97,6 +117,15 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # kill the table
       :ets.delete(tid)
       assert [] == IngestEventQueue.list_counts({source.id, nil})
+    end
+
+    test "generation tables use decentralized counters", %{
+      source: %{id: source_id},
+      backend: %{id: backend_id}
+    } do
+      tid = IngestEventQueue.current_generation_tid({source_id, backend_id})
+
+      assert :ets.info(tid, :decentralized_counters)
     end
 
     test "add_to_table/2 removes the backing row when a duplicate pointer is rejected", %{
@@ -455,6 +484,52 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert %LogEvent{} = IngestEventQueue.lookup_event(gen_tid, remaining_gen_event_id)
     end
 
+    @tag :race
+    test "drop_pending/2 never deletes events claimed by pointer consumers", %{
+      source: source,
+      source_backend_pid: sbp
+    } do
+      count = 2_000
+      events = for _ <- 1..count, do: build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      barrier = :atomics.new(2, signed: false)
+
+      tasks =
+        for kind <- List.duplicate(:claim, 4) ++ List.duplicate(:drop, 4) do
+          Task.async(fn ->
+            :atomics.add_get(barrier, 1, 1)
+            await_counter(barrier, 2, 1)
+
+            case kind do
+              :claim ->
+                {:ok, pointers, _tid} = IngestEventQueue.pop_pending_pointers(sbp, count)
+                {:claimed, pointers}
+
+              :drop ->
+                {:ok, dropped} = IngestEventQueue.drop_pending(sbp, count)
+                {:dropped, dropped}
+            end
+          end)
+        end
+
+      await_counter(barrier, 1, length(tasks))
+      :atomics.put(barrier, 2, 1)
+      results = Task.await_many(tasks, 10_000)
+
+      pointers = for {:claimed, pointers} <- results, pointer <- pointers, do: pointer
+      dropped = for({:dropped, count} <- results, do: count) |> Enum.sum()
+      pointer_ids = Enum.map(pointers, & &1.id)
+
+      assert length(pointer_ids) == length(Enum.uniq(pointer_ids))
+      assert length(pointers) + dropped == count
+
+      for pointer <- pointers do
+        assert %LogEvent{} =
+                 IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id)
+      end
+    end
+
     test "truncate all events in a queue", %{source: source, source_backend_pid: sbp} do
       batch =
         for _ <- 1..500 do
@@ -605,6 +680,20 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert trace_pointer.day_bucket == 54_321
 
       assert IngestEventQueue.total_pending(sbp) == 0
+    end
+
+    test "lookup_event/2 distinguishes a missing key from a stale generation table" do
+      tid = :ets.new(:lookup_event_generation, [:set])
+      event = [:logflare, :ingest_event_queue, :stale_table]
+      ref = :telemetry_test.attach_event_handlers(self(), [event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      assert IngestEventQueue.lookup_event(tid, make_ref()) == nil
+      refute_receive {^event, ^ref, _, _}
+
+      :ets.delete(tid)
+      assert IngestEventQueue.lookup_event(tid, make_ref()) == nil
+      assert_receive {^event, ^ref, %{count: 1}, %{}}
     end
 
     test "counts and claims pointers by exact ClickHouse batch key", %{
@@ -800,7 +889,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-  describe "reinsert_pointer/1" do
+  describe "pointer reinsertion" do
     setup do
       user = insert(:user)
       source = insert(:source, user: user)
@@ -819,15 +908,165 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
       assert IngestEventQueue.total_pending(sbp) == 0
 
+      colliding_pointer = %{
+        pointer
+        | tid: make_ref(),
+          gen_event_id: make_ref(),
+          retries: 99
+      }
+
+      assert :ok = IngestEventQueue.insert_new_pointer(colliding_pointer)
       assert :ok = IngestEventQueue.reinsert_pointer(%{pointer | retries: pointer.retries + 1})
       assert IngestEventQueue.total_pending(sbp) == 1
 
       assert {:ok, [reclaimed], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
       assert reclaimed.id == le.id
+      assert reclaimed.tid == pointer.tid
+      assert reclaimed.gen_event_id == pointer.gen_event_id
       assert reclaimed.retries == 1
     end
 
-    test "is a silent no-op when the queue table is stale" do
+    test "transfers a retry payload into the current generation before publishing its pointer", %{
+      source: source,
+      sbp: {sid, bid, _pid} = sbp
+    } do
+      event = build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+
+      old_gen_tid = pointer.tid
+      old_gen_event_id = pointer.gen_event_id
+      queues_key = {sid, bid}
+      assert :ok = IngestEventQueue.new_generations([queues_key])
+      current_gen_tid = IngestEventQueue.current_generation_tid(queues_key)
+      retry_pointer = %{pointer | retries: pointer.retries + 1}
+
+      assert {:ok, %LogEventPointer{tid: ^current_gen_tid} = published_pointer} =
+               IngestEventQueue.requeue_payload(queues_key, retry_pointer, fn new_pointer ->
+                 {:retried, new_pointer}
+               end)
+
+      assert IngestEventQueue.lookup_event(old_gen_tid, old_gen_event_id) == nil
+
+      assert {:retried, ^published_pointer} =
+               IngestEventQueue.lookup_event(
+                 published_pointer.tid,
+                 published_pointer.gen_event_id
+               )
+
+      assert {:ok, [^published_pointer], _tid} =
+               IngestEventQueue.pop_pending_pointers(sbp, 1)
+    end
+
+    test "recovers when the current generation disappears before retry payload staging", %{
+      source: source,
+      sbp: {sid, bid, _pid} = sbp
+    } do
+      event = build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+
+      stale_gen_tid = pointer.tid
+      assert :ok = IngestEventQueue.drop_generation({sid, bid}, stale_gen_tid)
+
+      assert {:ok, %LogEventPointer{} = published_pointer} =
+               IngestEventQueue.requeue_payload(
+                 {sid, bid},
+                 %{pointer | retries: pointer.retries + 1},
+                 fn new_pointer -> {:retried, new_pointer} end
+               )
+
+      refute published_pointer.tid == stale_gen_tid
+      assert published_pointer.tid == IngestEventQueue.current_generation_tid({sid, bid})
+
+      assert {:retried, ^published_pointer} =
+               IngestEventQueue.lookup_event(
+                 published_pointer.tid,
+                 published_pointer.gen_event_id
+               )
+
+      assert {:ok, [^published_pointer], _tid} =
+               IngestEventQueue.pop_pending_pointers(sbp, 1)
+    end
+
+    test "cleans up the claimed and staged payloads when a newer pointer already exists", %{
+      source: source,
+      sbp: {sid, bid, _pid} = sbp
+    } do
+      event = build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+
+      duplicate = %{event | body: Map.put(event.body, "event_message", "newer")}
+      assert :ok = IngestEventQueue.add_to_table(sbp, [duplicate])
+      queue_tid = IngestEventQueue.get_tid(sbp)
+      [existing_pointer_row] = :ets.lookup(queue_tid, event.id)
+
+      {_, existing_gen_tid, existing_gen_event_id, _, _, _, _} = existing_pointer_row
+      queues_key = {sid, bid}
+      assert :ok = IngestEventQueue.new_generations([queues_key])
+      staged_gen_tid = IngestEventQueue.current_generation_tid(queues_key)
+
+      assert {:error, :already_exists} =
+               IngestEventQueue.requeue_payload(
+                 queues_key,
+                 %{pointer | retries: pointer.retries + 1},
+                 fn new_pointer -> {:retried, new_pointer} end
+               )
+
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
+      assert :ets.info(staged_gen_tid, :size) == 0
+      assert :ets.lookup(queue_tid, event.id) == [existing_pointer_row]
+
+      assert IngestEventQueue.lookup_event(existing_gen_tid, existing_gen_event_id) ==
+               duplicate
+    end
+
+    test "replaces a same-ID pointer whose generation payload is gone", %{
+      source: source,
+      sbp: {sid, bid, _pid} = sbp
+    } do
+      event = build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+
+      stale_gen_tid = :ets.new(:stale_retry_generation, [:set, :public])
+      stale_gen_event_id = make_ref()
+
+      dangling_pointer = %{
+        pointer
+        | tid: stale_gen_tid,
+          gen_event_id: stale_gen_event_id,
+          retries: 99
+      }
+
+      :ets.delete(stale_gen_tid)
+      assert :ok = IngestEventQueue.reinsert_pointer(dangling_pointer)
+
+      assert {:ok, %LogEventPointer{} = published_pointer} =
+               IngestEventQueue.requeue_payload(
+                 {sid, bid},
+                 %{pointer | retries: pointer.retries + 1},
+                 fn new_pointer -> {:retried, new_pointer} end
+               )
+
+      refute published_pointer.tid == stale_gen_tid
+      refute published_pointer.gen_event_id == stale_gen_event_id
+      assert published_pointer.retries == 1
+
+      assert {:ok, [^published_pointer], _tid} =
+               IngestEventQueue.pop_pending_pointers(sbp, 1)
+
+      assert {:retried, ^published_pointer} =
+               IngestEventQueue.lookup_event(
+                 published_pointer.tid,
+                 published_pointer.gen_event_id
+               )
+
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
+    end
+
+    test "reports when the queue table is stale" do
       tid = :ets.new(:stale_reinsert_queue, [:public, :set])
       :ets.delete(tid)
 
@@ -842,7 +1081,28 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         day_bucket: 0
       }
 
-      assert :ok = IngestEventQueue.reinsert_pointer(pointer)
+      assert {:error, :not_initialized} = IngestEventQueue.insert_new_pointer(pointer)
+    end
+
+    test "does not overwrite a newer pointer with the same event id", %{source: source, sbp: sbp} do
+      event = build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      queue_tid = IngestEventQueue.get_tid(sbp)
+      [existing] = :ets.lookup(queue_tid, event.id)
+
+      retry = %LogEventPointer{
+        id: event.id,
+        tid: make_ref(),
+        gen_event_id: make_ref(),
+        queue_tid: queue_tid,
+        size: 1,
+        retries: 1,
+        event_type: event.event_type,
+        day_bucket: event.day_bucket
+      }
+
+      assert {:error, :already_exists} = IngestEventQueue.insert_new_pointer(retry)
+      assert :ets.lookup(queue_tid, event.id) == [existing]
     end
   end
 
@@ -924,7 +1184,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(available_queue)
 
       max_size = IngestEventQueue.max_queue_size()
-      full_batch = build_list(max_size, :log_event, source: source)
+      full_batch = build_queue_saturation_events(max_size, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
       assert IngestEventQueue.get_table_size(full_queue) == max_size
@@ -1019,13 +1279,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         for n <- 1..3 do
           queue = {source.id, backend.id, :erlang.list_to_pid(~c"<0.200.#{n}>")}
           IngestEventQueue.upsert_tid(queue)
-          :ok = IngestEventQueue.add_to_table(queue, build_list(max_size, :log_event))
+          :ok = IngestEventQueue.add_to_table(queue, build_queue_saturation_events(max_size))
           queue
         end
 
       # every existing queue is at the hard cap — nothing eligible remains, so the
       # whole new batch falls through to the startup queue instead
-      new_events = build_list(10_000, :log_event)
+      new_events = build_queue_saturation_events(10_000)
       :ok = IngestEventQueue.add_to_table({source.id, backend.id}, new_events)
 
       assert IngestEventQueue.get_table_size(startup_key) == 10_000
@@ -1124,7 +1384,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(available_queue)
 
       max_size = IngestEventQueue.max_consolidated_queue_size()
-      full_batch = build_list(max_size, :log_event, source: source)
+      full_batch = build_queue_saturation_events(max_size, source: source)
       :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
 
       assert IngestEventQueue.get_table_size(full_queue) == max_size
@@ -1168,10 +1428,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       IngestEventQueue.upsert_tid(queue1)
       IngestEventQueue.upsert_tid(queue2)
 
-      :ok = IngestEventQueue.add_to_table(queue1, build_list(1_000, :log_event))
-      :ok = IngestEventQueue.add_to_table(queue2, build_list(1_010, :log_event))
+      :ok = IngestEventQueue.add_to_table(queue1, build_queue_saturation_events(1_000))
+      :ok = IngestEventQueue.add_to_table(queue2, build_queue_saturation_events(1_010))
 
-      new_events = build_list(200, :log_event)
+      new_events = build_queue_saturation_events(200)
 
       :ok =
         IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events, chunk_size: 50)
@@ -1194,11 +1454,14 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         for n <- 1..3 do
           queue = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.200.#{n}>")}
           IngestEventQueue.upsert_tid(queue)
-          :ok = IngestEventQueue.add_to_table(queue, build_list(max_size, :log_event))
+
+          :ok =
+            IngestEventQueue.add_to_table(queue, build_queue_saturation_events(max_size))
+
           queue
         end
 
-      new_events = build_list(10_000, :log_event)
+      new_events = build_queue_saturation_events(10_000)
       :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events)
 
       assert IngestEventQueue.get_table_size(startup_key) == 10_000
@@ -1301,6 +1564,53 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(key) == 0
     end
 
+    @tag :race
+    test "resolved and ID-passing consumers never claim the same event", %{
+      key: key,
+      source: source
+    } do
+      count = 2_000
+      events = for _ <- 1..count, do: build(:log_event, source: source)
+      assert :ok = IngestEventQueue.add_to_table(key, events)
+
+      barrier = :atomics.new(2, signed: false)
+
+      tasks =
+        for kind <- List.duplicate(:pointer, 4) ++ List.duplicate(:event, 4) do
+          Task.async(fn ->
+            :atomics.add_get(barrier, 1, 1)
+            await_counter(barrier, 2, 1)
+
+            case kind do
+              :pointer ->
+                {:ok, pointers, _tid} = IngestEventQueue.pop_pending_pointers(key, count)
+                {:pointers, pointers}
+
+              :event ->
+                {:ok, claimed_events} = IngestEventQueue.pop_pending(key, count)
+                {:events, claimed_events}
+            end
+          end)
+        end
+
+      await_counter(barrier, 1, length(tasks))
+      :atomics.put(barrier, 2, 1)
+      results = Task.await_many(tasks, 10_000)
+
+      pointers = for {:pointers, pointers} <- results, pointer <- pointers, do: pointer
+      claimed_events = for {:events, events} <- results, event <- events, do: event
+      pointer_ids = MapSet.new(pointers, & &1.id)
+      event_ids = MapSet.new(claimed_events, & &1.id)
+
+      assert MapSet.disjoint?(pointer_ids, event_ids)
+      assert MapSet.size(pointer_ids) + MapSet.size(event_ids) == count
+
+      for pointer <- pointers do
+        assert %LogEvent{} =
+                 IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id)
+      end
+    end
+
     test "skips a pointer whose generation was already dropped instead of crashing", %{
       key: key,
       source: source
@@ -1338,11 +1648,12 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     le = build(:log_event, source: source)
     IngestEventQueue.add_to_table(table, [le])
     IngestEventQueue.add_to_table(other_table, [le])
-    :timer.sleep(300)
 
     # Verify worker cached the values automatically (without manual cache calls)
-    assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
-    assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
+    TestUtils.retry_assert(fn ->
+      assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
+      assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
+    end)
   end
 
   test "QueueJanitor purges if exceeds max" do
@@ -1359,7 +1670,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       {QueueJanitor, source: source, backend: backend, interval: 50, max: 100, purge_ratio: 1.0}
     )
 
-    :timer.sleep(550)
     assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == 0
   end
 
@@ -1377,7 +1687,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       {QueueJanitor, source: source, backend: backend, interval: 50, max: 90, purge_ratio: 0.5}
     )
 
-    :timer.sleep(550)
     assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == 50
   end
 
@@ -1416,7 +1725,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
          consolidated_key: queues_key}
       )
 
-      :timer.sleep(550)
       assert IngestEventQueue.get_table_size(consolidated_key) == 0
       assert IngestEventQueue.list_recent_events(queues_key, 10) == []
     end
@@ -1448,7 +1756,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
          consolidated_key: {:consolidated, backend.id}}
       )
 
-      :timer.sleep(550)
       # Events should remain because 150 < 1000 (consolidated max = 100 * 10)
       assert IngestEventQueue.get_table_size(consolidated_key) == 150
     end
@@ -1512,9 +1819,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     tid = IngestEventQueue.get_tid({source.id, backend.id, pid})
     :ets.delete(tid)
     start_supervised!({MapperJanitor, interval: 100})
-    :timer.sleep(500)
-    assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == nil
-    assert :ets.info(:ingest_event_queue_mapping, :size) == 0
+
+    TestUtils.retry_assert(fn ->
+      assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == nil
+      assert :ets.info(:ingest_event_queue_mapping, :size) == 0
+    end)
   end
 
   describe "recent-events cache" do
@@ -1851,6 +2160,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         # use extended_statistics to view units of work done
         formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
       )
+    end
+  end
+
+  defp await_counter(counter, index, target) do
+    if :atomics.get(counter, index) < target do
+      :erlang.yield()
+      await_counter(counter, index, target)
     end
   end
 end

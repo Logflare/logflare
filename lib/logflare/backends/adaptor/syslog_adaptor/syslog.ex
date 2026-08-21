@@ -14,6 +14,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
 
   @levels %{
     "emergency" => 0,
+    "emerg" => 0,
     "emer" => 0,
     "alert" => 1,
     "critical" => 2,

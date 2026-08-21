@@ -6,6 +6,7 @@ defmodule Logflare.Mapper.MappingConfigTest do
   alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
   alias Logflare.Mapper.MappingConfig.InferCondition
   alias Logflare.Mapper.MappingConfig.InferRule
+  alias Logflare.Mapper.MappingConfig.OutputFormat
   alias Logflare.Mapper.MappingConfig.PickEntry
 
   describe "FieldConfig constructors" do
@@ -199,8 +200,8 @@ defmodule Logflare.Mapper.MappingConfigTest do
     end
   end
 
-  describe "MappingConfig.new/1" do
-    test "creates config from field list" do
+  describe "MappingConfig.new/2" do
+    test "creates a map-output config from a field list by default" do
       config =
         MappingConfig.new([
           Field.string("name", path: "$.name"),
@@ -209,6 +210,14 @@ defmodule Logflare.Mapper.MappingConfigTest do
 
       assert %MappingConfig{} = config
       assert length(config.fields) == 2
+      assert config.output == nil
+    end
+
+    test "stores a typed output format" do
+      output = OutputFormat.clickhouse_row_binary(:log)
+      config = MappingConfig.new([Field.string("project")], output: output)
+
+      assert config.output == output
     end
   end
 
@@ -251,6 +260,17 @@ defmodule Logflare.Mapper.MappingConfigTest do
         assert orig.precision == rest.precision
         assert orig.value_type == rest.value_type
       end)
+    end
+
+    test "round-trip preserves the output format" do
+      config =
+        MappingConfig.new([Field.string("project")],
+          output: OutputFormat.clickhouse_row_binary(:log)
+        )
+
+      assert {:ok, json} = MappingConfig.to_json(config)
+      assert {:ok, restored} = MappingConfig.from_json(json)
+      assert restored.output == OutputFormat.clickhouse_row_binary(:log)
     end
 
     test "round-trip preserves pick entries" do
@@ -361,6 +381,16 @@ defmodule Logflare.Mapper.MappingConfigTest do
 
       assert {:error, %Ecto.Changeset{}} = MappingConfig.from_json(json)
     end
+
+    test "from_json/1 validates the output format" do
+      json =
+        Jason.encode!(%{
+          "fields" => [%{"name" => "project", "type" => "string"}],
+          "output" => %{"format" => "clickhouse_row_binary"}
+        })
+
+      assert {:error, %Ecto.Changeset{}} = MappingConfig.from_json(json)
+    end
   end
 
   describe "MappingConfig.to_nif_map/1" do
@@ -385,6 +415,18 @@ defmodule Logflare.Mapper.MappingConfigTest do
       assert age_field["name"] == "age"
       assert age_field["type"] == "uint8"
       assert age_field["default"] == 0
+    end
+
+    test "serializes the output format" do
+      config =
+        MappingConfig.new([Field.string("project")],
+          output: OutputFormat.clickhouse_row_binary(:trace)
+        )
+
+      assert MappingConfig.to_nif_map(config)["output"] == %{
+               "format" => "clickhouse_row_binary",
+               "row_type" => "trace"
+             }
     end
 
     test "serializes config with pick entries" do

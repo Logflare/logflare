@@ -72,7 +72,7 @@ defmodule LogflareWeb.SourceController do
     |> maybe_put_high_rate_flash(source, avg_rate)
     |> render(
       "show.html",
-      bq_schema: get_bigquery_schema(source),
+      schema_flatmap: SourceSchemas.source_schema_flatmap_or_default(source),
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,

@@ -36,8 +36,7 @@ config :logflare, :bigquery_pipeline, max_retries: 0
 
 config :logflare, :clickhouse_backend_adaptor,
   engine: "MergeTree",
-  pool_size: 3,
-  native_pool_size: 10
+  pool_size: 3
 
 config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
 

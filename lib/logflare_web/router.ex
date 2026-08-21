@@ -446,6 +446,11 @@ defmodule LogflareWeb.Router do
     get("/", HealthCheckController, :check)
   end
 
+  scope "/ready", LogflareWeb do
+    pipe_through(:api)
+    get("/", HealthCheckController, :ready)
+  end
+
   scope "/api", LogflareWeb do
     pipe_through([:api, :source_list_api_auth])
 

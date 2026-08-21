@@ -287,7 +287,7 @@ deploy.staging.main:
 	@gcloud config set project logflare-staging
 	gcloud builds submit . \
 		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_TAG_LATEST=true \
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
@@ -307,7 +307,7 @@ deploy.staging.versioned:
 	@gcloud config set project logflare-staging
 	gcloud builds submit . \
 		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION) \
+		--substitutions=_IMAGE_TAG=$(VERSION),_TAG_LATEST=true \
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
@@ -316,6 +316,43 @@ deploy.staging.versioned:
 		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=versioned \
 		--region=us-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+# Deploys the currently checked-out branch's HEAD to two dedicated staging
+# instance groups (instance-group-staging-dev-<DEV_NUMBER>-producer/-consumer)
+# for testing the spool feature, reusing the staging DB/secrets already baked
+# into the staging image. See cloudbuild/staging/deploy-dev.yaml and
+# .github/workflows/deploy-pr-to-dev.yml (manual GitHub Actions trigger).
+# Requires the two instance groups to already exist (one-time bootstrap, not
+# automated here since nothing in this pipeline creates a MIG). Override
+# DEV_NUMBER to target a different dev-N pair, e.g.
+# `make deploy.staging.dev DEV_NUMBER=2`.
+DEV_NUMBER ?= 1
+
+deploy.staging.dev: deploy.staging.dev-image deploy.staging.dev-producer deploy.staging.dev-consumer
+
+deploy.staging.dev-image:
+	@gcloud config set project logflare-staging
+	gcloud builds submit . \
+		--config=cloudbuild/staging/build-image.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
+		--region=europe-west1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+deploy.staging.dev-producer:
+	gcloud builds submit . \
+		--config=./cloudbuild/staging/deploy-dev.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=producer \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+deploy.staging.dev-consumer:
+	gcloud builds submit . \
+		--config=./cloudbuild/staging/deploy-dev.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=consumer \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+.PHONY: deploy.staging.dev deploy.staging.dev-image deploy.staging.dev-producer deploy.staging.dev-consumer
 
 deploy.prod.versioned:
 	@gcloud config set project logflare-232118
@@ -386,8 +423,11 @@ deploy.prod.versioned:
 tag-versioned:
 
 	@echo "Checking dockerhub registry for dev image supabase/logflare:$(SHA_IMAGE_TAG) ..."
-	@echo "Dev image must be built on CI: https://github.com/Logflare/logflare/actions" \
-		docker manifest inspect supabase/logflare:$(SHA_IMAGE_TAG) >/dev/null
+	@if ! docker manifest inspect supabase/logflare:$(SHA_IMAGE_TAG) >/dev/null 2>&1; then \
+		echo "Dev image does not exist: supabase/logflare:$(SHA_IMAGE_TAG)"; \
+		echo "Build it through https://github.com/Logflare/logflare/actions"; \
+		exit 1; \
+	fi
 	@echo "OK"
 
 	@echo "Retagging dev image to supabase/logflare:$(VERSION) ..."
