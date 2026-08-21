@@ -36,11 +36,9 @@ defmodule Logflare.Backends.SourceSup do
 
     ingest_backends =
       Backends.Cache.list_backends(source_id: source.id)
-      |> Enum.reject(& &1.consolidated_ingest?)
 
     rules_backends =
       Backends.Cache.list_backends(rules_source_id: source.id)
-      |> Enum.reject(& &1.consolidated_ingest?)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
     user = Users.Cache.get(source.user_id)
@@ -52,6 +50,8 @@ defmodule Logflare.Backends.SourceSup do
     specs =
       [default_backend | ingest_backends]
       |> Enum.concat(rules_backends)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.reject(& &1.consolidated_ingest?)
       |> Enum.map(&Backend.child_spec(source, &1))
       |> Enum.uniq()
 

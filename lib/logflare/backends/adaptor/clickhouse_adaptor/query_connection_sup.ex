@@ -123,10 +123,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
 
   Note that this call does block while waiting to dispatch to all nodes.
   """
-  @spec recycle_backend(Backend.t() | pos_integer()) :: %{node() => :ok | {:error, term()}}
+  @spec recycle_backend(Backend.t() | non_neg_integer()) :: %{node() => :ok | {:error, term()}}
   def recycle_backend(%Backend{id: backend_id}), do: recycle_backend(backend_id)
 
-  def recycle_backend(backend_id) when is_pos_integer(backend_id) do
+  def recycle_backend(backend_id) when is_non_negative_integer(backend_id) do
     Logger.info("Recycling ClickHouse read pool connections across the cluster",
       backend_id: backend_id
     )
@@ -157,8 +157,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
 
   Invoked on each node by `recycle_backend/1`.
   """
-  @spec recycle_backend_local(pos_integer()) :: :ok | {:error, term()}
-  def recycle_backend_local(backend_id) when is_pos_integer(backend_id) do
+  @spec recycle_backend_local(non_neg_integer()) :: :ok | {:error, term()}
+  def recycle_backend_local(backend_id) when is_non_negative_integer(backend_id) do
     case lookup_managers(backend_id) do
       [] -> {:error, :no_manager}
       manager_pids -> manager_pids |> Enum.map(&safe_recycle/1) |> aggregate_results()
@@ -178,10 +178,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
 
   Pools restart lazily on demand.
   """
-  @spec refresh_backend(Backend.t() | pos_integer()) :: :ok
+  @spec refresh_backend(Backend.t() | non_neg_integer()) :: :ok
   def refresh_backend(%Backend{id: backend_id}), do: refresh_backend(backend_id)
 
-  def refresh_backend(backend_id) when is_pos_integer(backend_id) do
+  def refresh_backend(backend_id) when is_non_negative_integer(backend_id) do
     Logger.info("Refreshing ClickHouse read pools across the cluster",
       backend_id: backend_id
     )
@@ -195,8 +195,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
 
   Invoked on each node by `refresh_backend/1`.
   """
-  @spec refresh_backend_local(pos_integer()) :: :ok
-  def refresh_backend_local(backend_id) when is_pos_integer(backend_id) do
+  @spec refresh_backend_local(non_neg_integer()) :: :ok
+  def refresh_backend_local(backend_id) when is_non_negative_integer(backend_id) do
     ContextCache.bust_keys([{Backends, backend_id}])
 
     backend_id
@@ -217,10 +217,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   Terminates the read `ConnectionManager` and its pool for a backend on every node
   in the cluster. Used when a backend is deleted. Fire-and-forget.
   """
-  @spec terminate_backend(Backend.t() | pos_integer()) :: :ok
+  @spec terminate_backend(Backend.t() | non_neg_integer()) :: :ok
   def terminate_backend(%Backend{id: backend_id}), do: terminate_backend(backend_id)
 
-  def terminate_backend(backend_id) when is_pos_integer(backend_id) do
+  def terminate_backend(backend_id) when is_non_negative_integer(backend_id) do
     Logger.info("Terminating ClickHouse read connection managers across the cluster",
       backend_id: backend_id
     )
@@ -234,8 +234,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
 
   Invoked on each node by `terminate_backend/1`.
   """
-  @spec terminate_backend_local(pos_integer()) :: :ok
-  def terminate_backend_local(backend_id) when is_pos_integer(backend_id) do
+  @spec terminate_backend_local(non_neg_integer()) :: :ok
+  def terminate_backend_local(backend_id) when is_non_negative_integer(backend_id) do
     backend_id
     |> lookup_managers()
     |> Enum.each(&terminate_manager/1)
@@ -243,8 +243,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
     :ok
   end
 
-  @spec lookup_managers(pos_integer()) :: [pid()]
-  defp lookup_managers(backend_id) when is_pos_integer(backend_id) do
+  @spec lookup_managers(non_neg_integer()) :: [pid()]
+  defp lookup_managers(backend_id) when is_non_negative_integer(backend_id) do
     manager = ConnectionManager
 
     ms =

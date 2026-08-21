@@ -509,7 +509,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
-  @spec maybe_requeue_failed(backend_id :: pos_integer(), messages :: [Message.t()]) :: :ok
+  @spec maybe_requeue_failed(backend_id :: non_neg_integer(), messages :: [Message.t()]) :: :ok
   defp maybe_requeue_failed(backend_id, messages) do
     payloads = Enum.map(messages, & &1.data)
 
@@ -522,7 +522,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   end
 
   @spec requeue_or_shed(
-          backend_id :: pos_integer(),
+          backend_id :: non_neg_integer(),
           retriable :: [EncodedRow.t() | LogEventPointer.t()]
         ) :: :ok
   defp requeue_or_shed(_backend_id, []), do: :ok
@@ -540,7 +540,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @typep requeue_result :: :requeued | :deduplicated | :lookup_miss | :queue_unavailable
 
   @spec requeue_retriable(
-          backend_id :: pos_integer(),
+          backend_id :: non_neg_integer(),
           retriable :: [EncodedRow.t() | LogEventPointer.t()]
         ) :: :ok
   defp requeue_retriable(backend_id, retriable) do
@@ -566,7 +566,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     :ok
   end
 
-  @spec requeue_payload(pos_integer(), EncodedRow.t() | LogEventPointer.t()) :: requeue_result()
+  @spec requeue_payload(non_neg_integer(), EncodedRow.t() | LogEventPointer.t()) ::
+          requeue_result()
   defp requeue_payload(backend_id, %EncodedRow{pointer: pointer} = encoded) do
     transfer_retry_payload(backend_id, pointer, encoded)
   end
@@ -578,7 +579,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
-  @spec transfer_retry_payload(pos_integer(), LogEventPointer.t(), EncodedRow.t() | LogEvent.t()) ::
+  @spec transfer_retry_payload(
+          non_neg_integer(),
+          LogEventPointer.t(),
+          EncodedRow.t() | LogEvent.t()
+        ) ::
           requeue_result()
   defp transfer_retry_payload(backend_id, pointer, payload) do
     pointer = %{pointer | retries: pointer.retries + 1}
@@ -600,7 +605,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   defp requeue_transfer_result({:error, :already_exists}), do: :deduplicated
   defp requeue_transfer_result({:error, :not_initialized}), do: :queue_unavailable
 
-  @spec emit_requeue_deduplicated_telemetry(pos_integer(), non_neg_integer()) :: :ok
+  @spec emit_requeue_deduplicated_telemetry(non_neg_integer(), non_neg_integer()) :: :ok
   defp emit_requeue_deduplicated_telemetry(_backend_id, 0), do: :ok
 
   defp emit_requeue_deduplicated_telemetry(backend_id, deduplicated_count) do
@@ -619,7 +624,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   # A lookup miss means GenerationJanitor dropped the backing generation before the
   # retry could resolve its event. Bounded and rare in practice, but worth
   # surfacing since it's otherwise invisible.
-  @spec emit_requeue_lookup_miss_telemetry(pos_integer(), non_neg_integer()) :: :ok
+  @spec emit_requeue_lookup_miss_telemetry(non_neg_integer(), non_neg_integer()) :: :ok
   defp emit_requeue_lookup_miss_telemetry(_backend_id, 0), do: :ok
 
   defp emit_requeue_lookup_miss_telemetry(backend_id, missing_count) do
@@ -635,7 +640,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     )
   end
 
-  @spec emit_requeue_queue_unavailable_telemetry(pos_integer(), non_neg_integer()) :: :ok
+  @spec emit_requeue_queue_unavailable_telemetry(non_neg_integer(), non_neg_integer()) :: :ok
   defp emit_requeue_queue_unavailable_telemetry(_backend_id, 0), do: :ok
 
   defp emit_requeue_queue_unavailable_telemetry(backend_id, dropped_count) do
@@ -653,7 +658,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @spec drop_failed(
           payloads :: [EncodedRow.t() | LogEventPointer.t()],
-          backend_id :: pos_integer(),
+          backend_id :: non_neg_integer(),
           reason :: String.t()
         ) :: :ok
   defp drop_failed([], _backend_id, _reason), do: :ok

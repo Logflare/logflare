@@ -57,6 +57,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
                "otel_traces_#{stringified_backend_token}"
     end
+
+    test "uses fixed table names for the synthetic single-tenant backend", %{backend: backend} do
+      backend = %{backend | id: 0, single_tenant_default?: true}
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log) ==
+               "otel_logs_single_tenant"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric) ==
+               "otel_metrics_single_tenant"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
+               "otel_traces_single_tenant"
+    end
   end
 
   describe "connection and basic functionality" do
