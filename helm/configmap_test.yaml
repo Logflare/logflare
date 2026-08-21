@@ -1,0 +1,68 @@
+suite: test backend wiring
+templates:
+  - configmap.yaml
+tests:
+  - it: should render bigquery vars and omit postgres vars by default
+    asserts:
+      - equal:
+          path: data.GOOGLE_PROJECT_ID
+          value: ""
+        template: configmap.yaml
+      - isNotNull:
+          path: data.GOOGLE_DATASET_LOCATION
+        template: configmap.yaml
+      - isNull:
+          path: data.POSTGRES_BACKEND_SCHEMA
+        template: configmap.yaml
+
+  - it: should render postgres vars and omit bigquery vars when backend.type is postgres
+    set:
+      logflare.backend.type: postgres
+    asserts:
+      - isNotNull:
+          path: data.POSTGRES_BACKEND_SCHEMA
+        template: configmap.yaml
+      - isNull:
+          path: data.GOOGLE_PROJECT_ID
+        template: configmap.yaml
+      - isNull:
+          path: data.GOOGLE_PROJECT_NUMBER
+        template: configmap.yaml
+
+  - it: should omit empty optional configmap keys
+    asserts:
+      - notExists:
+          path: data.LOGFLARE_FEATURE_FLAG_OVERRIDE
+        template: configmap.yaml
+      - notExists:
+          path: data.PHX_URL_HOST
+        template: configmap.yaml
+
+  - it: should render optional configmap keys when set
+    set:
+      logflare.featureFlagOverride: "some-flag"
+      logflare.phx.urlHost: "example.com"
+    asserts:
+      - equal:
+          path: data.LOGFLARE_FEATURE_FLAG_OVERRIDE
+          value: "some-flag"
+        template: configmap.yaml
+      - equal:
+          path: data.PHX_URL_HOST
+          value: "example.com"
+        template: configmap.yaml
+
+  - it: should render extraConfig entries verbatim into the ConfigMap
+    set:
+      logflare.extraConfig:
+        LOGFLARE_LOG_LEVEL: info
+        SPOOL_MODE: enabled
+    asserts:
+      - equal:
+          path: data.LOGFLARE_LOG_LEVEL
+          value: "info"
+        template: configmap.yaml
+      - equal:
+          path: data.SPOOL_MODE
+          value: "enabled"
+        template: configmap.yaml
