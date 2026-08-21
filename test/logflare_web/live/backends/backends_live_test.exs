@@ -48,6 +48,43 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert Backends.get_backend(backend.id)
     end
 
+    test "attacker cannot toggle another user's backend", %{conn: conn} do
+      attacker = insert(:user)
+      victim = insert(:user)
+      backend = insert(:backend, user: victim)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(attacker)
+        |> live_with_redirect(~p"/backends")
+
+      render_hook(view, "toggle_backend", %{"backend_id" => to_string(backend.id)})
+
+      assert Backends.get_backend(backend.id).enabled
+    end
+
+    test "team member cannot toggle a backend accessible only to the selected team owner", %{
+      conn: conn
+    } do
+      selected_team_owner = insert(:user)
+      selected_team = insert(:team, user: selected_team_owner)
+      acting_team_user = insert(:team_user, team: selected_team)
+
+      other_team_owner = insert(:user)
+      other_team = insert(:team, user: other_team_owner)
+      insert(:team_user, team: other_team, email: selected_team_owner.email)
+      backend = insert(:backend, user: other_team_owner)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(selected_team_owner, acting_team_user)
+        |> live(~p"/backends?t=#{selected_team.id}")
+
+      render_hook(view, "toggle_backend", %{"backend_id" => to_string(backend.id)})
+
+      assert Backends.get_backend(backend.id).enabled
+    end
+
     test "attacker cannot create a rule for another user's source from backends liveview",
          %{conn: conn} do
       attacker = insert(:user, endpoints_beta: true)
@@ -136,6 +173,26 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ Atom.to_string(backend.type)
     end
 
+    test "toggles a destination", %{conn: conn, source: source, user: user} do
+      backend = insert(:backend, sources: [source], user: user)
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends")
+
+      assert view |> element("#backend-status-#{backend.id}") |> render() =~ "Enabled"
+
+      view
+      |> element("#toggle-backend-#{backend.id}")
+      |> render_click()
+
+      refute Backends.get_backend(backend.id).enabled
+      assert view |> element("#backend-status-#{backend.id}") |> render() =~ "Disabled"
+
+      view
+      |> element("#toggle-backend-#{backend.id}")
+      |> render_click()
+
+      assert Backends.get_backend(backend.id).enabled
+    end
+
     test "render backends with metadata", %{conn: conn, source: source, user: user} do
       insert(:backend, sources: [source], user: user, metadata: %{some: "custom-metadata"})
       {:ok, view, _html} = live_with_redirect(conn, ~p"/backends")
@@ -180,6 +237,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       html = render(view)
       assert html =~ backend.name
       assert html =~ "#{backend.type}"
+      assert html =~ "Enabled"
     end
 
     test "redacts certain config attributes from display", %{

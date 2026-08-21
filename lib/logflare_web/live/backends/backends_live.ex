@@ -171,6 +171,19 @@ defmodule LogflareWeb.BackendsLive do
      )}
   end
 
+  def handle_event("toggle_backend", %{"backend_id" => backend_id}, socket) do
+    effective_user = socket.assigns[:team_user] || socket.assigns.user
+
+    socket =
+      if backend = Backends.get_backend_by_user_access(effective_user, backend_id) do
+        toggle_backend(socket, backend)
+      else
+        put_flash(socket, :error, "You do not have access to that backend.")
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_event("toggle_default_ingest_form", _params, socket) do
     {:noreply,
      assign(socket, :show_default_ingest_form?, !socket.assigns.show_default_ingest_form?)}
@@ -416,6 +429,31 @@ defmodule LogflareWeb.BackendsLive do
       backend ->
         backend = backend |> Backends.preload_rules() |> Backends.preload_alerts()
         do_refresh_backend(socket, backend)
+    end
+  end
+
+  defp maybe_refresh_current_backend(socket, id) do
+    if socket.assigns.backend && socket.assigns.backend.id == id do
+      refresh_backend(socket, id)
+    else
+      socket
+    end
+  end
+
+  defp toggle_backend(socket, backend) do
+    case Backends.update_backend(backend, %{enabled: !backend.enabled}) do
+      {:ok, updated} ->
+        socket
+        |> refresh_backends()
+        |> maybe_refresh_current_backend(updated.id)
+        |> put_flash(
+          :info,
+          "Destination #{if(updated.enabled, do: "enabled", else: "disabled")}"
+        )
+
+      {:error, changeset} ->
+        message = stringify_changeset_errors(changeset)
+        put_flash(socket, :error, "Unable to update destination:\n#{message}")
     end
   end
 

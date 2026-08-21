@@ -42,6 +42,7 @@ defmodule Logflare.Backends.Backend do
     field :consolidated_ingest?, :boolean, virtual: true, default: false
     field :metadata, :map
     field :default_ingest?, :boolean, source: :default_ingest, default: false
+    field :enabled, :boolean, default: true
 
     belongs_to :user, User
 
@@ -61,8 +62,8 @@ defmodule Logflare.Backends.Backend do
 
   def changeset(backend, attrs) do
     backend
-    |> cast(attrs, [:type, :config, :name, :description, :metadata, :default_ingest?])
-    |> validate_required([:user_id, :type, :config, :name])
+    |> cast(attrs, [:type, :config, :name, :description, :metadata, :default_ingest?, :enabled])
+    |> validate_required([:user_id, :type, :config, :name, :enabled])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
     |> validate_config()
     |> validate_default_ingest()
@@ -140,6 +141,7 @@ defmodule Logflare.Backends.Backend do
           :config,
           :metadata,
           :default_ingest?,
+          :enabled,
           :inserted_at,
           :updated_at
         ])

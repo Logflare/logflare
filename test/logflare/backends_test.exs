@@ -108,6 +108,24 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
+    test "create_backend/2 does not start a consolidated pipeline when disabled", %{user: user} do
+      attrs = %{
+        type: :clickhouse,
+        name: "Disabled ClickHouse",
+        enabled: false,
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
     test "create_backend/2 does not start pipeline for non-consolidated backend", %{user: user} do
       attrs = %{
         type: :webhook,
@@ -160,6 +178,48 @@ defmodule Logflare.BackendsTest do
       assert Backends.ConsolidatedSup.pipeline_running?(updated)
 
       Backends.ConsolidatedSup.stop_pipeline(updated)
+    end
+
+    test "update_backend/2 starts consolidated pipeline before cache invalidation", %{
+      user: user
+    } do
+      sources = insert_pair(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          enabled: false,
+          user: user,
+          sources: sources,
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          }
+        )
+
+      on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend.id) end)
+
+      test_pid = self()
+
+      pipeline_name =
+        Backends.via_backend(backend, Logflare.Backends.Adaptor.ClickHouseAdaptor)
+
+      stub(ClusterUtils, :rpc_multicast, fn _module, _function, _args -> :ok end)
+
+      stub(Logflare.ContextCache, :bust_keys, fn keys ->
+        send(test_pid, {:cache_bust, GenServer.whereis(pipeline_name)})
+        Mimic.call_original(Logflare.ContextCache, :bust_keys, [keys])
+      end)
+
+      assert {:ok, enabled_backend} = Backends.update_backend(backend, %{enabled: true})
+
+      assert_receive {:cache_bust, exposed_pipeline_pid}
+      assert is_pid(exposed_pipeline_pid)
+      assert GenServer.whereis(pipeline_name) == exposed_pipeline_pid
+      assert Backends.ConsolidatedSup.pipeline_running?(enabled_backend)
     end
   end
 
@@ -299,6 +359,17 @@ defmodule Logflare.BackendsTest do
                Backends.list_backends(metadata: %{some: "data", value: "true", other: false})
 
       assert result.id == backend.id
+    end
+
+    test "list_backends/1 with enabled filter", %{user: user} do
+      enabled_backend = insert(:backend, user: user, enabled: true)
+      disabled_backend = insert(:backend, user: user, enabled: false)
+
+      assert [result] = Backends.list_backends(user_id: user.id, enabled: true)
+      assert result.id == enabled_backend.id
+
+      assert [result] = Backends.list_backends(user_id: user.id, enabled: false)
+      assert result.id == disabled_backend.id
     end
 
     test "list_backends/1 with default_ingest filter", %{user: user} do
@@ -835,6 +906,141 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
+    test "SourceSup filters out disabled attached and rule backends", %{
+      source: source,
+      user: user
+    } do
+      attached_backend =
+        insert(:backend,
+          enabled: false,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://attached.example.com"},
+          user: user
+        )
+
+      rule_backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://rule.example.com"},
+          user: user
+        )
+
+      insert(:rule, source: source, backend: rule_backend)
+      Backends.clear_list_backends_cache(source.id)
+
+      start_supervised!({SourceSup, source})
+
+      refute SourceSup.backend_child_started?(attached_backend.id, source.id)
+      refute SourceSup.backend_child_started?(rule_backend.id, source.id)
+    end
+
+    test "toggling a rule-only backend reconciles its SourceSup child", %{
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://rule.example.com"},
+          user: user
+        )
+
+      insert(:rule, source: source, backend: backend)
+      Backends.clear_list_backends_cache(source.id)
+      start_supervised!({SourceSup, source})
+
+      assert SourceSup.backend_child_started?(backend.id, source.id)
+
+      assert {:ok, disabled} = Backends.update_backend(backend, %{enabled: false})
+
+      TestUtils.retry_assert(fn ->
+        refute SourceSup.backend_child_started?(backend.id, source.id)
+      end)
+
+      assert {:ok, _enabled} = Backends.update_backend(disabled, %{enabled: true})
+
+      TestUtils.retry_assert(fn ->
+        assert SourceSup.backend_child_started?(backend.id, source.id)
+      end)
+    end
+
+    test "disabling a rule-only backend stops only its SourceSup child", %{
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      peer_backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://peer.example.com"},
+          user: user
+        )
+
+      insert(:rule, source: source, backend: backend)
+      insert(:rule, source: source, backend: peer_backend)
+      Backends.clear_list_backends_cache(source.id)
+      start_supervised!({SourceSup, source})
+
+      assert SourceSup.backend_child_started?(backend.id, source.id)
+      assert SourceSup.backend_child_started?(peer_backend.id, source.id)
+
+      stub(ClusterUtils, :rpc_multicast, fn _module, _function, _args -> :ok end)
+
+      assert {:ok, _disabled} = Backends.update_backend(backend, %{enabled: false})
+
+      refute SourceSup.backend_child_started?(backend.id, source.id)
+      assert SourceSup.backend_child_started?(peer_backend.id, source.id)
+    end
+
+    test "disabling an attached backend preserves unrelated SourceSup children", %{
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      peer_backend =
+        insert(:backend,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://peer.example.com"},
+          user: user
+        )
+
+      Backends.clear_list_backends_cache(source.id)
+      assert :ok = Backends.start_source_sup(source)
+      on_exit(fn -> Backends.stop_source_sup(source) end)
+
+      assert {:ok, source_sup_pid} = Backends.lookup(SourceSup, source)
+
+      peer_child_name =
+        Backends.via_source(source, Logflare.Backends.AdaptorSupervisor, peer_backend)
+
+      peer_child_pid = GenServer.whereis(peer_child_name)
+      assert is_pid(peer_child_pid)
+
+      stub(ClusterUtils, :rpc_multicast, fn _module, _function, _args -> :ok end)
+
+      assert {:ok, _disabled} = Backends.update_backend(backend, %{enabled: false})
+
+      assert {:ok, ^source_sup_pid} = Backends.lookup(SourceSup, source)
+      assert GenServer.whereis(peer_child_name) == peer_child_pid
+      refute SourceSup.backend_child_started?(backend.id, source.id)
+    end
+
     test "SourceSup filters out consolidated backends", %{source: source, user: user} do
       consolidated_backend =
         insert(:backend,
@@ -1043,6 +1249,70 @@ defmodule Logflare.BackendsTest do
       # for system default
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
                       %{count: ^log_count}, %{backend_type: :bigquery}}
+    end
+
+    test "does not ingest or increment counters for an explicitly disabled backend", %{
+      source: source
+    } do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 0} =
+               Backends.ingest_logs([%{"event_message" => "do not send"}], source, backend)
+
+      assert {:ok, ^initial_count} = Counters.get_inserts(source.token)
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "does not fan out source ingestion to an attached disabled backend", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      Backends.clear_list_backends_cache(source.id)
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "keep local"}], source)
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "does not route or bill events for a disabled drain destination", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      insert(:rule, lql_string: "testing", backend: backend, source_id: source.id)
+      Logflare.ContextCache.bust_keys([{Rules, [source_id: source.id]}])
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing"}], source)
+      assert {:ok, count} = Counters.get_inserts(source.token)
+      assert count == initial_count + 1
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
     end
   end
 
@@ -1729,22 +1999,56 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.sync_backend_across_cluster(non_existent_id)
     end
 
-    test "works with backend having no associated sources", %{user: user} do
-      # Backend has no associated sources
+    test "syncs consolidated lifecycle with no associated sources", %{user: user} do
       backend =
         insert(:backend,
           user: user,
           sources: [],
-          default_ingest?: true,
-          type: :webhook,
-          config: %{url: "http://test.com"}
+          enabled: false,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          }
         )
 
-      # Should not make any RPC calls
+      assert {:ok, _pid} = Backends.ConsolidatedSup.start_pipeline(backend)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+      on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend.id) end)
 
+      expect(ClusterUtils, :rpc_multicast, fn
+        Backends, :sync_backends_local, [%Backend{id: id, enabled: false}, []] = args
+        when id == backend.id ->
+          apply(Backends, :sync_backends_local, args)
+      end)
+
+      assert :ok = Backends.sync_backend_across_cluster(backend.id)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
+    test "skips enabled consolidated backends with no associated sources", %{user: user} do
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [],
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          }
+        )
+
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
       reject(&ClusterUtils.rpc_multicast/3)
 
       assert :ok = Backends.sync_backend_across_cluster(backend.id)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
     end
   end
 

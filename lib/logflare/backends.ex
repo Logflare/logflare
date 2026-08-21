@@ -102,6 +102,9 @@ defmodule Logflare.Backends do
 
         where(q, [b], b.metadata == ^normalized)
 
+      {:enabled, enabled}, q when is_boolean(enabled) ->
+        where(q, [b], b.enabled == ^enabled)
+
       # filter by `default_ingest?` flag
       {:default_ingest?, true}, q ->
         where(q, [b], b.default_ingest? == true)
@@ -290,6 +293,8 @@ defmodule Logflare.Backends do
     default_ingest_modified? =
       Map.has_key?(attrs, "default_ingest?") or Map.has_key?(attrs, :default_ingest?)
 
+    enabled_modified? = Map.has_key?(attrs, "enabled") or Map.has_key?(attrs, :enabled)
+
     config_modified? = Map.has_key?(attrs, "config") or Map.has_key?(attrs, :config)
 
     source_id = Map.get(attrs, "source_id") || Map.get(attrs, :source_id)
@@ -315,7 +320,6 @@ defmodule Logflare.Backends do
             was_enabled? = backend.default_ingest?
             is_enabled? = updated.default_ingest?
             handle_default_ingest_associations(updated, source_id, was_enabled?, is_enabled?)
-            sync_backend_across_cluster(updated.id)
 
             # force refresh after association changes
             Repo.reload!(updated) |> preload_sources()
@@ -323,9 +327,23 @@ defmodule Logflare.Backends do
             updated
           end
 
-        Enum.each(updated.sources, &restart_source_sup(&1))
+        enabled_changed? = enabled_modified? and backend.enabled != updated.enabled
 
-        maybe_restart_consolidated_pipeline(updated)
+        if enabled_changed? do
+          updated
+          |> typecast_config_string_map_to_atom_map()
+          |> sync_backends_local(list_backend_source_targets(updated.id))
+        end
+
+        if default_ingest_modified? or enabled_changed? do
+          ContextCache.bust_keys([{__MODULE__, updated.id}])
+          sync_backend_across_cluster(updated.id)
+        end
+
+        unless enabled_changed? do
+          Enum.each(updated.sources, &restart_source_sup(&1))
+          maybe_restart_consolidated_pipeline(updated)
+        end
 
         if config_modified?, do: Adaptor.on_backend_config_changed(updated)
 
@@ -474,8 +492,15 @@ defmodule Logflare.Backends do
   """
   @spec clear_list_backends_cache(source_id :: integer()) :: :ok
   def clear_list_backends_cache(source_id) when is_integer(source_id) do
-    Cachex.del(__MODULE__.Cache, {:list_backends, [[source_id: source_id]]})
-    Cachex.del(__MODULE__.Cache, {:list_backends, [source_id: source_id]})
+    cache_keys = [
+      {:list_backends, [[source_id: source_id]]},
+      {:list_backends, [source_id: source_id]},
+      {:list_backends, [[source_id: source_id, enabled: true]]},
+      {:list_backends, [[rules_source_id: source_id]]},
+      {:list_backends, [[rules_source_id: source_id, enabled: true]]}
+    ]
+
+    Enum.each(cache_keys, &Cachex.del(__MODULE__.Cache, &1))
     :ok
   end
 
@@ -562,29 +587,65 @@ defmodule Logflare.Backends do
   """
   @spec sync_backend_across_cluster(integer()) :: :ok
   def sync_backend_across_cluster(backend_id) when is_integer(backend_id) do
-    with %Backend{} = backend <- get_backend(backend_id) do
-      sources = Sources.list_sources(backend_id: backend_id)
+    ContextCache.bust_keys([{__MODULE__, backend_id}])
 
-      if sources != [] do
-        Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, sources])
+    with %Backend{} = backend <- get_backend(backend_id) do
+      source_targets = list_backend_source_targets(backend_id)
+
+      if source_targets != [] or not backend.enabled do
+        Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, source_targets])
       end
     end
 
     :ok
   end
 
+  @spec list_backend_source_targets(integer()) :: [{Source.t(), boolean()}]
+  defp list_backend_source_targets(backend_id) do
+    attached_sources = Sources.list_sources(backend_id: backend_id)
+    attached_source_ids = MapSet.new(attached_sources, & &1.id)
+
+    rule_sources =
+      from(s in Source,
+        join: r in Rule,
+        on: r.source_id == s.id,
+        where: r.backend_id == ^backend_id
+      )
+      |> Repo.all()
+
+    (attached_sources ++ rule_sources)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.map(&{&1, MapSet.member?(attached_source_ids, &1.id)})
+  end
+
   @doc """
   Syncs a backend for local node for v2 pipeline sources.
-  expects the backend and sources to be loaded from the database.
+  Expects the backend and source targets to be loaded from the database.
   """
-  @spec sync_backends_local(Backend.t(), [Source.t()]) :: :ok
-  def sync_backends_local(%Backend{} = backend, sources) do
-    for source <- sources do
-      SourceSup.start_backend_child(source, backend)
-      clear_list_backends_cache(source.id)
-    end
+  @spec sync_backends_local(Backend.t(), [{Source.t(), boolean()}]) :: :ok
+  def sync_backends_local(%Backend{} = backend, source_targets) do
+    if backend.enabled, do: maybe_start_consolidated_pipeline(backend)
+
+    ContextCache.bust_keys([{__MODULE__, backend.id}])
+
+    Enum.each(source_targets, &sync_backend_child(backend, &1))
+
+    if not backend.enabled, do: maybe_stop_consolidated_pipeline(backend)
 
     :ok
+  end
+
+  @spec sync_backend_child(Backend.t(), {Source.t(), boolean()}) ::
+          :ok | :noop | Supervisor.on_start_child() | {:error, :not_found}
+  defp sync_backend_child(%Backend{} = backend, {%Source{} = source, register_for_ingest?}) do
+    clear_list_backends_cache(source.id)
+    backend = %{backend | register_for_ingest: register_for_ingest?}
+
+    cond do
+      not source_sup_started?(source) -> :ok
+      backend.enabled -> SourceSup.start_backend_child(source, backend)
+      true -> SourceSup.stop_backend_child(source, backend)
+    end
   end
 
   @doc """
@@ -597,12 +658,17 @@ defmodule Logflare.Backends do
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: non_neg_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: non_neg_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
-  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
+          {:ok, count :: non_neg_integer()} | {:error, [term()]}
+  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false)
+
+  def ingest_logs(_event_params, _source, %Backend{enabled: false}, _allow_spooling),
+    do: {:ok, 0}
+
+  def ingest_logs(event_params, source, backend, allow_spooling) do
     ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
@@ -752,6 +818,8 @@ defmodule Logflare.Backends do
   end
 
   # send to a specific backend
+  defp dispatch_to_backends(_source, %Backend{enabled: false}, _log_events), do: :ok
+
   defp dispatch_to_backends(source, %Backend{consolidated_ingest?: true} = backend, log_events) do
     telemetry_metadata = %{backend_type: backend.type}
 
@@ -793,7 +861,7 @@ defmodule Logflare.Backends do
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
-    backends = __MODULE__.Cache.list_backends(source_id: source.id)
+    backends = __MODULE__.Cache.list_backends(source_id: source.id, enabled: true)
 
     for backend <- [nil | backends] do
       dispatch_to_default_backend(source, backend, log_events)
@@ -805,6 +873,8 @@ defmodule Logflare.Backends do
           backend :: Backend.t() | nil,
           log_events :: [LogEvent.t()]
         ) :: any()
+  defp dispatch_to_default_backend(_source, %Backend{enabled: false}, _log_events), do: :ok
+
   defp dispatch_to_default_backend(source, backend, log_events) do
     {queue_key, backend_type} =
       case backend do
@@ -991,7 +1061,7 @@ defmodule Logflare.Backends do
   """
   @spec maybe_start_consolidated_pipeline(Backend.t()) :: :ok
   def maybe_start_consolidated_pipeline(%Backend{} = backend) do
-    if Adaptor.consolidated_ingest?(backend) do
+    if backend.enabled and Adaptor.consolidated_ingest?(backend) do
       case ConsolidatedSup.start_pipeline(backend) do
         {:ok, _pid} ->
           Logger.info("Started consolidated pipeline", backend_id: backend.id)
@@ -1054,7 +1124,7 @@ defmodule Logflare.Backends do
         default_ingest_backend_enabled?: true
       }) do
     default_backend_ids =
-      __MODULE__.Cache.list_backends(source_id: source_id)
+      __MODULE__.Cache.list_backends(source_id: source_id, enabled: true)
       |> Enum.filter(& &1.default_ingest?)
       |> MapSet.new(& &1.id)
 
@@ -1102,7 +1172,11 @@ defmodule Logflare.Backends do
   @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
   def any_ingest_queue_over_limit?(source_id) do
     backend_ids =
-      [nil | __MODULE__.Cache.list_backends(source_id: source_id) |> Enum.map(& &1.id)]
+      [
+        nil
+        | __MODULE__.Cache.list_backends(source_id: source_id, enabled: true)
+          |> Enum.map(& &1.id)
+      ]
 
     Enum.any?(backend_ids, &any_queue_over_limit_for_backend?(source_id, &1))
   end

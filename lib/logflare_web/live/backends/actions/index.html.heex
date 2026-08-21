@@ -30,6 +30,19 @@
       </p>
       <div class="tw-flex tw-gap-2 tw-mt-1">
         <span class="badge badge-pill badge-secondary tw-leading-normal">{backend.type}</span>
+        <span id={"backend-status-#{backend.id}"} class={"badge badge-pill tw-leading-normal #{if backend.enabled, do: "badge-success", else: "badge-secondary"}"}>
+          {if backend.enabled, do: "Enabled", else: "Disabled"}
+        </span>
+        <.button
+          id={"toggle-backend-#{backend.id}"}
+          phx-click="toggle_backend"
+          phx-value-backend_id={backend.id}
+          variant={if backend.enabled, do: "warning", else: "success"}
+          class="btn-sm"
+          data-confirm={if backend.enabled, do: "Disable this destination? New events will not be sent to it.", else: nil}
+        >
+          {if backend.enabled, do: "Disable", else: "Enable"}
+        </.button>
         <span>drain rules: {Enum.count(backend.rules)}</span>
         <span :for={{k, v} when is_binary(v) <- backend.metadata || %{}} :if={backend.metadata}>{k}: {v}</span>
       </div>
