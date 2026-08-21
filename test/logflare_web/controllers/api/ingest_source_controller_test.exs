@@ -153,6 +153,7 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
       csv_conn =
         conn
         |> add_access_token(user, "ingest")
+        |> put_req_header("accept", "text/csv")
         |> get("/api/ingest_sources?format=csv")
 
       assert response(csv_conn, 200) =~ "\"comma, \"\"quote\"\"\nline\""

@@ -151,7 +151,7 @@ defmodule LogflareWeb.Router do
     plug(Plug.RequestId)
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
     plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
-    plug(:accepts, ["json"])
+    plug(:accepts, ["json", "csv"])
     plug(LogflareWeb.Plugs.SetHeaders)
   end
 
