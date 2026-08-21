@@ -86,6 +86,26 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
                |> json_response(200)
     end
 
+    test "excludes system sources from JSON and CSV discovery", %{conn: conn, user: user} do
+      system_source = insert(:source, user: user, name: "system.logs", system_source: true)
+
+      response =
+        conn
+        |> add_access_token(user, "ingest")
+        |> get("/api/ingest_sources")
+        |> json_response(200)
+
+      refute Enum.any?(response, &(&1["token"] == to_string(system_source.token)))
+
+      csv_conn =
+        build_conn()
+        |> add_access_token(user, "ingest:source:#{system_source.id}")
+        |> put_req_header("accept", "text/csv")
+        |> get("/api/ingest_sources?format=csv")
+
+      assert response(csv_conn, 200) == "token,name\r\n"
+    end
+
     test "preserves deprecated empty and public ingest-compatible access token scopes", %{
       conn: conn,
       user: user

@@ -61,7 +61,7 @@ defmodule Logflare.Sources do
 
   defp ingest_sources_query(user_id) do
     from(s in Source,
-      where: s.user_id == ^user_id,
+      where: s.user_id == ^user_id and s.system_source == false,
       order_by: [asc: s.name, asc: s.token],
       select: %{token: s.token, name: s.name}
     )
