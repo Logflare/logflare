@@ -147,8 +147,12 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private))
   end
 
-  pipeline :source_list_api_auth do
+  pipeline :source_list_api do
+    plug(Plug.RequestId)
+    plug(LogflareWeb.Plugs.SetHeaders)
+    plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
     plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
+    plug(:accepts, ["json", "csv"])
   end
 
   pipeline :require_auth do
@@ -452,7 +456,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/api", LogflareWeb do
-    pipe_through([:api, :source_list_api_auth])
+    pipe_through(:source_list_api)
 
     get("/sources", Api.SourceController, :index)
   end

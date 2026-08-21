@@ -26,13 +26,21 @@ defmodule LogflareWeb.Api.SourceController do
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
+  @max_source_id 9_223_372_036_854_775_807
+
   tags(["management"])
 
   operation(:index,
     summary: "List sources",
     description:
       "Private tokens receive the full management source representation by default. Ingest-compatible credentials receive only token and name. Set format=csv for a token,name CSV list.",
-    parameters: [format: [in: :query, description: "Response format (csv)", type: :string]],
+    parameters: [
+      format: [
+        in: :query,
+        description: "Response format (csv)",
+        schema: %Schema{type: :string, enum: ["csv"]}
+      ]
+    ],
     responses: %{
       200 => %Response{
         description: "Source list",
@@ -124,7 +132,7 @@ defmodule LogflareWeb.Api.SourceController do
 
   defp parse_source_id(id) do
     case Integer.parse(id) do
-      {source_id, ""} when source_id > 0 -> [source_id]
+      {source_id, ""} when source_id > 0 and source_id <= @max_source_id -> [source_id]
       _ -> []
     end
   end

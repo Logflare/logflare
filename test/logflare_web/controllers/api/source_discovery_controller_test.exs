@@ -136,12 +136,21 @@ defmodule LogflareWeb.Api.SourceDiscoveryControllerTest do
     |> put_req_header("authorization", "Bearer #{malformed.token}")
     |> get("/api/sources")
     |> response(401)
+
+    conn
+    |> add_access_token(user, "ingest:source:#{String.duplicate("9", 40)}")
+    |> get("/api/sources")
+    |> response(401)
   end
 
   test "CSV is RFC 4180, has no management fields, and is never cached", %{conn: conn, user: user} do
     source = insert(:source, user: user, name: "A, \"quoted\"\nsource")
 
-    conn = conn |> add_access_token(user, "private") |> get("/api/sources?format=csv")
+    conn =
+      conn
+      |> put_req_header("accept", "text/csv")
+      |> add_access_token(user, "private")
+      |> get("/api/sources?format=csv")
 
     assert response(conn, 200) =~ "token,name\r\n"
     assert response(conn, 200) =~ "\"A, \"\"quoted\"\"\nsource\""
