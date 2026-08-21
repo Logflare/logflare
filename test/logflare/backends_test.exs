@@ -843,58 +843,61 @@ defmodule Logflare.BackendsTest do
       Backends.clear_list_backends_cache(source.id)
       start_supervised!({SourceSup, source})
 
-      via = Backends.via_source(source, SourceSup)
-      children = Supervisor.which_children(via)
-
-      backend_child? = fn
-        {{_mod, _source_id, backend_id}, _pid, _type, _modules} -> backend_id in backend_ids
-        _child -> false
+      children = fn ->
+        source
+        |> Backends.via_source(SourceSup)
+        |> Supervisor.which_children()
       end
 
       child_pids = fn ->
-        via
-        |> Supervisor.which_children()
+        children.()
         |> Map.new(fn {child_id, pid, _type, _modules} -> {child_id, pid} end)
       end
 
-      # Select the second backend child, which cannot be the supervisor's first child.
-      [
-        {{_, _, first_backend_id} = first_child_id, first_child_pid, _, _},
-        {{_, _, requested_backend_id} = requested_child_id, requested_child_pid, _, _}
-      ] = Enum.filter(children, backend_child?)
-
-      refute requested_child_id == elem(hd(children), 0)
+      backend_pids = fn ->
+        for {{_mod, _source_id, backend_id} = child_id, pid, _type, _modules} <- children.(),
+            backend_id in backend_ids,
+            do: {child_id, pid}
+      end
 
       existing_child_pids = child_pids.()
+      existing_backend_pids = backend_pids.()
+
+      # Select the second backend child, which cannot be the supervisor's first child.
+      [
+        {{_, _, first_backend_id} = first_child_id, first_child_pid},
+        {{_, _, requested_backend_id} = requested_child_id, requested_child_pid}
+      ] = existing_backend_pids
+
+      refute requested_child_id == elem(hd(children.()), 0)
+
       missing_backend_id = Enum.max(backend_ids) + 1
 
       # A missing backend ID must leave every existing child running with the same PID.
       assert {:error, :not_found} = SourceSup.stop_backend_child(source, missing_backend_id)
       assert child_pids.() == existing_child_pids
+      assert backend_pids.() == existing_backend_pids
       assert Enum.all?(Map.values(existing_child_pids), &Process.alive?/1)
 
-      # Stopping the second backend must not disturb the first or any unrelated child.
+      # Stopping the requested backend must not disturb the other or any unrelated child.
       assert :ok = SourceSup.stop_backend_child(source, requested_backend_id)
 
-      remaining_child_pids = child_pids.()
-
       refute Process.alive?(requested_child_pid)
-      assert remaining_child_pids == Map.delete(existing_child_pids, requested_child_id)
-      assert remaining_child_pids[first_child_id] == first_child_pid
+      assert child_pids.() == Map.delete(existing_child_pids, requested_child_id)
+      assert backend_pids.() == [{first_child_id, first_child_pid}]
       assert Process.alive?(first_child_pid)
-      assert Enum.all?(Map.values(remaining_child_pids), &Process.alive?/1)
+      assert Enum.all?(Map.values(child_pids.()), &Process.alive?/1)
 
       # The first backend remains independently stoppable after the second is removed.
       assert :ok = SourceSup.stop_backend_child(source, first_backend_id)
-
-      remaining_child_pids = child_pids.()
 
       expected_child_pids =
         existing_child_pids |> Map.delete(requested_child_id) |> Map.delete(first_child_id)
 
       refute Process.alive?(first_child_pid)
-      assert remaining_child_pids == expected_child_pids
-      assert Enum.all?(Map.values(remaining_child_pids), &Process.alive?/1)
+      assert child_pids.() == expected_child_pids
+      assert backend_pids.() == []
+      assert Enum.all?(Map.values(child_pids.()), &Process.alive?/1)
     end
 
     test "rules_child_started? when SourceSup already started", %{source: source} do
