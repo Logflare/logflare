@@ -38,7 +38,9 @@ config :logflare, :clickhouse_backend_adaptor,
   engine: "MergeTree",
   pool_size: 3
 
-config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
+config :logflare, Logflare.Sources.Source.BigQuery.Schema,
+  updates_per_minute: 6,
+  max_pending_samples: 8
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
