@@ -22,6 +22,7 @@ defmodule LogflareWeb.Router do
 
   @auth_live_hooks [LogflareWeb.AuthLive]
   @team_param_live_hooks [LogflareWeb.AuthLive, {LogflareWeb.AuthLive, :ensure_team_param}]
+  @admin_hooks [{LogflareWeb.AdminLive.AdminAuth, :ensure_admin}]
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -387,8 +388,11 @@ defmodule LogflareWeb.Router do
 
     get("/dashboard", AdminController, :dashboard)
     get("/accounts", AdminController, :accounts)
-    live("/cluster", Admin.ClusterLive, :index)
-    live("/partner", Admin.PartnerLive, :index)
+
+    live_session :admin, on_mount: @common_on_mount_hooks ++ @admin_hooks do
+      live("/cluster", Admin.ClusterLive, :index)
+      live("/partner", Admin.PartnerLive, :index)
+    end
 
     get("/plans", AdminPlanController, :index)
     get("/plans/new", AdminPlanController, :new)
@@ -397,7 +401,9 @@ defmodule LogflareWeb.Router do
     put("/plans/:id", AdminPlanController, :update)
 
     delete("/accounts/:id", AdminController, :delete_account)
-    get("/accounts/:id/become", AdminController, :become_account)
+    post("/accounts/:id/become", AdminController, :become_account)
+    post("/accounts/:id/grant_admin", AdminController, :grant_admin)
+    post("/accounts/:id/revoke_admin", AdminController, :revoke_admin)
 
     live_dashboard("/livedashboard", ecto_repos: [], metrics: Logflare.Telemetry)
   end
