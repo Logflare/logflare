@@ -461,6 +461,35 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert backend.config.flatten_to_attributes == true
     end
 
+    test "can create signoz backend", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      assert view
+             |> element("select#type")
+             |> render_change(%{backend: %{type: "signoz"}}) =~ "Ingestion URL"
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "my signoz",
+            type: "signoz",
+            config: %{
+              endpoint: "https://ingest.us.signoz.cloud:443",
+              ingestion_key: "some-key"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+      assert html =~ "my signoz"
+
+      [backend] = Backends.list_backends_by_user_access(user, type: :signoz)
+      assert backend.config.endpoint == "https://ingest.us.signoz.cloud:443"
+      assert backend.config.ingestion_key == "some-key"
+    end
+
     test "can create a clickhouse backend with a read cluster URL", %{conn: conn, user: user} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 
