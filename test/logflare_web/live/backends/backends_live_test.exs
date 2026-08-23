@@ -230,6 +230,35 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute html =~ "&quot;read_only_urls&quot;: &quot;**********&quot;"
     end
 
+    test "masks the clickhouse query credentials", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            username: "ingest_user",
+            password: "ingest_pa55",
+            query_user: "ch_reader",
+            query_password: "reader_pa55"
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
+      html = render(view)
+
+      assert html =~ "query_password"
+      refute html =~ "reader_pa55"
+      refute html =~ "ch_reader"
+    end
+
     test "add/delete a rule", %{
       conn: conn,
       user: user,
@@ -586,6 +615,71 @@ defmodule LogflareWeb.BackendsLiveTest do
         |> render_submit()
 
       assert html =~ "must match one of the defined read cluster labels"
+    end
+
+    test "can create a clickhouse backend with a dedicated query user", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "ch query user",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "ingest_user",
+              password: "ingest_pa55",
+              query_user: "ch_reader",
+              query_password: "reader_pa55"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+
+      backend =
+        user.id
+        |> Backends.list_backends_by_user_id()
+        |> Enum.find(&(&1.name == "ch query user"))
+
+      assert backend.config.query_user == "ch_reader"
+      assert backend.config.query_password == "reader_pa55"
+    end
+
+    test "rejects a clickhouse query user without a query password", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "ch partial query user",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "ingest_user",
+              password: "ingest_pa55",
+              query_user: "ch_reader"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Both query user and query password must be provided"
     end
   end
 

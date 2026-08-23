@@ -217,6 +217,15 @@
             </small>
           </div>
           <div class="form-group">
+            {label(f_config, :query_user, "ClickHouse Query Username (Optional)")}
+            {text_input(f_config, :query_user, class: "form-control")}
+            {label(f_config, :query_password, "ClickHouse Query Password (Optional)")}
+            {text_input(f_config, :query_password, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Dedicated credentials used for read queries. Both must be provided; when left empty, the username and password above are used for reads.
+            </small>
+          </div>
+          <div class="form-group">
             {label(f_config, :use_async_inserts_for_small_batches, "Async Inserts for Small Batches")}
             {checkbox(f_config, :use_async_inserts_for_small_batches, id: "use_async_inserts_for_small_batches")}
             <small class="form-text text-muted">

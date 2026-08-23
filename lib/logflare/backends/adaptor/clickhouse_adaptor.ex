@@ -91,7 +91,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
-    Map.put(config, :password, "REDACTED")
+    config
+    |> Map.put(:password, "REDACTED")
+    |> redact_query_password()
   end
 
   @doc false
@@ -232,6 +234,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        url: :string,
        username: :string,
        password: :string,
+       query_user: :string,
+       query_password: :string,
        database: :string,
        port: :integer,
        pool_size: :integer,
@@ -248,6 +252,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :url,
       :username,
       :password,
+      :query_user,
+      :query_password,
       :database,
       :port,
       :pool_size,
@@ -303,6 +309,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_read_only_urls()
     |> validate_default_read_cluster()
     |> validate_user_pass()
+    |> validate_query_user_pass()
     |> validate_number(:pool_size,
       greater_than_or_equal_to: 1,
       less_than_or_equal_to: @max_read_pool_size
@@ -310,11 +317,43 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
+  Resolves the `{username, password}` pair to use for query/read operations.
+
+  A dedicated query user is only used when both `query_user` and `query_password`
+  are populated. Otherwise the default `username`/`password` pair is used.
+  """
+  @spec query_credentials(Backend.t() | map()) :: {String.t() | nil, String.t() | nil}
+  def query_credentials(%Backend{config: config}), do: query_credentials(config)
+
+  def query_credentials(%{query_user: user, query_password: password})
+      when is_non_empty_binary(user) and is_non_empty_binary(password),
+      do: {user, password}
+
+  def query_credentials(config) when is_map(config),
+    do: {Map.get(config, :username), Map.get(config, :password)}
+
+  @doc """
+  Whether the backend is configured with a dedicated query user.
+  """
+  @spec dedicated_query_user?(Backend.t() | map()) :: boolean()
+  def dedicated_query_user?(%Backend{config: config}), do: dedicated_query_user?(config)
+
+  def dedicated_query_user?(%{query_user: user, query_password: password})
+      when is_non_empty_binary(user) and is_non_empty_binary(password),
+      do: true
+
+  def dedicated_query_user?(config) when is_map(config), do: false
+
+  @doc """
   GRANT checks to verify the configured user has the required ClickHouse permissions.
 
-  Always checks the ingest cluster (primary `url`) for full write permissions.
+  Always checks the ingest cluster (primary `url`) for full write permissions using the
+  default `username`/`password`.
 
-  Then checks each configured read cluster for `SELECT` permission.
+  Then checks each configured read cluster for `SELECT` permission using the credentials
+  resolved by `query_credentials/1`. When a dedicated query user is configured but no read
+  cluster is, the primary `url` is checked for `SELECT` so those credentials are still
+  validated.
 
   When async inserts are enabled and a parsable `async_insert_cluster_url` is configured,
   additionally checks that endpoint for connectivity and write permissions.
@@ -376,26 +415,36 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end)
   end
 
+  # When no dedicated read endpoint is configured, the primary URL is still checked
+  # for `SELECT` so that a dedicated query user's read grants are validated.
   @spec read_grant_targets(map()) :: [{String.t() | nil, String.t()}]
   defp read_grant_targets(config) do
-    case config |> Map.get(:read_only_urls, %{}) |> Map.to_list() do
-      [] ->
-        if is_non_empty_binary(Map.get(config, :read_only_url)),
-          do: [{nil, config.read_only_url}],
-          else: []
+    urls = Map.get(config, :read_only_urls) || %{}
 
-      labeled ->
-        labeled
+    case Map.to_list(urls) do
+      [] -> unlabeled_read_grant_targets(config)
+      labeled -> labeled
     end
   end
+
+  @spec unlabeled_read_grant_targets(map()) :: [{nil, String.t()}]
+  defp unlabeled_read_grant_targets(%{read_only_url: url}) when is_non_empty_binary(url),
+    do: [{nil, url}]
+
+  defp unlabeled_read_grant_targets(%{url: url} = config) when is_non_empty_binary(url) do
+    if dedicated_query_user?(config), do: [{nil, url}], else: []
+  end
+
+  defp unlabeled_read_grant_targets(_config), do: []
 
   @spec check_read_grant(Backend.t(), map(), String.t() | nil, String.t()) ::
           :ok | {:error, :read_permissions_missing} | {:error, term()}
   defp check_read_grant(%Backend{} = backend, config, label, url) do
     sql_statement = QueryTemplates.read_grant_check_statement()
     target = describe_read_target(label, url)
+    {query_user, _password} = credentials = query_credentials(config)
 
-    case execute_direct_query(url, config, sql_statement) do
+    case execute_direct_query(url, config, sql_statement, credentials) do
       {:ok, [%{"result" => 1}]} ->
         :ok
 
@@ -404,7 +453,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           "ClickHouse read cluster GRANT check failed for #{target}. Required: `SELECT`",
           backend_id: backend.id,
           read_cluster: label,
-          read_cluster_url: url
+          read_cluster_url: url,
+          query_user: query_user
         )
 
         {:error, :read_permissions_missing}
@@ -414,7 +464,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           "ClickHouse read cluster connection/GRANT check failed for #{target}. Unexpected error #{inspect(error_result)}",
           backend_id: backend.id,
           read_cluster: label,
-          read_cluster_url: url
+          read_cluster_url: url,
+          query_user: query_user
         )
 
         {:error, :grant_check_unknown_failure}
@@ -703,6 +754,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @spec execute_direct_query(url :: String.t(), config :: map(), statement :: String.t()) ::
           {:ok, list()} | {:error, term()}
   defp execute_direct_query(url, config, statement) do
+    execute_direct_query(url, config, statement, {config.username, config.password})
+  end
+
+  @spec execute_direct_query(
+          url :: String.t(),
+          config :: map(),
+          statement :: String.t(),
+          credentials :: {String.t() | nil, String.t() | nil}
+        ) :: {:ok, list()} | {:error, term()}
+  defp execute_direct_query(url, config, statement, {username, password}) do
     {scheme, hostname, port} = EndpointUtils.origin(url, Map.get(config, :port))
     timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 30_000
 
@@ -711,8 +772,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       hostname: hostname,
       port: port,
       database: config.database,
-      username: config.username,
-      password: config.password,
+      username: username,
+      password: password,
       pool_size: 1,
       settings: [],
       timeout: timeout
@@ -973,6 +1034,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end)
   end
 
+  @spec redact_query_password(map()) :: map()
+  defp redact_query_password(%{query_password: password} = config)
+       when is_non_empty_binary(password),
+       do: %{config | query_password: "REDACTED"}
+
+  defp redact_query_password(config), do: config
+
   defp validate_user_pass(changeset) do
     user = Changeset.get_field(changeset, :username)
     pass = Changeset.get_field(changeset, :password)
@@ -987,6 +1055,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     else
       changeset
     end
+  end
+
+  @spec validate_query_user_pass(Changeset.t()) :: Changeset.t()
+  defp validate_query_user_pass(changeset) do
+    validate_query_user_pass(
+      changeset,
+      Changeset.get_field(changeset, :query_user),
+      Changeset.get_field(changeset, :query_password)
+    )
+  end
+
+  @spec validate_query_user_pass(Changeset.t(), term(), term()) :: Changeset.t()
+  defp validate_query_user_pass(changeset, user, pass)
+       when is_non_empty_binary(user) and is_non_empty_binary(pass),
+       do: changeset
+
+  defp validate_query_user_pass(changeset, user, pass)
+       when not is_non_empty_binary(user) and not is_non_empty_binary(pass),
+       do: changeset
+
+  defp validate_query_user_pass(changeset, _user, _pass) do
+    msg = "Both query user and query password must be provided for a dedicated query user"
+
+    changeset
+    |> Changeset.add_error(:query_user, msg)
+    |> Changeset.add_error(:query_password, msg)
   end
 
   @spec validate_read_only_url(Changeset.t()) :: Changeset.t()

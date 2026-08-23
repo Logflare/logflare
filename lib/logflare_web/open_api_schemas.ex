@@ -380,6 +380,8 @@ defmodule LogflareWeb.OpenApiSchemas do
       port: %Schema{type: :integer},
       username: %Schema{type: :string, nullable: true},
       password: %Schema{type: :string, nullable: true},
+      query_user: %Schema{type: :string, nullable: true},
+      query_password: %Schema{type: :string, nullable: true},
       pool_size: %Schema{type: :integer, nullable: true},
       read_only_url: %Schema{type: :string, nullable: true},
       use_async_inserts_for_small_batches: %Schema{type: :boolean, nullable: true},
