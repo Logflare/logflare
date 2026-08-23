@@ -98,6 +98,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert is_integer(bytes)
     end
 
+    test "can execute queries for the single tenant backend", %{backend: backend} do
+      backend = %{backend | id: 0}
+      refute Backends.Cache.get_backend(backend.id)
+      Logflare.ContextCache.update(Backends, :get_backend, [backend.id], backend)
+
+      assert {:ok, {[%{"test" => 1}], bytes}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      assert is_integer(bytes)
+    end
+
     test "handles query errors", %{backend: backend} do
       result =
         ClickHouseAdaptor.execute_ch_query(backend, "INVALID SQL QUERY")
