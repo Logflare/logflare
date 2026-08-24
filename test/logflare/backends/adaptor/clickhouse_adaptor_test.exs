@@ -801,6 +801,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ConnectionManager.pool_active?(backend, "dashboard_logs")
     end
 
+    test "does not fall back when the requested cluster pool is exhausted" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api_free" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      stub_read_cluster_queue_timeout(backend, "api_free")
+
+      assert {:error, %QueryError{kind: :pool_exhausted}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                 read_cluster: "api_free"
+               )
+
+      refute ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+
     test "does not fall back when the unhealthy cluster is already the default" do
       {_source, backend} =
         setup_clickhouse_test(
@@ -2318,6 +2341,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       case pool do
         {:via, Registry, {_registry, {_mod, ^backend_id, ^label}}} ->
           {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+
+        _ ->
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end
+    end)
+  end
+
+  defp stub_read_cluster_queue_timeout(%Backend{id: backend_id}, label) do
+    stub(Ch, :query, fn pool, statement, params, opts ->
+      case pool do
+        {:via, Registry, {_registry, {_mod, ^backend_id, ^label}}} ->
+          {:error,
+           %DBConnection.ConnectionError{
+             message: "connection not available and request was dropped from queue",
+             reason: :queue_timeout
+           }}
 
         _ ->
           Mimic.call_original(Ch, :query, [pool, statement, params, opts])
