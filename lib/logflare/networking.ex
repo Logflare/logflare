@@ -35,8 +35,6 @@ defmodule Logflare.Networking do
       # Finch connection pools, using http2
       {Finch, name: Logflare.FinchGoth, pools: %{default: [protocols: [:http2], count: 1]}},
       {Finch,
-       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
-      {Finch,
        name: Logflare.FinchIngest,
        pools: %{
          :default => [size: 50],
@@ -79,6 +77,8 @@ defmodule Logflare.Networking do
     base = System.schedulers_online()
 
     [
+      {Finch,
+       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
       {Finch,
        name: Logflare.FinchClickHouseIngest,
        pools: %{
