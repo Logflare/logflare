@@ -32,10 +32,10 @@ defmodule Logflare.NetworkingTest do
     test "returns bigquery, clickhouse, and spool connection pools" do
       assert finch_names() == [
                Logflare.FinchGoth,
-               Logflare.FinchDefaultHttp1,
                Logflare.FinchIngest,
                Logflare.FinchQuery,
                Logflare.FinchDefault,
+               Logflare.FinchDefaultHttp1,
                Logflare.FinchSpoolS3,
                Logflare.FinchSpoolSQS,
                Logflare.FinchClickHouseIngest,
@@ -64,13 +64,14 @@ defmodule Logflare.NetworkingTest do
         |> Map.put(:default, protocols: [:http1])
 
       assert [
+               {Finch, [name: Logflare.FinchDefault, pools: datadog_pools]},
                {Finch,
                 name: Logflare.FinchDefaultHttp1,
                 pools: %{default: [protocols: [:http1], size: 50]}},
                {Finch,
                 [
-                  name: Logflare.FinchDefault,
-                  pools: datadog_pools
+                  name: Logflare.FinchDefaultHttp1,
+                  pools: %{default: [protocols: [:http1], size: 50]}
                 ]},
                {Finch,
                 name: Logflare.FinchSpoolS3,
@@ -207,6 +208,7 @@ defmodule Logflare.NetworkingTest do
     test "excludes BigQuery and gRPC connection pools" do
       assert finch_names() == [
                Logflare.FinchDefault,
+               Logflare.FinchDefaultHttp1,
                Logflare.FinchClickHouseIngest,
                Logflare.FinchClickHouseAsyncIngest
              ]
