@@ -248,7 +248,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        async_insert_max_rows: :integer,
        max_event_age_hours: :integer
      }}
-    |> Changeset.cast(params, [
+    |> Changeset.cast(preserve_blank_query_password(params, existing_config), [
       :url,
       :username,
       :password,
@@ -293,6 +293,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   defp strip_credentials(url), do: EndpointUtils.strip_credentials(url)
+
+  @spec preserve_blank_query_password(map(), map()) :: map()
+  defp preserve_blank_query_password(params, %{query_password: password})
+       when is_non_empty_binary(password) do
+    case query_password_param(params) do
+      "" -> Map.drop(params, [:query_password, "query_password"])
+      _ -> params
+    end
+  end
+
+  defp preserve_blank_query_password(params, _existing_config), do: params
+
+  @spec query_password_param(map()) :: term()
+  defp query_password_param(params) do
+    Map.get(params, :query_password, Map.get(params, "query_password"))
+  end
 
   @doc false
   @impl Logflare.Backends.Adaptor

@@ -567,6 +567,40 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :query_user)
     end
+
+    test "preserves the existing query_password when submitted blank" do
+      existing_config = %{query_user: "ch_reader", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "ch_reader",
+        query_password: ""
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_password) == "reader_pa55"
+    end
+
+    test "overwrites the existing query_password when a new value is submitted" do
+      existing_config = %{query_user: "ch_reader", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "ch_reader",
+        query_password: "new_pa55"
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_password) == "new_pa55"
+    end
   end
 
   describe "pre_ingest/3 event age filtering" do

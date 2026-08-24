@@ -719,6 +719,70 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute view |> element("select#type") |> has_element?()
     end
 
+    test "does not render the existing query_password in the edit form", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            username: "ingest_user",
+            password: "ingest_pa55",
+            query_user: "ch_reader",
+            query_password: "reader_pa55"
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+      html = render(view)
+
+      assert html =~ "ch_reader"
+      refute html =~ "reader_pa55"
+    end
+
+    test "editing an unrelated field preserves the existing query_password", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            username: "ingest_user",
+            password: "ingest_pa55",
+            query_user: "ch_reader",
+            query_password: "reader_pa55"
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      html =
+        view
+        |> form("form", %{backend: %{description: "updated description"}})
+        |> render_submit()
+
+      assert html =~ "updated description"
+
+      updated = Backends.get_backend(backend.id)
+
+      assert updated.config.query_user == "ch_reader"
+      assert updated.config.query_password == "reader_pa55"
+    end
+
     test "pre-populates read cluster rows when editing a clickhouse backend", %{
       conn: conn,
       source: source,
