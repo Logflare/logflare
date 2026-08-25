@@ -4,6 +4,7 @@ defmodule Logflare.Networking do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.SingleTenant
+  alias Logflare.Utils.SSRF.TCP
 
   def pools do
     if SingleTenant.postgres_backend?() do
@@ -76,9 +77,23 @@ defmodule Logflare.Networking do
   end
 
   defp base_finch_pools do
+    :ok = TCP.ensure_supported_backend!()
+
     base = System.schedulers_online()
 
     [
+      {Finch,
+       name: Logflare.FinchSSRF,
+       pools: %{
+         default: [
+           protocols: [:http1],
+           size: 50,
+           start_pool_metrics?: true,
+           conn_opts: [
+             transport_opts: [inet6: false, tcp_module: TCP]
+           ]
+         ]
+       }},
       {Finch,
        name: Logflare.FinchClickHouseIngest,
        pools: %{

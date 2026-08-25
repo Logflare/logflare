@@ -35,4 +35,18 @@ defmodule Logflare.Backends.Adaptor.HttpBased.ClientTest do
 
     assert {"X-Custom", "kept"} in env.headers
   end
+
+  test "SSRF protection always selects the safe Finch pool" do
+    for http2? <- [true, false] do
+      client =
+        Client.new(
+          ssrf: true,
+          pool_name: Logflare.UnsafeFinch,
+          http2: http2?
+        )
+
+      assert {Tesla.Adapter.Finch, [name: Logflare.FinchSSRF, receive_timeout: 5_000]} =
+               Tesla.Client.adapter(client)
+    end
+  end
 end

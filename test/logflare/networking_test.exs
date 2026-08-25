@@ -1,9 +1,9 @@
 defmodule Logflare.NetworkingTest do
-  @moduledoc false
   use Logflare.DataCase
 
   alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.Networking
+  alias Logflare.Utils.SSRF.TCP
 
   describe "single tenant mode using Big Query" do
     TestUtils.setup_single_tenant()
@@ -23,6 +23,7 @@ defmodule Logflare.NetworkingTest do
                Logflare.FinchIngest,
                Logflare.FinchQuery,
                Logflare.FinchDefault,
+               Logflare.FinchSSRF,
                Logflare.FinchClickHouseIngest,
                Logflare.FinchClickHouseAsyncIngest
              ]
@@ -32,7 +33,7 @@ defmodule Logflare.NetworkingTest do
   describe "single tenant mode using Postgres" do
     TestUtils.setup_single_tenant(backend_type: :postgres)
 
-    test "returns only datadog connection pools" do
+    test "returns the Postgres-mode Finch pools" do
       expected_datadog_pools =
         DatadogAdaptor.intake_origins()
         |> Map.new(fn origin ->
@@ -47,6 +48,11 @@ defmodule Logflare.NetworkingTest do
                   pools: datadog_pools
                 ]},
                {Finch,
+                name: Logflare.FinchSSRF,
+                pools: %{
+                  :default => ssrf_config
+                }},
+               {Finch,
                 name: Logflare.FinchClickHouseIngest,
                 pools: %{
                   :default => _config
@@ -59,6 +65,10 @@ defmodule Logflare.NetworkingTest do
              ] = Networking.pools()
 
       assert datadog_pools == expected_datadog_pools
+
+      assert ssrf_config[:protocols] == [:http1]
+      assert ssrf_config[:conn_opts][:transport_opts][:inet6] == false
+      assert ssrf_config[:conn_opts][:transport_opts][:tcp_module] == TCP
     end
   end
 end
