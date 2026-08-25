@@ -4,11 +4,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   A number of other adaptors (_DataDog, Elastic, Loki, etc_) leverage this to handle the final HTTP transaction.
 
-  ### Finch Pool Selection
-
-  By default the pool will be selected automatically based on the `:http` configuration option.
-
-  If you want to manually select a specific Finch pool, you can use the `:pool_name` option and provide the module name.
+  Outbound requests use a dedicated Finch pool that rejects private and reserved
+  destination addresses at connection time.
 
 
   ### Dynamic URL handling with URL Override
@@ -277,29 +274,13 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # HTTP Client
   defmodule Client do
     @moduledoc false
-    alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
-    alias Logflare.Backends.Adaptor.HttpBased.Headers
-    alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
     use Tesla, docs: false
 
-    defguardp is_possible_pool(value)
-              when not is_nil(value) and not is_boolean(value) and is_atom(value)
+    alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
+    alias Logflare.Backends.Adaptor.HttpBased.Headers
 
     def send(opts) do
-      http_opt = Keyword.get(opts, :http)
-      pool_name = Keyword.get(opts, :pool_name)
-
-      adaptor =
-        cond do
-          is_possible_pool(pool_name) ->
-            {Tesla.Adapter.Finch, name: pool_name, receive_timeout: 5_000}
-
-          http_opt == "http2" ->
-            {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
-
-          true ->
-            {Tesla.Adapter.Finch, name: Logflare.FinchDefaultHttp1, receive_timeout: 5_000}
-        end
+      adaptor = {Tesla.Adapter.Finch, name: Logflare.FinchSSRF, receive_timeout: 5_000}
 
       reserved = reserved_header_names(opts)
 
@@ -313,7 +294,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           Tesla.Middleware.Telemetry,
           Tesla.Middleware.JSON,
           if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
-          SSRFProtection,
           EgressTracer
         ]
         |> Enum.filter(& &1),

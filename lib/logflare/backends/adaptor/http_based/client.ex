@@ -32,6 +32,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
           | {:formatter, Tesla.Client.middleware()}
           | {:pool_name, atom()}
           | {:http2, boolean()}
+          | {:ssrf, boolean()}
 
   defguardp is_possible_pool(value)
             when not is_nil(value) and not is_boolean(value) and is_atom(value)
@@ -57,6 +58,9 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
     `content-type` should return `["content-type"]`.
   * `:pool_name` - An override for the name of the Finch pool to use for requests.
   * `:http2` - Whether to use HTTP/2. Defaults to `true`.
+  * `:ssrf` - Routes requests through an SSRF-safe Finch pool. Defaults to `true`.
+    When enabled, `:pool_name` and `:http2` do not override the safe pool. Set
+    this to `false` only for trusted destinations that must access private addresses.
   """
   @spec new(opts()) :: t()
   def new(opts \\ []) do
@@ -76,7 +80,11 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
         EgressTracer
       ]
       |> Enum.filter(& &1),
-      adapter_config(Keyword.get(opts, :http2, true), opts[:pool_name])
+      adapter_config(
+        Keyword.get(opts, :http2, true),
+        opts[:pool_name],
+        Keyword.get(opts, :ssrf, true)
+      )
     )
   end
 
@@ -117,8 +125,11 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
 
   def headers_middleware(headers), do: {Tesla.Middleware.Headers, headers}
 
-  defp adapter_config(http2?, pool_name) do
+  defp adapter_config(http2?, pool_name, ssrf?) do
     cond do
+      ssrf? ->
+        {Tesla.Adapter.Finch, name: Logflare.FinchSSRF, receive_timeout: 5_000}
+
       is_possible_pool(pool_name) ->
         {Tesla.Adapter.Finch, name: pool_name, receive_timeout: 5_000}
 
