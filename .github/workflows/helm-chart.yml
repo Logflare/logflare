@@ -24,6 +24,19 @@ jobs:
       - name: Install helm-unittest plugin
         run: helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest
 
+      - name: Install helm-values-schema-json plugin
+        run: helm plugin install --verify=false https://github.com/losisin/helm-values-schema-json
+
+      - name: Ensure values.schema.json matches values.yaml
+        working-directory: helm
+        run: |
+          helm schema
+          if ! git diff --quiet --exit-code values.schema.json; then
+            echo "::error::values.schema.json is stale. Run 'helm schema' in helm/ and commit the result."
+            git diff values.schema.json
+            exit 1
+          fi
+
       - name: Lint chart
         run: helm lint helm
 
