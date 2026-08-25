@@ -5,12 +5,16 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   use GenServer
 
+  require Logger
+
   alias Logflare.Backends
   alias Logflare.ContextCache
   alias Logflare.Rules
   alias Logflare.Utils
 
   @supervisor_name __MODULE__.Supervisor
+  @reconcile_retry_delay 100
+  @reconcile_retries 3
 
   @spec supervisor_spec() :: Supervisor.module_spec()
   def supervisor_spec do
@@ -33,22 +37,62 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   @impl true
   def handle_cast({:to_bust, context_pkeys}, state) do
-    ContextCache.Gossip.record_tombstones(context_pkeys)
-    ContextCache.bust_keys(context_pkeys)
+    {backend_records, cache_records} = Enum.split_with(context_pkeys, &backend_record?/1)
 
-    for record <- context_pkeys do
-      maybe_do_cross_cluster_syncing(record)
-    end
+    reconcile_backends(backend_records)
+    bust_keys(cache_records)
+    Enum.each(cache_records, &maybe_do_cross_cluster_syncing/1)
 
     {:noreply, state}
   end
 
-  defp maybe_do_cross_cluster_syncing({Backends, backend_id})
-       when is_integer(backend_id) do
-    # sync backend across cluster for v2 sources
-    Utils.Tasks.start_child(fn ->
-      Backends.sync_backend_across_cluster(backend_id)
+  @impl true
+  def handle_info({:retry_backend_reconciliation, backend_id, retries_left}, state) do
+    reconcile_backend(backend_id, retries_left)
+    {:noreply, state}
+  end
+
+  @spec backend_record?({module(), term()}) :: boolean()
+  defp backend_record?({Backends, backend_id}) when is_integer(backend_id), do: true
+  defp backend_record?(_record), do: false
+
+  @spec reconcile_backends([{Backends, integer()}]) :: :ok
+  defp reconcile_backends(records) do
+    Enum.each(records, fn {Backends, backend_id} ->
+      reconcile_backend(backend_id, @reconcile_retries)
     end)
+  end
+
+  @spec reconcile_backend(integer(), non_neg_integer()) :: :ok
+  defp reconcile_backend(backend_id, retries_left) do
+    Backends.reconcile_backend_local(backend_id)
+  catch
+    kind, reason ->
+      Logger.error(
+        "Backend reconciliation failed: #{Exception.format(kind, reason, __STACKTRACE__)}",
+        backend_id: backend_id
+      )
+
+      if retries_left > 0 do
+        Process.send_after(
+          self(),
+          {:retry_backend_reconciliation, backend_id, retries_left - 1},
+          @reconcile_retry_delay
+        )
+      else
+        bust_keys([{Backends, backend_id}])
+      end
+
+      :ok
+  end
+
+  @spec bust_keys([{module(), term()}]) :: :ok
+  defp bust_keys([]), do: :ok
+
+  defp bust_keys(context_pkeys) do
+    ContextCache.Gossip.record_tombstones(context_pkeys)
+    ContextCache.bust_keys(context_pkeys)
+    :ok
   end
 
   defp maybe_do_cross_cluster_syncing({Rules, rule_id}) when is_integer(rule_id) do

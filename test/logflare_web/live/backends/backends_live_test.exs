@@ -240,6 +240,20 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "Enabled"
     end
 
+    test "toggles a destination", %{conn: conn, source: source, user: user} do
+      backend = insert(:backend, sources: [source], user: user)
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
+
+      assert view |> element("#backend-status") |> render() =~ "Enabled"
+
+      view
+      |> element("#toggle-backend")
+      |> render_click()
+
+      refute Backends.get_backend(backend.id).enabled
+      assert view |> element("#backend-status") |> render() =~ "Disabled"
+    end
+
     test "redacts certain config attributes from display", %{
       conn: conn,
       user: user,
@@ -1682,6 +1696,25 @@ defmodule LogflareWeb.BackendsLiveTest do
         |> live(~p"/backends?t=#{team_user.team_id}")
 
       assert html =~ backend.name
+    end
+
+    test "team member can toggle a backend owned by the selected team owner", %{conn: conn} do
+      owner = insert(:user)
+      team = insert(:team, user: owner)
+      member = insert(:user)
+      team_user = insert(:team_user, team: team, email: member.email)
+      backend = insert(:backend, user: owner)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(member, team_user)
+        |> live(~p"/backends?t=#{team.id}")
+
+      view
+      |> element("#toggle-backend-#{backend.id}")
+      |> render_click()
+
+      refute Backends.get_backend(backend.id).enabled
     end
 
     test "team user can view backend without t= param", %{

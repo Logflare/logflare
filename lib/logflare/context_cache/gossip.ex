@@ -155,28 +155,50 @@ defmodule Logflare.ContextCache.Gossip do
   end
 
   defp do_receive(cache, key, value) do
-    if Cachex.exists?(cache, key) == {:ok, true} do
-      # refresh if the node already has this cache key
-      Cachex.refresh(cache, key)
-      :refreshed
-    else
-      pkeys = pkeys_from_cached_value(value)
+    cond do
+      Tombstones.Cache.tombstoned?(cache, cache_key_tombstone(key)) ->
+        :dropped_stale
 
-      cond do
-        # if we can't extract any primary keys from the cache key/value,
-        # we have no way to detect staleness, so we drop it to be safe
-        pkeys == [] ->
-          :dropped_no_pkey
+      Cachex.exists?(cache, key) == {:ok, true} ->
+        # refresh if the node already has this cache key
+        Cachex.refresh(cache, key)
+        :refreshed
 
-        # do nothing if the WAL recently busted this specific record
-        Enum.any?(pkeys, fn pkey -> Tombstones.Cache.tombstoned?(cache, pkey) end) ->
-          :dropped_stale
+      true ->
+        pkeys = pkeys_from_cached_value(value)
 
-        true ->
-          Cachex.put(cache, key, {:cached, value})
-          :cached
-      end
+        cond do
+          # if we can't extract any primary keys from the cache key/value,
+          # we have no way to detect staleness, so we drop it to be safe
+          pkeys == [] ->
+            :dropped_no_pkey
+
+          # do nothing if the WAL recently busted this specific record
+          Enum.any?(pkeys, fn pkey -> Tombstones.Cache.tombstoned?(cache, pkey) end) ->
+            :dropped_stale
+
+          true ->
+            cache_received_value(cache, key, value, pkeys)
+        end
     end
+  end
+
+  @spec cache_received_value(Cachex.t(), term(), term(), [term()]) :: :cached | :dropped_stale
+  defp cache_received_value(cache, key, value, pkeys) do
+    Cachex.put(cache, key, {:cached, value})
+
+    if cache_value_tombstoned?(cache, key, pkeys) do
+      Cachex.del(cache, key)
+      :dropped_stale
+    else
+      :cached
+    end
+  end
+
+  @spec cache_value_tombstoned?(Cachex.t(), term(), [term()]) :: boolean()
+  defp cache_value_tombstoned?(cache, key, pkeys) do
+    Tombstones.Cache.tombstoned?(cache, cache_key_tombstone(key)) or
+      Enum.any?(pkeys, &Tombstones.Cache.tombstoned?(cache, &1))
   end
 
   defp pkeys_from_cached_value(values) when is_list(values) do
@@ -186,6 +208,16 @@ defmodule Logflare.ContextCache.Gossip do
   defp pkeys_from_cached_value({:ok, value}), do: pkeys_from_cached_value(value)
   defp pkeys_from_cached_value(%{id: id}), do: [id]
   defp pkeys_from_cached_value(_value), do: []
+
+  @doc """
+  Writes short-lived markers for cache keys that were explicitly invalidated.
+  """
+  @spec record_cache_tombstones(Cachex.t(), [term()]) :: :ok
+  def record_cache_tombstones(cache, keys) when is_atom(cache) and is_list(keys) do
+    Enum.each(keys, fn key ->
+      Tombstones.Cache.put_tombstone(cache, cache_key_tombstone(key))
+    end)
+  end
 
   @doc """
   Writes a short-lived marker for a primary key indicating it was recently updated or deleted.
@@ -213,4 +245,7 @@ defmodule Logflare.ContextCache.Gossip do
 
   defp format_busted_pkey(%{id: id}), do: format_busted_pkey(id)
   defp format_busted_pkey(_), do: nil
+
+  @spec cache_key_tombstone(term()) :: {:cache_key, term()}
+  defp cache_key_tombstone(key), do: {:cache_key, key}
 end

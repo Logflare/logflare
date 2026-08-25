@@ -16,6 +16,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
   alias Logflare.ContextCache
+  alias Logflare.ContextCache.Gossip
   alias Logflare.Cluster
   alias Logflare.LogEvent
   alias Logflare.PubSubRates
@@ -330,13 +331,11 @@ defmodule Logflare.Backends do
         enabled_changed? = enabled_modified? and backend.enabled != updated.enabled
 
         if enabled_changed? do
-          updated
-          |> typecast_config_string_map_to_atom_map()
-          |> sync_backends_local(list_backend_source_targets(updated.id))
+          reconcile_backend_local(updated.id)
+          reconcile_backend_across_cluster(updated.id)
         end
 
-        if default_ingest_modified? or enabled_changed? do
-          ContextCache.bust_keys([{__MODULE__, updated.id}])
+        if default_ingest_modified? and not enabled_changed? do
           sync_backend_across_cluster(updated.id)
         end
 
@@ -442,28 +441,31 @@ defmodule Logflare.Backends do
     with {:ok, _} = result <- Repo.update(changeset) do
       backend_ids = Enum.map(backends, & &1.id)
 
+      {added_backends, removed_backends} =
+        backend_changes(source_with_backends.backends, backends)
+
+      Enum.each(added_backends ++ removed_backends, fn backend ->
+        reconcile_source_backend_local(source.id, backend.id)
+
+        Cluster.Utils.rpc_multicall(
+          __MODULE__,
+          :reconcile_source_backend_local,
+          [source.id, backend.id]
+        )
+      end)
+
       cache_keys =
         [{Logflare.Sources, source.id}] ++ Enum.map(backend_ids, &{Logflare.Backends, &1})
 
       ContextCache.bust_keys(cache_keys)
       clear_list_backends_cache(source.id)
 
-      if source_sup_started?(source) do
-        sync_backend_children(source, source_with_backends.backends, backends)
-      else
-        :ok
-      end
-
       result
     end
   end
 
-  @spec sync_backend_children(
-          source :: Source.t(),
-          previous_backends :: [Backend.t()],
-          current_backends :: [Backend.t()]
-        ) :: :ok
-  defp sync_backend_children(source, previous_backends, current_backends) do
+  @spec backend_changes([Backend.t()], [Backend.t()]) :: {[Backend.t()], [Backend.t()]}
+  defp backend_changes(previous_backends, current_backends) do
     added_backends =
       Enum.filter(current_backends, fn cb ->
         not Enum.any?(previous_backends, &(&1.id == cb.id))
@@ -474,17 +476,7 @@ defmodule Logflare.Backends do
         not Enum.any?(current_backends, &(&1.id == pb.id))
       end)
 
-    for backend <- added_backends do
-      SourceSup.start_backend_child(source, backend)
-      Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
-    end
-
-    for backend <- removed_backends do
-      SourceSup.stop_backend_child(source, backend)
-      Cluster.Utils.rpc_multicall(SourceSup, :stop_backend_child, [source, backend])
-    end
-
-    :ok
+    {added_backends, removed_backends}
   end
 
   @doc """
@@ -555,7 +547,7 @@ defmodule Logflare.Backends do
       |> Repo.delete()
 
     with {:ok, deleted} <- result do
-      maybe_stop_consolidated_pipeline(deleted)
+      reconcile_backend_local(deleted.id)
       Adaptor.on_backend_deleted(deleted)
       {:ok, deleted}
     end
@@ -579,16 +571,24 @@ defmodule Logflare.Backends do
   """
   @spec sync_backend_across_cluster(integer()) :: :ok
   def sync_backend_across_cluster(backend_id) when is_integer(backend_id) do
-    ContextCache.bust_keys([{__MODULE__, backend_id}])
-
     with %Backend{} = backend <- get_backend(backend_id) do
-      source_targets = list_backend_source_targets(backend_id)
+      sources = Sources.list_sources(backend_id: backend_id)
 
-      if source_targets != [] or not backend.enabled do
-        Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, source_targets])
+      if sources != [] do
+        Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, sources])
       end
     end
 
+    :ok
+  end
+
+  @doc """
+  Reconciles a backend across all cluster nodes from its current persisted state.
+  """
+  @spec reconcile_backend_across_cluster(pos_integer()) :: :ok
+  def reconcile_backend_across_cluster(backend_id)
+      when is_integer(backend_id) and backend_id > 0 do
+    Cluster.Utils.rpc_multicast(__MODULE__, :reconcile_backend_local, [backend_id])
     :ok
   end
 
@@ -611,32 +611,219 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Syncs a backend for local node for v2 pipeline sources.
-  Expects the backend and source targets to be loaded from the database.
+  Reconciles the supplied backend/source pairs on the local node.
+  Only their IDs are trusted; current state is reloaded under the backend lock.
   """
-  @spec sync_backends_local(Backend.t(), [{Source.t(), boolean()}]) :: :ok
-  def sync_backends_local(%Backend{} = backend, source_targets) do
-    if backend.enabled, do: maybe_start_consolidated_pipeline(backend)
-
-    ContextCache.bust_keys([{__MODULE__, backend.id}])
-
-    Enum.each(source_targets, &sync_backend_child(backend, &1))
-
-    if not backend.enabled, do: maybe_stop_consolidated_pipeline(backend)
+  @spec sync_backends_local(Backend.t(), [Source.t()]) :: :ok
+  def sync_backends_local(%Backend{id: backend_id}, sources) do
+    for source <- sources do
+      reconcile_source_backend_local(source.id, backend_id)
+    end
 
     :ok
   end
 
-  @spec sync_backend_child(Backend.t(), {Source.t(), boolean()}) ::
-          :ok | :noop | Supervisor.on_start_child() | {:error, :not_found}
-  defp sync_backend_child(%Backend{} = backend, {%Source{} = source, register_for_ingest?}) do
-    clear_list_backends_cache(source.id)
+  @doc """
+  Reconciles a backend on the local node from its current persisted state.
+  """
+  @spec reconcile_backend_local(pos_integer()) :: :ok
+  def reconcile_backend_local(backend_id) when is_integer(backend_id) and backend_id > 0 do
+    with_backend_reconciliation_lock(backend_id, fn ->
+      do_reconcile_backend_local(backend_id)
+    end)
+  end
+
+  @doc """
+  Reconciles one source/backend child on the local node from persisted state.
+  """
+  @spec reconcile_source_backend_local(pos_integer(), pos_integer()) :: :ok
+  def reconcile_source_backend_local(source_id, backend_id)
+      when is_integer(source_id) and source_id > 0 and is_integer(backend_id) and backend_id > 0 do
+    with_backend_reconciliation_lock(backend_id, fn ->
+      do_reconcile_source_backend_local(source_id, backend_id)
+    end)
+  end
+
+  @spec with_backend_reconciliation_lock(pos_integer(), (-> :ok)) :: :ok
+  defp with_backend_reconciliation_lock(backend_id, fun) do
+    lock_id = {{__MODULE__, :backend_reconciliation, backend_id}, self()}
+    :global.trans(lock_id, fun, [Node.self()])
+  end
+
+  @spec do_reconcile_backend_local(pos_integer()) :: :ok
+  defp do_reconcile_backend_local(backend_id) do
+    case get_backend(backend_id) do
+      %Backend{} = backend ->
+        reconcile_backend(backend, list_backend_source_targets(backend_id))
+
+      nil ->
+        tombstone_backend_cache(backend_id)
+        ContextCache.bust_keys([{__MODULE__, backend_id}])
+        ConsolidatedSup.stop_pipeline(backend_id)
+        :ok
+    end
+  end
+
+  @spec do_reconcile_source_backend_local(pos_integer(), pos_integer()) :: :ok
+  defp do_reconcile_source_backend_local(source_id, backend_id) do
+    source = Repo.get(Source, source_id) || %Source{id: source_id}
+    backend = get_backend(backend_id)
+    source_target = backend_source_target(source, backend_id)
+
+    tombstone_backend_cache(backend_id)
+
+    case {backend, source_target} do
+      {%Backend{enabled: true} = backend, {%Source{}, _register_for_ingest?} = target} ->
+        ensure_consolidated_pipeline(backend, true)
+        ensure_backend_child_started(backend, target)
+        ContextCache.bust_keys([{__MODULE__, backend.id}])
+        clear_list_backends_cache(source.id)
+        ensure_backend_child_started(backend, target)
+
+      {%Backend{} = backend, _source_target} ->
+        ContextCache.bust_keys([{__MODULE__, backend.id}])
+        clear_list_backends_cache(source.id)
+        stop_backend_child(backend, {source, false})
+
+        if not backend.enabled or not backend_has_targets?(backend.id) do
+          ConsolidatedSup.stop_pipeline(backend.id)
+        end
+
+      {nil, _source_target} ->
+        ContextCache.bust_keys([{__MODULE__, backend_id}])
+        clear_list_backends_cache(source.id)
+        SourceSup.stop_backend_child(source, backend_id)
+        ConsolidatedSup.stop_pipeline(backend_id)
+    end
+
+    :ok
+  end
+
+  @spec backend_source_target(Source.t(), pos_integer()) :: {Source.t(), boolean()} | nil
+  defp backend_source_target(%Source{id: source_id} = source, backend_id) do
+    attached? =
+      Repo.exists?(
+        from(sb in Logflare.Backends.SourcesBackend,
+          where: sb.source_id == ^source_id and sb.backend_id == ^backend_id
+        )
+      )
+
+    rule? =
+      Repo.exists?(
+        from(r in Rule, where: r.source_id == ^source_id and r.backend_id == ^backend_id)
+      )
+
+    if attached? or rule?, do: {source, attached?}
+  end
+
+  @spec backend_has_targets?(pos_integer()) :: boolean()
+  defp backend_has_targets?(backend_id) do
+    Repo.exists?(
+      Backend
+      |> filter_backends(has_sources_or_rules: true)
+      |> where([backend], backend.id == ^backend_id)
+    )
+  end
+
+  @spec reconcile_backend(Backend.t(), [{Source.t(), boolean()}]) :: :ok
+  defp reconcile_backend(%Backend{} = backend, source_targets) do
+    tombstone_backend_cache(backend.id)
+
+    if backend.enabled do
+      reconcile_enabled_backend(backend, source_targets)
+    else
+      reconcile_disabled_backend(backend, source_targets)
+    end
+
+    :ok
+  end
+
+  @spec tombstone_backend_cache(pos_integer()) :: :ok
+  defp tombstone_backend_cache(backend_id) do
+    Gossip.record_tombstones([{__MODULE__, backend_id}])
+  end
+
+  @spec reconcile_enabled_backend(Backend.t(), [{Source.t(), boolean()}]) :: :ok
+  defp reconcile_enabled_backend(%Backend{} = backend, []) do
+    ConsolidatedSup.stop_pipeline(backend.id)
+    ContextCache.bust_keys([{__MODULE__, backend.id}])
+    :ok
+  end
+
+  defp reconcile_enabled_backend(%Backend{} = backend, source_targets) do
+    ensure_consolidated_pipeline(backend, true)
+    Enum.each(source_targets, &ensure_backend_child_started(backend, &1))
+
+    ContextCache.bust_keys([{__MODULE__, backend.id}])
+    clear_source_target_caches(source_targets)
+    Enum.each(source_targets, &ensure_backend_child_started(backend, &1))
+  end
+
+  @spec reconcile_disabled_backend(Backend.t(), [{Source.t(), boolean()}]) :: :ok
+  defp reconcile_disabled_backend(%Backend{} = backend, source_targets) do
+    ContextCache.bust_keys([{__MODULE__, backend.id}])
+    clear_source_target_caches(source_targets)
+
+    Enum.each(source_targets, &stop_backend_child(backend, &1))
+    ConsolidatedSup.stop_pipeline(backend.id)
+  end
+
+  @spec ensure_consolidated_pipeline(Backend.t(), boolean()) :: :ok
+  defp ensure_consolidated_pipeline(%Backend{} = backend, has_targets?) do
+    if has_targets? and Adaptor.consolidated_ingest?(backend) do
+      case ConsolidatedSup.start_pipeline(backend) do
+        {:ok, _pid} ->
+          :ok
+
+        {:error, {:already_started, _pid}} ->
+          :ok
+
+        {:error, reason} ->
+          raise "Failed to start consolidated pipeline for backend #{backend.id}: #{inspect(reason)}"
+      end
+    else
+      ConsolidatedSup.stop_pipeline(backend.id)
+    end
+
+    :ok
+  end
+
+  @spec clear_source_target_caches([{Source.t(), boolean()}]) :: :ok
+  defp clear_source_target_caches(source_targets) do
+    Enum.each(source_targets, fn {source, _register_for_ingest?} ->
+      clear_list_backends_cache(source.id)
+    end)
+
+    :ok
+  end
+
+  @spec ensure_backend_child_started(Backend.t(), {Source.t(), boolean()}) :: :ok
+  defp ensure_backend_child_started(
+         %Backend{} = backend,
+         {%Source{} = source, register_for_ingest?}
+       ) do
     backend = %{backend | register_for_ingest: register_for_ingest?}
 
-    cond do
-      not source_sup_started?(source) -> :ok
-      backend.enabled -> SourceSup.start_backend_child(source, backend)
-      true -> SourceSup.stop_backend_child(source, backend)
+    if source_sup_started?(source) do
+      case SourceSup.start_backend_child(source, backend) do
+        {:ok, _pid} -> :ok
+        {:ok, _pid, _info} -> :ok
+        {:error, {:already_started, _pid}} -> :ok
+        :noop -> :ok
+        {:error, reason} -> raise "Failed to start backend #{backend.id}: #{inspect(reason)}"
+      end
+    else
+      :ok
+    end
+  end
+
+  @spec stop_backend_child(Backend.t(), {Source.t(), boolean()}) ::
+          :ok | {:error, :not_found}
+  defp stop_backend_child(%Backend{} = backend, {%Source{} = source, _register_for_ingest?}) do
+    if source_sup_started?(source) do
+      SourceSup.stop_backend_child(source, backend)
+    else
+      :ok
     end
   end
 
