@@ -331,8 +331,7 @@ defmodule Logflare.Backends do
         enabled_changed? = enabled_modified? and backend.enabled != updated.enabled
 
         if enabled_changed? do
-          reconcile_backend_local(updated.id)
-          reconcile_backend_across_cluster(updated.id)
+          reconcile_updated_backend(updated.id)
         end
 
         if default_ingest_modified? and not enabled_changed? do
@@ -350,6 +349,34 @@ defmodule Logflare.Backends do
 
       error ->
         error
+    end
+  end
+
+  @spec reconcile_updated_backend(pos_integer()) :: :ok
+  defp reconcile_updated_backend(backend_id) do
+    reconcile_updated_backend(backend_id, :local, fn ->
+      reconcile_backend_local(backend_id)
+    end)
+
+    reconcile_updated_backend(backend_id, :cluster, fn ->
+      reconcile_backend_across_cluster(backend_id)
+    end)
+  end
+
+  @spec reconcile_updated_backend(pos_integer(), :local | :cluster, (-> term())) :: :ok
+  defp reconcile_updated_backend(backend_id, phase, reconcile) do
+    try do
+      reconcile.()
+      :ok
+    catch
+      kind, reason ->
+        Logger.error(
+          "Immediate backend reconciliation failed: #{Exception.format(kind, reason, __STACKTRACE__)}",
+          backend_id: backend_id,
+          phase: phase
+        )
+
+        :ok
     end
   end
 
@@ -658,7 +685,7 @@ defmodule Logflare.Backends do
 
       nil ->
         tombstone_backend_cache(backend_id)
-        ContextCache.bust_keys([{__MODULE__, backend_id}])
+        clear_backend_cache(backend_id)
         ConsolidatedSup.stop_pipeline(backend_id)
         :ok
     end
@@ -676,12 +703,12 @@ defmodule Logflare.Backends do
       {%Backend{enabled: true} = backend, {%Source{}, _register_for_ingest?} = target} ->
         ensure_consolidated_pipeline(backend, true)
         ensure_backend_child_started(backend, target)
-        ContextCache.bust_keys([{__MODULE__, backend.id}])
+        clear_backend_cache(backend.id)
         clear_list_backends_cache(source.id)
         ensure_backend_child_started(backend, target)
 
       {%Backend{} = backend, _source_target} ->
-        ContextCache.bust_keys([{__MODULE__, backend.id}])
+        clear_backend_cache(backend.id)
         clear_list_backends_cache(source.id)
         stop_backend_child(backend, {source, false})
 
@@ -690,7 +717,7 @@ defmodule Logflare.Backends do
         end
 
       {nil, _source_target} ->
-        ContextCache.bust_keys([{__MODULE__, backend_id}])
+        clear_backend_cache(backend_id)
         clear_list_backends_cache(source.id)
         SourceSup.stop_backend_child(source, backend_id)
         ConsolidatedSup.stop_pipeline(backend_id)
@@ -743,10 +770,17 @@ defmodule Logflare.Backends do
     Gossip.record_tombstones([{__MODULE__, backend_id}])
   end
 
+  @spec clear_backend_cache(pos_integer()) :: :ok
+  defp clear_backend_cache(backend_id) do
+    Gossip.record_cache_tombstones(__MODULE__.Cache, [{:get_backend, [backend_id]}])
+    ContextCache.bust_keys([{__MODULE__, backend_id}])
+    :ok
+  end
+
   @spec reconcile_enabled_backend(Backend.t(), [{Source.t(), boolean()}]) :: :ok
   defp reconcile_enabled_backend(%Backend{} = backend, []) do
     ConsolidatedSup.stop_pipeline(backend.id)
-    ContextCache.bust_keys([{__MODULE__, backend.id}])
+    clear_backend_cache(backend.id)
     :ok
   end
 
@@ -754,14 +788,14 @@ defmodule Logflare.Backends do
     ensure_consolidated_pipeline(backend, true)
     Enum.each(source_targets, &ensure_backend_child_started(backend, &1))
 
-    ContextCache.bust_keys([{__MODULE__, backend.id}])
+    clear_backend_cache(backend.id)
     clear_source_target_caches(source_targets)
     Enum.each(source_targets, &ensure_backend_child_started(backend, &1))
   end
 
   @spec reconcile_disabled_backend(Backend.t(), [{Source.t(), boolean()}]) :: :ok
   defp reconcile_disabled_backend(%Backend{} = backend, source_targets) do
-    ContextCache.bust_keys([{__MODULE__, backend.id}])
+    clear_backend_cache(backend.id)
     clear_source_target_caches(source_targets)
 
     Enum.each(source_targets, &stop_backend_child(backend, &1))

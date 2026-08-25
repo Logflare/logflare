@@ -224,6 +224,60 @@ defmodule Logflare.BackendsTest do
       assert Backends.ConsolidatedSup.pipeline_running?(enabled_backend)
     end
 
+    test "update_backend/2 reports a committed toggle when immediate reconciliation fails", %{
+      user: user
+    } do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          sources: [source],
+          type: :webhook,
+          user: user,
+          config: %{url: "https://example.com"}
+        )
+
+      Backends.clear_list_backends_cache(source.id)
+      start_supervised!({SourceSup, source})
+
+      source_sup = Backends.via_source(source, SourceSup)
+
+      child_id =
+        source_sup
+        |> Supervisor.which_children()
+        |> Enum.find_value(fn
+          {{_mod, _source_id, backend_id} = child_id, _pid, _type, _modules}
+          when backend_id == backend.id ->
+            child_id
+
+          _child ->
+            nil
+        end)
+
+      assert child_id
+      assert :ok = Supervisor.terminate_child(source_sup, child_id)
+
+      from(b in Backend, where: b.id == ^backend.id)
+      |> Repo.update_all(set: [enabled: false])
+
+      disabled_backend = Backends.get_backend(backend.id)
+
+      expect(ClusterUtils, :rpc_multicast, fn
+        Backends, :reconcile_backend_local, [backend_id] when backend_id == backend.id -> :ok
+      end)
+
+      log =
+        capture_log(fn ->
+          assert {:ok, enabled_backend} =
+                   Backends.update_backend(disabled_backend, %{enabled: true})
+
+          assert enabled_backend.enabled
+        end)
+
+      assert log =~ "Immediate backend reconciliation failed"
+      assert Repo.get!(Backend, backend.id).enabled
+    end
+
     test "combined enable and association starts consolidated pipeline before cache invalidation",
          %{
            user: user

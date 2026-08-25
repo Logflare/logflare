@@ -3,6 +3,7 @@ defmodule Logflare.ContextCacheTest do
 
   alias Ecto.Adapters.SQL
   alias Logflare.ContextCache
+  alias Logflare.ContextCache.Tombstones
   alias Logflare.ContextCache.TransactionBroadcaster
   alias Logflare.Sources
   alias Logflare.Sources.Source
@@ -47,10 +48,58 @@ defmodule Logflare.ContextCacheTest do
       backend = insert(:backend, sources: [source])
       Backends.Cache.list_backends(source_id: source.id)
       cache_key = {:list_backends, [[source_id: source.id]]}
-      assert {:cached, [%Backend{}]} = Cachex.get!(Backends.Cache, cache_key)
+      assert {:cached, [%Backend{}], _generation} = Cachex.get!(Backends.Cache, cache_key)
 
       assert {:ok, 1} = ContextCache.bust_keys([{Backends, backend.id}])
       assert is_nil(Cachex.get!(Backends.Cache, cache_key))
+    end
+
+    test "fetch_consistent/3 retries a value loaded across an invalidation" do
+      cache_key = {:get_backend, [System.unique_integer([:positive])]}
+      Cachex.del(Backends.Cache, cache_key)
+      parent = self()
+
+      task =
+        Task.async(fn ->
+          ContextCache.fetch_consistent(Backends.Cache, cache_key, fn ->
+            send(parent, {:getter_started, self()})
+
+            receive do
+              {:return, value} -> value
+            end
+          end)
+        end)
+
+      assert_receive {:getter_started, first_getter}
+      ContextCache.Gossip.record_cache_tombstones(Backends.Cache, [cache_key])
+      send(first_getter, {:return, :stale})
+
+      assert_receive {:getter_started, second_getter}
+      send(second_getter, {:return, :current})
+
+      assert Task.await(task) == :current
+      assert {:cached, :current, _generation} = Cachex.get!(Backends.Cache, cache_key)
+    end
+
+    test "fetch_consistent/3 rejects a cached value from an older generation" do
+      cache_key = {:get_backend, [System.unique_integer([:positive])]}
+
+      stale_generation =
+        ContextCache.Gossip.cache_invalidation_generation(Backends.Cache, cache_key)
+
+      ContextCache.Gossip.record_cache_tombstones(Backends.Cache, [cache_key])
+      Cachex.del(Tombstones.Cache, {Backends.Cache, {:cache_key, cache_key}})
+
+      Cachex.put(Backends.Cache, cache_key, {:cached, :stale, stale_generation})
+
+      assert ContextCache.fetch_consistent(Backends.Cache, cache_key, fn -> :current end) ==
+               :current
+
+      assert {:cached, :current, current_generation} =
+               Cachex.get!(Backends.Cache, cache_key)
+
+      assert current_generation ==
+               ContextCache.Gossip.cache_invalidation_generation(Backends.Cache, cache_key)
     end
   end
 

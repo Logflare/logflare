@@ -160,9 +160,7 @@ defmodule Logflare.ContextCache.Gossip do
         :dropped_stale
 
       Cachex.exists?(cache, key) == {:ok, true} ->
-        # refresh if the node already has this cache key
-        Cachex.refresh(cache, key)
-        :refreshed
+        refresh_cached_value(cache, key)
 
       true ->
         pkeys = pkeys_from_cached_value(value)
@@ -183,9 +181,31 @@ defmodule Logflare.ContextCache.Gossip do
     end
   end
 
+  defp refresh_cached_value(Logflare.Backends.Cache = cache, key) do
+    case Cachex.get(cache, key) do
+      {:ok, {:cached, _value, generation}} ->
+        if generation == cache_invalidation_generation(cache, key) do
+          Cachex.refresh(cache, key)
+          :refreshed
+        else
+          Cachex.del(cache, key)
+          :dropped_stale
+        end
+
+      _other ->
+        Cachex.del(cache, key)
+        :dropped_stale
+    end
+  end
+
+  defp refresh_cached_value(cache, key) do
+    Cachex.refresh(cache, key)
+    :refreshed
+  end
+
   @spec cache_received_value(Cachex.t(), term(), term(), [term()]) :: :cached | :dropped_stale
   defp cache_received_value(cache, key, value, pkeys) do
-    Cachex.put(cache, key, {:cached, value})
+    Cachex.put(cache, key, cached_value(cache, key, value))
 
     if cache_value_tombstoned?(cache, key, pkeys) do
       Cachex.del(cache, key)
@@ -194,6 +214,12 @@ defmodule Logflare.ContextCache.Gossip do
       :cached
     end
   end
+
+  defp cached_value(Logflare.Backends.Cache = cache, key, value) do
+    {:cached, value, cache_invalidation_generation(cache, key)}
+  end
+
+  defp cached_value(_cache, _key, value), do: {:cached, value}
 
   @spec cache_value_tombstoned?(Cachex.t(), term(), [term()]) :: boolean()
   defp cache_value_tombstoned?(cache, key, pkeys) do
@@ -217,6 +243,18 @@ defmodule Logflare.ContextCache.Gossip do
     Enum.each(keys, fn key ->
       Tombstones.Cache.put_tombstone(cache, cache_key_tombstone(key))
     end)
+  end
+
+  @doc false
+  @spec cache_invalidation_generation(Cachex.t(), term()) :: reference() | nil
+  def cache_invalidation_generation(cache, key) do
+    Tombstones.Cache.invalidation_generation(cache, cache_key_tombstone(key))
+  end
+
+  @doc false
+  @spec cache_invalidation_generation(Cachex.t()) :: reference() | nil
+  def cache_invalidation_generation(cache) do
+    Tombstones.Cache.invalidation_generation(cache)
   end
 
   @doc """

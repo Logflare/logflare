@@ -559,6 +559,10 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :type, :config]
   end
 
+  defmodule BackendApiUpdateParams do
+    use LogflareWeb.OpenApi, properties: BackendApiParams.schema().properties, required: []
+  end
+
   defmodule BackendConnectionTest do
     @properties %{
       connected?: %Schema{type: :boolean},

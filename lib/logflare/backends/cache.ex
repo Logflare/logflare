@@ -34,6 +34,6 @@ defmodule Logflare.Backends.Cache do
   def get_backend(arg), do: apply_repo_fun(__ENV__.function, [arg])
 
   defp apply_repo_fun(arg1, arg2) do
-    Logflare.ContextCache.apply_fun(Backends, arg1, arg2)
+    Logflare.ContextCache.apply_fun_primary(Backends, arg1, arg2)
   end
 end

@@ -47,11 +47,37 @@ defmodule Logflare.ContextCache do
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
 
   def apply_fun(context, fun, args) when is_atom(fun) do
+    apply_fun(context, fun, args, &Logflare.Repo.apply_with_replica/3)
+  end
+
+  @doc """
+  Applies a cached context function using the primary repo on cache misses.
+  """
+  @spec apply_fun_primary(module(), tuple() | atom(), list()) :: any()
+  def apply_fun_primary(context, {fun, _arity}, args), do: apply_fun_primary(context, fun, args)
+
+  def apply_fun_primary(context, fun, args) when is_atom(fun) do
+    apply_fun(context, fun, args, &Logflare.Repo.apply_with_primary/3, &fetch_consistent/3)
+  end
+
+  @spec apply_fun(module(), atom(), list(), (module(), atom(), list() -> term())) :: any()
+  defp apply_fun(context, fun, args, repo_apply) do
+    apply_fun(context, fun, args, repo_apply, &fetch/3)
+  end
+
+  @spec apply_fun(
+          module(),
+          atom(),
+          list(),
+          (module(), atom(), list() -> term()),
+          (Cachex.t(), {atom(), list()}, fun() -> term())
+        ) :: any()
+  defp apply_fun(context, fun, args, repo_apply, fetch) do
     cache = cache_name(context)
     cache_key = {fun, args}
 
-    fetch(cache, cache_key, fn ->
-      Logflare.Repo.apply_with_replica(context, fun, args)
+    fetch.(cache, cache_key, fn ->
+      repo_apply.(context, fun, args)
     end)
   end
 
@@ -152,11 +178,60 @@ defmodule Logflare.ContextCache do
     end
   end
 
+  @doc """
+  Fetches through the cache without retaining a value loaded across an invalidation.
+  """
+  @spec fetch_consistent(Cachex.t(), {atom(), list()}, fun()) :: term()
+  def fetch_consistent(cache, cache_key, getter_fn) do
+    case Cachex.fetch(cache, cache_key, fn _cache_key ->
+           generation = Gossip.cache_invalidation_generation(cache, cache_key)
+           {:commit, {:cached, getter_fn.(), generation}}
+         end) do
+      {:commit, {:cached, value, generation}} ->
+        validate_cached_generation(cache, cache_key, value, generation, getter_fn, true)
+
+      {:ok, {:cached, value, generation}} ->
+        validate_cached_generation(cache, cache_key, value, generation, getter_fn, false)
+
+      {:ok, {:cached, _value}} ->
+        Cachex.del(cache, cache_key)
+        fetch_consistent(cache, cache_key, getter_fn)
+    end
+  end
+
+  @spec validate_cached_generation(
+          Cachex.t(),
+          term(),
+          term(),
+          reference() | nil,
+          fun(),
+          boolean()
+        ) :: term()
+  defp validate_cached_generation(
+         cache,
+         cache_key,
+         value,
+         generation,
+         getter_fn,
+         multicast?
+       ) do
+    if generation == Gossip.cache_invalidation_generation(cache, cache_key) do
+      if multicast?, do: Gossip.multicast(cache, cache_key, value)
+      value
+    else
+      Cachex.del(cache, cache_key)
+      fetch_consistent(cache, cache_key, getter_fn)
+    end
+  end
+
   defp delete_matching_entries(entries, context_cache, pkey) do
     to_delete =
       entries
       |> Stream.filter(fn
         {_k, {:cached, v}} when is_list(v) ->
+          Enum.any?(v, &(&1.id == pkey))
+
+        {_k, {:cached, v, _generation}} when is_list(v) ->
           Enum.any?(v, &(&1.id == pkey))
 
         {_k, _v} ->
