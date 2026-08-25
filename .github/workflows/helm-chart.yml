@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "helm/**"
+      - ".github/workflows/helm-chart.yml"
 
 permissions:
   contents: read
@@ -46,8 +47,42 @@ jobs:
       - name: Template chart with default values
         run: helm template helm
 
-      - name: Ensure chart version has been bumped
+      # Argo Rollouts CRDs are not part of the Kubernetes API, so the Rollout this chart renders is
+      # checked against the CRD schemas published by the controller release it targets.
+      - name: Validate rendered manifests against Kubernetes and CRD schemas
+        env:
+          KUBECONFORM_VERSION: v0.8.0
+          ARGO_ROLLOUTS_VERSION: v1.9.1
         run: |
+          set -euo pipefail
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz kubeconform
+          curl -sSLo openapi2jsonschema.py \
+            "https://raw.githubusercontent.com/yannh/kubeconform/${KUBECONFORM_VERSION}/scripts/openapi2jsonschema.py"
+
+          python3 -m venv .crdvenv
+          ./.crdvenv/bin/pip install --quiet pyyaml
+
+          mkdir -p crd-schemas
+          crd_url="https://raw.githubusercontent.com/argoproj/argo-rollouts/${ARGO_ROLLOUTS_VERSION}/manifests/crds"
+          cd crd-schemas
+          FILENAME_FORMAT='{kind}_{version}' ../.crdvenv/bin/python ../openapi2jsonschema.py \
+            "${crd_url}/rollout-crd.yaml" \
+            "${crd_url}/analysis-template-crd.yaml"
+          cd ..
+
+          helm template helm | ./kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'crd-schemas/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
+      - name: Ensure chart version has been bumped
+        # Skipped when only the workflow changed: a chart version bump alters the pod template
+        # checksum and restarts every replica, so CI must not demand one for a CI-only edit.
+        run: |
+          if git diff --quiet "origin/${{ github.base_ref }}" HEAD -- helm; then
+            echo "No changes under helm/; skipping the version check."
+            exit 0
+          fi
           head_version=$(helm show chart helm | awk '/^version:/ {print $2}')
           base_version=$(git show "origin/${{ github.base_ref }}:helm/Chart.yaml" 2>/dev/null | awk '/^version:/ {print $2}')
 
