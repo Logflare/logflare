@@ -36,17 +36,26 @@ defmodule Logflare.Backends.Adaptor.HttpBased.ClientTest do
     assert {"X-Custom", "kept"} in env.headers
   end
 
-  test "SSRF protection always selects the safe Finch pool" do
-    for http2? <- [true, false] do
+  test "SSRF protection selects the safe Finch pool by default and ignores overrides" do
+    for ssrf_opts <- [[], [ssrf: true]], http2? <- [true, false] do
       client =
-        Client.new(
-          ssrf: true,
-          pool_name: Logflare.UnsafeFinch,
-          http2: http2?
-        )
+        Client.new(ssrf_opts ++ [pool_name: Logflare.UnsafeFinch, http2: http2?])
 
       assert {Tesla.Adapter.Finch, [name: Logflare.FinchSSRF, receive_timeout: 5_000]} =
                Tesla.Client.adapter(client)
+    end
+  end
+
+  test "explicitly disabling SSRF protection uses ordinary Finch pools" do
+    for {opts, pool_name} <- [
+          {[ssrf: false], Logflare.FinchDefault},
+          {[ssrf: false, http2: false], Logflare.FinchDefaultHttp1},
+          {[ssrf: false, pool_name: Logflare.TrustedFinch], Logflare.TrustedFinch}
+        ] do
+      assert {Tesla.Adapter.Finch, [name: ^pool_name, receive_timeout: 5_000]} =
+               opts
+               |> Client.new()
+               |> Tesla.Client.adapter()
     end
   end
 end

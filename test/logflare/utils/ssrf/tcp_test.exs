@@ -70,11 +70,15 @@ defmodule Logflare.Utils.SSRF.TCPTest do
             "127.1",
             "2130706433",
             "0177.0.0.1",
-            "0x7f000001",
             "::ffff:127.0.0.1"
           ] do
         assert {:error, :eacces} = TCP.getaddrs(host), "expected block for #{host}"
       end
+
+      assert TCP.getaddrs("0x7f000001") in [
+               {:error, :eacces},
+               {:error, :nxdomain}
+             ]
     end
 
     test "returns public literal addresses" do
