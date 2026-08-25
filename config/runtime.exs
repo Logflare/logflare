@@ -554,11 +554,12 @@ spool_mode_override =
     p when p in [nil, ""] ->
       []
 
-    mode when mode in ["producer", "consumer", "both"] ->
+    mode when mode in ["producer", "consumer", "both", "disable"] ->
       [mode: String.to_atom(mode)]
 
     other ->
-      raise ArgumentError, "Invalid SPOOL_MODE=#{other}. Must be producer, consumer, or both."
+      raise ArgumentError,
+            "Invalid SPOOL_MODE=#{other}. Must be producer, consumer, both, or disable."
   end
 
 spool_provider_override =
