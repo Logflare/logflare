@@ -5,10 +5,20 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   import Ecto.Query
 
   alias GoogleApi.BigQuery.V2.Api.Jobs, as: BqJobs
-  alias Logflare.Backends.Backend
+  alias GoogleApi.BigQuery.V2.Api.Tabledata, as: BqTabledata
+  alias GoogleApi.BigQuery.V2.Api.Tables, as: BqTables
+  alias GoogleApi.BigQuery.V2.Model
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
+  alias Logflare.Google
+
+  @connection_test_message "Logflare BigQuery connection test. No action required."
+  @connection_test_table :_logflare_connection_test
+  @connection_test_table_name Atom.to_string(@connection_test_table)
+  @connection_test_table_ttl :timer.hours(24)
 
   # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
   # identifier-quoting characters, whitespace, and shell metacharacters.
@@ -20,6 +30,29 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
             suffix <- string(:alphanumeric) do
       prefix <> <<bad_char>> <> suffix
     end
+  end
+
+  defp connection_test_table do
+    %Model.Table{
+      labels: %{
+        "managed_by" => "logflare",
+        "logflare_source" => @connection_test_table_name
+      },
+      requirePartitionFilter: true,
+      schema: %Model.TableSchema{
+        fields: [
+          %Model.TableFieldSchema{name: "timestamp", type: "TIMESTAMP", mode: "REQUIRED"},
+          %Model.TableFieldSchema{name: "id", type: "STRING", mode: "NULLABLE"},
+          %Model.TableFieldSchema{name: "event_message", type: "STRING", mode: "NULLABLE"}
+        ]
+      },
+      timePartitioning: %Model.TimePartitioning{
+        expirationMs: Integer.to_string(@connection_test_table_ttl),
+        field: "timestamp",
+        type: "DAY"
+      },
+      type: "TABLE"
+    }
   end
 
   describe "validate_config/1" do
@@ -57,6 +90,310 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
     test "allows nil dataset_id and project_id" do
       changeset = BigQueryAdaptor.cast_config(%{})
       assert BigQueryAdaptor.validate_config(changeset).valid?
+    end
+  end
+
+  describe "test_connection/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+
+      backend =
+        insert(:backend,
+          type: :bigquery,
+          user: user,
+          config: %{project_id: "test-project", dataset_id: "test_dataset"}
+        )
+
+      [backend: Backends.get_backend(backend.id)]
+    end
+
+    test "creates a fixed probe table and writes one labeled event through REST", %{
+      backend: backend
+    } do
+      BqTables
+      |> expect(:bigquery_tables_get, fn _conn,
+                                         "test-project",
+                                         "test_dataset",
+                                         @connection_test_table_name ->
+        {:error, %Tesla.Env{status: 404}}
+      end)
+
+      BqTables
+      |> expect(:bigquery_tables_insert, fn _conn, project_id, dataset_id, opts ->
+        assert project_id == "test-project"
+        assert dataset_id == "test_dataset"
+
+        assert %Model.Table{
+                 tableReference: %Model.TableReference{
+                   projectId: "test-project",
+                   datasetId: "test_dataset",
+                   tableId: @connection_test_table_name
+                 },
+                 labels: %{
+                   "managed_by" => "logflare",
+                   "logflare_source" => @connection_test_table_name
+                 },
+                 requirePartitionFilter: true,
+                 schema: %Model.TableSchema{fields: fields},
+                 timePartitioning: %Model.TimePartitioning{
+                   field: "timestamp",
+                   type: "DAY",
+                   expirationMs: @connection_test_table_ttl
+                 }
+               } = table = opts[:body]
+
+        assert Enum.map(fields, &{&1.name, &1.type, &1.mode}) == [
+                 {"timestamp", "TIMESTAMP", "REQUIRED"},
+                 {"id", "STRING", "NULLABLE"},
+                 {"event_message", "STRING", "NULLABLE"}
+               ]
+
+        {:ok, table}
+      end)
+
+      BqTabledata
+      |> expect(:bigquery_tabledata_insert_all, fn _conn,
+                                                   project_id,
+                                                   dataset_id,
+                                                   table_name,
+                                                   opts ->
+        assert project_id == "test-project"
+        assert dataset_id == "test_dataset"
+        assert table_name == @connection_test_table_name
+
+        assert %Model.TableDataInsertAllRequest{
+                 ignoreUnknownValues: true,
+                 skipInvalidRows: true,
+                 rows: [%Model.TableDataInsertAllRequestRows{} = row]
+               } = opts[:body]
+
+        assert row.insertId == row.json["id"]
+        assert is_binary(row.insertId)
+        assert %DateTime{} = row.json["timestamp"]
+        assert row.json["event_message"] == @connection_test_message
+
+        {:ok, %Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      assert :ok = BigQueryAdaptor.test_connection(backend)
+    end
+
+    test "reuses the probe table when it already exists", %{backend: backend} do
+      BqTables
+      |> expect(:bigquery_tables_get, fn _conn,
+                                         "test-project",
+                                         "test_dataset",
+                                         @connection_test_table_name ->
+        {:ok, connection_test_table()}
+      end)
+
+      Mimic.reject(Google.BigQuery, :create_table, 4)
+
+      BqTabledata
+      |> expect(:bigquery_tabledata_insert_all, fn _conn,
+                                                   _project_id,
+                                                   _dataset_id,
+                                                   table_name,
+                                                   _opts ->
+        assert table_name == @connection_test_table_name
+        {:ok, %Model.TableDataInsertAllResponse{insertErrors: []}}
+      end)
+
+      assert :ok = BigQueryAdaptor.test_connection(backend)
+    end
+
+    test "retries a not-found insert after creating the probe table", %{backend: backend} do
+      BqTables
+      |> expect(:bigquery_tables_get, fn _conn,
+                                         "test-project",
+                                         "test_dataset",
+                                         @connection_test_table_name ->
+        {:error, %Tesla.Env{status: 404}}
+      end)
+
+      Google.BigQuery
+      |> expect(:create_table, fn @connection_test_table,
+                                  "test_dataset",
+                                  "test-project",
+                                  @connection_test_table_ttl ->
+        {:ok, connection_test_table()}
+      end)
+
+      test_pid = self()
+
+      Google.BigQuery
+      |> expect(:stream_batch!, 2, fn _context, [row] ->
+        send(test_pid, {:insert_attempt, row.insertId})
+        attempt = Process.get(:connection_test_insert_attempt, 0)
+        Process.put(:connection_test_insert_attempt, attempt + 1)
+
+        if attempt == 0 do
+          {:error, %Tesla.Env{status: 404}}
+        else
+          {:ok, %Model.TableDataInsertAllResponse{insertErrors: nil}}
+        end
+      end)
+
+      assert :ok = BigQueryAdaptor.test_connection(backend)
+      assert_receive {:insert_attempt, insert_id}
+      assert_receive {:insert_attempt, ^insert_id}
+    end
+
+    test "handles another request creating the probe table concurrently", %{backend: backend} do
+      BqTables
+      |> expect(:bigquery_tables_get, 2, fn _conn,
+                                            "test-project",
+                                            "test_dataset",
+                                            @connection_test_table_name ->
+        attempt = Process.get(:connection_test_table_get_attempt, 0)
+        Process.put(:connection_test_table_get_attempt, attempt + 1)
+
+        if attempt == 0 do
+          {:error, %Tesla.Env{status: 404}}
+        else
+          {:ok, connection_test_table()}
+        end
+      end)
+
+      Google.BigQuery
+      |> expect(:create_table, fn @connection_test_table,
+                                  "test_dataset",
+                                  "test-project",
+                                  @connection_test_table_ttl ->
+        {:error, %Tesla.Env{status: 409}}
+      end)
+
+      Google.BigQuery
+      |> expect(:stream_batch!, 2, fn _context, [row] ->
+        attempt = Process.get(:concurrent_connection_test_insert_attempt, 0)
+        Process.put(:concurrent_connection_test_insert_attempt, attempt + 1)
+
+        if attempt == 0 do
+          Process.put(:concurrent_connection_test_insert_id, row.insertId)
+          {:error, %Tesla.Env{status: 404}}
+        else
+          assert Process.get(:concurrent_connection_test_insert_id) == row.insertId
+          {:ok, %Model.TableDataInsertAllResponse{insertErrors: nil}}
+        end
+      end)
+
+      assert :ok = BigQueryAdaptor.test_connection(backend)
+    end
+
+    test "rejects an unrelated table using the probe table name", %{backend: backend} do
+      BqTables
+      |> expect(:bigquery_tables_get, fn _conn,
+                                         "test-project",
+                                         "test_dataset",
+                                         @connection_test_table_name ->
+        {:ok, %Model.Table{type: "VIEW"}}
+      end)
+
+      Mimic.reject(Google.BigQuery, :create_table, 4)
+      Mimic.reject(Google.BigQuery, :stream_batch!, 2)
+
+      assert {:error, :probe_table_conflict} = BigQueryAdaptor.test_connection(backend)
+    end
+
+    test "returns an atom for insert failures", %{backend: backend} do
+      BqTables
+      |> stub(:bigquery_tables_get, fn _conn,
+                                       "test-project",
+                                       "test_dataset",
+                                       @connection_test_table_name ->
+        {:ok, connection_test_table()}
+      end)
+
+      responses = [
+        {{:ok, %Model.TableDataInsertAllResponse{insertErrors: [%{index: 0}]}}, :insert_error},
+        {{:error, %Tesla.Env{status: 404, body: %{"error" => "not found"}}}, :http_client_error},
+        {{:error, %Tesla.Env{status: 403, body: %{"error" => "forbidden"}}}, :http_client_error},
+        {{:error, %Tesla.Env{status: 503, body: %{"error" => "unavailable"}}},
+         :http_server_error},
+        {{:error, :timeout}, :connection_error},
+        {{:error, :unexpected}, :unknown_error},
+        {{:ok, :unexpected}, :unknown_error}
+      ]
+
+      for {response, expected_reason} <- responses do
+        Google.BigQuery
+        |> expect(:stream_batch!, fn _context, [_row] -> response end)
+
+        assert {:error, ^expected_reason} = BigQueryAdaptor.test_connection(backend)
+      end
+    end
+
+    test "returns an atom when the probe table cannot be read", %{backend: backend} do
+      Mimic.reject(Google.BigQuery, :create_table, 4)
+      Mimic.reject(Google.BigQuery, :stream_batch!, 2)
+
+      responses = [
+        {{:error, %Tesla.Env{status: 403, body: %{"error" => "forbidden"}}}, :http_client_error},
+        {{:error, %Tesla.Env{status: 503, body: %{"error" => "unavailable"}}},
+         :http_server_error},
+        {{:error, :timeout}, :connection_error},
+        {{:ok, :unexpected}, :unknown_error}
+      ]
+
+      for {response, expected_reason} <- responses do
+        BqTables
+        |> expect(:bigquery_tables_get, fn _conn,
+                                           "test-project",
+                                           "test_dataset",
+                                           @connection_test_table_name ->
+          response
+        end)
+
+        assert {:error, ^expected_reason} = BigQueryAdaptor.test_connection(backend)
+      end
+    end
+
+    test "returns an atom when the probe table cannot be created", %{backend: backend} do
+      BqTables
+      |> stub(:bigquery_tables_get, fn _conn,
+                                       "test-project",
+                                       "test_dataset",
+                                       @connection_test_table_name ->
+        {:error, %Tesla.Env{status: 404}}
+      end)
+
+      Mimic.reject(Google.BigQuery, :stream_batch!, 2)
+
+      responses = [
+        {{:error, %Tesla.Env{status: 403, body: %{"error" => "forbidden"}}}, :http_client_error},
+        {{:error, %Tesla.Env{status: 503, body: %{"error" => "unavailable"}}},
+         :http_server_error},
+        {{:error, :timeout}, :connection_error},
+        {{:ok, :unexpected}, :unknown_error}
+      ]
+
+      for {response, expected_reason} <- responses do
+        Google.BigQuery
+        |> expect(:create_table, fn @connection_test_table,
+                                    "test_dataset",
+                                    "test-project",
+                                    @connection_test_table_ttl ->
+          response
+        end)
+
+        assert {:error, ^expected_reason} = BigQueryAdaptor.test_connection(backend)
+      end
+    end
+
+    test "rejects incomplete configuration without making a request", %{backend: backend} do
+      Mimic.reject(BqTables, :bigquery_tables_get, 5)
+      Mimic.reject(Google.BigQuery, :create_table, 4)
+      Mimic.reject(Google.BigQuery, :stream_batch!, 2)
+
+      for config <- [
+            %{},
+            %{project_id: "", dataset_id: "test_dataset"},
+            %{project_id: "test-project", dataset_id: nil}
+          ] do
+        assert {:error, :invalid_config} =
+                 BigQueryAdaptor.test_connection(%{backend | config: config})
+      end
     end
   end
 
