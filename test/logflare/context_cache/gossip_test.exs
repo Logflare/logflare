@@ -96,11 +96,11 @@ defmodule Logflare.ContextCache.GossipTest do
       assert {:cached, ^value, generation} =
                Cachex.get!(Logflare.Backends.Cache, cache_key)
 
-      assert generation ==
-               ContextCache.Gossip.cache_invalidation_generation(
-                 Logflare.Backends.Cache,
-                 cache_key
-               )
+      assert ContextCache.Gossip.cache_value_generation_current?(
+               Logflare.Backends.Cache,
+               cache_key,
+               generation
+             )
     end
 
     test "does not refresh a backend value from an older generation", %{
@@ -109,9 +109,10 @@ defmodule Logflare.ContextCache.GossipTest do
       id = System.unique_integer([:positive])
       cache = Logflare.Backends.Cache
       cache_key = {:get_backend, [id]}
-      stale_generation = ContextCache.Gossip.cache_invalidation_generation(cache, cache_key)
+      stale_value = %{id: id}
+      stale_generation = ContextCache.Gossip.cache_value_generation(cache, cache_key, stale_value)
 
-      Cachex.put(cache, cache_key, {:cached, %{id: id}, stale_generation})
+      Cachex.put(cache, cache_key, {:cached, stale_value, stale_generation})
       ContextCache.Gossip.record_cache_tombstones(cache, [cache_key])
 
       Cachex.del(
