@@ -11,16 +11,17 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   require OpenTelemetry.Tracer
 
   alias Ecto.Changeset
+  alias GoogleApi.BigQuery.V2.Api.Tables
+  alias GoogleApi.BigQuery.V2.Model
   alias GoogleApi.IAM.V1.Api.Projects, as: IAMProjects
   alias GoogleApi.IAM.V1.Model.CreateServiceAccountRequest
-  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Billing
@@ -45,6 +46,24 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @timeout_error_regex ~r/timed out/i
   @search_query_timeout_ms 60_000
   @endpoint_query_timeout_ms 60_000
+  @connection_test_insert_attempts 5
+  @connection_test_message "Logflare BigQuery connection test. No action required."
+  @connection_test_retry_delay_ms 200
+  @connection_test_table :_logflare_connection_test
+  @connection_test_table_ttl :timer.hours(24)
+  @connection_test_table_ttl_string Integer.to_string(@connection_test_table_ttl)
+
+  @typep connection_test_table_status :: :created | :existing | :recently_created
+
+  @type connection_test_error ::
+          :connection_error
+          | :http_client_error
+          | :http_server_error
+          | :insert_error
+          | :invalid_config
+          | :probe_table_conflict
+          | :probe_table_initializing
+          | :unknown_error
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
@@ -161,8 +180,289 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> String.replace("-", "_")
   end
 
+  @doc """
+  Creates or reuses a persistent fixed probe table and writes a labeled event
+  through the REST ingestion path. The table's daily partitions have a 24-hour TTL.
+  """
   @impl Logflare.Backends.Adaptor
-  def test_connection(_), do: {:error, :not_implemented}
+  @spec test_connection(Backend.t()) :: :ok | {:error, connection_test_error()}
+  def test_connection(
+        %Backend{
+          id: backend_id,
+          config: %{project_id: project_id, dataset_id: dataset_id}
+        } = backend
+      )
+      when is_integer(backend_id) and is_non_empty_binary(project_id) and
+             is_non_empty_binary(dataset_id) do
+    with {:ok, table_status} <- ensure_connection_test_table(backend, project_id, dataset_id) do
+      row = connection_test_row()
+
+      project_id
+      |> insert_connection_test_row(dataset_id, row, table_status)
+      |> handle_connection_test_response(backend)
+    end
+  end
+
+  def test_connection(%Backend{}), do: {:error, :invalid_config}
+
+  @spec ensure_connection_test_table(Backend.t(), String.t(), String.t()) ::
+          {:ok, connection_test_table_status()} | {:error, connection_test_error()}
+  defp ensure_connection_test_table(backend, project_id, dataset_id) do
+    case get_connection_test_table(project_id, dataset_id) do
+      {:ok, %Model.Table{} = table} ->
+        validate_connection_test_table(table, backend, :existing)
+
+      {:error, %Tesla.Env{status: 404}} ->
+        create_connection_test_table(backend, project_id, dataset_id)
+
+      response ->
+        handle_connection_test_response(response, backend)
+    end
+  end
+
+  @spec create_connection_test_table(Backend.t(), String.t(), String.t()) ::
+          {:ok, connection_test_table_status()} | {:error, connection_test_error()}
+  defp create_connection_test_table(backend, project_id, dataset_id) do
+    case Google.BigQuery.create_table(
+           @connection_test_table,
+           dataset_id,
+           project_id,
+           @connection_test_table_ttl
+         ) do
+      {:ok, %Model.Table{}} ->
+        {:ok, :created}
+
+      {:error, %Tesla.Env{status: 409}} ->
+        case get_connection_test_table(project_id, dataset_id) do
+          {:ok, %Model.Table{} = table} ->
+            validate_connection_test_table(table, backend, :recently_created)
+
+          response ->
+            handle_connection_test_response(response, backend)
+        end
+
+      response ->
+        handle_connection_test_response(response, backend)
+    end
+  end
+
+  @spec get_connection_test_table(String.t(), String.t()) ::
+          {:ok, Model.Table.t()} | {:error, term()}
+  defp get_connection_test_table(project_id, dataset_id) do
+    GenUtils.get_conn(:ingest)
+    |> Tables.bigquery_tables_get(
+      project_id,
+      dataset_id,
+      format_table_name(@connection_test_table)
+    )
+  end
+
+  @spec validate_connection_test_table(
+          Model.Table.t(),
+          Backend.t(),
+          connection_test_table_status()
+        ) :: {:ok, connection_test_table_status()} | {:error, connection_test_error()}
+  defp validate_connection_test_table(table, backend, status) do
+    if valid_connection_test_table?(table) do
+      {:ok, status}
+    else
+      connection_test_failed(backend, :probe_table_conflict, :invalid_probe_table)
+    end
+  end
+
+  @spec valid_connection_test_table?(Model.Table.t()) :: boolean()
+  defp valid_connection_test_table?(%Model.Table{
+         type: "TABLE",
+         labels: %{
+           "managed_by" => "logflare",
+           "logflare_source" => "_logflare_connection_test"
+         },
+         requirePartitionFilter: true,
+         schema: %Model.TableSchema{fields: fields},
+         timePartitioning: %Model.TimePartitioning{
+           expirationMs: expiration_ms,
+           field: "timestamp",
+           type: "DAY"
+         }
+       })
+       when is_list(fields) and
+              expiration_ms in [@connection_test_table_ttl, @connection_test_table_ttl_string] do
+    required_fields = [
+      {"timestamp", "TIMESTAMP", "REQUIRED"},
+      {"id", "STRING", "NULLABLE"},
+      {"event_message", "STRING", "NULLABLE"}
+    ]
+
+    Enum.all?(required_fields, fn {name, type, mode} ->
+      Enum.any?(
+        fields,
+        &match?(%Model.TableFieldSchema{name: ^name, type: ^type, mode: ^mode}, &1)
+      )
+    end)
+  end
+
+  defp valid_connection_test_table?(%Model.Table{}), do: false
+
+  @spec connection_test_row() :: Model.TableDataInsertAllRequestRows.t()
+  defp connection_test_row do
+    id = Ecto.UUID.generate()
+
+    %Model.TableDataInsertAllRequestRows{
+      insertId: id,
+      json: %{
+        "event_message" => @connection_test_message,
+        "id" => id,
+        "timestamp" => DateTime.utc_now()
+      }
+    }
+  end
+
+  @spec insert_connection_test_row(
+          String.t(),
+          String.t(),
+          Model.TableDataInsertAllRequestRows.t(),
+          connection_test_table_status()
+        ) :: term()
+  defp insert_connection_test_row(project_id, dataset_id, row, table_status) do
+    retry_not_found? = table_status in [:created, :recently_created]
+    attempts = if retry_not_found?, do: @connection_test_insert_attempts, else: 1
+    do_insert_connection_test_row(project_id, dataset_id, row, attempts, retry_not_found?)
+  end
+
+  @spec do_insert_connection_test_row(
+          String.t(),
+          String.t(),
+          Model.TableDataInsertAllRequestRows.t(),
+          pos_integer(),
+          boolean()
+        ) :: term()
+  defp do_insert_connection_test_row(
+         project_id,
+         dataset_id,
+         row,
+         attempts_left,
+         retry_not_found?
+       ) do
+    response =
+      Google.BigQuery.stream_batch!(
+        %{
+          bigquery_project_id: project_id,
+          bigquery_dataset_id: dataset_id,
+          source_token: @connection_test_table
+        },
+        [row]
+      )
+
+    case response do
+      {:error, %Tesla.Env{status: 404}} when retry_not_found? and attempts_left > 1 ->
+        retry_number = @connection_test_insert_attempts - attempts_left
+        Process.sleep(@connection_test_retry_delay_ms * Integer.pow(2, retry_number))
+
+        do_insert_connection_test_row(
+          project_id,
+          dataset_id,
+          row,
+          attempts_left - 1,
+          retry_not_found?
+        )
+
+      {:error, %Tesla.Env{status: 404}} when retry_not_found? ->
+        {:error, :probe_table_initializing}
+
+      response ->
+        response
+    end
+  end
+
+  @spec handle_connection_test_response(term(), Backend.t()) ::
+          :ok | {:error, connection_test_error()}
+  defp handle_connection_test_response(
+         {:ok, %Model.TableDataInsertAllResponse{insertErrors: insert_errors}},
+         _backend
+       )
+       when insert_errors in [nil, []],
+       do: :ok
+
+  defp handle_connection_test_response(
+         {:ok, %Model.TableDataInsertAllResponse{insertErrors: insert_errors}},
+         backend
+       ) do
+    connection_test_failed(backend, :insert_error, insert_errors)
+  end
+
+  defp handle_connection_test_response(
+         {:error, %Tesla.Env{status: status, body: body}},
+         backend
+       )
+       when status in 400..499 do
+    connection_test_failed(backend, :http_client_error, %{status: status, body: body})
+  end
+
+  defp handle_connection_test_response(
+         {:error, %Tesla.Env{status: status, body: body}},
+         backend
+       )
+       when status in 500..599 do
+    connection_test_failed(backend, :http_server_error, %{status: status, body: body})
+  end
+
+  defp handle_connection_test_response(
+         {:error, %Tesla.Env{status: status, body: body}},
+         backend
+       ) do
+    connection_test_failed(backend, :unknown_error, %{status: status, body: body})
+  end
+
+  defp handle_connection_test_response({:error, error}, backend)
+       when error in [:closed, :emfile, :timeout] do
+    connection_test_failed(backend, :connection_error, error)
+  end
+
+  defp handle_connection_test_response({:error, :probe_table_initializing}, backend) do
+    connection_test_failed(backend, :probe_table_initializing, :probe_table_initializing)
+  end
+
+  defp handle_connection_test_response({:error, error}, backend) do
+    connection_test_failed(backend, :unknown_error, error)
+  end
+
+  defp handle_connection_test_response(response, backend) do
+    connection_test_failed(backend, :unknown_error, response)
+  end
+
+  @spec connection_test_failed(
+          Backend.t(),
+          connection_test_error(),
+          term()
+        ) :: {:error, connection_test_error()}
+  defp connection_test_failed(backend, reason, error) do
+    Logger.warning("BigQuery connection test failed.",
+      backend_id: backend.id,
+      user_id: backend.user_id,
+      table_name: @connection_test_table,
+      reason: reason,
+      error_string: format_connection_test_error(error)
+    )
+
+    {:error, reason}
+  end
+
+  @spec format_connection_test_error(term()) :: String.t()
+  defp format_connection_test_error(%{status: status, body: body}) do
+    inspect(%{status: status, body: body}, limit: 20, printable_limit: 2_000)
+  end
+
+  defp format_connection_test_error(errors) when is_list(errors) do
+    inspect(errors, limit: 20, printable_limit: 2_000)
+  end
+
+  defp format_connection_test_error(error) when is_atom(error), do: inspect(error)
+
+  defp format_connection_test_error(%{__struct__: module}) do
+    "unexpected #{inspect(module)}"
+  end
+
+  defp format_connection_test_error(_error), do: "unexpected response"
 
   @impl Logflare.Backends.Adaptor
   def ecto_to_sql(%Ecto.Query{} = query, _opts) do
