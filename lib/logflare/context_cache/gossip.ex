@@ -183,17 +183,17 @@ defmodule Logflare.ContextCache.Gossip do
 
   defp refresh_cached_value(Logflare.Backends.Cache = cache, key) do
     case Cachex.get(cache, key) do
-      {:ok, {:cached, _value, generation}} ->
-        if generation == cache_invalidation_generation(cache, key) do
+      {:ok, {:cached, _value, generation} = cached_value} ->
+        if cache_value_generation_current?(cache, key, generation) do
           Cachex.refresh(cache, key)
           :refreshed
         else
-          Cachex.del(cache, key)
+          ContextCache.delete_if_value(cache, key, cached_value)
           :dropped_stale
         end
 
-      _other ->
-        Cachex.del(cache, key)
+      {:ok, cached_value} ->
+        ContextCache.delete_if_value(cache, key, cached_value)
         :dropped_stale
     end
   end
@@ -205,10 +205,11 @@ defmodule Logflare.ContextCache.Gossip do
 
   @spec cache_received_value(Cachex.t(), term(), term(), [term()]) :: :cached | :dropped_stale
   defp cache_received_value(cache, key, value, pkeys) do
-    Cachex.put(cache, key, cached_value(cache, key, value))
+    cached_value = cached_value(cache, key, value)
+    Cachex.put(cache, key, cached_value)
 
     if cache_value_tombstoned?(cache, key, pkeys) do
-      Cachex.del(cache, key)
+      ContextCache.delete_if_value(cache, key, cached_value)
       :dropped_stale
     else
       :cached
@@ -216,7 +217,7 @@ defmodule Logflare.ContextCache.Gossip do
   end
 
   defp cached_value(Logflare.Backends.Cache = cache, key, value) do
-    {:cached, value, cache_invalidation_generation(cache, key)}
+    {:cached, value, cache_value_generation(cache, key, value)}
   end
 
   defp cached_value(_cache, _key, value), do: {:cached, value}
@@ -256,6 +257,36 @@ defmodule Logflare.ContextCache.Gossip do
   def cache_invalidation_generation(cache) do
     Tombstones.Cache.invalidation_generation(cache)
   end
+
+  @doc false
+  @spec cache_value_generation(Cachex.t(), term(), term()) ::
+          {:cache_value_generation, reference() | nil, [{term(), reference() | nil}]}
+  def cache_value_generation(cache, key, value) do
+    pkey_generations =
+      value
+      |> pkeys_from_cached_value()
+      |> Enum.uniq()
+      |> Enum.map(fn pkey ->
+        {pkey, Tombstones.Cache.invalidation_generation(cache, pkey)}
+      end)
+
+    {:cache_value_generation, cache_invalidation_generation(cache, key), pkey_generations}
+  end
+
+  @doc false
+  @spec cache_value_generation_current?(Cachex.t(), term(), term()) :: boolean()
+  def cache_value_generation_current?(
+        cache,
+        key,
+        {:cache_value_generation, key_generation, pkey_generations}
+      ) do
+    key_generation == cache_invalidation_generation(cache, key) and
+      Enum.all?(pkey_generations, fn {pkey, generation} ->
+        generation == Tombstones.Cache.invalidation_generation(cache, pkey)
+      end)
+  end
+
+  def cache_value_generation_current?(_cache, _key, _generation), do: false
 
   @doc """
   Writes a short-lived marker for a primary key indicating it was recently updated or deleted.

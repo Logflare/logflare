@@ -39,8 +39,8 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
   def handle_cast({:to_bust, context_pkeys}, state) do
     {backend_records, cache_records} = Enum.split_with(context_pkeys, &backend_record?/1)
 
-    reconcile_backends(backend_records)
     bust_keys(cache_records)
+    reconcile_backends(backend_records)
     Enum.each(cache_records, &maybe_do_cross_cluster_syncing/1)
 
     {:noreply, state}

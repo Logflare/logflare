@@ -2453,6 +2453,69 @@ defmodule Logflare.BackendsTest do
       refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
     end
 
+    test "receiver keeps an enabled backend hidden until its consolidated pipeline starts", %{
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          enabled: false,
+          sources: [source],
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          },
+          user: user
+        )
+
+      on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend.id) end)
+
+      assert %Backend{enabled: false} = Backends.Cache.get_backend(backend.id)
+
+      from(b in Backend, where: b.id == ^backend.id)
+      |> Repo.update_all(set: [enabled: true])
+
+      test_pid = self()
+      pause_key = {:pause_pipeline_start, make_ref()}
+
+      stub(Adaptor, :consolidated_ingest?, fn backend ->
+        if backend.consolidated_ingest? and Process.delete(pause_key) do
+          send(test_pid, {:pipeline_starting, self()})
+
+          receive do
+            :continue_pipeline_start -> :ok
+          end
+        end
+
+        Mimic.call_original(Adaptor, :consolidated_ingest?, [backend])
+      end)
+
+      task =
+        Task.async(fn ->
+          Process.put(pause_key, true)
+
+          receive do
+            :reconcile -> Backends.reconcile_backend_local(backend.id)
+          end
+        end)
+
+      send(task.pid, :reconcile)
+
+      assert_receive {:pipeline_starting, reconciliation_pid}
+      Logflare.ContextCache.Gossip.record_tombstones([{Backends, backend.id + 1}])
+      assert %Backend{enabled: false} = Backends.Cache.get_backend(backend.id)
+
+      send(reconciliation_pid, :continue_pipeline_start)
+
+      assert :ok = Task.await(task)
+      assert %Backend{enabled: true} = Backends.Cache.get_backend(backend.id)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend.id)
+    end
+
     test "serializes overlapping reconciliation for the same backend", %{
       source: source,
       user: user

@@ -697,17 +697,17 @@ defmodule Logflare.Backends do
     backend = get_backend(backend_id)
     source_target = backend_source_target(source, backend_id)
 
-    tombstone_backend_cache(backend_id)
-
     case {backend, source_target} do
       {%Backend{enabled: true} = backend, {%Source{}, _register_for_ingest?} = target} ->
         ensure_consolidated_pipeline(backend, true)
         ensure_backend_child_started(backend, target)
+        tombstone_backend_cache(backend.id)
         clear_backend_cache(backend.id)
         clear_list_backends_cache(source.id)
         ensure_backend_child_started(backend, target)
 
       {%Backend{} = backend, _source_target} ->
+        tombstone_backend_cache(backend.id)
         clear_backend_cache(backend.id)
         clear_list_backends_cache(source.id)
         stop_backend_child(backend, {source, false})
@@ -717,6 +717,7 @@ defmodule Logflare.Backends do
         end
 
       {nil, _source_target} ->
+        tombstone_backend_cache(backend_id)
         clear_backend_cache(backend_id)
         clear_list_backends_cache(source.id)
         SourceSup.stop_backend_child(source, backend_id)
@@ -754,8 +755,6 @@ defmodule Logflare.Backends do
 
   @spec reconcile_backend(Backend.t(), [{Source.t(), boolean()}]) :: :ok
   defp reconcile_backend(%Backend{} = backend, source_targets) do
-    tombstone_backend_cache(backend.id)
-
     if backend.enabled do
       reconcile_enabled_backend(backend, source_targets)
     else
@@ -779,8 +778,9 @@ defmodule Logflare.Backends do
 
   @spec reconcile_enabled_backend(Backend.t(), [{Source.t(), boolean()}]) :: :ok
   defp reconcile_enabled_backend(%Backend{} = backend, []) do
-    ConsolidatedSup.stop_pipeline(backend.id)
+    tombstone_backend_cache(backend.id)
     clear_backend_cache(backend.id)
+    ConsolidatedSup.stop_pipeline(backend.id)
     :ok
   end
 
@@ -788,6 +788,7 @@ defmodule Logflare.Backends do
     ensure_consolidated_pipeline(backend, true)
     Enum.each(source_targets, &ensure_backend_child_started(backend, &1))
 
+    tombstone_backend_cache(backend.id)
     clear_backend_cache(backend.id)
     clear_source_target_caches(source_targets)
     Enum.each(source_targets, &ensure_backend_child_started(backend, &1))
@@ -795,6 +796,7 @@ defmodule Logflare.Backends do
 
   @spec reconcile_disabled_backend(Backend.t(), [{Source.t(), boolean()}]) :: :ok
   defp reconcile_disabled_backend(%Backend{} = backend, source_targets) do
+    tombstone_backend_cache(backend.id)
     clear_backend_cache(backend.id)
     clear_source_target_caches(source_targets)
 

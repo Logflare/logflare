@@ -72,6 +72,46 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     refute Tombstones.Cache.tombstoned?(Backends.Cache, backend_id)
   end
 
+  test "busts companion cache records before reconciling a backend WAL update", %{
+    source: source
+  } do
+    for child_spec <- ContextCache.Supervisor.buster_specs() do
+      start_supervised!(child_spec)
+    end
+
+    backend_id = System.unique_integer([:positive])
+    cache_busted_key = {:companion_cache_busted, make_ref()}
+    test_pid = self()
+
+    Mimic.expect(ContextCache, :bust_keys, fn [{Sources, source_id}] ->
+      Process.put(cache_busted_key, true)
+      send(test_pid, {:source_cache_busted, source_id})
+    end)
+
+    Mimic.expect(Backends, :reconcile_backend_local, fn id ->
+      send(test_pid, {:backend_reconciled, id, Process.get(cache_busted_key, false)})
+      :ok
+    end)
+
+    source_change = %UpdatedRecord{
+      relation: {"public", "sources"},
+      old_record: %{"id" => Integer.to_string(source.id)},
+      record: %{"id" => Integer.to_string(source.id)}
+    }
+
+    backend_change = %UpdatedRecord{
+      relation: {"public", "backends"},
+      old_record: %{"id" => Integer.to_string(backend_id)},
+      record: %{"id" => Integer.to_string(backend_id)}
+    }
+
+    send(CacheBuster, %Transaction{changes: [backend_change, source_change]})
+
+    assert_receive {:source_cache_busted, source_id}, 500
+    assert source_id == source.id
+    assert_receive {:backend_reconciled, ^backend_id, true}, 500
+  end
+
   test "retries a failed backend WAL reconciliation" do
     for child_spec <- ContextCache.Supervisor.buster_specs() do
       start_supervised!(child_spec)

@@ -184,8 +184,8 @@ defmodule Logflare.ContextCache do
   @spec fetch_consistent(Cachex.t(), {atom(), list()}, fun()) :: term()
   def fetch_consistent(cache, cache_key, getter_fn) do
     case Cachex.fetch(cache, cache_key, fn _cache_key ->
-           generation = Gossip.cache_invalidation_generation(cache, cache_key)
-           {:commit, {:cached, getter_fn.(), generation}}
+           {value, generation} = load_consistent_value(cache, cache_key, getter_fn)
+           {:commit, {:cached, value, generation}}
          end) do
       {:commit, {:cached, value, generation}} ->
         validate_cached_generation(cache, cache_key, value, generation, getter_fn, true)
@@ -193,9 +193,22 @@ defmodule Logflare.ContextCache do
       {:ok, {:cached, value, generation}} ->
         validate_cached_generation(cache, cache_key, value, generation, getter_fn, false)
 
-      {:ok, {:cached, _value}} ->
-        Cachex.del(cache, cache_key)
+      {:ok, {:cached, _value} = cached_value} ->
+        delete_if_value(cache, cache_key, cached_value)
         fetch_consistent(cache, cache_key, getter_fn)
+    end
+  end
+
+  @spec load_consistent_value(Cachex.t(), term(), fun()) :: {term(), term()}
+  defp load_consistent_value(cache, cache_key, getter_fn) do
+    cache_generation = Gossip.cache_invalidation_generation(cache)
+    value = getter_fn.()
+    value_generation = Gossip.cache_value_generation(cache, cache_key, value)
+
+    if cache_generation == Gossip.cache_invalidation_generation(cache) do
+      {value, value_generation}
+    else
+      load_consistent_value(cache, cache_key, getter_fn)
     end
   end
 
@@ -203,7 +216,7 @@ defmodule Logflare.ContextCache do
           Cachex.t(),
           term(),
           term(),
-          reference() | nil,
+          term(),
           fun(),
           boolean()
         ) :: term()
@@ -215,13 +228,25 @@ defmodule Logflare.ContextCache do
          getter_fn,
          multicast?
        ) do
-    if generation == Gossip.cache_invalidation_generation(cache, cache_key) do
+    if Gossip.cache_value_generation_current?(cache, cache_key, generation) do
       if multicast?, do: Gossip.multicast(cache, cache_key, value)
       value
     else
-      Cachex.del(cache, cache_key)
+      delete_if_value(cache, cache_key, {:cached, value, generation})
       fetch_consistent(cache, cache_key, getter_fn)
     end
+  end
+
+  @doc false
+  @spec delete_if_value(Cachex.t(), term(), term()) :: :ok
+  def delete_if_value(cache, key, value) do
+    Cachex.transaction(cache, [key], fn worker ->
+      if Cachex.get!(worker, key) == value do
+        Cachex.del(worker, key)
+      end
+    end)
+
+    :ok
   end
 
   defp delete_matching_entries(entries, context_cache, pkey) do
