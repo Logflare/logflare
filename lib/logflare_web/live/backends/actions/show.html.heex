@@ -19,7 +19,18 @@
         <span id="backend-status" class={"badge badge-pill #{if @backend.enabled, do: "badge-success", else: "badge-secondary"}"}>
           {if @backend.enabled, do: "Enabled", else: "Disabled"}
         </span>
-        <.button id="toggle-backend" phx-click="toggle_backend" phx-value-backend_id={@backend.id} variant={if @backend.enabled, do: "warning", else: "success"} class="btn-sm" data-confirm={if @backend.enabled, do: "Disable this destination? New events will not be sent to it.", else: nil}>
+        <.button
+          id="toggle-backend"
+          phx-click="toggle_backend"
+          phx-value-backend_id={@backend.id}
+          variant={if @backend.enabled, do: "warning", else: "success"}
+          class="btn-sm"
+          data-confirm={
+            if @backend.enabled,
+              do: "Disable this destination? New events will not be sent to it.",
+              else: nil
+          }
+        >
           {if @backend.enabled, do: "Disable", else: "Enable"}
         </.button>
       </li>

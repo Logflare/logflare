@@ -105,5 +105,21 @@ defmodule Logflare.ContextCache.GossipTest do
 
       refute Cachex.get!(Sources.Cache, cache_key)
     end
+
+    test "drops a list that omits a record when its cache key is tombstoned", %{
+      telemetry_ref: telemetry_ref
+    } do
+      cache_key = {:list, [[enabled: true]]}
+      stale_value = [%{id: 333, name: "peer"}]
+
+      ContextCache.Gossip.record_cache_tombstones(Sources.Cache, [cache_key])
+      ContextCache.Gossip.receive(Sources.Cache, cache_key, stale_value)
+
+      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
+                      _measurements,
+                      %{action: :dropped_stale, cache: Sources.Cache, key: ^cache_key}}
+
+      refute Cachex.get!(Sources.Cache, cache_key)
+    end
   end
 end

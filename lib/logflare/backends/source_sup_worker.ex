@@ -4,8 +4,11 @@ defmodule Logflare.Backends.SourceSupWorker do
   """
   use GenServer
 
+  require Logger
+
   alias Logflare.Backends
-  alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.Adaptor
+  alias Logflare.Rules
   alias Logflare.Sources
 
   @default_interval :timer.minutes(10)
@@ -33,32 +36,52 @@ defmodule Logflare.Backends.SourceSupWorker do
   defp do_check(source) do
     backends = Backends.list_backends(source_id: source.id, enabled: true)
 
-    rules_backends =
-      Backends.list_backends(rules_source_id: source.id, enabled: true)
+    # This could use one Backends.list_backends(rules_source_id: source.id, enabled: true)
+    # query and start each backend with register_for_ingest: false; keeping the rule helpers
+    # makes the lifecycle intent clearer.
+    rules =
+      source
+      |> Rules.list_rules_with_backend()
+      |> Logflare.Repo.preload(:backend)
 
-    # start rules source-backends
     rules_backend_ids =
-      for backend <- rules_backends, into: MapSet.new() do
-        SourceSup.start_backend_child(source, %{backend | register_for_ingest: false})
-        backend.id
+      for %{backend: %{enabled: true} = backend} = rule <- rules,
+          not Adaptor.consolidated_ingest?(backend),
+          into: MapSet.new() do
+        rule.backend_id
       end
 
-    # start attached source-backends
-    for backend <- backends do
-      SourceSup.start_backend_child(source, backend)
-    end
+    attached_backend_ids =
+      backends
+      |> Enum.reject(&Adaptor.consolidated_ingest?/1)
+      |> MapSet.new(& &1.id)
+
+    desired_backend_ids = MapSet.union(rules_backend_ids, attached_backend_ids)
 
     via = Backends.via_source(source, Backends.SourceSup)
 
-    # stop stale rule source-backends
-    attached_backend_ids = MapSet.new(backends, fn backend -> backend.id end)
+    running_backend_ids =
+      for {{_mod, _source_id, backend_id}, _, _, _} <- Supervisor.which_children(via),
+          is_integer(backend_id),
+          into: MapSet.new(),
+          do: backend_id
 
-    backend_ids = MapSet.union(rules_backend_ids, attached_backend_ids)
+    desired_backend_ids
+    |> MapSet.symmetric_difference(running_backend_ids)
+    |> Enum.each(&reconcile_source_backend(source.id, &1))
+  end
 
-    for {{_mod, _source_id, backend_id}, _, _, _} <- Supervisor.which_children(via),
-        backend_id not in backend_ids,
-        backend_id do
-      SourceSup.stop_backend_child(source, backend_id)
-    end
+  @spec reconcile_source_backend(pos_integer(), pos_integer()) :: :ok
+  defp reconcile_source_backend(source_id, backend_id) do
+    Backends.reconcile_source_backend_local(source_id, backend_id)
+  catch
+    kind, reason ->
+      Logger.warning(
+        "Failed to reconcile source backend: #{Exception.format(kind, reason, __STACKTRACE__)}",
+        source_id: source_id,
+        backend_id: backend_id
+      )
+
+      :ok
   end
 end

@@ -295,4 +295,38 @@ defmodule Logflare.Backends.CacheTest do
     assert log =~ "Default ingest lookup refresh exited"
     assert log =~ "user_id=#{failing_id}"
   end
+
+  test "reconciliation refreshes primed enabled-only source and rule caches", %{
+    backend: backend,
+    source: source
+  } do
+    insert(:rule, backend: backend, source: source)
+
+    disabled_backend =
+      backend
+      |> Ecto.Changeset.change(enabled: false)
+      |> Logflare.Repo.update!()
+
+    Backends.clear_list_backends_cache(source.id)
+
+    assert [] = Backends.Cache.list_backends(source_id: source.id, enabled: true)
+    assert [] = Backends.Cache.list_backends(rules_source_id: source.id, enabled: true)
+
+    disabled_backend
+    |> Ecto.Changeset.change(enabled: true)
+    |> Logflare.Repo.update!()
+
+    assert [] = Backends.Cache.list_backends(source_id: source.id, enabled: true)
+    assert [] = Backends.Cache.list_backends(rules_source_id: source.id, enabled: true)
+
+    assert :ok = Backends.reconcile_backend_local(backend.id)
+
+    assert [%{id: backend_id}] =
+             Backends.Cache.list_backends(source_id: source.id, enabled: true)
+
+    assert backend_id == backend.id
+
+    assert [%{id: ^backend_id}] =
+             Backends.Cache.list_backends(rules_source_id: source.id, enabled: true)
+  end
 end
