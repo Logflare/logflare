@@ -4,6 +4,7 @@ defmodule LogflareWeb.ApiSpecTest do
   alias LogflareWeb.ApiSpec
   alias LogflareWeb.OpenApiSchemas.BackendApiParams
   alias LogflareWeb.OpenApiSchemas.BackendApiSchema
+  alias LogflareWeb.OpenApiSchemas.BackendApiUpdateParams
   alias LogflareWeb.OpenApiSchemas.EndpointApiParams
   alias LogflareWeb.OpenApiSchemas.EndpointApiSchema
   alias LogflareWeb.OpenApiSchemas.RuleApiSchema
@@ -22,6 +23,13 @@ defmodule LogflareWeb.ApiSpecTest do
     schema = request_schema(ApiSpec.spec(), "/api/backends/{token}", :patch)
 
     assert %OpenApiSpex.Schema{default: nil} = schema.properties.enabled
+  end
+
+  test "documents backend PATCH requests as partial updates" do
+    spec = ApiSpec.spec()
+
+    assert request_schema(spec, "/api/backends/{token}", :patch).required == []
+    assert request_schema(spec, "/api/backends", :post).required == [:name, :type, :config]
   end
 
   test "rejects an undocumented response status" do
@@ -57,7 +65,9 @@ defmodule LogflareWeb.ApiSpecTest do
            [:id, :token, :api_quota, :backends]},
           {"/api/backends", :post, BackendApiParams, BackendApiSchema,
            [:id, :token, :inserted_at, :updated_at]},
-          {"/api/backends/{token}", :put, BackendApiParams, BackendApiSchema,
+          {"/api/backends/{token}", :put, BackendApiUpdateParams, BackendApiSchema,
+           [:id, :token, :inserted_at, :updated_at]},
+          {"/api/backends/{token}", :patch, BackendApiUpdateParams, BackendApiSchema,
            [:id, :token, :inserted_at, :updated_at]},
           {"/api/endpoints", :post, EndpointApiParams, EndpointApiSchema,
            [:id, :token, :source_mapping]},

@@ -126,6 +126,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     assert_receive {:busted, [{Backends, ^backend_id}]}, 500
     refute_receive {:refreshed, _user_id}, 300
   end
+
   test "backend WAL updates reconcile locally without a generic cache bust" do
     for child_spec <- ContextCache.Supervisor.buster_specs() do
       start_supervised!(child_spec)

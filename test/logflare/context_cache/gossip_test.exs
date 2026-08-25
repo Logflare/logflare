@@ -79,6 +79,54 @@ defmodule Logflare.ContextCache.GossipTest do
       assert Cachex.get!(Sources.Cache, cache_key) == {:cached, value}
     end
 
+    test "tags backend values with their cache-key generation", %{
+      telemetry_ref: telemetry_ref
+    } do
+      id = System.unique_integer([:positive])
+      cache_key = {:get_backend, [id]}
+      value = %{id: id, name: "valid"}
+      Cachex.del(Logflare.Backends.Cache, cache_key)
+
+      ContextCache.Gossip.receive(Logflare.Backends.Cache, cache_key, value)
+
+      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
+                      _measurements,
+                      %{action: :cached, cache: Logflare.Backends.Cache, key: ^cache_key}}
+
+      assert {:cached, ^value, generation} =
+               Cachex.get!(Logflare.Backends.Cache, cache_key)
+
+      assert generation ==
+               ContextCache.Gossip.cache_invalidation_generation(
+                 Logflare.Backends.Cache,
+                 cache_key
+               )
+    end
+
+    test "does not refresh a backend value from an older generation", %{
+      telemetry_ref: telemetry_ref
+    } do
+      id = System.unique_integer([:positive])
+      cache = Logflare.Backends.Cache
+      cache_key = {:get_backend, [id]}
+      stale_generation = ContextCache.Gossip.cache_invalidation_generation(cache, cache_key)
+
+      Cachex.put(cache, cache_key, {:cached, %{id: id}, stale_generation})
+      ContextCache.Gossip.record_cache_tombstones(cache, [cache_key])
+
+      Cachex.del(
+        Tombstones.Cache,
+        {cache, {:cache_key, cache_key}}
+      )
+
+      ContextCache.Gossip.receive(cache, cache_key, %{id: id})
+
+      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
+                      _measurements, %{action: :dropped_stale, cache: ^cache, key: ^cache_key}}
+
+      refute Cachex.get!(cache, cache_key)
+    end
+
     test "refreshes ttl when value is already cached", %{telemetry_ref: telemetry_ref} do
       cache_key = {:get, [111]}
       existing_value = {:cached, %{id: 111, name: "local_data"}}
