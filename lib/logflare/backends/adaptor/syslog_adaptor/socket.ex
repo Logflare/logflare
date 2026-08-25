@@ -1,6 +1,10 @@
 defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   @moduledoc false
 
+  alias Logflare.Utils.SSRF
+
+  @typep address :: :inet.ip_address() | charlist()
+  @typep reason :: :closed | :timeout | :inet.posix() | :ssl.reason() | {:ssrf, String.t()}
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
 
   # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
@@ -12,16 +16,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
                           send_timeout_close: true
 
   @spec connect(map, timeout) :: {:ok, socket} | {:error, reason}
-        when reason: :closed | :timeout | :inet.posix() | :ssl.reason()
   def connect(config, timeout) do
-    host = config |> Map.fetch!(:host) |> String.to_charlist()
+    host = Map.fetch!(config, :host)
     port = Map.fetch!(config, :port)
 
-    if Map.get(config, :tls) do
-      opts = ssl_opts(@default_transport_opts, config, host)
-      :ssl.connect(host, port, opts, timeout)
-    else
-      :gen_tcp.connect(host, port, @default_transport_opts, timeout)
+    with {:ok, addresses} <- resolve_addresses(host) do
+      connect_addresses(addresses, config, host, port, deadline(timeout), {:error, :einval})
     end
   end
 
@@ -46,9 +46,67 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
 
   def stream(_socket, _message), do: :ignore
 
+  @spec resolve_addresses(String.t()) :: {:ok, [address]} | {:error, {:ssrf, String.t()}}
+  defp resolve_addresses(host) do
+    if Logflare.SingleTenant.single_tenant?() do
+      {:ok, [String.to_charlist(host)]}
+    else
+      case SSRF.safe_resolve_all(host) do
+        {:ok, addresses} -> {:ok, addresses}
+        {:error, reason} -> {:error, {:ssrf, reason}}
+      end
+    end
+  end
+
+  @spec connect_addresses(
+          [address],
+          map,
+          String.t(),
+          :inet.port_number(),
+          integer | :infinity,
+          term
+        ) ::
+          {:ok, socket} | {:error, reason}
+  defp connect_addresses([address | addresses], config, host, port, deadline, _last_error) do
+    case connect_address(address, config, host, port, remaining_timeout(deadline)) do
+      {:ok, _socket} = result ->
+        result
+
+      {:error, reason} = error when reason in [:einval, :timeout] ->
+        error
+
+      {:error, _reason} = error ->
+        connect_addresses(addresses, config, host, port, deadline, error)
+    end
+  end
+
+  defp connect_addresses([], _config, _host, _port, _deadline, last_error), do: last_error
+
+  @spec connect_address(address, map, String.t(), :inet.port_number(), timeout) ::
+          {:ok, socket} | {:error, reason}
+  defp connect_address(address, config, host, port, timeout) do
+    if Map.get(config, :tls) do
+      opts = ssl_opts(@default_transport_opts, config, host)
+      :ssl.connect(address, port, opts, timeout)
+    else
+      :gen_tcp.connect(address, port, @default_transport_opts, timeout)
+    end
+  end
+
+  @spec deadline(timeout) :: integer | :infinity
+  defp deadline(:infinity), do: :infinity
+  defp deadline(timeout), do: System.monotonic_time(:millisecond) + timeout
+
+  @spec remaining_timeout(integer | :infinity) :: timeout
+  defp remaining_timeout(:infinity), do: :infinity
+
+  defp remaining_timeout(deadline) do
+    max(deadline - System.monotonic_time(:millisecond), 0)
+  end
+
   defp ssl_opts(opts, config, host) do
     ssl_opts = [
-      server_name_indication: host,
+      server_name_indication: String.to_charlist(host),
       verify: :verify_peer,
       depth: 100,
       customize_hostname_check: [
