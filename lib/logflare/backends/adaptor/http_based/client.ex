@@ -14,7 +14,6 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
   alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
   alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.HttpBased.LogEventTransformer
-  alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
   alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
 
@@ -62,9 +61,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
     so a formatter that takes no options stays a bare module.
   * `:pool_name` - An override for the name of the Finch pool to use for requests.
   * `:http2` - Whether to use HTTP/2. Defaults to `true`.
-  * `:ssrf` - Whether to resolve the destination host through
-    `#{inspect(SSRFProtection)}`, rejecting private or reserved addresses.
-    Defaults to `false`, and should be enabled for user-supplied URLs.
+  * `:ssrf` - Routes requests through an SSRF-safe Finch pool. Defaults to `false`.
+    When enabled, `:pool_name` and `:http2` do not override the safe pool.
   """
   @spec new(opts()) :: t()
   def new(opts \\ []) do
@@ -81,11 +79,14 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
         formatter_middleware(opts),
         Keyword.get(opts, :json, true) && Tesla.Middleware.JSON,
         opts[:gzip] && {Tesla.Middleware.CompressRequest, format: "gzip"},
-        opts[:ssrf] && SSRFProtection,
         EgressTracer
       ]
       |> Enum.filter(& &1),
-      adapter_config(Keyword.get(opts, :http2, true), opts[:pool_name])
+      adapter_config(
+        Keyword.get(opts, :http2, true),
+        opts[:pool_name],
+        Keyword.get(opts, :ssrf, false)
+      )
     )
   end
 
@@ -136,8 +137,11 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
 
   def headers_middleware(headers), do: {Tesla.Middleware.Headers, headers}
 
-  defp adapter_config(http2?, pool_name) do
+  defp adapter_config(http2?, pool_name, ssrf?) do
     cond do
+      ssrf? ->
+        {Tesla.Adapter.Finch, name: Logflare.FinchSSRF, receive_timeout: 5_000}
+
       is_possible_pool(pool_name) ->
         {Tesla.Adapter.Finch, name: pool_name, receive_timeout: 5_000}
 
