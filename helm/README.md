@@ -190,6 +190,70 @@ externalSecrets:
 
 Per-entry `refreshInterval` and `creationPolicy` overrides are also supported; see `values.yaml` for the full set of fields. This block is ESO-specific by design, so support for other providers (for example a HashiCorp Vault Agent integration) can be added as a sibling block without disturbing it.
 
+## Progressive delivery with Argo Rollouts
+
+Set `rollout.enabled` and the chart renders an [Argo Rollouts](https://argo-rollouts.readthedocs.io/)
+`Rollout` in place of the `Deployment`, from the same pod template, so the two can never drift. This
+requires the Argo Rollouts controller and its CRDs in the cluster.
+
+Two Services are involved. The chart's existing Service keeps its name and becomes the **active**
+one, so an Ingress or anything already dialing it is unaffected. A second Service named
+`<fullname>-preview` is added for the incoming version. Argo Rollouts owns both selectors, injecting
+the pod template hash so each resolves to a single ReplicaSet.
+
+`rollout.strategy` is passed through verbatim, so the chart takes no opinion on strategy and any
+shape the installed controller understands works. A blue/green setup with manual promotion:
+
+```yaml
+rollout:
+  enabled: true
+  strategy:
+    blueGreen:
+      activeService: logflare
+      previewService: logflare-preview
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 120
+```
+
+Verify the new version against the preview Service, then promote:
+
+```sh
+kubectl argo rollouts promote logflare
+```
+
+A canary strategy goes in the same place. If you route canary traffic through an ingress controller
+or a service mesh, add the matching `trafficRouting` block and the Services it names.
+
+When `autoscaling.enabled` is also set, the HorizontalPodAutoscaler targets the `Rollout` rather
+than the `Deployment` automatically.
+
+### Configuration that differs per version
+
+`logflare.extraConfig` renders one ConfigMap that every ReplicaSet reads, so it describes the
+release rather than the version. Changing a value edits that object in place, and a pod of the
+outgoing version that restarts for any reason then reads the incoming version's configuration. For
+most settings that is fine. For anything that partitions the cluster it is not.
+
+`RELEASE_COOKIE` is the case that matters here: `Logflare.Cluster.PostgresStrategy` uses it as the
+Postgres `LISTEN`/`NOTIFY` channel name, so two versions sharing a cookie join one Erlang cluster
+and make distributed calls to each other across the version boundary. Bind it to the ReplicaSet
+instead, with `extraEnv` and the pod template hash:
+
+```yaml
+extraEnv:
+  - name: POD_TEMPLATE_HASH
+    valueFrom:
+      fieldRef:
+        fieldPath: "metadata.labels['rollouts-pod-template-hash']"
+  - name: RELEASE_COOKIE
+    value: "mycluster-$(POD_TEMPLATE_HASH)"
+```
+
+Each ReplicaSet then forms its own cluster on its own channel. `extraEnv` is appended after the env
+vars the chart sets, and `$(VAR)` expansion only sees earlier entries, so `POD_TEMPLATE_HASH` has to
+be declared first. Outside a Rollout that label does not exist and the reference resolves to an
+empty string, so the same values stay safe with the `Deployment`.
+
 ## Configurable values
 
 | `values.yaml` key | Env var | Notes |
@@ -223,6 +287,11 @@ Per-entry `refreshInterval` and `creationPolicy` overrides are also supported; s
 | `logflare.certFilesMountPath` | `DB_SSL_*_PATH`, `LOGFLARE_TLS_*_PATH` | Mount path for `certFilesSecret`; the chart points the cert path env vars here |
 | `deploymentAnnotations` | — | Annotations on the Deployment object. Set `reloader.stakater.com/auto: "true"` to roll pods on ConfigMap/Secret changes (requires Stakater Reloader) |
 | `logflare.extraConfig` | (any) | Map of non-secret env vars rendered verbatim into the ConfigMap |
+| `extraEnv` | (any) | Env vars appended to the container, rendered verbatim so `valueFrom` works. For values that must differ per version rather than per release. See [Progressive delivery](#progressive-delivery-with-argo-rollouts) |
+| `rollout.enabled` | — | Render an Argo Rollouts `Rollout` in place of the `Deployment`, plus a `<fullname>-preview` Service |
+| `rollout.strategy` | — | Passed to the `Rollout` verbatim. Required when `rollout.enabled` is set |
+| `rollout.progressDeadlineSeconds` | — | Must cover a full pod start, which `startupProbe` alone allows `failureThreshold` x `periodSeconds` seconds for |
+| `rollout.revisionHistoryLimit` | — | |
 
 See `values.yaml` for the full set of generic chart values (image, service, ingress, resources, autoscaling, etc.).
 
