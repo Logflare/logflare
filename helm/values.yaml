@@ -290,6 +290,30 @@ startupProbe:
   failureThreshold: 30
   periodSeconds: 10
 
+# Argo Rollouts support. When enabled the chart renders a Rollout in place of the
+# Deployment, plus a `<fullname>-preview` Service for the incoming version. The existing
+# `<fullname>` Service is unchanged and acts as the active one, so the Ingress and anything
+# already dialing it keep working. Requires the Argo Rollouts controller and its CRDs.
+rollout:
+  enabled: false
+
+  # Passed to the Rollout verbatim, so any strategy the installed controller supports works
+  # and the chart takes no opinion between blueGreen and canary. Required when enabled.
+  # Reference the Services by the names above, for example:
+  #
+  #   strategy:
+  #     blueGreen:
+  #       activeService: logflare
+  #       previewService: logflare-preview
+  #       autoPromotionEnabled: false
+  strategy: {}
+
+  # Rollout fields that sit outside `strategy`, set to the controller's own defaults. The
+  # progress deadline has to cover a full pod start, which startupProbe alone allows
+  # failureThreshold x periodSeconds seconds for.
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 10
+
 # This section is for setting up autoscaling more information can be found here: https://kubernetes.io/docs/concepts/workloads/autoscaling/
 autoscaling:
   enabled: false

@@ -60,3 +60,18 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Service ports, shared by the active Service and the preview Service the blue/green
+strategy switches between.
+*/}}
+{{- define "logflare.servicePorts" -}}
+- port: {{ .Values.service.port }}
+  targetPort: http
+  protocol: TCP
+  name: http
+- port: {{ .Values.logflare.grpcPort }}
+  targetPort: grpc
+  protocol: TCP
+  name: grpc
+{{- end }}

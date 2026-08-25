@@ -340,6 +340,23 @@
         "resources": {
             "type": "object"
         },
+        "rollout": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "progressDeadlineSeconds": {
+                    "type": "integer"
+                },
+                "revisionHistoryLimit": {
+                    "type": "integer"
+                },
+                "strategy": {
+                    "type": "object"
+                }
+            }
+        },
         "securityContext": {
             "type": "object"
         },
