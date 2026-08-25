@@ -335,6 +335,32 @@ volumeMounts: []
   #   mountPath: "/etc/foo"
   #   readOnly: true
 
+# Additional environment variables on the Logflare container, appended after the ones the
+# chart sets. Rendered verbatim, so `valueFrom` works. Appended last, so `$(VAR)` expansion
+# can reference anything above it as well as earlier entries in this list.
+#
+# Use this for values that must differ per ReplicaSet rather than per release, which
+# `logflare.extraConfig` cannot express: that lands in one ConfigMap shared by every
+# ReplicaSet, and editing it in place changes what already running pods read on restart.
+# Under a blue/green or canary strategy that is how an old pod ends up with the new
+# version's configuration. Deriving from the pod template hash avoids it:
+#
+#   extraEnv:
+#     - name: POD_TEMPLATE_HASH
+#       valueFrom:
+#         fieldRef:
+#           fieldPath: "metadata.labels['rollouts-pod-template-hash']"
+#     - name: RELEASE_COOKIE
+#       value: "mycluster-$(POD_TEMPLATE_HASH)"
+#
+# Outside a Rollout that label does not exist and the reference resolves to an empty
+# string, so the same values work with the Deployment.
+extraEnv: []
+  # - name: LOGFLARE_NODE_HOST
+  #   valueFrom:
+  #     fieldRef:
+  #       fieldPath: status.podIP
+
 # Additional init containers on the output Deployment definition.
 initContainers: []
   # - name: cloud-sql-proxy

@@ -73,6 +73,9 @@ spec:
         - name: RELEASE_VM_ARGS
           value: /etc/logflare/vm.args
         {{- end }}
+        {{- with .Values.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       envFrom:
         - configMapRef:
             name: {{ include "logflare.fullname" . }}

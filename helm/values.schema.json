@@ -50,6 +50,9 @@
                 }
             }
         },
+        "extraEnv": {
+            "type": "array"
+        },
         "fullnameOverride": {
             "type": "string"
         },

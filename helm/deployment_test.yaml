@@ -209,3 +209,23 @@ tests:
               matchLabels:
                 app.kubernetes.io/name: logflare
         template: deployment.yaml
+
+  - it: should append extraEnv after the env vars the chart sets
+    set:
+      extraEnv:
+        - name: POD_TEMPLATE_HASH
+          valueFrom:
+            fieldRef:
+              fieldPath: "metadata.labels['rollouts-pod-template-hash']"
+        - name: RELEASE_COOKIE
+          value: "mycluster-$(POD_TEMPLATE_HASH)"
+    asserts:
+      # Last two entries, so $(VAR) expansion can reference everything the chart sets.
+      - equal:
+          path: spec.template.spec.containers[0].env[-2].valueFrom.fieldRef.fieldPath
+          value: "metadata.labels['rollouts-pod-template-hash']"
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[-1].value
+          value: "mycluster-$(POD_TEMPLATE_HASH)"
+        template: deployment.yaml

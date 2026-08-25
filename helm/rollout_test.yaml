@@ -179,3 +179,24 @@ tests:
           path: spec.scaleTargetRef.apiVersion
           value: apps/v1
         template: hpa.yaml
+
+  - it: should carry extraEnv onto the Rollout as well
+    set:
+      rollout:
+        enabled: true
+        strategy:
+          blueGreen:
+            activeService: RELEASE-NAME-logflare
+            previewService: RELEASE-NAME-logflare-preview
+      extraEnv:
+        - name: RELEASE_COOKIE
+          value: "mycluster-$(POD_TEMPLATE_HASH)"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[-1].name
+          value: RELEASE_COOKIE
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[-1].value
+          value: "mycluster-$(POD_TEMPLATE_HASH)"
+        template: rollout.yaml
