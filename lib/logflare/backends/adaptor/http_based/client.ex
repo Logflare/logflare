@@ -61,8 +61,9 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
     so a formatter that takes no options stays a bare module.
   * `:pool_name` - An override for the name of the Finch pool to use for requests.
   * `:http2` - Whether to use HTTP/2. Defaults to `true`.
-  * `:ssrf` - Routes requests through an SSRF-safe Finch pool. Defaults to `false`.
-    When enabled, `:pool_name` and `:http2` do not override the safe pool.
+  * `:ssrf` - Routes requests through an SSRF-safe Finch pool. Defaults to `true`.
+    When enabled, `:pool_name` and `:http2` do not override the safe pool. Set
+    this to `false` only for trusted destinations that must access private addresses.
   """
   @spec new(opts()) :: t()
   def new(opts \\ []) do
@@ -85,7 +86,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
       adapter_config(
         Keyword.get(opts, :http2, true),
         opts[:pool_name],
-        Keyword.get(opts, :ssrf, false)
+        Keyword.get(opts, :ssrf, true)
       )
     )
   end
