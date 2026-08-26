@@ -56,6 +56,12 @@ logflare:
   certFilesSecret: ""
   certFilesMountPath: /etc/logflare/certs
 
+  # Serve the gRPC (OTLP ingest) endpoint over TLS. Off by default because the
+  # cert/key have to exist first: requires certFilesSecret to carry cert.pem and
+  # cert.key, and the chart refuses to render without it. While this is off, gRPC
+  # clients send their ingest token over the cluster network in plaintext.
+  grpcSsl: false
+
 
   # Free-form non-secret environment variables rendered verbatim into the
   # ConfigMap. Use this for configuration not modeled as first-class values
@@ -166,8 +172,11 @@ fullnameOverride: ""
 serviceAccount:
   # Specifies whether a service account should be created.
   create: true
-  # Automatically mount a ServiceAccount's API credentials?
-  automount: true
+  # Automatically mount a ServiceAccount's API credentials? Off by default:
+  # Logflare never calls the Kubernetes API (its libcluster topology discovers
+  # peers through Postgres), so the token would only widen the blast radius of a
+  # compromised container.
+  automount: false
   # Annotations to add to the service account.
   annotations: {}
   # The name of the service account to use.

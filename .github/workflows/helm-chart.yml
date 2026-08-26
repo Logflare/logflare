@@ -22,6 +22,8 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
 
+      # Neither plugin ships the provenance metadata Helm 4 verifies by default, so installing
+      # them at all means opting out of that check.
       - name: Install helm-unittest plugin
         run: helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest
 
@@ -52,16 +54,25 @@ jobs:
       - name: Validate rendered manifests against Kubernetes and CRD schemas
         env:
           KUBECONFORM_VERSION: v0.8.0
+          # Checksum of scripts/openapi2jsonschema.py at the tag above. Bump both together.
+          OPENAPI2JSONSCHEMA_SHA256: d145babfbb765004030764e1b4e518bfb7a4bd7f111691a08fa57983b81881f3
           ARGO_ROLLOUTS_VERSION: v1.9.1
         run: |
           set -euo pipefail
-          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
-            | tar -xz kubeconform
+          release="https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}"
+          curl -sSLo kubeconform.tar.gz "${release}/kubeconform-linux-amd64.tar.gz"
+          curl -sSLo kubeconform-checksums.txt "${release}/CHECKSUMS"
+          grep ' kubeconform-linux-amd64.tar.gz$' kubeconform-checksums.txt \
+            | sed 's/kubeconform-linux-amd64.tar.gz/kubeconform.tar.gz/' \
+            | sha256sum --check --strict
+          tar -xzf kubeconform.tar.gz kubeconform
+
           curl -sSLo openapi2jsonschema.py \
             "https://raw.githubusercontent.com/yannh/kubeconform/${KUBECONFORM_VERSION}/scripts/openapi2jsonschema.py"
+          echo "${OPENAPI2JSONSCHEMA_SHA256}  openapi2jsonschema.py" | sha256sum --check --strict
 
           python3 -m venv .crdvenv
-          ./.crdvenv/bin/pip install --quiet pyyaml
+          ./.crdvenv/bin/pip install --quiet "pyyaml==6.0.2"
 
           mkdir -p crd-schemas
           crd_url="https://raw.githubusercontent.com/argoproj/argo-rollouts/${ARGO_ROLLOUTS_VERSION}/manifests/crds"

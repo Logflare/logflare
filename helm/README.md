@@ -285,6 +285,7 @@ empty string, so the same values stay safe with the `Deployment`.
 | `logflare.secretRefs` | see [Loading secrets](#loading-secrets) | |
 | `logflare.certFilesSecret` | — | Name of a Secret whose keys are cert filenames; mounted as files. See [Certificate files](#certificate-files) |
 | `logflare.certFilesMountPath` | `DB_SSL_*_PATH`, `LOGFLARE_TLS_*_PATH` | Mount path for `certFilesSecret`; the chart points the cert path env vars here |
+| `logflare.grpcSsl` | `LOGFLARE_ENABLE_GRPC_SSL` | Serve gRPC over TLS. Requires `certFilesSecret`. See [Certificate files](#certificate-files) |
 | `deploymentAnnotations` | — | Annotations on the Deployment object. Set `reloader.stakater.com/auto: "true"` to roll pods on ConfigMap/Secret changes (requires Stakater Reloader) |
 | `logflare.extraConfig` | (any) | Map of non-secret env vars rendered verbatim into the ConfigMap |
 | `extraEnv` | (any) | Env vars appended to the container, rendered verbatim so `valueFrom` works. For values that must differ per version rather than per release. See [Progressive delivery](#progressive-delivery-with-argo-rollouts) |
@@ -299,7 +300,7 @@ See `values.yaml` for the full set of generic chart values (image, service, ingr
 
 Unlike the env-var secrets loaded via `envFrom`, Logflare reads its TLS/mTLS
 material from files on disk: the internal database SSL certs (when `DB_SSL` is
-enabled) and the gRPC TLS cert/key (when `LOGFLARE_ENABLE_GRPC_SSL` is enabled).
+enabled) and the gRPC TLS cert/key (when `logflare.grpcSsl` is enabled).
 
 Provide these via a separate Secret whose keys are the exact filenames —
 `db-server-ca.pem`, `db-client-cert.pem`, `db-client-key.pem`, `cert.pem`,
@@ -309,6 +310,11 @@ at `logflare.certFilesMountPath` and sets `DB_SSL_CA_CERT_PATH`,
 and `LOGFLARE_TLS_KEY_PATH` to point at the mounted files. (The BigQuery service
 account key is handled as an env-var secret via `GOOGLE_APPLICATION_CREDENTIALS_JSON`,
 not a mounted file.)
+
+Mounting the files is not enough on its own: Logflare only reads the gRPC cert
+and key when `logflare.grpcSsl` is set, and serves plaintext gRPC otherwise. Set
+it whenever OTLP clients reach the gRPC port over a network you do not
+otherwise encrypt, since the ingest token travels in the request headers.
 
 ## Verifying a deployment
 

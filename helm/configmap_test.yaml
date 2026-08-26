@@ -83,3 +83,28 @@ tests:
           path: data.GOOGLE_DATASET_ID_APPEND
           value: _staging
         template: configmap.yaml
+
+  # Mounting the cert files does nothing on its own; without this key Logflare serves gRPC
+  # in plaintext even when cert.pem and cert.key are present.
+  - it: should enable gRPC TLS only when grpcSsl is set
+    asserts:
+      - notExists:
+          path: data.LOGFLARE_ENABLE_GRPC_SSL
+        template: configmap.yaml
+
+  - it: should render LOGFLARE_ENABLE_GRPC_SSL when grpcSsl is set
+    set:
+      logflare.grpcSsl: true
+      logflare.certFilesSecret: logflare-cert-files
+    asserts:
+      - equal:
+          path: data.LOGFLARE_ENABLE_GRPC_SSL
+          value: "true"
+        template: configmap.yaml
+
+  - it: should fail when grpcSsl is set without a cert files secret
+    set:
+      logflare.grpcSsl: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "logflare.grpcSsl requires logflare.certFilesSecret, which supplies cert.pem and cert.key"

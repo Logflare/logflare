@@ -12,6 +12,13 @@ to whatever parses the manifest.
 {{- $_ = set $config "LOGFLARE_FEATURE_FLAG_OVERRIDE" .Values.logflare.featureFlagOverride }}
 {{- end }}
 
+{{- if .Values.logflare.grpcSsl }}
+{{- if not .Values.logflare.certFilesSecret }}
+{{- fail "logflare.grpcSsl requires logflare.certFilesSecret, which supplies cert.pem and cert.key" }}
+{{- end }}
+{{- $_ = set $config "LOGFLARE_ENABLE_GRPC_SSL" true }}
+{{- end }}
+
 {{- $_ = set $config "PHX_HTTP_PORT" .Values.logflare.phx.httpPort }}
 {{- if .Values.logflare.phx.urlHost }}
 {{- $_ = set $config "PHX_URL_HOST" .Values.logflare.phx.urlHost }}
