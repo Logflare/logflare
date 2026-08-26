@@ -2,10 +2,10 @@ defmodule Logflare.Bench.ClickHousePipelineData do
   @moduledoc false
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
   alias Logflare.Mapper
+  alias Logflare.Mapper.OtelDefaults
 
   @mapping_config_id "00000000-0000-0000-0001-000000000003"
   @source_uuid String.to_atom("550e8400-e29b-41d4-a716-446655440000")
@@ -14,13 +14,13 @@ defmodule Logflare.Bench.ClickHousePipelineData do
 
   @spec compiled(event_type()) :: {reference(), String.t()}
   def compiled(type) do
-    config = MappingDefaults.for_type(type)
-    {%{config | output: nil} |> Mapper.compile!(), MappingDefaults.config_id(type)}
+    config = OtelDefaults.for_type(type)
+    {%{config | output: nil} |> Mapper.compile!(), OtelDefaults.config_id(type)}
   end
 
   @spec compiled_output(event_type()) :: {reference(), String.t()}
   def compiled_output(type) do
-    {type |> MappingDefaults.for_type() |> Mapper.compile!(), MappingDefaults.config_id(type)}
+    {type |> OtelDefaults.for_type() |> Mapper.compile!(), OtelDefaults.config_id(type)}
   end
 
   @spec batch(event_type(), pos_integer(), atom()) :: [LogEvent.t()]

@@ -1,5 +1,6 @@
 mod clickhouse_rowbinary;
 mod coerce;
+mod derive;
 mod mapper;
 mod mapping;
 mod path;
