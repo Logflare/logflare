@@ -14,8 +14,7 @@ defmodule Logflare.Bench.ClickHousePipelineData do
 
   @spec compiled(event_type()) :: {reference(), String.t()}
   def compiled(type) do
-    config = OtelDefaults.for_type(type)
-    {%{config | output: nil} |> Mapper.compile!(), OtelDefaults.config_id(type)}
+    {type |> OtelDefaults.for_type(:map) |> Mapper.compile!(), OtelDefaults.config_id(type)}
   end
 
   @spec compiled_output(event_type()) :: {reference(), String.t()}

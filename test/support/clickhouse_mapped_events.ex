@@ -169,8 +169,10 @@ defmodule Logflare.ClickHouseMappedEvents do
 
     case :persistent_term.get(key, nil) do
       nil ->
-        config = OtelDefaults.for_type(event_type)
-        cached = {Mapper.compile!(%{config | output: nil}), OtelDefaults.config_id(event_type)}
+        cached =
+          {Mapper.compile!(OtelDefaults.for_type(event_type, :map)),
+           OtelDefaults.config_id(event_type)}
+
         :persistent_term.put(key, cached)
         cached
 
