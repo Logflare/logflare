@@ -619,6 +619,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Ecto.Changeset.get_field(changeset, :query_user) == nil
       assert Ecto.Changeset.get_field(changeset, :query_password) == nil
     end
+
+    test "requires a new query_password when query_user changes and the password is submitted blank" do
+      existing_config = %{query_user: "reader_a", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "reader_b",
+        query_password: ""
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :query_user)
+      assert Keyword.has_key?(changeset.errors, :query_password)
+    end
   end
 
   describe "pre_ingest/3 event age filtering" do
@@ -1292,6 +1310,51 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert :ok = ClickHouseAdaptor.test_connection(backend)
 
       refute_received {:ch_start_link, [username: "ch_reader", password: _]}
+    end
+  end
+
+  describe "test_ingest_connection/1" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "succeeds when only the read grant check fails" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{query_user: "ch_reader", query_password: "reader_pa55"},
+          cleanup?: false
+        )
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = ClickHouseAdaptor.test_ingest_connection(backend)
+        end)
+
+      assert log =~ "read cluster"
+      assert log =~ "ch_reader: Authentication failed"
+    end
+
+    test "fails when the ingest grant check fails" do
+      {_source, backend} = setup_clickhouse_test(cleanup?: false)
+
+      grant_check_statement = QueryTemplates.grant_check_statement()
+
+      stub(Ch, :query, fn
+        _pool, ^grant_check_statement, _params, _opts ->
+          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+
+        pool, statement, params, opts ->
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, :grant_check_unknown_failure} =
+                   ClickHouseAdaptor.test_ingest_connection(backend)
+        end)
+
+      assert log =~ "ingest cluster"
     end
   end
 

@@ -222,7 +222,7 @@
             {label(f_config, :query_password, "ClickHouse Query Password (Optional)")}
             {text_input(f_config, :query_password, class: "form-control", type: "password", value: "")}
             <small class="form-text text-muted">
-              Dedicated credentials used for read queries. Both must be provided; when left empty, the username and password above are used for reads. Leave blank when editing to keep the existing password unchanged.
+              Dedicated credentials used for read queries. Both must be provided; when left empty, the username and password above are used for reads. Leave blank when editing to keep the existing password unchanged; changing the username requires re-entering the password.
             </small>
           </div>
           <div class="form-group">

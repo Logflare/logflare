@@ -298,8 +298,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @spec preserve_blank_query_password(Changeset.t()) :: Changeset.t()
   defp preserve_blank_query_password(changeset) do
     with {:ok, nil} <- Map.fetch(changeset.changes, :query_password),
+         :error <- Map.fetch(changeset.changes, :query_user),
          password when is_non_empty_binary(password) <- Map.get(changeset.data, :query_password),
-         user when is_non_empty_binary(user) <- Changeset.get_field(changeset, :query_user) do
+         user when is_non_empty_binary(user) <- Map.get(changeset.data, :query_user) do
       Changeset.delete_change(changeset, :query_password)
     else
       _ -> changeset
@@ -385,6 +386,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     with :ok <- check_ingest_grants(backend, config),
          :ok <- check_read_grants(backend, config),
          :ok <- maybe_check_async_grants(backend, config) do
+      :ok
+    end
+  end
+
+  @doc """
+  Connection test used on the provisioning path.
+
+  Table provisioning only depends on the ingest credentials (and the async insert
+  endpoint, when configured), so only those checks can fail this test. Read grants
+  are still checked so misconfigured query credentials surface as warnings, but a
+  read-side failure never blocks provisioning.
+  """
+  @spec test_ingest_connection(Backend.t()) ::
+          :ok
+          | {:error, :permissions_missing}
+          | {:error, :async_permissions_missing}
+          | {:error, :grant_check_unknown_failure}
+  def test_ingest_connection(%Backend{config: config} = backend) do
+    with :ok <- check_ingest_grants(backend, config),
+         :ok <- maybe_check_async_grants(backend, config) do
+      _ = check_read_grants(backend, config)
       :ok
     end
   end
