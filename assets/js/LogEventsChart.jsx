@@ -484,6 +484,7 @@ const LogEventsChart = ({
                 fill={settings.colors[key]}
                 isAnimationActive={false}
                 minPointSize={minPointSizeForDataKey(chartData, key)}
+                pointerEvents="none"
                 shape={key === topStackKey ? renderBarWithHighlight : undefined}
               />
             ))}
