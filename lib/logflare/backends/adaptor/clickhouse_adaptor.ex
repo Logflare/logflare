@@ -158,9 +158,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   Late-arriving events land in older partitions, which increases the parts written
   per insert.
 
-  To disable the check, set the `max_event_age_
-  Set the backend's `max_event_age_hours`
-  config to `0` to disable the check.
+  Set the backend's `max_event_age_hours` config to `0` to disable the check.
   """
   @impl Logflare.Backends.Adaptor
   @spec pre_ingest(Source.t(), Backend.t(), [LogEvent.t()]) :: [LogEvent.t()]
