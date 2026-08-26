@@ -279,4 +279,53 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
       assert ConnectionManager.read_host(nil, "api") == nil
     end
   end
+
+  describe "read_pool_size/2" do
+    test "uses the backend-wide size for the unlabeled pool" do
+      assert ConnectionManager.read_pool_size(%{read_pool_size: 25}, nil) == 25
+    end
+
+    test "uses the backend-wide size for the default read cluster" do
+      config = %{
+        read_pool_size: 25,
+        labeled_read_pool_size: 9,
+        default_read_cluster: "dashboard_logs"
+      }
+
+      assert ConnectionManager.read_pool_size(config, "dashboard_logs") == 25
+    end
+
+    test "uses the labeled size for a non-default read cluster" do
+      config = %{
+        read_pool_size: 25,
+        labeled_read_pool_size: 9,
+        default_read_cluster: "dashboard_logs"
+      }
+
+      assert ConnectionManager.read_pool_size(config, "api_free") == 9
+    end
+
+    test "uses the labeled size for every cluster when no default is set" do
+      config = %{read_pool_size: 25, labeled_read_pool_size: 9}
+
+      assert ConnectionManager.read_pool_size(config, "api_free") == 9
+      assert ConnectionManager.read_pool_size(config, nil) == 25
+    end
+
+    test "falls back to the module defaults when nothing is configured" do
+      assert ConnectionManager.read_pool_size(%{}, nil) == 50
+      assert ConnectionManager.read_pool_size(%{}, "api_free") == 32
+    end
+
+    test "ignores the legacy pool_size field" do
+      assert ConnectionManager.read_pool_size(%{pool_size: 100}, nil) == 50
+    end
+
+    test "ignores non positive integer values" do
+      assert ConnectionManager.read_pool_size(%{read_pool_size: 0}, nil) == 50
+      assert ConnectionManager.read_pool_size(%{read_pool_size: nil}, nil) == 50
+
+      assert ConnectionManager.read_pool_size(%{labeled_read_pool_size: 0}, "api_free") == 32
+    end
+  end
 end

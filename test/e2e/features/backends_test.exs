@@ -180,7 +180,8 @@ defmodule E2e.Features.BackendsTest do
               "alpha" => "https://a.example.com:8443",
               "beta" => "https://b.example.com:8443",
               "gamma" => "https://c.example.com:8443"
-            }
+            },
+            default_read_cluster: "gamma"
           }
         )
 

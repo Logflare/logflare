@@ -625,6 +625,54 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute view |> element("select#type") |> has_element?()
     end
 
+    test "requires a default read cluster once a read cluster is configured", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            read_only_urls: %{"reporting" => "http://reporting.local:8123"}
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+      html = render(view)
+
+      assert html =~ "callers that send no label read from the ingest cluster"
+
+      assert view
+             |> element("input[name='backend[config][default_read_cluster]'][required]")
+             |> has_element?()
+    end
+
+    test "does not require a default read cluster when none is configured", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "test_db", port: 8123}
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+      html = render(view)
+
+      refute html =~ "callers that send no label read from the ingest cluster"
+      assert html =~ "Default Read Cluster (Optional)"
+    end
+
     test "pre-populates read cluster rows when editing a clickhouse backend", %{
       conn: conn,
       source: source,
