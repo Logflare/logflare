@@ -16,31 +16,18 @@ defmodule Logflare.TestUtils do
   alias Logflare.User
 
   @doc """
-  restores the previous feature flag override. Should be used in a test or setup block.
-  To use outside of a test or setup block, use `:setup` option to wrap in a setup block.
+  Restores the `:feature_flag_override` env to its previous value on test exit.
+
+  Call from a test or `setup` block, e.g. `setup :restore_feature_flag_overrides`
+  after importing it.
   """
-  defmacro restore_feature_flag_overrides_on_exit(opts \\ [setup: false]) do
-    setup = Keyword.get(opts, :setup, false)
+  @spec restore_feature_flag_overrides(map()) :: :ok
+  def restore_feature_flag_overrides(_context \\ %{}) do
+    prev = Application.get_env(:logflare, :feature_flag_override)
 
-    quote_body =
-      quote do
-        prev = Application.get_env(:logflare, :feature_flag_override)
-
-        on_exit(fn ->
-          Application.put_env(:logflare, :feature_flag_override, prev)
-        end)
-      end
-
-    if setup do
-      quote do
-        setup do
-          unquote(quote_body)
-          :ok
-        end
-      end
-    else
-      quote_body
-    end
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:logflare, :feature_flag_override, prev)
+    end)
   end
 
   @doc """

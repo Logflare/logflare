@@ -26,16 +26,6 @@ defmodule Logflare.OpenTelemetryTest do
   end
 
   describe "only ingest spans are emitted in" do
-    setup do
-      # Default to the streaming-insert path; storage-write tests re-stub as needed.
-      stub(Logflare.Utils, :flag, fn
-        "BigqueryStorageWriteApi", _identifier -> false
-        _feature, _identifier -> true
-      end)
-
-      :ok
-    end
-
     test "handle_batch (streaming insert)", %{source: source} do
       stub(Logflare.Google.BigQuery, :stream_batch!, fn _context, _rows ->
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
@@ -72,9 +62,12 @@ defmodule Logflare.OpenTelemetryTest do
 
     test "handle_batch (storage write api via flag)", %{source: source} do
       # Storage-write branch is taken via the feature flag alone, not the source column.
-      source = insert(:source, user_id: source.user_id, bq_storage_write_api: false)
+      source = insert(:source, user_id: source.user_id, bq_storage_write_api: nil)
 
-      stub(Logflare.Utils, :flag, fn "BigqueryStorageWriteApi", _identifier -> true end)
+      stub(Logflare.Utils, :flag, fn
+        "BigqueryStorageWriteApi", _identifier -> true
+        _feature, _identifier -> false
+      end)
 
       stub(
         Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient,

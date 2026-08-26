@@ -17,17 +17,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
 
-  setup do
-    # Keep bigquery ingestion on the streaming-insert branch across every describe
-    # (each starts its own sources); other feature flags keep their test-env default.
-    stub(Logflare.Utils, :flag, fn
-      "BigqueryStorageWriteApi", _identifier -> false
-      _feature, _identifier -> true
-    end)
-
-    :ok
-  end
-
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
     insert(:plan)
