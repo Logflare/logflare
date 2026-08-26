@@ -601,6 +601,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :query_password) == "new_pa55"
     end
+
+    test "allows revoking the dedicated query user by clearing query_user, even though query_password is submitted blank" do
+      existing_config = %{query_user: "ch_reader", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "",
+        query_password: ""
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_user) == nil
+      assert Ecto.Changeset.get_field(changeset, :query_password) == nil
+    end
   end
 
   describe "pre_ingest/3 event age filtering" do

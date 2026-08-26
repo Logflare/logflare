@@ -248,7 +248,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        async_insert_max_rows: :integer,
        max_event_age_hours: :integer
      }}
-    |> Changeset.cast(preserve_blank_query_password(params, existing_config), [
+    |> Changeset.cast(params, [
       :url,
       :username,
       :password,
@@ -265,6 +265,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :async_insert_max_rows,
       :max_event_age_hours
     ])
+    |> preserve_blank_query_password()
     |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
     |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
     |> Logflare.Utils.default_field_value(
@@ -294,20 +295,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   defp strip_credentials(url), do: EndpointUtils.strip_credentials(url)
 
-  @spec preserve_blank_query_password(map(), map()) :: map()
-  defp preserve_blank_query_password(params, %{query_password: password})
-       when is_non_empty_binary(password) do
-    case query_password_param(params) do
-      "" -> Map.drop(params, [:query_password, "query_password"])
-      _ -> params
+  @spec preserve_blank_query_password(Changeset.t()) :: Changeset.t()
+  defp preserve_blank_query_password(changeset) do
+    with {:ok, nil} <- Map.fetch(changeset.changes, :query_password),
+         password when is_non_empty_binary(password) <- Map.get(changeset.data, :query_password),
+         user when is_non_empty_binary(user) <- Changeset.get_field(changeset, :query_user) do
+      Changeset.delete_change(changeset, :query_password)
+    else
+      _ -> changeset
     end
-  end
-
-  defp preserve_blank_query_password(params, _existing_config), do: params
-
-  @spec query_password_param(map()) :: term()
-  defp query_password_param(params) do
-    Map.get(params, :query_password, Map.get(params, "query_password"))
   end
 
   @doc false
