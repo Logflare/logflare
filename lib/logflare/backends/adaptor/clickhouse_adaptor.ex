@@ -409,8 +409,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         Logger.warning(
           "ClickHouse read cluster GRANT check failed for #{target}. Required: `SELECT`",
           backend_id: backend.id,
-          read_cluster: label,
-          read_cluster_url: url
+          clickhouse_read_cluster: label,
+          clickhouse_read_cluster_url: url
         )
 
         {:error, :read_permissions_missing}
@@ -419,8 +419,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         Logger.warning(
           "ClickHouse read cluster connection/GRANT check failed for #{target}. Unexpected error #{inspect(error_result)}",
           backend_id: backend.id,
-          read_cluster: label,
-          read_cluster_url: url
+          clickhouse_read_cluster: label,
+          clickhouse_read_cluster_url: url
         )
 
         {:error, :grant_check_unknown_failure}
@@ -598,7 +598,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
              user_id: backend.user_id,
              backend_id: backend.id,
              backend_token: backend.token,
-             read_cluster: label,
+             clickhouse_read_cluster: label,
              host: ConnectionManager.read_host(backend, label)
            )}
       end
@@ -612,8 +612,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       "ClickHouse read cluster not configured, falling back to resolved read cluster",
       user_id: backend.user_id,
       backend_id: backend.id,
-      requested_read_cluster: requested,
-      resolved_read_cluster: label
+      clickhouse_requested_read_cluster: requested,
+      clickhouse_resolved_read_cluster: label
     )
 
     :ok
@@ -636,8 +636,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         "ClickHouse read cluster unhealthy, falling back to default read cluster",
         user_id: backend.user_id,
         backend_id: backend.id,
-        read_cluster: label,
-        default_read_cluster: default
+        clickhouse_read_cluster: label,
+        clickhouse_default_read_cluster: default
       )
 
       do_ch_query_on_label(backend, statement, params, default)
@@ -661,7 +661,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       Logger.warning(
         "ClickHouse slow connection checkout: waited #{pool_ms}ms for a pool connection",
         backend_id: backend_id,
-        clickhouse: %{read_cluster: label}
+        clickhouse_read_cluster: label
       )
     end
 
@@ -1257,7 +1257,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       Logger.info(
         "Started query ConnectionManager for ClickHouse backend",
         backend_id: backend.id,
-        read_cluster: label
+        clickhouse_read_cluster: label
       )
 
       :ok
@@ -1269,7 +1269,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         Logger.warning(
           "Failed to start query ConnectionManager for backend",
           backend_id: backend_id,
-          read_cluster: label,
+          clickhouse_read_cluster: label,
           reason: reason
         )
 

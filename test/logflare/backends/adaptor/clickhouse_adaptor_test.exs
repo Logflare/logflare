@@ -857,7 +857,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       log =
         ExUnit.CaptureLog.capture_log(
-          [format: "$metadata$message", metadata: [:host, :read_cluster]],
+          [format: "$metadata$message", metadata: [:host, :clickhouse_read_cluster]],
           fn ->
             assert {:error, %QueryError{}} =
                      ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
@@ -867,7 +867,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
 
       assert log =~ "host=adhoc-read.local"
-      assert log =~ "read_cluster=adhoc"
+      assert log =~ "clickhouse_read_cluster=adhoc"
       refute log =~ "legacy-read.local"
     end
   end
