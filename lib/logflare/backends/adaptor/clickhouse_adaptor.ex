@@ -661,7 +661,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       Logger.warning(
         "ClickHouse slow connection checkout: waited #{pool_ms}ms for a pool connection",
         backend_id: backend_id,
-        read_cluster: label
+        clickhouse: %{read_cluster: label}
       )
     end
 
